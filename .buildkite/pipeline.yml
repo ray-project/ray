@@ -72,77 +72,77 @@
 #     # Upload to latest directory.
 #     - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
 
-- label: ":docker: Build Images: py36 (1/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
-    - pip install -q docker aws_requests_auth boto3
-    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py36 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
+# - label: ":docker: Build Images: py36 (1/2)"
+#   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+#   commands:
+#     - LINUX_WHEELS=1 ./ci/ci.sh build
+#     - pip install -q docker aws_requests_auth boto3
+#     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+#     - python ./ci/build/build-docker-images.py --py-versions py36 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
 
-- label: ":docker: Build Images: py36 (2/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
-    - pip install -q docker aws_requests_auth boto3
-    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py36 --device-types cu111 cu112 --build-type BUILDKITE --build-base
+# - label: ":docker: Build Images: py36 (2/2)"
+#   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+#   commands:
+#     - LINUX_WHEELS=1 ./ci/ci.sh build
+#     - pip install -q docker aws_requests_auth boto3
+#     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+#     - python ./ci/build/build-docker-images.py --py-versions py36 --device-types cu111 cu112 --build-type BUILDKITE --build-base
 
-- label: ":docker: Build Images: py37 (1/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
-    - pip install -q docker aws_requests_auth boto3
-    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
+# - label: ":docker: Build Images: py37 (1/2)"
+#   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+#   commands:
+#     - LINUX_WHEELS=1 ./ci/ci.sh build
+#     - pip install -q docker aws_requests_auth boto3
+#     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+#     - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
 
-- label: ":docker: Build Images: py37 (2/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
-    - pip install -q docker aws_requests_auth boto3
-    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
+# - label: ":docker: Build Images: py37 (2/2)"
+#   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+#   commands:
+#     - LINUX_WHEELS=1 ./ci/ci.sh build
+#     - pip install -q docker aws_requests_auth boto3
+#     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+#     - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
 
-- label: ":docker: Build Images: py38 (1/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
-    - pip install -q docker aws_requests_auth boto3
-    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
+# - label: ":docker: Build Images: py38 (1/2)"
+#   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+#   commands:
+#     - LINUX_WHEELS=1 ./ci/ci.sh build
+#     - pip install -q docker aws_requests_auth boto3
+#     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+#     - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
 
-- label: ":docker: Build Images: py38 (2/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
-    - pip install -q docker aws_requests_auth boto3
-    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
+# - label: ":docker: Build Images: py38 (2/2)"
+#   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+#   commands:
+#     - LINUX_WHEELS=1 ./ci/ci.sh build
+#     - pip install -q docker aws_requests_auth boto3
+#     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+#     - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
 
-- label: ":docker: Build Images: py39 (1/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
-    - pip install -q docker aws_requests_auth boto3
-    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
+# - label: ":docker: Build Images: py39 (1/2)"
+#   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+#   commands:
+#     - LINUX_WHEELS=1 ./ci/ci.sh build
+#     - pip install -q docker aws_requests_auth boto3
+#     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+#     - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
 
-- label: ":docker: Build Images: py39 (2/2)"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
-    - pip install -q docker aws_requests_auth boto3
-    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
+# - label: ":docker: Build Images: py39 (2/2)"
+#   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+#   commands:
+#     - LINUX_WHEELS=1 ./ci/ci.sh build
+#     - pip install -q docker aws_requests_auth boto3
+#     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+#     - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
 
-- label: ":docker: Build Images: py310"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
-    - pip install -q docker aws_requests_auth boto3
-    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py310 --device-types cpu --build-type BUILDKITE --build-base
+# - label: ":docker: Build Images: py310"
+#   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+#   commands:
+#     - LINUX_WHEELS=1 ./ci/ci.sh build
+#     - pip install -q docker aws_requests_auth boto3
+#     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+#     - python ./ci/build/build-docker-images.py --py-versions py310 --device-types cpu --build-type BUILDKITE --build-base
 
 - label: ":book: Lint"
   commands:
@@ -449,42 +449,43 @@
       - python ./ci/env/check_minimal_install.py
       - bazel test --config=ci $(./ci/run/bazel_export_options)  --build_tests_only --test_tag_filters=minimal python/ray/train/...
 
-- label: ":kubernetes: operator"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  commands:
-    - |
-      cleanup() {
-        if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi
-        python python/ray/tests/kuberay/setup/teardown_kuberay.py || true
-        kind delete cluster
-      }
-      trap cleanup EXIT
-    - echo "--- Setting up Python 3.7 environment."
-    - PYTHON=3.7 ./ci/env/install-dependencies.sh
-    # Specifying PYTHON=3.7 above somehow messes up the Ray install.
-    # Uninstall and re-install Ray so that we can use Ray Client.
-    # (Remove thirdparty_files to sidestep an issue with psutil.)
-    - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
-    - pip install -e /ray/python
-    - echo "--- Setting up local kind cluster."
-    - ./ci/k8s/prep-k8s-environment.sh
-    - echo "--- Building py37-cpu Ray image for the test."
-    - LINUX_WHEELS=1 ./ci/ci.sh build
-    - pip install -q docker
-    - python ci/build/build-docker-images.py --py-versions py37 --device-types cpu --build-type LOCAL --build-base
-    # Tag the image built in the last step. We want to be sure to distinguish the image from the real Ray nightly.
-    - docker tag rayproject/ray:nightly-py37-cpu ray-ci:kuberay-test
-    # Load the image into the kind node.
-    - kind load docker-image ray-ci:kuberay-test
-    - echo "--- Setting up KubeRay operator."
-    - python python/ray/tests/kuberay/setup/setup_kuberay.py
-    - echo "--- Running the test."
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=kuberay_operator
-      --test_env=RAY_IMAGE=docker.io/library/ray-ci:kuberay-test
-      --test_env=PULL_POLICY=IfNotPresent
-      --test_env=KUBECONFIG=/root/.kube/config
-      python/ray/tests/...
+# - label: ":kubernetes: operator"
+#   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+#   commands:
+#     - |
+#       cleanup() {
+#         if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi
+#         python python/ray/tests/kuberay/setup/teardown_kuberay.py || true
+#         kind delete cluster
+#       }
+#       trap cleanup EXIT
+#     - echo "--- Setting up Python 3.7 environment."
+#     - PYTHON=3.7 ./ci/env/install-dependencies.sh
+#     # Specifying PYTHON=3.7 above somehow messes up the Ray install.
+#     # Uninstall and re-install Ray so that we can use Ray Client.
+#     # (Remove thirdparty_files to sidestep an issue with psutil.)
+#     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
+#     - pip install -e /ray/python
+#     - echo "--- Setting up local kind cluster."
+#     - ./ci/k8s/prep-k8s-environment.sh
+#     - echo "--- Building py37-cpu Ray image for the test."
+#     - LINUX_WHEELS=1 ./ci/ci.sh build
+#     - pip install -q docker
+#     - python ci/build/build-docker-images.py --py-versions py37 --device-types cpu --build-type LOCAL --build-base
+#     # Tag the image built in the last step. We want to be sure to distinguish the image from the real Ray nightly.
+#     - docker tag rayproject/ray:nightly-py37-cpu ray-ci:kuberay-test
+#     # Load the image into the kind node.
+#     - kind load docker-image ray-ci:kuberay-test
+#     - echo "--- Setting up KubeRay operator."
+#     - python python/ray/tests/kuberay/setup/setup_kuberay.py
+#     - echo "--- Running the test."
+#     - bazel test --config=ci $(./ci/run/bazel_export_options)
+#       --test_tag_filters=kuberay_operator
+#       --test_env=RAY_IMAGE=docker.io/library/ray-ci:kuberay-test
+#       --test_env=PULL_POLICY=IfNotPresent
+#       --test_env=KUBECONFIG=/root/.kube/config
+#       python/ray/tests/...
+
 - label: ":python: Ray DAG Tests"
   conditions:
     [
