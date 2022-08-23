@@ -201,7 +201,7 @@ best_checkpoint = best_result.checkpoint
 best_metric = best_result.metrics
 
 # Or a dataframe for further analysis
-results_df = best_result.metrics_dataframe
+results_df = results.get_dataframe()
 print("Shortest training time:", results_df["time_total_s"].min())
 
 # Iterate over results
