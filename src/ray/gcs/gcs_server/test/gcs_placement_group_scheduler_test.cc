@@ -1306,6 +1306,79 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestCommitToDeadNodes) {
   ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
 }
 
+TEST_F(GcsPlacementGroupSchedulerTest, TestWaitingRemovedBundles) {
+  // This feature is only required by gcs actor scheduler.
+  RayConfig::instance().initialize(R"({"gcs_actor_scheduling_enabled": true})");
+
+  auto node = Mocker::GenNodeInfo();
+  AddNode(node);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
+  auto placement_group =
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request, "");
+
+  // Schedule the placement_group with 1 available node, and the lease request should be
+  // send to the node.
+  scheduler_->ScheduleUnplacedBundles(
+      placement_group,
+      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
+             bool is_insfeasble) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        failure_placement_groups_.emplace_back(std::move(placement_group));
+      },
+      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        success_placement_groups_.emplace_back(std::move(placement_group));
+      });
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(0, GcsPlacementGroupStatus::FAILURE);
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+
+  // Assume bundle (and wildcard) resources are acquired by actors.
+  for (const auto bundle : placement_group->GetBundles()) {
+    for (const auto &resource_entry : bundle->GetFormattedResources()) {
+      cluster_resource_scheduler_->GetClusterResourceManager()
+          .SubtractNodeAvailableResources(
+              scheduling::NodeID(node->node_id()),
+              ResourceRequest({{scheduling::ResourceID(resource_entry.first),
+                                FixedPoint(resource_entry.second)}}));
+    }
+  }
+
+  // Remove the placement group.
+  const auto &placement_group_id = placement_group->GetPlacementGroupID();
+  scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
+  ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
+
+  // Because actors have not released the bundle resources, bundles have to keep waiting.
+  ASSERT_EQ(scheduler_->GetWaitingRemovedBundlesSize(), 2);
+  const auto &node_resources =
+      cluster_resource_scheduler_->GetClusterResourceManager().GetNodeResources(
+          scheduling::NodeID(node->node_id()));
+  ASSERT_NE(node_resources.available.Get(scheduling::ResourceID::CPU()),
+            node_resources.total.Get(scheduling::ResourceID::CPU()));
+
+  // Assume actors are releasing the bundle resources.
+  for (const auto bundle : placement_group->GetBundles()) {
+    for (const auto &resource_entry : bundle->GetFormattedResources()) {
+      cluster_resource_scheduler_->GetClusterResourceManager().AddNodeAvailableResources(
+          scheduling::NodeID(node->node_id()),
+          ResourceRequest({{scheduling::ResourceID(resource_entry.first),
+                            FixedPoint(resource_entry.second)}}));
+    }
+  }
+
+  scheduler_->HandleWaitingRemovedBundles();
+  // The waiting bundles are removed, and resources are successfully returned to node.
+  ASSERT_EQ(scheduler_->GetWaitingRemovedBundlesSize(), 0);
+  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID::CPU()),
+            node_resources.total.Get(scheduling::ResourceID::CPU()));
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
