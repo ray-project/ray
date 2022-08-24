@@ -70,10 +70,9 @@ class ResultGrid:
     If a trial is not in terminated state, its latest result and checkpoint as
     seen by Tune will be provided.
 
-    One may wonder how is ResultGrid different than ExperimentAnalysis. ResultGrid is
-    supposed to succeed ExperimentAnalysis. However, it has not reached the same
-    feature parity yet. For interacting with an existing experiment, located at
-    ``local_dir``, one may do the following:
+   ResultGrid will be the successor of the ExperimentAnalysis object
+   but is not yet at feature parity. For interacting with an existing experiment, located at
+    ``local_dir``, do the following:
 
     .. code-block:: python
 
