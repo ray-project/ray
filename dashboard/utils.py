@@ -111,7 +111,10 @@ def get_all_modules(module_type):
     for module_loader, name, ispkg in pkgutil.walk_packages(
         ray.dashboard.modules.__path__, ray.dashboard.modules.__name__ + "."
     ):
-        if not dashboard_consts.ENABLE_JOB_AGENT and name == "ray.dashboard.modules.job.job_agent":
+        if (
+            not dashboard_consts.ENABLE_JOB_AGENT
+            and name == "ray.dashboard.modules.job.job_agent"
+        ):
             continue
         try:
             importlib.import_module(name)
