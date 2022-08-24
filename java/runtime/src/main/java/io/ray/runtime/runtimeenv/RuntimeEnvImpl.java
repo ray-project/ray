@@ -9,6 +9,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.util.JsonFormat;
 import io.ray.api.exception.RuntimeEnvException;
 import io.ray.api.runtimeenv.RuntimeEnv;
+import io.ray.api.runtimeenv.RuntimeEnvConfig;
 import io.ray.runtime.generated.RuntimeEnvCommon;
 import java.io.IOException;
 
@@ -18,15 +19,20 @@ public class RuntimeEnvImpl implements RuntimeEnv {
 
   public ObjectNode runtimeEnvs = MAPPER.createObjectNode();
 
+  private static final String CONFIG_FIELD_NAME = "config";
+
   public RuntimeEnvImpl() {}
 
   @Override
   public void set(String name, Object value) throws RuntimeEnvException {
+    if (CONFIG_FIELD_NAME.equals(name) && value instanceof RuntimeEnvConfig == false) {
+      throw new RuntimeEnvException(name + "must be instance of " + RuntimeEnvConfig.class);
+    }
     JsonNode node = null;
     try {
       node = MAPPER.valueToTree(value);
     } catch (IllegalArgumentException e) {
-      throw new RuntimeException(e);
+      throw new RuntimeEnvException("Setting field error", e);
     }
     runtimeEnvs.set(name, node);
   }
@@ -37,7 +43,7 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     try {
       node = JsonLoader.fromString(jsonStr);
     } catch (IOException e) {
-      throw new RuntimeException(e);
+      throw new RuntimeEnvException("Setting json field error", e);
     }
     runtimeEnvs.set(name, node);
   }
@@ -51,7 +57,7 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     try {
       return MAPPER.treeToValue(jsonNode, classOfT);
     } catch (JsonProcessingException e) {
-      throw new RuntimeException(e);
+      throw new RuntimeEnvException("Getting field error", e);
     }
   }
 
@@ -60,13 +66,18 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     try {
       return MAPPER.writeValueAsString(runtimeEnvs.get(name));
     } catch (JsonProcessingException e) {
-      throw new RuntimeException(e);
+      throw new RuntimeEnvException("Getting json field error", e);
     }
   }
 
   @Override
+  public boolean contains(String name) {
+    return runtimeEnvs.has(name);
+  }
+
+  @Override
   public boolean remove(String name) {
-    if (runtimeEnvs.has(name)) {
+    if (contains(name)) {
       runtimeEnvs.remove(name);
       return true;
     }
@@ -78,33 +89,53 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     try {
       return MAPPER.writeValueAsString(runtimeEnvs);
     } catch (JsonProcessingException e) {
-      throw new RuntimeException(e);
+      throw new RuntimeEnvException("Serializing error", e);
     }
   }
 
   @Override
+  public boolean empty() {
+    return runtimeEnvs.isEmpty();
+  }
+
+  @Override
   public String serializeToRuntimeEnvInfo() throws RuntimeEnvException {
-    // TODO(SongGuyang): Expose runtime env config API to users.
+    RuntimeEnvCommon.RuntimeEnvInfo protoRuntimeEnvInfo = GenerateRuntimeEnvInfo();
+
+    JsonFormat.Printer printer = JsonFormat.printer();
+    try {
+      return printer.print(protoRuntimeEnvInfo);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeEnvException("Serializing to runtime env info error", e);
+    }
+  }
+
+  @Override
+  public void setConfig(RuntimeEnvConfig runtimeEnvConfig) {
+    set(CONFIG_FIELD_NAME, runtimeEnvConfig);
+  }
+
+  @Override
+  public RuntimeEnvConfig getConfig() {
+    if (!contains(CONFIG_FIELD_NAME)) {
+      return null;
+    }
+    return get(CONFIG_FIELD_NAME, RuntimeEnvConfig.class);
+  }
+
+  public RuntimeEnvCommon.RuntimeEnvInfo GenerateRuntimeEnvInfo() throws RuntimeEnvException {
     String serializeRuntimeEnv = serialize();
     RuntimeEnvCommon.RuntimeEnvInfo.Builder protoRuntimeEnvInfoBuilder =
         RuntimeEnvCommon.RuntimeEnvInfo.newBuilder();
     protoRuntimeEnvInfoBuilder.setSerializedRuntimeEnv(serializeRuntimeEnv);
-    JsonFormat.Printer printer = JsonFormat.printer();
-    try {
-      return printer.print(protoRuntimeEnvInfoBuilder);
-    } catch (InvalidProtocolBufferException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
-  public RuntimeEnvCommon.RuntimeEnvInfo GenerateRuntimeEnvInfo() throws RuntimeEnvException {
-    RuntimeEnvCommon.RuntimeEnvInfo.Builder protoRuntimeEnvInfoBuilder =
-        RuntimeEnvCommon.RuntimeEnvInfo.newBuilder();
-
-    try {
-      protoRuntimeEnvInfoBuilder.setSerializedRuntimeEnv(MAPPER.writeValueAsString(runtimeEnvs));
-    } catch (JsonProcessingException e) {
-      throw new RuntimeException(e);
+    RuntimeEnvConfig runtimeEnvConfig = getConfig();
+    if (runtimeEnvConfig != null) {
+      RuntimeEnvCommon.RuntimeEnvConfig.Builder protoRuntimeEnvConfigBuilder =
+          RuntimeEnvCommon.RuntimeEnvConfig.newBuilder();
+      protoRuntimeEnvConfigBuilder.setSetupTimeoutSeconds(
+          runtimeEnvConfig.getSetupTimeoutSeconds());
+      protoRuntimeEnvConfigBuilder.setEagerInstall(runtimeEnvConfig.getEagerInstall());
+      protoRuntimeEnvInfoBuilder.setRuntimeEnvConfig(protoRuntimeEnvConfigBuilder.build());
     }
 
     return protoRuntimeEnvInfoBuilder.build();

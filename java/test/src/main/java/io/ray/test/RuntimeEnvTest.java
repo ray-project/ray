@@ -1,9 +1,12 @@
 package io.ray.test;
 
+import static io.ray.api.runtimeenv.types.RuntimeEnvName.JARS;
+
 import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.runtimeenv.RuntimeEnv;
+import io.ray.api.runtimeenv.RuntimeEnvConfig;
 import io.ray.api.runtimeenv.types.RuntimeEnvName;
 import java.util.HashMap;
 import java.util.List;
@@ -116,7 +119,7 @@ public class RuntimeEnvTest {
     try {
       Ray.init();
       RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().build();
-      runtimeEnv.set(RuntimeEnvName.JARS, ImmutableList.of(url));
+      runtimeEnv.set(JARS, ImmutableList.of(url));
       ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
       boolean ret = actor1.task(A::findClass, FOO_CLASS_NAME).remote().get();
       Assert.assertTrue(ret);
@@ -149,7 +152,7 @@ public class RuntimeEnvTest {
     try {
       Ray.init();
       RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().build();
-      runtimeEnv.set(RuntimeEnvName.JARS, urls);
+      runtimeEnv.set(JARS, urls);
       boolean ret =
           Ray.task(RuntimeEnvTest::findClasses, classNames)
               .setRuntimeEnv(runtimeEnv)
@@ -260,6 +263,53 @@ public class RuntimeEnvTest {
 
       RuntimeEnv runtimeEnv2 = RuntimeEnv.deserialize(serializedRuntimeEnv);
       Assert.assertEquals(runtimeEnv2.getJsonStr("pip"), pipString);
+    } finally {
+      Ray.shutdown();
+    }
+  }
+
+  public void testRuntimeEnvContextJobLevel() {
+    System.setProperty("ray.job.runtime-env.jars.0", FOO_JAR_URL);
+    System.setProperty("ray.job.runtime-env.jars.1", BAR_JAR_URL);
+    System.setProperty("ray.job.runtime-env.config.setup-timeout-seconds", "1");
+    try {
+      Ray.init();
+      RuntimeEnv runtimeEnv = Ray.getRuntimeContext().getCurrentRuntimeEnv();
+      Assert.assertNotNull(runtimeEnv);
+      List<String> jars = runtimeEnv.get(JARS, List.class);
+      Assert.assertNotNull(jars);
+      Assert.assertEquals(jars.size(), 2);
+      Assert.assertEquals(jars.get(0), FOO_JAR_URL);
+      Assert.assertEquals(jars.get(1), BAR_JAR_URL);
+      RuntimeEnvConfig runtimeEnvConfig = runtimeEnv.getConfig();
+      Assert.assertNotNull(runtimeEnvConfig);
+      Assert.assertEquals((int) runtimeEnvConfig.getSetupTimeoutSeconds(), 1);
+
+    } finally {
+      Ray.shutdown();
+    }
+  }
+
+  private static Integer getRuntimeEnvTimeout() {
+    RuntimeEnv runtimeEnv = Ray.getRuntimeContext().getCurrentRuntimeEnv();
+    if (runtimeEnv != null) {
+      return runtimeEnv.getConfig().getSetupTimeoutSeconds();
+    }
+    return null;
+  }
+
+  public void testRuntimeEnvContextTaskLevel() {
+    try {
+      Ray.init();
+      RuntimeEnv currentRuntimeEnv = Ray.getRuntimeContext().getCurrentRuntimeEnv();
+      Assert.assertTrue(currentRuntimeEnv.empty());
+      RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().build();
+      RuntimeEnvConfig runtimeEnvConfig = new RuntimeEnvConfig(1, false);
+      runtimeEnv.setConfig(runtimeEnvConfig);
+      Integer result =
+          Ray.task(RuntimeEnvTest::getRuntimeEnvTimeout).setRuntimeEnv(runtimeEnv).remote().get();
+      Assert.assertNotNull(result);
+      Assert.assertEquals((int) result, 1);
     } finally {
       Ray.shutdown();
     }
