@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import mock
 import shutil
 import sys
 import tempfile
@@ -24,6 +25,8 @@ from ray._private.test_utils import (
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
 from ray.dashboard.modules.job.pydantic_models import JobDetails
+from ray.dashboard.datacenter import DataOrganizer
+from ray.dashboard.modules.job.job_head import JobHead
 from ray.dashboard.modules.version import CURRENT_VERSION
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobStatus, JobSubmissionClient
@@ -723,6 +726,10 @@ ray.init(address="auto")
 
     with open(path) as f:
         assert f.read().strip() == "Ray rocks!"
+
+
+def test_job_head_choose_job_agent():
+    pass
 
 
 if __name__ == "__main__":

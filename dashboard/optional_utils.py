@@ -257,7 +257,10 @@ def init_ray_and_catch_exceptions() -> Callable:
         @functools.wraps(f)
         async def decorator(self, *args, **kwargs):
             try:
-                if not ray.is_initialized():
+                # rayletless head should not call `ray.init`.
+                if hasattr(self, "_disable_ray_init") and self._disable_ray_init:
+                    logger.info("Head node without raylet!")
+                elif not ray.is_initialized():
                     try:
                         address = self.get_gcs_address()
                         logger.info(f"Connecting to ray with address={address}")
