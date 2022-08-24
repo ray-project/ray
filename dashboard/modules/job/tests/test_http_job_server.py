@@ -1,7 +1,8 @@
+import asyncio
+import collections
 import json
 import logging
 import os
-import mock
 import shutil
 import sys
 import tempfile
@@ -26,7 +27,7 @@ from ray._private.test_utils import (
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.datacenter import DataOrganizer
-from ray.dashboard.modules.job.job_head import JobHead
+from ray.dashboard.modules.job.job_head import JobHead, JobAgentSubmissionClient
 from ray.dashboard.modules.version import CURRENT_VERSION
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobStatus, JobSubmissionClient
@@ -728,8 +729,107 @@ ray.init(address="auto")
         assert f.read().strip() == "Ray rocks!"
 
 
-def test_job_head_choose_job_agent():
-    pass
+class MockJobHead(JobHead):
+    def __init__(self):
+        self._agents = collections.OrderedDict()
+
+
+class MockDataOrganizer(DataOrganizer):
+
+    agents = {}
+
+    @classmethod
+    async def get_all_agent_infos(cls):
+        return cls.agents
+
+
+class MockJobAgentSubmissionClient(JobAgentSubmissionClient):
+    def __init__(self, address, *args, **kwargs):
+        self._address = address
+
+
+@patch("ray.dashboard.modules.job.job_head.DataOrganizer", MockDataOrganizer)
+@patch(
+    "ray.dashboard.modules.job.job_head.JobAgentSubmissionClient",
+    MockJobAgentSubmissionClient,
+)
+@patch("ray.dashboard.modules.job.job_head.dashboard_consts.CANDIDATE_AGENT_NUMBER", 2)
+@pytest.mark.asyncio
+async def test_job_head_choose_job_agent():
+
+    agent_1 = (
+        "node1",
+        dict(
+            ipAddress="1.1.1.1",
+            httpPort=1,
+            grpcPort=1,
+            httpAddress="1.1.1.1:1",
+        ),
+    )
+    agent_2 = (
+        "node2",
+        dict(
+            ipAddress="2.2.2.2",
+            httpPort=2,
+            grpcPort=2,
+            httpAddress="2.2.2.2:2",
+        ),
+    )
+    agent_3 = (
+        "node3",
+        dict(
+            ipAddress="3.3.3.3",
+            httpPort=3,
+            grpcPort=3,
+            httpAddress="3.3.3.3:3",
+        ),
+    )
+
+    MockDataOrganizer.agents["node1"] = dict(
+        ipAddress="1.1.1.1",
+        httpPort=1,
+        grpcPort=1,
+        httpAddress="1.1.1.1:1",
+    )
+    job_head = MockJobHead()
+    job_agent_client = await job_head.choose_agent()
+    assert job_agent_client._address == "http://1.1.1.1:1"
+
+    del MockDataOrganizer.agents["node1"]
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(job_head.choose_agent(), timeout=3)
+
+    MockDataOrganizer.agents[agent_1[0]] = agent_1[1]
+    MockDataOrganizer.agents[agent_2[0]] = agent_2[1]
+    MockDataOrganizer.agents[agent_3[0]] = agent_3[1]
+
+    addresses = set()
+    for address in range(2):
+        job_agent_client = await job_head.choose_agent()
+        addresses.add(job_agent_client._address)
+    assert addresses == {"http://1.1.1.1:1", "http://2.2.2.2:2"}
+    addresses = set()
+    for address in range(2):
+        job_agent_client = await job_head.choose_agent()
+        addresses.add(job_agent_client._address)
+    assert addresses == {"http://1.1.1.1:1", "http://2.2.2.2:2"}
+
+    del MockDataOrganizer.agents[agent_1[0]]
+    addresses = set()
+    for address in range(2):
+        job_agent_client = await job_head.choose_agent()
+        addresses.add(job_agent_client._address)
+    assert addresses == {"http://3.3.3.3:3", "http://2.2.2.2:2"}
+    addresses = set()
+    for address in range(2):
+        job_agent_client = await job_head.choose_agent()
+        addresses.add(job_agent_client._address)
+    assert addresses == {"http://3.3.3.3:3", "http://2.2.2.2:2"}
+
+    del MockDataOrganizer.agents[agent_2[0]]
+    for _ in range(2):
+        job_agent_client = await job_head.choose_agent()
+        assert "http://3.3.3.3:3" == job_agent_client._address
 
 
 if __name__ == "__main__":
