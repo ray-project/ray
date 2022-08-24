@@ -205,6 +205,14 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
     ray_namespace =
         config.ray_namespace.empty() ? GenerateUUIDV4() : config.ray_namespace;
   }
+
+  auto job_config_json_string = std::getenv("RAY_JOB_CONFIG_JSON_ENV_VAR");
+  if (job_config_json_string) {
+    json job_config_json = json::parse(job_config_json_string);
+    runtime_env = RuntimeEnv::Deserialize(job_config_json.at("runtime_env").dump());
+    job_config_metadata = job_config_json.at("metadata");
+    RAY_CHECK(job_config_json.size() == 2);
+  }
 };
 
 void ConfigInternal::SetBootstrapAddress(std::string_view address) {

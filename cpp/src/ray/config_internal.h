@@ -19,7 +19,10 @@
 #include <string>
 #include <string_view>
 
+#include "nlohmann/json.hpp"
 #include "ray/core_worker/common.h"
+
+using json = nlohmann::json;
 
 namespace ray {
 namespace internal {
@@ -67,6 +70,8 @@ class ConfigInternal {
   // The default actor lifetime type.
   rpc::JobConfig_ActorLifetime default_actor_lifetime =
       rpc::JobConfig_ActorLifetime_NON_DETACHED;
+
+  json job_config_metadata;
 
   std::string ray_namespace = "";
 

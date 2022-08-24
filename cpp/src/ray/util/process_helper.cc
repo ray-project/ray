@@ -153,6 +153,14 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     job_config.mutable_runtime_env_info()->set_serialized_runtime_env(
         ConfigInternal::Instance().runtime_env->Serialize());
   }
+  if (ConfigInternal::Instance().job_config_metadata.size()) {
+    auto metadata_ptr = job_config.mutable_metadata();
+    for (const auto &[key, _] : ConfigInternal::Instance().job_config_metadata.items()) {
+      RAY_CHECK(ConfigInternal::Instance().job_config_metadata.at(key).is_string());
+      (*metadata_ptr)[key] =
+          ConfigInternal::Instance().job_config_metadata.at(key).get<std::string>();
+    }
+  }
   std::string serialized_job_config;
   RAY_CHECK(job_config.SerializeToString(&serialized_job_config));
   options.serialized_job_config = serialized_job_config;
