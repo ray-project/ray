@@ -35,8 +35,17 @@ WANDB_SETUP_API_KEY_HOOK = "WANDB_SETUP_API_KEY_HOOK"
 # It takes in a W&B run object and doesn't return anything.
 # Example: "your.module.wandb_process_run_info_hook".
 WANDB_PROCESS_RUN_INFO_HOOK = "WANDB_PROCESS_RUN_INFO_HOOK"
-_VALID_TYPES = (Number, wandb.data_types.Video, wandb.data_types.Image)
-_VALID_ITERABLE_TYPES = (wandb.data_types.Video, wandb.data_types.Image)
+_VALID_TYPES = (
+    Number,
+    wandb.data_types.Video,
+    wandb.data_types.Image,
+    wandb.data_types.Histogram,
+)
+_VALID_ITERABLE_TYPES = (
+    wandb.data_types.Video,
+    wandb.data_types.Image,
+    wandb.data_types.Histogram,
+)
 
 
 def _is_allowed_type(obj):
