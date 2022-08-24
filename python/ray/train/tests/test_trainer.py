@@ -333,7 +333,7 @@ def test_run_iterator_error(ray_start_2_cpus):
 
     with pytest.raises(StartTraceback) as exc:
         next(iterator)
-    assert isinstance(exc.value.cause.__cause__, NotImplementedError)
+    assert "NotImplementedError" in str(exc.value)
 
     assert iterator.get_final_results() is None
     assert iterator.is_finished()
@@ -759,7 +759,7 @@ def test_user_error(ray_start_2_cpus):
 
     with pytest.raises(StartTraceback) as exc:
         trainer.run(fail_train_1)
-    assert isinstance(exc.value.cause.__cause__, NotImplementedError)
+    assert "NotImplementedError" in str(exc.value)
 
     def fail_train_2():
         for _ in range(2):
@@ -768,7 +768,7 @@ def test_user_error(ray_start_2_cpus):
 
     with pytest.raises(StartTraceback) as exc:
         trainer.run(fail_train_2)
-    assert isinstance(exc.value.cause.__cause__, NotImplementedError)
+    assert "NotImplementedError" in str(exc.value)
 
 
 def test_worker_failure_1(ray_start_2_cpus):
