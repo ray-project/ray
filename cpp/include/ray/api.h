@@ -21,7 +21,6 @@
 #include <ray/api/logging.h>
 #include <ray/api/object_ref.h>
 #include <ray/api/ray_config.h>
-#include <ray/api/ray_exception.h>
 #include <ray/api/ray_remote.h>
 #include <ray/api/ray_runtime.h>
 #include <ray/api/ray_runtime_holder.h>
