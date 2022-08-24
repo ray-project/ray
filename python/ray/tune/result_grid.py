@@ -64,7 +64,7 @@ class ResultGrid:
         df = result_grid.get_dataframe()
 
         # Get a dataframe for the minimum loss seen for each trial
-        df = result_grid.get_dataframe()(metric="loss", mode="min")
+        df = result_grid.get_dataframe(metric="loss", mode="min")
 
     Note that trials of all statuses are included in the final result grid.
     If a trial is not in terminated state, its latest result and checkpoint as
