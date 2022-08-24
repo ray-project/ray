@@ -19,11 +19,9 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
     compute_iterable_delta,
     JavaActorHandleProxy,
-    msgpack_serialize,
 )
 from ray.serve.generated.serve_pb2 import (
     RequestMetadata as RequestMetadataProto,
-    RequestWrapper as RequestWrapperProto,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -164,7 +162,9 @@ class ReplicaSet:
                     RequestMetadataProto(
                         request_id=query.metadata.request_id,
                         endpoint=query.metadata.endpoint,
-                        call_method=query.metadata.call_method if query.metadata.call_method != '__call__' else 'call',
+                        call_method=query.metadata.call_method
+                        if query.metadata.call_method != "__call__"
+                        else "call",
                     ).SerializeToString(),
                     [arg],
                 )

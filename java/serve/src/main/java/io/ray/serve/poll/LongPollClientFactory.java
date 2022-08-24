@@ -116,7 +116,7 @@ public class LongPollClientFactory {
                 return thread;
               }
             });
-    scheduledExecutorService.scheduleAtFixedRate(
+    scheduledExecutorService.scheduleWithFixedDelay(
         () -> {
           try {
             pollNext();
@@ -153,11 +153,11 @@ public class LongPollClientFactory {
       longPollResult = LongPollResult.parseFrom((byte[]) currentRef.get());
     } else {
       // Poll from java controller.
-      ObjectRef<LongPollResult> currentRef =
+      ObjectRef<byte[]> currentRef =
           ((ActorHandle<ServeController>) hostActor)
               .task(ServeController::listenForChange, longPollRequest)
               .remote();
-      longPollResult = currentRef.get();
+      longPollResult = LongPollResult.parseFrom(currentRef.get());
     }
     processUpdate(longPollResult == null ? null : longPollResult.getUpdatedObjects());
   }
@@ -217,7 +217,7 @@ public class LongPollClientFactory {
       return;
     }
     if (scheduledExecutorService != null) {
-      scheduledExecutorService.shutdown();
+      scheduledExecutorService.shutdownNow();
     }
     inited = false;
     LOGGER.info("LongPollClient was stopped.");
