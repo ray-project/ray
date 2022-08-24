@@ -1019,8 +1019,9 @@ def test_run_after_user_error(ray_start_2_cpus):
 
     trainer = Trainer(config, num_workers=2)
     trainer.start()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(StartTraceback) as exc:
         trainer.run(fail_train)
+    assert "NotImplementedError" in str(exc.value)
 
     def train_func():
         return 1
