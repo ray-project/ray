@@ -2,6 +2,7 @@ import hashlib
 import logging
 import os
 import shutil
+import sys
 from enum import Enum
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -15,6 +16,7 @@ from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
 )
+from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.thirdparty.pathspec import PathSpec
 from ray.experimental.internal_kv import (
@@ -623,97 +625,84 @@ async def download_and_unpack_package(
         raise IOError("Failed to download package. (Simulated failure for testing)")
 
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
-    with FileLock(str(pkg_file) + ".lock"):
-        if logger is None:
-            logger = default_logger
+    if logger is None:
+        logger = default_logger
 
-        logger.debug(f"Fetching package for URI: {pkg_uri}")
+    logger.debug(f"Fetching package for URI: {pkg_uri}")
 
-        local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
-        assert local_dir != pkg_file, "Invalid pkg_file!"
-        if local_dir.exists():
-            assert local_dir.is_dir(), f"{local_dir} is not a directory"
-        else:
-            protocol, pkg_name = parse_uri(pkg_uri)
-            if protocol == Protocol.GCS:
-                # Download package from the GCS.
-                code = await gcs_aio_client.internal_kv_get(
-                    pkg_uri.encode(), namespace=None, timeout=None
+    local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
+    assert local_dir != pkg_file, "Invalid pkg_file!"
+    if local_dir.exists():
+        assert local_dir.is_dir(), f"{local_dir} is not a directory"
+    else:
+        protocol, pkg_name = parse_uri(pkg_uri)
+        if protocol == Protocol.GCS:
+            # Download package from the GCS.
+            code = await gcs_aio_client.internal_kv_get(
+                pkg_uri.encode(), namespace=None, timeout=None
+            )
+            if code is None:
+                raise IOError(
+                    f"Failed to download runtime_env file package {pkg_uri} "
+                    "from the GCS to the Ray worker node. The package may "
+                    "have prematurely been deleted from the GCS due to a "
+                    "problem with Ray. Try re-running the statement or "
+                    "restarting the Ray cluster."
                 )
-                if code is None:
-                    raise IOError(
-                        f"Failed to download runtime_env file package {pkg_uri} "
-                        "from the GCS to the Ray worker node. The package may "
-                        "have prematurely been deleted from the GCS due to a "
-                        "problem with Ray. Try re-running the statement or "
-                        "restarting the Ray cluster."
+            code = code or b""
+            pkg_file.write_bytes(code)
+        elif protocol in Protocol.remote_protocols():
+            if protocol == Protocol.S3:
+                try:
+                    import boto3
+                    from smart_open import open as open_file
+                except ImportError:
+                    raise ImportError(
+                        "You must `pip install smart_open` and "
+                        "`pip install boto3` to fetch URIs in s3 "
+                        "bucket."
                     )
-                code = code or b""
-                pkg_file.write_bytes(code)
-
-                if is_zip_uri(pkg_uri):
-                    unzip_package(
-                        package_path=pkg_file,
-                        target_dir=local_dir,
-                        remove_top_level_directory=False,
-                        unlink_zip=True,
-                        logger=logger,
+            elif protocol == Protocol.GS:
+                try:
+                    from google.cloud import storage  # noqa: F401
+                    from smart_open import open as open_file
+                except ImportError:
+                    raise ImportError(
+                        "You must `pip install smart_open` and "
+                        "`pip install google-cloud-storage` "
+                        "to fetch URIs in Google Cloud Storage bucket."
                     )
-                else:
-                    return str(pkg_file)
-            elif protocol in Protocol.remote_protocols():
-                # Download package from remote URI
-                tp = None
-
-                if protocol == Protocol.S3:
-                    try:
-                        import boto3
-                        from smart_open import open as open_file
-                    except ImportError:
-                        raise ImportError(
-                            "You must `pip install smart_open` and "
-                            "`pip install boto3` to fetch URIs in s3 "
-                            "bucket."
-                        )
-                    tp = {"client": boto3.client("s3")}
-                elif protocol == Protocol.GS:
-                    try:
-                        from google.cloud import storage  # noqa: F401
-                        from smart_open import open as open_file
-                    except ImportError:
-                        raise ImportError(
-                            "You must `pip install smart_open` and "
-                            "`pip install google-cloud-storage` "
-                            "to fetch URIs in Google Cloud Storage bucket."
-                        )
-                elif protocol == Protocol.FILE:
-                    pkg_uri = pkg_uri[len("file://") :]
-
-                    def open_file(uri, mode, *, transport_params=None):
-                        return open(uri, mode)
-
-                else:
-                    try:
-                        from smart_open import open as open_file
-                    except ImportError:
-                        raise ImportError(
-                            "You must `pip install smart_open` "
-                            f"to fetch {protocol.value.upper()} URIs."
-                        )
-
-                with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
-                    with open_file(pkg_file, "wb") as fin:
-                        fin.write(package_zip.read())
-
-                unzip_package(
-                    package_path=pkg_file,
-                    target_dir=local_dir,
-                    remove_top_level_directory=True,
-                    unlink_zip=True,
-                    logger=logger,
-                )
+            elif protocol == Protocol.FILE:
+                pkg_uri = pkg_uri[len("file://") :]
             else:
-                raise NotImplementedError(f"Protocol {protocol} is not supported")
+                try:
+                    from smart_open import open as open_file
+                except ImportError:
+                    raise ImportError(
+                        "You must `pip install smart_open` "
+                        f"to fetch {protocol.value.upper()} URIs."
+                    )
+
+            download_script = os.path.join(
+                os.path.dirname(__file__), "_download.py"
+            )
+
+            download_cmd = [sys.executable, download_script]
+            download_cmd += ["--proto", protocol]
+            download_cmd += ["--src", pkg_uri]
+            download_cmd += ["--dest", pkg_file]
+
+            await check_output_cmd(download_cmd, logger=logger)
+
+            await unzip_package(
+                package_path=pkg_file,
+                target_dir=local_dir,
+                remove_top_level_directory=True,
+                unlink_zip=True,
+                logger=logger,
+            )
+        else:
+            raise NotImplementedError(f"Protocol {protocol} is not supported")
 
         return str(local_dir)
 
@@ -773,7 +762,7 @@ def remove_dir_from_filepaths(base_dir: str, rdir: str):
             )
 
 
-def unzip_package(
+async def unzip_package(
     package_path: str,
     target_dir: str,
     remove_top_level_directory: bool,
@@ -794,8 +783,11 @@ def unzip_package(
 
     logger.debug(f"Unpacking {package_path} to {target_dir}")
 
-    with ZipFile(str(package_path), "r") as zip_ref:
-        zip_ref.extractall(target_dir)
+    code = f"import shutil; " \
+            f"shutil.unpack_archive({str(package_path)}, {str(target_dir)})"
+    unzip_cmd = [sys.executable, "-c", code]
+    await check_output_cmd(unzip_cmd, logger=logger)
+
     if remove_top_level_directory:
         top_level_directory = get_top_level_dir_from_compressed_package(package_path)
         if top_level_directory is None:
