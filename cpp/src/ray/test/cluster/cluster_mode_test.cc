@@ -239,9 +239,6 @@ TEST(RayClusterModeTest, FullTest) {
 }
 
 TEST(RayClusterModeTest, ActorHandleTest) {
-  ray::RayConfig config;
-  config.default_actor_lifetime = ray::ActorLifetime::DETACHED;
-  ray::Init(config, cmd_argc, cmd_argv);
   auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
   auto obj1 = actor1.Task(&Counter::Plus1).Remote();
   EXPECT_EQ(1, *obj1.Get());
