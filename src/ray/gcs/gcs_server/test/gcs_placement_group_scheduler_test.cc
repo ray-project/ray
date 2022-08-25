@@ -1363,7 +1363,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestWaitingRemovedBundles) {
             node_resources.total.Get(scheduling::ResourceID::CPU()));
 
   // Assume actors are releasing the bundle resources.
-  for (const auto bundle : placement_group->GetBundles()) {
+  for (const auto &bundle : placement_group->GetBundles()) {
     for (const auto &resource_entry : bundle->GetFormattedResources()) {
       cluster_resource_scheduler_->GetClusterResourceManager().AddNodeAvailableResources(
           scheduling::NodeID(node->node_id()),
