@@ -86,7 +86,9 @@ class DAGNode(DAGNodeBase):
         return self._stable_uuid
 
     async def get_object_refs_from_last_execute(self) -> Dict[str, Any]:
-        """After this DAG is executed through execute(), retrieves a map between node
+        """Gets cached object refs from the last call to execute().
+        
+        After this DAG is executed through execute(), retrieves a map between node
         UUID to a reference to the return value of the default executor on that node.
         """
         cache = {}
@@ -106,7 +108,7 @@ class DAGNode(DAGNodeBase):
     ) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this DAG using the Ray default executor.
 
-        After execution, stores the return values of the executing the default executor
+        After execution, stores the the default executor's return values
         on each node in this DAG in a cache. These should be a mix of:
         - ray.ObjectRefs pointing to the outputs of method and function nodes
         - Serve handles for class nodes

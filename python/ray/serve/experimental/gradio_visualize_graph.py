@@ -16,7 +16,6 @@ from ray.serve.handle import RayServeHandle
 from typing import Any, Dict, Optional
 from collections import defaultdict
 import json
-import asyncio
 import logging
 
 
@@ -30,7 +29,7 @@ def lazy_import_gradio():
         try:
             import gradio
         except ModuleNotFoundError:
-            print(
+            logger.error(
                 "Gradio isn't installed. Run `pip install gradio` to use Gradio to "
                 "visualize a Serve deployment graph."
             )
@@ -61,10 +60,11 @@ class GraphVisualizer:
     def clear_cache(self):
         self.cache = {}
 
-    def _make_blocks(self, depths: Dict[str, int]):
+    def _make_blocks(self, depths: Dict[str, int]) -> None:
         """Instantiates Gradio blocks for each graph node stored in depths.
+
         Nodes of depth 1 will be rendered in the top row, depth 2 in the second row,
-        and so forth.
+        and so forth. Note that the InputNode has depth 0 and will not be rendered.
 
         Args:
             depths: maps uuids of nodes in the DAG to their depth
@@ -104,9 +104,12 @@ class GraphVisualizer:
                 render_level(level)
 
     def _fetch_depths(self, node: DAGNode, depths: Dict[str, int]) -> DAGNode:
-        """Gets the depth of a graph node, which is determined by the longest distance
+        """Gets the node's depth.
+        
+        Calculates graph node's depth, which is determined by the longest distance
         between that node and any InputAttributeNode. The single InputNode in the graph
-        will have depth 0, and all InputAttributeNodes will have depth 1.
+        will have depth 0, and all InputAttributeNodes will have depth 1. The node's
+        depth is cached in the passed-in depths dictionary.
 
         Args:
             node: the graph node to process
@@ -114,7 +117,8 @@ class GraphVisualizer:
                 between the DAGNode and any InputAttributeNode
 
         Returns:
-            The original node.
+            The original node. As this function is used with apply_recursive, this
+            is necessary for the PyObjScanner to find child nodes.
         """
         uuid = node.get_stable_uuid()
         for child_node in node._get_all_child_nodes():
@@ -124,7 +128,7 @@ class GraphVisualizer:
         return node
 
     async def _get_result(self, node_uuid: str):
-        """Retrieves the execution output of the inputted DAGNode, from last execution.
+        """Retrieves DAGNode's last execution output.
 
         This function should only be called after a request has been sent through
         self._send_request() separately.
@@ -135,12 +139,22 @@ class GraphVisualizer:
             self.finished_last_inference = True
         return result
 
-    async def _send_request(self, trigger_value, *args):
-        """Sends a request to the root DAG node through self.handle and retrieves the
+    async def _send_request(self, trigger_value: int, *args) -> int:
+        """Sends request to the graph and gets results.
+        
+        Sends a request to the root DAG node through self.handle and retrieves the
         cached object refs pointing to return values of each executed node in the DAG.
-
         Will not run if the last inference process has not finished (if all nodes in
         DAG have been resolved).
+
+        Args:
+            trigger_value: The current value of the `trigger` Gradio block.
+            *args: The values in the input blocks.
+
+        Returns:
+            The current value of the `trigger` Gradio block incremented by 1. The
+            `trigger` Gradio block will change to this value, and trigger the other
+            Gradio blocks to run their respective _get_result functions.
         """
         if not self.finished_last_inference:
             logger.warning("Last inference has not finished yet.")
@@ -162,7 +176,9 @@ class GraphVisualizer:
         _launch: bool = True,
         _block: bool = True,
     ):
-        """Launches a Gradio UI that allows interactive request dispatch and displays
+        """Starts deployment graph's Gradio UI.
+        
+        Launches a Gradio UI that allows interactive request dispatch and displays
         the evaluated outputs of each node in a deployment graph in real time.
 
         Args:

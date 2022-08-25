@@ -97,60 +97,61 @@ async def test_execute_cached_object_ref(graph1):
     assert await cache[dag.get_stable_uuid()] == 2
 
 
-def test_graph_dfs_for_depths1(graph1):
-    """Tests that GraphVisualizer._fetch_depths, when passed into
-    DAGNode.apply_recursive, correctly retrieves the depths of each node.
-    """
-    (input_nodes, f_node, _, dag) = graph1
+class TestGraphDFS:
+    def test_graph_dfs_for_depths1(self, graph1):
+        """Tests that GraphVisualizer._fetch_depths, when passed into
+        DAGNode.apply_recursive, correctly retrieves the depths of each node.
+        """
+        (input_nodes, f_node, _, dag) = graph1
 
-    visualizer = GraphVisualizer()
-    depths = defaultdict(lambda: 0)
-    dag.apply_recursive(lambda node: visualizer._fetch_depths(node, depths))
+        visualizer = GraphVisualizer()
+        depths = defaultdict(lambda: 0)
+        dag.apply_recursive(lambda node: visualizer._fetch_depths(node, depths))
 
-    assert (
-        depths[input_nodes[0].get_stable_uuid()] == 1
-        and depths[input_nodes[1].get_stable_uuid()] == 1
-        and depths[f_node.get_stable_uuid()] == 2
-        and depths[dag.get_stable_uuid()] == 4
-    )
-
-
-def test_graph_dfs_for_depths2(graph2):
-    """Tests that GraphVisualizer._fetch_depths, when passed into
-    DAGNode.apply_recursive, correctly retrieves the depths of each node.
-    """
-
-    (input_node, f_node, dag) = graph2
-
-    visualizer = GraphVisualizer()
-    depths = defaultdict(lambda: 0)
-    dag.apply_recursive(lambda node: visualizer._fetch_depths(node, depths))
-
-    assert (
-        depths[input_node.get_stable_uuid()] == 1
-        and depths[f_node.get_stable_uuid()] == 2
-        and depths[dag.get_stable_uuid()] == 3
-    )
+        assert (
+            depths[input_nodes[0].get_stable_uuid()] == 1
+            and depths[input_nodes[1].get_stable_uuid()] == 1
+            and depths[f_node.get_stable_uuid()] == 2
+            and depths[dag.get_stable_uuid()] == 4
+        )
 
 
-def test_graph_dfs_for_depths3(graph3):
-    """Tests that GraphVisualizer._fetch_depths, when passed into
-    DAGNode.apply_recursive, correctly retrieves the depths of each node.
-    """
+    def test_graph_dfs_for_depths2(self, graph2):
+        """Tests that GraphVisualizer._fetch_depths, when passed into
+        DAGNode.apply_recursive, correctly retrieves the depths of each node.
+        """
 
-    (input_nodes, _, _, _, l_output, m1_output, m2_output, dag) = graph3
+        (input_node, f_node, dag) = graph2
 
-    visualizer = GraphVisualizer()
-    depths = defaultdict(lambda: 0)
-    dag.apply_recursive(lambda node: visualizer._fetch_depths(node, depths))
+        visualizer = GraphVisualizer()
+        depths = defaultdict(lambda: 0)
+        dag.apply_recursive(lambda node: visualizer._fetch_depths(node, depths))
 
-    assert (depths[input_node.get_stable_uuid()] == 1 for input_node in input_nodes)
-    assert (
-        depths[l_output.get_stable_uuid()] == 2
-        and depths[m2_output.get_stable_uuid()] == 2
-    )
-    assert depths[m1_output.get_stable_uuid()] == 3
-    assert depths[dag.get_stable_uuid()] == 4
+        assert (
+            depths[input_node.get_stable_uuid()] == 1
+            and depths[f_node.get_stable_uuid()] == 2
+            and depths[dag.get_stable_uuid()] == 3
+        )
+
+
+    def test_graph_dfs_for_depths3(self, graph3):
+        """Tests that GraphVisualizer._fetch_depths, when passed into
+        DAGNode.apply_recursive, correctly retrieves the depths of each node.
+        """
+
+        (input_nodes, _, _, _, l_output, m1_output, m2_output, dag) = graph3
+
+        visualizer = GraphVisualizer()
+        depths = defaultdict(lambda: 0)
+        dag.apply_recursive(lambda node: visualizer._fetch_depths(node, depths))
+
+        assert (depths[input_node.get_stable_uuid()] == 1 for input_node in input_nodes)
+        assert (
+            depths[l_output.get_stable_uuid()] == 2
+            and depths[m2_output.get_stable_uuid()] == 2
+        )
+        assert depths[m1_output.get_stable_uuid()] == 3
+        assert depths[dag.get_stable_uuid()] == 4
 
 
 @pytest.mark.asyncio

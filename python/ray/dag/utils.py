@@ -20,11 +20,15 @@ class _DAGNodeNameGenerator(object):
         self.name_to_suffix: Dict[str, int] = dict()
 
     def get_node_name(self, node: DAGNode):
+        # InputNode should be unique.
         if isinstance(node, InputNode):
             return "INPUT_NODE"
+        # InputAttributeNode suffixes should match the user-defined key.
         elif isinstance(node, InputAttributeNode):
             return f"INPUT_ATTRIBUTE_NODE_{node._key}"
 
+        # As class, method, and function nodes may have duplicated names,
+        # generate unique suffixes for such nodes.
         if isinstance(node, ClassMethodNode):
             node_name = node.get_options().get("name", None) or node._method_name
         elif isinstance(node, (ClassNode, FunctionNode)):
