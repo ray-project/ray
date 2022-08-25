@@ -32,7 +32,7 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     try {
       node = MAPPER.valueToTree(value);
     } catch (IllegalArgumentException e) {
-      throw new RuntimeEnvException("Setting field error", e);
+      throw new RuntimeEnvException("Failed to set field.", e);
     }
     runtimeEnvs.set(name, node);
   }
@@ -43,7 +43,7 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     try {
       node = JsonLoader.fromString(jsonStr);
     } catch (IOException e) {
-      throw new RuntimeEnvException("Setting json field error", e);
+      throw new RuntimeEnvException("Failed to set json field.", e);
     }
     runtimeEnvs.set(name, node);
   }
@@ -57,7 +57,7 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     try {
       return MAPPER.treeToValue(jsonNode, classOfT);
     } catch (JsonProcessingException e) {
-      throw new RuntimeEnvException("Getting field error", e);
+      throw new RuntimeEnvException("Failed to get field.", e);
     }
   }
 
@@ -66,7 +66,7 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     try {
       return MAPPER.writeValueAsString(runtimeEnvs.get(name));
     } catch (JsonProcessingException e) {
-      throw new RuntimeEnvException("Getting json field error", e);
+      throw new RuntimeEnvException("Failed to get json field.", e);
     }
   }
 
@@ -89,12 +89,12 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     try {
       return MAPPER.writeValueAsString(runtimeEnvs);
     } catch (JsonProcessingException e) {
-      throw new RuntimeEnvException("Serializing error", e);
+      throw new RuntimeEnvException("Failed to serialize.", e);
     }
   }
 
   @Override
-  public boolean empty() {
+  public boolean isEmpty() {
     return runtimeEnvs.isEmpty();
   }
 
@@ -106,7 +106,7 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     try {
       return printer.print(protoRuntimeEnvInfo);
     } catch (InvalidProtocolBufferException e) {
-      throw new RuntimeEnvException("Serializing to runtime env info error", e);
+      throw new RuntimeEnvException("Failed to serialize to runtime env info.", e);
     }
   }
 

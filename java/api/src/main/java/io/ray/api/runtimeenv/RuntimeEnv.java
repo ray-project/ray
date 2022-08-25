@@ -77,7 +77,7 @@ public interface RuntimeEnv {
    *
    * @return
    */
-  boolean empty();
+  boolean isEmpty();
 
   /**
    * Serialize the runtime env to string of RuntimeEnvInfo.
@@ -108,7 +108,7 @@ public interface RuntimeEnv {
   /**
    * Get runtime env config.
    *
-   * @return
+   * @return The runtime env config.
    */
   public RuntimeEnvConfig getConfig();
 

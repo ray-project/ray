@@ -57,6 +57,8 @@ public class RuntimeEnvTest {
       val = actor.task(A::getEnv, "KEY2").remote().get();
       Assert.assertEquals(val, "B");
     } finally {
+      System.clearProperty("ray.job.runtime-env.env-vars.KEY1");
+      System.clearProperty("ray.job.runtime-env.env-vars.KEY2");
       Ray.shutdown();
     }
   }
@@ -111,6 +113,8 @@ public class RuntimeEnvTest {
       val = Ray.task(RuntimeEnvTest::getEnvVar, "KEY2").setRuntimeEnv(runtimeEnv).remote().get();
       Assert.assertEquals(val, "B");
     } finally {
+      System.clearProperty("ray.job.runtime-env.env-vars.KEY1");
+      System.clearProperty("ray.job.runtime-env.env-vars.KEY2");
       Ray.shutdown();
     }
   }
@@ -194,6 +198,8 @@ public class RuntimeEnvTest {
               .get();
       Assert.assertTrue(ret);
     } finally {
+      System.clearProperty("ray.job.runtime-env.jars.0");
+      System.clearProperty("ray.job.runtime-env.jars.1");
       Ray.shutdown();
     }
   }
@@ -268,7 +274,7 @@ public class RuntimeEnvTest {
     }
   }
 
-  public void testRuntimeEnvContextJobLevel() {
+  public void testRuntimeEnvContextForJob() {
     System.setProperty("ray.job.runtime-env.jars.0", FOO_JAR_URL);
     System.setProperty("ray.job.runtime-env.jars.1", BAR_JAR_URL);
     System.setProperty("ray.job.runtime-env.config.setup-timeout-seconds", "1");
@@ -286,6 +292,9 @@ public class RuntimeEnvTest {
       Assert.assertEquals((int) runtimeEnvConfig.getSetupTimeoutSeconds(), 1);
 
     } finally {
+      System.clearProperty("ray.job.runtime-env.jars.0");
+      System.clearProperty("ray.job.runtime-env.jars.1");
+      System.clearProperty("ray.job.runtime-env.config.setup-timeout-seconds");
       Ray.shutdown();
     }
   }
@@ -298,11 +307,11 @@ public class RuntimeEnvTest {
     return null;
   }
 
-  public void testRuntimeEnvContextTaskLevel() {
+  public void testRuntimeEnvContextForTask() {
     try {
       Ray.init();
       RuntimeEnv currentRuntimeEnv = Ray.getRuntimeContext().getCurrentRuntimeEnv();
-      Assert.assertTrue(currentRuntimeEnv.empty());
+      Assert.assertTrue(currentRuntimeEnv.isEmpty());
       RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().build();
       RuntimeEnvConfig runtimeEnvConfig = new RuntimeEnvConfig(1, false);
       runtimeEnv.setConfig(runtimeEnvConfig);
