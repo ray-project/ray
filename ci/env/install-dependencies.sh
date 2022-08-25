@@ -412,7 +412,7 @@ install_dependencies() {
         1.5) TORCHVISION_VERSION=0.6.0;;
         *) TORCHVISION_VERSION=0.5.0;;
       esac
-      pip install --use-deprecated=legacy-resolver --upgrade torch=="${TORCH_VERSION-1.9.0}" torchvision=="${TORCHVISION_VERSION}"
+      pip install --use-deprecated=legacy-resolver --upgrade torch=="${TORCH_VERSION-1.11.0}" torchvision=="${TORCHVISION_VERSION}"
     fi
   fi
 

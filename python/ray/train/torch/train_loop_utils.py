@@ -23,6 +23,7 @@ import numpy as np
 import torch
 from torch.cuda.amp import autocast, GradScaler
 from torch.nn.parallel import DistributedDataParallel
+from torch.distributed.fsdp import FullyShardedDataParallel
 from torch.utils.data import (
     DistributedSampler,
     DataLoader,
@@ -51,6 +52,8 @@ def prepare_model(
     move_to_device: bool = True,
     wrap_ddp: bool = True,
     ddp_kwargs: Optional[Dict[str, Any]] = None,
+    wrap_fsdp: bool = False,
+    fsdp_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.nn.Module:
     """Prepares the model for distributed execution.
 
@@ -67,12 +70,19 @@ def prepare_model(
         ddp_kwargs (Dict[str, Any]): Args to pass into
             ``DistributedDataParallel`` initialization if ``wrap_ddp`` is
             set to True.
+        wrap_fsdp: Whether to wrap models in
+            ``FullyShardedDDataParallel``.
+        fsdp_kwargs (Dict[str, Any]): Arsg to pass into
+            ``FullyShardedDataParallel`` initialization if ``wrap_fsdp`` is
+            set to True.
     """
     return get_accelerator(_TorchAccelerator).prepare_model(
         model,
         move_to_device=move_to_device,
         wrap_ddp=wrap_ddp,
         ddp_kwargs=ddp_kwargs,
+        wrap_fsdp=wrap_fsdp,
+        fsdp_kwargs=fsdp_kwargs,
     )
 
 
@@ -265,6 +275,8 @@ class _TorchAccelerator(Accelerator):
         move_to_device: bool = True,
         wrap_ddp: bool = True,
         ddp_kwargs: Optional[Dict[str, Any]] = None,
+        wrap_fsdp: bool = False,
+        fsdp_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.nn.Module:
         """Prepares the model for distributed execution.
 
@@ -281,8 +293,14 @@ class _TorchAccelerator(Accelerator):
             ddp_kwargs (Dict[str, Any]): Args to pass into
                 ``DistributedDataParallel`` initialization if ``wrap_ddp`` is
                 set to True.
+            wrap_fsdp: Whether to wrap models in
+                ``FullyShardedDataParallel``.
+            fsdp_kwargs (Dict[str, Any]): Args to pass into
+                ``FullyShardedDataParallel`` initialization if ``wrap_fsdp`` is
+                set to True.
         """
         ddp_kwargs = ddp_kwargs or {}
+        fsdp_kwargs = fsdp_kwargs or {}
 
         # Backwards compatibility
         try:
@@ -342,17 +360,25 @@ class _TorchAccelerator(Accelerator):
         except Exception:
             world_size = train.world_size()
 
-        if wrap_ddp and world_size > 1:
-            if rank == 0:
-                logger.info("Wrapping provided model in DDP.")
+        if (wrap_ddp or wrap_fsdp) and world_size > 1:
+            if wrap_ddp and wrap_fsdp:
+                logger.warn("Both FSDP and DDP have been set, falling back to FSDP.")
+            if wrap_fsdp:
+                DataParallel = FullyShardedDataParallel
+                data_parallel_kwargs = fsdp_kwargs
             else:
-                logger.debug("Wrapping provided model in DDP.")
+                DataParallel = DistributedDataParallel
+                data_parallel_kwargs = ddp_kwargs
+            if rank == 0:
+                logger.info(f"Wrapping provided model in {DataParallel.__name__}.")
+            else:
+                logger.debug(f"Wrapping provided model in {DataParallel.__name__}.")
             if torch.cuda.is_available():
-                model = DistributedDataParallel(
-                    model, device_ids=[rank], output_device=rank, **ddp_kwargs
+                model = DataParallel(
+                    model, device_ids=[rank], output_device=rank, **data_parallel_kwargs
                 )
             else:
-                model = DistributedDataParallel(model, **ddp_kwargs)
+                model = DataParallel(model, **data_parallel_kwargs)
 
         return model
 
