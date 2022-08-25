@@ -1,8 +1,20 @@
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Dict, List, Mapping, Optional, Union, Tuple
+from collections import defaultdict
+from dataclasses import _MISSING_TYPE, dataclass, fields
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Union,
+    Tuple,
+)
 
 from ray.air.constants import WILDCARD_KEY
 from ray.util.annotations import PublicAPI
+from ray.widgets import Template, make_table_html_repr
 
 
 # Move here later when ml_utils is deprecated. Doing it now causes a circular import.
@@ -27,13 +39,48 @@ MAX = "max"
 MIN = "min"
 
 
+def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> str:
+    """A utility function to elegantly represent dataclasses.
+
+    In contrast to the default dataclass `__repr__`, which shows all parameters, this
+    function only shows parameters with non-default values.
+
+    Args:
+        obj: The dataclass to represent.
+        default_values: An optional dictionary that maps field names to default values.
+            Use this parameter to specify default values that are generated dynamically
+            (e.g., in `__post_init__` or by a `default_factory`). If a default value
+            isn't specified in `default_values`, then the default value is inferred from
+            the `dataclass`.
+
+    Returns:
+        A representation of the dataclass.
+    """
+    if default_values is None:
+        default_values = {}
+
+    non_default_values = {}  # Maps field name to value.
+
+    for field in fields(obj):
+        value = getattr(obj, field.name)
+        default_value = default_values.get(field.name, field.default)
+        is_required = isinstance(field.default, _MISSING_TYPE)
+        if is_required or value != default_value:
+            non_default_values[field.name] = value
+
+    string = f"{obj.__class__.__name__}("
+    string += ", ".join(
+        f"{name}={value!r}" for name, value in non_default_values.items()
+    )
+    string += ")"
+
+    return string
+
+
 @dataclass
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class ScalingConfig:
     """Configuration for scaling training.
-
-    This is the schema for the scaling_config dict, and after beta, this will be the
-    actual representation for Scaling config objects.
 
     Args:
         trainer_resources: Resources to allocate for the trainer. If None is provided,
@@ -86,6 +133,12 @@ class ScalingConfig:
                     "`resources_per_worker."
                 )
 
+    def __repr__(self):
+        return _repr_dataclass(self)
+
+    def _repr_html_(self) -> str:
+        return make_table_html_repr(obj=self, title=type(self).__name__)
+
     def __eq__(self, o: "ScalingConfig") -> bool:
         if not isinstance(o, type(self)):
             return False
@@ -112,6 +165,15 @@ class ScalingConfig:
         if self.trainer_resources is None:
             return {"CPU": 1}
         return {k: v for k, v in self.trainer_resources.items() if v != 0}
+
+    @property
+    def total_resources(self):
+        """Map of total resources required for the trainer."""
+        total_resource_map = defaultdict(float, self._trainer_resources_not_none)
+        num_workers = self.num_workers or 0
+        for k, value in self._resources_per_worker_not_none.items():
+            total_resource_map[k] += value * num_workers
+        return dict(total_resource_map)
 
     @property
     def num_cpus_per_worker(self):
@@ -203,11 +265,11 @@ class ScalingConfig:
 
 
 @dataclass
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
 
-    These configs define how the Dataset should be read into the DataParallelTrainer.
+    This config defines how the Dataset should be read into the DataParallelTrainer.
     It configures the preprocessing, splitting, and ingest strategy per-dataset.
 
     DataParallelTrainers declare default DatasetConfigs for each dataset passed in the
@@ -261,6 +323,14 @@ class DatasetConfig:
     # workers / trials on the same data. We recommend enabling it always.
     # True by default.
     randomize_block_order: Optional[bool] = None
+
+    def __repr__(self):
+        return _repr_dataclass(self)
+
+    def _repr_html_(self, title=None) -> str:
+        if title is None:
+            title = type(self).__name__
+        return make_table_html_repr(obj=self, title=title)
 
     def fill_defaults(self) -> "DatasetConfig":
         """Return a copy of this config with all default values filled in."""
@@ -364,17 +434,19 @@ class DatasetConfig:
 
 
 @dataclass
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class FailureConfig:
-    """Configuration related to failure handling of each run/trial.
+    """Configuration related to failure handling of each training/tuning run.
 
     Args:
         max_failures: Tries to recover a run at least this many times.
             Will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 0.
-        fail_fast: Whether to fail upon the first error.
-            If fail_fast='raise' provided, Tune will automatically
+        fail_fast: Whether to fail upon the first error. Only used for
+            Ray Tune - this does not apply
+            to single training runs (e.g. with ``Trainer.fit()``).
+            If fail_fast='raise' provided, Ray Tune will automatically
             raise the exception received by the Trainable. fail_fast='raise'
             can easily leak resources and should be used with caution (it
             is best used with `ray.init(local_mode=True)`).
@@ -394,9 +466,34 @@ class FailureConfig:
                 "fail_fast must be one of {bool, 'raise'}. " f"Got {self.fail_fast}."
             )
 
+    def __repr__(self):
+        return _repr_dataclass(self)
+
+    def _repr_html_(self):
+        try:
+            from tabulate import tabulate
+        except ImportError:
+            return (
+                "Tabulate isn't installed. Run "
+                "`pip install tabulate` for rich notebook output."
+            )
+
+        return Template("scrollableTable.html.j2").render(
+            table=tabulate(
+                {
+                    "Setting": ["Max failures", "Fail fast"],
+                    "Value": [self.max_failures, self.fail_fast],
+                },
+                tablefmt="html",
+                showindex=False,
+                headers="keys",
+            ),
+            max_height="none",
+        )
+
 
 @dataclass
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class CheckpointConfig:
     """Configurable parameters for defining the checkpointing strategy.
 
@@ -458,6 +555,58 @@ class CheckpointConfig:
                 f"checkpoint_frequency must be >=0, got {self.checkpoint_frequency}"
             )
 
+    def __repr__(self):
+        return _repr_dataclass(self)
+
+    def _repr_html_(self) -> str:
+        try:
+            from tabulate import tabulate
+        except ImportError:
+            return (
+                "Tabulate isn't installed. Run "
+                "`pip install tabulate` for rich notebook output."
+            )
+
+        if self.num_to_keep is None:
+            num_to_keep_repr = "All"
+        else:
+            num_to_keep_repr = self.num_to_keep
+
+        if self.checkpoint_score_attribute is None:
+            checkpoint_score_attribute_repr = "Most recent"
+        else:
+            checkpoint_score_attribute_repr = self.checkpoint_score_attribute
+
+        if self.checkpoint_at_end is None:
+            checkpoint_at_end_repr = ""
+        else:
+            checkpoint_at_end_repr = self.checkpoint_at_end
+
+        return Template("scrollableTable.html.j2").render(
+            table=tabulate(
+                {
+                    "Setting": [
+                        "Number of checkpoints to keep",
+                        "Checkpoint score attribute",
+                        "Checkpoint score order",
+                        "Checkpoint frequency",
+                        "Checkpoint at end",
+                    ],
+                    "Value": [
+                        num_to_keep_repr,
+                        checkpoint_score_attribute_repr,
+                        self.checkpoint_score_order,
+                        self.checkpoint_frequency,
+                        checkpoint_at_end_repr,
+                    ],
+                },
+                tablefmt="html",
+                showindex=False,
+                headers="keys",
+            ),
+            max_height="none",
+        )
+
     @property
     def _tune_legacy_checkpoint_score_attr(self) -> Optional[str]:
         """Same as ``checkpoint_score_attr`` in ``tune.run``.
@@ -473,16 +622,13 @@ class CheckpointConfig:
 
 
 @dataclass
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class RunConfig:
-    """Runtime configuration for individual trials that are run.
+    """Runtime configuration for training and tuning runs.
 
-    This contains information that applies to individual runs of Trainable classes.
-    This includes both running a Trainable by itself or running a hyperparameter
-    tuning job on top of a Trainable (applies to each trial).
-
-    At resume, Ray Tune will automatically apply the same run config so that resumed
-    run uses the same run config as the original run.
+    Upon resuming from a training or tuning run checkpoint,
+    Ray Train/Tune will automatically apply the RunConfig from
+    the previously checkpointed run.
 
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
@@ -540,3 +686,71 @@ class RunConfig:
 
         if not self.checkpoint_config:
             self.checkpoint_config = CheckpointConfig()
+
+    def __repr__(self):
+        from ray.tune.syncer import SyncConfig
+
+        return _repr_dataclass(
+            self,
+            default_values={
+                "failure_config": FailureConfig(),
+                "sync_config": SyncConfig(),
+                "checkpoint_config": CheckpointConfig(),
+            },
+        )
+
+    def _repr_html_(self) -> str:
+        try:
+            from tabulate import tabulate
+        except ImportError:
+            return (
+                "Tabulate isn't installed. Run "
+                "`pip install tabulate` for rich notebook output."
+            )
+
+        reprs = []
+        if self.failure_config is not None:
+            reprs.append(
+                Template("title_data_mini.html.j2").render(
+                    title="Failure Config", data=self.failure_config._repr_html_()
+                )
+            )
+        if self.sync_config is not None:
+            reprs.append(
+                Template("title_data_mini.html.j2").render(
+                    title="Sync Config", data=self.sync_config._repr_html_()
+                )
+            )
+        if self.checkpoint_config is not None:
+            reprs.append(
+                Template("title_data_mini.html.j2").render(
+                    title="Checkpoint Config", data=self.checkpoint_config._repr_html_()
+                )
+            )
+
+        # Create a divider between each displayed repr
+        subconfigs = [Template("divider.html.j2").render()] * (2 * len(reprs) - 1)
+        subconfigs[::2] = reprs
+
+        settings = Template("scrollableTable.html.j2").render(
+            table=tabulate(
+                {
+                    "Name": self.name,
+                    "Local results directory": self.local_dir,
+                    "Verbosity": self.verbose,
+                    "Log to file": self.log_to_file,
+                }.items(),
+                tablefmt="html",
+                headers=["Setting", "Value"],
+                showindex=False,
+            ),
+            max_height="300px",
+        )
+
+        return Template("title_data.html.j2").render(
+            title="RunConfig",
+            data=Template("run_config.html.j2").render(
+                subconfigs=subconfigs,
+                settings=settings,
+            ),
+        )

@@ -4,7 +4,7 @@ import ray
 from ray.exceptions import RayError
 from ray._private.test_utils import wait_for_condition
 from ray import serve
-from ray.serve.constants import REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+from ray.serve._private.constants import REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
 
 
 class Counter:

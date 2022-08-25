@@ -1,4 +1,4 @@
-from typing import Any, Callable, Generic, List, Tuple, Union
+from typing import Any, Callable, Generic, List, Tuple, Union, Optional
 
 from ray.data._internal import sort
 from ray.data._internal.compute import CallableClass, ComputeStrategy
@@ -249,31 +249,46 @@ class GroupedDataset(Generic[T]):
         else:
             sorted_ds = self._dataset.repartition(1)
 
-        def get_key(row):
-            if isinstance(self._key, Callable):
-                return self._key(row)
-            elif isinstance(self._key, str):
-                return row[self._key]
-            else:
+        import numpy as np
+
+        # Returns the keys of the batch in numpy array.
+        # Returns None if the self._key is None.
+        def get_keys(batch) -> Optional[np.ndarray]:
+            import pandas as pd
+            import pyarrow as pa
+
+            if self._key is None:
                 return None
+            if isinstance(batch, pd.DataFrame) or isinstance(batch, pa.Table):
+                assert isinstance(self._key, str)
+                return batch[self._key].to_numpy()
+            elif isinstance(batch, List):
+                assert callable(self._key)
+                return np.array([self._key(item) for item in batch])
+            else:
+                raise ValueError(
+                    f"Unsupported batch type for map_groups: {type(batch)}"
+                )
 
         # Returns the group boundaries.
-        def get_boundaries(block):
+        def get_key_boundaries(batch):
             boundaries = []
-            pre = None
-            for i, item in enumerate(block.iter_rows()):
-                if pre is not None and get_key(pre) != get_key(item):
-                    boundaries.append(i)
-                pre = item
-            if block.num_rows() > 0:
-                boundaries.append(block.num_rows())
+            keys = get_keys(batch)
+            start = 0
+            while start < keys.size:
+                end = start + np.searchsorted(keys[start:], keys[start], side="right")
+                boundaries.append(end)
+                start = end
             return boundaries
 
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
         def group_fn(batch):
             block_accessor = BlockAccessor.for_block(batch)
-            boundaries = get_boundaries(block_accessor)
+            if self._key:
+                boundaries = get_key_boundaries(batch)
+            else:
+                boundaries = [block_accessor.num_rows()]
             builder = block_accessor.builder()
             start = 0
             for end in boundaries:
@@ -281,7 +296,6 @@ class GroupedDataset(Generic[T]):
                 applied = fn(group)
                 builder.add_block(applied)
                 start = end
-
             rs = builder.build()
             return rs
 

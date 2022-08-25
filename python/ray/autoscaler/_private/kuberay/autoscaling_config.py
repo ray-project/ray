@@ -157,7 +157,15 @@ def _generate_provider_config(ray_cluster_namespace: str) -> Dict[str, Any]:
         DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,
         FOREGROUND_NODE_LAUNCH_KEY: True,
         WORKER_LIVENESS_CHECK_KEY: False,
-        WORKER_RPC_DRAIN_KEY: False,
+        # For the time being we are letting the autoscaler drain nodes,
+        # hence the following setting is set to True (the default value).
+        # This is because we are observing that with the flag set to false,
+        # The GCS may not be properly notified of node downscaling.
+        # TODO Solve this issue, flip the key back to false -- else we may have
+        # a race condition in which the autoscaler kills the Ray container
+        # Kubernetes recreates it,
+        # and then KubeRay deletes the pod, killing the container again.
+        WORKER_RPC_DRAIN_KEY: True,
     }
 
 
@@ -174,8 +182,6 @@ def _generate_legacy_autoscaling_config_fields() -> Dict[str, Any]:
         "head_start_ray_commands": [],
         "worker_start_ray_commands": [],
         "auth": {},
-        "head_node": {},
-        "worker_nodes": {},
     }
 
 
@@ -349,11 +355,9 @@ def _get_custom_resources(
 ) -> Dict[str, int]:
     """Format custom resources based on the `resources` Ray start param.
 
-    For the current prototype, the value of the `resources` field must
+    Currently, the value of the `resources` field must
     be formatted as follows:
     '"{\"Custom1\": 1, \"Custom2\": 5}"'.
-
-    We intend to provide a better interface soon.
 
     This method first converts the input to a correctly formatted
     json string and then loads that json string to a dict.

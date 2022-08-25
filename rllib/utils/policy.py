@@ -1,5 +1,5 @@
 import gym
-import pickle
+import ray.cloudpickle as pickle
 from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from ray.rllib.policy.policy import PolicySpec
@@ -240,6 +240,6 @@ def compute_log_likelihoods_from_input_dict(
         state_batches=[batch[k] for k in state_keys],
         prev_action_batch=batch.get(SampleBatch.PREV_ACTIONS),
         prev_reward_batch=batch.get(SampleBatch.PREV_REWARDS),
-        actions_normalized=policy.config["actions_in_input_normalized"],
+        actions_normalized=policy.config.get("actions_in_input_normalized", False),
     )
     return log_likelihoods

@@ -238,9 +238,10 @@ public class RuntimeEnvTest {
       Assert.assertEquals(pip2.getPackages(), pip.getPackages());
       Assert.assertEquals(pip2.getPip_check(), pip.getPip_check());
 
-      runtimeEnv2.remove("working_dir");
-      runtimeEnv2.remove("py_modules");
-      runtimeEnv2.remove("pip");
+      Assert.assertEquals(runtimeEnv2.remove("working_dir"), true);
+      Assert.assertEquals(runtimeEnv2.remove("py_modules"), true);
+      Assert.assertEquals(runtimeEnv2.remove("pip"), true);
+      Assert.assertEquals(runtimeEnv2.remove("conda"), false);
       Assert.assertEquals(runtimeEnv2.get("working_dir", String.class), null);
       Assert.assertEquals(runtimeEnv2.get("py_modules", String[].class), null);
       Assert.assertEquals(runtimeEnv2.get("pip", Pip.class), null);

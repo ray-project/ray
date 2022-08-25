@@ -10,6 +10,11 @@ import pyarrow as pa
 import pyarrow.json as pajson
 import pyarrow.parquet as pq
 import pytest
+from ray.data.datasource.file_meta_provider import _handle_read_os_error
+from ray.data.datasource.image_folder_datasource import (
+    IMAGE_EXTENSIONS,
+    _ImageFolderDatasourceReader,
+)
 import requests
 import snappy
 from fsspec.implementations.local import LocalFileSystem
@@ -35,7 +40,10 @@ from ray.data.datasource import (
     SimpleTorchDatasource,
     WriteResult,
 )
-from ray.data.datasource.file_based_datasource import _unwrap_protocol
+from ray.data.datasource.file_based_datasource import (
+    FileExtensionFilter,
+    _unwrap_protocol,
+)
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
     _ParquetDatasourceReader,
@@ -437,6 +445,10 @@ def test_parquet_deserialize_pieces_with_retry(
             lazy_fixture("s3_fs_with_space"),
             lazy_fixture("s3_path_with_space"),
         ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
@@ -496,6 +508,10 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
@@ -565,6 +581,10 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
             lazy_fixture("s3_fs_with_space"),
             lazy_fixture("s3_path_with_space"),
         ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
@@ -658,6 +678,10 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
             lazy_fixture("s3_fs_with_space"),
             lazy_fixture("s3_path_with_space"),
         ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path):
@@ -719,6 +743,10 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
@@ -902,6 +930,10 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
         (lazy_fixture("s3_fs_with_space"), lazy_fixture("s3_path_with_space")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_path):
@@ -932,57 +964,65 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
 
 
 def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
-    tensor_output_path = os.path.join(tmp_path, "tensor")
-    ray.data.range_tensor(1000, shape=(1000,)).write_parquet(tensor_output_path)
-    ds = ray.data.read_parquet(tensor_output_path)
-    assert ds.num_blocks() > 1
-    data_size = ds.size_bytes()
-    assert (
-        data_size >= 7_000_000 and data_size <= 10_000_000
-    ), "estimated data size is out of expected bound"
-    data_size = ds.fully_executed().size_bytes()
-    assert (
-        data_size >= 7_000_000 and data_size <= 10_000_000
-    ), "actual data size is out of expected bound"
+    ctx = ray.data.context.DatasetContext.get_current()
+    old_decoding_size_estimation = ctx.decoding_size_estimation
+    ctx.decoding_size_estimation = True
+    try:
+        tensor_output_path = os.path.join(tmp_path, "tensor")
+        ray.data.range_tensor(1000, shape=(1000,)).write_parquet(tensor_output_path)
+        ds = ray.data.read_parquet(tensor_output_path)
+        assert ds.num_blocks() > 1
+        data_size = ds.size_bytes()
+        assert (
+            data_size >= 6_000_000 and data_size <= 10_000_000
+        ), "estimated data size is out of expected bound"
+        data_size = ds.fully_executed().size_bytes()
+        assert (
+            data_size >= 7_000_000 and data_size <= 10_000_000
+        ), "actual data size is out of expected bound"
 
-    reader = _ParquetDatasourceReader(tensor_output_path)
-    assert (
-        reader._encoding_ratio >= 400 and reader._encoding_ratio <= 600
-    ), "encoding ratio is out of expected bound"
-    data_size = reader.estimate_inmemory_data_size()
-    assert (
-        data_size >= 7_000_000 and data_size <= 10_000_000
-    ), "estimated data size is either out of expected bound"
-    assert (
-        data_size
-        == _ParquetDatasourceReader(tensor_output_path).estimate_inmemory_data_size()
-    ), "estimated data size is not deterministic in multiple calls."
+        reader = _ParquetDatasourceReader(tensor_output_path)
+        assert (
+            reader._encoding_ratio >= 300 and reader._encoding_ratio <= 600
+        ), "encoding ratio is out of expected bound"
+        data_size = reader.estimate_inmemory_data_size()
+        assert (
+            data_size >= 6_000_000 and data_size <= 10_000_000
+        ), "estimated data size is either out of expected bound"
+        assert (
+            data_size
+            == _ParquetDatasourceReader(
+                tensor_output_path
+            ).estimate_inmemory_data_size()
+        ), "estimated data size is not deterministic in multiple calls."
 
-    text_output_path = os.path.join(tmp_path, "text")
-    ray.data.range(1000).map(lambda _: "a" * 1000).write_parquet(text_output_path)
-    ds = ray.data.read_parquet(text_output_path)
-    assert ds.num_blocks() > 1
-    data_size = ds.size_bytes()
-    assert (
-        data_size >= 1_000_000 and data_size <= 2_000_000
-    ), "estimated data size is out of expected bound"
-    data_size = ds.fully_executed().size_bytes()
-    assert (
-        data_size >= 1_000_000 and data_size <= 2_000_000
-    ), "actual data size is out of expected bound"
+        text_output_path = os.path.join(tmp_path, "text")
+        ray.data.range(1000).map(lambda _: "a" * 1000).write_parquet(text_output_path)
+        ds = ray.data.read_parquet(text_output_path)
+        assert ds.num_blocks() > 1
+        data_size = ds.size_bytes()
+        assert (
+            data_size >= 1_000_000 and data_size <= 2_000_000
+        ), "estimated data size is out of expected bound"
+        data_size = ds.fully_executed().size_bytes()
+        assert (
+            data_size >= 1_000_000 and data_size <= 2_000_000
+        ), "actual data size is out of expected bound"
 
-    reader = _ParquetDatasourceReader(text_output_path)
-    assert (
-        reader._encoding_ratio >= 150 and reader._encoding_ratio <= 300
-    ), "encoding ratio is out of expected bound"
-    data_size = reader.estimate_inmemory_data_size()
-    assert (
-        data_size >= 1_000_000 and data_size <= 2_000_000
-    ), "estimated data size is out of expected bound"
-    assert (
-        data_size
-        == _ParquetDatasourceReader(text_output_path).estimate_inmemory_data_size()
-    ), "estimated data size is not deterministic in multiple calls."
+        reader = _ParquetDatasourceReader(text_output_path)
+        assert (
+            reader._encoding_ratio >= 150 and reader._encoding_ratio <= 300
+        ), "encoding ratio is out of expected bound"
+        data_size = reader.estimate_inmemory_data_size()
+        assert (
+            data_size >= 1_000_000 and data_size <= 2_000_000
+        ), "estimated data size is out of expected bound"
+        assert (
+            data_size
+            == _ParquetDatasourceReader(text_output_path).estimate_inmemory_data_size()
+        ), "estimated data size is not deterministic in multiple calls."
+    finally:
+        ctx.decoding_size_estimation = old_decoding_size_estimation
 
 
 @pytest.mark.parametrize(
@@ -1172,6 +1212,10 @@ def test_parquet_write_block_path_provider(
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
@@ -1203,6 +1247,10 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
@@ -1941,6 +1989,49 @@ def test_json_read_with_read_options(
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
+def test_json_read_with_parse_options(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+):
+    # Arrow's JSON ParseOptions isn't serializable in pyarrow < 8.0.0, so this test
+    # covers our custom ParseOptions serializer, similar to ReadOptions in above test.
+    # TODO(chengsu): Remove this test and our custom serializer once we require
+    # pyarrow >= 8.0.0.
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(data_path, "test1.json")
+    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    ds = ray.data.read_json(
+        path1,
+        filesystem=fs,
+        parse_options=pajson.ParseOptions(
+            explicit_schema=pa.schema([("two", pa.string())]),
+            unexpected_field_behavior="ignore",
+        ),
+    )
+    dsdf = ds.to_pandas()
+    assert len(dsdf.columns) == 1
+    assert (df1["two"]).equals(dsdf["two"])
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert ds.input_files() == [_unwrap_protocol(path1)]
+    assert "{two: string}" in str(ds), ds
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
 def test_json_read_partitioned_with_filter(
     ray_start_regular_shared,
     fs,
@@ -2060,6 +2151,10 @@ def test_json_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
@@ -2361,6 +2456,11 @@ def test_csv_read_meta_provider(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_csv_read_partitioned_hive_implicit(
@@ -2401,6 +2501,11 @@ def test_csv_read_partitioned_hive_implicit(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_csv_read_partitioned_styles_explicit(
@@ -2592,11 +2697,6 @@ def test_csv_read_partitioned_with_filter_multikey(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-        (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
-            lazy_fixture("s3_server"),
-        ),
     ],
 )
 def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
@@ -2773,50 +2873,124 @@ def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
         )
 
 
-def test_image_folder_datasource(ray_start_regular_shared):
-    root = os.path.join(os.path.dirname(__file__), "image-folder")
-    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, size=(64, 64))
+def test_image_folder_datasource(
+    ray_start_regular_shared, enable_automatic_tensor_extension_cast
+):
+    """Test basic `ImageFolderDatasource` functionality.
 
-    assert ds.count() == 3
+    The folder "simple" contains two cat images and one dog images, all of which are
+    are 32x32 RGB images.
+    """
+    root = "example://image-folders/simple"
+    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root)
+
+    _, types = ds.schema()
+    image_type, label_type = types
+    if enable_automatic_tensor_extension_cast:
+        assert isinstance(image_type, TensorDtype)
+    else:
+        assert image_type == np.dtype("O")
+    assert label_type == np.dtype("O")
 
     df = ds.to_pandas()
     assert sorted(df["label"]) == ["cat", "cat", "dog"]
-    assert type(df["image"].dtype) is TensorDtype
-    assert all(tensor.to_numpy().shape == (64, 64, 3) for tensor in df["image"])
+
+    tensors = df["image"]
+    assert all(tensor.shape == (32, 32, 3) for tensor in tensors)
+
+
+def test_image_folder_datasource_filtering(
+    ray_start_regular_shared, enable_automatic_tensor_extension_cast
+):
+    """Test `ImageFolderDatasource` correctly filters non-image files.
+
+    The folder "different-extensions" contains two cat images, one dog image, and two
+    non-images. All images are 32x32 RGB images.
+    """
+    root = "example://image-folders/different-extensions"
+    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root)
+
+    assert ds.count() == 3
+    assert sorted(ds.to_pandas()["label"]) == ["cat", "cat", "dog"]
+
+
+def test_image_folder_datasource_size_parameter(
+    ray_start_regular_shared, enable_automatic_tensor_extension_cast
+):
+    """Test `ImageFolderDatasource` size parameter works with differently-sized images.
+
+    The folder "different-sizes" contains two cat images and one dog image. Each image
+    has a different size, with the size described in file names (e.g., 32x32.png). All
+    images are RGB images.
+    """
+    root = "example://image-folders/different-sizes"
+    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, size=(32, 32))
+
+    tensors = ds.to_pandas()["image"]
+    assert all(tensor.shape == (32, 32, 3) for tensor in tensors)
+
+
+def test_image_folder_datasource_retains_shape_without_cast(
+    ray_start_regular_shared, enable_automatic_tensor_extension_cast
+):
+    """Test `ImageFolderDatasource` retains image shapes if casting is disabled.
+
+    The folder "different-sizes" contains two cat images and one dog image. The image
+    sizes are 16x16, 32x32, and 64x32. All images are RGB images.
+    """
+    if enable_automatic_tensor_extension_cast:
+        return
+
+    root = "example://image-folders/different-sizes"
+    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root)
+    arrays = ds.to_pandas()["image"]
+    shapes = sorted(array.shape for array in arrays)
+    assert shapes == [(16, 16, 3), (32, 32, 3), (64, 64, 3)]
+
+
+@pytest.mark.parametrize(
+    "mode, expected_shape", [("L", (32, 32)), ("RGB", (32, 32, 3))]
+)
+def test_image_folder_datasource_mode_parameter(
+    mode,
+    expected_shape,
+    ray_start_regular_shared,
+    enable_automatic_tensor_extension_cast,
+):
+    """Test `ImageFolderDatasource` works with images from different colorspaces.
+
+    The folder "different-modes" contains two cat images and one dog image. Their modes
+    are "CMYK", "L", and "RGB". All images are 32x32.
+    """
+    root = "example://image-folders/different-modes"
+    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, mode=mode)
+
+    tensors = ds.to_pandas()["image"]
+    assert all([tensor.shape == expected_shape for tensor in tensors])
 
 
 @pytest.mark.parametrize("size", [(-32, 32), (32, -32), (-32, -32)])
 def test_image_folder_datasource_value_error(ray_start_regular_shared, size):
-    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    root = "example://image-folders/simple"
     with pytest.raises(ValueError):
         ray.data.read_datasource(ImageFolderDatasource(), root=root, size=size)
 
 
 def test_image_folder_datasource_e2e(ray_start_regular_shared):
-    from ray.air.util.tensor_extensions.pandas import TensorArray
     from ray.train.torch import TorchCheckpoint, TorchPredictor
     from ray.train.batch_predictor import BatchPredictor
 
     from torchvision import transforms
     from torchvision.models import resnet18
 
-    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    root = "example://image-folders/simple"
     dataset = ray.data.read_datasource(
         ImageFolderDatasource(), root=root, size=(32, 32)
     )
 
     def preprocess(df):
-        # We convert the `TensorArrayElement` to a NumPy array because `ToTensor`
-        # expects a NumPy array or PIL image. `ToTensor` is necessary because Torch
-        # expects images to have shape (C, H, W), and `ToTensor` changes the shape of
-        # the data from (H, W, C) to (C, H, W).
-        preprocess = transforms.Compose(
-            [
-                lambda ray_tensor: ray_tensor.to_numpy(),
-                transforms.ToTensor(),
-            ]
-        )
-        df["image"] = TensorArray([preprocess(image) for image in df["image"]])
+        preprocess = transforms.Compose([transforms.ToTensor()])
+        df.loc[:, "image"] = [preprocess(image).numpy() for image in df["image"]]
         return df
 
     preprocessor = BatchMapper(preprocess)
@@ -2826,6 +3000,49 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
 
     predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
     predictor.predict(dataset, feature_columns=["image"])
+
+
+@pytest.mark.parametrize(
+    "image_size,image_mode,expected_size,expected_ratio",
+    [(64, "RGB", 30000, 4), (32, "L", 3500, 0.5), (256, "RGBA", 750000, 85)],
+)
+def test_image_folder_reader_estimate_data_size(
+    ray_start_regular_shared, image_size, image_mode, expected_size, expected_ratio
+):
+    root = "example://image-folders/different-sizes"
+    ds = ray.data.read_datasource(
+        ImageFolderDatasource(),
+        root=root,
+        size=(image_size, image_size),
+        mode=image_mode,
+    )
+
+    data_size = ds.size_bytes()
+    assert (
+        data_size >= expected_size and data_size <= expected_size * 1.5
+    ), "estimated data size is out of expected bound"
+    data_size = ds.fully_executed().size_bytes()
+    assert (
+        data_size >= expected_size and data_size <= expected_size * 1.5
+    ), "actual data size is out of expected bound"
+
+    reader = _ImageFolderDatasourceReader(
+        delegate=ImageFolderDatasource(),
+        paths=[root],
+        filesystem=LocalFileSystem(),
+        partition_filter=FileExtensionFilter(file_extensions=IMAGE_EXTENSIONS),
+        root=root,
+        size=(image_size, image_size),
+        mode=image_mode,
+    )
+    assert (
+        reader._encoding_ratio >= expected_ratio
+        and reader._encoding_ratio <= expected_ratio * 1.5
+    ), "encoding ratio is out of expected bound"
+    data_size = reader.estimate_inmemory_data_size()
+    assert (
+        data_size >= expected_size and data_size <= expected_size * 1.5
+    ), "estimated data size is out of expected bound"
 
 
 # NOTE: The last test using the shared ray_start_regular_shared cluster must use the
@@ -2872,6 +3089,17 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
     )
     expected_df = pd.DataFrame({"one": [1.0, 2.0, 30.0], "two": ["a", "b", "c"]})
     assert ds.to_pandas().equals(expected_df)
+
+
+def test_csv_read_filter_no_file(shutdown_only, tmp_path):
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df)
+    path = os.path.join(str(tmp_path), "test.parquet")
+    pq.write_table(table, path)
+
+    error_message = "No input files found to read"
+    with pytest.raises(ValueError, match=error_message):
+        ray.data.read_csv(path)
 
 
 class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
@@ -3007,16 +3235,23 @@ def test_read_s3_file_error(ray_start_regular_shared, s3_path):
     error_message = "Please check that file exists and has properly configured access."
     with pytest.raises(OSError) as e:
         ray.data.read_parquet(dummy_path)
-        assert error_message in str(e)
+    assert error_message in str(e.value)
     with pytest.raises(OSError) as e:
         ray.data.read_binary_files(dummy_path)
-        assert error_message in str(e)
+    assert error_message in str(e.value)
     with pytest.raises(OSError) as e:
         ray.data.read_csv(dummy_path)
-        assert error_message in str(e)
+    assert error_message in str(e.value)
     with pytest.raises(OSError) as e:
         ray.data.read_json(dummy_path)
-        assert error_message in str(e)
+    assert error_message in str(e.value)
+    with pytest.raises(OSError) as e:
+        error = OSError(
+            f"Error creating dataset. Could not read schema from {dummy_path}: AWS "
+            "Error [code 15]: No response body.. Is this a 'parquet' file?"
+        )
+        _handle_read_os_error(error, dummy_path)
+    assert error_message in str(e.value)
 
 
 if __name__ == "__main__":

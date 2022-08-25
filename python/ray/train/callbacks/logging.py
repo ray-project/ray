@@ -7,6 +7,8 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 
+from ray.air._internal.mlflow import _MLflowLoggerUtil
+from ray.air._internal.json import SafeFallbackEncoder
 from ray.train._internal.results_preprocessors import (
     ExcludedKeysResultsPreprocessor,
     IndexedResultsPreprocessor,
@@ -26,9 +28,7 @@ from ray.train.constants import (
 )
 from ray.util.annotations import Deprecated
 from ray.util.debug import log_once
-from ray.util.ml_utils.dict import flatten_dict
-from ray.util.ml_utils.json import SafeFallbackEncoder
-from ray.util.ml_utils.mlflow import _MLflowLoggerUtil
+from ray._private.dict import flatten_dict
 
 logger = logging.getLogger(__name__)
 
