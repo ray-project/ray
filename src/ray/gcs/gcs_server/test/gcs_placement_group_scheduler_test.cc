@@ -1338,7 +1338,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestWaitingRemovedBundles) {
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
 
   // Assume bundle (and wildcard) resources are acquired by actors.
-  for (const auto bundle : placement_group->GetBundles()) {
+  for (const auto &bundle : placement_group->GetBundles()) {
     for (const auto &resource_entry : bundle->GetFormattedResources()) {
       cluster_resource_scheduler_->GetClusterResourceManager()
           .SubtractNodeAvailableResources(
