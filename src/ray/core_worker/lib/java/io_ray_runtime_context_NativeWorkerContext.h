@@ -74,10 +74,10 @@ Java_io_ray_runtime_context_NativeWorkerContext_nativeGetRpcAddress(JNIEnv *, jc
 /*
  * Class:     io_ray_runtime_context_NativeWorkerContext
  * Method:    nativeGetSerializedRuntimeEnv
- * Signature: ()[B
+ * Signature: ()Ljava/lang/String;
  */
 JNIEXPORT jstring JNICALL
-Java_io_ray_runtime_context_NativeWorkerContext_nativeGetSerializedRuntimeEnv(JNIEnv *env,
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetSerializedRuntimeEnv(JNIEnv *,
                                                                               jclass);
 
 #ifdef __cplusplus
