@@ -28,7 +28,7 @@ Code example
 
     actor = Actor.remote()
     result_refs = []
-    for i in range(1_000_000):
+    for i in range(1000):
         large_array = np.zeros(1_000_000)
         result_refs.append(actor.heavy_compute.remote(large_array))
     results = ray.get(result_refs)
