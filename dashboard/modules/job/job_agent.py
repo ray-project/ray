@@ -34,10 +34,11 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         else:
             submit_request = result
 
+        request_submission_id = submit_request.submission_id or submit_request.job_id
         try:
             submission_id = await self._job_manager.submit_job(
                 entrypoint=submit_request.entrypoint,
-                submission_id=submit_request.submission_id,
+                submission_id=request_submission_id,
                 runtime_env=submit_request.runtime_env,
                 metadata=submit_request.metadata,
                 _driver_on_current_node=False,

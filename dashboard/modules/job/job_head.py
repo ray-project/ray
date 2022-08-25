@@ -2,9 +2,10 @@ import asyncio
 import dataclasses
 import json
 import logging
+import requests
 import traceback
 from collections import OrderedDict
-from typing import Any, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import aiohttp.web
 from aiohttp.web import Request, Response
@@ -20,7 +21,6 @@ from ray._private.runtime_env.packaging import (
     upload_package_to_gcs,
 )
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
-from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.modules.job.common import (
     http_uri_components_to_uri,
@@ -50,9 +50,7 @@ logger.setLevel(logging.INFO)
 routes = optional_utils.ClassMethodRouteTable
 
 
-# TODO(Catch-Bull): It doesn't  exposed to users for now,
-# move to `sdk.py` after the interface is finished.
-class JobAgentSubmissionClient(SubmissionClient):
+class JobAgentSubmissionClient:
     """A local client for submitting and interacting with jobs on a specific node
     in the remote cluster.
     Submits requests over HTTP to the job agent on the specific node using the REST API.
@@ -60,65 +58,38 @@ class JobAgentSubmissionClient(SubmissionClient):
 
     def __init__(
         self,
-        dashboard_agent_address: Optional[str] = None,
-        create_cluster_if_needed: bool = False,
-        cookies: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, Any]] = None,
+        dashboard_agent_address: str,
     ):
-        """Initialize a JobAgentSubmissionClient and check the connection to the cluster.
-        Args:
-            address: address: The IP address and port of a a specific agent. Defaults to
-                http://localhost:8265.
-            create_cluster_if_needed: Indicates whether the cluster at the specified
-                address needs to already be running. Ray doesn't start a cluster
-                before interacting with jobs, but external job managers may do so.
-            cookies: Cookies to use when sending requests to the HTTP job server.
-            metadata: Arbitrary metadata to store along with all jobs.  New metadata
-                specified per job will be merged with the global metadata provided here
-                via a simple dict update.
-            headers: Headers to use when sending requests to the job agent, used
-                for cases like authentication to a remote cluster.
-        """
-        super().__init__(
-            address=dashboard_agent_address,
-            create_cluster_if_needed=create_cluster_if_needed,
-            cookies=cookies,
-            metadata=metadata,
-            headers=headers,
-        )
+        self._address = dashboard_agent_address
 
-    def submit_job_internal(
+    def _do_request(
         self,
+        method: str,
+        endpoint: str,
         *,
-        entrypoint: str,
-        job_id: Optional[str] = None,
-        runtime_env: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, str]] = None,
-        submission_id: Optional[str] = None,
-    ) -> JobSubmitResponse:
-        if job_id:
-            logger.warning(
-                "job_id kwarg is deprecated. Please use submission_id instead."
-            )
-
-        runtime_env = runtime_env or {}
-        metadata = metadata or {}
-        metadata.update(self._default_metadata)
-
-        # Run the RuntimeEnv constructor to parse local pip/conda requirements files.
-        runtime_env = RuntimeEnv(**runtime_env).to_dict()
-
-        submission_id = submission_id or job_id
-
-        req = JobSubmitRequest(
-            entrypoint=entrypoint,
-            submission_id=submission_id,
-            runtime_env=runtime_env,
-            metadata=metadata,
+        data: Optional[bytes] = None,
+        json_data: Optional[dict] = None,
+        **kwargs,
+    ) -> requests.Response:
+        """Perform the actual HTTP request"""
+        url = self._address + endpoint
+        logger.debug(f"Sending request to {url} with json data: {json_data or {}}.")
+        return requests.request(
+            method,
+            url,
+            data=data,
+            json=json_data,
+            **kwargs,
         )
 
-        logger.debug(f"Submitting job with submission_id={submission_id}.")
+    def _raise_error(self, r: requests.Response):
+        raise RuntimeError(
+            f"Request failed with status code {r.status_code}: {r.text}."
+        )
+
+    def submit_job_internal(self, req: JobSubmitRequest) -> JobSubmitResponse:
+
+        logger.debug(f"Submitting job with submission_id={req.submission_id}.")
 
         r = self._do_request(
             "POST",
@@ -311,12 +282,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                     self.choose_agent(),
                     timeout=dashboard_consts.WAIT_RAYLET_START_TIMEOUT_SECONDS,
                 )
-                resp = job_agent_client.submit_job_internal(
-                    entrypoint=submit_request.entrypoint,
-                    submission_id=request_submission_id,
-                    runtime_env=submit_request.runtime_env,
-                    metadata=submit_request.metadata,
-                )
+                resp = job_agent_client.submit_job_internal(submit_request)
             else:
                 submission_id = await self._job_manager.submit_job(
                     entrypoint=submit_request.entrypoint,
