@@ -730,7 +730,12 @@ def start(
         if address is None:
             default_address = f"{ray_params.node_ip_address}:{port}"
             bootstrap_address = services.find_bootstrap_address(temp_dir)
-            if default_address == bootstrap_address:
+            if (
+                default_address == bootstrap_address
+                and bootstrap_address in services.find_gcs_addresses()
+            ):
+                # The default address is already in use by a local running GCS
+                # instance.
                 raise ConnectionError(
                     f"Ray is trying to start at {default_address}, "
                     f"but is already running at {bootstrap_address}. "
@@ -1955,7 +1960,7 @@ def local_dump(
     )
 
 
-@cli.command()
+@cli.command(name="logs")
 @click.argument(
     "glob_filter",
     required=False,
@@ -2041,6 +2046,7 @@ def local_dump(
         "automatically from querying the GCS server."
     ),
 )
+@PublicAPI(stability="alpha")
 def ray_logs(
     glob_filter,
     node_ip: str,
@@ -2558,7 +2564,6 @@ cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
-add_command_alias(ray_logs, name="logs", hidden=False)
 cli.add_command(ray_list, name="list")
 cli.add_command(ray_get, name="get")
 add_command_alias(summary_state_cli_group, name="summary", hidden=False)
