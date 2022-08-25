@@ -20,7 +20,7 @@ different Ray versions in the same Kubernetes cluster.
 ```
 
 
-Concretely you will learn how to:
+Concretely, you will learn how to:
 
 - Set up and configure Ray on a Kubernetes cluster
 - Deploy and monitor Ray applications
@@ -33,7 +33,7 @@ The Ray docs present all the information you need to start running Ray workloads
 ```{eval-rst}
 .. panels::
     :container: text-center
-    :column: col-lg-12 p-2
+    :column: col-lg-6 px-2 py-2
     :card:
 
     **Getting Started**
@@ -80,7 +80,7 @@ The Ray docs present all the information you need to start running Ray workloads
         :text: Check API references
         :classes: btn-outline-info btn-block
 ```
-## The KubeRay project
+## About KubeRay
 
 Ray's Kubernetes support is developed at the [KubeRay GitHub repository](https://github.com/ray-project/kuberay), under the broader [Ray project](https://github.com/ray-project/). KubeRay is used by several companies to run production Ray deployments.
 
@@ -88,3 +88,14 @@ Ray's Kubernetes support is developed at the [KubeRay GitHub repository](https:/
 the project.
 - Check out the [KubeRay docs](https://ray-project.github.io/kuberay/) for further technical information, developer guides,
 and discussion of new and upcoming features.
+
+```{note}
+The KubeRay operator replaces the older Ray operator hosted in the [Ray repository](https://github.com/ray-project/ray/tree/releases/2.0.0/python/ray/ray_operator).
+Check the linked README for migration notes.
+
+If you have used the legacy Ray operator in the past,
+make sure to de-register that operator's CRD before
+using KubeRay:
+```shell
+kubectl delete crd rayclusters.cluster.ray.io
+```

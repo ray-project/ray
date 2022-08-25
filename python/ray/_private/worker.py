@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 import traceback
+import urllib
 import warnings
 from abc import ABCMeta, abstractmethod
 from collections.abc import Mapping
@@ -30,6 +31,7 @@ from typing import (
     Union,
     overload,
 )
+from urllib.parse import urlparse
 
 import colorama
 import setproctitle
@@ -880,7 +882,7 @@ def get_resource_ids():
     return global_worker.core_worker.resource_ids()
 
 
-@Deprecated(message="Use ray.init()['webui_url'] instead.")
+@Deprecated(message="Use ray.init().address_info['webui_url'] instead.")
 def get_dashboard_url():
     """Get the URL to access the Ray dashboard.
 
@@ -889,9 +891,28 @@ def get_dashboard_url():
     Returns:
         The URL of the dashboard as a string.
     """
-    worker = global_worker
-    worker.check_connected()
-    return _global_node.webui_url
+    if ray_constants.RAY_OVERRIDE_DASHBOARD_URL in os.environ:
+        return _remove_protocol_from_url(
+            os.environ.get(ray_constants.RAY_OVERRIDE_DASHBOARD_URL)
+        )
+    else:
+        worker = global_worker
+        worker.check_connected()
+        return _global_node.webui_url
+
+
+def _remove_protocol_from_url(url: Optional[str]) -> str:
+    """
+    Helper function to remove protocol from URL if it exists.
+    """
+    if not url:
+        return url
+    parsed_url = urllib.parse.urlparse(url)
+    if parsed_url.scheme:
+        # Construct URL without protocol
+        scheme = f"{parsed_url.scheme}://"
+        return parsed_url.geturl().replace(scheme, "", 1)
+    return url
 
 
 class BaseContext(metaclass=ABCMeta):
@@ -1053,7 +1074,7 @@ def init(
         ray.init(address="ray://123.45.67.89:10001")
 
     More details for starting and connecting to a remote cluster can be found
-    here: https://docs.ray.io/en/master/cluster/ray-client.html
+    here: https://docs.ray.io/en/master/cluster/getting-started.html
 
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
@@ -1471,7 +1492,15 @@ def init(
 
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
-    dashboard_url = _global_node.webui_url_with_protocol
+    if ray_constants.RAY_OVERRIDE_DASHBOARD_URL in os.environ:
+        dashboard_url = os.environ.get(ray_constants.RAY_OVERRIDE_DASHBOARD_URL)
+    else:
+        dashboard_url = _global_node.webui_url
+    # Add http protocol to dashboard URL if it doesn't
+    # already contain a protocol.
+    if dashboard_url and not urlparse(dashboard_url).scheme:
+        dashboard_url = "http://" + dashboard_url
+
     # We logged the address before attempting the connection, so we don't need
     # to log it again.
     info_str = "Connected to Ray cluster."
@@ -1479,7 +1508,7 @@ def init(
         info_str = "Started a local Ray instance."
     if dashboard_url:
         logger.info(
-            info_str + " View the dashboard at %s%s%s%s%s.",
+            info_str + " View the dashboard at %s%s%s %s%s",
             colorama.Style.BRIGHT,
             colorama.Fore.GREEN,
             dashboard_url,
@@ -1517,7 +1546,9 @@ def init(
         hook()
 
     node_id = global_worker.core_worker.get_current_node_id()
-    return RayContext(dict(_global_node.address_info, node_id=node_id.hex()))
+    global_node_address_info = _global_node.address_info.copy()
+    global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
+    return RayContext(dict(global_node_address_info, node_id=node_id.hex()))
 
 
 # Functions to run as callback after a successful ray init.

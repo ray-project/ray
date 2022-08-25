@@ -94,7 +94,7 @@ class ServePPOModel:
 
 :::{tip}
 Although we used a single input and `Algorithm.compute_single_action(...)` here, you
-can process a batch of input using Ray Serve's [batching](serve-batching) feature
+can process a batch of input using Ray Serve's [batching](serve-performance-batching-requests) feature
 and use `Algorithm.compute_actions(...)` to process a batch of inputs.
 :::
 
@@ -106,7 +106,7 @@ ppo_model = ServePPOModel.bind(checkpoint_path)
 serve.run(ppo_model)
 ```
 
-Note that the `checkpoint_path` that we passed to the `deploy()` method will be passed to
+Note that the `checkpoint_path` that we passed to the `bind()` method will be passed to
 the `__init__` method of the `ServePPOModel` class that we defined above.
 
 Now that the model is deployed, let's query it!

@@ -16,8 +16,7 @@ invertedpendulum-td3:
         critic_hiddens: [32, 32]
 
         # === Exploration ===
-        replay_buffer_config:
-          learning_starts: 1000
+        num_steps_sampled_before_learning_starts: 1000
         exploration_config:
             random_timesteps: 1000
 
