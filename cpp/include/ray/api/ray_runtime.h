@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include <ray/api/function_manager.h>
+#include <ray/api/common_types.h>
 #include <ray/api/task_options.h>
 #include <ray/api/xlang_function.h>
 
@@ -38,9 +38,7 @@ struct RemoteFunctionHolder {
     this->class_name = class_name;
     this->lang_type = lang_type;
   }
-  template <typename F>
-  RemoteFunctionHolder(F func) {
-    auto func_name = FunctionManager::Instance().GetFunctionName(func);
+  RemoteFunctionHolder(std::string func_name) {
     if (func_name.empty()) {
       throw RayException(
           "Function not found. Please use RAY_REMOTE to register this function.");

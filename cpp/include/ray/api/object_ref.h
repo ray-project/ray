@@ -16,6 +16,7 @@
 
 #include <ray/api/ray_runtime_holder.h>
 #include <ray/api/serializer.h>
+#include <ray/api/type_traits.h>
 
 #include <memory>
 #include <msgpack.hpp>
@@ -116,6 +117,12 @@ inline static std::shared_ptr<T> GetFromRuntime(const ObjectRef<T> &object) {
   if (ray::internal::Serializer::IsXLang(packed_object->data(), packed_object->size())) {
     return ray::internal::Serializer::Deserialize<std::shared_ptr<T>>(
         packed_object->data(), packed_object->size(), internal::XLANG_HEADER_LEN);
+  }
+
+  if constexpr (ray::internal::is_actor_handle_v<T>) {
+    auto actor_handle = ray::internal::Serializer::Deserialize<std::string>(
+        packed_object->data(), packed_object->size());
+    return std::make_shared<T>(T::FromBytes(actor_handle));
   }
 
   return ray::internal::Serializer::Deserialize<std::shared_ptr<T>>(

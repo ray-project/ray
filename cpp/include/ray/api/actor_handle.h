@@ -15,6 +15,7 @@
 #pragma once
 
 #include <ray/api/actor_task_caller.h>
+#include <ray/api/function_manager.h>
 #include <ray/api/ray_runtime_holder.h>
 
 namespace ray {
@@ -47,7 +48,8 @@ class ActorHandle {
     static_assert(
         std::is_same<ActorType, Self>::value || std::is_base_of<Self, ActorType>::value,
         "Class types must be same.");
-    ray::internal::RemoteFunctionHolder remote_func_holder(actor_func);
+    auto func_name = internal::FunctionManager::Instance().GetFunctionName(actor_func);
+    ray::internal::RemoteFunctionHolder remote_func_holder(func_name);
     return ray::internal::ActorTaskCaller<F>(
         internal::GetRayRuntime().get(), id_, std::move(remote_func_holder));
   }
