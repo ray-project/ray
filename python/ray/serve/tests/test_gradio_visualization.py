@@ -115,7 +115,6 @@ class TestGraphDFS:
             and depths[dag.get_stable_uuid()] == 4
         )
 
-
     def test_graph_dfs_for_depths2(self, graph2):
         """Tests that GraphVisualizer._fetch_depths, when passed into
         DAGNode.apply_recursive, correctly retrieves the depths of each node.
@@ -132,7 +131,6 @@ class TestGraphDFS:
             and depths[f_node.get_stable_uuid()] == 2
             and depths[dag.get_stable_uuid()] == 3
         )
-
 
     def test_graph_dfs_for_depths3(self, graph3):
         """Tests that GraphVisualizer._fetch_depths, when passed into
@@ -196,7 +194,9 @@ async def test_gradio_visualization_e2e(graph1):
             ) as resp:
                 return (await resp.json())["data"]
 
-        await fetch([random.randint(0, 100), 1, 2], 0) # sends request to dag with input (1,2)
+        await fetch(
+            [random.randint(0, 100), 1, 2], 0
+        )  # sends request to dag with input (1,2)
         values = await asyncio.gather(
             fetch([], 1),  # fetches return value for one of the nodes
             fetch([], 2),  # fetches return value for the other node

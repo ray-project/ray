@@ -87,7 +87,7 @@ class DAGNode(DAGNodeBase):
 
     async def get_object_refs_from_last_execute(self) -> Dict[str, Any]:
         """Gets cached object refs from the last call to execute().
-        
+
         After this DAG is executed through execute(), retrieves a map between node
         UUID to a reference to the return value of the default executor on that node.
         """

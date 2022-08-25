@@ -105,7 +105,7 @@ class GraphVisualizer:
 
     def _fetch_depths(self, node: DAGNode, depths: Dict[str, int]) -> DAGNode:
         """Gets the node's depth.
-        
+
         Calculates graph node's depth, which is determined by the longest distance
         between that node and any InputAttributeNode. The single InputNode in the graph
         will have depth 0, and all InputAttributeNodes will have depth 1. The node's
@@ -141,7 +141,7 @@ class GraphVisualizer:
 
     async def _send_request(self, trigger_value: int, *args) -> int:
         """Sends request to the graph and gets results.
-        
+
         Sends a request to the root DAG node through self.handle and retrieves the
         cached object refs pointing to return values of each executed node in the DAG.
         Will not run if the last inference process has not finished (if all nodes in
@@ -177,7 +177,7 @@ class GraphVisualizer:
         _block: bool = True,
     ):
         """Starts deployment graph's Gradio UI.
-        
+
         Launches a Gradio UI that allows interactive request dispatch and displays
         the evaluated outputs of each node in a deployment graph in real time.
 
