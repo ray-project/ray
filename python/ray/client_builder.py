@@ -22,7 +22,10 @@ from ray.widgets import Template
 
 logger = logging.getLogger(__name__)
 
-CLIENT_DOCS_URL = "https://docs.ray.io/en/latest/cluster/ray-client.html"
+CLIENT_DOCS_URL = (
+    "https://docs.ray.io/en/latest/cluster/running-applications/"
+    "job-submission/ray-client.html"
+)
 
 
 @dataclass
