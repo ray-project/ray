@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Union, TYPE_CHECKING
 
 import ray
+from ray.air._internal.util import skip_exceptions
 from ray.air.checkpoint import (
     Checkpoint,
     _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
@@ -344,7 +345,11 @@ class Trainable:
         if self._warmup_time is None:
             self._warmup_time = time.time() - self._start_time
         start = time.time()
-        result = self.step()
+        try:
+            result = self.step()
+        except Exception as e:
+            raise skip_exceptions(e) from None
+
         assert isinstance(result, dict), "step() needs to return a dict."
 
         # We do not modify internal state nor update this result if duplicate.
