@@ -11,7 +11,6 @@ from transformers import (
 )
 
 import ray.data
-from ray.exceptions import RayTaskError
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
 from ray.air.config import ScalingConfig
