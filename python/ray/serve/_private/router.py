@@ -45,6 +45,7 @@ class Query:
     args: List[Any]
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
+    return_num: int = 2
 
     async def resolve_async_tasks(self):
         """Find all unresolved asyncio.Task and gather them all at once."""
@@ -55,6 +56,9 @@ class Query:
             resolved = await asyncio.gather(*tasks)
             replacement_table = dict(zip(tasks, resolved))
             self.args, self.kwargs = scanner.replace_nodes(replacement_table)
+
+        # Make the scanner GCable to avoid memory leak
+        scanner.clear()
 
 
 class ReplicaSet:
