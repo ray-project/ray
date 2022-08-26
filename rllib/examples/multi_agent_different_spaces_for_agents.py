@@ -16,7 +16,7 @@ import gym
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
@@ -120,10 +120,12 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    tune.run(
+    tune.Tuner(
         args.run,
-        stop=stop,
-        config={
+        run_config=air.RunConfig(
+            stop=stop,
+        ),
+        param_space={
             "env": BasicMultiAgentMultiSpaces,
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
@@ -145,4 +147,4 @@ if __name__ == "__main__":
             "framework": args.framework,
             "eager_tracing": args.eager_tracing,
         },
-    )
+    ).fit()

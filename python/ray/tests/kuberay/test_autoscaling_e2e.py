@@ -46,12 +46,14 @@ logger.info(f"Using image `{AUTOSCALER_IMAGE}` for Autoscaler containers.")
 logger.info(f"Using pull policy `{PULL_POLICY}` for all images.")
 
 # Path to example config rel RAY_PARENT
-EXAMPLE_CLUSTER_PATH = "ray/python/ray/autoscaler/kuberay/ray-cluster.complete.yaml"
+EXAMPLE_CLUSTER_PATH = (
+    "ray/python/ray/autoscaler/kuberay/config/samples/ray-cluster.autoscaler.yaml"
+)
 
-HEAD_SERVICE = "raycluster-complete-head-svc"
-HEAD_POD_PREFIX = "raycluster-complete-head"
-CPU_WORKER_PREFIX = "raycluster-complete-worker-small-group"
-RAY_CLUSTER_NAME = "raycluster-complete"
+HEAD_SERVICE = "raycluster-autoscaler-head-svc"
+HEAD_POD_PREFIX = "raycluster-autoscaler-head"
+CPU_WORKER_PREFIX = "raycluster-autoscaler-worker-small-group"
+RAY_CLUSTER_NAME = "raycluster-autoscaler"
 RAY_CLUSTER_NAMESPACE = "default"
 
 
@@ -75,11 +77,19 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         with open(EXAMPLE_CLUSTER_PATH) as ray_cr_config_file:
             ray_cr_config_str = ray_cr_config_file.read()
         config = yaml.safe_load(ray_cr_config_str)
+        head_group = config["spec"]["headGroupSpec"]
+        head_group["rayStartParams"][
+            "resources"
+        ] = '"{\\"Custom1\\": 1, \\"Custom2\\": 5}"'
+
         cpu_group = config["spec"]["workerGroupSpecs"][0]
         cpu_group["replicas"] = cpu_replicas
         cpu_group["minReplicas"] = min_replicas
         # Keep maxReplicas big throughout the test.
         cpu_group["maxReplicas"] = 300
+        cpu_group["rayStartParams"][
+            "resources"
+        ] = '"{\\"Custom1\\": 1, \\"Custom2\\": 5}"'
 
         # Add a GPU-annotated group.
         # (We're not using real GPUs, just adding a GPU annotation for the autoscaler
@@ -100,7 +110,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
             ray_container = containers[0]
             # Confirm the first container in the example config is the Ray container.
-            assert ray_container["name"] in ["ray-head", "ray-worker"]
+            assert ray_container["name"] in ["ray-head", "machine-learning"]
+            # ("machine-learning" is the name of the worker Ray container)
 
             ray_container["image"] = RAY_IMAGE
 
@@ -248,7 +259,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         )
         # Check that stdout autoscaler logging is working.
         logs = kubectl_logs(head_pod, namespace="default", container="autoscaler")
-        assert "Adding 1 nodes of type small-group." in logs
+        assert "Adding 1 node(s) of type small-group." in logs
         logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=2, namespace=RAY_CLUSTER_NAMESPACE)
 

@@ -12,13 +12,6 @@ parser.add_argument(
     default="tf",
     help="The DL framework specifier.",
 )
-parser.add_argument(
-    "--from-checkpoint",
-    type=str,
-    default=None,
-    help="Full path to a checkpoint file for restoring a previously saved "
-    "Algorithm state.",
-)
 parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument(
     "--use-n-prev-actions",
@@ -38,7 +31,7 @@ parser.add_argument("--stop-reward", type=float, default=1000.0)
 
 if __name__ == "__main__":
     import ray
-    from ray import tune
+    from ray import air, tune
 
     args = parser.parse_args()
 
@@ -73,14 +66,17 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(
+    results = tune.Tuner(
         args.run,
-        config=config,
-        stop=stop,
-        verbose=2,
-        checkpoint_freq=5,
-        checkpoint_at_end=True,
-        restore=args.from_checkpoint,
+        param_space=config,
+        run_config=air.RunConfig(
+            stop=stop,
+            verbose=2,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=5,
+                checkpoint_at_end=True,
+            ),
+        ),
     )
     print(results)
     ray.shutdown()

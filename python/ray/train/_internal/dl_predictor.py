@@ -1,5 +1,5 @@
 import abc
-from typing import Dict, TypeVar, Union, List, Tuple
+from typing import Dict, TypeVar, Union
 
 import numpy as np
 import pandas as pd
@@ -48,40 +48,36 @@ class DLPredictor(Predictor):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def _model_predict(
+    def call_model(
         self, tensor: Union[TensorType, Dict[str, TensorType]]
-    ) -> Union[TensorType, Dict[str, TensorType], List[TensorType], Tuple[TensorType]]:
+    ) -> Union[TensorType, Dict[str, TensorType]]:
         """Inputs the tensor to the model for this Predictor and returns the result.
 
         Args:
             tensor: The tensor to input to the model.
 
         Returns:
-            A tensor containing the model output.
+            A tensor or dictionary of tensors containing the model output.
         """
         raise NotImplementedError
 
     def _predict_pandas(
         self, data: pd.DataFrame, dtype: Union[TensorDtype, Dict[str, TensorDtype]]
     ) -> pd.DataFrame:
-        tensors = convert_pandas_to_batch_type(data, DataType.NUMPY)
+        tensors = convert_pandas_to_batch_type(
+            data,
+            DataType.NUMPY,
+            self._cast_tensor_columns,
+        )
         model_input = self._arrays_to_tensors(tensors, dtype)
 
-        output = self._model_predict(model_input)
+        output = self.call_model(model_input)
 
         # Handle model multi-output. For example if model outputs 2 images.
         if isinstance(output, dict):
             return pd.DataFrame(
-                {k: TensorArray(self._tensor_to_array(v)) for k, v in output}
+                {k: TensorArray(self._tensor_to_array(v)) for k, v in output.items()}
             )
-        elif isinstance(output, list) or isinstance(output, tuple):
-            tensor_name = "output_"
-            output_dict = {}
-            for i in range(len(output)):
-                output_dict[tensor_name + str(i + 1).zfill(5)] = TensorArray(
-                    self._tensor_to_array(output[i])
-                )
-            return pd.DataFrame(output_dict)
         else:
             return pd.DataFrame(
                 {"predictions": TensorArray(self._tensor_to_array(output))},

@@ -303,7 +303,6 @@ class _ActorClassMetadata:
         num_gpus: The default number of GPUs required by the actor creation
             task.
         memory: The heap memory quota for this actor.
-        object_store_memory: The object store memory quota for this actor.
         resources: The default resources required by the actor creation task.
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
@@ -668,8 +667,6 @@ class ActorClass:
             num_cpus: The number of CPUs required by the actor creation task.
             num_gpus: The number of GPUs required by the actor creation task.
             memory: Restrict the heap memory usage of this actor.
-            object_store_memory: Restrict the object store memory used by
-                this actor when creating objects.
             resources: The custom resources required by the actor creation
                 task.
             max_concurrency: The max number of concurrent calls to allow for
@@ -1096,12 +1093,18 @@ class ActorHandle:
                 setattr(self, method_name, method)
 
     def __del__(self):
-        # Mark that this actor handle has gone out of scope. Once all actor
-        # handles are out of scope, the actor will exit.
-        if ray._private.worker:
-            worker = ray._private.worker.global_worker
-            if worker.connected and hasattr(worker, "core_worker"):
-                worker.core_worker.remove_actor_handle_reference(self._ray_actor_id)
+        try:
+            # Mark that this actor handle has gone out of scope. Once all actor
+            # handles are out of scope, the actor will exit.
+            if ray._private.worker:
+                worker = ray._private.worker.global_worker
+                if worker.connected and hasattr(worker, "core_worker"):
+                    worker.core_worker.remove_actor_handle_reference(self._ray_actor_id)
+        except AttributeError:
+            # Suppress the attribtue error which is caused by
+            # python destruction ordering issue.
+            # It only happen when python exits.
+            pass
 
     def _actor_method_call(
         self,
@@ -1289,8 +1292,10 @@ class ActorHandle:
 
     def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
-        state = self._serialization_helper()
-        return ActorHandle._deserialization_helper, state
+        (serialized, _) = self._serialization_helper()
+        # There is no outer object ref when the actor handle is
+        # deserialized out-of-band using pickle.
+        return ActorHandle._deserialization_helper, (serialized, None)
 
 
 def _modify_class(cls):

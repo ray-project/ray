@@ -12,56 +12,71 @@ from ray.data.preprocessor import Preprocessor
 class OrdinalEncoder(Preprocessor):
     """Encode values within columns as ordered integer values.
 
-    Currently, order within a column is based on the values from the fitted
-    dataset in sorted order.
+    :class:`OrdinalEncoder` encodes categorical features as integers that range from
+    :math:`0` to :math:`n - 1`, where :math:`n` is the number of categories.
 
-    Transforming values not included in the fitted dataset will be encoded as ``None``.
+    If you transform a value that isn't in the fitted datset, then the value is encoded
+    as ``float("nan")``.
 
-    All column values must be hashable scalars or lists of hashable values. Those
-    two types cannot be mixed.
+    Columns must contain either hashable values or lists of hashable values. Also, you
+    can't have both scalars and lists in the same column.
 
-    Example:
+    Examples:
+        Use :class:`OrdinalEncoder` to encode categorical features as integers.
 
-    .. code-block:: python
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import OrdinalEncoder
+        >>> df = pd.DataFrame({
+        ...     "sex": ["male", "female", "male", "female"],
+        ...     "level": ["L4", "L5", "L3", "L4"],
+        ... })
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> encoder = OrdinalEncoder(columns=["sex", "level"])
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           sex  level
+        0    1      1
+        1    0      2
+        2    1      0
+        3    0      1
 
-        import ray.data
-        from ray.data.preprocessors import OrdinalEncoder
-        import pandas as pd
-        batch = pd.DataFrame(
-            {
-                "A": [["warm"], [], ["hot", "warm", "cold"], ["cold", "cold"]],
-                "B": ["warm", "cold", "hot", "cold"],
-            },
-        )
-        oe = OrdinalEncoder(columns=["A", "B"], encode_lists=True)
-        oe.fit(ray.data.from_pandas(batch))
-        transformed_batch = oe.transform_batch(batch)
-        expected_batch = pd.DataFrame(
-            {
-                "A": [[2], [], [1, 2, 0], [0, 0]],
-                "B": [2, 0, 1, 0],
-            }
-        )
-        assert transformed_batch.equals(expected_batch)
+        If you transform a value not present in the original dataset, then the value
+        is encoded as ``float("nan")``.
 
-        oe = OrdinalEncoder(columns=["A", "B"], encode_lists=False)
-        oe.fit(ray.data.from_pandas(batch))
-        transformed_batch = oe.transform_batch(batch)
-        expected_batch = pd.DataFrame(
-            {
-                "A": [3, 0, 2, 1],
-                "B": [2, 0, 1, 0],
-            }
-        )
-        assert transformed_batch.equals(expected_batch)
+        >>> df = pd.DataFrame({"sex": ["female"], "level": ["L6"]})
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> encoder.transform(ds).to_pandas()  # doctest: +SKIP
+           sex  level
+        0    0    NaN
 
+        :class:`OrdinalEncoder` can also encode categories in a list.
+
+        >>> df = pd.DataFrame({
+        ...     "name": ["Shaolin Soccer", "Moana", "The Smartest Guys in the Room"],
+        ...     "genre": [
+        ...         ["comedy", "action", "sports"],
+        ...         ["animation", "comedy",  "action"],
+        ...         ["documentary"],
+        ...     ],
+        ... })
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> encoder = OrdinalEncoder(columns=["genre"])
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
+                                    name      genre
+        0                 Shaolin Soccer  [2, 0, 4]
+        1                          Moana  [1, 2, 0]
+        2  The Smartest Guys in the Room        [3]
 
     Args:
-        columns: The columns that will individually be encoded.
-        encode_lists: If True, each element of lists inside list
-            columns will be encoded. If False, each list will
-            be treated as a whole separate category. True
+        columns: The columns to separately encode.
+        encode_lists: If ``True``, encode list elements.  If ``False``, encode
+            whole lists (i.e., replace each list with an integer). ``True``
             by default.
+
+    .. seealso::
+
+        :class:`OneHotEncoder`
+            Another preprocessor that encodes categorical data.
     """
 
     def __init__(self, columns: List[str], *, encode_lists: bool = True):
@@ -101,69 +116,98 @@ class OrdinalEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
         return (
-            f"OrdinalEncoder(columns={self.columns}, stats={stats}, "
-            f"encode_lists={self.encode_lists})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"encode_lists={self.encode_lists!r})"
         )
 
 
 class OneHotEncoder(Preprocessor):
-    """Encode columns as new columns using one-hot encoding.
+    """`One-hot encode <https://en.wikipedia.org/wiki/One-hot#Machine_learning_and_statistics>`_
+    categorical data.
 
-    The transformed dataset will have a new column in the form ``{column}_{value}``
-    for each of the values from the fitted dataset. The value of a column will
-    be set to 1 if the value matches, otherwise 0.
+    This preprocessor creates a column named ``{column}_{category}``
+    for each unique ``{category}`` in ``{column}``. The value of a column is
+    1 if the category matches and 0 otherwise.
 
-    Transforming values not included in the fitted dataset or not among
-    the top popular values (see ``limit``) will result in all of the encoded column
-    values being 0.
+    If you encode an infrequent category (see ``max_categories``) or a category
+    that isn't in the fitted dataset, then the category is encoded as all 0s.
 
-    All column values must be hashable or lists. Lists will be treated as separate
-    categories. If you would like to encode list elements,
-    use :class:`MultiHotEncoder`.
+    Columns must contain hashable objects or lists of hashable objects.
+
+    .. note::
+        Lists are treated as categories. If you want to encode individual list
+        elements, use :class:`MultiHotEncoder`.
 
     Example:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import OneHotEncoder
+        >>>
+        >>> df = pd.DataFrame({"color": ["red", "green", "red", "red", "blue", "green"]})
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> encoder = OneHotEncoder(columns=["color"])
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           color_blue  color_green  color_red
+        0           0            0          1
+        1           0            1          0
+        2           0            0          1
+        3           0            0          1
+        4           1            0          0
+        5           0            1          0
 
-    .. code-block:: python
+        If you one-hot encode a value that isn't in the fitted dataset, then the
+        value is encoded with zeros.
 
-        ohe = OneHotEncoder(
-            columns=[
-                "trip_start_hour",
-                "trip_start_day",
-                "trip_start_month",
-                "dropoff_census_tract",
-                "pickup_community_area",
-                "dropoff_community_area",
-                "payment_type",
-                "company",
-            ],
-            limit={
-                "dropoff_census_tract": 25,
-                "pickup_community_area": 20,
-                "dropoff_community_area": 20,
-                "payment_type": 2,
-                "company": 7,
-            },
-        )
+        >>> df = pd.DataFrame({"color": ["yellow"]})
+        >>> batch = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> encoder.transform(batch).to_pandas()  # doctest: +SKIP
+           color_blue  color_green  color_red
+        0           0            0          0
+
+        Likewise, if you one-hot encode an infrequent value, then the value is encoded
+        with zeros.
+
+        >>> encoder = OneHotEncoder(columns=["color"], max_categories={"color": 2})
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           color_red  color_green
+        0          1            0
+        1          0            1
+        2          1            0
+        3          1            0
+        4          0            0
+        5          0            1
 
     Args:
-        columns: The columns that will individually be encoded.
-        limit: If set, only the top "limit" number of most popular values become
-            categorical variables. The less frequent ones will result in all
-            the encoded column values being 0. This is a dict of column to
-            its corresponding limit. The column in this dictionary has to be
-            in ``columns``.
-    """
+        columns: The columns to separately encode.
+        max_categories: The maximum number of features to create for each column.
+            If a value isn't specified for a column, then a feature is created
+            for every category in that column.
 
-    def __init__(self, columns: List[str], *, limit: Optional[Dict[str, int]] = None):
+    .. seealso::
+
+        :class:`MultiHotEncoder`
+            If you want to encode individual list elements, use
+            :class:`MultiHotEncoder`.
+
+        :class:`OrdinalEncoder`
+            If your categories are ordered, you may want to use
+            :class:`OrdinalEncoder`.
+    """  # noqa: E501
+
+    def __init__(
+        self, columns: List[str], *, max_categories: Optional[Dict[str, int]] = None
+    ):
         # TODO: add `drop` parameter.
         self.columns = columns
-        self.limit = limit
+        self.max_categories = max_categories
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
-            dataset, self.columns, limit=self.limit, encode_lists=False
+            dataset,
+            self.columns,
+            max_categories=self.max_categories,
+            encode_lists=False,
         )
         return self
 
@@ -186,71 +230,89 @@ class OneHotEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
-        return f"OneHotEncoder(columns={self.columns}, stats={stats})"
+        return (
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"max_categories={self.max_categories!r})"
+        )
 
 
 class MultiHotEncoder(Preprocessor):
-    """Encode columns using multi-hot encoding.
+    """Multi-hot encode categorical data.
 
-    A column of lists or scalars (treated as one element lists) will be
-    encoded as a column of one-hot encoded lists. This is useful for eg.
-    generating embeddings for recommender systems.
+    This preprocessor replaces each list of categories with an :math:`m`-length binary
+    list, where :math:`m` is the number of unique categories in the column or the value
+    specified in ``max_categories``. The :math:`i\\text{-th}` element of the binary list
+    is :math:`1` if category :math:`i` is in the input list and :math:`0` otherwise.
 
-    Example:
+    Columns must contain hashable objects or lists of hashable objects.
+    Also, you can't have both types in the same column.
 
-    .. code-block:: python
+    .. note::
+        The logic is similar to scikit-learn's `MultiLabelBinarizer \
+    <https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing\
+    .MultiLabelBinarizer.html>`_.
 
-        import ray.data
-        from ray.data.preprocessors import MultiHotEncoder
-        import pandas as pd
-        mhe = MultiHotEncoder(columns=["A", "B"])
-        batch = pd.DataFrame(
-            {
-                "A": [["warm"], [], ["hot", "warm", "cold"], ["cold", "cold"]],
-                "B": ["warm", "cold", "hot", "cold"],
-            },
-        )
-        mhe.fit(ray.data.from_pandas(batch))
-        transformed_batch = mhe.transform_batch(batch)
-        expected_batch = pd.DataFrame(
-            {
-                "A": [[0, 0, 1], [0, 0, 0], [1, 1, 1], [2, 0, 0]],
-                "B": [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]],
-            }
-        )
-        assert transformed_batch.equals(expected_batch)
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import MultiHotEncoder
+        >>>
+        >>> df = pd.DataFrame({
+        ...     "name": ["Shaolin Soccer", "Moana", "The Smartest Guys in the Room"],
+        ...     "genre": [
+        ...         ["comedy", "action", "sports"],
+        ...         ["animation", "comedy",  "action"],
+        ...         ["documentary"],
+        ...     ],
+        ... })
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>>
+        >>> encoder = MultiHotEncoder(columns=["genre"])
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
+                                    name            genre
+        0                 Shaolin Soccer  [1, 0, 1, 0, 1]
+        1                          Moana  [1, 1, 1, 0, 0]
+        2  The Smartest Guys in the Room  [0, 0, 0, 1, 0]
 
-    Transforming values not included in the fitted dataset or not among
-    the top popular values (see ``limit``) will result in all of the encoded column
-    values being 0.
+        If you specify ``max_categories``, then :class:`MultiHotEncoder`
+        creates features for only the most frequent categories.
 
-    The logic is similar to scikit-learn's `MultiLabelBinarizer \
-<https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing\
-.MultiLabelBinarizer.html>`_.
-
-    All column values must be hashable scalars or lists of hashable values. Those
-    two types cannot be mixed.
-
-    See also: :class:`OneHotEncoder`.
+        >>> encoder = MultiHotEncoder(columns=["genre"], max_categories={"genre": 3})
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
+                                    name      genre
+        0                 Shaolin Soccer  [1, 1, 1]
+        1                          Moana  [1, 1, 0]
+        2  The Smartest Guys in the Room  [0, 0, 0]
+        >>> encoder.stats_  # doctest: +SKIP
+        OrderedDict([('unique_values(genre)', {'comedy': 0, 'action': 1, 'sports': 2})])
 
     Args:
-        columns: The columns that will individually be encoded.
-        limit: If set, only the top "limit" number of most popular values become
-            categorical variables. The less frequent ones will result in all
-            the encoded values being 0. This is a dict of column to
-            its corresponding limit. The column in this dictionary has to be
-            in ``columns``.
+        columns: The columns to separately encode.
+        max_categories: The maximum number of features to create for each column.
+            If a value isn't specified for a column, then a feature is created
+            for every unique category in that column.
+
+    .. seealso::
+
+        :class:`OneHotEncoder`
+            If you're encoding individual categories instead of lists of
+            categories, use :class:`OneHotEncoder`.
+
+        :class:`OrdinalEncoder`
+            If your categories are ordered, you may want to use
+            :class:`OrdinalEncoder`.
     """
 
-    def __init__(self, columns: List[str], *, limit: Optional[Dict[str, int]] = None):
+    def __init__(
+        self, columns: List[str], *, max_categories: Optional[Dict[str, int]] = None
+    ):
         # TODO: add `drop` parameter.
         self.columns = columns
-        self.limit = limit
+        self.max_categories = max_categories
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
-            dataset, self.columns, limit=self.limit, encode_lists=True
+            dataset, self.columns, max_categories=self.max_categories, encode_lists=True
         )
         return self
 
@@ -270,22 +332,61 @@ class MultiHotEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
-        return f"MultiHotEncoder(columns={self.columns}, stats={stats})"
+        return (
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"max_categories={self.max_categories!r})"
+        )
 
 
 class LabelEncoder(Preprocessor):
-    """Encode values within a label column as ordered integer values.
+    """Encode labels as integer targets.
 
-    Currently, order within a column is based on the values from the fitted
-    dataset in sorted order.
+    :class:`LabelEncoder` encodes labels as integer targets that range from
+    :math:`0` to :math:`n - 1`, where :math:`n` is the number of unique labels.
 
-    Transforming values not included in the fitted dataset will be encoded as ``None``.
+    If you transform a label that isn't in the fitted datset, then the label is encoded
+    as ``float("nan")``.
 
-    All column values must be hashable.
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> df = pd.DataFrame({
+        ...     "sepal_width": [5.1, 7, 4.9, 6.2],
+        ...     "sepal_height": [3.5, 3.2, 3, 3.4],
+        ...     "species": ["setosa", "versicolor", "setosa", "virginica"]
+        ... })
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>>
+        >>> from ray.data.preprocessors import LabelEncoder
+        >>> encoder = LabelEncoder(label_column="species")
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           sepal_width  sepal_height  species
+        0          5.1           3.5        0
+        1          7.0           3.2        1
+        2          4.9           3.0        0
+        3          6.2           3.4        2
+
+        If you transform a label not present in the original dataset, then the new
+        label is encoded as ``float("nan")``.
+
+        >>> df = pd.DataFrame({
+        ...     "sepal_width": [4.2],
+        ...     "sepal_height": [2.7],
+        ...     "species": ["bracteata"]
+        ... })
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> encoder.transform(ds).to_pandas()  # doctest: +SKIP
+           sepal_width  sepal_height  species
+        0          4.2           2.7      NaN
 
     Args:
-        label_column: The label column that will be encoded.
+        label_column: A column containing labels that you want to encode.
+
+    .. seealso::
+
+        :class:`OrdinalEncoder`
+            If you're encoding ordered features, use :class:`OrdinalEncoder` instead of
+            :class:`LabelEncoder`.
     """
 
     def __init__(self, label_column: str):
@@ -306,25 +407,52 @@ class LabelEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
-        return f"LabelEncoder(label_column={self.label_column}, stats={stats})"
+        return f"{self.__class__.__name__}(label_column={self.label_column!r})"
 
 
 class Categorizer(Preprocessor):
-    """Transform Dataset columns to Categorical data type.
+    """Convert columns to ``pd.CategoricalDtype``.
 
-    Note that in case of automatic inferrence, you will most
-    likely want to run this preprocessor on the entire dataset
-    before splitting it (e.g. into train and test sets), so
-    that all of the categories are inferred. There is no risk
-    of data leakage when using this preprocessor.
+    Use this preprocessor with frameworks that have built-in support for
+    ``pd.CategoricalDtype`` like LightGBM.
+
+    .. warning::
+
+        If you don't specify ``dtypes``, fit this preprocessor before splitting
+        your dataset into train and test splits. This ensures categories are
+        consistent across splits.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import Categorizer
+        >>>
+        >>> df = pd.DataFrame(
+        ... {
+        ...     "sex": ["male", "female", "male", "female"],
+        ...     "level": ["L4", "L5", "L3", "L4"],
+        ... })
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> categorizer = Categorizer(columns=["sex", "level"])
+        >>> categorizer.fit_transform(ds).schema().types  # doctest: +SKIP
+        [CategoricalDtype(categories=['female', 'male'], ordered=False), CategoricalDtype(categories=['L3', 'L4', 'L5'], ordered=False)]
+
+        If you know the categories in advance, you can specify the categories with the
+        ``dtypes`` parameter.
+
+        >>> categorizer = Categorizer(
+        ...     columns=["sex", "level"],
+        ...     dtypes={"level": pd.CategoricalDtype(["L3", "L4", "L5", "L6"], ordered=True)},
+        ... )
+        >>> categorizer.fit_transform(ds).schema().types  # doctest: +SKIP
+        [CategoricalDtype(categories=['female', 'male'], ordered=False), CategoricalDtype(categories=['L3', 'L4', 'L5', 'L6'], ordered=True)]
 
     Args:
-        columns: The columns to change to `pd.CategoricalDtype`.
-        dtypes: An optional dictionary that maps columns to `pd.CategoricalDtype`
-            objects. If you don't include a column in `dtypes`, then the categories
-            will be inferred.
-    """
+        columns: The columns to convert to ``pd.CategoricalDtype``.
+        dtypes: An optional dictionary that maps columns to ``pd.CategoricalDtype``
+            objects. If you don't include a column in ``dtypes``, the categories
+            are inferred.
+    """  # noqa: E501
 
     def __init__(
         self,
@@ -360,9 +488,9 @@ class Categorizer(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
         return (
-            f"<Categorizer columns={self.columns} dtypes={self.dtypes} stats={stats}>"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"dtypes={self.dtypes!r})"
         )
 
 
@@ -371,15 +499,17 @@ def _get_unique_value_indices(
     columns: List[str],
     drop_na_values: bool = False,
     key_format: str = "unique_values({0})",
-    limit: Optional[Dict[str, int]] = None,
+    max_categories: Optional[Dict[str, int]] = None,
     encode_lists: bool = True,
 ) -> Dict[str, Dict[str, int]]:
     """If drop_na_values is True, will silently drop NA values."""
-    limit = limit or {}
-    for column in limit:
+    if max_categories is None:
+        max_categories = {}
+    for column in max_categories:
         if column not in columns:
             raise ValueError(
-                f"You set limit for {column}, which is not present in {columns}."
+                f"You set `max_categories` for {column}, which is not present in "
+                f"{columns}."
             )
 
     def get_pd_value_counts_per_column(col: pd.Series):
@@ -426,11 +556,13 @@ def _get_unique_value_indices(
 
     unique_values_with_indices = OrderedDict()
     for column in columns:
-        if column in limit:
+        if column in max_categories:
             # Output sorted by freq.
             unique_values_with_indices[key_format.format(column)] = {
                 k[0]: j
-                for j, k in enumerate(final_counters[column].most_common(limit[column]))
+                for j, k in enumerate(
+                    final_counters[column].most_common(max_categories[column])
+                )
             }
         else:
             # Output sorted by column name.

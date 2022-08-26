@@ -7,10 +7,14 @@ import time
 
 import ray
 from ray import serve
-from ray.serve.constants import SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME, SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    SERVE_CONTROLLER_NAME,
+    SERVE_PROXY_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve.tests.test_failure import request_with_retries
 from ray._private.test_utils import SignalActor
-from ray.serve.utils import get_random_letters
+from ray.serve._private.utils import get_random_letters
 
 
 def test_recover_start_from_replica_actor_names(serve_instance):

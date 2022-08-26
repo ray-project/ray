@@ -5,6 +5,7 @@
 import pandas as pd
 import ray
 from ray.data.preprocessors import MinMaxScaler
+from ray.data.preprocessors.scaler import StandardScaler
 
 # Generate two simple datasets.
 dataset = ray.data.range_table(8)
@@ -143,17 +144,17 @@ print(dataset_transformed.take())
 from typing import Dict
 import ray
 from pandas import DataFrame
-from ray.data.preprocessors import CustomStatefulPreprocessor
+from ray.data.preprocessor import Preprocessor
 from ray.data import Dataset
 from ray.data.aggregate import Max
 
 
-def get_max(ds: Dataset):
-    return ds.aggregate(Max("value"))
+class CustomPreprocessor(Preprocessor):
+    def _fit(self, dataset: Dataset) -> Preprocessor:
+        self.stats_ = dataset.aggregate(Max("value"))
 
-
-def scale_by_max(df: DataFrame, stats: Dict):
-    return df * stats["max(value)"]
+    def _transform_pandas(self, df: DataFrame) -> DataFrame:
+        return df * self.stats_["max(value)"]
 
 
 # Generate a simple dataset.
@@ -162,8 +163,38 @@ print(dataset.take())
 # [{'value': 0}, {'value': 1}, {'value': 2}, {'value': 3}]
 
 # Create a stateful preprocessor that finds the max value and scales each value by it.
-preprocessor = CustomStatefulPreprocessor(get_max, scale_by_max)
+preprocessor = CustomPreprocessor()
 dataset_transformed = preprocessor.fit_transform(dataset)
 print(dataset_transformed.take())
 # [{'value': 0}, {'value': 3}, {'value': 6}, {'value': 9}]
 # __custom_stateful_end__
+
+
+# __simple_imputer_start__
+from ray.data.preprocessors import SimpleImputer
+
+# Generate a simple dataset.
+dataset = ray.data.from_items([{"value": 1.0}, {"value": None}, {"value": 3.0}])
+print(dataset.take())
+# [{'value': 1.0}, {'value': None}, {'value': 3.0}]
+
+imputer = SimpleImputer(columns=["value"], strategy="mean")
+dataset_transformed = imputer.fit_transform(dataset)
+print(dataset_transformed.take())
+# [{'value': 1.0}, {'value': 2.0}, {'value': 3.0}]
+# __simple_imputer_end__
+
+
+# __concatenate_start__
+from ray.data.preprocessors import Chain, Concatenator, StandardScaler
+
+# Generate a simple dataset.
+dataset = ray.data.from_items([{"X": 1.0, "Y": 2.0}, {"X": 4.0, "Y": 0.0}])
+print(dataset.take())
+# [{'X': 1.0, 'Y': 2.0}, {'X': 4.0, 'Y': 0.0}]
+
+preprocessor = Chain(StandardScaler(columns=["X", "Y"]), Concatenator())
+dataset_transformed = preprocessor.fit_transform(dataset)
+print(dataset_transformed.take())
+# [{'concat_out': array([-1.,  1.])}, {'concat_out': array([ 1., -1.])}]
+# __concatenate_end__

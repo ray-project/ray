@@ -4,51 +4,45 @@ import logging
 from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 
 from fastapi import APIRouter, FastAPI
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
-import ray
 from ray import cloudpickle
 from ray.dag import DAGNode
-from ray.util.annotations import PublicAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray._private.usage import usage_lib
-from ray._private.utils import deprecated
+from ray.util.annotations import Deprecated, PublicAPI
 
 from ray.serve.application import Application
-from ray.serve.client import ServeControllerClient
+from ray.serve._private.client import ServeControllerClient
 from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
-from ray.serve.constants import (
-    CONTROLLER_MAX_CONCURRENCY,
+from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
-    HTTP_PROXY_TIMEOUT,
-    SERVE_CONTROLLER_NAME,
-    SERVE_NAMESPACE,
+    MIGRATION_MESSAGE,
 )
 from ray.serve.context import (
     ReplicaContext,
     get_global_client,
     get_internal_replica_context,
-    set_global_client,
+    _set_global_client,
 )
-from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
 from ray.serve.deployment_graph import ClassNode, FunctionNode
-from ray.serve.deployment_graph_build import build as pipeline_build
-from ray.serve.deployment_graph_build import get_and_validate_ingress_deployment
+from ray.serve._private.deployment_graph_build import build as pipeline_build
+from ray.serve._private.deployment_graph_build import (
+    get_and_validate_ingress_deployment,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle
-from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
-from ray.serve.logging_utils import LoggingContext
-from ray.serve.utils import (
+from ray.serve._private.http_util import ASGIHTTPSender, make_fastapi_class_based_view
+from ray.serve._private.logging_utils import LoggingContext
+from ray.serve._private.utils import (
     DEFAULT,
     ensure_serialization_context,
-    format_actor_name,
-    get_random_letters,
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
+    guarded_deprecation_warning,
 )
 
 from ray.serve._private import api as _private_api
@@ -56,7 +50,8 @@ from ray.serve._private import api as _private_api
 logger = logging.getLogger(__file__)
 
 
-@PublicAPI(stability="beta")
+@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
+@Deprecated(message=MIGRATION_MESSAGE)
 def start(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
@@ -79,14 +74,14 @@ def start(
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:
 
-            - host(str, None): Host for HTTP servers to listen on. Defaults to
+            - host: Host for HTTP servers to listen on. Defaults to
               "127.0.0.1". To expose Serve publicly, you probably want to set
               this to "0.0.0.0".
-            - port(int): Port for HTTP server. Defaults to 8000.
-            - root_path(str): Root path to mount the serve application
+            - port: Port for HTTP server. Defaults to 8000.
+            - root_path: Root path to mount the serve application
               (for example, "/serve"). All deployment routes will be prefixed
               with this path. Defaults to "".
-            - middlewares(list): A list of Starlette middlewares that will be
+            - middlewares: A list of Starlette middlewares that will be
               applied to the HTTP servers in the cluster. Defaults to [].
             - location(str, serve.config.DeploymentMode): The deployment
               location of HTTP servers:
@@ -96,94 +91,20 @@ def start(
                   on. This is the default.
                 - "EveryNode": start one HTTP server per node.
                 - "NoServer" or None: disable HTTP server.
-            - num_cpus (int): The number of CPU cores to reserve for each
+            - num_cpus: The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """
-    usage_lib.record_library_usage("serve")
+    client = _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
 
-    http_deprecated_args = ["http_host", "http_port", "http_middlewares"]
-    for key in http_deprecated_args:
-        if key in kwargs:
-            raise ValueError(
-                f"{key} is deprecated, please use serve.start(http_options="
-                f'{{"{key}": {kwargs[key]}}}) instead.'
-            )
-    # Initialize ray if needed.
-    ray._private.worker.global_worker.filter_logs_by_job = False
-    if not ray.is_initialized():
-        ray.init(namespace=SERVE_NAMESPACE)
+    # Record after Ray has been started.
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
 
-    try:
-        client = get_global_client(_health_check_controller=True)
-        logger.info(
-            f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
-        )
-
-        _check_http_options(client, http_options)
-        return client
-    except RayServeException:
-        pass
-
-    if detached:
-        controller_name = SERVE_CONTROLLER_NAME
-    else:
-        controller_name = format_actor_name(get_random_letters(), SERVE_CONTROLLER_NAME)
-
-    if isinstance(http_options, dict):
-        http_options = HTTPOptions.parse_obj(http_options)
-    if http_options is None:
-        http_options = HTTPOptions()
-
-    # Used for scheduling things to the head node explicitly.
-    # Assumes that `serve.start` runs on the head node.
-    head_node_id = ray.get_runtime_context().node_id.hex()
-    controller = ServeController.options(
-        num_cpus=1 if dedicated_cpu else 0,
-        name=controller_name,
-        lifetime="detached" if detached else None,
-        max_restarts=-1,
-        max_task_retries=-1,
-        # Schedule the controller on the head node with a soft constraint. This
-        # prefers it to run on the head node in most cases, but allows it to be
-        # restarted on other nodes in an HA cluster.
-        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=True),
-        namespace=SERVE_NAMESPACE,
-        max_concurrency=CONTROLLER_MAX_CONCURRENCY,
-    ).remote(
-        controller_name,
-        http_config=http_options,
-        head_node_id=head_node_id,
-        detached=detached,
-    )
-
-    proxy_handles = ray.get(controller.get_http_proxies.remote())
-    if len(proxy_handles) > 0:
-        try:
-            ray.get(
-                [handle.ready.remote() for handle in proxy_handles.values()],
-                timeout=HTTP_PROXY_TIMEOUT,
-            )
-        except ray.exceptions.GetTimeoutError:
-            raise TimeoutError(
-                f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
-            )
-
-    client = ServeControllerClient(
-        controller,
-        controller_name,
-        detached=detached,
-    )
-    set_global_client(client)
-    logger.info(
-        f"Started{' detached ' if detached else ' '}Serve instance in "
-        f'namespace "{SERVE_NAMESPACE}".'
-    )
     return client
 
 
-@PublicAPI
+@PublicAPI(stability="stable")
 def shutdown() -> None:
     """Completely shut down the connected Serve instance.
 
@@ -201,10 +122,10 @@ def shutdown() -> None:
         return
 
     client.shutdown()
-    set_global_client(None)
+    _set_global_client(None)
 
 
-@PublicAPI
+@PublicAPI(stability="beta")
 def get_replica_context() -> ReplicaContext:
     """If called from a deployment, returns the deployment and replica tag.
 
@@ -350,7 +271,7 @@ def deployment(
     pass
 
 
-@PublicAPI
+@PublicAPI(stability="beta")
 def deployment(
     _func_or_class: Optional[Callable] = None,
     name: Optional[str] = None,
@@ -373,7 +294,7 @@ def deployment(
     Args:
         name (Optional[str]): Globally-unique name identifying this deployment.
             If not provided, the name of the class or function will be used.
-        version (Optional[str]): Version of the deployment. This is used to
+        version [DEPRECATED] (Optional[str]): Version of the deployment. This is used to
             indicate a code change for the deployment; when it is re-deployed
             with a version change, a rolling update of the replicas will be
             performed. If not provided, every deployment will be treated as a
@@ -400,22 +321,22 @@ def deployment(
         user_config (Optional[Any]): Config to pass to the
             reconfigure method of the deployment. This can be updated
             dynamically without changing the version of the deployment and
-            restarting its replicas. The user_config needs to be hashable to
-            keep track of updates, so it must only contain hashable types, or
-            hashable types nested in lists and dictionaries.
+            restarting its replicas. The user_config must be json-serializable
+            to keep track of updates, so it must only contain json-serializable
+            types, or json-serializable types nested in lists and dictionaries.
         max_concurrent_queries (Optional[int]): The maximum number of queries
             that will be sent to a replica of this deployment without receiving
             a response. Defaults to 100.
 
     Example:
     >>> from ray import serve
-    >>> @serve.deployment(name="deployment1", version="v1") # doctest: +SKIP
+    >>> @serve.deployment(name="deployment1") # doctest: +SKIP
     ... class MyDeployment: # doctest: +SKIP
     ...     pass # doctest: +SKIP
 
-    >>> MyDeployment.deploy(*init_args) # doctest: +SKIP
+    >>> MyDeployment.bind(*init_args) # doctest: +SKIP
     >>> MyDeployment.options( # doctest: +SKIP
-    ...     num_replicas=2, init_args=init_args).deploy()
+    ...     num_replicas=2, init_args=init_args).bind()
 
     Returns:
         Deployment
@@ -430,6 +351,12 @@ def deployment(
         raise ValueError(
             "Manually setting num_replicas is not allowed when "
             "autoscaling_config is provided."
+        )
+
+    if version is not None:
+        logger.warning(
+            "DeprecationWarning: `version` in `@serve.deployment` has been deprecated. "
+            "Explicitly specifying version will raise an error in the future!"
         )
 
     config = DeploymentConfig.from_default(
@@ -462,8 +389,8 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
-@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
-@PublicAPI
+@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
+@Deprecated(message=MIGRATION_MESSAGE)
 def get_deployment(name: str) -> Deployment:
     """Dynamically fetch a handle to a Deployment object.
 
@@ -476,31 +403,31 @@ def get_deployment(name: str) -> Deployment:
     >>> MyDeployment.options(num_replicas=10).deploy()  # doctest: +SKIP
 
     Args:
-        name(str): name of the deployment. This must have already been
+        name: name of the deployment. This must have already been
         deployed.
 
     Returns:
         Deployment
     """
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
     return _private_api.get_deployment(name)
 
 
-@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
-@PublicAPI
+@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
+@Deprecated(message=MIGRATION_MESSAGE)
 def list_deployments() -> Dict[str, Deployment]:
     """Returns a dictionary of all active deployments.
 
     Dictionary maps deployment name to Deployment objects.
     """
-
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
     return _private_api.list_deployments()
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def run(
     target: Union[ClassNode, FunctionNode],
     _blocking: bool = True,
-    *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
 ) -> Optional[RayServeHandle]:
@@ -515,15 +442,22 @@ def run(
             A user-built Serve Application or a ClassNode that acts as the
             root node of DAG. By default ClassNode is the Driver
             deployment unless user provides a customized one.
-        host: The host passed into serve.start().
-        port: The port passed into serve.start().
+        host: Host for HTTP servers to listen on. Defaults to
+            "127.0.0.1". To expose Serve publicly, you probably want to set
+            this to "0.0.0.0".
+        port: Port for HTTP server. Defaults to 8000.
 
     Returns:
         RayServeHandle: A regular ray serve handle that can be called by user
             to execute the serve DAG.
     """
+    client = _private_api.serve_start(
+        detached=True,
+        http_options={"host": host, "port": port, "location": "EveryNode"},
+    )
 
-    client = start(detached=True, http_options={"host": host, "port": port})
+    # Record after Ray has been started.
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v2")
 
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
@@ -579,6 +513,7 @@ def run(
         return ingress._get_handle()
 
 
+@PublicAPI(stability="alpha")
 def build(target: Union[ClassNode, FunctionNode]) -> Application:
     """Builds a Serve application into a static application.
 
@@ -586,15 +521,21 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     Serve application consisting of one or more deployments. This is intended
     to be used for production scenarios and deployed via the Serve REST API or
     CLI, so there are some restrictions placed on the deployments:
-        1) All of the deployments must be importable. That is, they cannot be
-           defined in __main__ or inline defined. The deployments will be
-           imported in production using the same import path they were here.
-        2) All arguments bound to the deployment must be JSON-serializable.
+    1) All of the deployments must be importable. That is, they cannot be
+    defined in __main__ or inline defined. The deployments will be
+    imported in production using the same import path they were here.
+    2) All arguments bound to the deployment must be JSON-serializable.
 
     The returned Application object can be exported to a dictionary or YAML
     config.
-    """
 
+    Args:
+        target (Union[ClassNode, FunctionNode]): A ClassNode or FunctionNode
+            that acts as the top level node of the DAG.
+
+    Returns:
+        The static built Serve application
+    """
     if in_interactive_shell():
         raise RuntimeError(
             "build cannot be called from an interactive shell like "
@@ -605,27 +546,3 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
     return Application(pipeline_build(target))
-
-
-def _check_http_options(
-    client: ServeControllerClient, http_options: Union[dict, HTTPOptions]
-) -> None:
-    if http_options:
-        client_http_options = client.http_config
-        new_http_options = (
-            http_options
-            if isinstance(http_options, HTTPOptions)
-            else HTTPOptions.parse_obj(http_options)
-        )
-        different_fields = []
-        all_http_option_fields = new_http_options.__dict__
-        for field in all_http_option_fields:
-            if getattr(new_http_options, field) != getattr(client_http_options, field):
-                different_fields.append(field)
-
-        if len(different_fields):
-            logger.warning(
-                "The new client HTTP config differs from the existing one "
-                f"in the following fields: {different_fields}. "
-                "The new HTTP config is ignored."
-            )

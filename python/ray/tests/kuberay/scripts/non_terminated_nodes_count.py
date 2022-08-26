@@ -5,12 +5,12 @@ from ray.autoscaler._private.kuberay.autoscaling_config import _generate_provide
 
 @ray.remote
 def count_non_terminated_nodes() -> int:
-    """Get the count of non terminated nodes for the Ray cluster raycluster-complete
+    """Get the count of non terminated nodes for the Ray cluster raycluster-autoscaler
     in namespace default.
     """
     provider_config = _generate_provider_config(ray_cluster_namespace="default")
     kuberay_node_provider = _get_node_provider(
-        provider_config=provider_config, cluster_name="raycluster-complete"
+        provider_config=provider_config, cluster_name="raycluster-autoscaler"
     )
     nodes = kuberay_node_provider.non_terminated_nodes({})
     return len(nodes)
