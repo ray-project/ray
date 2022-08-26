@@ -28,25 +28,15 @@ Code example
 
     actor = Actor.remote()
     result_refs = []
-    for i in range(1_000_000):
+    for i in range(1000):
         large_array = np.zeros(1_000_000)
         result_refs.append(actor.heavy_compute.remote(large_array))
     results = ray.get(result_refs)
 
 **With backpressure:**
 
-.. code-block:: python
+.. literalinclude:: ../../doc_code/limit_tasks.py
+    :language: python
+    :start-after: __executing_task_start__
+    :end-before: __executing_task_end__
 
-    result_refs = []
-    for i in range(1_000_000):
-        large_array = np.zeros(1_000_000)
-
-        # Allow 1000 in flight calls
-        # For example, if i = 5000, this call blocks until that
-        # 4000 of the object_refs in result_refs are ready
-        # and available.
-          if len(result_refs) > 1000:
-            num_ready = i-1000
-            ray.wait(result_refs, num_returns=num_ready)
-
-        result_refs.append(actor.heavy_compute.remote(large_array))
