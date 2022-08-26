@@ -298,6 +298,7 @@ class RayActorError(RayError):
                     "The actor never ran - it was cancelled before it started running."
                 )
             self.error_msg = "\n".join(error_msg_lines)
+            self.actor_id = ActorID(cause.actor_id).hex()
 
     @property
     def actor_init_failed(self) -> bool:
