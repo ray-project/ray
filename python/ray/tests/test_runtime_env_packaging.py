@@ -314,14 +314,15 @@ class TestUnzipPackage:
         else:
             assert Path(archive_path).is_file()
 
-    def test_unzip_package(
+    @pytest.mark.asyncio
+    async def test_unzip_package(
         self, random_zip_file_with_top_level_dir, remove_top_level_directory, unlink_zip
     ):
         archive_path = random_zip_file_with_top_level_dir
         tmp_path = archive_path[: archive_path.rfind(os.path.sep)]
         tmp_subdir = os.path.join(tmp_path, TOP_LEVEL_DIR_NAME + "_tmp")
 
-        unzip_package(
+        await unzip_package(
             package_path=archive_path,
             target_dir=tmp_subdir,
             remove_top_level_directory=remove_top_level_directory,
@@ -332,7 +333,8 @@ class TestUnzipPackage:
             remove_top_level_directory, unlink_zip, tmp_subdir, tmp_path, archive_path
         )
 
-    def test_unzip_with_matching_subdirectory_names(
+    @pytest.mark.asyncio
+    async def test_unzip_with_matching_subdirectory_names(
         self,
         remove_top_level_directory,
         unlink_zip,
@@ -357,7 +359,7 @@ class TestUnzipPackage:
         tmp_path = archive_path[: archive_path.rfind(os.path.sep)]
         tmp_subdir = os.path.join(tmp_path, TOP_LEVEL_DIR_NAME + "_tmp")
 
-        unzip_package(
+        await unzip_package(
             package_path=archive_path,
             target_dir=tmp_subdir,
             remove_top_level_directory=remove_top_level_directory,

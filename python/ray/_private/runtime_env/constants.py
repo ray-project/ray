@@ -1,3 +1,5 @@
+import os
+
 # Env var set by job manager to pass runtime env and metadata to subprocess
 RAY_JOB_CONFIG_JSON_ENV_VAR = "RAY_JOB_CONFIG_JSON_ENV_VAR"
 
@@ -26,3 +28,6 @@ RAY_RUNTIME_ENV_PLUGIN_SCHEMAS_ENV_VAR = "RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"
 
 # The file suffix of runtime env plugin schemas.
 RAY_RUNTIME_ENV_PLUGIN_SCHEMA_SUFFIX = ".json"
+
+# The absolute path of download script
+DOWNLOAD_SCRIPT_FILENAME = os.path.join(os.path.dirname(__file__), "_download.py")

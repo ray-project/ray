@@ -12,6 +12,7 @@ from zipfile import ZipFile
 
 from filelock import FileLock
 
+import ray._private.runtime_env.constants as runtime_env_constans
 from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
@@ -652,40 +653,10 @@ async def download_and_unpack_package(
             code = code or b""
             pkg_file.write_bytes(code)
         elif protocol in Protocol.remote_protocols():
-            if protocol == Protocol.S3:
-                try:
-                    import boto3
-                    from smart_open import open as open_file
-                except ImportError:
-                    raise ImportError(
-                        "You must `pip install smart_open` and "
-                        "`pip install boto3` to fetch URIs in s3 "
-                        "bucket."
-                    )
-            elif protocol == Protocol.GS:
-                try:
-                    from google.cloud import storage  # noqa: F401
-                    from smart_open import open as open_file
-                except ImportError:
-                    raise ImportError(
-                        "You must `pip install smart_open` and "
-                        "`pip install google-cloud-storage` "
-                        "to fetch URIs in Google Cloud Storage bucket."
-                    )
-            elif protocol == Protocol.FILE:
+            if protocol == Protocol.FILE:
                 pkg_uri = pkg_uri[len("file://") :]
-            else:
-                try:
-                    from smart_open import open as open_file
-                except ImportError:
-                    raise ImportError(
-                        "You must `pip install smart_open` "
-                        f"to fetch {protocol.value.upper()} URIs."
-                    )
 
-            download_script = os.path.join(
-                os.path.dirname(__file__), "_download.py"
-            )
+            download_script = runtime_env_constans.DOWNLOAD_SCRIPT_FILENAME
 
             download_cmd = [sys.executable, download_script]
             download_cmd += ["--proto", protocol]
@@ -783,8 +754,10 @@ async def unzip_package(
 
     logger.debug(f"Unpacking {package_path} to {target_dir}")
 
-    code = f"import shutil; " \
-            f"shutil.unpack_archive({str(package_path)}, {str(target_dir)})"
+    code = (
+        f"import shutil; "
+        f"shutil.unpack_archive({repr(package_path)}, {repr(target_dir)})"
+    )
     unzip_cmd = [sys.executable, "-c", code]
     await check_output_cmd(unzip_cmd, logger=logger)
 
