@@ -50,6 +50,7 @@ int main(int argc, char **argv) {
   int actor_task_result2 = *(ray::Get(actor_object2));
   std::cout << "actor_task_result2 = " << actor_task_result2 << std::endl;
 
+  std::cout << "try to get TEST_KEY: " << std::getenv("TEST_KEY") << std::endl;
   /// shutdown
   ray::Shutdown();
   return 0;

@@ -1,12 +1,18 @@
-import pytest
 import os
+import shutil
 import sys
 import tempfile
-import shutil
 
+import pytest
+
+from ray._private.test_utils import (
+    format_web_url,
+    wait_for_condition,
+    wait_until_server_available,
+)
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.tests.conftest import _ray_start
-from ray._private.test_utils import wait_for_condition, wait_until_server_available, format_web_url
+
 
 @pytest.fixture(scope="module")
 def headers():
@@ -20,12 +26,14 @@ def job_sdk_client(headers):
         assert wait_until_server_available(address)
         yield JobSubmissionClient(format_web_url(address), headers=headers)
 
+
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
     if status == JobStatus.FAILED:
         logs = client.get_job_logs(job_id)
         raise RuntimeError(f"Job failed\nlogs:\n{logs}")
     return status == JobStatus.SUCCEEDED
+
 
 def test_submit_simple_cpp_job(job_sdk_client):
     client = job_sdk_client
@@ -37,22 +45,38 @@ def test_submit_simple_cpp_job(job_sdk_client):
     with tempfile.TemporaryDirectory() as tmp_dir:
         working_dir = os.path.join(tmp_dir, "cpp_worker")
         os.makedirs(working_dir)
-        shutil.copy2(simple_driver_so_path, os.path.join(working_dir, simple_driver_so_filename))
-        shutil.copy2(simple_driver_main_path, os.path.join(working_dir, simple_driver_main_filename))
-        shutil.copymode(simple_driver_main_path, os.path.join(working_dir, simple_driver_main_filename))
-        entrypoint=f"chmod +x {simple_driver_main_filename} && ./{simple_driver_main_filename}"
-        runtime_env = dict(working_dir=working_dir)
+        shutil.copy2(
+            simple_driver_so_path, os.path.join(working_dir, simple_driver_so_filename)
+        )
+        shutil.copy2(
+            simple_driver_main_path,
+            os.path.join(working_dir, simple_driver_main_filename),
+        )
+        shutil.copymode(
+            simple_driver_main_path,
+            os.path.join(working_dir, simple_driver_main_filename),
+        )
+        entrypoint = (
+            f"chmod +x {simple_driver_main_filename} && ./{simple_driver_main_filename}"
+        )
+        runtime_env = dict(
+            working_dir=working_dir,
+            env_vars={"TEST_KEY": "TEST_VALUE"},
+        )
 
         job_id = client.submit_job(
             entrypoint=entrypoint,
             runtime_env=runtime_env,
         )
 
-        wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=120)
+        wait_for_condition(
+            _check_job_succeeded, client=client, job_id=job_id, timeout=120
+        )
 
         logs = client.get_job_logs(job_id)
-        print(f"hejialing test {logs}")
-        assert False
+        print(f"================== logs ================== \n {logs}")
+        assert "try to get TEST_KEY: TEST_VALUE" in logs
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
