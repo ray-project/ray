@@ -36,8 +36,18 @@ Ray-specific params are passed in through the trainer constructors.
 How to scale out training?
 --------------------------
 The benefit of using Ray AIR is that you can seamlessly scale up your training by
-adjusting the :class:`ScalingConfig <ray.air.config.ScalingConfig>`. Here are some
-examples for common use-cases:
+adjusting the :class:`ScalingConfig <ray.air.config.ScalingConfig>`.
+
+.. note::
+    Ray Train does not modify or otherwise alter the working
+    of the underlying XGBoost / LightGBM distributed training algorithms.
+    Ray only provides orchestration, data ingest and fault tolerance.
+    For more information on GBDT distributed training, refer to
+    `XGBoost documentation <https://xgboost.readthedocs.io>`__ and
+    `LightGBM documentation <https://lightgbm.readthedocs.io/>`__.
+
+
+Here are some examples for common use-cases:
 
 
 .. tabbed:: Multi-node CPU

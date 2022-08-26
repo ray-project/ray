@@ -24,6 +24,13 @@ class LightGBMTrainer(GBDTTrainer):
     for features with the categorical data type, consider using the
     :class:`Categorizer` preprocessor to set the dtypes in the dataset.
 
+    .. note::
+        ``LightGBMTrainer`` does not modify or otherwise alter the working
+        of the LightGBM distributed training algorithm.
+        Ray only provides orchestration, data ingest and fault tolerance.
+        For more information on LightGBM distributed training, refer to
+        `LightGBM documentation <https://lightgbm.readthedocs.io/>`__.
+
     Example:
         .. code-block:: python
 
