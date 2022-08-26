@@ -109,8 +109,8 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert predictions.count() == 3
 
 
-@pytest.mark.parametrize("save_steps", [0, 1, 2, 5, 10, 15])
-@pytest.mark.parametrize("logging_steps", [1, 2, 5, 10, 15])
+@pytest.mark.parametrize("save_steps", [0, 2, 5, 10, 15])
+@pytest.mark.parametrize("logging_steps", [2, 5, 10, 15])
 def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     if save_steps and (save_steps < logging_steps or save_steps % logging_steps != 0):
         pytest.skip()
