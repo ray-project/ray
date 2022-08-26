@@ -22,7 +22,7 @@ class ResultGrid:
      The constructor is a private API. This object can only be created as a result of
      ``Tuner.fit()``.
 
-     Usage pattern:
+     Example:
 
      .. code-block:: python
 
