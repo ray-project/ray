@@ -15,13 +15,13 @@ from ray.rllib.connectors.connector import AgentConnector
 
 @PublicAPI(stability="alpha")
 class MeanStdObservationFilterAgentConnector(SyncedFilterAgentConnector):
-    def __init__(
-        self, ctx: ConnectorContext, shape, demean=True, destd=True, clip=10.0
-    ):
-        SyncedFilterAgentConnector(ctx)
+    def __init__(self, ctx: ConnectorContext, demean=True, destd=True, clip=10.0):
+        SyncedFilterAgentConnector.__init__(self, ctx)
         # We simply use the old MeanStdFilter until non-connector env_runner is fully
         # deprecated to avoid duplicate code
-        self.filter = MeanStdFilter(shape, demean=True, destd=True, clip=10.0)
+        self.filter = MeanStdFilter(
+            ctx.observation_space.shape, demean=True, destd=True, clip=10.0
+        )
 
     def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
         d = ac_data.data
@@ -29,21 +29,27 @@ class MeanStdObservationFilterAgentConnector(SyncedFilterAgentConnector):
             type(d) == dict
         ), "Single agent data must be of type Dict[str, TensorStructType]"
         if SampleBatch.OBS in d:
-            d[SampleBatch.OBS] = self.filter(d[SampleBatch.OBS])
+            d[SampleBatch.OBS] = self.filter(
+                d[SampleBatch.OBS], update=self._is_training
+            )
         if SampleBatch.NEXT_OBS in d:
-            d[SampleBatch.NEXT_OBS] = self.filter(d[SampleBatch.NEXT_OBS])
+            d[SampleBatch.NEXT_OBS] = self.filter(
+                d[SampleBatch.NEXT_OBS], update=self._is_training
+            )
 
         return ac_data
 
     def to_state_dict(self):
         return MeanStdObservationFilterAgentConnector.__name__, {
-            "sign": self.sign,
-            "limit": self.limit,
+            "filter": self.filter,
         }
 
     @staticmethod
     def from_state_dict(ctx: ConnectorContext, params: List[Any]):
-        return MeanStdObservationFilterAgentConnector(ctx, **params)
+        connector = MeanStdObservationFilterAgentConnector(ctx)
+        connector.filter = params["filter"]
+        assert all(ctx.observation_space.shape == connector.filter.shape)
+        return connector
 
     def reset_state(self) -> None:
         """Creates copy of current state and resets accumulated state"""
@@ -90,13 +96,13 @@ class MeanStdObservationFilterAgentConnector(SyncedFilterAgentConnector):
 class ConcurrentMeanStdObservationFilterAgentConnector(
     MeanStdObservationFilterAgentConnector
 ):
-    def __init__(
-        self, ctx: ConnectorContext, shape, demean=True, destd=True, clip=10.0
-    ):
-        SyncedFilterAgentConnector(ctx)
+    def __init__(self, ctx: ConnectorContext, demean=True, destd=True, clip=10.0):
+        SyncedFilterAgentConnector.__init__(self, ctx)
         # We simply use the old MeanStdFilter until non-connector env_runner is fully
         # deprecated to avoid duplicate code
-        self.filter = ConcurrentMeanStdFilter(shape, demean=True, destd=True, clip=10.0)
+        self.filter = ConcurrentMeanStdFilter(
+            ctx.observation_space.shape, demean=True, destd=True, clip=10.0
+        )
 
 
 register_connector(

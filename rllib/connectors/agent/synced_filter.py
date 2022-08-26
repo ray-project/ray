@@ -2,8 +2,6 @@ from ray.rllib.connectors.connector import (
     AgentConnector,
     ConnectorContext,
 )
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import AgentConnectorDataType
 from ray.util.annotations import PublicAPI
 from ray.rllib.utils.filter import Filter
 

@@ -16,7 +16,6 @@ from ray.rllib.connectors.agent.mean_std_filter import (
     MeanStdObservationFilterAgentConnector,
     ConcurrentMeanStdObservationFilterAgentConnector,
 )
-from ray.rllib.connectors.agent.synced_filter import SyncedCustomFilterAgentConnector
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
@@ -108,14 +107,12 @@ def restore_connectors_for_policy(
 
 # We need this filter selection mechanism temporarily to remain compatible to old API
 @DeveloperAPI
-def get_synced_filter_connector(ctx: ConnectorContext, filter_config, shape):
+def get_synced_filter_connector(ctx: ConnectorContext, filter_config):
     if filter_config == "MeanStdFilter":
-        return MeanStdObservationFilterAgentConnector(ctx, shape, clip=None)
+        return MeanStdObservationFilterAgentConnector(ctx, clip=None)
     elif filter_config == "ConcurrentMeanStdFilter":
-        return ConcurrentMeanStdObservationFilterAgentConnector(ctx, shape, clip=None)
+        return ConcurrentMeanStdObservationFilterAgentConnector(ctx, clip=None)
     elif filter_config == "NoFilter":
         return None
-    elif callable(filter_config):
-        return SyncedCustomFilterAgentConnector(ctx, filter=filter_config(shape))
     else:
         raise Exception("Unknown observation_filter: " + str(filter_config))

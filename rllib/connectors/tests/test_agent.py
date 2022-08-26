@@ -1,6 +1,7 @@
 import gym
 import numpy as np
 import unittest
+from gym.spaces import Box
 
 from ray.rllib.algorithms.ppo.ppo import PPO, PPOConfig
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
@@ -17,6 +18,9 @@ from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
     AgentConnectorsOutput,
+)
+from ray.rllib.connectors.agent.mean_std_filter import (
+    MeanStdObservationFilterAgentConnector,
 )
 
 
@@ -452,6 +456,63 @@ class TestViewRequirementConnector(unittest.TestCase):
             total_rewards += rewards
             t += 1
         print(total_rewards)
+
+    def test_mean_std_observation_filter_connector(self):
+        for bounds in [
+            (-1, 1),  # normalized
+            (-2, 2),  # scaled
+            (0, 2),  # shifted
+            (0, 4),  # scaled and shifted
+        ]:
+            print("Testing bounds: {}".format(bounds))
+            observation_space = Box(bounds[0], bounds[1], (3, 64, 64))
+            ctx = ConnectorContext(observation_space=observation_space)
+            filter_connector = MeanStdObservationFilterAgentConnector(ctx)
+
+            # Warm up Mean-Std filter
+            for i in range(1000):
+                obs = observation_space.sample()
+                sample_batch = {
+                    SampleBatch.NEXT_OBS: obs,
+                }
+                ac = AgentConnectorDataType(0, 0, sample_batch)
+                filter_connector.transform(ac)
+
+            # Create another connector to set state to
+            _, state = filter_connector.to_state_dict()
+            another_filter_connector = (
+                MeanStdObservationFilterAgentConnector.from_state_dict(ctx, state)
+            )
+
+            another_filter_connector.is_training(False)
+
+            # Collector transformed observations
+            transformed_observations = []
+            for i in range(1000):
+                obs = observation_space.sample()
+                sample_batch = {
+                    SampleBatch.NEXT_OBS: obs,
+                }
+                ac = AgentConnectorDataType(0, 0, sample_batch)
+                connector_output = another_filter_connector.transform(ac)
+                transformed_observations.append(
+                    connector_output.data[SampleBatch.NEXT_OBS]
+                )
+
+            # Check if transformed observations are actually mean-std filtered
+            self.assertTrue(
+                np.isclose(np.mean(transformed_observations), 0, atol=0.001)
+            )
+            self.assertTrue(np.isclose(np.var(transformed_observations), 1, atol=0.01))
+
+            # Check if filter parameters where frozen because we are not training
+            self.assertEqual(
+                filter_connector.filter.running_stats,
+                another_filter_connector.filter.running_stats,
+            )
+            self.assertEqual(
+                filter_connector.filter.buffer, another_filter_connector.filter.buffer
+            )
 
 
 if __name__ == "__main__":
