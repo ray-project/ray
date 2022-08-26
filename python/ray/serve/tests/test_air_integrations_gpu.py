@@ -23,8 +23,8 @@ def test_automatic_enable_gpu(serve_instance):
             return cls(use_gpu)
 
         def predict(self, data, **kwargs):
-            if self.use_gpu:
-                raise ValueError("GPU enabled")
+            if not self.use_gpu:
+                raise ValueError("GPU not enabled")
             return data
 
     _ = PredictorDeployment.options(
