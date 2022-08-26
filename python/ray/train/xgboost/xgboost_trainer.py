@@ -20,6 +20,13 @@ class XGBoostTrainer(GBDTTrainer):
     This Trainer runs the XGBoost training loop in a distributed manner
     using multiple Ray Actors.
 
+    .. note::
+        ``XGBoostTrainer`` does not modify or otherwise alter the working
+        of the XGBoost distributed training algorithm.
+        Ray only provides orchestration, data ingest and fault tolerance.
+        For more information on XGBoost distributed training, refer to
+        `XGBoost documentation <https://xgboost.readthedocs.io>`_.
+
     Example:
         .. code-block:: python
 
