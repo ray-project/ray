@@ -30,7 +30,7 @@ class SigOptSearch(Searcher):
         export SIGOPT_KEY= ...
 
     You will need to use the `SigOpt experiment and space specification
-    <https://app.sigopt.com/docs/overview/create>`_.
+    <https://docs.sigopt.com/ai-module-api-references/experiments>`_.
 
     This searcher manages its own concurrency.
     If this Searcher is used in a ``ConcurrencyLimiter``, the
