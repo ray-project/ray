@@ -179,7 +179,7 @@ py_test(
 
 py_test(
     name = "test_huggingface_predictor",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_huggingface_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]

@@ -81,7 +81,6 @@ def test_huggingface_checkpoint(tmpdir, ray_start_runtime_env):
     def test(model, tokenizer):
         os.chdir(tmpdir)
         # Ensure that model outputs are deterministic
-        transformers.set_seed(1234)
         model_config = AutoConfig.from_pretrained(model_checkpoint)
         model = AutoModelForCausalLM.from_config(model_config)
         model.eval()
