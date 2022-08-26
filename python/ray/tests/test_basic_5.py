@@ -198,7 +198,7 @@ ray.init()
 def sys_path():
     return sys.path
 
-assert '{str(tmp_path / "package")}' in ray.get(sys_path.remote())
+assert r'{str(tmp_path / "package")}' in ray.get(sys_path.remote())
 """
     )
     subprocess.check_call(["python", str(module1_file)])
@@ -216,7 +216,7 @@ ray.init()
 def sys_path():
     return sys.path
 
-assert '{str(tmp_path / "package")}' not in ray.get(sys_path.remote())
+assert r'{str(tmp_path / "package")}' not in ray.get(sys_path.remote())
 """
     )
     monkeypatch.chdir(str(tmp_path))
