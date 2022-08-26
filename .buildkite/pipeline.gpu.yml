@@ -22,7 +22,6 @@
 
 
 - label: ":tv: :serverless: Serve Tests"
-  parallelism: 3
   conditions:
     [
         "RAY_CI_SERVE_AFFECTED",
