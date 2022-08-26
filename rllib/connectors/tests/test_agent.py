@@ -464,7 +464,8 @@ class TestViewRequirementConnector(unittest.TestCase):
             (0, 2),  # shifted
             (0, 4),  # scaled and shifted
         ]:
-            print("Testing bounds: {}".format(bounds))
+            print("Testing uniform sampling with bounds: {}".format(bounds))
+
             observation_space = Box(bounds[0], bounds[1], (3, 64, 64))
             ctx = ConnectorContext(observation_space=observation_space)
             filter_connector = MeanStdObservationFilterAgentConnector(ctx)

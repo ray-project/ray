@@ -642,24 +642,25 @@ class RolloutWorker(ParallelIteratorWorker):
         # TODO(jungong) : clean up after non-connector env_runner is fully deprecated.
         self.filters: Dict[PolicyID, Filter] = {}
         for (policy_id, policy) in self.policy_map.items():
-            filter_shape = tree.map_structure(
-                lambda s: (
-                    None
-                    if isinstance(s, (Discrete, MultiDiscrete))  # noqa
-                    else np.array(s.shape)
-                ),
-                policy.observation_space_struct,
-            )
             if policy_config.get("enable_connectors"):
                 ctx = ConnectorContext.from_policy(policy)
                 connector = get_synced_filter_connector(
-                    ctx, self.observation_filter, filter_shape
+                    ctx,
+                    self.observation_filter,
                 )
                 policy.agent_connectors.insert_after(
                     "ObsPreprocessorConnector", connector
                 )
                 self.filters[policy_id] = connector.filter
             else:
+                filter_shape = tree.map_structure(
+                    lambda s: (
+                        None
+                        if isinstance(s, (Discrete, MultiDiscrete))  # noqa
+                        else np.array(s.shape)
+                    ),
+                    policy.observation_space_struct,
+                )
                 self.filters[policy_id] = get_filter(
                     self.observation_filter, filter_shape
                 )

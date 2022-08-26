@@ -1,16 +1,21 @@
 from typing import Any, List
+from gym.spaces import Discrete, MultiDiscrete
+
+import numpy as np
+import tree
 
 from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
+from ray.rllib.connectors.connector import AgentConnector
 from ray.rllib.connectors.connector import (
     ConnectorContext,
     register_connector,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.filter import MeanStdFilter, ConcurrentMeanStdFilter
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import AgentConnectorDataType
 from ray.util.annotations import PublicAPI
-from ray.rllib.utils.filter import Filter
-from ray.rllib.connectors.connector import AgentConnector
 
 
 @PublicAPI(stability="alpha")
@@ -19,9 +24,16 @@ class MeanStdObservationFilterAgentConnector(SyncedFilterAgentConnector):
         SyncedFilterAgentConnector.__init__(self, ctx)
         # We simply use the old MeanStdFilter until non-connector env_runner is fully
         # deprecated to avoid duplicate code
-        self.filter = MeanStdFilter(
-            ctx.observation_space.shape, demean=True, destd=True, clip=10.0
+
+        filter_shape = tree.map_structure(
+            lambda s: (
+                None
+                if isinstance(s, (Discrete, MultiDiscrete))  # noqa
+                else np.array(s.shape)
+            ),
+            get_base_struct_from_space(ctx.observation_space),
         )
+        self.filter = MeanStdFilter(filter_shape, demean=True, destd=True, clip=10.0)
 
     def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
         d = ac_data.data
@@ -100,8 +112,17 @@ class ConcurrentMeanStdObservationFilterAgentConnector(
         SyncedFilterAgentConnector.__init__(self, ctx)
         # We simply use the old MeanStdFilter until non-connector env_runner is fully
         # deprecated to avoid duplicate code
+
+        filter_shape = tree.map_structure(
+            lambda s: (
+                None
+                if isinstance(s, (Discrete, MultiDiscrete))  # noqa
+                else np.array(s.shape)
+            ),
+            get_base_struct_from_space(ctx.observation_space),
+        )
         self.filter = ConcurrentMeanStdFilter(
-            ctx.observation_space.shape, demean=True, destd=True, clip=10.0
+            filter_shape, demean=True, destd=True, clip=10.0
         )
 
 
