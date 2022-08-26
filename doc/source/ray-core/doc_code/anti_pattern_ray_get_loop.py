@@ -3,9 +3,11 @@ import ray
 
 ray.init()
 
+
 @ray.remote
 def f(i):
     return i
+
 
 # Anti-pattern: no parallelism due to calling ray.get inside of the loop.
 sequential_returns = []
