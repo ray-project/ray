@@ -19,6 +19,7 @@ from ray._private.inspect_util import (
     is_function_or_method,
     is_static_method,
 )
+from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import PythonFunctionDescriptor
 from ray.exceptions import AsyncioActorExit
@@ -302,7 +303,6 @@ class _ActorClassMetadata:
         num_gpus: The default number of GPUs required by the actor creation
             task.
         memory: The heap memory quota for this actor.
-        object_store_memory: The object store memory quota for this actor.
         resources: The default resources required by the actor creation task.
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
@@ -534,6 +534,73 @@ class ActorClass:
         The arguments are the same as those that can be passed
         to :obj:`ray.remote`.
 
+        Args:
+            num_cpus: The quantity of CPU cores to reserve
+                for this task or for the lifetime of the actor.
+            num_gpus: The quantity of GPUs to reserve
+                for this task or for the lifetime of the actor.
+            resources (Dict[str, float]): The quantity of various custom resources
+                to reserve for this task or for the lifetime of the actor.
+                This is a dictionary mapping strings (resource names) to floats.
+            accelerator_type: If specified, requires that the task or actor run
+                on a node with the specified type of accelerator.
+                See `ray.accelerators` for accelerator types.
+            memory: The heap memory request for this task/actor.
+            object_store_memory: The object store memory request for actors only.
+            max_restarts: This specifies the maximum
+                number of times that the actor should be restarted when it dies
+                unexpectedly. The minimum valid value is 0 (default),
+                which indicates that the actor doesn't need to be restarted.
+                A value of -1 indicates that an actor should be restarted
+                indefinitely.
+            max_task_retries: How many times to
+                retry an actor task if the task fails due to a system error,
+                e.g., the actor has died. If set to -1, the system will
+                retry the failed task until the task succeeds, or the actor
+                has reached its max_restarts limit. If set to `n > 0`, the
+                system will retry the failed task up to n times, after which the
+                task will throw a `RayActorError` exception upon :obj:`ray.get`.
+                Note that Python exceptions are not considered system errors
+                and will not trigger retries.
+            max_pending_calls: Set the max number of pending calls
+                allowed on the actor handle. When this value is exceeded,
+                PendingCallsLimitExceeded will be raised for further tasks.
+                Note that this limit is counted per handle. -1 means that the
+                number of pending calls is unlimited.
+            max_concurrency: The max number of concurrent calls to allow for
+                this actor. This only works with direct actor calls. The max
+                concurrency defaults to 1 for threaded execution, and 1000 for
+                asyncio execution. Note that the execution order is not
+                guaranteed when max_concurrency > 1.
+            name: The globally unique name for the actor, which can be used
+                to retrieve the actor via ray.get_actor(name) as long as the
+                actor is still alive.
+            namespace: Override the namespace to use for the actor. By default,
+                actors are created in an anonymous namespace. The actor can
+                be retrieved via ray.get_actor(name=name, namespace=namespace).
+            lifetime: Either `None`, which defaults to the actor will fate
+                share with its creator and will be deleted once its refcount
+                drops to zero, or "detached", which means the actor will live
+                as a global object independent of the creator.
+            runtime_env (Dict[str, Any]): Specifies the runtime environment for
+                this actor or task and its children. See
+                :ref:`runtime-environments` for detailed documentation. This API is
+                in beta and may change before becoming stable.
+            scheduling_strategy: Strategy about how to
+                schedule a remote function or actor. Possible values are
+                None: ray will figure out the scheduling strategy to use, it
+                will either be the PlacementGroupSchedulingStrategy using parent's
+                placement group if parent has one and has
+                placement_group_capture_child_tasks set to true,
+                or "DEFAULT";
+                "DEFAULT": default hybrid scheduling;
+                "SPREAD": best effort spread scheduling;
+                `PlacementGroupSchedulingStrategy`:
+                placement group based scheduling.
+            _metadata: Extended options for Ray libraries. For example,
+                _metadata={"workflows.io/options": <workflow options>} for
+                Ray workflows.
+
         Examples:
 
         .. code-block:: python
@@ -542,7 +609,7 @@ class ActorClass:
             class Foo:
                 def method(self):
                     return 1
-            # Class Foo will require 1 cpu instead of 2.
+            # Class Bar will require 1 cpu instead of 2.
             # It will also require no custom resources.
             Bar = Foo.options(num_cpus=1, resources=None)
         """
@@ -600,8 +667,6 @@ class ActorClass:
             num_cpus: The number of CPUs required by the actor creation task.
             num_gpus: The number of GPUs required by the actor creation task.
             memory: Restrict the heap memory usage of this actor.
-            object_store_memory: Restrict the object store memory used by
-                this actor when creating objects.
             resources: The custom resources required by the actor creation
                 task.
             max_concurrency: The max number of concurrent calls to allow for
@@ -719,6 +784,11 @@ class ActorClass:
         max_restarts = actor_options["max_restarts"]
         max_task_retries = actor_options["max_task_retries"]
         max_pending_calls = actor_options["max_pending_calls"]
+
+        if scheduling_strategy is None or not isinstance(
+            scheduling_strategy, PlacementGroupSchedulingStrategy
+        ):
+            _warn_if_using_deprecated_placement_group(actor_options, 3)
 
         worker = ray._private.worker.global_worker
         worker.check_connected()
@@ -1023,12 +1093,18 @@ class ActorHandle:
                 setattr(self, method_name, method)
 
     def __del__(self):
-        # Mark that this actor handle has gone out of scope. Once all actor
-        # handles are out of scope, the actor will exit.
-        if ray._private.worker:
-            worker = ray._private.worker.global_worker
-            if worker.connected and hasattr(worker, "core_worker"):
-                worker.core_worker.remove_actor_handle_reference(self._ray_actor_id)
+        try:
+            # Mark that this actor handle has gone out of scope. Once all actor
+            # handles are out of scope, the actor will exit.
+            if ray._private.worker:
+                worker = ray._private.worker.global_worker
+                if worker.connected and hasattr(worker, "core_worker"):
+                    worker.core_worker.remove_actor_handle_reference(self._ray_actor_id)
+        except AttributeError:
+            # Suppress the attribtue error which is caused by
+            # python destruction ordering issue.
+            # It only happen when python exits.
+            pass
 
     def _actor_method_call(
         self,
@@ -1216,8 +1292,10 @@ class ActorHandle:
 
     def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
-        state = self._serialization_helper()
-        return ActorHandle._deserialization_helper, state
+        (serialized, _) = self._serialization_helper()
+        # There is no outer object ref when the actor handle is
+        # deserialized out-of-band using pickle.
+        return ActorHandle._deserialization_helper, (serialized, None)
 
 
 def _modify_class(cls):

@@ -13,6 +13,7 @@ from ray._private.client_mode_hook import (
     client_mode_convert_function,
     client_mode_should_convert,
 )
+from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import PythonFunctionDescriptor
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -49,7 +50,6 @@ class RemoteFunction:
         _num_gpus: The default number of GPUs to use for invocations of this
             remote function.
         _memory: The heap memory request for this task.
-        _object_store_memory: The object store memory request for this task.
         _resources: The default custom resource requirements for invocations of
             this remote function.
         _num_returns: The default number of return values for invocations
@@ -59,6 +59,7 @@ class RemoteFunction:
         _max_retries: The number of times this task may be retried
             on worker failure.
         _retry_exceptions: Whether application-level errors should be retried.
+            This can be a boolean or a list/tuple of exceptions that should be retried.
         _runtime_env: The runtime environment for this task.
         _decorator: An optional decorator that should be applied to the remote
             function invocation (as opposed to the function execution) before
@@ -135,6 +136,54 @@ class RemoteFunction:
         The arguments are the same as those that can be passed to :obj:`ray.remote`.
         Overriding `max_calls` is not supported.
 
+        Args:
+            num_returns: It specifies the number of object refs returned by
+                the remote function invocation.
+            num_cpus: The quantity of CPU cores to reserve
+                for this task or for the lifetime of the actor.
+            num_gpus: The quantity of GPUs to reserve
+                for this task or for the lifetime of the actor.
+            resources (Dict[str, float]): The quantity of various custom resources
+                to reserve for this task or for the lifetime of the actor.
+                This is a dictionary mapping strings (resource names) to floats.
+            accelerator_type: If specified, requires that the task or actor run
+                on a node with the specified type of accelerator.
+                See `ray.accelerators` for accelerator types.
+            memory: The heap memory request for this task/actor.
+            object_store_memory: The object store memory request for actors only.
+            max_calls: This specifies the
+                maximum number of times that a given worker can execute
+                the given remote function before it must exit
+                (this can be used to address memory leaks in third-party
+                libraries or to reclaim resources that cannot easily be
+                released, e.g., GPU memory that was acquired by TensorFlow).
+                By default this is infinite.
+            max_retries: This specifies the maximum number of times that the remote
+                function should be rerun when the worker process executing it
+                crashes unexpectedly. The minimum valid value is 0,
+                the default is 4 (default), and a value of -1 indicates
+                infinite retries.
+            runtime_env (Dict[str, Any]): Specifies the runtime environment for
+                this actor or task and its children. See
+                :ref:`runtime-environments` for detailed documentation. This API is
+                in beta and may change before becoming stable.
+            retry_exceptions: This specifies whether application-level errors
+                should be retried up to max_retries times.
+            scheduling_strategy: Strategy about how to
+                schedule a remote function or actor. Possible values are
+                None: ray will figure out the scheduling strategy to use, it
+                will either be the PlacementGroupSchedulingStrategy using parent's
+                placement group if parent has one and has
+                placement_group_capture_child_tasks set to true,
+                or "DEFAULT";
+                "DEFAULT": default hybrid scheduling;
+                "SPREAD": best effort spread scheduling;
+                `PlacementGroupSchedulingStrategy`:
+                placement group based scheduling.
+            _metadata: Extended options for Ray libraries. For example,
+                _metadata={"workflows.io/options": <workflow options>} for
+                Ray workflows.
+
         Examples:
 
         .. code-block:: python
@@ -142,7 +191,7 @@ class RemoteFunction:
             @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
             def f():
                return 1, 2
-            # Task f will require 2 gpus instead of 1.
+            # Task g will require 2 gpus instead of 1.
             g = f.options(num_gpus=2)
         """
 
@@ -252,6 +301,16 @@ class RemoteFunction:
         num_returns = task_options["num_returns"]
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
+        if isinstance(retry_exceptions, (list, tuple)):
+            retry_exception_allowlist = tuple(retry_exceptions)
+            retry_exceptions = True
+        else:
+            retry_exception_allowlist = None
+
+        if scheduling_strategy is None or not isinstance(
+            scheduling_strategy, PlacementGroupSchedulingStrategy
+        ):
+            _warn_if_using_deprecated_placement_group(task_options, 4)
 
         resources = ray._private.utils.resources_from_ray_options(task_options)
 
@@ -322,6 +381,7 @@ class RemoteFunction:
                 resources,
                 max_retries,
                 retry_exceptions,
+                retry_exception_allowlist,
                 scheduling_strategy,
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",

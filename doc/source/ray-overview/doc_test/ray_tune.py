@@ -16,15 +16,17 @@ def training_function(config):
         session.report({"mean_loss": intermediate_score})
 
 
-analysis = tune.run(
+tuner = tune.Tuner(
     training_function,
-    config={
+    param_space={
         "alpha": tune.grid_search([0.001, 0.01, 0.1]),
         "beta": tune.choice([1, 2, 3]),
     },
 )
+results = tuner.fit()
 
-print("Best config: ", analysis.get_best_config(metric="mean_loss", mode="min"))
+best_result = results.get_best_result(metric="mean_loss", mode="min")
+print("Best result: ", best_result.metrics)
 
 # Get a dataframe for analyzing trial results.
-df = analysis.results_df
+df = results.get_dataframe()

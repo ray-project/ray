@@ -124,6 +124,13 @@ MEMORY_RESOURCE_UNIT_BYTES = 1
 # Number of units 1 resource can be subdivided into.
 MIN_RESOURCE_GRANULARITY = 0.0001
 
+# Set this environment variable to populate the dashboard URL with
+# an external hosted Ray dashboard URL (e.g. because the
+# dashboard is behind a proxy or load balancer). This only overrides
+# the dashboard URL when returning or printing to a user through a public
+# API, but not in the internal KV store.
+RAY_OVERRIDE_DASHBOARD_URL = "RAY_OVERRIDE_DASHBOARD_URL"
+
 
 def round_to_memory_units(memory_bytes, round_up):
     """Round bytes to the nearest memory unit."""
@@ -192,11 +199,6 @@ RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
 # The reporter will report its statistics this often (milliseconds).
 REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 
-# Number of attempts to ping the Redis server. See
-# `services.py::wait_for_redis_to_start()` and
-# `services.py::create_redis_client()`
-START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 60)
-
 # Temporary flag to disable log processing in the dashboard.  This is useful
 # if the dashboard is overloaded by logs and failing to process other
 # dashboard API requests (e.g. Job Submission).
@@ -264,7 +266,17 @@ WORKER_PROCESS_TYPE_RESTORE_WORKER_DELETE = (
     f"ray::DELETE_{WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME}"
 )
 
-LOG_MONITOR_MAX_OPEN_FILES = 200
+# The number of files the log monitor will open. If more files exist, they will
+# be ignored.
+LOG_MONITOR_MAX_OPEN_FILES = int(
+    os.environ.get("RAY_LOG_MONITOR_MAX_OPEN_FILES", "200")
+)
+
+# The maximum batch of lines to be read in a single iteration. We _always_ try
+# to read this number of lines even if there aren't any new lines.
+LOG_MONITOR_NUM_LINES_TO_READ = int(
+    os.environ.get("RAY_LOG_MONITOR_NUM_LINES_TO_READ", "1000")
+)
 
 # Autoscaler events are denoted by the ":event_summary:" magic token.
 LOG_PREFIX_EVENT_SUMMARY = ":event_summary:"
@@ -372,3 +384,8 @@ NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICE
 # Default max_retries option in @ray.remote for non-actor
 # tasks.
 DEFAULT_TASK_MAX_RETRIES = 3
+
+# Prefix for namespaces which are used internally by ray.
+# Jobs within these namespaces should be hidden from users
+# and should not be considered user activity.
+RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"

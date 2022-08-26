@@ -101,6 +101,7 @@ class Episode:
         self.policy_mapping_fn: Callable[
             [AgentID, "Episode", "RolloutWorker"], PolicyID
         ] = policy_mapping_fn
+        self.is_faulty = False
         self._next_agent_index: int = 0
         self._agent_to_index: Dict[AgentID, int] = {}
         self._agent_to_policy: Dict[AgentID, PolicyID] = {}

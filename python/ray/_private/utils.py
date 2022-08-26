@@ -7,6 +7,7 @@ import inspect
 import logging
 import multiprocessing
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -78,6 +79,48 @@ def get_user_temp_dir():
 
 def get_ray_temp_dir():
     return os.path.join(get_user_temp_dir(), "ray")
+
+
+def get_ray_address_file(temp_dir: Optional[str]):
+    if temp_dir is None:
+        temp_dir = get_ray_temp_dir()
+    return os.path.join(temp_dir, "ray_current_cluster")
+
+
+def write_ray_address(ray_address: str, temp_dir: Optional[str] = None):
+    address_file = get_ray_address_file(temp_dir)
+    if os.path.exists(address_file):
+        with open(address_file, "r") as f:
+            prev_address = f.read()
+        if prev_address == ray_address:
+            return
+
+        logger.info(
+            f"Overwriting previous Ray address ({prev_address}). "
+            "Running ray.init() on this node will now connect to the new "
+            f"instance at {ray_address}. To override this behavior, pass "
+            f"address={prev_address} to ray.init()."
+        )
+
+    with open(address_file, "w+") as f:
+        f.write(ray_address)
+
+
+def reset_ray_address(temp_dir: Optional[str] = None):
+    address_file = get_ray_address_file(temp_dir)
+    if os.path.exists(address_file):
+        try:
+            os.remove(address_file)
+        except OSError:
+            pass
+
+
+def read_ray_address(temp_dir: Optional[str] = None) -> str:
+    address_file = get_ray_address_file(temp_dir)
+    if not os.path.exists(address_file):
+        return None
+    with open(address_file, "r") as f:
+        return f.read().strip()
 
 
 def _random_string():
@@ -1005,6 +1048,18 @@ def get_call_location(back: int = 1):
         return "UNKNOWN"
 
 
+def get_ray_doc_version():
+    """Get the docs.ray.io version corresponding to the ray.__version__."""
+    # The ray.__version__ can be official Ray release (such as 1.12.0), or
+    # dev (3.0.0dev0) or release candidate (2.0.0rc0). For the later we map
+    # to the master doc version at docs.ray.io.
+    if re.match(r"^\d+\.\d+\.\d+$", ray.__version__) is None:
+        return "master"
+    # For the former (official Ray release), we have corresponding doc version
+    # released as well.
+    return f"releases-{ray.__version__}"
+
+
 # Used to only print a deprecation warning once for a given function if we
 # don't wish to spam the caller.
 _PRINTED_WARNING = set()
@@ -1257,7 +1312,7 @@ def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
             logger.debug(f"Fetched {prefix}=None from KV. Retrying.")
             time.sleep(2)
     if result is None:
-        raise RuntimeError(
+        raise ConnectionError(
             f"Could not list '{prefix}' from GCS. Did GCS start successfully?"
         )
     return result
@@ -1291,7 +1346,7 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
             logger.debug(f"Fetched {key}=None from KV. Retrying.")
             time.sleep(2)
     if not result:
-        raise RuntimeError(
+        raise ConnectionError(
             f"Could not read '{key.decode()}' from GCS. Did GCS start successfully?"
         )
     return result
@@ -1396,7 +1451,10 @@ def get_runtime_env_info(
 
     proto_runtime_env_info = ProtoRuntimeEnvInfo()
 
-    proto_runtime_env_info.uris[:] = runtime_env.get_uris()
+    if runtime_env.working_dir_uri():
+        proto_runtime_env_info.uris.working_dir_uri = runtime_env.working_dir_uri()
+    if len(runtime_env.py_modules_uris()) > 0:
+        proto_runtime_env_info.uris.py_modules_uris[:] = runtime_env.py_modules_uris()
 
     # TODO(Catch-Bull): overload `__setitem__` for `RuntimeEnv`, change the
     # runtime_env of all internal code from dict to RuntimeEnv.

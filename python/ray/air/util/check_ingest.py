@@ -8,7 +8,7 @@ import numpy as np
 
 import ray
 from ray.air import session
-from ray.air.config import DatasetConfig
+from ray.air.config import DatasetConfig, ScalingConfig
 from ray.data import DatasetPipeline, Dataset
 from ray.data.preprocessors import BatchMapper, Chain
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -28,14 +28,14 @@ class DummyTrainer(DataParallelTrainer):
     def __init__(
         self,
         *args,
-        scaling_config: dict = None,
+        scaling_config: Optional[ScalingConfig] = None,
         num_epochs: int = 1,
         prefetch_blocks: int = 1,
-        batch_size: Optional[int] = None,
+        batch_size: Optional[int] = 4096,
         **kwargs
     ):
         if not scaling_config:
-            scaling_config = {"num_workers": 1}
+            scaling_config = ScalingConfig(num_workers=1)
         super().__init__(
             train_loop_per_worker=DummyTrainer.make_train_loop(
                 num_epochs, prefetch_blocks, batch_size
@@ -170,7 +170,7 @@ if __name__ == "__main__":
     # Setup the dummy trainer that prints ingest stats.
     # Run and print ingest stats.
     trainer = DummyTrainer(
-        scaling_config={"num_workers": 1, "use_gpu": False},
+        scaling_config=ScalingConfig(num_workers=1, use_gpu=False),
         datasets={"train": dataset},
         preprocessor=preprocessor,
         num_epochs=args.num_epochs,

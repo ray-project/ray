@@ -58,7 +58,7 @@ class Metric:
             >>> counter = Counter("name").set_default_tags({"a": "b"})
 
         Args:
-            default_tags(dict): Default tags that are
+            default_tags: Default tags that are
                 used for every record method.
 
         Returns:
@@ -81,7 +81,7 @@ class Metric:
         Tags passed in will take precedence over the metric's default tags.
 
         Args:
-            value(float): The value to be recorded as a metric point.
+            value: The value to be recorded as a metric point.
         """
         assert self._metric is not None
         if isinstance(self._metric, CythonCount) and not _internal:
@@ -159,9 +159,9 @@ class Counter(Metric):
     https://prometheus.io/docs/concepts/metric_types/#counter
 
     Args:
-        name(str): Name of the metric.
-        description(str): Description of the metric.
-        tag_keys(tuple): Tag keys of the metric.
+        name: Name of the metric.
+        description: Description of the metric.
+        tag_keys: Tag keys of the metric.
     """
 
     def __init__(
@@ -201,9 +201,9 @@ class Count(Counter):
     This class is DEPRECATED, please use ray.util.metrics.Counter instead.
 
     Args:
-        name(str): Name of the metric.
-        description(str): Description of the metric.
-        tag_keys(tuple): Tag keys of the metric.
+        name: Name of the metric.
+        description: Description of the metric.
+        tag_keys: Tag keys of the metric.
     """
 
     def __init__(
@@ -227,10 +227,10 @@ class Histogram(Metric):
     https://prometheus.io/docs/concepts/metric_types/#histogram
 
     Args:
-        name(str): Name of the metric.
-        description(str): Description of the metric.
-        boundaries(list): Boundaries of histogram buckets.
-        tag_keys(tuple): Tag keys of the metric.
+        name: Name of the metric.
+        description: Description of the metric.
+        boundaries: Boundaries of histogram buckets.
+        tag_keys: Tag keys of the metric.
     """
 
     def __init__(
@@ -247,6 +247,13 @@ class Histogram(Metric):
                 "the Histogram class. e.g., "
                 'Histogram("name", boundaries=[1.0, 2.0])'
             )
+        for i, boundary in enumerate(boundaries):
+            if boundary <= 0:
+                raise ValueError(
+                    "Invalid `boundaries` argument at index "
+                    f"{i}, {boundaries}. Use positive values for the arguments."
+                )
+
         self.boundaries = boundaries
         self._metric = CythonHistogram(
             self._name, self._description, self.boundaries, self._tag_keys
@@ -294,9 +301,9 @@ class Gauge(Metric):
     https://prometheus.io/docs/concepts/metric_types/#gauge
 
     Args:
-        name(str): Name of the metric.
-        description(str): Description of the metric.
-        tag_keys(tuple): Tag keys of the metric.
+        name: Name of the metric.
+        description: Description of the metric.
+        tag_keys: Tag keys of the metric.
     """
 
     def __init__(

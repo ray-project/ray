@@ -2,7 +2,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray.serve.deployment_node import (
+from ray.serve._private.deployment_node import (
     DeploymentNode,
 )
 

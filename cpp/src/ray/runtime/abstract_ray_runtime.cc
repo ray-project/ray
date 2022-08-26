@@ -361,5 +361,27 @@ PlacementGroup AbstractRayRuntime::GetPlacementGroup(const std::string &name) {
   return group;
 }
 
+std::string AbstractRayRuntime::GetNamespace() {
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  return core_worker.GetJobConfig().ray_namespace();
+}
+
+std::string AbstractRayRuntime::SerializeActorHandle(const std::string &actor_id) {
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  std::string output;
+  ObjectID actor_handle_id;
+  auto status = core_worker.SerializeActorHandle(
+      ActorID::FromBinary(actor_id), &output, &actor_handle_id);
+  return output;
+}
+
+std::string AbstractRayRuntime::DeserializeAndRegisterActorHandle(
+    const std::string &serialized_actor_handle) {
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  return core_worker
+      .DeserializeAndRegisterActorHandle(serialized_actor_handle, ObjectID::Nil())
+      .Binary();
+}
+
 }  // namespace internal
 }  // namespace ray

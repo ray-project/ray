@@ -128,6 +128,38 @@ class A2C(A3C):
                     "Otherwise, microbatches of desired size won't be achievable."
                 )
 
+            if config["num_gpus"] > 1:
+                raise AttributeError(
+                    "A2C does not support multiple GPUs when micro-batching is set."
+                )
+        else:
+            sample_batch_size = (
+                config["rollout_fragment_length"]
+                * config["num_workers"]
+                * config["num_envs_per_worker"]
+            )
+            if config["train_batch_size"] < sample_batch_size:
+                logger.warning(
+                    f"`train_batch_size` ({config['train_batch_size']}) "
+                    "cannot be smaller than sample_batch_size "
+                    "(`rollout_fragment_length` x `num_workers` x "
+                    f"`num_envs_per_worker`) ({sample_batch_size}) when micro-batching"
+                    " is not set. This is to"
+                    " ensure that only on gradient update is applied to policy in every"
+                    " iteration on the entire collected batch. As a result of we do not"
+                    " change the policy too much before we sample again and stay on"
+                    " policy as much as possible. This will help the learning"
+                    " stability."
+                    f" Setting train_batch_size = {sample_batch_size}."
+                )
+                config["train_batch_size"] = sample_batch_size
+
+            if "sgd_minibatch_size" in config:
+                raise AttributeError(
+                    "A2C does not support sgd mini batching as it will instabilize the"
+                    " training. Use `train_batch_size` instead."
+                )
+
     @override(Algorithm)
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
@@ -144,6 +176,7 @@ class A2C(A3C):
 
     @override(A3C)
     def training_step(self) -> ResultDict:
+        # Fallback to Algorithm.training_step() and A3C policies (loss_fn etc).
         # W/o microbatching: Identical to Algorithm's default implementation.
         # Only difference to a default Algorithm being the value function loss term
         # and its value computations alongside each action.

@@ -4,7 +4,7 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms.dqn.distributional_q_tf_model import DistributionalQTFModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.misc import normc_initializer
@@ -116,14 +116,16 @@ if __name__ == "__main__":
         assert r["model"]["foo"] == 42, result
 
     if args.run == "DQN":
-        extra_config = {"replay_buffer_config": {"learning_starts": 0}}
+        extra_config = {"num_steps_sampled_before_learning_starts": 0}
     else:
         extra_config = {}
 
-    tune.run(
+    tuner = tune.Tuner(
         args.run,
-        stop={"episode_reward_mean": args.stop},
-        config=dict(
+        run_config=air.RunConfig(
+            stop={"episode_reward_mean": args.stop},
+        ),
+        param_space=dict(
             extra_config,
             **{
                 "env": "BreakoutNoFrameskip-v4"
@@ -143,3 +145,4 @@ if __name__ == "__main__":
             }
         ),
     )
+    tuner.fit()

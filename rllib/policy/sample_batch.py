@@ -49,6 +49,10 @@ class SampleBatch(dict):
     OBS_EMBEDS = "obs_embeds"
     T = "t"
 
+    # decision transformer
+    RETURNS_TO_GO = "returns_to_go"
+    ATTENTION_MASKS = "attention_masks"
+
     # Extra action fetches keys.
     ACTION_DIST_INPUTS = "action_dist_inputs"
     ACTION_PROB = "action_prob"
@@ -335,8 +339,12 @@ class SampleBatch(dict):
         return self
 
     @PublicAPI
-    def split_by_episode(self) -> List["SampleBatch"]:
+    def split_by_episode(self, key: Optional[str] = None) -> List["SampleBatch"]:
         """Splits by `eps_id` column and returns list of new batches.
+        If `eps_id` is not present, splits by `dones` instead.
+
+        Args:
+            key: If specified, overwrite default and use key to split.
 
         Returns:
             List of batches, one per distinct episode.
@@ -346,45 +354,88 @@ class SampleBatch(dict):
 
         Examples:
             >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> # "eps_id" is present
             >>> batch = SampleBatch( # doctest: +SKIP
             ...     {"a": [1, 2, 3], "eps_id": [0, 0, 1]})
             >>> print(batch.split_by_episode()) # doctest: +SKIP
             [{"a": [1, 2], "eps_id": [0, 0]}, {"a": [3], "eps_id": [1]}]
+            >>>
+            >>> # "eps_id" not present, split by "dones" instead
+            >>> batch = SampleBatch( # doctest: +SKIP
+            ...     {"a": [1, 2, 3, 4, 5], "dones": [0, 0, 1, 0, 1]})
+            >>> print(batch.split_by_episode()) # doctest: +SKIP
+            [{"a": [1, 2, 3], "dones": [0, 0, 1]}, {"a": [4, 5], "dones": [0, 1]}]
+            >>>
+            >>> # The last episode is appended even if it does not end with done
+            >>> batch = SampleBatch( # doctest: +SKIP
+            ...     {"a": [1, 2, 3, 4, 5], "dones": [0, 0, 1, 0, 0]})
+            >>> print(batch.split_by_episode()) # doctest: +SKIP
+            [{"a": [1, 2, 3], "dones": [0, 0, 1]}, {"a": [4, 5], "dones": [0, 0]}]
+            >>> batch = SampleBatch( # doctest: +SKIP
+            ...     {"a": [1, 2, 3, 4, 5], "dones": [0, 0, 0, 0, 0]})
+            >>> print(batch.split_by_episode()) # doctest: +SKIP
+            [{"a": [1, 2, 3, 4, 5], "dones": [0, 0, 0, 0, 0]}]
         """
 
-        # No eps_id in data -> Make sure there are no "dones" in the middle
-        # and add eps_id automatically.
-        if SampleBatch.EPS_ID not in self:
-            # TODO: (sven) Shouldn't we rather split by DONEs then and not
-            #  add fake eps-ids (0s) at all?
-            if SampleBatch.DONES in self:
-                assert not any(self[SampleBatch.DONES][:-1])
-            self[SampleBatch.EPS_ID] = np.repeat(0, self.count)
-            return [self]
+        def slice_by_eps_id():
+            slices = []
+            # Produce a new slice whenever we find a new episode ID.
+            cur_eps_id = self[SampleBatch.EPS_ID][0]
+            offset = 0
+            for i in range(self.count):
+                next_eps_id = self[SampleBatch.EPS_ID][i]
+                if next_eps_id != cur_eps_id:
+                    slices.append(self[offset:i])
+                    offset = i
+                    cur_eps_id = next_eps_id
+            # Add final slice.
+            slices.append(self[offset : self.count])
+            return slices
 
-        # Produce a new slice whenever we find a new episode ID.
-        slices = []
-        cur_eps_id = self[SampleBatch.EPS_ID][0]
-        offset = 0
-        for i in range(self.count):
-            next_eps_id = self[SampleBatch.EPS_ID][i]
-            if next_eps_id != cur_eps_id:
-                slices.append(self[offset:i])
-                offset = i
-                cur_eps_id = next_eps_id
-        # Add final slice.
-        slices.append(self[offset : self.count])
+        def slice_by_dones():
+            slices = []
+            offset = 0
+            for i in range(self.count):
+                if self[SampleBatch.DONES][i]:
+                    # Since self[i] is the last timestep of the episode,
+                    # append it to the batch, then set offset to the start
+                    # of the next batch
+                    slices.append(self[offset : i + 1])
+                    offset = i + 1
+            # Add final slice.
+            if offset != self.count:
+                slices.append(self[offset:])
+            return slices
 
-        # TODO: (sven) Are these checks necessary? Should be all ok according
-        #  to above logic.
-        for s in slices:
-            slen = len(set(s[SampleBatch.EPS_ID]))
-            assert slen == 1, (s, slen)
-        assert sum(s.count for s in slices) == self.count, (slices, self.count)
+        key_to_method = {
+            SampleBatch.EPS_ID: slice_by_eps_id,
+            SampleBatch.DONES: slice_by_dones,
+        }
 
+        # If key not specified, default to this order.
+        key_resolve_order = [SampleBatch.EPS_ID, SampleBatch.DONES]
+
+        slices = None
+        if key is not None:
+            # If key specified, directly use it.
+            if key not in self:
+                raise KeyError(f"{self} does not have key `{key}`!")
+            slices = key_to_method[key]()
+        else:
+            # If key not specified, go in order.
+            for key in key_resolve_order:
+                if key in self:
+                    slices = key_to_method[key]()
+                    break
+            if slices is None:
+                raise KeyError(f"{self} does not have keys {key_resolve_order}!")
+
+        assert (
+            sum(s.count for s in slices) == self.count
+        ), f"Calling split_by_episode on {self} returns {slices}"
+        f"which should both have {self.count} timesteps!"
         return slices
 
-    @Deprecated(new="SampleBatch[start:stop]", error=False)
     def slice(
         self, start: int, end: int, state_start=None, state_end=None
     ) -> "SampleBatch":
@@ -617,8 +668,7 @@ class SampleBatch(dict):
         if framework == "torch":
             assert torch is not None
             for k, v in self.items():
-                if isinstance(v, np.ndarray) and v.dtype != object:
-                    self[k] = convert_to_torch_tensor(v, device)
+                self[k] = convert_to_torch_tensor(v, device)
         else:
             raise NotImplementedError
         return self
@@ -1229,6 +1279,10 @@ class MultiAgentBatch:
             This very instance of MultiAgentBatch.
         """
         return self
+
+    def __getitem__(self, key: str) -> SampleBatch:
+        """Returns the SampleBatch for the given policy id."""
+        return self.policy_batches[key]
 
     def __str__(self):
         return "MultiAgentBatch({}, env_steps={})".format(

@@ -7,7 +7,7 @@ python:
   pip_packages:
     - pytest
     - awscli
-    - gym
+    - gym>=0.21.0,<0.24.1
   conda_packages: []
 
 post_build_cmds:

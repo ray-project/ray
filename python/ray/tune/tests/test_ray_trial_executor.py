@@ -7,6 +7,7 @@ import unittest
 
 import ray
 from ray import tune
+from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.callback import Callback
@@ -26,8 +27,6 @@ from ray.tune.execution.placement_groups import (
     _PlacementGroupManager,
 )
 from unittest.mock import patch
-
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage
 
 
 class TrialExecutorInsufficientResourcesTest(unittest.TestCase):

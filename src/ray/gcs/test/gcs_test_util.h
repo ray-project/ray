@@ -160,6 +160,7 @@ struct Mocker {
                                   bundles,
                                   strategy,
                                   /* is_detached */ false,
+                                  /* max_cpu_fraction_per_node */ 1.0,
                                   job_id,
                                   actor_id,
                                   /* is_creator_detached */ false);

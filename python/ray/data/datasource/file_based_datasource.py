@@ -17,6 +17,7 @@ from typing import (
 
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.arrow_serialization import (
+    _register_arrow_json_parseoptions_serializer,
     _register_arrow_json_readoptions_serializer,
 )
 from ray.data._internal.block_list import BlockMetadata
@@ -195,12 +196,18 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     ) -> "pyarrow.NativeFile":
         """Opens a source path for reading and returns the associated Arrow NativeFile.
 
-        The default implementation opens the source path as a sequential input stream.
+        The default implementation opens the source path as a sequential input stream,
+        using ctx.streaming_read_buffer_size as the buffer size if none is given by the
+        caller.
 
         Implementations that do not support streaming reads (e.g. that require random
         access) should override this method.
         """
-        return filesystem.open_input_stream(path, **open_args)
+        buffer_size = open_args.pop("buffer_size", None)
+        if buffer_size is None:
+            ctx = DatasetContext.get_current()
+            buffer_size = ctx.streaming_read_buffer_size
+        return filesystem.open_input_stream(path, buffer_size=buffer_size, **open_args)
 
     def create_reader(self, **kwargs):
         return _FileBasedDatasourceReader(self, **kwargs)
@@ -344,6 +351,16 @@ class _FileBasedDatasourceReader(Reader):
         self._paths, self._file_sizes = meta_provider.expand_paths(
             paths, self._filesystem
         )
+        if self._partition_filter is not None:
+            # Use partition filter to skip files which are not needed.
+            path_to_size = dict(zip(self._paths, self._file_sizes))
+            self._paths = self._partition_filter(self._paths)
+            self._file_sizes = [path_to_size[p] for p in self._paths]
+            if len(self._paths) == 0:
+                raise ValueError(
+                    "No input files found to read. Please double check that "
+                    "'partition_filter' field is set properly."
+                )
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
@@ -360,17 +377,17 @@ class _FileBasedDatasourceReader(Reader):
         _block_udf = self._block_udf
 
         paths, file_sizes = self._paths, self._file_sizes
-        if self._partition_filter is not None:
-            paths = self._partition_filter(paths)
-
         read_stream = self._delegate._read_stream
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
         read_options = reader_args.get("read_options")
-        if read_options is not None:
+        parse_options = reader_args.get("parse_options")
+        if read_options is not None or parse_options is not None:
             import pyarrow.json as pajson
 
             if isinstance(read_options, pajson.ReadOptions):
                 _register_arrow_json_readoptions_serializer()
+            if isinstance(parse_options, pajson.ParseOptions):
+                _register_arrow_json_parseoptions_serializer()
 
         if open_stream_args is None:
             open_stream_args = {}
@@ -486,6 +503,7 @@ def _resolve_paths_and_filesystem(
     elif len(paths) == 0:
         raise ValueError("Must provide at least one path.")
 
+    need_unwrap_path_protocol = True
     if filesystem and not isinstance(filesystem, FileSystem):
         err_msg = (
             f"The filesystem passed must either conform to "
@@ -495,13 +513,20 @@ def _resolve_paths_and_filesystem(
         )
         try:
             import fsspec
+            from fsspec.implementations.http import HTTPFileSystem
         except ModuleNotFoundError:
             # If filesystem is not a pyarrow filesystem and fsspec isn't
             # installed, then filesystem is neither a pyarrow filesystem nor
             # an fsspec filesystem, so we raise a TypeError.
-            raise TypeError(err_msg)
+            raise TypeError(err_msg) from None
         if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
-            raise TypeError(err_msg)
+            raise TypeError(err_msg) from None
+        if isinstance(filesystem, HTTPFileSystem):
+            # If filesystem is fsspec HTTPFileSystem, the protocol/scheme of paths
+            # should not be unwrapped/removed, because HTTPFileSystem expects full file
+            # paths including protocol/scheme. This is different behavior compared to
+            # file systems implementation in pyarrow.fs.FileSystem.
+            need_unwrap_path_protocol = False
 
         filesystem = PyFileSystem(FSSpecHandler(filesystem))
 
@@ -518,11 +543,29 @@ def _resolve_paths_and_filesystem(
                     _encode_url(path), filesystem
                 )
                 resolved_path = _decode_url(resolved_path)
+            elif "Unrecognized filesystem type in URI" in str(e):
+                scheme = urllib.parse.urlparse(path, allow_fragments=False).scheme
+                if scheme in ["http", "https"]:
+                    # If scheme of path is HTTP and filesystem is not resolved,
+                    # try to use fsspec HTTPFileSystem. This expects fsspec is
+                    # installed.
+                    try:
+                        from fsspec.implementations.http import HTTPFileSystem
+                    except ModuleNotFoundError:
+                        raise ImportError(
+                            "Please install fsspec to read files from HTTP."
+                        ) from None
+
+                    resolved_filesystem = PyFileSystem(FSSpecHandler(HTTPFileSystem()))
+                    resolved_path = path
+                    need_unwrap_path_protocol = False
+                else:
+                    raise
             else:
                 raise
         if filesystem is None:
             filesystem = resolved_filesystem
-        else:
+        elif need_unwrap_path_protocol:
             resolved_path = _unwrap_protocol(resolved_path)
         resolved_path = filesystem.normalize_path(resolved_path)
         resolved_paths.append(resolved_path)
@@ -610,7 +653,13 @@ def _unwrap_protocol(path):
     """
     parsed = urllib.parse.urlparse(path, allow_fragments=False)  # support '#' in path
     query = "?" + parsed.query if parsed.query else ""  # support '?' in path
-    return parsed.netloc + parsed.path + query
+    netloc = parsed.netloc
+    if parsed.scheme == "s3" and "@" in parsed.netloc:
+        # If the path contains an @, it is assumed to be an anonymous
+        # credentialed path, and we need to strip off the credentials.
+        netloc = parsed.netloc.split("@")[-1]
+
+    return netloc + parsed.path + query
 
 
 def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
@@ -650,13 +699,16 @@ def _wrap_and_register_arrow_serialization_workaround(kwargs: dict) -> dict:
     # TODO(Clark): Remove this serialization workaround once Datasets only supports
     # pyarrow >= 8.0.0.
     read_options = kwargs.get("read_options")
-    if read_options is not None:
+    parse_options = kwargs.get("parse_options")
+    if read_options is not None or parse_options is not None:
         import pyarrow.json as pajson
 
+        # Register a custom serializer instead of wrapping the options, since a
+        # custom reducer will suffice.
         if isinstance(read_options, pajson.ReadOptions):
-            # Register a custom serializer instead of wrapping the options, since a
-            # custom reducer will suffice.
             _register_arrow_json_readoptions_serializer()
+        if isinstance(parse_options, pajson.ParseOptions):
+            _register_arrow_json_parseoptions_serializer()
 
     return kwargs
 

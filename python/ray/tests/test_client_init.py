@@ -49,8 +49,8 @@ def init_and_serve_lazy():
     cluster.wait_for_nodes(1)
     address = cluster.address
 
-    def connect(job_config=None):
-        ray.init(address=address, job_config=job_config)
+    def connect(job_config=None, **ray_init_kwargs):
+        ray.init(address=address, job_config=job_config, **ray_init_kwargs)
 
     server_handle = ray_client_server.serve("localhost:50051", connect)
     yield server_handle

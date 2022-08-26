@@ -77,7 +77,9 @@ def test_sort_arrow(
             offset += shard
         if offset < num_items:
             dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
-        ds = ray.data.from_pandas(dfs)
+        ds = ray.data.from_pandas(dfs).map_batches(
+            lambda t: t, batch_format="pyarrow", batch_size=None
+        )
 
         def assert_sorted(sorted_ds, expected_rows):
             assert [tuple(row.values()) for row in sorted_ds.iter_rows()] == list(
@@ -145,6 +147,72 @@ def test_sort_arrow_with_empty_blocks(
         assert ds.sort("value").count() == 0
     finally:
         ctx.use_polars = original_use_polars
+
+
+@pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
+def test_sort_pandas(ray_start_regular, num_items, parallelism, use_push_based_shuffle):
+    a = list(reversed(range(num_items)))
+    b = [f"{x:03}" for x in range(num_items)]
+    shard = int(np.ceil(num_items / parallelism))
+    offset = 0
+    dfs = []
+    while offset < num_items:
+        dfs.append(
+            pd.DataFrame(
+                {"a": a[offset : offset + shard], "b": b[offset : offset + shard]}
+            )
+        )
+        offset += shard
+    if offset < num_items:
+        dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
+    ds = ray.data.from_pandas(dfs)
+
+    def assert_sorted(sorted_ds, expected_rows):
+        assert [tuple(row.values()) for row in sorted_ds.iter_rows()] == list(
+            expected_rows
+        )
+
+    assert_sorted(ds.sort(key="a"), zip(reversed(a), reversed(b)))
+    # Make sure we have rows in each block.
+    assert len([n for n in ds.sort(key="a")._block_num_rows() if n > 0]) == parallelism
+    assert_sorted(ds.sort(key="b"), zip(a, b))
+    assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
+
+
+def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle):
+    assert (
+        BlockAccessor.for_block(pa.Table.from_pydict({})).sample(10, "A").num_rows == 0
+    )
+
+    partitions = BlockAccessor.for_block(pa.Table.from_pydict({})).sort_and_partition(
+        [1, 5, 10], "A", descending=False
+    )
+    assert len(partitions) == 4
+    for partition in partitions:
+        assert partition.num_rows == 0
+
+    assert (
+        BlockAccessor.for_block(pa.Table.from_pydict({}))
+        .merge_sorted_blocks([pa.Table.from_pydict({})], "A", False)[0]
+        .num_rows
+        == 0
+    )
+
+    ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in range(3)], parallelism=3)
+    ds = ds.filter(lambda r: r["A"] == 0)
+    assert [row.as_pydict() for row in ds.sort("A").iter_rows()] == [{"A": 0, "B": 0}]
+
+    # Test empty dataset.
+    ds = ray.data.range_table(10).filter(lambda r: r["value"] > 10)
+    assert (
+        len(
+            ray.data._internal.sort.sample_boundaries(
+                ds._plan.execute().get_blocks(), "value", 3
+            )
+        )
+        == 2
+    )
+    assert ds.sort("value").count() == 0
 
 
 def test_push_based_shuffle_schedule():

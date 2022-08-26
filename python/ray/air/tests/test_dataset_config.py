@@ -5,7 +5,7 @@ import pytest
 
 import ray
 from ray.air import session
-from ray.air.config import DatasetConfig
+from ray.air.config import DatasetConfig, ScalingConfig
 from ray.data import Dataset, DatasetPipeline
 from ray.data.preprocessors import BatchMapper
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -47,7 +47,7 @@ class TestBasic(DataParallelTrainer):
         kwargs.pop("scaling_config", None)
         super().__init__(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config={"num_workers": num_workers},
+            scaling_config=ScalingConfig(num_workers=num_workers),
             **kwargs,
         )
 
@@ -208,7 +208,7 @@ class TestStream(DataParallelTrainer):
         kwargs.pop("scaling_config", None)
         super().__init__(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config={"num_workers": 1},
+            scaling_config=ScalingConfig(num_workers=1),
             **kwargs,
         )
 
@@ -228,7 +228,7 @@ class TestBatch(DataParallelTrainer):
         kwargs.pop("scaling_config", None)
         super().__init__(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config={"num_workers": 1},
+            scaling_config=ScalingConfig(num_workers=1),
             **kwargs,
         )
 

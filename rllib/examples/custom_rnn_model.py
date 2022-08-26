@@ -4,7 +4,7 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.tune.registry import register_env
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
@@ -85,7 +85,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    # To run the Algorithm without tune.run, using our RNN model and
+    # To run the Algorithm without ``Tuner.fit()``, using our RNN model and
     # manual state-in handling, do the following:
 
     # Example (use `config` from the above code):
@@ -111,7 +111,10 @@ if __name__ == "__main__":
     # >>     else:
     # >>         state = state_out
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=1)
+    tuner = tune.Tuner(
+        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+    )
+    results = tuner.fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

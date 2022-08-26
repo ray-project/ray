@@ -22,7 +22,10 @@ from ray.widgets import Template
 
 logger = logging.getLogger(__name__)
 
-CLIENT_DOCS_URL = "https://docs.ray.io/en/latest/cluster/ray-client.html"
+CLIENT_DOCS_URL = (
+    "https://docs.ray.io/en/latest/cluster/running-applications/"
+    "job-submission/ray-client.html"
+)
 
 
 @dataclass
@@ -113,6 +116,7 @@ class ClientBuilder:
         # " (allow_multiple=True).
         self._allow_multiple_connections = False
         self._credentials = None
+        self._metadata = None
         # Set to False if ClientBuilder is being constructed by internal
         # methods
         self._deprecation_warn_enabled = True
@@ -179,6 +183,7 @@ class ClientBuilder:
             job_config=self._job_config,
             _credentials=self._credentials,
             ray_init_kwargs=self._remote_init_kwargs,
+            metadata=self._metadata,
         )
         get_dashboard_url = ray.remote(ray._private.worker.get_dashboard_url)
         dashboard_url = ray.get(get_dashboard_url.options(num_cpus=0).remote())
@@ -228,6 +233,10 @@ class ClientBuilder:
         if "_credentials" in kwargs.keys():
             self._credentials = kwargs["_credentials"]
             del kwargs["_credentials"]
+
+        if "_metadata" in kwargs.keys():
+            self._metadata = kwargs["_metadata"]
+            del kwargs["_metadata"]
 
         if kwargs:
             expected_sig = inspect.signature(ray_driver_init)
@@ -327,19 +336,11 @@ def _split_address(address: str) -> Tuple[str, str]:
 
 def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
     if address == "local":
-        return _LocalClientBuilder(None)
+        return _LocalClientBuilder("local")
     if address is None:
-        try:
-            # NOTE: This is not placed in `Node::get_temp_dir_path`, because
-            # this file is accessed before the `Node` object is created.
-            cluster_file = os.path.join(
-                ray._private.utils.get_user_temp_dir(), "ray_current_cluster"
-            )
-            with open(cluster_file, "r") as f:
-                address = f.read().strip()
-        except FileNotFoundError:
-            # `address` won't be set and we'll create a new cluster.
-            pass
+        # NOTE: This is not placed in `Node::get_temp_dir_path`, because
+        # this file is accessed before the `Node` object is created.
+        address = ray._private.services.canonicalize_bootstrap_address(address)
         return _LocalClientBuilder(address)
     module_string, inner_address = _split_address(address)
     try:

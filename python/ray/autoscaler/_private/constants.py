@@ -56,6 +56,10 @@ AUTOSCALER_MAX_NODES_TRACKED = 1500
 
 AUTOSCALER_MAX_FAILURES_DISPLAYED = 20
 
+AUTOSCALER_NODE_AVAILABILITY_MAX_STALENESS_S = env_integer(
+    "AUTOSCALER_NODE_AVAILABILITY_MAX_STALENESS_S", 30 * 60
+)
+
 # The maximum allowed resource demand vector size to guarantee the resource
 # demand scheduler bin packing algorithm takes a reasonable amount of time
 # to run.
@@ -109,3 +113,5 @@ MAX_PARALLEL_SHUTDOWN_WORKERS = env_integer("MAX_PARALLEL_SHUTDOWN_WORKERS", 50)
 DISABLE_NODE_UPDATERS_KEY = "disable_node_updaters"
 DISABLE_LAUNCH_CONFIG_CHECK_KEY = "disable_launch_config_check"
 FOREGROUND_NODE_LAUNCH_KEY = "foreground_node_launch"
+WORKER_LIVENESS_CHECK_KEY = "worker_liveness_check"
+WORKER_RPC_DRAIN_KEY = "worker_rpc_drain"

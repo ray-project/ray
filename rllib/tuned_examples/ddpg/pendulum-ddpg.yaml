@@ -37,6 +37,7 @@ pendulum-ddpg:
           type: MultiAgentPrioritizedReplayBuffer
           capacity: 10000
           worker_side_prioritization: false
+        num_steps_sampled_before_learning_starts: 500
         clip_rewards: False
 
         # === Optimization ===
@@ -45,7 +46,6 @@ pendulum-ddpg:
         use_huber: True
         huber_threshold: 1.0
         l2_reg: 0.000001
-        learning_starts: 500
         rollout_fragment_length: 1
         train_batch_size: 64
 

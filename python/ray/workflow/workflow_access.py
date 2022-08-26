@@ -14,10 +14,11 @@ from ray.workflow.exceptions import (
     WorkflowCancellationError,
     WorkflowNotFoundError,
     WorkflowNotResumableError,
+    WorkflowStillActiveError,
 )
 from ray.workflow.workflow_executor import WorkflowExecutor
 from ray.workflow.workflow_state import WorkflowExecutionState
-from ray.workflow.workflow_context import WorkflowStepContext
+from ray.workflow.workflow_context import WorkflowTaskContext
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
@@ -34,11 +35,11 @@ class SelfResolvingObject:
 
 
 @ray.remote(num_cpus=0)
-def load_step_output_from_storage(workflow_id: str, task_id: Optional[TaskID]):
+def load_task_output_from_storage(workflow_id: str, task_id: Optional[TaskID]):
     wf_store = workflow_storage.WorkflowStorage(workflow_id)
     tid = wf_store.inspect_output(task_id)
     if tid is not None:
-        return wf_store.load_step_output(tid)
+        return wf_store.load_task_output(tid)
     # TODO(suquark): Unify the error from "workflow.get_output" & "workflow.run_async".
     # Currently they could be different, because "workflow.get_output" could
     # get the output from a stopped workflow, it does not may sense to raise
@@ -52,19 +53,19 @@ def load_step_output_from_storage(workflow_id: str, task_id: Optional[TaskID]):
 
 
 @ray.remote(num_cpus=0)
-def resume_workflow_step(
+def resume_workflow_task(
     job_id: str,
     workflow_id: str,
     task_id: Optional[TaskID] = None,
 ) -> WorkflowExecutionState:
-    """Resume a step of a workflow.
+    """Resume a task of a workflow.
 
     Args:
         job_id: The ID of the job that submits the workflow execution. The ID
         is used to identify the submitter of the workflow.
         workflow_id: The ID of the workflow job. The ID is used to identify
             the workflow.
-        task_id: The step to resume in the workflow.
+        task_id: The task to resume in the workflow.
 
     Raises:
         WorkflowNotResumableException: fail to resume the workflow.
@@ -125,13 +126,13 @@ class WorkflowManagementActor:
                 f"max_pending_workflows={max_pending_workflows}."
             )
 
-    def gen_step_id(self, workflow_id: str, step_name: str) -> str:
+    def gen_task_id(self, workflow_id: str, task_name: str) -> str:
         wf_store = workflow_storage.WorkflowStorage(workflow_id)
-        idx = wf_store.gen_step_id(step_name)
+        idx = wf_store.gen_task_id(task_name)
         if idx == 0:
-            return step_name
+            return task_name
         else:
-            return f"{step_name}_{idx}"
+            return f"{task_name}_{idx}"
 
     def submit_workflow(
         self,
@@ -175,16 +176,16 @@ class WorkflowManagementActor:
         self._workflow_executors[workflow_id] = WorkflowExecutor(state)
 
     async def reconstruct_workflow(
-        self, job_id: str, context: WorkflowStepContext
+        self, job_id: str, context: WorkflowTaskContext
     ) -> None:
         """Reconstruct a (failed) workflow and submit it."""
-        state = await resume_workflow_step.remote(job_id, context.workflow_id)
+        state = await resume_workflow_task.remote(job_id, context.workflow_id)
         self.submit_workflow(context.workflow_id, state, ignore_existing=True)
 
     async def execute_workflow(
         self,
         job_id: str,
-        context: WorkflowStepContext,
+        context: WorkflowTaskContext,
     ) -> ray.ObjectRef:
         """Execute a submitted workflow.
 
@@ -263,28 +264,67 @@ class WorkflowManagementActor:
         return result
 
     async def get_output(
-        self, workflow_id: str, name: Optional[TaskID]
+        self, workflow_id: str, task_id: Optional[TaskID]
     ) -> ray.ObjectRef:
         """Get the output of a running workflow.
 
         Args:
             workflow_id: The ID of a workflow job.
+            task_id: If set, fetch the specific task output instead of the output
+                of the workflow.
 
         Returns:
-            An object reference that can be used to retrieve the
-            workflow result.
+            An object reference that can be used to retrieve the workflow result.
         """
-        # TODO(suquark): Use 'task_id' instead of 'name' for the API.
         ref = None
         if self.is_workflow_non_terminating(workflow_id):
             executor = self._workflow_executors[workflow_id]
-            if name is None:
-                name = executor.output_task_id
-            workflow_ref = await executor.get_task_output_async(name)
-            name, ref = workflow_ref.task_id, workflow_ref.ref
+            if task_id is None:
+                task_id = executor.output_task_id
+            workflow_ref = await executor.get_task_output_async(task_id)
+            task_id, ref = workflow_ref.task_id, workflow_ref.ref
         if ref is None:
-            ref = load_step_output_from_storage.remote(workflow_id, name)
+            wf_store = workflow_storage.WorkflowStorage(workflow_id)
+            tid = wf_store.inspect_output(task_id)
+            if tid is not None:
+                ref = load_task_output_from_storage.remote(workflow_id, task_id)
+            elif task_id is not None:
+                raise ValueError(
+                    f"Cannot load output from task id '{task_id}' in workflow "
+                    f"'{workflow_id}'"
+                )
+            else:
+                raise ValueError(f"Cannot load output from workflow '{workflow_id}'")
         return SelfResolvingObject(ref)
+
+    def delete_workflow(self, workflow_id: str) -> None:
+        """Delete a workflow, its checkpoints, and other information it may have
+           persisted to storage.
+
+        Args:
+            workflow_id: The workflow to delete.
+
+        Raises:
+            WorkflowStillActiveError: The workflow is still active.
+            WorkflowNotFoundError: The workflow does not exist.
+        """
+        if self.is_workflow_non_terminating(workflow_id):
+            raise WorkflowStillActiveError("DELETE", workflow_id)
+        wf_storage = workflow_storage.WorkflowStorage(workflow_id)
+        wf_storage.delete_workflow()
+        self._executed_workflows.discard(workflow_id)
+
+    def create_http_event_provider(self) -> None:
+        """Deploy an HTTPEventProvider as a Serve deployment with
+        name = common.HTTP_EVENT_PROVIDER_NAME, if one doesn't exist
+        """
+        ray.serve.start(detached=True)
+        try:
+            ray.serve.get_deployment(common.HTTP_EVENT_PROVIDER_NAME)
+        except KeyError:
+            from ray.workflow.http_event_provider import HTTPEventProvider
+
+            HTTPEventProvider.deploy()
 
     def ready(self) -> None:
         """A no-op to make sure the actor is ready."""

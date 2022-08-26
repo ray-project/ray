@@ -115,7 +115,7 @@ py_test(
 
 py_test(
     name = "test_batch_predictor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_batch_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu"],
     deps = [":train_lib"]
@@ -133,6 +133,14 @@ py_test(
     name = "test_callbacks",
     size = "medium",
     srcs = ["tests/test_callbacks.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_checkpoints",
+    size = "small",
+    srcs = ["tests/test_checkpoints.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )
@@ -226,8 +234,16 @@ py_test(
 )
 
 py_test(
+    name = "test_rl_trainer",
+    size = "medium",
+    srcs = ["tests/test_rl_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_rl_predictor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_rl_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
@@ -315,7 +331,7 @@ py_test(
 
 py_test(
     name = "test_tune",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_tune.py"],
     tags = ["team:ml", "exclusive", "tune"],
     deps = [":train_lib"]

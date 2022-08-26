@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class HorovodTrainer(DataParallelTrainer):
     """A Trainer for data parallel Horovod training.
 
@@ -45,8 +45,7 @@ class HorovodTrainer(DataParallelTrainer):
     ``session.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray AIR session methods <air-session-ref>` and
-    :ref:`Ray Train function utils <train-api-func-utils>`.
+    :ref:`Ray AIR session methods <air-session-ref>`.
 
     .. code-block:: python
 
@@ -90,6 +89,7 @@ class HorovodTrainer(DataParallelTrainer):
         import torch.nn as nn
         from ray.air import session, Checkpoint
         from ray.train.horovod import HorovodTrainer
+        from ray.air.config import ScalingConfig
 
         input_size = 1
         layer_size = 15
@@ -122,14 +122,10 @@ class HorovodTrainer(DataParallelTrainer):
             )
             for epoch in range(num_epochs):
                 model.train()
-                for inputs, labels in iter(
-                    dataset_shard.to_torch(
-                        label_column="y",
-                        label_column_dtype=torch.float,
-                        feature_column_dtypes=torch.float,
-                        batch_size=32,
-                    )
+                for batch in dataset_shard.iter_torch_batches(
+                    batch_size=32, dtypes=torch.float
                 ):
+                    inputs, labels = torch.unsqueeze(batch["x"], 1), batch["y"]
                     inputs.to(device)
                     labels.to(device)
                     outputs = model(inputs)
@@ -145,12 +141,12 @@ class HorovodTrainer(DataParallelTrainer):
                     ),
                 )
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
-        scaling_config = {"num_workers": 3}
+        scaling_config = ScalingConfig(num_workers=3)
         # If using GPUs, use the below scaling config instead.
-        # scaling_config = {"num_workers": 3, "use_gpu": True}
+        # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
         trainer = HorovodTrainer(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config={"num_workers": 3},
+            scaling_config=scaling_config,
             datasets={"train": train_dataset},
         )
         result = trainer.fit()

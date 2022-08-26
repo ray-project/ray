@@ -114,7 +114,7 @@ class WorkerSet:
                 # Create the set of dataset readers to be shared by all the
                 # rollout workers.
                 self._ds, self._ds_shards = get_dataset_and_shards(
-                    trainer_config, num_workers, local_worker
+                    trainer_config, num_workers
                 )
             else:
                 self._ds = None
@@ -260,6 +260,7 @@ class WorkerSet:
                 for i in range(num_workers)
             ]
         )
+
         # Validate here, whether all remote workers have been constructed properly
         # and are "up and running". If not, the following will throw a RayError
         # which needs to be handled by this WorkerSet's owner (usually
@@ -587,7 +588,7 @@ class WorkerSet:
             # Input dataset shards should have already been prepared.
             # We just need to take the proper shard here.
             input_creator = lambda ioctx: DatasetReader(
-                ioctx, self._ds_shards[worker_index]
+                self._ds_shards[worker_index], ioctx
             )
         # Dict: Mix of different input methods with different ratios.
         elif isinstance(config["input"], dict):
@@ -686,7 +687,6 @@ class WorkerSet:
             log_level=config["log_level"],
             callbacks=config["callbacks"],
             input_creator=input_creator,
-            off_policy_estimation_methods=config["off_policy_estimation_methods"],
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
             remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],

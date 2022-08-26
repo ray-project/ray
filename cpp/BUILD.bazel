@@ -66,6 +66,7 @@ cc_library(
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
         "@msgpack",
+        "@nlohmann_json",
     ],
     alwayslink = True,
 )
@@ -102,6 +103,7 @@ cc_binary(
             "@boost//:callable_traits",
             "@boost//:optional",
             "@msgpack",
+            "@nlohmann_json",
         ],
     }),
 )
@@ -123,6 +125,7 @@ genrule(
         mkdir -p "$$PY_CPP_DIR/lib/" &&
         cp -f $(location default_worker) "$$PY_CPP_DIR/" &&
         cp -f -r $$WORK_DIR/external/msgpack/include/* "$$PY_CPP_DIR/include" &&
+        cp -f -r $$WORK_DIR/external/nlohmann_json/single_include/* "$$PY_CPP_DIR/include" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/archive" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/assert" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/bind" "$$BOOST_DIR" &&
@@ -174,7 +177,6 @@ cc_test(
     tags = ["team:core"],
     deps = [
         "ray_api",
-        "@boost//:filesystem",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -250,6 +252,7 @@ cc_binary(
         "@boost//:callable_traits",
         "@boost//:optional",
         "@msgpack",
+        "@nlohmann_json",
     ],
 )
 
@@ -271,6 +274,7 @@ cc_binary(
         "@boost//:callable_traits",
         "@boost//:optional",
         "@msgpack",
+        "@nlohmann_json",
     ],
 )
 
@@ -308,23 +312,22 @@ cc_binary(
         "@boost//:callable_traits",
         "@boost//:optional",
         "@msgpack",
+        "@nlohmann_json",
     ],
 )
 
 load("//bazel:python.bzl", "py_test_module_list")
 
 py_test_module_list(
-    size = "small",
+    size = "medium",
     extra_srcs = [],
     files = [
         "test_python_call_cpp.py",
     ],
     tags = [
         "exclusive",
-        "small_size_python_tests",
+        "medium_size_python_tests",
         "team:core",
     ],
-    deps = [
-        ":ray_api",
-    ],
+    deps = [],
 )

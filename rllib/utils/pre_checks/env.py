@@ -1,5 +1,6 @@
 """Common pre-checks for all RLlib experiments."""
 from copy import copy
+import inspect
 import logging
 import gym
 import numpy as np
@@ -83,7 +84,7 @@ def check_env(env: EnvType) -> None:
             f"{actual_error}\n"
             "The above error has been found in your environment! "
             "We've added a module for checking your custom environments. It "
-            "may cause your experiment to fail if your environment is not set up"
+            "may cause your experiment to fail if your environment is not set up "
             "correctly. You can disable this behavior by setting "
             "`disable_env_checking=True` in your environment config "
             "dictionary. You can run the environment checking module "
@@ -146,6 +147,17 @@ def check_gym_environments(env: gym.Env) -> None:
                 "to infinity, and your environment will not be "
                 "reset."
             )
+    # Raise warning if using new reset api introduces in gym 0.24
+    reset_signature = inspect.signature(env.unwrapped.reset).parameters.keys()
+    if any(k in reset_signature for k in ["seed", "return_info"]):
+        if log_once("reset_signature"):
+            logger.warning(
+                "Your env reset() method appears to take 'seed' or 'return_info'"
+                " arguments. Note that these are not yet supported in RLlib."
+                " Seeding will take place using 'env.seed()' and the info dict"
+                " will not be returned from reset."
+            )
+
     # check if sampled actions and observations are contained within their
     # respective action and observation spaces.
 
@@ -258,7 +270,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         )
         raise ValueError(error)
 
-    sampled_action = env.action_space_sample()
+    sampled_action = env.action_space_sample(reset_obs.keys())
     _check_if_element_multi_agent_dict(env, sampled_action, "action_space_sample")
     try:
         env.action_space_contains(sampled_action)

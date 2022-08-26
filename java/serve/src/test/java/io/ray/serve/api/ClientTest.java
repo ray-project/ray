@@ -15,7 +15,6 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class ClientTest {
-
   @Test
   public void getHandleTest() {
     boolean inited = Ray.isInitialized();
@@ -34,7 +33,7 @@ public class ClientTest {
 
       // Controller.
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       // Set ReplicaContext
       Serve.setInternalReplicaContext(null, null, controllerName, null, config);

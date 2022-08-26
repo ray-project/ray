@@ -4,9 +4,9 @@ import logging
 from typing import Callable, Dict, Optional
 
 import ray
+from ray.air._internal.mlflow import _MLflowLoggerUtil
 from ray.tune.trainable import Trainable
 from ray.util.annotations import Deprecated
-from ray.util.ml_utils.mlflow import _MLflowLoggerUtil
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ def mlflow_mixin(func: Callable):
             xgboost_results = xgb.train(config, ...)
 
     The MlFlow configuration is done by passing a ``mlflow`` key to
-    the ``config`` parameter of ``tune.run()`` (see example below).
+    the ``config`` parameter of ``tune.Tuner()`` (see example below).
 
     The content of the ``mlflow`` config entry is used to
     configure MlFlow. Here are the keys you can pass in to this config entry:
@@ -82,12 +82,12 @@ def mlflow_mixin(func: Callable):
             Tune in a multi-node setting, make sure to use a remote server for
             tracking.
         experiment_id: The id of an already created MLflow experiment.
-            All logs from all trials in ``tune.run`` will be reported to this
+            All logs from all trials in ``tune.Tuner()`` will be reported to this
             experiment. If this is not provided or the experiment with this
             id does not exist, you must provide an``experiment_name``. This
             parameter takes precedence over ``experiment_name``.
         experiment_name: The name of an already existing MLflow
-            experiment. All logs from all trials in ``tune.run`` will be
+            experiment. All logs from all trials in ``tune.Tuner()`` will be
             reported to this experiment. If this is not provided, you must
             provide a valid ``experiment_id``.
         token: A token to use for HTTP authentication when
@@ -115,9 +115,9 @@ def mlflow_mixin(func: Callable):
                 mlflow.log_metric(key="loss", value=loss)
             tune.report(loss=loss, done=True)
 
-        tune.run(
+        tuner = tune.Tuner(
             train_fn,
-            config={
+            param_space={
                 # define search space here
                 "a": tune.choice([1, 2, 3]),
                 "b": tune.choice([4, 5, 6]),
@@ -127,6 +127,9 @@ def mlflow_mixin(func: Callable):
                     "tracking_uri": mlflow.get_tracking_uri()
                 }
             })
+
+        tuner.fit()
+
     """
     if ray.util.client.ray.is_connected():
         logger.warning(

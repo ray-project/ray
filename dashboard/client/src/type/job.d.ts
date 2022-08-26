@@ -63,10 +63,26 @@ export type JobDetailRsp = {
   result: boolean;
 };
 
-export type JobListRsp = {
-  data: {
-    summary: Job[];
-  };
-  msg: string;
-  result: boolean;
+export type JobListRsp = UnifiedJob[];
+
+export type UnifiedJob = {
+  job_id: string | null;
+  submission_id: string | null;
+  type: string;
+  status: string;
+  entrypoint: string;
+  message: string | null;
+  error_type: string | null;
+  start_time: number | null;
+  end_time: number | null;
+  metadata: { [key: string]: string } | null;
+  runtime_env: { [key: string]: string } | null;
+  driver_info: DriverInfo | null;
+};
+
+export type DriverInfo = {
+  id: string;
+  node_ip_address: string;
+  node_id: string;
+  pid: string;
 };

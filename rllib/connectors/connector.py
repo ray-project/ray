@@ -38,25 +38,27 @@ class ConnectorContext:
     def __init__(
         self,
         config: AlgorithmConfigDict = None,
-        model_initial_states: List[TensorType] = None,
+        initial_states: List[TensorType] = None,
         observation_space: gym.Space = None,
         action_space: gym.Space = None,
         view_requirements: Dict[str, ViewRequirement] = None,
+        is_policy_recurrent: bool = False,
     ):
         """Construct a ConnectorContext instance.
 
         Args:
-            model_initial_states: States that are used for constructing
+            initial_states: States that are used for constructing
                 the initial input dict for RNN models. [] if a model is not recurrent.
             action_space_struct: a policy's action space, in python
                 data format. E.g., python dict instead of DictSpace, python tuple
                 instead of TupleSpace.
         """
-        self.config = config
-        self.initial_states = model_initial_states or []
+        self.config = config or {}
+        self.initial_states = initial_states or []
         self.observation_space = observation_space
         self.action_space = action_space
         self.view_requirements = view_requirements
+        self.is_policy_recurrent = is_policy_recurrent
 
     @staticmethod
     def from_policy(policy: "Policy") -> "ConnectorContext":
@@ -69,11 +71,12 @@ class ConnectorContext:
             A ConnectorContext instance.
         """
         return ConnectorContext(
-            policy.config,
-            policy.get_initial_state(),
-            policy.observation_space,
-            policy.action_space,
-            policy.view_requirements,
+            config=policy.config,
+            initial_states=policy.get_initial_state(),
+            observation_space=policy.observation_space,
+            action_space=policy.action_space,
+            view_requirements=policy.view_requirements,
+            is_policy_recurrent=policy.is_recurrent(),
         )
 
 

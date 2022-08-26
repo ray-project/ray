@@ -23,6 +23,7 @@ from ray.rllib.utils.test_utils import (
     framework_iterator,
 )
 
+
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = SampleBatch(
     {
@@ -124,7 +125,7 @@ class TestPPO(unittest.TestCase):
         for fw in framework_iterator(config, with_eager_tracing=True):
             for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
-                for lstm in [True, False]:
+                for lstm in [False]:
                     print("LSTM={}".format(lstm))
                     config.training(
                         model=dict(
@@ -238,7 +239,10 @@ class TestPPO(unittest.TestCase):
             assert len(matching) == 1, matching
             log_std_var = matching[0]
 
-            def get_value():
+            # linter yells at you if you don't pass in the parameters.
+            # reason: https://docs.python-guide.org/writing/gotchas/
+            # #late-binding-closures
+            def get_value(fw=fw, policy=policy, log_std_var=log_std_var):
                 if fw == "tf":
                     return policy.get_session().run(log_std_var)[0]
                 elif fw == "torch":
