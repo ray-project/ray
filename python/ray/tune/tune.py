@@ -624,7 +624,9 @@ def run(
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
 
     # Create syncer callbacks
-    callbacks = _create_default_callbacks(callbacks, sync_config, metric=metric)
+    callbacks = _create_default_callbacks(
+        callbacks, sync_config, metric=metric, progress_metrics=progress_metrics
+    )
 
     runner = TrialRunner(
         search_alg=search_alg,
