@@ -106,6 +106,52 @@ def test_retry_application_level_error(ray_start_regular):
         ray.get(r3)
 
 
+class CountError(Exception):
+    pass
+
+
+def test_retry_application_level_error_exception_filter(ray_start_regular):
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    @ray.remote(max_retries=1, retry_exceptions=[CountError])
+    def func(counter):
+        if counter is None:
+            raise ValueError()
+        count = counter.increment.remote()
+        if ray.get(count) == 1:
+            raise CountError()
+        else:
+            return 2
+
+    # Exception that doesn't satisfy the predicate should cause the task to immediately
+    # fail.
+    r0 = func.remote(None)
+    with pytest.raises(ValueError):
+        ray.get(r0)
+
+    # Test against exceptions (CountError) that do satisfy the predicate.
+    counter1 = Counter.remote()
+    r1 = func.remote(counter1)
+    assert ray.get(r1) == 2
+
+    counter2 = Counter.remote()
+    r2 = func.options(max_retries=0).remote(counter2)
+    with pytest.raises(CountError):
+        ray.get(r2)
+
+    counter3 = Counter.remote()
+    r3 = func.options(retry_exceptions=False).remote(counter3)
+    with pytest.raises(CountError):
+        ray.get(r3)
+
+
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_connect_with_disconnected_node(shutdown_only):
     config = {

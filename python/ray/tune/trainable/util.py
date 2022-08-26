@@ -15,7 +15,7 @@ from ray.tune.execution.placement_groups import (
 )
 from ray.tune.registry import _ParameterRegistry
 from ray.tune.resources import Resources
-from ray.tune.utils import detect_checkpoint_function
+from ray.tune.utils import _detect_checkpoint_function
 from ray.util import placement_group
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -342,7 +342,7 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
         return _Inner
     else:
         # Function trainable
-        use_checkpoint = detect_checkpoint_function(trainable, partial=True)
+        use_checkpoint = _detect_checkpoint_function(trainable, partial=True)
         keys = list(kwargs.keys())
 
         def inner(config, checkpoint_dir=None):

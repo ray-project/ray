@@ -265,13 +265,6 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
-    parser.add_argument(
         "--class-trainable",
         action="store_true",
         default=False,
@@ -285,10 +278,7 @@ if __name__ == "__main__":
     )
     args, _ = parser.parse_known_args()
 
-    if args.server_address:
-        ray.init(f"ray://{args.server_address}")
-    else:
-        ray.init(num_cpus=8)
+    ray.init(num_cpus=8)
 
     if args.test:
         best_result = tune_xgboost(use_class_trainable=True)
@@ -296,18 +286,7 @@ if __name__ == "__main__":
 
     best_result = tune_xgboost(use_class_trainable=args.class_trainable)
 
-    # Load the best model checkpoint.
-    if args.server_address:
-        # If connecting to a remote server with Ray Client, checkpoint loading
-        # should be wrapped in a task so it will execute on the server.
-        # We have to make sure it gets executed on the same node that
-        # ``Tuner.fit()`` is called on.
-        from ray.util.ml_utils.node import force_on_current_node
-
-        remote_fn = force_on_current_node(ray.remote(get_best_model_checkpoint))
-        best_bst = ray.get(remote_fn.remote(best_result))
-    else:
-        best_bst = get_best_model_checkpoint(best_result)
+    best_bst = get_best_model_checkpoint(best_result)
 
     # You could now do further predictions with
     # best_bst.predict(...)

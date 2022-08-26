@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 import numpy as np
 
 from ray.tune.search import Searcher
-from ray.tune.search.util import set_search_properties_backwards_compatible
+from ray.tune.search.util import _set_search_properties_backwards_compatible
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -188,6 +188,6 @@ class Repeater(Searcher):
     def set_search_properties(
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
     ) -> bool:
-        return set_search_properties_backwards_compatible(
+        return _set_search_properties_backwards_compatible(
             self.searcher.set_search_properties, metric, mode, config, **spec
         )

@@ -16,6 +16,11 @@ import ray
 import ray._private.ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray._private.test_utils import same_elements
+from ray.autoscaler._private.node_provider_availability_tracker import (
+    NodeAvailabilityRecord,
+    NodeAvailabilitySummary,
+    UnavailableNodeInformation,
+)
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.constants import AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
@@ -32,13 +37,10 @@ from ray.autoscaler._private.util import (
     LoadMetricsSummary,
     format_info_string,
     is_placement_group_resource,
-    prepare_config,
 )
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     NODE_KIND_WORKER,
-    NODE_TYPE_LEGACY_HEAD,
-    NODE_TYPE_LEGACY_WORKER,
     STATUS_UNINITIALIZED,
     STATUS_UP_TO_DATE,
     STATUS_WAITING_FOR_SSH,
@@ -48,9 +50,7 @@ from ray.autoscaler.tags import (
 )
 from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
 from ray.tests.test_autoscaler import (
-    MOCK_DEFAULT_CONFIG,
     MULTI_WORKER_CLUSTER,
-    SMALL_CLUSTER,
     TYPES_A,
     MockAutoscaler,
     MockNodeInfoStub,
@@ -1173,192 +1173,6 @@ def test_get_nodes_to_launch_max_launch_concurrency():
     assert not rem
 
 
-def test_rewrite_legacy_yaml_to_available_node_types():
-    with mock.patch(GET_DEFAULT_METHOD, return_value=MOCK_DEFAULT_CONFIG):
-        cluster_config = copy.deepcopy(SMALL_CLUSTER)  # Legacy cluster_config.
-        cluster_config = prepare_config(cluster_config)
-        assert (
-            cluster_config["available_node_types"][NODE_TYPE_LEGACY_HEAD]["max_workers"]
-            == 0
-        )
-        assert (
-            cluster_config["available_node_types"][NODE_TYPE_LEGACY_HEAD]["min_workers"]
-            == 0
-        )
-        assert (
-            cluster_config["available_node_types"][NODE_TYPE_LEGACY_HEAD]["node_config"]
-            == SMALL_CLUSTER["head_node"]
-        )
-
-        assert (
-            cluster_config["available_node_types"][NODE_TYPE_LEGACY_WORKER][
-                "node_config"
-            ]
-            == SMALL_CLUSTER["worker_nodes"]
-        )
-        assert (
-            cluster_config["available_node_types"][NODE_TYPE_LEGACY_WORKER][
-                "max_workers"
-            ]
-            == SMALL_CLUSTER["max_workers"]
-        )
-        assert (
-            cluster_config["available_node_types"][NODE_TYPE_LEGACY_WORKER][
-                "min_workers"
-            ]
-            == SMALL_CLUSTER["min_workers"]
-        )
-
-
-def test_handle_legacy_cluster_config_yaml():
-    with mock.patch(GET_DEFAULT_METHOD, return_value=MOCK_DEFAULT_CONFIG):
-        provider = MockProvider()
-        head_resources = {"CPU": 8, "GPU": 1}
-        worker_resources = {"CPU": 32, "GPU": 8}
-        cluster_config = copy.deepcopy(SMALL_CLUSTER)  # Legacy cluster_config.
-        cluster_config = prepare_config(cluster_config)
-        scheduler = ResourceDemandScheduler(
-            provider,
-            cluster_config["available_node_types"],
-            0,
-            head_node_type=NODE_TYPE_LEGACY_HEAD,
-        )
-        provider.create_node(
-            {},
-            {
-                TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
-                TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD,
-            },
-            1,
-        )
-        head_ip = provider.non_terminated_node_ips({})[0]
-        head_node_id = provider.non_terminated_nodes({})[0]
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            [], {}, [], {}, [], {head_ip: head_resources}
-        )
-        assert to_launch == {}  # Should always be empty with max_workers = 0.
-        assert not rem
-
-        scheduler.max_workers = 30
-        min_workers = scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["min_workers"]
-        scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["min_workers"] = 0
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            [head_node_id], {}, [], {}, [], {head_ip: head_resources}
-        )
-        assert (
-            to_launch == {}
-        )  # Since the resource demand does not require adding nodes.
-        assert not rem
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            [head_node_id], {}, [head_resources], {}, [], {head_ip: head_resources}
-        )
-        assert (
-            to_launch == {}
-        )  # Since the resource demand does not require adding nodes.
-        assert not rem
-
-        scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["min_workers"] = min_workers
-        # Returns min_workers when min_workers>0.
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            [head_node_id], {}, [head_resources], {}, [], {head_ip: head_resources}
-        )
-        assert to_launch == {NODE_TYPE_LEGACY_WORKER: min_workers}
-        assert not rem
-
-        provider.create_node(
-            {},
-            {
-                TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
-                TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_WORKER,
-            },
-            min_workers,
-        )
-        nodes = provider.non_terminated_nodes({})
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            nodes, {}, [head_resources], {}, [], {head_ip: head_resources}
-        )
-        # A node is running, at some point it'll connect.
-        assert to_launch == {}
-        assert not rem
-        pending_launches = {NODE_TYPE_LEGACY_WORKER: 4}
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            [], pending_launches, [head_resources], {}, [], {head_ip: head_resources}
-        )
-        # A node is launching, at some point it'll connect.
-        assert to_launch == {}
-        assert not rem
-
-        # Now assume that we already launched/connected the nodes.
-        ips = provider.non_terminated_node_ips({})
-        lm = LoadMetrics()
-        worker_ips = []
-        for ip in ips:
-            if ip == head_ip:
-                lm.update(ip, mock_raylet_id(), head_resources, head_resources, {})
-            else:
-                lm.update(ip, mock_raylet_id(), worker_resources, worker_resources, {})
-                worker_ips.append(ip)
-
-        assert not scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            nodes, {}, [], {}, [], lm.get_static_node_resources_by_ip()
-        )
-        assert (
-            scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]
-            == worker_resources
-        )
-        assert to_launch == {}
-        assert not rem
-        utilizations = {ip: worker_resources for ip in worker_ips}
-        utilizations[head_ip] = head_resources
-        # Needs 4 nodes since worker resources is bigger than head reasources.
-        demands = [worker_resources] * (len(utilizations) + 3)
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            nodes, {}, demands, utilizations, [], lm.get_static_node_resources_by_ip()
-        )
-        # 4 nodes are necessary to meet resource demand, but we never exceed
-        # max_workers.
-        assert to_launch == {}
-        assert rem == [{"CPU": 32, "GPU": 8}] * 4
-        scheduler.max_workers = 10
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            nodes, {}, demands, utilizations, [], lm.get_static_node_resources_by_ip()
-        )
-        # 4 nodes are necessary to meet resource demand, but we never exceed
-        # max_workers.
-        assert to_launch == {}
-        assert rem == [{"CPU": 32, "GPU": 8}] * 4
-        scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["max_workers"] = 10
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            nodes, {}, demands, utilizations, [], lm.get_static_node_resources_by_ip()
-        )
-        # 4 nodes are necessary to meet resource demand.
-        assert to_launch == {NODE_TYPE_LEGACY_WORKER: 4}
-        assert not rem
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            nodes,
-            pending_launches,
-            demands,
-            utilizations,
-            [],
-            lm.get_static_node_resources_by_ip(),
-        )
-        # 0 because there are 4 pending launches and we only need 4.
-        assert to_launch == {}
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            nodes,
-            pending_launches,
-            demands * 2,
-            utilizations,
-            [],
-            lm.get_static_node_resources_by_ip(),
-        )
-        # 1 because there are 4 pending launches and we only allow a max of 5.
-        assert to_launch == {NODE_TYPE_LEGACY_WORKER: 1}
-        assert rem == [{"CPU": 32, "GPU": 8}] * 2
-
-
 class LoadMetricsTest(unittest.TestCase):
     def testResourceDemandVector(self):
         lm = LoadMetrics()
@@ -1738,9 +1552,7 @@ class AutoscalingTest(unittest.TestCase):
 
     def testScaleUpMinSanity(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["available_node_types"]["m4.large"]["min_workers"] = config[
-            "min_workers"
-        ]
+        config["available_node_types"]["m4.large"]["min_workers"] = 2
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -2369,9 +2181,7 @@ class AutoscalingTest(unittest.TestCase):
 
     def testUpdateConfig(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["available_node_types"]["m4.large"]["min_workers"] = config[
-            "min_workers"
-        ]
+        config["available_node_types"]["m4.large"]["min_workers"] = 2
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -2822,7 +2632,95 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- 1.2.3.6: p3.2xlarge
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+
+Resources
+--------------------------------------------------------
+Usage:
+ 0/2 AcceleratorType:V100
+ 530.0/544.0 CPU
+ 2/2 GPU
+ 2.00/8.000 GiB memory
+ 3.14/16.000 GiB object_store_memory
+
+Demands:
+ {'CPU': 1}: 150+ pending tasks/actors
+ {'CPU': 4} * 5 (PACK): 420+ pending placement groups
+ {'CPU': 16}: 100+ from request_resources()
+""".strip()
+    actual = format_info_string(
+        lm_summary,
+        autoscaler_summary,
+        time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3),
+    )
+    print(actual)
+    assert expected == actual
+
+
+def test_info_string_with_launch_failures():
+    lm_summary = LoadMetricsSummary(
+        usage={
+            "CPU": (530.0, 544.0),
+            "GPU": (2, 2),
+            "AcceleratorType:V100": (0, 2),
+            "memory": (2 * 2 ** 30, 2 ** 33),
+            "object_store_memory": (3.14 * 2 ** 30, 2 ** 34),
+        },
+        resource_demand=[({"CPU": 1}, 150)],
+        pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
+        request_demand=[({"CPU": 16}, 100)],
+        node_types=[],
+    )
+    base_timestamp = datetime(
+        year=2012, month=12, day=21, hour=13, minute=3, second=1
+    ).timestamp()
+    autoscaler_summary = AutoscalerSummary(
+        active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
+        pending_nodes=[
+            ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
+            ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
+        ],
+        pending_launches={"m4.4xlarge": 2},
+        failed_nodes=[("1.2.3.6", "p3.2xlarge")],
+        node_availability_summary=NodeAvailabilitySummary(
+            node_availabilities={
+                "A100": NodeAvailabilityRecord(
+                    node_type="A100",
+                    is_available=False,
+                    last_checked_timestamp=base_timestamp + 1,
+                    unavailable_node_information=UnavailableNodeInformation(
+                        category="InstanceLimitExceeded",
+                        description=":)",
+                    ),
+                ),
+                "Inferentia-Spot": NodeAvailabilityRecord(
+                    node_type="Inferentia-Spot",
+                    is_available=False,
+                    last_checked_timestamp=base_timestamp,
+                    unavailable_node_information=UnavailableNodeInformation(
+                        category="InsufficientInstanceCapacity",
+                        description="mo nodes mo problems",
+                    ),
+                ),
+            }
+        ),
+    )
+
+    expected = """
+======== Autoscaler status: 2020-12-28 01:02:03 ========
+Node status
+--------------------------------------------------------
+Healthy:
+ 2 p3.2xlarge
+ 20 m4.4xlarge
+Pending:
+ m4.4xlarge, 2 launching
+ 1.2.3.4: m4.4xlarge, waiting-for-ssh
+ 1.2.3.5: m4.4xlarge, waiting-for-ssh
+Recent failures:
+ A100: InstanceLimitExceeded (latest_attempt: 13:03:02)
+ Inferentia-Spot: InsufficientInstanceCapacity (latest_attempt: 13:03:01)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -2888,25 +2786,25 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- 1.2.3.99: p3.2xlarge
- 1.2.3.98: p3.2xlarge
- 1.2.3.97: p3.2xlarge
- 1.2.3.96: p3.2xlarge
- 1.2.3.95: p3.2xlarge
- 1.2.3.94: p3.2xlarge
- 1.2.3.93: p3.2xlarge
- 1.2.3.92: p3.2xlarge
- 1.2.3.91: p3.2xlarge
- 1.2.3.90: p3.2xlarge
- 1.2.3.89: p3.2xlarge
- 1.2.3.88: p3.2xlarge
- 1.2.3.87: p3.2xlarge
- 1.2.3.86: p3.2xlarge
- 1.2.3.85: p3.2xlarge
- 1.2.3.84: p3.2xlarge
- 1.2.3.83: p3.2xlarge
- 1.2.3.82: p3.2xlarge
- 1.2.3.81: p3.2xlarge
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.99)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.98)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.97)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.96)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.95)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.94)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.93)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.92)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.91)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.90)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.89)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.88)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.87)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.86)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.85)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.84)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.83)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.82)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.81)
 
 Resources
 --------------------------------------------------------

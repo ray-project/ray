@@ -1,5 +1,3 @@
-import asyncio
-import concurrent
 import dataclasses
 import json
 import logging
@@ -54,7 +52,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         self._dashboard_head = dashboard_head
         self._job_manager = None
         self._gcs_job_info_stub = None
-        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
 
     async def _parse_and_validate_request(
         self, req: Request, request_type: dataclass
@@ -95,9 +92,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             # then lets try to search for a submission with given id
             submission_id = job_or_submission_id
 
-        job_info = await asyncio.get_event_loop().run_in_executor(
-            self._executor, lambda: self._job_manager.get_job_info(submission_id)
-        )
+        job_info = await self._job_manager.get_job_info(submission_id)
         if job_info:
             driver = submission_job_drivers.get(submission_id)
             job = JobDetails(
@@ -127,7 +122,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/packages/{protocol}/{package_name}")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def get_package(self, req: Request) -> Response:
         package_uri = http_uri_components_to_uri(
             protocol=req.match_info["protocol"],
@@ -152,7 +147,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return Response()
 
     @routes.put("/api/packages/{protocol}/{package_name}")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def upload_package(self, req: Request):
         package_uri = http_uri_components_to_uri(
             protocol=req.match_info["protocol"],
@@ -170,7 +165,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return Response(status=aiohttp.web.HTTPOk.status_code)
 
     @routes.post("/api/jobs/")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def submit_job(self, req: Request) -> Response:
         result = await self._parse_and_validate_request(req, JobSubmitRequest)
         # Request parsing failed, returned with Response object.
@@ -179,10 +174,12 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         else:
             submit_request = result
 
+        request_submission_id = submit_request.submission_id or submit_request.job_id
+
         try:
-            submission_id = self._job_manager.submit_job(
+            submission_id = await self._job_manager.submit_job(
                 entrypoint=submit_request.entrypoint,
-                submission_id=submit_request.submission_id,
+                submission_id=request_submission_id,
                 runtime_env=submit_request.runtime_env,
                 metadata=submit_request.metadata,
             )
@@ -206,7 +203,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.post("/api/jobs/{job_or_submission_id}/stop")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def stop_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await self.find_job_by_ids(job_or_submission_id)
@@ -235,7 +232,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/jobs/{job_or_submission_id}")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def get_job_info(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await self.find_job_by_ids(job_or_submission_id)
@@ -251,14 +248,11 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/jobs/")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def list_jobs(self, req: Request) -> Response:
         driver_jobs, submission_job_drivers = await self._get_driver_jobs()
 
-        # TODO(aguo): convert _job_manager.list_jobs to an async function.
-        submission_jobs = await asyncio.get_event_loop().run_in_executor(
-            self._executor, self._job_manager.list_jobs
-        )
+        submission_jobs = await self._job_manager.list_jobs()
         submission_jobs = [
             JobDetails(
                 **dataclasses.asdict(job),
@@ -338,7 +332,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return jobs, submission_job_drivers
 
     @routes.get("/api/jobs/{job_or_submission_id}/logs")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def get_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await self.find_job_by_ids(job_or_submission_id)
@@ -360,7 +354,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/jobs/{job_or_submission_id}/logs/tail")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def tail_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await self.find_job_by_ids(job_or_submission_id)
@@ -384,7 +378,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
     async def run(self, server):
         if not self._job_manager:
-            self._job_manager = JobManager()
+            self._job_manager = JobManager(self._dashboard_head.gcs_aio_client)
 
         self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
             self._dashboard_head.aiogrpc_gcs_channel

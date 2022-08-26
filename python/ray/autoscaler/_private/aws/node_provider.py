@@ -1,5 +1,6 @@
 import copy
 import logging
+import sys
 import threading
 import time
 from collections import OrderedDict, defaultdict
@@ -23,6 +24,7 @@ from ray.autoscaler._private.aws.utils import (
 from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.constants import BOTO_CREATE_MAX_RETRIES, BOTO_MAX_RETRIES
 from ray.autoscaler._private.log_timer import LogTimer
+from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     TAG_RAY_CLUSTER_NAME,
@@ -448,7 +450,22 @@ class AWSNodeProvider(NodeProvider):
                         )
                 break
             except botocore.exceptions.ClientError as exc:
+                # Launch failure may be due to instance type availability in
+                # the given AZ
+                subnet_idx += 1
                 if attempt == max_tries:
+                    try:
+                        exc = NodeLaunchException(
+                            category=exc.response["Error"]["Code"],
+                            description=exc.response["Error"]["Message"],
+                            src_exc_info=sys.exc_info(),
+                        )
+                    except Exception:
+                        # In theory, all ClientError's we expect to get should
+                        # have these fields, but just in case we can't parse
+                        # it, it's fine, just throw the original error.
+                        logger.warning("Couldn't parse exception.", exc)
+                        pass
                     cli_logger.abort(
                         "Failed to launch instances. Max attempts exceeded.",
                         exc=exc,
@@ -457,10 +474,6 @@ class AWSNodeProvider(NodeProvider):
                     cli_logger.warning(
                         "create_instances: Attempt failed with {}, retrying.", exc
                     )
-
-                # Launch failure may be due to instance type availability in
-                # the given AZ
-                subnet_idx += 1
 
         return created_nodes_dict
 

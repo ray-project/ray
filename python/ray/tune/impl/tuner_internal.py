@@ -1,10 +1,13 @@
 import copy
 import os
+import math
+import warnings
 import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING, Tuple
 
+import ray
 import ray.cloudpickle as pickle
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air.config import RunConfig, ScalingConfig
@@ -117,6 +120,58 @@ class TunerInternal:
 
         with open(experiment_checkpoint_path / _TRAINABLE_PKL, "wb") as fp:
             pickle.dump(self._trainable, fp)
+        self._maybe_warn_resource_contention()
+
+    def _expected_utilization(self, cpus_per_trial, cpus_total):
+        num_samples = self._tune_config.num_samples
+        if num_samples < 0:  # TODO: simplify this in Tune
+            num_samples = math.inf
+        concurrent_trials = self._tune_config.max_concurrent_trials or 0
+        if concurrent_trials < 1:  # TODO: simplify this in Tune
+            concurrent_trials = math.inf
+
+        actual_concurrency = min(
+            (cpus_total // cpus_per_trial, num_samples, concurrent_trials)
+        )
+        return (actual_concurrency * cpus_per_trial) / (cpus_total + 0.001)
+
+    def _maybe_warn_resource_contention(self):
+        if not ray.is_initialized():
+            return
+
+        trainable = self._convert_trainable(self._trainable)
+
+        # This may not be precise, but we don't have a great way of
+        # accessing the actual scaling config if it is being tuned.
+        scaling_config = None
+        get_scaling_config = getattr(trainable, "base_scaling_config", None)
+        if callable(get_scaling_config):
+            scaling_config = get_scaling_config()
+
+        if scaling_config is None or scaling_config._max_cpu_fraction_per_node:
+            return
+
+        has_base_dataset = getattr(trainable, "has_base_dataset", False)
+
+        cpus_per_trial = scaling_config.total_resources.get("CPU", 0)
+        cpus_left = ray.available_resources().get("CPU", 0)  # avoid div by 0
+        # TODO(amogkam): Remove this warning after _max_cpu_fraction_per_node is no
+        # longer experimental.
+        if (
+            has_base_dataset
+            and self._expected_utilization(cpus_per_trial, cpus_left) > 0.8
+        ):
+            warnings.warn(
+                "Executing `.fit()` may leave less than 20% of CPUs in "
+                "this cluster for Dataset execution, which can lead to "
+                "resource contention or hangs. To avoid this, "
+                "reserve at least 20% of node CPUs for Dataset execution by "
+                "setting `_max_cpu_fraction_per_node = 0.8` in the Trainer "
+                "scaling_config. See "
+                "https://docs.ray.io/en/master/data/dataset-internals.html"
+                "#datasets-and-tune for more info.",
+                stacklevel=4,
+            )
 
     def _restore_from_path_or_uri(
         self, path_or_uri: str, resume_config: Optional[_ResumeConfig]
@@ -151,7 +206,7 @@ class TunerInternal:
 
         if not synced:
             # If we didn't sync, use the restore_path local dir
-            self._experiment_checkpoint_dir = path_or_uri
+            self._experiment_checkpoint_dir = os.path.expanduser(path_or_uri)
         else:
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
@@ -171,7 +226,7 @@ class TunerInternal:
             Tuple of (downloaded from remote, local_dir)
         """
         if not is_non_local_path_uri(restore_path):
-            return False, restore_path
+            return False, os.path.expanduser(restore_path)
 
         tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
 

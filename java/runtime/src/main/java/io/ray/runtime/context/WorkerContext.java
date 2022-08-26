@@ -4,6 +4,7 @@ import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
+import io.ray.api.runtimeenv.RuntimeEnv;
 import io.ray.runtime.generated.Common.Address;
 import io.ray.runtime.generated.Common.TaskType;
 
@@ -26,4 +27,7 @@ public interface WorkerContext {
   TaskId getCurrentTaskId();
 
   Address getRpcAddress();
+
+  /** RuntimeEnv of the current worker or job(for driver). */
+  RuntimeEnv getCurrentRuntimeEnv();
 }

@@ -6,7 +6,6 @@ import tensorflow as tf
 
 from ray.util import log_once
 from ray.train.predictor import DataBatchType
-from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.air.checkpoint import Checkpoint
 from ray.air._internal.tensorflow_utils import convert_ndarray_batch_to_tf_tensor_batch
 from ray.train._internal.dl_predictor import DLPredictor
@@ -19,7 +18,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TensorflowPredictor(DLPredictor):
     """A predictor for TensorFlow models.
 
@@ -56,24 +55,30 @@ class TensorflowPredictor(DLPredictor):
                 self._model = self.model_definition()
         else:
             self._model = self.model_definition()
-
-        if (
-            not use_gpu
-            and len(get_tf_gpu_devices()) > 0
-            and log_once("tf_predictor_not_using_gpu")
-        ):
-            logger.warning(
-                "You have `use_gpu` as False but there are "
-                f"{len(get_tf_gpu_devices())} GPUs detected on host where "
-                "prediction will only use CPU. Please consider explicitly "
-                "setting `TensorflowPredictor(use_gpu=True)` or "
-                "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
-                "enable GPU prediction."
-            )
+            gpu_devices = tf.config.list_physical_devices("GPU")
+            if len(gpu_devices) > 0 and log_once("tf_predictor_not_using_gpu"):
+                logger.warning(
+                    "You have `use_gpu` as False but there are "
+                    f"{len(gpu_devices)} GPUs detected on host where "
+                    "prediction will only use CPU. Please consider explicitly "
+                    "setting `TensorflowPredictor(use_gpu=True)` or "
+                    "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
+                    "enable GPU prediction."
+                )
 
         if model_weights is not None:
             self._model.set_weights(model_weights)
         super().__init__(preprocessor)
+
+    def __repr__(self):
+        fn_name = getattr(self.model_definition, "__name__", self.model_definition)
+        return (
+            f"{self.__class__.__name__}("
+            f"model_definition={fn_name}, "
+            f"preprocessor={self._preprocessor!r}, "
+            f"model_weights={self.model_weights!r}, "
+            f"use_gpu={self.use_gpu!r})"
+        )
 
     @classmethod
     def from_checkpoint(

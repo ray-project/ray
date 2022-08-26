@@ -1,4 +1,7 @@
 import os
+import threading
+from unittest.mock import patch
+
 import pytest
 import shutil
 import tempfile
@@ -7,6 +10,7 @@ from ray.air._internal.remote_storage import (
     upload_to_uri,
     download_from_uri,
 )
+from ray.tune.utils.file_transfer import _get_recursive_files_and_stats
 
 
 @pytest.fixture
@@ -124,6 +128,33 @@ def test_upload_exclude_multimatch(temp_data_dirs):
     assert_file(False, tmp_target, "subdir_nested_level2_exclude.txt")
     assert_file(False, tmp_target, "subdir_exclude")
     assert_file(False, tmp_target, "subdir_exclude/something/somewhere.txt")
+
+
+def test_get_recursive_files_race_con(temp_data_dirs):
+    tmp_source, _ = temp_data_dirs
+
+    def run(event):
+        lst = os.lstat
+
+        def waiting_lstat(*args, **kwargs):
+            event.wait()
+            return lst(*args, **kwargs)
+
+        with patch("os.lstat", wraps=waiting_lstat):
+            _get_recursive_files_and_stats(tmp_source)
+
+    event = threading.Event()
+
+    get_thread = threading.Thread(target=run, args=(event,))
+    get_thread.start()
+
+    os.remove(os.path.join(tmp_source, "level0.txt"))
+    event.set()
+
+    get_thread.join()
+
+    assert_file(False, tmp_source, "level0.txt")
+    assert_file(True, tmp_source, "level0_exclude.txt")
 
 
 if __name__ == "__main__":

@@ -333,6 +333,7 @@ class Node:
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
+        self._record_stats()
 
     @staticmethod
     def validate_ip_port(ip_port):
@@ -855,16 +856,20 @@ class Node:
             process_info,
         ]
 
-    def start_dashboard(self, require_dashboard: bool):
+    def start_api_server(self, *, include_dashboard: bool, raise_on_failure: bool):
         """Start the dashboard.
 
         Args:
-            require_dashboard: If true, this will raise an exception
-                if we fail to start the dashboard. Otherwise it will print
-                a warning if we fail to start the dashboard.
+            include_dashboard: If true, this will load all dashboard-related modules
+                when starting the API server. Otherwise, it will only
+                start the modules that are not relevant to the dashboard.
+            raise_on_failure: If true, this will raise an exception
+                if we fail to start the API server. Otherwise it will print
+                a warning if we fail to start the API server.
         """
-        self._webui_url, process_info = ray._private.services.start_dashboard(
-            require_dashboard,
+        self._webui_url, process_info = ray._private.services.start_api_server(
+            include_dashboard,
+            raise_on_failure,
             self._ray_params.dashboard_host,
             self.gcs_address,
             self._temp_dir,
@@ -1060,10 +1065,21 @@ class Node:
         if self._ray_params.ray_client_server_port:
             self.start_ray_client_server()
 
-        if self._ray_params.include_dashboard:
-            self.start_dashboard(require_dashboard=True)
-        elif self._ray_params.include_dashboard is None:
-            self.start_dashboard(require_dashboard=False)
+        if self._ray_params.include_dashboard is None:
+            # Default
+            include_dashboard = True
+            raise_on_api_server_failure = False
+        elif self._ray_params.include_dashboard is False:
+            include_dashboard = False
+            raise_on_api_server_failure = False
+        else:
+            include_dashboard = True
+            raise_on_api_server_failure = True
+
+        self.start_api_server(
+            include_dashboard=include_dashboard,
+            raise_on_failure=raise_on_api_server_failure,
+        )
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""
@@ -1457,3 +1473,17 @@ class Node:
 
         external_storage.setup_external_storage(deserialized_config, self.session_name)
         external_storage.reset_external_storage()
+
+    def _record_stats(self):
+        # Initialize the internal kv so that the metrics can be put
+        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+
+        if not ray.experimental.internal_kv._internal_kv_initialized():
+            ray.experimental.internal_kv._initialize_internal_kv(self.get_gcs_client)
+        assert ray.experimental.internal_kv._internal_kv_initialized()
+        if self.head:
+            # record head node stats
+            gcs_storage_type = (
+                "redis" if os.environ.get("RAY_REDIS_ADDRESS") is not None else "memory"
+            )
+            record_extra_usage_tag(TagKey.GCS_STORAGE, gcs_storage_type)
