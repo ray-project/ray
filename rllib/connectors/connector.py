@@ -103,7 +103,7 @@ class Connector(abc.ABC):
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
 
-    def to_state_dict(self) -> Tuple[str, List[Any]]:
+    def to_state(self) -> Tuple[str, List[Any]]:
         """Serialize a connector into a JSON serializable Tuple.
 
         to_state_dict is required, so that all Connectors are serializable.
@@ -115,7 +115,7 @@ class Connector(abc.ABC):
         return NotImplementedError
 
     @staticmethod
-    def from_state_dict(self, ctx: ConnectorContext, params: List[Any]) -> "Connector":
+    def from_state(self, ctx: ConnectorContext, params: List[Any]) -> "Connector":
         """De-serialize a JSON params back into a Connector.
 
         from_state_dict is required, so that all Connectors are serializable.
@@ -266,11 +266,11 @@ class ActionConnector(Connector):
     to user environments.
 
     An action connector transforms a single piece of policy output in
-    ActionConnectorDataType format, which is basically PolicyOutputType
-    plus env and agent IDs.
+    ActionConnectorDataType format, which is basically PolicyOutputType plus env and
+    agent IDs.
 
-    Any functions that operates directly on PolicyOutputType can be
-    easily adpated into an ActionConnector by using register_lambda_action_connector.
+    Any functions that operate directly on PolicyOutputType can be easily adapted
+    into an ActionConnector by using register_lambda_action_connector.
 
     Example:
     .. code-block:: python
@@ -432,4 +432,4 @@ def get_connector(ctx: ConnectorContext, name: str, params: Tuple[Any]) -> Conne
     if not _global_registry.contains(RLLIB_CONNECTOR, name):
         raise NameError("connector not found.", name)
     cls = _global_registry.get(RLLIB_CONNECTOR, name)
-    return cls.from_state_dict(ctx, params)
+    return cls.from_state(ctx, params)
