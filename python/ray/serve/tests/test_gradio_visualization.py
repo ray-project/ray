@@ -165,7 +165,10 @@ async def test_get_result_correctness(graph1):
 
     await visualizer._send_request(random.randint(0, 100), 1, 2)
     values = await asyncio.gather(
-        *[(visualizer._get_result(uuid)) for uuid in visualizer.uuid_to_block]
+        *[
+            (visualizer._get_result(node.get_stable_uuid()))
+            for node in visualizer.node_to_block
+        ]
     )
     assert {1, 2} <= set(values)
 

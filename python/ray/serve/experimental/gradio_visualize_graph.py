@@ -50,10 +50,8 @@ class GraphVisualizer:
         self.resolved_nodes = 0
         self.finished_last_inference = True
 
-        # maps DAGNode uuid to a DAGNode instance with that uuid
-        self.uuid_to_node: Dict[str, DAGNode] = {}
         # maps DAGNode uuid to unique instance of a gradio block
-        self.uuid_to_block: Dict[str, Any] = {}
+        self.node_to_block: Dict[DAGNode, Any] = {}
         # maps InputAttributeNodes to unique instance of interactive gradio block
         self.input_index_to_block: Dict[int, Any] = {}
 
@@ -72,32 +70,29 @@ class GraphVisualizer:
         gr = lazy_import_gradio()
 
         levels = {}
-        for uuid in depths:
+        for node in depths:
             if isinstance(
-                self.uuid_to_node[uuid],
+                node,
                 (
                     InputAttributeNode,
                     DeploymentMethodExecutorNode,
                     DeploymentFunctionExecutorNode,
                 ),
             ):
-                levels.setdefault(depths[uuid], []).append(uuid)
+                levels.setdefault(depths[node], []).append(node)
 
-        name_generator = _DAGNodeNameGenerator()
+        node_names = _DAGNodeNameGenerator()
 
         def render_level(level):
-            for uuid in levels[level]:
-                node = self.uuid_to_node[uuid]
-                name = name_generator.get_node_name(node)
+            for node in levels[level]:
+                name = node_names.get_node_name(node)
 
-                # InputAttributNodes should have level 1
-                # Because the InputNode has level 0 but is not rendered
-                if level == 1:
+                if isinstance(node, InputAttributeNode):
                     key = node._key
                     if key not in self.input_index_to_block:
                         self.input_index_to_block[key] = gr.Number(label=name)
                 else:
-                    self.uuid_to_block[uuid] = gr.Number(label=name, interactive=False)
+                    self.node_to_block[node] = gr.Number(label=name, interactive=False)
 
         for level in sorted(levels.keys()):
             with gr.Row():
@@ -117,14 +112,13 @@ class GraphVisualizer:
                 between the DAGNode and any InputAttributeNode
 
         Returns:
-            The original node. As this function is used with apply_recursive, this
-            is necessary for the PyObjScanner to find child nodes.
+            The original node. After apply_recursive is done, the cache will store
+            an uuid -> node map, which will be used in make_blocks.
         """
         uuid = node.get_stable_uuid()
         for child_node in node._get_all_child_nodes():
             depths[uuid] = max(depths[uuid], depths[child_node.get_stable_uuid()] + 1)
 
-        self.uuid_to_node[uuid] = node
         return node
 
     async def _get_result(self, node_uuid: str):
@@ -135,7 +129,7 @@ class GraphVisualizer:
         """
         result = await self.cache[node_uuid]
         self.resolved_nodes += 1
-        if self.resolved_nodes == len(self.uuid_to_block):
+        if self.resolved_nodes == len(self.node_to_block):
             self.finished_last_inference = True
         return result
 
@@ -202,14 +196,18 @@ class GraphVisualizer:
 
         # Get level for each node in dag
         depths = defaultdict(lambda: 0)
-        self.dag.apply_recursive(lambda node: self._fetch_depths(node, depths))
+
+        def depths_fn(node):
+            return self._fetch_depths(node, depths)
+
+        self.dag.apply_recursive(depths_fn)
 
         with gr.Blocks() as demo:
-            self._make_blocks(depths)
+            self._make_blocks({depths_fn.cache[uuid]: depths[uuid] for uuid in depths})
 
             with gr.Row():
                 submit = gr.Button("Run").style()
-                trigger = gr.Number(visible=False)
+                trigger = gr.Number(0, visible=False)
                 clear = gr.Button("Clear").style()
 
             # Add event listener that sends the request to the deployment graph
@@ -219,11 +217,13 @@ class GraphVisualizer:
                 outputs=trigger,
             )
             # Add event listeners that resolve object refs for each of the nodes
-            for node_uuid, block in self.uuid_to_block.items():
-                trigger.change(self._get_result, gr.Variable(node_uuid), block)
+            for node, block in self.node_to_block.items():
+                trigger.change(
+                    self._get_result, gr.Variable(node.get_stable_uuid()), block
+                )
 
             # Resets all blocks if Clear button is clicked
-            all_blocks = [*self.uuid_to_block.values()] + [
+            all_blocks = [*self.node_to_block.values()] + [
                 *self.input_index_to_block.values()
             ]
             clear.click(

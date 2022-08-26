@@ -106,7 +106,7 @@ class DAGNode(DAGNodeBase):
     def execute(
         self, *args, _cache_refs: bool = False, **kwargs
     ) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
-        """Execute this DAG using the Ray default executor.
+        """Execute this DAG using the Ray default executor _execute_impl().
 
         After execution, stores the the default executor's return values
         on each node in this DAG in a cache. These should be a mix of:
