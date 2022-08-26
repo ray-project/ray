@@ -195,15 +195,16 @@ class GraphVisualizer:
         self.dag = json.loads(dag_node_json, object_hook=dagnode_from_json)
 
         # Get level for each node in dag
-        depths = defaultdict(lambda: 0)
+        uuid_to_depths = defaultdict(lambda: 0)
 
         def depths_fn(node):
-            return self._fetch_depths(node, depths)
+            return self._fetch_depths(node, uuid_to_depths)
 
         self.dag.apply_recursive(depths_fn)
+        node_to_depths = {depths_fn.cache[uuid]: uuid_to_depths[uuid] for uuid in uuid_to_depths}
 
         with gr.Blocks() as demo:
-            self._make_blocks({depths_fn.cache[uuid]: depths[uuid] for uuid in depths})
+            self._make_blocks(node_to_depths)
 
             with gr.Row():
                 submit = gr.Button("Run").style()

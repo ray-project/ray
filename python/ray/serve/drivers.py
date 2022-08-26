@@ -155,9 +155,11 @@ class DAGDriver:
         return await (await self.dags[route_path].remote(*args, **kwargs))
 
     async def get_intermediate_object_refs(self) -> Dict[str, Any]:
-        """Gets the cached references to the results of the default executors on each
-        node in the DAG found at self.MATCH_ALL_ROUTE_PREFIX. Should be called after
-        predict() has been called.
+        """Gets latest cached object refs from latest call to predict().
+
+        Gets the latest cached references to the results of the default executors on
+        each node in the DAG found at self.MATCH_ALL_ROUTE_PREFIX. Should be called
+        after predict() has been called with _cache_refs set to True.
         """
         dag_handle = self.dags[self.MATCH_ALL_ROUTE_PREFIX]
         root_dag_node = dag_handle.dag_node
