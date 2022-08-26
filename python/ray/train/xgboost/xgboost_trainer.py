@@ -25,7 +25,7 @@ class XGBoostTrainer(GBDTTrainer):
         of the XGBoost distributed training algorithm.
         Ray only provides orchestration, data ingest and fault tolerance.
         For more information on XGBoost distributed training, refer to
-        `XGBoost documentation <https://xgboost.readthedocs.io>`_.
+        `XGBoost documentation <https://xgboost.readthedocs.io>`__.
 
     Example:
         .. code-block:: python

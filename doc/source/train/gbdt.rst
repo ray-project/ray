@@ -10,8 +10,8 @@ Ray Train has built-in support for XGBoost and LightGBM.
     of the underlying XGBoost / LightGBM distributed training algorithms.
     Ray only provides orchestration, data ingest and fault tolerance.
     For more information on GBDT distributed training, refer to
-    `XGBoost documentation <https://xgboost.readthedocs.io>`_ and
-    `LightGBM documentation <https://lightgbm.readthedocs.io/>`_.
+    `XGBoost documentation <https://xgboost.readthedocs.io>`__ and
+    `LightGBM documentation <https://lightgbm.readthedocs.io/>`__.
 
 Basic Usage
 -----------

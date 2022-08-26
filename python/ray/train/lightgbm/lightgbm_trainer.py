@@ -29,7 +29,7 @@ class LightGBMTrainer(GBDTTrainer):
         of the LightGBM distributed training algorithm.
         Ray only provides orchestration, data ingest and fault tolerance.
         For more information on LightGBM distributed training, refer to
-        `LightGBM documentation <https://lightgbm.readthedocs.io/>`_.
+        `LightGBM documentation <https://lightgbm.readthedocs.io/>`__.
 
     Example:
         .. code-block:: python
