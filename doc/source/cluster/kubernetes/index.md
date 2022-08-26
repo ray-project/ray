@@ -88,3 +88,14 @@ Ray's Kubernetes support is developed at the [KubeRay GitHub repository](https:/
 the project.
 - Check out the [KubeRay docs](https://ray-project.github.io/kuberay/) for further technical information, developer guides,
 and discussion of new and upcoming features.
+
+```{note}
+The KubeRay operator replaces the older Ray operator hosted in the [Ray repository](https://github.com/ray-project/ray/tree/master/python/ray/ray_operator).
+Check the linked README for migration notes.
+
+If you have used the legacy Ray operator in the past,
+make sure to de-register that operator's CRD before
+using KubeRay:
+```shell
+kubectl delete crd rayclusters.cluster.ray.io
+```
