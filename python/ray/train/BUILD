@@ -187,7 +187,7 @@ py_test(
 
 py_test(
     name = "test_huggingface_trainer",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_huggingface_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
