@@ -52,20 +52,3 @@ class SyncedFilterAgentConnector(AgentConnector):
         # inline this as soon as we deprecate ordinary filter with non-connector
         # env_runner
         return self.filter.as_serializable()
-
-
-@PublicAPI(stability="alpha")
-class SyncedCustomFilterAgentConnector(AgentConnector):
-    """An agent connector that filters with a user provided filter."""
-
-    def __init__(self, ctx: ConnectorContext, filter):
-        super().__init__(ctx)
-        self.filter = filter
-
-    def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
-        d = ac_data.data
-        assert (
-            type(d) == dict
-        ), "Single agent data must be of type Dict[str, TensorStructType]"
-
-        return self.filter(ac_data[SampleBatch.OBS])
