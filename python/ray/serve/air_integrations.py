@@ -7,15 +7,10 @@ import numpy as np
 
 import ray
 from ray import serve
-from ray._private.utils import import_attr
-from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
-<<<<<<< HEAD
-from ray.serve.utils import require_packages
+from ray._private.utils import import_attr, require_packages
 from ray.serve.constants import SERVE_LOGGER_NAME
-=======
-from ray.serve._private.utils import require_packages
+from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
 from ray.util.annotations import PublicAPI
->>>>>>> ce99cf1b71227620a847500c53e0ee97387b888f
 
 if TYPE_CHECKING:
     from ray.train.predictor import Predictor

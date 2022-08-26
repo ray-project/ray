@@ -8,7 +8,7 @@ from ray.train.predictor import Predictor
 
 
 def test_automatic_enable_gpu(serve_instance):
-    """Test automatically set underlying Predictor use_gpu if deployment has GPUs."""
+    """Test automatic setting of underlying Predictor use_gpu if deployment has GPUs."""
 
     @ray.remote
     def send_request(**requests_kargs):

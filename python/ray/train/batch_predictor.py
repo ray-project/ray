@@ -1,11 +1,7 @@
 import inspect
-<<<<<<< HEAD
 import logging
-from typing import Any, Dict, Optional, List, Type, Union
-=======
 from typing import Any, Dict, Optional, List, Type, Union, Callable
 import pandas as pd
->>>>>>> ce99cf1b71227620a847500c53e0ee97387b888f
 
 import ray
 from ray.air import Checkpoint
