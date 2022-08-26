@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import time
+import subprocess
 
 import pytest
 
@@ -12,7 +13,6 @@ import ray.cluster_utils
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_pid_to_exit,
-    check_call_subprocess,
 )
 
 logger = logging.getLogger(__name__)
@@ -201,7 +201,7 @@ def sys_path():
 assert '{str(tmp_path / "package")}' in ray.get(sys_path.remote())
 """
     )
-    check_call_subprocess(["python", str(module1_file)])
+    subprocess.check_call(["python", str(module1_file)])
 
     # If the driver script is run via `python -m`,
     # the script directory is not included in sys.path.
@@ -220,7 +220,7 @@ assert '{str(tmp_path / "package")}' not in ray.get(sys_path.remote())
 """
     )
     monkeypatch.chdir(str(tmp_path))
-    check_call_subprocess(["python", "-m", "package.module2"])
+    subprocess.check_call(["python", "-m", "package.module2"])
 
 
 if __name__ == "__main__":
