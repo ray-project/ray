@@ -112,8 +112,6 @@ def test_e2e(ray_start_4_cpus, save_strategy):
 @pytest.mark.parametrize("save_steps", [0, 2, 5, 10, 15])
 @pytest.mark.parametrize("logging_steps", [2, 5, 10, 15])
 def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
-    if save_steps and (save_steps < logging_steps or save_steps % logging_steps != 0):
-        pytest.skip()
     ray_train = ray.data.from_pandas(train_df)
     ray_validation = ray.data.from_pandas(validation_df)
     scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
@@ -132,6 +130,11 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
         scaling_config=scaling_config,
         datasets={"train": ray_train, "evaluation": ray_validation},
     )
+    if save_steps and (save_steps < logging_steps or save_steps % logging_steps != 0):
+        # Test validation
+        with pytest.raises(ValueError):
+            result = trainer.fit()
+        return
     result = trainer.fit()
 
     assert result.metrics["epoch"] == epochs
@@ -169,38 +172,6 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     assert predictions.count() == 3
 
 
-def test_reporting():
-    reports = []
-
-    def _fake_report(**kwargs):
-        reports.append(kwargs)
-
-    with patch("ray.air.session.report", _fake_report):
-        state = TrainerState()
-        report_callback = TrainReportCallback()
-        report_callback.on_epoch_begin(None, state, None)
-        state.epoch = 0.5
-        report_callback.on_log(None, state, None, logs={"log1": 1})
-        state.epoch = 1
-        report_callback.on_log(None, state, None, logs={"log2": 1})
-        report_callback.on_epoch_end(None, state, None)
-        report_callback.on_epoch_begin(None, state, None)
-        state.epoch = 1.5
-        report_callback.on_log(None, state, None, logs={"log1": 1})
-        state.epoch = 2
-        report_callback.on_log(None, state, None, logs={"log2": 1})
-        report_callback.on_epoch_end(None, state, None)
-        report_callback.on_train_end(None, state, None)
-
-    assert len(reports) == 2
-    assert "log1" in reports[0]["metrics"]
-    assert "log2" in reports[0]["metrics"]
-    assert reports[0]["metrics"]["epoch"] == 1
-    assert "log1" in reports[1]["metrics"]
-    assert "log2" in reports[1]["metrics"]
-    assert reports[1]["metrics"]["epoch"] == 2
-
-
 def test_validation(ray_start_4_cpus):
     ray_train = ray.data.from_pandas(train_df)
     ray_validation = ray.data.from_pandas(validation_df)
@@ -218,14 +189,6 @@ def test_validation(ray_start_4_cpus):
             "load_best_model_at_end": True,
             "save_strategy": "epoch",
         },
-        **trainer_conf,
-    )
-    with pytest.raises(RayTaskError):
-        trainer.fit().error
-
-    # evaluation_strategy set to "steps" should raise an exception
-    trainer = HuggingFaceTrainer(
-        trainer_init_config={"epochs": 1, "evaluation_strategy": "steps"},
         **trainer_conf,
     )
     with pytest.raises(RayTaskError):
