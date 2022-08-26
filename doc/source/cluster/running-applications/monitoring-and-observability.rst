@@ -1,7 +1,5 @@
-.. include:: /_includes/clusters/we_are_hiring.rst
-
-Monitoring and observability
-----------------------------
+Cluster Monitoring
+------------------
 
 Ray ships with the following observability features:
 
@@ -9,7 +7,7 @@ Ray ships with the following observability features:
 2. CLI tools such as the :ref:`Ray state APIs <state-api-overview-ref>` and :ref:`ray status <monitor-cluster>`, for checking application and cluster status.
 3. :ref:`Prometheus metrics <multi-node-metrics>` for internal and custom user-defined metrics.
 
-For more information on these tools, check out the more comprehensive :ref:`Observability guide<observability>`.
+For more information on these tools, check out the more comprehensive :ref:`Observability guide <observability>`.
 
 The rest of this page will focus on how to access these services when running a Ray Cluster.
 
@@ -18,7 +16,7 @@ Monitoring the cluster via the dashboard
 
 :ref:`The dashboard <ray-dashboard>` provides detailed information about the state of the cluster,
 including the running jobs, actors, workers, nodes, etc.
-By default, the :ref:`cluster launcher <ref-cluster-quick-start-vms-under-construction>` and :ref:`KubeRay operator <kuberay-quickstart>` will launch the dashboard, but will
+By default, the :ref:`cluster launcher <vm-cluster-quick-start>` and :ref:`KubeRay operator <kuberay-quickstart>` will launch the dashboard, but will
 not publicly expose the port.
 
 .. tabbed:: If using the VM cluster launcher
@@ -104,12 +102,12 @@ Auto-discovering metrics endpoints
 ##################################
 
 You can allow Prometheus to dynamically find endpoints it should scrape by using Prometheus' `file based service discovery <https://prometheus.io/docs/guides/file-sd/#installing-configuring-and-running-prometheus>`_.
-This is the recommended way to export Prometheus metrics when using the Ray :ref:`cluster launcher <ref-cluster-quick-start-vms-under-construction>`, as node IP addresses can often change as the cluster scales up and down.
+This is the recommended way to export Prometheus metrics when using the Ray :ref:`cluster launcher <vm-cluster-quick-start>`, as node IP addresses can often change as the cluster scales up and down.
 
 Ray auto-generates a Prometheus `service discovery file <https://prometheus.io/docs/guides/file-sd/#installing-configuring-and-running-prometheus>`_ on the head node to facilitate metrics agents' service discovery.
 This allows you to scrape all metrics in the cluster without knowing their IPs. Let's walk through how to acheive this.
 
-The service discovery file is generated on the :ref:`head node <cluster-head-node-under-construction>`. On this node, look for ``/tmp/ray/prom_metrics_service_discovery.json`` (or the eqiuvalent file if using a custom Ray ``temp_dir``).
+The service discovery file is generated on the :ref:`head node <cluster-head-node>`. On this node, look for ``/tmp/ray/prom_metrics_service_discovery.json`` (or the eqiuvalent file if using a custom Ray ``temp_dir``).
 Ray will periodically update this file with the addresses of all metrics agents in the cluster.
 
 Now, on the same node, modify a Prometheus config to scrape the file for service discovery.

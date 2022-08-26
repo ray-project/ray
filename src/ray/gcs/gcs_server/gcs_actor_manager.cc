@@ -107,7 +107,7 @@ const ray::rpc::ActorDeathCause GenActorOutOfScopeCause(const ray::gcs::GcsActor
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
   AddActorInfo(actor, actor_died_error_ctx);
   actor_died_error_ctx->set_error_message(
-      "The actor is dead because because all references to the actor were removed.");
+      "The actor is dead because all references to the actor were removed.");
   return death_cause;
 }
 }  // namespace

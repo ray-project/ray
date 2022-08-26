@@ -3,38 +3,13 @@ Ray State API
 
 .. _state-api-ref:
 
-.. tip:: APIs are pre-alpha and under active development. APIs are subject to change and not stable across versions.
+.. note:: 
 
-State CLI
----------
+    APIs are :ref:`alpha <api-stability-alpha>`. This feature requires a full installation of Ray using ``pip install "ray[default]"``.
 
-State CLI allows users to access the state of various resources (e.g., actor, task, object).
+For an overview with examples see :ref:`Monitoring Ray States <state-api-overview-ref>`.
 
-.. click:: ray.experimental.state.state_cli:task_summary
-   :prog: ray summary tasks
-
-.. click:: ray.experimental.state.state_cli:actor_summary
-   :prog: ray summary actors
-
-.. click:: ray.experimental.state.state_cli:object_summary
-   :prog: ray summary objects
-
-.. click:: ray.experimental.state.state_cli:ray_list
-   :prog: ray list
-
-.. click:: ray.experimental.state.state_cli:ray_get
-   :prog: ray get
-
-.. _ray-logs-api-doc:
-
-Log CLI
--------
-
-Log CLI allows users to access the log from the cluster. 
-Note that only the logs from alive nodes are available through this API.
-
-.. click:: ray.scripts.scripts:ray_logs
-    :prog: ray logs
+For the CLI reference see :ref:`Ray State CLI Reference <state-api-cli-ref>` or :ref:`Ray Log CLI Reference <ray-logs-api-cli-ref>`.
 
 State Python SDK
 -----------------

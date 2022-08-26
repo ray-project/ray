@@ -67,6 +67,8 @@ If you want to learn more about the Ray cluster launcher, see this blog post for
 
 ## AWS Configurations
 
+(aws-cluster-efs)=
+
 ### Using Amazon EFS
 
 To utilize Amazon EFS in the Ray cluster, you will need to install some additional utilities and mount the EFS in `setup_commands`. Note that these instructions only work if you are using the Ray cluster launcher on AWS.
@@ -92,6 +94,8 @@ setup_commands:
         sudo chmod 777 efs;
 ```
 
+(aws-cluster-s3)=
+
 ### Accessing S3
 
 In various scenarios, worker nodes may need write access to an S3 bucket, e.g., Ray Tune has an option to write checkpoints to S3 instead of syncing them directly back to the driver.
@@ -99,10 +103,11 @@ In various scenarios, worker nodes may need write access to an S3 bucket, e.g., 
 If you see errors like “Unable to locate credentials”, make sure that the correct `IamInstanceProfile` is configured for worker nodes in your cluster config file. This may look like:
 
 ```yaml
-worker_nodes:
-    InstanceType: m5.xlarge
-    ImageId: latest_dlami
-    IamInstanceProfile:
+available_node_types:
+  ray.worker.default:
+    node_config:
+      ...
+      IamInstanceProfile:
         Arn: arn:aws:iam::YOUR_AWS_ACCOUNT:YOUR_INSTANCE_PROFILE
 ```
 
@@ -123,4 +128,4 @@ secret_key     ****************YYYY         iam-role
     region                <not set>             None    None
 ```
 
-Please refer to this [discussion](https://github.com/ray-project/ray/issues/9327) for more details on ???.
+Please refer to this [discussion](https://github.com/ray-project/ray/issues/9327) for more details on accessing S3.

@@ -12,6 +12,7 @@ import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
+from ray.data._internal.stats import _StatsActor
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -3988,6 +3989,17 @@ def test_groupby_map_groups_returning_empty_result(ray_start_regular_shared, num
     assert mapped.take_all() == []
 
 
+def test_groupby_map_groups_perf(ray_start_regular_shared):
+    data_list = [x % 100 for x in range(5000000)]
+    ds = ray.data.from_pandas(pd.DataFrame({"A": data_list}))
+    start = time.perf_counter()
+    ds.groupby("A").map_groups(lambda df: df)
+    end = time.perf_counter()
+    # On a t3.2xlarge instance, it ran in about 5 seconds, so expecting it has to
+    # finish within about 10x of that time, unless something went wrong.
+    assert end - start < 60
+
+
 @pytest.mark.parametrize("num_parts", [1, 2, 3, 30])
 def test_groupby_map_groups_for_list(ray_start_regular_shared, num_parts):
     seed = int(time.time())
@@ -4675,6 +4687,43 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
     for block in blocks:
         locations.extend(location_data[block]["node_ids"])
     assert set(locations) == {node1_id, node2_id}
+
+
+def test_stats_actor_cap_num_stats(ray_start_cluster):
+    actor = _StatsActor.remote(3)
+    metadatas = []
+    task_idx = 0
+    for uuid in range(3):
+        metadatas.append(
+            BlockMetadata(
+                num_rows=uuid,
+                size_bytes=None,
+                schema=None,
+                input_files=None,
+                exec_stats=None,
+            )
+        )
+        num_stats = uuid + 1
+        actor.record_start.remote(uuid)
+        assert ray.get(actor._get_stats_dict_size.remote()) == (
+            num_stats,
+            num_stats - 1,
+            num_stats - 1,
+        )
+        actor.record_task.remote(uuid, task_idx, metadatas[-1])
+        assert ray.get(actor._get_stats_dict_size.remote()) == (
+            num_stats,
+            num_stats,
+            num_stats,
+        )
+    for uuid in range(3):
+        assert ray.get(actor.get.remote(uuid))[0][task_idx] == metadatas[uuid]
+    # Add the fourth stats to exceed the limit.
+    actor.record_start.remote(3)
+    # The first stats (with uuid=0) should have been purged.
+    assert ray.get(actor.get.remote(0))[0] == {}
+    # The start_time has 3 entries because we just added it above with record_start().
+    assert ray.get(actor._get_stats_dict_size.remote()) == (3, 2, 2)
 
 
 @ray.remote

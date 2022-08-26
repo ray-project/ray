@@ -1,7 +1,4 @@
-.. warning::
-    This page is under construction!
-
-.. _jobs-quickstart-under-construction:
+.. _jobs-quickstart:
 
 =================================
 Quickstart Using the Ray Jobs CLI
@@ -10,7 +7,8 @@ Quickstart Using the Ray Jobs CLI
 In this guide, we will walk through the Ray Jobs CLIs available for submitting and interacting with a Ray Job.
 
 .. note::
-    This component is in **beta**. APIs may change before becoming stable.
+
+  The Jobs API is in beta and may change before becoming stable.
 
 Setup
 -----
@@ -35,7 +33,7 @@ For convenience, this guide will assume that you are using a local Ray Cluster, 
 
 This will create a Ray head node on our local machine that we can use for development purposes.
 Note the Ray Dashboard URL that is printed when starting or connecting to a Ray Cluster; we will use this URL later to submit a Ray Job.
-For more details on production deployment scenarios, check out the guides for deploying Ray on :ref:`VMs <ref-cluster-quick-start-vms-under-construction>` and :ref:`Kubernetes <kuberay-quickstart>`.
+For more details on production deployment scenarios, check out the guides for deploying Ray on :ref:`VMs <vm-cluster-quick-start>` and :ref:`Kubernetes <kuberay-quickstart>`.
 
 
 Submitting a Ray Job
@@ -55,11 +53,11 @@ Let's start with a sample script that can be run locally. The following script u
     ray.init()
     print(ray.get(hello_world.remote()))
 
-Put this file in a local directory of your choice, with the filename ``script.py``, so your working directory will look like:
+Create an empty working directory with the above Python script inside a file named ``script.py``. 
 
 .. code-block:: bash
 
-  | your_working_directory ("./")
+  | your_working_directory
   | ├── script.py
 
 Next, we will find the HTTP address of the Ray Cluster to which we can submit a Ray Job request.
@@ -68,6 +66,7 @@ By default, this uses port 8265.
 
 If you are using a local Ray Cluster (``ray start --head``), you can connect directly at ``http://127.0.0.1:8265``.
 If you are using a Ray Cluster started on VMs or Kubernetes, you can follow the instructions there for setting up network access from a client.
+
 .. TODO: Add links to networking tips for VMs and kubernetes.
 
 To tell the Ray Jobs CLI how to find your Ray Cluster, we will pass the Ray Dashboard address. This can be done by setting the ``RAY_ADDRESS`` environment variable:
@@ -78,11 +77,12 @@ To tell the Ray Jobs CLI how to find your Ray Cluster, we will pass the Ray Dash
 
 Alternatively, you can also pass the ``--address=http://127.0.0.1:8265`` flag explicitly to each Ray Jobs CLI command, or prepend each command with ``RAY_ADDRESS=http://127.0.0.1:8265``.
 
-To submit the Ray Job, we use ``ray job submit``:
+To submit the Ray Job, we use ``ray job submit``. Make sure to run this from inside the working directory created earlier, or specify the
+path to the working directory in the ``--working-dir`` argument.
 
 .. code-block:: bash
 
-    $ ray job submit -- python script.py 
+    $ ray job submit --working-dir . -- python script.py 
 
     # Job submission server address: http://127.0.0.1:8265
 
@@ -105,7 +105,7 @@ To submit the Ray Job, we use ``ray job submit``:
     # Job 'raysubmit_inB2ViQuE29aZRJ5' succeeded
     # ------------------------------------------
 
-By default, this command will run the script on the Ray Cluster and wait until the job has finished. Also note the ``hello world`` printout: the stdout of the job is streamed back to the client.
+This command will run the script on the Ray Cluster and wait until the job has finished. Note that it also streams the stdout of the job back to the client (``hello world`` in this case). Ray will also make the contents of the directory passed as `--working-dir` available to the Ray job by downloading the directory to all nodes in your cluster.
 
 Interacting with Long-running Jobs
 ----------------------------------
@@ -118,7 +118,7 @@ Let's try this out with a modified script that submits a task every second in an
 
     # script.py
     import ray
-    time.sleep(1)
+    import time
 
     @ray.remote
     def hello_world():
@@ -190,7 +190,7 @@ Dependency Management
 To run a distributed application, we need to make sure that all workers run in the same environment.
 This can be challenging if multiple applications in the same Ray Cluster have different and conflicting dependencies.
 
-To avoid dependency conflicts, Ray provides a mechanism called :ref:`runtime environments<runtime-environments>`. Runtime environments allow an application to override the default environment on the Ray Cluster and run in an isolated environment, similar to virtual environments in single-node Python. Dependencies can include both files and Python packages.
+To avoid dependency conflicts, Ray provides a mechanism called :ref:`runtime environments <runtime-environments>`. Runtime environments allow an application to override the default environment on the Ray Cluster and run in an isolated environment, similar to virtual environments in single-node Python. Dependencies can include both files and Python packages.
 
 Ray Jobs provides an option to specify the runtime environment when submitting a job. On the Ray Cluster, Ray will then install the runtime environment across the workers and ensure that tasks in that job run in the same environment. To see how this works, we'll use a Python script that prints the current version of the ``requests`` module in a Ray task.
 
@@ -258,5 +258,6 @@ Now let's try it with a runtime environment that pins the version of the ``reque
     # Job 'raysubmit_vGGV4MiP9rYkYUnb' succeeded
     # ------------------------------------------
 
-The full API reference for the Ray Jobs CLI can be found :ref:`here <ray-job-submission-api-ref-under-construction>`.
-For more information on other ways to submit Ray Jobs, check out the guides for :ref:`programmatic job submission <ray-job-sdk-under-construction>` and :ref:`job submission using REST <ray-job-rest-api-under-construction>`.
+- The full API reference for the Ray Jobs CLI can be found :ref:`here <ray-job-submission-cli-ref>`. 
+- The full API reference for the Ray Jobs SDK can be found :ref:`here <ray-job-submission-api-ref>`.
+- For more information on other ways to submit Ray Jobs, check out the guides for :ref:`programmatic job submission <ray-job-sdk>` and :ref:`job submission using REST <ray-job-rest-api>`.
