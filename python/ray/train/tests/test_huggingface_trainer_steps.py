@@ -1,3 +1,5 @@
+import math
+
 import pandas as pd
 import pytest
 from transformers import (
@@ -60,37 +62,56 @@ def train_function(train_dataset, eval_dataset=None, **config):
     return trainer
 
 
-@pytest.mark.parametrize("save_strategy", ["no", "epoch"])
-def test_e2e(ray_start_4_cpus, save_strategy):
+@pytest.mark.parametrize("save_steps", [0, 2, 3, 8, 12])
+@pytest.mark.parametrize("logging_steps", [2, 3, 8, 12])
+def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     ray_train = ray.data.from_pandas(train_df)
     ray_validation = ray.data.from_pandas(validation_df)
     scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
+
+    epochs = 4
     trainer = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
-        trainer_init_config={"epochs": 4, "save_strategy": save_strategy},
+        trainer_init_config={
+            "epochs": epochs,
+            "save_strategy": "no" if not save_steps else "steps",
+            "logging_strategy": "steps",
+            "evaluation_strategy": "steps",
+            "save_steps": save_steps,
+            "logging_steps": logging_steps,
+        },
         scaling_config=scaling_config,
         datasets={"train": ray_train, "evaluation": ray_validation},
     )
+    if save_steps and (save_steps < logging_steps or save_steps % logging_steps != 0):
+        # Test validation
+        with pytest.raises(ValueError):
+            result = trainer.fit()
+        return
     result = trainer.fit()
 
-    assert result.metrics["epoch"] == 4
-    assert result.metrics["training_iteration"] == 4
+    assert result.metrics["epoch"] == epochs
+    assert result.metrics["training_iteration"] == math.ceil(epochs * 2 / logging_steps)
     assert result.checkpoint
 
     trainer2 = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
         trainer_init_config={
-            "epochs": 5,
-            "save_strategy": save_strategy,
-        },  # this will train for 1 epoch: 5 - 4 = 1
+            "epochs": epochs + 1,
+            "save_strategy": "no" if not save_steps else "steps",
+            "logging_strategy": "steps",
+            "evaluation_strategy": "steps",
+            "save_steps": save_steps,
+            "logging_steps": logging_steps,
+        },
         scaling_config=scaling_config,
         datasets={"train": ray_train, "evaluation": ray_validation},
         resume_from_checkpoint=result.checkpoint,
     )
     result2 = trainer2.fit()
 
-    assert result2.metrics["epoch"] == 5
-    assert result2.metrics["training_iteration"] == 1
+    assert result2.metrics["epoch"] == epochs + 1
+    assert result2.metrics["training_iteration"] == math.ceil(1 * 2 / logging_steps)
     assert result2.checkpoint
 
     predictor = BatchPredictor.from_checkpoint(
@@ -102,29 +123,6 @@ def test_e2e(ray_start_4_cpus, save_strategy):
 
     predictions = predictor.predict(ray.data.from_pandas(prompts))
     assert predictions.count() == 3
-
-
-def test_validation(ray_start_4_cpus):
-    ray_train = ray.data.from_pandas(train_df)
-    ray_validation = ray.data.from_pandas(validation_df)
-    scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
-    trainer_conf = dict(
-        trainer_init_per_worker=train_function,
-        scaling_config=scaling_config,
-        datasets={"train": ray_train, "evaluation": ray_validation},
-    )
-
-    # load_best_model_at_end set to True should raise an exception
-    trainer = HuggingFaceTrainer(
-        trainer_init_config={
-            "epochs": 1,
-            "load_best_model_at_end": True,
-            "save_strategy": "epoch",
-        },
-        **trainer_conf,
-    )
-    with pytest.raises(RayTaskError):
-        trainer.fit().error
 
 
 if __name__ == "__main__":

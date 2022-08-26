@@ -194,6 +194,14 @@ py_test(
 )
 
 py_test(
+    name = "test_huggingface_trainer_steps",
+    size = "large",
+    srcs = ["tests/test_huggingface_trainer_steps.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_lightgbm_predictor",
     size = "small",
     srcs = ["tests/test_lightgbm_predictor.py"],
