@@ -191,12 +191,6 @@ def _build_docker_image(
             f" {BASE_IMAGES.keys()}"
         )
 
-    # TODO(https://github.com/ray-project/ray/issues/16599):
-    # remove below after supporting ray-ml images with Python 3.9/3.10
-    if image_name == "ray-ml" and py_version in {"py39", "py310"}:
-        print(f"{image_name} image is currently unsupported with " "Python 3.9/3.10")
-        return
-
     build_args = {}
     build_args["PYTHON_VERSION"] = PY_MATRIX[py_version]
     # I.e. "py310"[3:] == 10
@@ -449,18 +443,6 @@ def push_and_tag_images(
                     print(
                         "ML Docker image is not built for the following "
                         f"device type: {image_type}"
-                    )
-                    continue
-
-                # TODO(https://github.com/ray-project/ray/issues/16599):
-                # remove below after supporting ray-ml images with Python 3.9/3.10
-                if image_name in ["ray-ml"] and (
-                    PY_MATRIX[py_name].startswith("3.9")
-                    or PY_MATRIX[py_name].startswith("3.10")
-                ):
-                    print(
-                        f"{image_name} image is currently "
-                        f"unsupported with Python 3.9/3.10"
                     )
                     continue
 
