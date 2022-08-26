@@ -283,7 +283,7 @@ const Nodes = () => {
                       key={node.raylet.nodeId}
                       node={node}
                       isRefreshing={isRefreshing}
-                      startExpanded={nodeList.length === 1 && i === 0}
+                      startExpanded={nodeList.length === 1}
                     />
                   ))}
               </TableBody>
