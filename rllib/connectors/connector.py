@@ -90,7 +90,7 @@ class Connector(abc.ABC):
     Connectors may be training-aware, for example, behave slightly differently
     during training and inference.
 
-    All connectors are required to be serializable and implement to_state_dict().
+    All connectors are required to be serializable and implement to_state().
     """
 
     def __init__(self, ctx: ConnectorContext):
@@ -106,7 +106,7 @@ class Connector(abc.ABC):
     def to_state(self) -> Tuple[str, List[Any]]:
         """Serialize a connector into a JSON serializable Tuple.
 
-        to_state_dict is required, so that all Connectors are serializable.
+        to_state is required, so that all Connectors are serializable.
 
         Returns:
             A tuple of connector's name and its serialized states.
@@ -118,7 +118,7 @@ class Connector(abc.ABC):
     def from_state(self, ctx: ConnectorContext, params: List[Any]) -> "Connector":
         """De-serialize a JSON params back into a Connector.
 
-        from_state_dict is required, so that all Connectors are serializable.
+        from_state is required, so that all Connectors are serializable.
 
         Args:
             ctx: Context for constructing this connector.
