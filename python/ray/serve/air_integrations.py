@@ -8,9 +8,9 @@ import numpy as np
 import ray
 from ray import serve
 from ray._private.utils import import_attr
-from ray.serve.constants import SERVE_LOGGER_NAME
 from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
 from ray.serve._private.utils import require_packages
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
