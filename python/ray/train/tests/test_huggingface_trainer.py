@@ -1,5 +1,4 @@
 import math
-from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -10,14 +9,12 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
-from transformers.trainer_callback import TrainerState
 
 import ray.data
 from ray.exceptions import RayTaskError
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
 from ray.air.config import ScalingConfig
-from ray.train.huggingface._huggingface_utils import TrainReportCallback
 from ray.train.tests._huggingface_data import train_data, validation_data
 
 # 16 first rows of tokenized wikitext-2-raw-v1 training & validation
