@@ -117,10 +117,12 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     ray_train = ray.data.from_pandas(train_df)
     ray_validation = ray.data.from_pandas(validation_df)
     scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
+
+    epochs = 5
     trainer = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
         trainer_init_config={
-            "epochs": 5,
+            "epochs": epochs,
             "save_strategy": "no" if not save_steps else "steps",
             "logging_strategy": "steps",
             "evaluation_strategy": "steps",
@@ -132,14 +134,14 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     )
     result = trainer.fit()
 
-    assert result.metrics["epoch"] == 5
-    assert result.metrics["training_iteration"] == math.ceil(10 / logging_steps)
+    assert result.metrics["epoch"] == epochs
+    assert result.metrics["training_iteration"] == math.ceil(epochs * 2 / logging_steps)
     assert result.checkpoint
 
     trainer2 = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
         trainer_init_config={
-            "epochs": 6,
+            "epochs": epochs + 1,
             "save_strategy": "no" if not save_steps else "steps",
             "logging_strategy": "steps",
             "evaluation_strategy": "steps",
@@ -152,8 +154,8 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     )
     result2 = trainer2.fit()
 
-    assert result2.metrics["epoch"] == 6
-    assert result2.metrics["training_iteration"] == math.ceil(2 / logging_steps)
+    assert result2.metrics["epoch"] == epochs + 1
+    assert result2.metrics["training_iteration"] == math.ceil(1 * 2 / logging_steps)
     assert result2.checkpoint
 
     predictor = BatchPredictor.from_checkpoint(
