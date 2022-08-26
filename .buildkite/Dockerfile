@@ -66,6 +66,9 @@ RUN bash --login -i ./ci/ci.sh build
 
 RUN (if [ "${INSTALL_DEPENDENCIES}" = "ML" ]; then RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 bash --login -i ./ci/env/install-dependencies.sh; fi)
 
+# Remove unnecessary clutter files for ML tests as we don't build any wheels/binaries on top of this anymore
+RUN (if [ "${INSTALL_DEPENDENCIES}" = "ML" ]; then rm -rf /opt/llvm /usr/lib/llvm-12 /root/.cache/bazel/* /root/.cache/pip/*; fi)
+
 # Run determine test to run
 RUN bash --login -i -c "python ./ci/pipeline/determine_tests_to_run.py --output=json > affected_set.json"
 RUN cat affected_set.json

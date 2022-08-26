@@ -269,7 +269,7 @@ install_toolchains() {
   if [ -z "${BUILDKITE-}" ]; then
     "${SCRIPT_DIR}"/install-toolchains.sh
   fi
-  if [[ "${OSTYPE}" = linux* ]]; then
+  if [[ "${OSTYPE}" = linux* ]] && [ -z "${NO_LLVM-}" ]; then
     pushd "${WORKSPACE_DIR}"
       "${SCRIPT_DIR}"/install-llvm-binaries.sh
     popd

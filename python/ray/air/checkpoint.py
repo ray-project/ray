@@ -105,7 +105,7 @@ class Checkpoint:
     the second directory will contain pickle files with the serialized additional
     field data in them.
 
-    Similarly with a dict as a source: dict --> directory (add file "foo.txt")
+    Similarly, with a dict as a source: dict --> directory (add file "foo.txt")
     --> dict --> directory (will have "foo.txt" in it again). Note that the second
     dict representation will contain an extra field with the serialized additional
     files in it.
