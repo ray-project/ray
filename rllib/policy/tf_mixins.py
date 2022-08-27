@@ -246,6 +246,7 @@ class TargetNetworkMixin:
     def variables(self) -> List[TensorType]:
         return self.model.variables() + self.target_model.variables()
 
+
 class ValueNetworkMixin:
     """Assigns the `_value()` method to a TFPolicy.
 

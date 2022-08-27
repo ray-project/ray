@@ -199,7 +199,7 @@ class TargetNetworkMixin:
 
         for target in self.target_models.values():
             target.load_state_dict(model_state_dict)
-    
+
     @override(TorchPolicy)
     def set_weights(self, weights):
         # Makes sure that whenever we restore weights for this policy's
@@ -207,4 +207,3 @@ class TargetNetworkMixin:
         # at the same time.
         TorchPolicy.set_weights(self, weights)
         self.update_target()
-        

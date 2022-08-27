@@ -1,6 +1,5 @@
 from functools import partial
 import logging
-import numpy as np
 import gym
 from typing import Dict, Tuple, List, Type, Union, Optional, Any
 
@@ -23,7 +22,6 @@ from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.tf_mixins import TargetNetworkMixin
 from ray.rllib.utils.annotations import override
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.tf_utils import huber_loss, make_tf_callable
@@ -63,6 +61,7 @@ class ComputeTDErrorMixin:
             return self.td_error
 
         self.compute_td_error = compute_td_error
+
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
