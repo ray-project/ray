@@ -16,15 +16,16 @@ class InputNode(DAGNode):
     entrypoints, but only one instance of InputNode exists per DAG, shared
     among all DAGNodes.
 
-    Example:
-                   m1.forward
-                /            \
-        dag_input              ensemble -> dag_output
-                \            /
-                   m2.forward
+    >>> Example:
+    >>>            m1.forward
+    >>>            /       \\
+    >>>    dag_input     ensemble -> dag_output
+    >>>            \       /
+    >>>            m2.forward
 
     In this pipeline, each user input is broadcasted to both m1.forward and
     m2.forward as first stop of the DAG, and authored like
+
     >>> @ray.remote
     >>> class Model:
     ...     def __init__(self, val):

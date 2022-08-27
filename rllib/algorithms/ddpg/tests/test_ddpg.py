@@ -146,6 +146,7 @@ class TestDDPG(unittest.TestCase):
             "type": "MultiAgentReplayBuffer",
             "capacity_ts": 50000,
         }
+        config.num_steps_sampled_before_learning_starts = 0
         # Use very simple nets.
         config.actor_hiddens = [10]
         config.critic_hiddens = [10]

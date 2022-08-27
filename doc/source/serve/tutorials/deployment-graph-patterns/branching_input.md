@@ -8,7 +8,7 @@ This [deployment graph pattern](serve-deployment-graph-patterns-overview) lets y
 
 ## Code
 
-```{literalinclude} ../../doc_code/branching_input.py
+```{literalinclude} ../../doc_code/deployment_graph_patterns/branching_input.py
 :language: python
 :start-after: __graph_start__
 :end-before: __graph_end__

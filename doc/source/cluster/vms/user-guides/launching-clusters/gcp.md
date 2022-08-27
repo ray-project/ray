@@ -56,3 +56,20 @@ ray down example-full.yaml
 
 Congrats, you have started a Ray cluster on GCP!
 
+## GCP Configurations
+
+
+### Running workers with Service Accounts
+
+By default, only the head node runs with a Service Account (`ray-autoscaler-sa-v1@<project-id>.iam.gserviceaccount.com`). To enable workers to run with this same Service Account (to access Google Cloud Storage, or GCR), add the following configuration to the worker_node configuration:
+
+```yaml
+available_node_types:
+  ray.worker.default:
+    node_config:
+      ...
+    serviceAccounts:
+    - email: ray-autoscaler-sa-v1@<YOUR_PROJECT_ID>.iam.gserviceaccount.com
+        scopes:
+        - https://www.googleapis.com/auth/cloud-platform
+```

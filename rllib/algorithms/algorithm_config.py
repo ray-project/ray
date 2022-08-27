@@ -183,6 +183,7 @@ class AlgorithmConfig:
         self.evaluation_num_workers = 0
         self.custom_evaluation_function = None
         self.always_attach_evaluation_results = False
+        self.enable_async_evaluation = False
         # TODO: Set this flag still in the config or - much better - in the
         #  RolloutWorker as a property.
         self.in_evaluation = False
@@ -819,7 +820,7 @@ class AlgorithmConfig:
         self,
         *,
         evaluation_interval: Optional[int] = None,
-        evaluation_duration: Optional[int] = None,
+        evaluation_duration: Optional[Union[int, str]] = None,
         evaluation_duration_unit: Optional[str] = None,
         evaluation_sample_timeout_s: Optional[float] = None,
         evaluation_parallel_to_training: Optional[bool] = None,
@@ -830,6 +831,7 @@ class AlgorithmConfig:
         evaluation_num_workers: Optional[int] = None,
         custom_evaluation_function: Optional[Callable] = None,
         always_attach_evaluation_results: Optional[bool] = None,
+        enable_async_evaluation: Optional[bool] = None,
     ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
 
@@ -894,6 +896,10 @@ class AlgorithmConfig:
                 results are always attached to a step result dict. This may be useful
                 if Tune or some other meta controller needs access to evaluation metrics
                 all the time.
+            enable_async_evaluation: If True, use an AsyncRequestsManager for
+                the evaluation workers and use this manager to send `sample()` requests
+                to the evaluation workers. This way, the Algorithm becomes more robust
+                against long running episodes and/or failing (and restarting) workers.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -922,6 +928,8 @@ class AlgorithmConfig:
             self.custom_evaluation_function = custom_evaluation_function
         if always_attach_evaluation_results:
             self.always_attach_evaluation_results = always_attach_evaluation_results
+        if enable_async_evaluation:
+            self.enable_async_evaluation = enable_async_evaluation
 
         return self
 

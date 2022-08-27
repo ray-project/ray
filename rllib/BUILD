@@ -381,6 +381,35 @@ py_test(
     args = ["--yaml-dir=tuned_examples/dqn"]
 )
 
+# DT
+py_test(
+   name = "learning_tests_pendulum_dt",
+   main = "tests/run_regression_tests.py",
+   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+   size = "large",
+   srcs = ["tests/run_regression_tests.py"],
+   # Include an offline json data file as well.
+   data = [
+       "tuned_examples/dt/pendulum-v1-dt.yaml",
+       "tests/data/pendulum/pendulum_expert_sac_50eps.zip",
+   ],
+   args = ["--yaml-dir=tuned_examples/dt"]
+)
+
+py_test(
+    name = "learning_tests_cartpole_dt",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include an offline json data file as well.
+    data = [
+        "tuned_examples/dt/cartpole-v0-dt.yaml",
+        "tests/data/cartpole/large.json",
+    ],
+    args = ["--yaml-dir=tuned_examples/dt"]
+)
+
 # Simple-Q
 py_test(
     name = "learning_tests_cartpole_simpleq",
@@ -502,12 +531,12 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_multi_agent_cartpole_crashing_pg",
+    name = "learning_tests_multi_agent_cartpole_crashing_restart_sub_envs_pg",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/pg/multi-agent-cartpole-crashing-pg.yaml"],
+    data = ["tuned_examples/pg/multi-agent-cartpole-crashing-restart-sub-envs-pg.yaml"],
     args = ["--yaml-dir=tuned_examples/pg"]
 )
 
@@ -904,6 +933,36 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/dreamer/tests/test_dreamer.py"]
+)
+
+# DT
+py_test(
+    name = "test_segmentation_buffer",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/dt/tests/test_segmentation_buffer.py"]
+)
+
+py_test(
+    name = "test_dt_model",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/dt/tests/test_dt_model.py"]
+)
+
+py_test(
+    name = "test_dt_policy",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/dt/tests/test_dt_policy.py"]
+)
+
+py_test(
+    name = "test_dt",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/dt/tests/test_dt.py"],
+    data = ["tests/data/pendulum/large.json"],
 )
 
 # ES
@@ -2978,6 +3037,15 @@ py_test(
     args = ["--as-test", "--framework=torch", "--stop-reward=70"]
 )
 
+py_test(
+    name = "examples/offline_rl_torch",
+    main = "examples/offline_rl.py",
+    tags = ["team:rllib", "exclusive", "examples", "examples_M"],
+    size = "medium",
+    srcs = ["examples/offline_rl.py"],
+    args = ["--as-test", "--stop-reward=-300", "--stop-iters=1"]
+)
+
 # Taking out this test for now: Mixed torch- and tf- policies within the same
 # Trainer never really worked.
 # py_test(
@@ -3122,6 +3190,16 @@ py_test(
     size = "medium",
     srcs = ["examples/inference_and_serving/policy_inference_after_training_with_attention.py"],
     args = ["--stop-iters=2", "--framework=torch"]
+)
+
+py_test(
+    name = "examples/inference_and_serving/policy_inference_after_training_with_dt_torch",
+    main = "examples/inference_and_serving/policy_inference_after_training_with_dt.py",
+    tags = ["team:rllib", "exclusive", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_dt.py"],
+    data = ["tests/data/cartpole/large.json"],
+    args = ["--input-files=tests/data/cartpole/large.json"]
 )
 
 py_test(
