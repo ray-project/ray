@@ -709,11 +709,15 @@ class DynamicTFPolicyV2(TFPolicy):
             self._input_dict[key] = get_placeholder(value=value, name=key)
             if key not in self.view_requirements:
                 logger.info("Adding extra-action-fetch `{}` to view-reqs.".format(key))
+
+                # Some models specify parameter space shape with
+                # TensorShape[Dimension(...)], which are not compatible with gym.
+                # Reformat the shape here into a sequence of ints.
                 self.view_requirements[key] = ViewRequirement(
                     space=gym.spaces.Box(
                         -1.0,
                         1.0,
-                        shape=value.shape.as_list()[1:],
+                        shape=[int(dim) for dim in value.shape[1:]],
                         dtype=value.dtype.name,
                     ),
                     used_for_compute_actions=False,
