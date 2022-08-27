@@ -20,8 +20,8 @@ class SyncedFilterAgentConnector(AgentConnector):
 
     def apply_changes(self, other: "Filter", *args, **kwargs) -> None:
         """Updates self with state from other filter."""
-        # inline this as soon as we deprecate ordinary filter with non-connector
-        # env_runner
+        # TODO: (artur) inline this as soon as we deprecate ordinary filter with
+        #  non-connecto env_runner
         return self.filter.apply_changes(other, *args, **kwargs)
 
     def copy(self) -> "Filter":
@@ -38,8 +38,8 @@ class SyncedFilterAgentConnector(AgentConnector):
 
     def sync(self, other: "AgentConnector") -> None:
         """Copies all state from other filter to self."""
-        # inline this as soon as we deprecate ordinary filter with non-connector
-        # env_runner
+        # TODO: (artur) inline this as soon as we deprecate ordinary filter with
+        #  non-connector env_runner
         return self.filter.sync(other)
 
     def reset_state(self) -> None:
@@ -47,6 +47,6 @@ class SyncedFilterAgentConnector(AgentConnector):
         raise NotImplementedError
 
     def as_serializable(self) -> "Filter":
-        # inline this as soon as we deprecate ordinary filter with non-connector
-        # env_runner
+        # TODO: (artur) inline this as soon as we deprecate ordinary filter with
+        #  non-connector env_runner
         return self.filter.as_serializable()

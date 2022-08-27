@@ -1257,17 +1257,10 @@ class RolloutWorker(ParallelIteratorWorker):
             new_policy.set_state(policy_state)
 
         if config.get("enable_connectors"):
-            filter_shape = tree.map_structure(
-                lambda s: (
-                    None
-                    if isinstance(s, (Discrete, MultiDiscrete))  # noqa
-                    else np.array(s.shape)
-                ),
-                new_policy.observation_space_struct,
-            )
             ctx = ConnectorContext.from_policy(new_policy)
             connector = get_synced_filter_connector(
-                ctx, self.observation_filter, filter_shape
+                ctx,
+                self.observation_filter,
             )
             new_policy.agent_connectors.insert_after(
                 "ObsPreprocessorConnector", connector
