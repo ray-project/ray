@@ -68,7 +68,7 @@ TEST_F(GcsHeartbeatManagerTest, TestBasicTimeout) {
 
   while (true) {
     absl::MutexLock lock(&mutex_);
-    if (absl::Now() - start >= absl::Seconds(1)) {
+    if (absl::Now() - start >= absl::Microseconds(800)) {
       break;
     }
     ASSERT_TRUE(dead_nodes.empty());
