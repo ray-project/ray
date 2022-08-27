@@ -25,14 +25,10 @@ import ray
 
 torch, _ = try_import_torch()
 
-ESTIMATOR_OUTPUTS = set([
-    "v_behavior",
-    "v_behavior_std",
-    "v_target",
-    "v_target_std",
-    "v_gain",
-    "v_delta"
-])
+ESTIMATOR_OUTPUTS = set(
+    ["v_behavior", "v_behavior_std", "v_target", "v_target_std", "v_gain", "v_delta"]
+)
+
 
 class TestOPE(unittest.TestCase):
     """Compilation tests for using OPE both standalone and in an RLlib Algorithm"""
@@ -88,7 +84,7 @@ class TestOPE(unittest.TestCase):
             ImportanceSampling,
             WeightedImportanceSampling,
         ]
-        
+
         for class_module in ope_classes:
             estimator = class_module(
                 policy=self.algo.get_policy(),
@@ -96,17 +92,14 @@ class TestOPE(unittest.TestCase):
             )
             estimates = estimator.estimate(self.batch)
             self.assertEqual(set(estimates.keys()), ESTIMATOR_OUTPUTS)
-            check(
-                estimates["v_gain"], 
-                estimates["v_target"] / estimates["v_behavior"]
-            )
+            check(estimates["v_gain"], estimates["v_target"] / estimates["v_behavior"])
 
     def test_dm_and_dr_standalone(self):
         ope_classes = [
             DirectMethod,
             DoublyRobust,
         ]
-        
+
         for class_module in ope_classes:
             estimator = class_module(
                 policy=self.algo.get_policy(),
@@ -117,10 +110,7 @@ class TestOPE(unittest.TestCase):
             assert losses, f"{class_module.__name__} estimator did not return mean loss"
             estimates = estimator.estimate(self.batch)
             self.assertEqual(set(estimates.keys()), ESTIMATOR_OUTPUTS)
-            check(
-                estimates["v_gain"], 
-                estimates["v_target"] / estimates["v_behavior"]
-            )
+            check(estimates["v_gain"], estimates["v_target"] / estimates["v_behavior"])
 
     def test_ope_in_algo(self):
         # Test OPE in DQN, during training as well as by calling evaluate()

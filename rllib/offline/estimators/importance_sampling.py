@@ -78,5 +78,4 @@ class ImportanceSampling(OffPolicyEstimator):
         estimates["v_gain"] = estimates["v_target"] / max(estimates["v_behavior"], 1e-8)
         estimates["v_delta"] = estimates["v_target"] - estimates["v_behavior"]
 
-
         return estimates
