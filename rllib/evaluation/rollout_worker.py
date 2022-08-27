@@ -648,10 +648,12 @@ class RolloutWorker(ParallelIteratorWorker):
                     ctx,
                     self.observation_filter,
                 )
-                policy.agent_connectors.insert_after(
-                    "ObsPreprocessorConnector", connector
-                )
-                self.filters[policy_id] = connector.filter
+                # Configuration option "NoFilter" results in `connector==None`.
+                if connector:
+                    policy.agent_connectors.insert_after(
+                        "ObsPreprocessorConnector", connector
+                    )
+                    self.filters[policy_id] = connector.filter
             else:
                 filter_shape = tree.map_structure(
                     lambda s: (
@@ -1256,16 +1258,19 @@ class RolloutWorker(ParallelIteratorWorker):
         if policy_state:
             new_policy.set_state(policy_state)
 
-        if config.get("enable_connectors"):
+        # Enabling connectors is not per policy, so we can use the general config here
+        if self.config.get("enable_connectors"):
             ctx = ConnectorContext.from_policy(new_policy)
             connector = get_synced_filter_connector(
                 ctx,
                 self.observation_filter,
             )
-            new_policy.agent_connectors.insert_after(
-                "ObsPreprocessorConnector", connector
-            )
-            self.filters[policy_id] = connector.filter
+            # Configuration option "NoFilter" results in `connector==None`.
+            if connector:
+                new_policy.agent_connectors.insert_after(
+                    "ObsPreprocessorConnector", connector
+                )
+                self.filters[policy_id] = connector.filter
         else:
             filter_shape = tree.map_structure(
                 lambda s: (
