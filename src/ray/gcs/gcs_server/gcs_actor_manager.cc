@@ -801,7 +801,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         created_actors_.erase(node_it);
       }
     } else {
-      if (!actor->GetAddress().worker_id().empty()) {
+      if (!worker_id.IsNil()) {
         // The actor is in phase of creating, so we need to notify the core
         // worker exit to avoid process and resource leak.
         NotifyCoreWorkerToKillActor(actor, death_cause, force_kill);
@@ -1446,7 +1446,7 @@ void GcsActorManager::KillActor(const ActorID &actor_id,
     const auto &task_id = actor->GetCreationTaskSpecification().TaskId();
     RAY_LOG(DEBUG) << "The actor " << actor->GetActorID()
                    << " hasn't been created yet, cancel scheduling " << task_id;
-    if (!actor->GetAddress().worker_id().empty()) {
+    if (!worker_id.IsNil()) {
       // The actor is in phase of creating, so we need to notify the core
       // worker exit to avoid process and resource leak.
       NotifyCoreWorkerToKillActor(
