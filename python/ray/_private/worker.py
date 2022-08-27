@@ -2067,7 +2067,7 @@ def connect(
         # are the same.
         # When using an interactive shell, there is no script directory.
         if not interactive_mode:
-            script_directory = os.path.realpath(os.path.dirname(sys.argv[0]))
+            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
             # (e.g driver is started via `python -m`,
             # see https://peps.python.org/pep-0338/),
