@@ -25,9 +25,14 @@ import ray
 
 torch, _ = try_import_torch()
 
-ESTIMATOR_OUTPUTS = set(
-    ["v_behavior", "v_behavior_std", "v_target", "v_target_std", "v_gain", "v_delta"]
-)
+ESTIMATOR_OUTPUTS = {
+    "v_behavior",
+    "v_behavior_std",
+    "v_target",
+    "v_target_std",
+    "v_gain",
+    "v_delta",
+}
 
 
 class TestOPE(unittest.TestCase):
