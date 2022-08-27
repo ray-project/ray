@@ -370,7 +370,7 @@ def setup_late_mixins(
     action_space: gym.spaces.Space,
     config: AlgorithmConfigDict,
 ) -> None:
-    TargetNetworkMixin.__init__(policy, config)
+    TargetNetworkMixin.__init__(policy)
 
 
 def compute_q_values(

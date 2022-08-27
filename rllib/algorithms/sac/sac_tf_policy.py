@@ -736,7 +736,7 @@ def setup_late_mixins(
         action_space (gym.spaces.Space): The Policy's action space.
         config: The Policy's config.
     """
-    TargetNetworkMixin.__init__(policy, config)
+    TargetNetworkMixin.__init__(policy)
 
 
 def validate_spaces(

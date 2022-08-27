@@ -265,7 +265,7 @@ def get_ddpg_tf_policy(
             model_out_tp1, _ = model(input_dict_next, [], None)
             target_model_out_tp1, _ = self.target_model(input_dict_next, [], None)
 
-            self.target_q_func_vars = self.target_model.variables()
+            self._target_q_func_vars = self.target_model.variables()
 
             # Policy network evaluation.
             policy_t = model.get_policy_output(model_out_t)

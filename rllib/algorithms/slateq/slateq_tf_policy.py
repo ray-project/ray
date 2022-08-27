@@ -338,7 +338,7 @@ def setup_late_mixins(
         action_space: The Policy's action space.
         config: The Policy's config.
     """
-    TargetNetworkMixin.__init__(policy, config)
+    TargetNetworkMixin.__init__(policy)
 
 
 def rmsprop_optimizer(

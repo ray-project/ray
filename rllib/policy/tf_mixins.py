@@ -204,7 +204,7 @@ class TargetNetworkMixin:
     master learner.
     """
 
-    def __init__(self, config: AlgorithmConfigDict):
+    def __init__(self):
         @make_tf_callable(self.get_session())
         def update_target_fn(tau):
             tau = tf.convert_to_tensor(tau, dtype=tf.float32)
