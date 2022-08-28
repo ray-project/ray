@@ -182,12 +182,13 @@ class TargetNetworkMixin:
 
     def __init__(self):
         # Hard initial update from Q-net(s) to target Q-net(s).
-        self.update_target(tau=1.0)
+        tau = self.config.get("tau", 1.0)
+        self.update_target(tau=tau)
 
     def update_target(self, tau=None):
         # Update_target_fn will be called periodically to copy Q network to
         # target Q network, using (soft) tau-synching.
-        tau = tau or self.config.get("tau")
+        tau = tau or self.config.get("tau", 1.0)
         model_state_dict = self.model.state_dict()
         # Support partial (soft) synching.
         # If tau == 1.0: Full sync from Q-model to target Q-model.

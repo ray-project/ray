@@ -133,7 +133,6 @@ class DQNConfig(SimpleQConfig):
         self.n_step = 1
         self.before_learn_on_batch = None
         self.training_intensity = None
-        self.tau = 1.0
 
         # Changes to SimpleQConfig's default:
         self.replay_buffer_config = {
@@ -177,7 +176,6 @@ class DQNConfig(SimpleQConfig):
         ] = None,
         training_intensity: Optional[float] = None,
         replay_buffer_config: Optional[dict] = None,
-        tau: Optional[float] = None,
         **kwargs,
     ) -> "DQNConfig":
         """Sets the training related configuration.
@@ -247,7 +245,6 @@ class DQNConfig(SimpleQConfig):
                 prioritized_replay_eps: Epsilon parameter sets the baseline probability
                 for sampling so that when the temporal-difference error of a sample is
                 zero, there is still a chance of drawing the sample.
-            tau: Update the target by \tau * policy + (1-\tau) * target_policy.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -279,9 +276,6 @@ class DQNConfig(SimpleQConfig):
             self.training_intensity = training_intensity
         if replay_buffer_config is not None:
             self.replay_buffer_config = replay_buffer_config
-        if tau is not None:
-            self.tau = tau
-
         return self
 
 

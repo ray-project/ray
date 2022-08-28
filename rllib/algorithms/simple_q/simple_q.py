@@ -119,6 +119,7 @@ class SimpleQConfig(AlgorithmConfig):
         self.lr_schedule = None
         self.adam_epsilon = 1e-8
         self.grad_clip = 40
+        self.tau = 1.0
         # __sphinx_doc_end__
         # fmt: on
 
@@ -168,6 +169,7 @@ class SimpleQConfig(AlgorithmConfig):
         adam_epsilon: Optional[float] = None,
         grad_clip: Optional[int] = None,
         num_steps_sampled_before_learning_starts: Optional[int] = None,
+        tau: Optional[float] = None,
         **kwargs,
     ) -> "SimpleQConfig":
         """Sets the training related configuration.
@@ -226,6 +228,7 @@ class SimpleQConfig(AlgorithmConfig):
                 from rollout workers before we start sampling from replay buffers for
                 learning. Whether we count this in agent steps  or environment steps
                 depends on config["multiagent"]["count_steps_by"].
+            tau: Update the target by \tau * policy + (1-\tau) * target_policy.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -258,7 +261,8 @@ class SimpleQConfig(AlgorithmConfig):
             self.num_steps_sampled_before_learning_starts = (
                 num_steps_sampled_before_learning_starts
             )
-
+        if tau is not None:
+            self.tau = tau
         return self
 
 

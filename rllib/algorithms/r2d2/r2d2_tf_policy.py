@@ -322,7 +322,7 @@ def before_loss_init(
     config: AlgorithmConfigDict,
 ) -> None:
     ComputeTDErrorMixin.__init__(policy)
-    TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
+    TargetNetworkMixin.__init__(policy)
 
 
 R2D2TFPolicy = build_tf_policy(
