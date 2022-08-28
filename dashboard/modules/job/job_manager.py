@@ -201,8 +201,8 @@ class JobSupervisor:
                 stderr=subprocess.STDOUT,
             )
             parent_pid = os.getpid()
-            # Create new pgid with new subprocess to execute driver command
             child_pid = child_process.pid
+            # Create new pgid with new subprocess to execute driver command
 
             if sys.platform != "win32":
                 child_pgid = os.getpgid(child_pid)
@@ -218,7 +218,7 @@ class JobSupervisor:
                     stderr=subprocess.DEVNULL,
                 )
 
-            if sys.platform == "win32" and win32api:
+            elif sys.platform == "win32" and win32api:
                 # Create a JobObject to which the child process (and its children)
                 # will be connected. This job object can be used to kill the child
                 # processes explicitly or when the jobObject gets deleted during
