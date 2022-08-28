@@ -68,10 +68,10 @@ py_test (
 )
 
 py_test(
-    name = "tensorflow_linear_dataset_example",
+    name = "tensorflow_regression_example",
     size = "medium",
-    main = "examples/tf/tensorflow_linear_dataset_example.py",
-    srcs = ["examples/tf/tensorflow_linear_dataset_example.py"],
+    main = "examples/tf/tensorflow_regression_example.py",
+    srcs = ["examples/tf/tensorflow_regression_example.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"],
     args = ["--smoke-test"]
@@ -86,6 +86,16 @@ py_test(
     deps = [":ml_lib"],
     args = ["--smoke-test"]
 )
+
+# py_test(
+#     name = "tensorflow_autoencoder_example", # REGRESSION
+#     size = "medium",
+#     main = "examples/tf/tensorflow_autoencoder_example.py",
+#     srcs = ["examples/tf/tensorflow_autoencoder_example.py"],
+#     tags = ["team:ml", "exclusive"],
+#     deps = [":ml_lib"],
+#     args = ["--smoke-test"]
+# )
 
 py_test(
     name = "torch_fashion_mnist_example",
@@ -108,10 +118,10 @@ py_test(
 )
 
 py_test(
-    name = "torch_linear_dataset_example",
+    name = "torch_regression_example",
     size = "medium",
-    main = "examples/pytorch/torch_linear_dataset_example.py",
-    srcs = ["examples/pytorch/torch_linear_dataset_example.py"],
+    main = "examples/pytorch/torch_regression_example.py",
+    srcs = ["examples/pytorch/torch_regression_example.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"],
     args = ["--smoke-test"]
@@ -138,10 +148,10 @@ py_test(
 )
 
 py_test(
-    name = "tune_torch_linear_dataset_example.py",
+    name = "tune_torch_regression_example.py",
     size = "medium",
-    main = "examples/pytorch/tune_torch_linear_dataset_example.py",
-    srcs = ["examples/pytorch/tune_torch_linear_dataset_example.py"],
+    main = "examples/pytorch/tune_torch_regression_example.py",
+    srcs = ["examples/pytorch/tune_torch_regression_example.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"],
     args = ["--smoke-test"]
@@ -162,17 +172,33 @@ py_test(
 )
 
 py_test(
-    name = "test_batchpredictor_runtime",
-    size = "medium",
-    srcs = ["tests/test_batchpredictor_runtime.py"],
+    name = "test_checkpoints",
+    size = "small",
+    srcs = ["tests/test_checkpoints.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
 
 py_test(
-    name = "test_checkpoints",
+    name = "test_checkpoint_manager",
     size = "small",
-    srcs = ["tests/test_checkpoints.py"],
+    srcs = ["tests/test_checkpoint_manager.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_configs",
+    size = "small",
+    srcs = ["tests/test_configs.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_data_batch_conversion",
+    size = "small",
+    srcs = ["tests/test_data_batch_conversion.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -186,97 +212,49 @@ py_test(
 )
 
 py_test(
-    name = "test_dataset_utils",
+    name = "test_keras_callback",
     size = "small",
-    srcs = ["tests/test_dataset_utils.py"],
+    srcs = ["tests/test_keras_callback.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
 
 py_test(
-    name = "test_huggingface_predictor",
+    name = "test_mlflow",
     size = "medium",
-    srcs = ["tests/test_huggingface_predictor.py"],
+    srcs = ["tests/test_mlflow.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
 
 py_test(
-    name = "test_lightgbm_predictor",
+    name = "test_remote_storage",
     size = "small",
-    srcs = ["tests/test_lightgbm_predictor.py"],
+    srcs = ["tests/test_remote_storage.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
 
 py_test(
-    name = "test_predictor",
-    size = "small",
-    srcs = ["tests/test_predictor.py"],
+    name = "test_resource_changing",
+    size = "medium",
+    srcs = ["tests/test_resource_changing.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
 
 py_test(
-    name = "test_preprocessors",
+    name = "test_tensor_extension",
     size = "small",
-    srcs = ["tests/test_preprocessors.py"],
+    srcs = ["tests/test_tensor_extension.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
 
 py_test(
-    name = "test_rl_predictor",
+    name = "test_tracebacks",
     size = "small",
-    srcs = ["tests/test_rl_predictor.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_sklearn_predictor",
-    size = "small",
-    srcs = ["tests/test_sklearn_predictor.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_tensorflow_predictor",
-    size = "small",
-    srcs = ["tests/test_tensorflow_predictor.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_tensorflow_utils",
-    size = "small",
-    srcs = ["tests/test_tensorflow_utils.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_torch_predictor",
-    size = "small",
-    srcs = ["tests/test_torch_predictor.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_torch_utils",
-    size = "small",
-    srcs = ["tests/test_torch_utils.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_xgboost_predictor",
-    size = "small",
-    srcs = ["tests/test_xgboost_predictor.py"],
+    srcs = ["tests/test_tracebacks.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -286,4 +264,10 @@ py_test(
 py_library(
     name = "ml_lib",
     srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
+    visibility = [
+        "//python/ray/air:__pkg__",
+        "//python/ray/air:__subpackages__",
+        "//python/ray/train:__pkg__",
+        "//python/ray/train:__subpackages__",
+    ],
 )

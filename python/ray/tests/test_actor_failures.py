@@ -759,7 +759,37 @@ def test_utf8_actor_exception(ray_start_regular):
         ray.get(actor.ping.remote())
 
 
+# https://github.com/ray-project/ray/issues/18908.
+def test_failure_during_dependency_resolution(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def dep(self):
+            while True:
+                time.sleep(1)
+
+        def foo(self, x):
+            return x
+
+    @ray.remote
+    def foo():
+        time.sleep(3)
+        return 1
+
+    a = Actor.remote()
+    # Check that the actor is alive.
+    ray.get(a.foo.remote(1))
+
+    ray.kill(a, no_restart=False)
+    dep = a.dep.remote()
+    ref = a.foo.remote(dep)
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(ref)
+
+
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

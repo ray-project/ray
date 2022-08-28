@@ -7,7 +7,7 @@ import time
 
 import ray
 from ray import tune
-from ray.rllib.agents import DefaultCallbacks
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO
 
 
@@ -34,7 +34,7 @@ def fn_trainable(config, checkpoint_dir=None):
 
 
 class RLlibCallback(DefaultCallbacks):
-    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
+    def on_train_result(self, *, algorithm, result: dict, **kwargs) -> None:
         result["internal_iter"] = result["training_iteration"]
 
 

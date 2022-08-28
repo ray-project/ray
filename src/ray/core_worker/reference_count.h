@@ -236,6 +236,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \return Whether the object value has been freed.
   bool IsPlasmaObjectFreed(const ObjectID &object_id) const;
 
+  /// Mark an object that was freed as being in use again. If another copy of
+  /// the object is subsequently pinned, we will not delete it until free is
+  /// called again, or the ObjectRef goes out of scope.
+  ///
+  /// \param[in] object_id The object to un-free.
+  /// \return Whether it was successful. This call will fail if the object ref
+  /// is no longer in scope or if the object was not actually freed.
+  bool TryMarkFreedObjectInUseAgain(const ObjectID &object_id);
+
   /// Release the underlying value from plasma (if any) for these objects.
   ///
   /// \param[in] object_ids The IDs whose values to free.
@@ -384,7 +393,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[out] stats The proto to write references to.
   void AddObjectRefStats(
       const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
-      rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
+      rpc::CoreWorkerStats *stats,
+      const int64_t limit) const LOCKS_EXCLUDED(mutex_);
 
   /// Add a new location for the given object. The owner must have the object ref in
   /// scope.

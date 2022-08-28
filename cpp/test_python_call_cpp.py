@@ -1,8 +1,8 @@
+import pytest
+
 import ray
 import ray.cluster_utils
-from ray.exceptions import CrossLanguageError
-from ray.exceptions import RayActorError
-import pytest
+from ray.exceptions import CrossLanguageError, RayActorError
 
 
 def test_cross_language_cpp():

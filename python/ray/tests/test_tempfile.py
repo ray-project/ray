@@ -4,6 +4,7 @@ import sys
 import time
 
 import pytest
+
 import ray
 from ray._private.test_utils import check_call_ray, wait_for_condition
 
@@ -25,6 +26,12 @@ def unix_socket_delete(unix_socket):
 
 def test_tempdir(shutdown_only):
     shutil.rmtree(ray._private.utils.get_ray_temp_dir(), ignore_errors=True)
+    if os.path.exists(ray._private.utils.get_ray_temp_dir()):
+        # sometimes even after delete, it's still there.
+        # delete it again to make sure it's cleaned up
+        shutil.rmtree(ray._private.utils.get_ray_temp_dir(), ignore_errors=True)
+        assert not os.path.exists(ray._private.utils.get_ray_temp_dir())
+
     ray.init(
         _temp_dir=os.path.join(
             ray._private.utils.get_user_temp_dir(), "i_am_a_temp_dir"
@@ -82,7 +89,7 @@ def test_raylet_tempfiles(shutdown_only):
     )
 
     ray.init(num_cpus=0)
-    node = ray.worker._global_node
+    node = ray._private.worker._global_node
     top_levels = set(os.listdir(node.get_session_dir_path()))
     assert top_levels.issuperset({"sockets", "logs"})
     log_files_expected = {
@@ -115,7 +122,7 @@ def test_raylet_tempfiles(shutdown_only):
     ray.shutdown()
 
     ray.init(num_cpus=2)
-    node = ray.worker._global_node
+    node = ray._private.worker._global_node
     top_levels = set(os.listdir(node.get_session_dir_path()))
     assert top_levels.issuperset({"sockets", "logs"})
     time.sleep(3)  # wait workers to start
@@ -135,7 +142,7 @@ def test_tempdir_privilege(shutdown_only):
     os.makedirs(tmp_dir, exist_ok=True)
     os.chmod(tmp_dir, 0o000)
     ray.init(num_cpus=1)
-    session_dir = ray.worker._global_node.get_session_dir_path()
+    session_dir = ray._private.worker._global_node.get_session_dir_path()
     assert os.path.exists(session_dir), "Specified socket path not found."
 
 
@@ -143,7 +150,7 @@ def test_session_dir_uniqueness():
     session_dirs = set()
     for i in range(2):
         ray.init(num_cpus=1)
-        session_dirs.add(ray.worker._global_node.get_session_dir_path)
+        session_dirs.add(ray._private.worker._global_node.get_session_dir_path)
         ray.shutdown()
     assert len(session_dirs) == 2
 
@@ -152,4 +159,7 @@ if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

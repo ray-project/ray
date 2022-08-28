@@ -48,7 +48,7 @@ struct GcsServerConfig {
   std::string redis_address;
   uint16_t redis_port = 6379;
   bool retry_redis = true;
-  bool enable_sharding_conn = true;
+  bool enable_sharding_conn = false;
   std::string node_ip_address;
   std::string log_dir;
   // This includes the config list of raylet.

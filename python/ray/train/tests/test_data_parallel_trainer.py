@@ -1,12 +1,13 @@
 import pytest
 
 import ray
-from ray import train, tune
+from ray import tune
+from ray.air import session
 from ray.air.checkpoint import Checkpoint
+from ray.data.preprocessor import Preprocessor
 from ray.train.constants import PREPROCESSOR_KEY
-
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.air.preprocessor import Preprocessor
+from ray.air.config import ScalingConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -19,12 +20,12 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-scale_config = {"num_workers": 2}
+scale_config = ScalingConfig(num_workers=2)
 
 
 def test_fit_train(ray_start_4_cpus):
     def train_func():
-        train.report(loss=1)
+        session.report({"loss": 1})
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_func, scaling_config=scale_config
@@ -35,18 +36,18 @@ def test_fit_train(ray_start_4_cpus):
 def test_scaling_config(ray_start_4_cpus):
     def train_func():
         assert ray.available_resources()["CPU"] == 1
-        train.report(loss=1)
+        session.report({"loss": 1})
 
     assert ray.available_resources()["CPU"] == 4
     trainer = DataParallelTrainer(
-        train_loop_per_worker=train_func, scaling_config={"num_workers": 2}
+        train_loop_per_worker=train_func, scaling_config=ScalingConfig(num_workers=2)
     )
     trainer.fit()
 
 
 def test_fit_train_config(ray_start_4_cpus):
     def train_func(config):
-        train.report(loss=config["x"])
+        session.report({"loss": config["x"]})
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_func,
@@ -65,10 +66,10 @@ def test_datasets(ray_start_4_cpus):
 
     def get_dataset():
         # Train dataset should be sharded.
-        train_dataset = train.get_dataset_shard("train")
-        assert train_dataset.count() == num_train_data / scale_config["num_workers"]
+        train_dataset = session.get_dataset_shard("train")
+        assert train_dataset.count() == num_train_data / scale_config.num_workers
         # All other datasets should not be sharded.
-        val_dataset = train.get_dataset_shard("val")
+        val_dataset = session.get_dataset_shard("val")
         assert val_dataset.count() == num_val_data
 
     trainer = DataParallelTrainer(
@@ -82,7 +83,7 @@ def test_datasets(ray_start_4_cpus):
 def test_checkpoint(ray_start_4_cpus):
     def train_func():
         for i in range(3):
-            train.save_checkpoint(model=i)
+            session.report({"epoch": i}, checkpoint=Checkpoint.from_dict({"model": i}))
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_func, scaling_config=scale_config
@@ -99,7 +100,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus):
 
     def train_func():
         for i in range(3):
-            train.save_checkpoint(model=i)
+            session.report({"epoch": i}, checkpoint=Checkpoint.from_dict({"model": i}))
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_func,
@@ -113,13 +114,13 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus):
 
 def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     def train_func():
-        checkpoint = train.load_checkpoint()
+        checkpoint = session.get_checkpoint()
         if checkpoint:
-            epoch = checkpoint["epoch"]
+            epoch = checkpoint.to_dict()["epoch"]
         else:
             epoch = 0
         for i in range(epoch, epoch + 2):
-            train.save_checkpoint(epoch=i)
+            session.report({"epoch": i}, checkpoint=Checkpoint.from_dict({"epoch": i}))
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_func, scaling_config=scale_config
@@ -150,9 +151,29 @@ def test_invalid_train_loop(ray_start_4_cpus):
         DataParallelTrainer(train_loop_per_worker=train_loop)
 
 
+def test_bad_return_in_train_loop(ray_start_4_cpus):
+    """Test to check if returns from train loop are discarded."""
+
+    # Simulates what happens with eg. torch models
+    class FailOnUnpickle:
+        def __reduce__(self):
+            raise RuntimeError("Failing")
+
+    def train_loop(config):
+        session.report({"loss": 1})
+        return FailOnUnpickle()
+
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=train_loop, scaling_config=scale_config
+    )
+
+    # No exception should happen here
+    trainer.fit()
+
+
 def test_tune(ray_start_4_cpus):
     def train_func(config):
-        train.report(loss=config["x"])
+        session.report({"loss": config["x"]})
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_func,
@@ -173,7 +194,8 @@ def test_tune(ray_start_4_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

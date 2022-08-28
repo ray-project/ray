@@ -29,6 +29,8 @@ ObjectRef Reference Counting
 
 Ray implements distributed reference counting so that any ``ObjectRef`` in scope in the cluster is pinned in the object store. This includes local python references, arguments to pending tasks, and IDs serialized inside of other objects.
 
+.. _debug-with-ray-memory:
+
 Debugging using 'ray memory'
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -167,7 +169,7 @@ In this example, we first create an object via ``ray.put()`` and then submit a t
                                                                                                                     test.py:
                                                                                                                     <module>:28
 
-While the task is running, we see that ``ray memory`` shows both a ``LOCAL_REFERENCE`` and a ``USED_BY_PENDING_TASK`` reference for the object in the driver process. The worker process also holds a reference to the object because it is ``PINNED_IN_MEMORY``, because the Python ``arg`` is directly referencing the memory in the plasma, so it can't be evicted.
+While the task is running, we see that ``ray memory`` shows both a ``LOCAL_REFERENCE`` and a ``USED_BY_PENDING_TASK`` reference for the object in the driver process. The worker process also holds a reference to the object because the Python ``arg`` is directly referencing the memory in the plasma, so it can't be evicted; therefore it is ``PINNED_IN_MEMORY``.
 
 **4. Serialized ObjectRef references**
 

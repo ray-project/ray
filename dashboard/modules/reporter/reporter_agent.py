@@ -9,20 +9,19 @@ import sys
 import traceback
 import warnings
 
+import psutil
 
 import ray
-import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
-from ray.dashboard import k8s_utils
-import ray.dashboard.utils as dashboard_utils
-import ray.experimental.internal_kv as internal_kv
 import ray._private.services
 import ray._private.utils
-from ray.core.generated import reporter_pb2
-from ray.core.generated import reporter_pb2_grpc
-from ray.ray_constants import DEBUG_AUTOSCALING_STATUS
-from ray._private.metrics_agent import MetricsAgent, Gauge, Record
+from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
+import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
+import ray.dashboard.utils as dashboard_utils
+from ray._private.metrics_agent import Gauge, MetricsAgent, Record
+from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
+from ray.core.generated import reporter_pb2, reporter_pb2_grpc
+from ray.dashboard import k8s_utils
 from ray.util.debug import log_once
-import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +33,10 @@ IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
 # disk usage defined as the result of running psutil.disk_usage("/")
 # in the Ray container.
 ENABLE_K8S_DISK_USAGE = os.environ.get("RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE") == "1"
+# Try to determine if we're in a container.
+IN_CONTAINER = os.path.exists("/sys/fs/cgroup")
+# Using existence of /sys/fs/cgroup as the criterion is consistent with
+# Ray's existing resource logic, see e.g. ray._private.utils.get_num_cpus().
 
 try:
     import gpustat.core as gpustat
@@ -206,14 +209,25 @@ class ReporterAgent(
     def __init__(self, dashboard_agent):
         """Initialize the reporter object."""
         super().__init__(dashboard_agent)
-        if IN_KUBERNETES_POD:
-            # psutil does not compute this correctly when in a K8s pod.
-            # Use ray._private.utils instead.
-            cpu_count = ray._private.utils.get_num_cpus()
-            self._cpu_counts = (cpu_count, cpu_count)
-        else:
-            self._cpu_counts = (psutil.cpu_count(), psutil.cpu_count(logical=False))
 
+        if IN_KUBERNETES_POD or IN_CONTAINER:
+            # psutil does not give a meaningful logical cpu count when in a K8s pod, or
+            # in a container in general.
+            # Use ray._private.utils for this instead.
+            logical_cpu_count = ray._private.utils.get_num_cpus(
+                override_docker_cpu_warning=True
+            )
+            # (Override the docker warning to avoid dashboard log spam.)
+
+            # The dashboard expects a physical CPU count as well.
+            # This is not always meaningful in a container, but we will go ahead
+            # and give the dashboard what it wants using psutil.
+            physical_cpu_count = psutil.cpu_count(logical=False)
+        else:
+            logical_cpu_count = psutil.cpu_count()
+            physical_cpu_count = psutil.cpu_count(logical=False)
+        self._cpu_counts = (logical_cpu_count, physical_cpu_count)
+        self._gcs_aio_client = dashboard_agent.gcs_aio_client
         self._ip = dashboard_agent.ip
         self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
         self._hostname = socket.gethostname()
@@ -773,8 +787,10 @@ class ReporterAgent(
         """Get any changes to the log files and push updates to kv."""
         while True:
             try:
-                formatted_status_string = internal_kv._internal_kv_get(
-                    DEBUG_AUTOSCALING_STATUS
+                formatted_status_string = await self._gcs_aio_client.internal_kv_get(
+                    DEBUG_AUTOSCALING_STATUS.encode(),
+                    None,
+                    timeout=GCS_RPC_TIMEOUT_SECONDS,
                 )
 
                 stats = self._get_all_stats()

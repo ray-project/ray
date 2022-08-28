@@ -46,19 +46,20 @@ class TestRNNSAC(unittest.TestCase):
                     "zero_init_states": True,
                 },
                 lr=5e-4,
+                num_steps_sampled_before_learning_starts=0,
             )
         )
         num_iterations = 1
 
         # Test building an RNNSAC agent in all frameworks.
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v0")
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 print(results)
 
             check_compute_single_action(
-                trainer,
+                algo,
                 include_state=True,
                 include_prev_action_reward=True,
             )

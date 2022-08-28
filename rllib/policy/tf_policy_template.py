@@ -17,7 +17,7 @@ from ray.rllib.utils.typing import (
     AgentID,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ def build_tf_policy(
         [Policy, ModelV2, Type[TFActionDistribution], SampleBatch],
         Union[TensorType, List[TensorType]],
     ],
-    get_default_config: Optional[Callable[[None], TrainerConfigDict]] = None,
+    get_default_config: Optional[Callable[[None], AlgorithmConfigDict]] = None,
     postprocess_fn: Optional[
         Callable[
             [
@@ -48,7 +48,7 @@ def build_tf_policy(
     ] = None,
     stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[str, TensorType]]] = None,
     optimizer_fn: Optional[
-        Callable[[Policy, TrainerConfigDict], "tf.keras.optimizers.Optimizer"]
+        Callable[[Policy, AlgorithmConfigDict], "tf.keras.optimizers.Optimizer"]
     ] = None,
     compute_gradients_fn: Optional[
         Callable[[Policy, "tf.keras.optimizers.Optimizer", TensorType], ModelGradients]
@@ -64,20 +64,22 @@ def build_tf_policy(
     extra_action_out_fn: Optional[Callable[[Policy], Dict[str, TensorType]]] = None,
     extra_learn_fetches_fn: Optional[Callable[[Policy], Dict[str, TensorType]]] = None,
     validate_spaces: Optional[
-        Callable[[Policy, gym.Space, gym.Space, TrainerConfigDict], None]
+        Callable[[Policy, gym.Space, gym.Space, AlgorithmConfigDict], None]
     ] = None,
     before_init: Optional[
-        Callable[[Policy, gym.Space, gym.Space, TrainerConfigDict], None]
+        Callable[[Policy, gym.Space, gym.Space, AlgorithmConfigDict], None]
     ] = None,
     before_loss_init: Optional[
-        Callable[[Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], None]
+        Callable[
+            [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict], None
+        ]
     ] = None,
     after_init: Optional[
-        Callable[[Policy, gym.Space, gym.Space, TrainerConfigDict], None]
+        Callable[[Policy, gym.Space, gym.Space, AlgorithmConfigDict], None]
     ] = None,
     make_model: Optional[
         Callable[
-            [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], ModelV2
+            [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict], ModelV2
         ]
     ] = None,
     action_sampler_fn: Optional[
@@ -121,10 +123,10 @@ def build_tf_policy(
             Policy, ModelV2, Type[TFActionDistribution], SampleBatch],
             Union[TensorType, List[TensorType]]]): Callable for calculating a
             loss tensor.
-        get_default_config (Optional[Callable[[None], TrainerConfigDict]]):
+        get_default_config (Optional[Callable[[None], AlgorithmConfigDict]]):
             Optional callable that returns the default config to merge with any
             overrides. If None, uses only(!) the user-provided
-            PartialTrainerConfigDict as dict for this Policy.
+            PartialAlgorithmConfigDict as dict for this Policy.
         postprocess_fn (Optional[Callable[[Policy, SampleBatch,
             Optional[Dict[AgentID, SampleBatch]], Episode], None]]):
             Optional callable for post-processing experience batches (called
@@ -133,7 +135,7 @@ def build_tf_policy(
             Dict[str, TensorType]]]): Optional callable that returns a dict of
             TF tensors to fetch given the policy and batch input tensors. If
             None, will not compute any stats.
-        optimizer_fn (Optional[Callable[[Policy, TrainerConfigDict],
+        optimizer_fn (Optional[Callable[[Policy, AlgorithmConfigDict],
             "tf.keras.optimizers.Optimizer"]]): Optional callable that returns
             a tf.Optimizer given the policy and config. If None, will call
             the base class' `optimizer()` method instead (which returns a
@@ -161,22 +163,22 @@ def build_tf_policy(
             will call the base class' `extra_compute_grad_fetches()` method
             instead.
         validate_spaces (Optional[Callable[[Policy, gym.Space, gym.Space,
-            TrainerConfigDict], None]]): Optional callable that takes the
+            AlgorithmConfigDict], None]]): Optional callable that takes the
             Policy, observation_space, action_space, and config to check
             the spaces for correctness. If None, no spaces checking will be
             done.
         before_init (Optional[Callable[[Policy, gym.Space, gym.Space,
-            TrainerConfigDict], None]]): Optional callable to run at the
+            AlgorithmConfigDict], None]]): Optional callable to run at the
             beginning of policy init that takes the same arguments as the
             policy constructor. If None, this step will be skipped.
         before_loss_init (Optional[Callable[[Policy, gym.spaces.Space,
-            gym.spaces.Space, TrainerConfigDict], None]]): Optional callable to
+            gym.spaces.Space, AlgorithmConfigDict], None]]): Optional callable to
             run prior to loss init. If None, this step will be skipped.
         after_init (Optional[Callable[[Policy, gym.Space, gym.Space,
-            TrainerConfigDict], None]]): Optional callable to run at the end of
+            AlgorithmConfigDict], None]]): Optional callable to run at the end of
             policy init. If None, this step will be skipped.
         make_model (Optional[Callable[[Policy, gym.spaces.Space,
-            gym.spaces.Space, TrainerConfigDict], ModelV2]]): Optional callable
+            gym.spaces.Space, AlgorithmConfigDict], ModelV2]]): Optional callable
             that returns a ModelV2 object.
             All policy variables should be created in this function. If None,
             a default ModelV2 object will be created.

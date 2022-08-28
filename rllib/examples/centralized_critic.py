@@ -19,7 +19,7 @@ from gym.spaces import Discrete
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms.ppo.ppo import PPO
 from ray.rllib.algorithms.ppo.ppo_tf_policy import (
     PPOTF1Policy,
@@ -231,7 +231,7 @@ class CCPPOTorchPolicy(CentralizedValueMixin, PPOTorchPolicy):
         )
 
 
-class CCTrainer(PPO):
+class CentralizedCritic(PPO):
     @override(PPO)
     def get_default_policy_class(self, config):
         if config["framework"] == "torch":
@@ -292,7 +292,12 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(CCTrainer, config=config, stop=stop, verbose=1)
+    tuner = tune.Tuner(
+        CentralizedCritic,
+        param_space=config,
+        run_config=air.RunConfig(stop=stop, verbose=1),
+    )
+    results = tuner.fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

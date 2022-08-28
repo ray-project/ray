@@ -1,3 +1,5 @@
-from ray.train.rl.rl_trainer import RLTrainer, load_checkpoint
+from ray.train.rl.rl_checkpoint import RLCheckpoint
+from ray.train.rl.rl_predictor import RLPredictor
+from ray.train.rl.rl_trainer import RLTrainer
 
-__all__ = ["RLTrainer", "load_checkpoint"]
+__all__ = ["RLCheckpoint", "RLPredictor", "RLTrainer"]

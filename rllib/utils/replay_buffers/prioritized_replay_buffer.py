@@ -41,7 +41,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                 'episodes'. Specifies how experiences are stored.
             alpha: How much prioritization is used
                 (0.0=no prioritization, 1.0=full prioritization).
-            **kwargs: Forward compatibility kwargs.
+            ``**kwargs``: Forward compatibility kwargs.
         """
         ReplayBuffer.__init__(self, capacity, storage_unit, **kwargs)
 
@@ -69,7 +69,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         Args:
             item: The item to be added.
-            **kwargs: Forward compatibility kwargs.
+            ``**kwargs``: Forward compatibility kwargs.
         """
         weight = kwargs.get("weight", None)
 
@@ -114,9 +114,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         Args:
             num_items: Number of items to sample from this buffer.
-            beta: To what degree to use importance weights
-                (0 - no corrections, 1 - full correction).
-            **kwargs: Forward compatibility kwargs.
+            beta: To what degree to use importance weights (0 - no corrections,
+            1 - full correction).
+            ``**kwargs``: Forward compatibility kwargs.
 
         Returns:
             Concatenated SampleBatch of items including "weights" and
@@ -124,6 +124,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             transition and original idxes in buffer of sampled experiences.
         """
         assert beta >= 0.0
+
+        if len(self) == 0:
+            raise ValueError("Trying to sample from an empty buffer.")
 
         idxes = self._sample_proportional(num_items)
 
@@ -166,8 +169,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         Args:
             idxes: List of indices of items
-            priorities: List of updated priorities corresponding to
-                items at the idxes denoted by variable `idxes`.
+            priorities: List of updated priorities corresponding to items at the
+            idxes denoted by variable `idxes`.
         """
         # Making sure we don't pass in e.g. a torch tensor.
         assert isinstance(
@@ -192,8 +195,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """Returns the stats of this buffer.
 
         Args:
-            debug: If true, adds sample eviction statistics to the
-                returned stats dict.
+            debug: If true, adds sample eviction statistics to the returned stats dict.
 
         Returns:
             A dictionary of stats about this buffer.
@@ -229,8 +231,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """Restores all local state to the provided `state`.
 
         Args:
-            state: The new state to set this buffer. Can be obtained by
-                calling `self.get_state()`.
+            state: The new state to set this buffer. Can be obtained by calling
+            `self.get_state()`.
         """
         super().set_state(state)
         self._it_sum.set_state(state["sum_segment_tree"])

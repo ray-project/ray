@@ -27,4 +27,4 @@ apex-breakoutnoframeskip-v4:
         rollout_fragment_length: 20
         train_batch_size: 512
         target_network_update_freq: 50000
-        min_sample_timesteps_per_reporting: 25000
+        min_sample_timesteps_per_iteration: 25000

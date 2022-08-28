@@ -4,28 +4,20 @@ import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
-from ray.util import PublicAPI
+from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.air.checkpoint import Checkpoint
-from ray.train.constants import TRAIN_DATASET_KEY
-from ray.air.config import (
-    RunConfig,
-    ScalingConfig,
-    ScalingConfigDataClass,
-)
+from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
-from ray.air._internal.config import (
-    ensure_only_allowed_dataclass_keys_updated,
-    ensure_only_allowed_dict_keys_set,
-)
-from ray.tune import Trainable
-from ray.tune.error import TuneError
-from ray.tune.function_runner import wrap_function
+from ray.train.constants import TRAIN_DATASET_KEY
+from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.dict import merge_dicts
+from ray._private.dict import merge_dicts
 
 if TYPE_CHECKING:
     from ray.data import Dataset
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
+
+    from ray.tune import Trainable
 
 # A type representing either a ray.data.Dataset or a function that returns a
 # ray.data.Dataset and accepts no arguments.
@@ -35,7 +27,7 @@ GenDataset = Union["Dataset", Callable[[], "Dataset"]]
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TrainingFailedError(RuntimeError):
     """An error indicating that training has failed."""
 
@@ -51,32 +43,33 @@ class BaseTrainer(abc.ABC):
 
     How does a trainer work?
 
-        - First, initialize the Trainer. The initialization runs locally,
-          so heavyweight setup should not be done in __init__.
-        - Then, when you call ``trainer.fit()``, the Trainer is serialized
-          and copied to a remote Ray actor. The following methods are then
-          called in sequence on the remote actor.
-        - ``trainer.setup()``: Any heavyweight Trainer setup should be
-          specified here.
-        - ``trainer.preprocess_datasets()``: The provided
-          ray.data.Dataset are preprocessed with the provided
-          ray.air.preprocessor.
-        - ``trainer.train_loop()``: Executes the main training logic.
-        - Calling ``trainer.fit()`` will return a ``ray.result.Result``
-          object where you can access metrics from your training run, as well
-          as any checkpoints that may have been saved.
+    - First, initialize the Trainer. The initialization runs locally,
+      so heavyweight setup should not be done in __init__.
+    - Then, when you call ``trainer.fit()``, the Trainer is serialized
+      and copied to a remote Ray actor. The following methods are then
+      called in sequence on the remote actor.
+    - ``trainer.setup()``: Any heavyweight Trainer setup should be
+      specified here.
+    - ``trainer.preprocess_datasets()``: The provided
+      ray.data.Dataset are preprocessed with the provided
+      ray.data.Preprocessor.
+    - ``trainer.train_loop()``: Executes the main training logic.
+    - Calling ``trainer.fit()`` will return a ``ray.result.Result``
+      object where you can access metrics from your training run, as well
+      as any checkpoints that may have been saved.
 
     **How do I create a new Trainer?**
 
-    Subclass ``ray.train.BaseTrainer``, and override the ``training_loop``
+    Subclass ``ray.train.trainer.BaseTrainer``, and override the ``training_loop``
     method, and optionally ``setup``.
 
     .. code-block:: python
 
         import torch
 
-        from ray.train import BaseTrainer
+        from ray.train.trainer import BaseTrainer
         from ray import tune
+        from ray.air import session
 
 
         class MyPytorchTrainer(BaseTrainer):
@@ -91,16 +84,17 @@ class BaseTrainer(abc.ABC):
                 # preprocessed by self.preprocessor
                 dataset = self.datasets["train"]
 
-                torch_ds = dataset.to_torch(label_column="y")
+                torch_ds = dataset.iter_torch_batches(dtypes=torch.float)
                 loss_fn = torch.nn.MSELoss()
 
                 for epoch_idx in range(10):
                     loss = 0
                     num_batches = 0
-                    for X, y in iter(torch_ds):
+                    for batch in torch_ds:
+                        X, y = torch.unsqueeze(batch["x"], 1), batch["y"]
                         # Compute prediction error
                         pred = self.model(X)
-                        batch_loss = loss_fn(pred, y.float())
+                        batch_loss = loss_fn(pred, y)
 
                         # Backpropagation
                         self.optimizer.zero_grad()
@@ -113,7 +107,7 @@ class BaseTrainer(abc.ABC):
 
                     # Use Tune functions to report intermediate
                     # results.
-                    tune.report(loss=loss, epoch=epoch_idx)
+                    session.report({"loss": loss, "epoch": epoch_idx})
 
     **How do I use an existing Trainer or one of my custom Trainers?**
 
@@ -140,7 +134,12 @@ class BaseTrainer(abc.ABC):
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
-    _scaling_config_allowed_keys: List[str] = ["trainer_resources"]
+    _scaling_config_allowed_keys: List[str] = [
+        "trainer_resources",
+        "_max_cpu_fraction_per_node",
+    ]
+    _handles_checkpoint_freq: bool = False
+    _handles_checkpoint_at_end: bool = False
 
     def __init__(
         self,
@@ -152,7 +151,9 @@ class BaseTrainer(abc.ABC):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
-        self.scaling_config = scaling_config if scaling_config is not None else {}
+        self.scaling_config = (
+            scaling_config if scaling_config is not None else ScalingConfig()
+        )
         self.run_config = run_config if run_config is not None else RunConfig()
         self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor
@@ -160,8 +161,29 @@ class BaseTrainer(abc.ABC):
 
         self._validate_attributes()
 
+    def __repr__(self):
+        # A dictionary that maps parameters to their default values.
+        default_values: Dict[str, Any] = {
+            "scaling_config": ScalingConfig(),
+            "run_config": RunConfig(),
+            "datasets": {},
+            "preprocessor": None,
+            "resume_from_checkpoint": None,
+        }
+
+        non_default_arguments = []
+        for parameter, default_value in default_values.items():
+            value = getattr(self, parameter)
+            if value != default_value:
+                non_default_arguments.append(f"{parameter}={value!r}")
+
+        if non_default_arguments:
+            return f"<{self.__class__.__name__} {' '.join(non_default_arguments)}>"
+
+        return f"<{self.__class__.__name__}>"
+
     def __new__(cls, *args, **kwargs):
-        """Store the init args as attributes so this can be merged with Tune hparams."""
+        # Store the init args as attributes so this can be merged with Tune hparams.
         trainer = super(BaseTrainer, cls).__new__(cls)
         parameters = inspect.signature(cls.__init__).parameters
         parameters = list(parameters.keys())
@@ -180,11 +202,10 @@ class BaseTrainer(abc.ABC):
                 f"found {type(self.run_config)} with value `{self.run_config}`."
             )
         # Scaling config
-        # Todo: move to ray.air.ScalingConfig
-        if not isinstance(self.scaling_config, dict):
+        if not isinstance(self.scaling_config, ScalingConfig):
             raise ValueError(
-                f"`scaling_config` should be an instance of `dict`, "
-                f"found {type(self.run_config)} with value `{self.run_config}`."
+                "`scaling_config` should be an instance of `ScalingConfig`, "
+                f"found {type(self.scaling_config)} with value `{self.scaling_config}`."
             )
         # Datasets
         if not isinstance(self.datasets, dict):
@@ -203,10 +224,10 @@ class BaseTrainer(abc.ABC):
             )
         # Preprocessor
         if self.preprocessor is not None and not isinstance(
-            self.preprocessor, ray.air.preprocessor.Preprocessor
+            self.preprocessor, ray.data.Preprocessor
         ):
             raise ValueError(
-                f"`preprocessor` should be an instance of `ray.air.Preprocessor`, "
+                f"`preprocessor` should be an instance of `ray.data.Preprocessor`, "
                 f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
             )
 
@@ -220,28 +241,18 @@ class BaseTrainer(abc.ABC):
             )
 
     @classmethod
-    def _validate_and_get_scaling_config_data_class(
-        cls, dataclass_or_dict: Union[ScalingConfigDataClass, Dict[str, Any]]
-    ) -> ScalingConfigDataClass:
+    def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
         """Return scaling config dataclass after validating updated keys."""
-        if isinstance(dataclass_or_dict, dict):
-            ensure_only_allowed_dict_keys_set(
-                dataclass_or_dict, cls._scaling_config_allowed_keys
-            )
-            scaling_config_dataclass = ScalingConfigDataClass(**dataclass_or_dict)
-
-            return scaling_config_dataclass
-
         ensure_only_allowed_dataclass_keys_updated(
-            dataclass=dataclass_or_dict,
+            dataclass=scaling_config,
             allowed_keys=cls._scaling_config_allowed_keys,
         )
-        return dataclass_or_dict
+        return scaling_config
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
 
-        Note: this method is run on a remote process.
+        .. note:: This method is run on a remote process.
 
         This method will not be called on the driver, so any expensive setup
         operations should be placed here and not in ``__init__``.
@@ -254,7 +265,7 @@ class BaseTrainer(abc.ABC):
     def preprocess_datasets(self) -> None:
         """Called during fit() to preprocess dataset attributes with preprocessor.
 
-        Note: This method is run on a remote process.
+        .. note:: This method is run on a remote process.
 
         This method is called prior to entering the training_loop.
 
@@ -295,24 +306,25 @@ class BaseTrainer(abc.ABC):
         ``self.datasets`` have already been preprocessed by ``self.preprocessor``.
 
         You can use the :ref:`Tune Function API functions <tune-function-docstring>`
-        (``tune.report()`` and ``tune.save_checkpoint()``) inside
+        (``session.report()`` and ``session.get_checkpoint()``) inside
         this training loop.
 
         Example:
-            .. code-block: python
 
-                from ray.train.trainer import BaseTrainer
+        .. code-block: python
 
-                class MyTrainer(BaseTrainer):
-                    def training_loop(self):
-                        for epoch_idx in range(5):
-                            ...
-                            tune.report(epoch=epoch_idx)
+            from ray.train.trainer import BaseTrainer
+
+            class MyTrainer(BaseTrainer):
+                def training_loop(self):
+                    for epoch_idx in range(5):
+                        ...
+                        session.report({"epoch": epoch_idx})
 
         """
         raise NotImplementedError
 
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="beta")
     def fit(self) -> Result:
         """Runs training.
 
@@ -324,6 +336,7 @@ class BaseTrainer(abc.ABC):
             ``self.as_trainable()``.
         """
         from ray.tune.tuner import Tuner
+        from ray.tune.error import TuneError
 
         trainable = self.as_trainable()
 
@@ -338,8 +351,10 @@ class BaseTrainer(abc.ABC):
             raise TrainingFailedError from e
         return result
 
-    def as_trainable(self) -> Type[Trainable]:
+    def as_trainable(self) -> Type["Trainable"]:
         """Convert self to a ``tune.Trainable`` class."""
+        from ray.tune.execution.placement_groups import PlacementGroupFactory
+        from ray.tune.trainable import wrap_function
 
         base_config = self._param_dict
         trainer_cls = self.__class__
@@ -364,10 +379,29 @@ class BaseTrainer(abc.ABC):
         # stdout messages and the results directory.
         train_func.__name__ = trainer_cls.__name__
 
-        trainable_cls = wrap_function(train_func)
+        trainable_cls = wrap_function(train_func, warn=False)
+        has_base_dataset = bool(self.datasets)
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
+
+            _handles_checkpoint_freq = trainer_cls._handles_checkpoint_freq
+            _handles_checkpoint_at_end = trainer_cls._handles_checkpoint_at_end
+
+            # Workaround for actor name not being logged correctly
+            # if __repr__ is not directly defined in a class.
+            def __repr__(self):
+                return super().__repr__()
+
+            @classmethod
+            def has_base_dataset(cls) -> bool:
+                """Whether a dataset is provided through the Trainer."""
+                return has_base_dataset
+
+            @classmethod
+            def base_scaling_config(cls) -> ScalingConfig:
+                """Returns the unchanged scaling config provided through the Trainer."""
+                return scaling_config
 
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
@@ -378,6 +412,47 @@ class BaseTrainer(abc.ABC):
                 run_config = base_config.pop("run_config", None)
                 self._merged_config = merge_dicts(base_config, self.config)
                 self._merged_config["run_config"] = run_config
+                merged_scaling_config = self._merged_config.get("scaling_config")
+                if isinstance(merged_scaling_config, dict):
+                    merged_scaling_config = ScalingConfig(**merged_scaling_config)
+                self._merged_config[
+                    "scaling_config"
+                ] = self._reconcile_scaling_config_with_trial_resources(
+                    merged_scaling_config
+                )
+
+            def _reconcile_scaling_config_with_trial_resources(
+                self, scaling_config: ScalingConfig
+            ) -> ScalingConfig:
+                """
+                ResourceChangingScheduler workaround.
+
+                Ensures that the scaling config matches trial resources.
+
+                This should be replaced with RCS returning a ScalingConfig
+                in the future.
+                """
+
+                trial_resources = self.trial_resources
+                # This will be false if the resources are default
+                if not isinstance(trial_resources, PlacementGroupFactory):
+                    return scaling_config
+
+                if scaling_config:
+                    scaling_config = trainer_cls._validate_scaling_config(
+                        scaling_config
+                    )
+                scaling_config_from_trial_resources = (
+                    ScalingConfig.from_placement_group_factory(trial_resources)
+                )
+
+                # This check should always pass if ResourceChangingScheduler is not
+                # used.
+                if scaling_config_from_trial_resources != scaling_config:
+                    scaling_config = trainer_cls._validate_scaling_config(
+                        scaling_config_from_trial_resources
+                    )
+                return scaling_config
 
             def _trainable_func(self, config, reporter, checkpoint_dir):
                 # We ignore the config passed by Tune and instead use the merged
@@ -386,12 +461,18 @@ class BaseTrainer(abc.ABC):
 
             @classmethod
             def default_resource_request(cls, config):
+                # `config["scaling_config"] is a dataclass when passed via the
+                # `scaling_config` argument in `Trainer` and is a dict when passed
+                # via the `scaling_config` key of `param_spec`.
+
+                # Conversion logic must be duplicated in `TrainTrainable.__init__`
+                # because this is a class method.
                 updated_scaling_config = config.get("scaling_config", scaling_config)
-                scaling_config_dataclass = (
-                    trainer_cls._validate_and_get_scaling_config_data_class(
-                        updated_scaling_config
-                    )
+                if isinstance(updated_scaling_config, dict):
+                    updated_scaling_config = ScalingConfig(**updated_scaling_config)
+                validated_scaling_config = trainer_cls._validate_scaling_config(
+                    updated_scaling_config
                 )
-                return scaling_config_dataclass.as_placement_group_factory()
+                return validated_scaling_config.as_placement_group_factory()
 
         return TrainTrainable

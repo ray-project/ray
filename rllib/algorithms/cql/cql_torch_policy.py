@@ -30,7 +30,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.typing import LocalOptimizer, TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import LocalOptimizer, TensorType, AlgorithmConfigDict
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
     convert_to_torch_tensor,
@@ -340,7 +340,7 @@ def cql_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]
 
 
 def cql_optimizer_fn(
-    policy: Policy, config: TrainerConfigDict
+    policy: Policy, config: AlgorithmConfigDict
 ) -> Tuple[LocalOptimizer]:
     policy.cur_iter = 0
     opt_list = optimizer_fn(policy, config)
@@ -365,7 +365,7 @@ def cql_setup_late_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     setup_late_mixins(policy, obs_space, action_space, config)
     if config["lagrangian"]:

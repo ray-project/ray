@@ -79,7 +79,10 @@ class TestSAC(unittest.TestCase):
             .training(
                 n_step=3,
                 twin_q=True,
-                replay_buffer_config={"learning_starts": 0, "capacity": 40000},
+                replay_buffer_config={
+                    "capacity": 40000,
+                },
+                num_steps_sampled_before_learning_starts=0,
                 store_buffer_in_checkpoints=True,
                 train_batch_size=10,
             )
@@ -172,11 +175,11 @@ class TestSAC(unittest.TestCase):
                 _deterministic_loss=True,
                 q_model_config={"fcnet_hiddens": [10]},
                 policy_model_config={"fcnet_hiddens": [10]},
-                replay_buffer_config={"learning_starts": 0},
+                num_steps_sampled_before_learning_starts=0,
             )
             .rollouts(num_rollout_workers=0)
             .reporting(
-                min_time_s_per_reporting=0,
+                min_time_s_per_iteration=0,
             )
             .environment(
                 env_config={"simplex_actions": True},
@@ -246,7 +249,7 @@ class TestSAC(unittest.TestCase):
         for fw, sess in framework_iterator(
             config, frameworks=("tf", "torch"), session=True
         ):
-            # Generate Trainer and get its default Policy object.
+            # Generate Algorithm and get its default Policy object.
             trainer = config.build(env=env)
             policy = trainer.get_policy()
             p_sess = None
@@ -523,7 +526,10 @@ class TestSAC(unittest.TestCase):
         config = (
             sac.SACConfig()
             .training(
-                replay_buffer_config={"learning_starts": 0, "capacity": 10},
+                replay_buffer_config={
+                    "capacity": 10,
+                },
+                num_steps_sampled_before_learning_starts=0,
                 train_batch_size=5,
             )
             .rollouts(

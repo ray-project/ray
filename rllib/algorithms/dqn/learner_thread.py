@@ -1,10 +1,10 @@
 import queue
 import threading
 
+from ray.util.timer import _Timer
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.metrics.window_stat import WindowStat
-from ray.rllib.utils.timer import TimerStat
 
 LEARNER_QUEUE_MAX_SIZE = 16
 
@@ -26,9 +26,9 @@ class LearnerThread(threading.Thread):
         self.local_worker = local_worker
         self.inqueue = queue.Queue(maxsize=LEARNER_QUEUE_MAX_SIZE)
         self.outqueue = queue.Queue()
-        self.queue_timer = TimerStat()
-        self.grad_timer = TimerStat()
-        self.overall_timer = TimerStat()
+        self.queue_timer = _Timer()
+        self.grad_timer = _Timer()
+        self.overall_timer = _Timer()
         self.daemon = True
         self.weights_updated = False
         self.stopped = False
@@ -74,6 +74,9 @@ class LearnerThread(threading.Thread):
                 self.outqueue.put(
                     (replay_actor, prio_dict, ma_batch.count, ma_batch.agent_steps())
                 )
-            self.learner_queue_size.push(self.inqueue.qsize())
-            self.weights_updated = True
-            self.overall_timer.push_units_processed(ma_batch and ma_batch.count or 0)
+                self.learner_queue_size.push(self.inqueue.qsize())
+                self.weights_updated = True
+                self.overall_timer.push_units_processed(
+                    ma_batch and ma_batch.count or 0
+                )
+                del ma_batch

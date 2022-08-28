@@ -17,7 +17,7 @@ from tensorflow.keras.layers import Dense, Flatten, Conv2D
 from tensorflow.keras import Model
 from tensorflow.keras.datasets.mnist import load_data
 
-from ray import tune
+from ray import air, tune
 
 MAX_TRAIN_BATCH = 10
 
@@ -135,13 +135,18 @@ if __name__ == "__main__":
 
         ray.init(f"ray://{args.server_address}")
 
-    analysis = tune.run(
+    tuner = tune.Tuner(
         MNISTTrainable,
-        metric="test_loss",
-        mode="min",
-        stop={"training_iteration": 5 if args.smoke_test else 50},
-        verbose=1,
-        config={"hiddens": tune.grid_search([32, 64, 128])},
+        tune_config=tune.TuneConfig(
+            metric="test_loss",
+            mode="min",
+        ),
+        run_config=air.RunConfig(
+            stop={"training_iteration": 5 if args.smoke_test else 50},
+            verbose=1,
+        ),
+        param_space={"hiddens": tune.grid_search([32, 64, 128])},
     )
+    results = tuner.fit()
 
-    print("Best hyperparameters found were: ", analysis.best_config)
+    print("Best hyperparameters found were: ", results.get_best_result().config)

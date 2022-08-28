@@ -1,61 +1,66 @@
 import copy
 import logging
 import platform
-
 import queue
-from typing import Optional, Type, List, Dict, Union, Callable, Any
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray.actor import ActorHandle
 from ray.rllib import SampleBatch
-from ray.rllib.agents.trainer import Trainer, TrainerConfig
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
-from ray.rllib.execution.learner_thread import LearnerThread
-from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
-from ray.rllib.execution.parallel_requests import (
-    AsyncRequestsManager,
-)
-from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
     _get_global_vars,
     _get_shared_metrics,
 )
-from ray.rllib.execution.replay_ops import MixInReplay
-from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
-from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
+from ray.rllib.execution.concurrency_ops import Concurrently, Dequeue, Enqueue
+from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
+from ray.rllib.execution.parallel_requests import AsyncRequestsManager
+from ray.rllib.execution.replay_ops import MixInReplay
+from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts
+from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    deprecation_warning,
+)
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
+    NUM_SYNCH_WORKER_WEIGHTS,
+    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
+    SYNCH_WORKER_WEIGHTS_TIMER,
 )
+from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import ReplayMode
+from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 
-# from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import (
-    PartialTrainerConfigDict,
+    AlgorithmConfigDict,
+    PartialAlgorithmConfigDict,
     ResultDict,
-    TrainerConfigDict,
     SampleBatchType,
     T,
 )
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
 
-class ImpalaConfig(TrainerConfig):
+class ImpalaConfig(AlgorithmConfig):
     """Defines a configuration class from which an Impala can be built.
 
     Example:
@@ -64,7 +69,7 @@ class ImpalaConfig(TrainerConfig):
         ...     .resources(num_gpus=4)\
         ...     .rollouts(num_rollout_workers=64)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -87,9 +92,9 @@ class ImpalaConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a ImpalaConfig instance."""
-        super().__init__(trainer_class=trainer_class or Impala)
+        super().__init__(algo_class=algo_class or Impala)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -127,20 +132,24 @@ class ImpalaConfig(TrainerConfig):
         self._lr_vf = 0.0005
         self.after_train_step = None
 
-        # Override some of TrainerConfig's default values with ARS-specific values.
+        # Override some of AlgorithmConfig's default values with ARS-specific values.
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
         self.num_workers = 2
         self.num_gpus = 1
         self.lr = 0.0005
-        self.min_time_s_per_reporting = 10
+        self.min_time_s_per_iteration = 10
         # __sphinx_doc_end__
         # fmt: on
+
+        # TODO: IMPALA/APPO had to be rolled-back to old execution-plan API due
+        #  to issues with the MixIn Buffer (in process of being fixed atm).
+        self._disable_execution_plan_api = False
 
         # Deprecated value.
         self.num_data_loader_buffers = DEPRECATED_VALUE
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -266,7 +275,7 @@ class ImpalaConfig(TrainerConfig):
             in flight, or enable compression in your experiment of timesteps.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -433,8 +442,8 @@ class BroadcastUpdateLearnerWeights:
         self.workers.local_worker().set_global_vars(_get_global_vars())
 
 
-class Impala(Trainer):
-    """Importance weighted actor/learner architecture (IMPALA) Trainer
+class Impala(Algorithm):
+    """Importance weighted actor/learner architecture (IMPALA) Algorithm
 
     == Overview of data flow in IMPALA ==
     1. Policy evaluation in parallel across `num_workers` actors produces
@@ -448,13 +457,13 @@ class Impala(Trainer):
     """
 
     @classmethod
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return ImpalaConfig().to_dict()
 
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_policy_class(
-        self, config: PartialTrainerConfigDict
+        self, config: PartialAlgorithmConfigDict
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             if config["vtrace"]:
@@ -469,9 +478,7 @@ class Impala(Trainer):
                 return A3CTorchPolicy
         elif config["framework"] == "tf":
             if config["vtrace"]:
-                from ray.rllib.algorithms.impala.impala_tf_policy import (
-                    ImpalaTF1Policy,
-                )
+                from ray.rllib.algorithms.impala.impala_tf_policy import ImpalaTF1Policy
 
                 return ImpalaTF1Policy
             else:
@@ -488,7 +495,7 @@ class Impala(Trainer):
 
                 return A3CTFPolicy
 
-    @override(Trainer)
+    @override(Algorithm)
     def validate_config(self, config):
         # Call the super class' validation method first.
         super().validate_config(config)
@@ -536,8 +543,8 @@ class Impala(Trainer):
                 )
                 config["_tf_policy_handles_more_than_one_loss"] = True
 
-    @override(Trainer)
-    def setup(self, config: PartialTrainerConfigDict):
+    @override(Algorithm)
+    def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
 
         if self.config["_disable_execution_plan_api"]:
@@ -589,6 +596,7 @@ class Impala(Trainer):
                         else 1
                     ),
                     replay_ratio=self.config["replay_ratio"],
+                    replay_mode=ReplayMode.LOCKSTEP,
                 )
 
             self._sampling_actor_manager = AsyncRequestsManager(
@@ -607,29 +615,44 @@ class Impala(Trainer):
             self._learner_thread.start()
             self.workers_that_need_updates = set()
 
-    @override(Trainer)
-    def training_iteration(self) -> ResultDict:
-        unprocessed_sample_batches = self.get_samples_from_workers()
+    @override(Algorithm)
+    def training_step(self) -> ResultDict:
+        # Get references to sampled SampleBatches from our workers.
+        unprocessed_sample_batches_refs = self.get_samples_from_workers()
+        # Tag workers that actually produced ready sample batches this iteration.
+        # Those workers will have to get updated at the end of the iteration.
+        self.workers_that_need_updates |= unprocessed_sample_batches_refs.keys()
 
-        self.workers_that_need_updates |= unprocessed_sample_batches.keys()
-
+        # Send the collected batches (still object refs) to our aggregation workers.
         if self.config["num_aggregation_workers"] > 0:
-            batch = self.process_experiences_tree_aggregation(
-                unprocessed_sample_batches
+            batches = self.process_experiences_tree_aggregation(
+                unprocessed_sample_batches_refs
             )
+        # Resolve collected batches here on local process (using the mixin buffer).
         else:
-            batch = self.process_experiences_directly(unprocessed_sample_batches)
+            batches = self.process_experiences_directly(unprocessed_sample_batches_refs)
 
-        self.concatenate_batches_and_pre_queue(batch)
+        # Increase sampling counters now that we have the actual SampleBatches on
+        # the local process (and can measure their sizes).
+        for batch in batches:
+            self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+
+        # Concatenate single batches into batches of size `train_batch_size`.
+        self.concatenate_batches_and_pre_queue(batches)
+        # Move train batches (of size `train_batch_size`) onto learner queue.
         self.place_processed_samples_on_learner_queue()
+        # Extract most recent train results from learner thread.
         train_results = self.process_trained_results()
 
-        self.update_workers_if_necessary()
+        # Sync worker weights.
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            self.update_workers_if_necessary()
 
         return train_results
 
     @staticmethod
-    @override(Trainer)
+    @override(Algorithm)
     def execution_plan(workers, config, **kwargs):
         assert (
             len(kwargs) == 0
@@ -657,12 +680,12 @@ class Impala(Trainer):
             )
 
         def record_steps_trained(item):
-            count, fetches = item
+            env_steps, agent_steps, fetches = item
             metrics = _get_shared_metrics()
             # Manually update the steps trained counter since the learner
             # thread is executing outside the pipeline.
-            metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = count
-            metrics.counters[STEPS_TRAINED_COUNTER] += count
+            metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = env_steps
+            metrics.counters[STEPS_TRAINED_COUNTER] += env_steps
             return item
 
         # This sub-flow updates the steps trained counter based on learner
@@ -678,7 +701,7 @@ class Impala(Trainer):
         # Callback for APPO to use to update KL, target network periodically.
         # The input to the callback is the learner fetches dict.
         if config["after_train_step"]:
-            merged_op = merged_op.for_each(lambda t: t[1]).for_each(
+            merged_op = merged_op.for_each(lambda t: t[2]).for_each(
                 config["after_train_step"](workers, config)
             )
 
@@ -687,7 +710,7 @@ class Impala(Trainer):
         )
 
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def default_resource_request(cls, config):
         cf = dict(cls.get_default_config(), **config)
 
@@ -756,7 +779,7 @@ class Impala(Trainer):
                 sum(b.count for b in self.batch_being_built)
                 >= self.config["train_batch_size"]
             ):
-                batch_to_add = SampleBatch.concat_samples(self.batch_being_built)
+                batch_to_add = concat_samples(self.batch_being_built)
                 self.batches_to_place_on_learner.append(batch_to_add)
                 self.batch_being_built = []
 
@@ -764,7 +787,11 @@ class Impala(Trainer):
             self.batch_being_built.append(batch)
             aggregate_into_larger_batch()
 
-    def get_samples_from_workers(self) -> Dict[ActorHandle, List[SampleBatch]]:
+    def get_samples_from_workers(
+        self,
+    ) -> Dict[
+        Union[ActorHandle, RolloutWorker], List[Union[ObjectRef, SampleBatchType]]
+    ]:
         # Perform asynchronous sampling on all (remote) rollout workers.
         if self.workers.remote_workers():
             self._sampling_actor_manager.call_on_all_available(
@@ -781,16 +808,19 @@ class Impala(Trainer):
         return sample_batches
 
     def place_processed_samples_on_learner_queue(self) -> None:
-        self._counters["num_samples_added_to_queue"] = 0
-
         while self.batches_to_place_on_learner:
             batch = self.batches_to_place_on_learner[0]
             try:
-                self._learner_thread.inqueue.put(batch, block=False)
+                # Setting block = True prevents the learner thread,
+                # the main thread, and the gpu loader threads from
+                # thrashing when there are more samples than the
+                # learner can reasonable process.
+                # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
+                self._learner_thread.inqueue.put(batch, block=True)
                 self.batches_to_place_on_learner.pop(0)
-                self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
-                self._counters["num_samples_added_to_queue"] = batch.count
+                self._counters["num_samples_added_to_queue"] += (
+                    batch.agent_steps() if self._by_agent_steps else batch.count
+                )
             except queue.Full:
                 self._counters["num_times_learner_queue_full"] += 1
 
@@ -800,6 +830,7 @@ class Impala(Trainer):
         num_env_steps_trained = 0
         num_agent_steps_trained = 0
 
+        # Loop through output queue and update our counts.
         for _ in range(self._learner_thread.outqueue.qsize()):
             if self._learner_thread.is_alive():
                 (
@@ -812,19 +843,26 @@ class Impala(Trainer):
                 if learner_results:
                     learner_infos.append(learner_results)
             else:
-                raise RuntimeError("The learner thread died in while training")
-        learner_info = copy.deepcopy(self._learner_thread.learner_info)
+                raise RuntimeError("The learner thread died while training")
+        # Nothing new happened since last time, use the same learner stats.
+        if not learner_infos:
+            final_learner_info = copy.deepcopy(self._learner_thread.learner_info)
+        # Accumulate learner stats using the `LearnerInfoBuilder` utility.
+        else:
+            builder = LearnerInfoBuilder()
+            for info in learner_infos:
+                builder.add_learn_on_batch_results_multi_agent(info)
+            final_learner_info = builder.finalize()
 
         # Update the steps trained counters.
-        self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = num_agent_steps_trained
         self._counters[NUM_ENV_STEPS_TRAINED] += num_env_steps_trained
         self._counters[NUM_AGENT_STEPS_TRAINED] += num_agent_steps_trained
 
-        return learner_info
+        return final_learner_info
 
     def process_experiences_directly(
         self, actor_to_sample_batches_refs: Dict[ActorHandle, List[ObjectRef]]
-    ) -> Union[SampleBatchType, None]:
+    ) -> List[SampleBatchType]:
         processed_batches = []
         batches = [
             sample_batch_ref
@@ -838,14 +876,14 @@ class Impala(Trainer):
         for batch in batches:
             batch = batch.decompress_if_needed()
             self.local_mixin_buffer.add_batch(batch)
-            batch = self.local_mixin_buffer.replay()
+            batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
             if batch:
                 processed_batches.append(batch)
         return processed_batches
 
     def process_experiences_tree_aggregation(
         self, actor_to_sample_batches_refs: Dict[ActorHandle, List[ObjectRef]]
-    ) -> Union[SampleBatchType, None]:
+    ) -> List[SampleBatchType]:
         batches = [
             sample_batch_ref
             for refs_batch in actor_to_sample_batches_refs.values()
@@ -853,12 +891,14 @@ class Impala(Trainer):
         ]
         ready_processed_batches = []
         for batch in batches:
-            self._aggregator_actor_manager.call(
+            success = self._aggregator_actor_manager.call(
                 lambda actor, b: actor.process_episodes(b), fn_kwargs={"b": batch}
             )
+            if not success:
+                self._counters["num_times_no_aggregation_worker_available"] += 1
 
         waiting_processed_sample_batches: Dict[
-            ActorHandle, List[ObjectRef]
+            ActorHandle, List[SampleBatchType]
         ] = self._aggregator_actor_manager.get_ready()
         for ready_sub_batches in waiting_processed_sample_batches.values():
             ready_processed_batches.extend(ready_sub_batches)
@@ -867,18 +907,18 @@ class Impala(Trainer):
 
     def update_workers_if_necessary(self) -> None:
         # Only need to update workers if there are remote workers.
-        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
-        self._counters["steps_since_broadcast"] += 1
+        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
+        self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
         if (
             self.workers.remote_workers()
-            and self._counters["steps_since_broadcast"]
+            and self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS]
             >= self.config["broadcast_interval"]
             and self.workers_that_need_updates
         ):
             weights = ray.put(self.workers.local_worker().get_weights())
-            self._counters["steps_since_broadcast"] = 0
+            self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._learner_thread.weights_updated = False
-            self._counters["num_weight_broadcasts"] += 1
+            self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
 
             for worker in self.workers_that_need_updates:
                 worker.set_weights.remote(weights, global_vars)
@@ -887,7 +927,7 @@ class Impala(Trainer):
         # Update global vars of the local worker.
         self.workers.local_worker().set_global_vars(global_vars)
 
-    @override(Trainer)
+    @override(Algorithm)
     def on_worker_failures(
         self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
     ):
@@ -897,14 +937,15 @@ class Impala(Trainer):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
-        self._sampling_actor_manager.remove_workers(removed_workers)
-        self._sampling_actor_manager.add_workers(new_workers)
+        if self.config["_disable_execution_plan_api"]:
+            self._sampling_actor_manager.remove_workers(
+                removed_workers, remove_in_flight_requests=True
+            )
+            self._sampling_actor_manager.add_workers(new_workers)
 
-    @override(Trainer)
-    def _compile_step_results(self, *, step_ctx, step_attempt_results=None):
-        result = super()._compile_step_results(
-            step_ctx=step_ctx, step_attempt_results=step_attempt_results
-        )
+    @override(Algorithm)
+    def _compile_iteration_results(self, *args, **kwargs):
+        result = super()._compile_iteration_results(*args, **kwargs)
         result = self._learner_thread.add_learner_metrics(
             result, overwrite_learner_info=False
         )
@@ -915,7 +956,7 @@ class Impala(Trainer):
 class AggregatorWorker:
     """A worker for doing tree aggregation of collected episodes"""
 
-    def __init__(self, config: TrainerConfigDict):
+    def __init__(self, config: AlgorithmConfigDict):
         self.config = config
         self._mixin_buffer = MixInMultiAgentReplayBuffer(
             capacity=(
@@ -924,12 +965,13 @@ class AggregatorWorker:
                 else 1
             ),
             replay_ratio=self.config["replay_ratio"],
+            replay_mode=ReplayMode.LOCKSTEP,
         )
 
     def process_episodes(self, batch: SampleBatchType) -> SampleBatchType:
         batch = batch.decompress_if_needed()
         self._mixin_buffer.add_batch(batch)
-        processed_batches = self._mixin_buffer.replay()
+        processed_batches = self._mixin_buffer.replay(_ALL_POLICIES)
         return processed_batches
 
     def apply(

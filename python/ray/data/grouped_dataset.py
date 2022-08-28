@@ -1,14 +1,24 @@
-from typing import Any, Union, Generic, Tuple, List, Callable
-from ray.util.annotations import PublicAPI
-from ray.data.dataset import Dataset
-from ray.data.dataset import BatchType
+from typing import Any, Callable, Generic, List, Tuple, Union, Optional
+
 from ray.data._internal import sort
-from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, Mean, Std
-from ray.data.block import BlockExecStats, KeyFn
-from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.compute import CallableClass, ComputeStrategy
+from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
-from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, KeyType
+from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
+from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockExecStats,
+    BlockMetadata,
+    KeyFn,
+    KeyType,
+    T,
+    U,
+)
+from ray.data.context import DatasetContext
+from ray.data.dataset import BatchType, Dataset
+from ray.util.annotations import PublicAPI
 
 
 class _GroupbyOp(ShuffleOp):
@@ -35,19 +45,26 @@ class _GroupbyOp(ShuffleOp):
         meta = BlockAccessor.for_block(block).get_metadata(
             input_files=None, exec_stats=stats.build()
         )
-        return [meta] + parts
+        return parts + [meta]
 
     @staticmethod
     def reduce(
-        key: KeyFn, aggs: Tuple[AggregateFn], *mapper_outputs: List[Block]
+        key: KeyFn,
+        aggs: Tuple[AggregateFn],
+        *mapper_outputs: List[Block],
+        partial_reduce: bool = False,
     ) -> (Block, BlockMetadata):
         """Aggregate sorted and partially combined blocks."""
         return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
-            list(mapper_outputs), key, aggs
+            list(mapper_outputs), key, aggs, finalize=not partial_reduce
         )
 
 
 class SimpleShuffleGroupbyOp(_GroupbyOp, SimpleShufflePlan):
+    pass
+
+
+class PushBasedGroupbyOp(_GroupbyOp, PushBasedShufflePlan):
     pass
 
 
@@ -122,7 +139,12 @@ class GroupedDataset(Generic[T]):
                     else self._key,
                     num_reducers,
                 )
-            shuffle_op = SimpleShuffleGroupbyOp(
+            ctx = DatasetContext.get_current()
+            if ctx.use_push_based_shuffle:
+                shuffle_op_cls = PushBasedGroupbyOp
+            else:
+                shuffle_op_cls = SimpleShuffleGroupbyOp
+            shuffle_op = shuffle_op_cls(
                 map_args=[boundaries, self._key, aggs], reduce_args=[self._key, aggs]
             )
             return shuffle_op.execute(
@@ -227,31 +249,46 @@ class GroupedDataset(Generic[T]):
         else:
             sorted_ds = self._dataset.repartition(1)
 
-        def get_key(row):
-            if isinstance(self._key, Callable):
-                return self._key(row)
-            elif isinstance(self._key, str):
-                return row[self._key]
-            else:
+        import numpy as np
+
+        # Returns the keys of the batch in numpy array.
+        # Returns None if the self._key is None.
+        def get_keys(batch) -> Optional[np.ndarray]:
+            import pandas as pd
+            import pyarrow as pa
+
+            if self._key is None:
                 return None
+            if isinstance(batch, pd.DataFrame) or isinstance(batch, pa.Table):
+                assert isinstance(self._key, str)
+                return batch[self._key].to_numpy()
+            elif isinstance(batch, List):
+                assert callable(self._key)
+                return np.array([self._key(item) for item in batch])
+            else:
+                raise ValueError(
+                    f"Unsupported batch type for map_groups: {type(batch)}"
+                )
 
         # Returns the group boundaries.
-        def get_boundaries(block):
+        def get_key_boundaries(batch):
             boundaries = []
-            pre = None
-            for i, item in enumerate(block.iter_rows()):
-                if pre is not None and get_key(pre) != get_key(item):
-                    boundaries.append(i)
-                pre = item
-            if block.num_rows() > 0:
-                boundaries.append(block.num_rows())
+            keys = get_keys(batch)
+            start = 0
+            while start < keys.size:
+                end = start + np.searchsorted(keys[start:], keys[start], side="right")
+                boundaries.append(end)
+                start = end
             return boundaries
 
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
         def group_fn(batch):
             block_accessor = BlockAccessor.for_block(batch)
-            boundaries = get_boundaries(block_accessor)
+            if self._key:
+                boundaries = get_key_boundaries(batch)
+            else:
+                boundaries = [block_accessor.num_rows()]
             builder = block_accessor.builder()
             start = 0
             for end in boundaries:
@@ -259,7 +296,6 @@ class GroupedDataset(Generic[T]):
                 applied = fn(group)
                 builder.add_block(applied)
                 start = end
-
             rs = builder.build()
             return rs
 

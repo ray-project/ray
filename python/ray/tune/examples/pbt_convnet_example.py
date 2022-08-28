@@ -14,10 +14,9 @@ from ray.tune.examples.mnist_pytorch import train, test, ConvNet,\
     get_data_loaders
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.utils import validate_save_restore
-from ray.tune.trial import ExportFormat
 # __tutorial_imports_end__
 
 
@@ -49,14 +48,6 @@ class PytorchTrainable(tune.Trainable):
 
     def load_checkpoint(self, checkpoint_path):
         self.model.load_state_dict(torch.load(checkpoint_path))
-
-    def _export_model(self, export_formats, export_dir):
-        if export_formats == [ExportFormat.MODEL]:
-            path = os.path.join(export_dir, "exported_convnet.pt")
-            torch.save(self.model.state_dict(), path)
-            return {export_formats[0]: path}
-        else:
-            raise ValueError("unexpected formats: " + str(export_formats))
 
     def reset_config(self, new_config):
         for param_group in self.optimizer.param_groups:
@@ -111,28 +102,36 @@ if __name__ == "__main__":
 
     stopper = CustomStopper()
 
-    analysis = tune.run(
+    tuner = tune.Tuner(
         PytorchTrainable,
-        name="pbt_test",
-        scheduler=scheduler,
-        reuse_actors=True,
-        metric="mean_accuracy",
-        mode="max",
-        verbose=1,
-        stop=stopper,
-        export_formats=[ExportFormat.MODEL],
-        checkpoint_score_attr="mean_accuracy",
-        checkpoint_freq=5,
-        keep_checkpoints_num=4,
-        num_samples=4,
-        config={
+        run_config=air.RunConfig(
+            name="pbt_test",
+            stop=stopper,
+            verbose=1,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_score_attribute="mean_accuracy",
+                checkpoint_frequency=5,
+                num_to_keep=4,
+            ),
+        ),
+        tune_config=tune.TuneConfig(
+            scheduler=scheduler,
+            metric="mean_accuracy",
+            mode="max",
+            num_samples=4,
+            reuse_actors=True,
+        ),
+        param_space={
             "lr": tune.uniform(0.001, 1),
             "momentum": tune.uniform(0.001, 1),
-        })
+        },
+    )
+    results = tuner.fit()
     # __tune_end__
 
-    best_trial = analysis.best_trial
-    best_checkpoint = analysis.best_checkpoint
+    best_result = results.get_best_result()
+    best_checkpoint = best_result.checkpoint
+
     restored_trainable = PytorchTrainable()
     restored_trainable.restore(best_checkpoint)
     best_model = restored_trainable.model

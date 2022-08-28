@@ -10,7 +10,7 @@ from typing import (
     Union,
 )
 
-from ray.rllib.agents import TrainerConfig
+from ray.rllib.algorithms import AlgorithmConfig
 from ray.rllib.algorithms.crr.torch import CRRModel
 from ray.rllib.algorithms.ddpg.noop_model import TorchNoopModel
 from ray.rllib.algorithms.sac.sac_torch_policy import TargetNetworkMixin
@@ -202,26 +202,24 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
         dist_class: Type[TorchDistributionWrapper],
         train_batch: SampleBatch,
     ) -> None:
-        # uses mean|max to compute estimate of advantages
+        # uses mean|max|expectation to compute estimate of advantages
         # continuous/discrete action spaces:
+        # for max:
         #   A(s_t, a_t) = Q(s_t, a_t) - max_{a^j} Q(s_t, a^j)
         #   where a^j is m times sampled from the policy p(a | s_t)
+        # for mean:
         #   A(s_t, a_t) = Q(s_t, a_t) - avg( Q(s_t, a^j) )
         #   where a^j is m times sampled from the policy p(a | s_t)
-        # questions: Do we use pessimistic q approximate or the normal one?
+        # discrete action space and adv_type=expectation:
+        #   A(s_t, a_t) = Q(s_t, a_t) - sum_j[Q(s_t, a^j) * pi(a^j)]
         advantage_type = self.config["advantage_type"]
         n_action_sample = self.config["n_action_sample"]
         batch_size = len(train_batch)
         out_t, _ = model(train_batch)
 
-        # construct pi(s_t) for sampling actions
+        # construct pi(s_t) and Q(s_t, a_t) for computing advantage actions
         pi_s_t = dist_class(model.get_policy_output(out_t), model)
-        policy_actions = pi_s_t.dist.sample((n_action_sample,))  # samples
-
-        if self._is_action_discrete:
-            flat_actions = policy_actions.reshape(-1)
-        else:
-            flat_actions = policy_actions.reshape(-1, *self.action_space.shape)
+        q_t = self._get_q_value(model, out_t, train_batch[SampleBatch.ACTIONS])
 
         # compute the logp of the actions in the dataset (for computing actor's loss)
         action_logp = pi_s_t.dist.log_prob(train_batch[SampleBatch.ACTIONS])
@@ -231,30 +229,56 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
             action_logp.unsqueeze_(-1)
         train_batch[SampleBatch.ACTION_LOGP] = action_logp
 
-        reshaped_s_t = train_batch[SampleBatch.OBS].view(
-            1, batch_size, *self.observation_space.shape
-        )
-        reshaped_s_t = reshaped_s_t.expand(
-            n_action_sample, batch_size, *self.observation_space.shape
-        )
-        flat_s_t = reshaped_s_t.reshape(-1, *self.observation_space.shape)
+        if advantage_type == "expectation":
+            assert (
+                self._is_action_discrete
+            ), "Action space should be discrete when advantage_type = expectation."
+            assert hasattr(
+                self.model, "q_model"
+            ), "CRR's ModelV2 should have q_model neural network in discrete \
+                action spaces"
+            assert isinstance(
+                pi_s_t.dist, torch.distributions.Categorical
+            ), "The output of the policy should be a torch Categorical \
+                distribution."
 
-        input_v_t = SampleBatch(
-            **{SampleBatch.OBS: flat_s_t, SampleBatch.ACTIONS: flat_actions}
-        )
-        out_v_t, _ = model(input_v_t)
+            q_vals = self.model.q_model(out_t)
+            if hasattr(self.model, "twin_q_model"):
+                q_twins = self.model.twin_q_model(out_t)
+                q_vals = torch.minimum(q_vals, q_twins)
 
-        flat_q_st_pi = self._get_q_value(model, out_v_t, flat_actions)
-        reshaped_q_st_pi = flat_q_st_pi.reshape(-1, batch_size, 1)
-
-        if advantage_type == "mean":
-            v_t = reshaped_q_st_pi.mean(dim=0)
-        elif advantage_type == "max":
-            v_t, _ = reshaped_q_st_pi.max(dim=0)
+            probs = pi_s_t.dist.probs
+            v_t = (q_vals * probs).sum(-1, keepdims=True)
         else:
-            raise ValueError(f"Invalid advantage type: {advantage_type}.")
+            policy_actions = pi_s_t.dist.sample((n_action_sample,))  # samples
 
-        q_t = self._get_q_value(model, out_t, train_batch[SampleBatch.ACTIONS])
+            if self._is_action_discrete:
+                flat_actions = policy_actions.reshape(-1)
+            else:
+                flat_actions = policy_actions.reshape(-1, *self.action_space.shape)
+
+            reshaped_s_t = train_batch[SampleBatch.OBS].view(
+                1, batch_size, *self.observation_space.shape
+            )
+            reshaped_s_t = reshaped_s_t.expand(
+                n_action_sample, batch_size, *self.observation_space.shape
+            )
+            flat_s_t = reshaped_s_t.reshape(-1, *self.observation_space.shape)
+
+            input_v_t = SampleBatch(
+                **{SampleBatch.OBS: flat_s_t, SampleBatch.ACTIONS: flat_actions}
+            )
+            out_v_t, _ = model(input_v_t)
+
+            flat_q_st_pi = self._get_q_value(model, out_v_t, flat_actions)
+            reshaped_q_st_pi = flat_q_st_pi.reshape(-1, batch_size, 1)
+
+            if advantage_type == "mean":
+                v_t = reshaped_q_st_pi.mean(dim=0)
+            elif advantage_type == "max":
+                v_t, _ = reshaped_q_st_pi.max(dim=0)
+            else:
+                raise ValueError(f"Invalid advantage type: {advantage_type}.")
 
         adv_t = q_t - v_t
         train_batch["advantages"] = adv_t
@@ -384,6 +408,6 @@ if __name__ == "__main__":
 
     obs_space = gym.spaces.Box(np.array((-1, -1)), np.array((1, 1)))
     act_space = gym.spaces.Box(np.array((-1, -1)), np.array((1, 1)))
-    config = TrainerConfig().framework(framework="torch").to_dict()
+    config = AlgorithmConfig().framework(framework="torch").to_dict()
     print(config["framework"])
     CRRTorchPolicy(obs_space, act_space, config=config)

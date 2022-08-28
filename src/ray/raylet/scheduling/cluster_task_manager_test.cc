@@ -62,7 +62,7 @@ class MockWorkerPool : public WorkerPoolInterface {
   }
 
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers) const {
+      bool filter_dead_workers, bool filter_io_workers) const {
     RAY_CHECK(false) << "Not used.";
     return {};
   }
@@ -179,7 +179,7 @@ RayTask CreateTask(
     }
   }
 
-  spec_builder.SetNormalTaskSpec(0, false, scheduling_strategy);
+  spec_builder.SetNormalTaskSpec(0, false, "", scheduling_strategy);
 
   return RayTask(spec_builder.Build());
 }

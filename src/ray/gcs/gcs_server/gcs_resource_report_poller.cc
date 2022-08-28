@@ -140,8 +140,8 @@ void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState
           // the polling thread. We will need to implement locking once we switch threads.
           handle_resource_report_(reply.resources());
         } else {
-          RAY_LOG(INFO) << "Couldn't get resource request from raylet " << state->node_id
-                        << ": " << status.ToString();
+          RAY_LOG(DEBUG) << "Couldn't get resource request from raylet " << state->node_id
+                         << ": " << status.ToString();
         }
         polling_service_.post([this, state]() { NodeResourceReportReceived(state); },
                               "GcsResourceReportPoller.PullResourceReport");

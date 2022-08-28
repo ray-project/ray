@@ -21,8 +21,8 @@ import os
 import random
 
 import ray
-from ray import tune
-from ray.rllib.agents import ppo
+from ray import air, tune
+from ray.rllib.algorithms import ppo
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -201,7 +201,10 @@ if __name__ == "__main__":
     else:
         # automated run with Tune and grid search and TensorBoard
         print("Training automatically with Ray Tune")
-        results = tune.run(args.run, config=config, stop=stop)
+        tuner = tune.Tuner(
+            args.run, param_space=config, run_config=air.RunConfig(stop=stop)
+        )
+        results = tuner.fit()
 
         if args.as_test:
             print("Checking if learning goals were achieved")

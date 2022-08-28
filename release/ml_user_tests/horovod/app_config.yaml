@@ -1,5 +1,5 @@
 base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
-env_vars: {}
+env_vars: {"HOROVOD_GLOO_TIMEOUT_SECONDS": "120"}
 debian_packages:
   - curl
 

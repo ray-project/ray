@@ -15,7 +15,7 @@ from ray.rllib.utils.typing import PolicyID, AgentID
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.callbacks import DefaultCallbacks
+    from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
 logger = logging.getLogger(__name__)
 

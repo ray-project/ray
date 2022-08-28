@@ -70,6 +70,7 @@ class TestR2D2(unittest.TestCase):
                 lr=5e-4,
                 zero_init_states=True,
                 replay_buffer_config={"replay_burn_in": 20},
+                num_steps_sampled_before_learning_starts=0,
             )
             .exploration(exploration_config={"epsilon_timesteps": 100000})
         )
@@ -78,14 +79,14 @@ class TestR2D2(unittest.TestCase):
 
         # Test building an R2D2 agent in all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = config.build(env="CartPole-v0")
+            algo = config.build(env="CartPole-v0")
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 check_batch_sizes(results)
                 print(results)
 
-            check_compute_single_action(trainer, include_state=True)
+            check_compute_single_action(algo, include_state=True)
 
 
 if __name__ == "__main__":

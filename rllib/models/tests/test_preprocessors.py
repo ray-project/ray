@@ -67,13 +67,13 @@ class TestPreprocessors(unittest.TestCase):
         num_iterations = 1
         # Only supported for tf so far.
         for _ in framework_iterator(config):
-            trainer = ppo.PPO(config=config)
+            algo = ppo.PPO(config=config)
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
-            check_compute_single_action(trainer)
-            trainer.stop()
+            check_compute_single_action(algo)
+            algo.stop()
 
     def test_gym_preprocessors(self):
         p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v0"))

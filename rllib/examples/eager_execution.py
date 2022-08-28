@@ -3,14 +3,14 @@ import os
 import random
 
 import ray
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.examples.models.eager_model import EagerModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import tune
+from ray import air, tune
 
 # Always import tensorflow using this utility function:
 tf1, tf, tfv = try_import_tf()
@@ -92,8 +92,8 @@ MyTFPolicy = build_tf_policy(
 )
 
 
-# Create a new Trainer using the Policy defined above.
-class MyTrainer(Trainer):
+# Create a new Algorithm using the Policy defined above.
+class MyAlgo(Algorithm):
     def get_default_policy_class(self, config):
         return MyTFPolicy
 
@@ -117,7 +117,9 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(MyTrainer, stop=stop, config=config, verbose=1)
+    results = tune.Tuner(
+        MyAlgo, run_config=air.RunConfig(stop=stop, verbose=1), param_space=config
+    ).fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

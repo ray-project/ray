@@ -23,31 +23,10 @@
             "description": "A unique identifier for the head node and workers of this cluster.",
             "type": "string"
         },
-        "min_workers": {
-            "description": "DEPRECATED. Use the per node_type min_workers field instead.",
-            "type": "integer",
-            "minimum": 0
-        },
         "max_workers": {
             "description": "The maximum number of workers nodes to launch in addition to the head node. This takes precedence over min_workers.",
             "type": "integer",
             "minimum": 0
-        },
-        "initial_workers": {
-            "description": "DEPRECATED.",
-            "type": "integer",
-            "minimum": 0
-        },
-        "autoscaling_mode": {
-            "description": "DEPRECATED. Use upscaling_speed instead.",
-            "type": "string",
-            "enum": [ "default", "aggressive" ]
-        },
-        "target_utilization_fraction": {
-            "description": "DEPRECATED. Use upscaling_speed instead.",
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1
         },
         "upscaling_speed": {
             "description": "The autoscaler will scale up the cluster faster with higher upscaling speed. E.g., if the task requires adding more nodes then autoscaler will gradually scale up the cluster in chunks of upscaling_speed*currently_running_nodes. This number should be > 0.",
@@ -69,7 +48,7 @@
                     "type": "string",
                     "description": "e.g. aws, azure, gcp,..."
                 },
-                "region": { 
+                "region": {
                     "type": "string",
                     "description": "e.g. us-east-1"
                 },
@@ -300,18 +279,6 @@
         "head_node_type": {
             "type": "string",
             "description": "If using multiple node types, specifies the head node type."
-        },
-        "worker_default_node_type": {
-            "type": "string",
-            "description": "DEPRECATED."
-        },
-        "head_node": {
-            "type": "object",
-            "description": "Provider-specific config for the head node, e.g. instance type."
-        },
-        "worker_nodes": {
-            "type": "object",
-            "description": "Provider-specific config for worker nodes. e.g. instance type."
         },
         "file_mounts": {
             "type": "object",

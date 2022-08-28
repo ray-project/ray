@@ -1,30 +1,27 @@
 import inspect
 import os
-from typing import Optional, Dict, Tuple, Type, Union, Callable, Any, TYPE_CHECKING
+from typing import Optional, Dict, Type, Union, Callable, Any, TYPE_CHECKING
 
 import ray.cloudpickle as cpickle
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import ScalingConfig, RunConfig
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.air._internal.checkpointing import (
-    load_preprocessor_from_dir,
     save_preprocessor_to_dir,
 )
-from ray.rllib.agents.trainer import Trainer as RLlibTrainer
-from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.typing import PartialTrainerConfigDict, EnvType
+from ray.rllib.algorithms.algorithm import Algorithm as RLlibAlgo
+from ray.rllib.utils.typing import PartialAlgorithmConfigDict, EnvType
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.resources import Resources
+from ray.tune.syncer import Syncer
 from ray.util.annotations import PublicAPI
-from ray.util.ml_utils.dict import merge_dicts
+from ray.train.rl.rl_checkpoint import RL_TRAINER_CLASS_FILE, RL_CONFIG_FILE
+from ray._private.dict import merge_dicts
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
-
-RL_TRAINER_CLASS_FILE = "trainer_class.pkl"
-RL_CONFIG_FILE = "config.pkl"
+    from ray.data.preprocessor import Preprocessor
 
 
 @PublicAPI(stability="alpha")
@@ -57,15 +54,12 @@ class RLTrainer(BaseTrainer):
 
         .. code-block:: python
 
-            from ray.air.config import RunConfig
+            from ray.air.config import RunConfig, ScalingConfig
             from ray.train.rl import RLTrainer
 
             trainer = RLTrainer(
                 run_config=RunConfig(stop={"training_iteration": 5}),
-                scaling_config={
-                    "num_workers": 2,
-                    "use_gpu": False,
-                },
+                scaling_config=ScalingConfig(num_workers=2, use_gpu=False),
                 algorithm="PPO",
                 config={
                     "env": "CartPole-v0",
@@ -84,9 +78,9 @@ class RLTrainer(BaseTrainer):
         .. code-block:: python
 
             import ray
-            from ray.air.config import RunConfig
+            from ray.air.config import RunConfig, ScalingConfig
             from ray.train.rl import RLTrainer
-            from ray.rllib.agents.marwil.bc import BCTrainer
+            from ray.rllib.algorithms.bc.bc import BC
 
             dataset = ray.data.read_json(
                 "/tmp/data-dir", parallelism=2, ray_remote_args={"num_cpus": 1}
@@ -94,10 +88,10 @@ class RLTrainer(BaseTrainer):
 
             trainer = RLTrainer(
                 run_config=RunConfig(stop={"training_iteration": 5}),
-                scaling_config={
-                    "num_workers": 2,
-                    "use_gpu": False,
-                },
+                scaling_config=ScalingConfig(
+                    num_workers=2,
+                    use_gpu=False,
+                ),
                 datasets={"train": dataset},
                 algorithm=BCTrainer,
                 config={
@@ -114,7 +108,7 @@ class RLTrainer(BaseTrainer):
 
     def __init__(
         self,
-        algorithm: Union[str, Type[RLlibTrainer]],
+        algorithm: Union[str, Type[RLlibAlgo]],
         config: Optional[Dict[str, Any]] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
@@ -137,8 +131,7 @@ class RLTrainer(BaseTrainer):
         super(RLTrainer, self)._validate_attributes()
 
         if not isinstance(self._algorithm, str) and not (
-            inspect.isclass(self._algorithm)
-            and issubclass(self._algorithm, RLlibTrainer)
+            inspect.isclass(self._algorithm) and issubclass(self._algorithm, RLlibAlgo)
         ):
             raise ValueError(
                 f"`algorithm` should be either a string or a RLlib trainer class, "
@@ -153,22 +146,22 @@ class RLTrainer(BaseTrainer):
 
     def _get_rllib_config(self, process_datasets: bool = False) -> Dict:
         config = self._config.copy()
-        num_workers = self.scaling_config.get("num_workers")
+        num_workers = self.scaling_config.num_workers
         if num_workers is not None:
             config["num_workers"] = num_workers
 
-        worker_resources = self.scaling_config.get("resources_per_worker")
+        worker_resources = self.scaling_config.resources_per_worker
         if worker_resources:
             res = worker_resources.copy()
             config["num_cpus_per_worker"] = res.pop("CPU", 1)
             config["num_gpus_per_worker"] = res.pop("GPU", 0)
             config["custom_resources_per_worker"] = res
 
-        use_gpu = self.scaling_config.get("use_gpu")
+        use_gpu = self.scaling_config.use_gpu
         if use_gpu:
             config["num_gpus"] = 1
 
-        trainer_resources = self.scaling_config.get("trainer_resources")
+        trainer_resources = self.scaling_config.trainer_resources
         if trainer_resources:
             config["num_cpus_for_driver"] = trainer_resources.get("CPU", 1)
 
@@ -201,11 +194,11 @@ class RLTrainer(BaseTrainer):
         class AIRRLTrainer(rllib_trainer):
             def __init__(
                 self,
-                config: Optional[PartialTrainerConfigDict] = None,
+                config: Optional[PartialAlgorithmConfigDict] = None,
                 env: Optional[Union[str, EnvType]] = None,
                 logger_creator: Optional[Callable[[], Logger]] = None,
                 remote_checkpoint_dir: Optional[str] = None,
-                sync_function_tpl: Optional[str] = None,
+                custom_syncer: Optional[Syncer] = None,
             ):
                 resolved_config = merge_dicts(base_config, config or {})
                 param_dict["config"] = resolved_config
@@ -218,7 +211,7 @@ class RLTrainer(BaseTrainer):
                     env=env,
                     logger_creator=logger_creator,
                     remote_checkpoint_dir=remote_checkpoint_dir,
-                    sync_function_tpl=sync_function_tpl,
+                    custom_syncer=custom_syncer,
                 )
 
             def save_checkpoint(self, checkpoint_dir: str):
@@ -241,7 +234,7 @@ class RLTrainer(BaseTrainer):
 
             @classmethod
             def default_resource_request(
-                cls, config: PartialTrainerConfigDict
+                cls, config: PartialAlgorithmConfigDict
             ) -> Union[Resources, PlacementGroupFactory]:
                 resolved_config = merge_dicts(base_config, config)
                 param_dict["config"] = resolved_config
@@ -253,64 +246,3 @@ class RLTrainer(BaseTrainer):
 
         AIRRLTrainer.__name__ = f"AIR{rllib_trainer.__name__}"
         return AIRRLTrainer
-
-
-def load_checkpoint(
-    checkpoint: Checkpoint,
-    env: Optional[EnvType] = None,
-) -> Tuple[Policy, Optional["Preprocessor"]]:
-    """Load a Checkpoint from ``RLTrainer``.
-
-    Args:
-        checkpoint: The checkpoint to load the policy and
-            preprocessor from. It is expected to be from the result of a
-            ``RLTrainer`` run.
-        env: Optional environment to instantiate the trainer with. If not given,
-            it is parsed from the saved trainer configuration instead.
-
-    Returns:
-        The policy and AIR preprocessor contained within.
-    """
-    with checkpoint.as_directory() as checkpoint_path:
-        trainer_class_path = os.path.join(checkpoint_path, RL_TRAINER_CLASS_FILE)
-        config_path = os.path.join(checkpoint_path, RL_CONFIG_FILE)
-
-        if not os.path.exists(trainer_class_path):
-            raise ValueError(
-                f"RLPredictor only works with checkpoints created by "
-                f"RLTrainer. The checkpoint you specified is missing the "
-                f"`{RL_TRAINER_CLASS_FILE}` file."
-            )
-
-        if not os.path.exists(config_path):
-            raise ValueError(
-                f"RLPredictor only works with checkpoints created by "
-                f"RLTrainer. The checkpoint you specified is missing the "
-                f"`{RL_CONFIG_FILE}` file."
-            )
-
-        with open(trainer_class_path, "rb") as fp:
-            trainer_cls = cpickle.load(fp)
-
-        with open(config_path, "rb") as fp:
-            config = cpickle.load(fp)
-
-        checkpoint_data_path = None
-        for file in os.listdir(checkpoint_path):
-            if file.startswith("checkpoint") and not file.endswith(".tune_metadata"):
-                checkpoint_data_path = os.path.join(checkpoint_path, file)
-
-        if not checkpoint_data_path:
-            raise ValueError(
-                f"Could not find checkpoint data in RLlib checkpoint. "
-                f"Found files: {list(os.listdir(checkpoint_path))}"
-            )
-
-        preprocessor = load_preprocessor_from_dir(checkpoint_path)
-
-        config.get("evaluation_config", {}).pop("in_evaluation", None)
-        trainer = trainer_cls(config=config, env=env)
-        trainer.restore(checkpoint_data_path)
-
-        policy = trainer.get_policy()
-        return policy, preprocessor

@@ -1,10 +1,11 @@
 # flake8: noqa
-
+# isort: skip_file
 
 # __preprocessor_setup_start__
 import pandas as pd
 import ray
-from ray.air.preprocessors import MinMaxScaler
+from ray.data.preprocessors import MinMaxScaler
+from ray.data.preprocessors.scaler import StandardScaler
 
 # Generate two simple datasets.
 dataset = ray.data.range_table(8)
@@ -47,8 +48,9 @@ print(batch_transformed)
 # __trainer_start__
 import ray
 
+from ray.data.preprocessors import MinMaxScaler
 from ray.train.xgboost import XGBoostTrainer
-from ray.air.preprocessors import MinMaxScaler
+from ray.air.config import ScalingConfig
 
 train_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(0, 32, 3)])
 valid_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(1, 32, 3)])
@@ -58,7 +60,7 @@ preprocessor = MinMaxScaler(["x"])
 trainer = XGBoostTrainer(
     label_column="y",
     params={"objective": "reg:squarederror"},
-    scaling_config={"num_workers": 2},
+    scaling_config=ScalingConfig(num_workers=2),
     datasets={"train": train_dataset, "valid": valid_dataset},
     preprocessor=preprocessor,
 )
@@ -82,31 +84,29 @@ with checkpoint.as_directory() as checkpoint_path:
 
 
 # __predictor_start__
-from ray.air.batch_predictor import BatchPredictor
-from ray.air.predictors.integrations.xgboost import XGBoostPredictor
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.xgboost import XGBoostPredictor
 
 test_dataset = ray.data.from_items([{"x": x} for x in range(2, 32, 3)])
 
 batch_predictor = BatchPredictor.from_checkpoint(checkpoint, XGBoostPredictor)
-predicted_labels = batch_predictor.predict(test_dataset)
-print(predicted_labels.to_pandas())
-#    predictions
-# 0     0.098437
-# 1     5.604667
-# 2    11.405312
-# 3    15.684700
-# 4    23.990948
-# 5    29.900211
-# 6    34.599442
-# 7    40.696899
-# 8    45.681076
-# 9    50.290031
+predicted_probabilities = batch_predictor.predict(test_dataset)
+predicted_probabilities.show()
+# {'predictions': 0.09843720495700836}
+# {'predictions': 5.604666709899902}
+# {'predictions': 11.405311584472656}
+# {'predictions': 15.684700012207031}
+# {'predictions': 23.990947723388672}
+# {'predictions': 29.900211334228516}
+# {'predictions': 34.59944152832031}
+# {'predictions': 40.6968994140625}
+# {'predictions': 45.68107604980469}
 # __predictor_end__
 
 
 # __chain_start__
 import ray
-from ray.air.preprocessors import Chain, MinMaxScaler, SimpleImputer
+from ray.data.preprocessors import Chain, MinMaxScaler, SimpleImputer
 
 # Generate one simple dataset.
 dataset = ray.data.from_items(
@@ -125,7 +125,7 @@ print(dataset_transformed.take())
 
 # __custom_stateless_start__
 import ray
-from ray.air.preprocessors import BatchMapper
+from ray.data.preprocessors import BatchMapper
 
 # Generate a simple dataset.
 dataset = ray.data.range_table(4)
@@ -138,3 +138,63 @@ dataset_transformed = preprocessor.transform(dataset)
 print(dataset_transformed.take())
 # [{'value': 0}, {'value': 2}, {'value': 4}, {'value': 6}]
 # __custom_stateless_end__
+
+
+# __custom_stateful_start__
+from typing import Dict
+import ray
+from pandas import DataFrame
+from ray.data.preprocessor import Preprocessor
+from ray.data import Dataset
+from ray.data.aggregate import Max
+
+
+class CustomPreprocessor(Preprocessor):
+    def _fit(self, dataset: Dataset) -> Preprocessor:
+        self.stats_ = dataset.aggregate(Max("value"))
+
+    def _transform_pandas(self, df: DataFrame) -> DataFrame:
+        return df * self.stats_["max(value)"]
+
+
+# Generate a simple dataset.
+dataset = ray.data.range_table(4)
+print(dataset.take())
+# [{'value': 0}, {'value': 1}, {'value': 2}, {'value': 3}]
+
+# Create a stateful preprocessor that finds the max value and scales each value by it.
+preprocessor = CustomPreprocessor()
+dataset_transformed = preprocessor.fit_transform(dataset)
+print(dataset_transformed.take())
+# [{'value': 0}, {'value': 3}, {'value': 6}, {'value': 9}]
+# __custom_stateful_end__
+
+
+# __simple_imputer_start__
+from ray.data.preprocessors import SimpleImputer
+
+# Generate a simple dataset.
+dataset = ray.data.from_items([{"value": 1.0}, {"value": None}, {"value": 3.0}])
+print(dataset.take())
+# [{'value': 1.0}, {'value': None}, {'value': 3.0}]
+
+imputer = SimpleImputer(columns=["value"], strategy="mean")
+dataset_transformed = imputer.fit_transform(dataset)
+print(dataset_transformed.take())
+# [{'value': 1.0}, {'value': 2.0}, {'value': 3.0}]
+# __simple_imputer_end__
+
+
+# __concatenate_start__
+from ray.data.preprocessors import Chain, Concatenator, StandardScaler
+
+# Generate a simple dataset.
+dataset = ray.data.from_items([{"X": 1.0, "Y": 2.0}, {"X": 4.0, "Y": 0.0}])
+print(dataset.take())
+# [{'X': 1.0, 'Y': 2.0}, {'X': 4.0, 'Y': 0.0}]
+
+preprocessor = Chain(StandardScaler(columns=["X", "Y"]), Concatenator())
+dataset_transformed = preprocessor.fit_transform(dataset)
+print(dataset_transformed.take())
+# [{'concat_out': array([-1.,  1.])}, {'concat_out': array([ 1., -1.])}]
+# __concatenate_end__

@@ -77,7 +77,6 @@ void AgentManager::StartAgent() {
   if (!RayConfig::instance().enable_metrics_collection()) {
     argv.push_back("--disable-metrics-collection");
   }
-  argv.push_back(NULL);
 
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::stringstream stream;
@@ -87,6 +86,9 @@ void AgentManager::StartAgent() {
     }
     RAY_LOG(DEBUG) << stream.str();
   }
+
+  // Do this after the debug print for argv.data()
+  argv.push_back(NULL);
 
   // Set node id to agent.
   ProcessEnvironment env;
@@ -126,7 +128,7 @@ void AgentManager::StartAgent() {
 
     int exit_code = child.Wait();
     timer->cancel();
-    RAY_LOG(WARNING) << "Agent process with id " << agent_id << " exit, return value "
+    RAY_LOG(WARNING) << "Agent process with id " << agent_id << " exited, return value "
                      << exit_code << ". ip " << reported_agent_ip_address_ << ". id "
                      << reported_agent_id_;
     RAY_LOG(ERROR)

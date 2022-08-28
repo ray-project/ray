@@ -3,36 +3,40 @@ package io.ray.serve;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.serve.api.Serve;
-import io.ray.serve.generated.ActorSet;
+import io.ray.serve.config.DeploymentConfig;
+import io.ray.serve.deployment.DeploymentVersion;
+import io.ray.serve.deployment.DeploymentWrapper;
+import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
+import io.ray.serve.replica.RayServeWrappedReplica;
+import io.ray.serve.replica.ReplicaContext;
+import io.ray.serve.router.Query;
+import io.ray.serve.router.ReplicaSet;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ReplicaSetTest {
-
+public class ReplicaSetTest extends BaseTest {
   private String deploymentName = "ReplicaSetTest";
 
   @Test
   public void updateWorkerReplicasTest() {
     ReplicaSet replicaSet = new ReplicaSet(deploymentName);
-    ActorSet.Builder builder = ActorSet.newBuilder();
+    ActorNameList.Builder builder = ActorNameList.newBuilder();
 
     replicaSet.updateWorkerReplicas(builder.build());
-    Map<ActorHandle<RayServeWrappedReplica>, Set<ObjectRef<Object>>> inFlightQueries =
-        replicaSet.getInFlightQueries();
+    Map<String, Set<ObjectRef<Object>>> inFlightQueries = replicaSet.getInFlightQueries();
     Assert.assertTrue(inFlightQueries.isEmpty());
   }
 
   @SuppressWarnings("unused")
   @Test
   public void assignReplicaTest() {
-    boolean inited = Ray.isInitialized();
-    Ray.init();
+    init();
 
     try {
       String controllerName = deploymentName + "_controller";
@@ -42,36 +46,32 @@ public class ReplicaSetTest {
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new).setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       // Replica
       DeploymentConfig deploymentConfig =
-          new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA.getNumber());
+          new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
-      Object[] initArgs = new Object[] {deploymentName, replicaTag, controllerName, new Object()};
+      Object[] initArgs =
+          new Object[] {deploymentName, replicaTag, controllerName, new Object(), new HashMap<>()};
 
-      DeploymentInfo deploymentInfo =
-          new DeploymentInfo()
+      DeploymentWrapper deploymentWrapper =
+          new DeploymentWrapper()
               .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
-              .setDeploymentDef("io.ray.serve.ReplicaContext")
+              .setDeploymentDef(ReplicaContext.class.getName())
               .setInitArgs(initArgs);
 
       ActorHandle<RayServeWrappedReplica> replicaHandle =
-          Ray.actor(
-                  RayServeWrappedReplica::new,
-                  deploymentInfo,
-                  replicaTag,
-                  controllerName,
-                  new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))
+          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag, controllerName)
               .setName(actorName)
               .remote();
       Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // ReplicaSet
       ReplicaSet replicaSet = new ReplicaSet(deploymentName);
-      ActorSet.Builder builder = ActorSet.newBuilder();
+      ActorNameList.Builder builder = ActorNameList.newBuilder();
       builder.addNames(actorName);
       replicaSet.updateWorkerReplicas(builder.build());
 
@@ -85,10 +85,7 @@ public class ReplicaSetTest {
 
       Assert.assertEquals((String) resultRef.get(), deploymentName);
     } finally {
-      if (!inited) {
-        Ray.shutdown();
-      }
-      Serve.setInternalReplicaContext(null);
+      shutdown();
     }
   }
 }

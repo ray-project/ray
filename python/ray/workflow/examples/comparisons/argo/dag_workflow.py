@@ -12,4 +12,4 @@ if __name__ == "__main__":
     B = echo.options(**workflow.options(name="B")).bind("B", A)
     C = echo.options(**workflow.options(name="C")).bind("C", A)
     D = echo.options(**workflow.options(name="D")).bind("D", A, B)
-    workflow.create(D).run()
+    workflow.run(D)

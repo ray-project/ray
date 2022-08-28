@@ -23,16 +23,20 @@ test_data = {
     "state_ins": np.array([0.0], dtype=np.float32),
 }
 
-# Start Ray and initialize a PPO trainer
+# Start Ray and initialize a PPO Algorithm.
 ray.init()
-trainer = config.build(env="CartPole-v0")
+algo = config.build(env="CartPole-v0")
 
 # You could train the model here
-# trainer.train()
+# algo.train()
 
 # Let's run inference on the torch model
-policy = trainer.get_policy()
-result_pytorch, _ = policy.model({"obs": torch.tensor(test_data["obs"])})
+policy = algo.get_policy()
+result_pytorch, _ = policy.model(
+    {
+        "obs": torch.tensor(test_data["obs"]),
+    }
+)
 
 # Evaluate tensor to fetch numpy array
 result_pytorch = result_pytorch.detach().numpy()
@@ -40,7 +44,7 @@ result_pytorch = result_pytorch.detach().numpy()
 # This line will export the model to ONNX.
 policy.export_model(outdir, onnx=11)
 # Equivalent to:
-# trainer.export_policy_model(outdir, onnx=11)
+# algo.export_policy_model(outdir, onnx=11)
 
 # Import ONNX model.
 exported_model_file = os.path.join(outdir, "saved_model.onnx")

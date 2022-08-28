@@ -1,11 +1,10 @@
-import time
 import os
+import subprocess
 import sys
 import tempfile
-import subprocess
+import time
 
 import ray
-from ray.job_config import JobConfig
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     run_string_as_driver,
@@ -13,6 +12,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_for_num_actors,
 )
+from ray.job_config import JobConfig
 
 
 def test_job_isolation(call_ray_start):
@@ -119,10 +119,10 @@ _ = Actor.remote()
     # Wait for actor to be created
     wait_for_num_actors(1)
 
-    actor_table = ray.state.actors()
+    actor_table = ray._private.state.actors()
     assert len(actor_table) == 1
 
-    job_table = ray.state.jobs()
+    job_table = ray._private.state.jobs()
     assert len(job_table) == 2  # dash
 
     # Kill the driver process.
@@ -130,7 +130,7 @@ _ = Actor.remote()
     p.wait()
 
     def actor_finish():
-        actor_table = ray.state.actors()
+        actor_table = ray._private.state.actors()
         if len(actor_table) == 0:
             return True
         else:
@@ -167,10 +167,10 @@ ray.get(_.value.remote())
     # Wait for actor to be created
     wait_for_num_actors(1, gcs_utils.ActorTableData.ALIVE)
 
-    actor_table = ray.state.actors()
+    actor_table = ray._private.state.actors()
     assert len(actor_table) == 1
 
-    job_table = ray.state.jobs()
+    job_table = ray._private.state.jobs()
     assert len(job_table) == 2  # dash
 
     # Kill the driver process.
@@ -181,7 +181,7 @@ ray.get(_.value.remote())
     assert ray.get(detached_actor.value.remote()) == 1
 
 
-def test_job_timestamps(ray_start_regular):
+def test_job_observability(ray_start_regular):
     driver_template = """
 import ray
 from time import sleep
@@ -216,7 +216,7 @@ ray.shutdown()
     while not os.path.exists(tmpfiles[1]):
         time.sleep(1)
 
-    jobs = list(ray.state.jobs())
+    jobs = list(ray._private.state.jobs())
     jobs.sort(key=lambda x: x["JobID"])
 
     driver = jobs[0]
@@ -235,11 +235,16 @@ ray.shutdown()
     assert running["StartTime"] > 0
     assert running["EndTime"] == 0
 
+    assert len(running["DriverIPAddress"]) > 0
+    assert running["DriverPid"] > 0
+    assert len(finished["DriverIPAddress"]) > 0
+    assert finished["DriverPid"] > 0
+
     p.kill()
     # Give the second job time to clean itself up.
     time.sleep(1)
 
-    jobs = list(ray.state.jobs())
+    jobs = list(ray._private.state.jobs())
     jobs.sort(key=lambda x: x["JobID"])
 
     # jobs[0] is the test case driver.
@@ -253,6 +258,9 @@ ray.shutdown()
 
     assert prev_running["EndTime"] > prev_running["StartTime"] > 0
 
+    assert len(prev_running["DriverIPAddress"]) > 0
+    assert prev_running["DriverPid"] > 0
+
 
 def test_config_metadata(shutdown_only):
     job_config = JobConfig(metadata={"abc": "xyz"})
@@ -260,7 +268,7 @@ def test_config_metadata(shutdown_only):
 
     ray.init(job_config=job_config)
 
-    from_worker = ray.worker.global_worker.core_worker.get_job_config()
+    from_worker = ray._private.worker.global_worker.core_worker.get_job_config()
 
     assert dict(from_worker.metadata) == job_config.metadata
 
@@ -271,4 +279,7 @@ if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

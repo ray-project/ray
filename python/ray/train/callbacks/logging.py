@@ -3,32 +3,32 @@ import logging
 import os
 import warnings
 from pathlib import Path
-from typing import List, Optional, Dict, Set, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 
-from ray.train.callbacks import TrainingCallback
-from ray.train.callbacks.callback import _deprecation_msg
+from ray.air._internal.mlflow import _MLflowLoggerUtil
+from ray.air._internal.json import SafeFallbackEncoder
 from ray.train._internal.results_preprocessors import (
-    IndexedResultsPreprocessor,
     ExcludedKeysResultsPreprocessor,
+    IndexedResultsPreprocessor,
 )
 from ray.train._internal.results_preprocessors.preprocessor import (
     SequentialResultsPreprocessor,
 )
+from ray.train.callbacks import TrainingCallback
+from ray.train.callbacks.callback import _deprecation_msg
 from ray.train.constants import (
+    PID,
     RESULT_FILE_JSON,
-    TRAINING_ITERATION,
     TIME_TOTAL_S,
     TIMESTAMP,
-    PID,
     TRAIN_CHECKPOINT_SUBDIR,
+    TRAINING_ITERATION,
 )
 from ray.util.annotations import Deprecated
 from ray.util.debug import log_once
-from ray.util.ml_utils.dict import flatten_dict
-from ray.util.ml_utils.json import SafeFallbackEncoder
-from ray.util.ml_utils.mlflow import MLflowLoggerUtil
+from ray._private.dict import flatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -211,7 +211,7 @@ class MLflowLoggerCallback(TrainingCallback):
         self.tags = tags
 
         self.save_artifact = save_artifact
-        self.mlflow_util = MLflowLoggerUtil()
+        self.mlflow_util = _MLflowLoggerUtil()
 
     def start_training(self, logdir: str, config: Dict, **info):
         self._logdir_manager.setup_logdir(default_logdir=logdir)

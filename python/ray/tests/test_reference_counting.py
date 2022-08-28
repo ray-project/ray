@@ -6,18 +6,17 @@ import sys
 import time
 
 import numpy as np
-
 import pytest
 
 import ray
-import ray.cluster_utils
 import ray._private.gcs_utils as gcs_utils
+import ray.cluster_utils
 from ray._private.test_utils import (
     SignalActor,
+    convert_actor_state,
     kill_actor_and_wait_for_failure,
     put_object,
     wait_for_condition,
-    convert_actor_state,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,16 +41,16 @@ def _fill_object_store_and_get(obj, succeed=True, object_MiB=20, num_objects=5):
 
     if succeed:
         wait_for_condition(
-            lambda: ray.worker.global_worker.core_worker.object_exists(obj)
+            lambda: ray._private.worker.global_worker.core_worker.object_exists(obj)
         )
     else:
         wait_for_condition(
-            lambda: not ray.worker.global_worker.core_worker.object_exists(obj)
+            lambda: not ray._private.worker.global_worker.core_worker.object_exists(obj)
         )
 
 
 def _check_refcounts(expected):
-    actual = ray.worker.global_worker.core_worker.get_all_reference_counts()
+    actual = ray._private.worker.global_worker.core_worker.get_all_reference_counts()
     assert len(expected) == len(actual)
     for object_ref, (local, submitted) in expected.items():
         hex_id = object_ref.hex().encode("ascii")
@@ -253,18 +252,24 @@ def test_feature_flag(shutdown_only):
     del put_ref
 
     wait_for_condition(
-        lambda: not ray.worker.global_worker.core_worker.object_exists(ref)
+        lambda: not ray._private.worker.global_worker.core_worker.object_exists(ref)
     )
 
 
 def test_out_of_band_serialized_object_ref(one_worker_100MiB):
-    assert len(ray.worker.global_worker.core_worker.get_all_reference_counts()) == 0
+    assert (
+        len(ray._private.worker.global_worker.core_worker.get_all_reference_counts())
+        == 0
+    )
     obj_ref = ray.put("hello")
     _check_refcounts({obj_ref: (1, 0)})
     obj_ref_str = ray.cloudpickle.dumps(obj_ref)
     _check_refcounts({obj_ref: (2, 0)})
     del obj_ref
-    assert len(ray.worker.global_worker.core_worker.get_all_reference_counts()) == 1
+    assert (
+        len(ray._private.worker.global_worker.core_worker.get_all_reference_counts())
+        == 1
+    )
     assert ray.get(ray.cloudpickle.loads(obj_ref_str)) == "hello"
 
 
@@ -519,7 +524,7 @@ def test_basic_nested_ids(one_worker_100MiB):
 def _all_actors_dead():
     return all(
         actor["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
-        for actor in list(ray.state.actors().values())
+        for actor in list(ray._private.state.actors().values())
     )
 
 
@@ -549,7 +554,52 @@ def test_remove_actor_immediately_after_creation(ray_start_regular):
     wait_for_condition(_all_actors_dead, timeout=10)
 
 
+# Test that a reference borrowed by an actor constructor is freed if the actor is
+# cancelled before being scheduled.
+def test_actor_constructor_borrow_cancellation(ray_start_regular):
+    # Schedule the actor with a non-existent resource so it's guaranteed to never be
+    # scheduled.
+    @ray.remote(resources={"nonexistent_resource": 1})
+    class Actor:
+        def __init__(self, obj_containing_ref):
+            raise ValueError(
+                "The actor constructor should not be reached; the actor creation task "
+                "should be cancelled before the actor is scheduled."
+            )
+
+        def should_not_be_run(self):
+            raise ValueError("This method should never be reached.")
+
+    # Test with implicit cancellation by letting the actor handle go out-of-scope.
+    def test_implicit_cancel():
+        ref = ray.put(1)
+        Actor.remote({"foo": ref})
+
+    test_implicit_cancel()
+    # Confirm that the ref object is not leaked.
+    check_refcounts({})
+
+    # Test with explicit cancellation via ray.kill().
+    ref = ray.put(1)
+    a = Actor.remote({"foo": ref})
+    ray.kill(a)
+    del ref
+
+    # Confirm that the ref object is not leaked.
+    check_refcounts({})
+
+    # Check that actor death cause is propagated.
+    with pytest.raises(
+        ray.exceptions.RayActorError, match="it was killed by `ray.kill"
+    ) as exc_info:
+        ray.get(a.should_not_be_run.remote())
+    print(exc_info._excinfo[1])
+
+
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

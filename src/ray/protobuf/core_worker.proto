@@ -125,8 +125,8 @@ message PushTaskReply {
   // may now be borrowing. The reference counts also include any new borrowers
   // that the worker created by passing a borrowed ID into a nested task.
   repeated ObjectReferenceCount borrowed_refs = 4;
-  // Whether the result contains an application-level error (exception).
-  bool is_application_level_error = 5;
+  // Whether the result contains a retryable application-level error.
+  bool is_retryable_error = 5;
 }
 
 message DirectActorCallArgWaitCompleteRequest {
@@ -137,8 +137,7 @@ message DirectActorCallArgWaitCompleteRequest {
   int64 tag = 2;
 }
 
-message DirectActorCallArgWaitCompleteReply {
-}
+message DirectActorCallArgWaitCompleteReply {}
 
 message GetObjectStatusRequest {
   // The ID of the worker that owns this object. This is also
@@ -180,8 +179,7 @@ message WaitForActorOutOfScopeRequest {
   bytes actor_id = 2;
 }
 
-message WaitForActorOutOfScopeReply {
-}
+message WaitForActorOutOfScopeReply {}
 
 message UpdateObjectLocationBatchRequest {
   bytes intended_worker_id = 1;
@@ -189,8 +187,7 @@ message UpdateObjectLocationBatchRequest {
   repeated ObjectLocationUpdate object_location_updates = 3;
 }
 
-message UpdateObjectLocationBatchReply {
-}
+message UpdateObjectLocationBatchReply {}
 
 enum ObjectPlasmaLocationUpdate {
   // Object is added to plasma store.
@@ -234,8 +231,7 @@ message KillActorRequest {
   ActorDeathCause death_cause = 4;
 }
 
-message KillActorReply {
-}
+message KillActorReply {}
 
 message CancelTaskRequest {
   // ID of task that should be killed.
@@ -262,8 +258,7 @@ message RemoteCancelTaskRequest {
   bool recursive = 3;
 }
 
-message RemoteCancelTaskReply {
-}
+message RemoteCancelTaskReply {}
 
 message GetCoreWorkerStatsRequest {
   // The ID of the worker this message is intended for.
@@ -274,6 +269,9 @@ message GetCoreWorkerStatsRequest {
   // Whether to include task information. This could be large since it
   // includes metadata for all live tasks.
   bool include_task_info = 3;
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 4;
 }
 
 message GetCoreWorkerStatsReply {
@@ -292,6 +290,8 @@ message GetCoreWorkerStatsReply {
   // All tasks must be treated as TaskStatus::RUNNING
   // from the caller side.
   repeated bytes running_task_ids = 3;
+  // Length of the number of tasks without truncation.
+  int64 tasks_total = 4;
 }
 
 message LocalGCRequest {
@@ -299,15 +299,13 @@ message LocalGCRequest {
   bool triggered_by_global_gc = 1;
 }
 
-message LocalGCReply {
-}
+message LocalGCReply {}
 
 message PlasmaObjectReadyRequest {
   bytes object_id = 1;
 }
 
-message PlasmaObjectReadyReply {
-}
+message PlasmaObjectReadyReply {}
 
 message SpillObjectsRequest {
   repeated ObjectReference object_refs_to_spill = 1;
@@ -335,11 +333,9 @@ message DeleteSpilledObjectsRequest {
   repeated string spilled_objects_url = 1;
 }
 
-message DeleteSpilledObjectsReply {
-}
+message DeleteSpilledObjectsReply {}
 
-message ExitRequest {
-}
+message ExitRequest {}
 
 message ExitReply {
   /// Whether or not exit succeeds. If the core worker owns any object, the request fails.

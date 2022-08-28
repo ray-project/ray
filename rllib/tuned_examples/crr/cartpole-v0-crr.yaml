@@ -5,8 +5,11 @@ cartpole_crr:
       evaluation/episode_reward_mean: 200
       training_iteration: 100
     config:
-        input:
-          - 'tests/data/cartpole/large.json'
+        input: 'dataset'
+        input_config:         
+            paths: 'tests/data/cartpole/large.json'
+            format: 'json'
+        num_workers: 3
         framework: torch
         gamma: 0.99
         train_batch_size: 2048
@@ -20,7 +23,7 @@ cartpole_crr:
         clip_actions: True
         # Q function update setting
         twin_q: True
-        target_update_grad_intervals: 1
+        target_network_update_freq: 1
         tau: 0.0005
         # evaluation
         evaluation_config:
@@ -31,13 +34,9 @@ cartpole_crr:
         evaluation_interval: 1
         evaluation_num_workers: 1
         evaluation_parallel_to_training: True
-        # replay buffer
-        replay_buffer_config:
-          type: ray.rllib.utils.replay_buffers.MultiAgentReplayBuffer
-          learning_starts: 0
-          capacity: 100000
         # specific to CRR
-        weight_type: bin
-        advantage_type: max
+        temperature: 1.0
+        weight_type: exp
+        advantage_type: mean
         max_weight: 20.0
         n_action_sample: 4

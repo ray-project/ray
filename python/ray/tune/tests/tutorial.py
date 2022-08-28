@@ -11,7 +11,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
-from ray import tune
+from ray import air, tune
 from ray.tune.schedulers import ASHAScheduler
 # __tutorial_imports_end__
 # fmt: on
@@ -125,24 +125,31 @@ search_space = {
 # Download the dataset first
 datasets.MNIST("~/data", train=True, download=True)
 
-analysis = tune.run(train_mnist, config=search_space)
+tuner = tune.Tuner(
+    train_mnist,
+    param_space=search_space,
+)
+results = tuner.fit()
 # __eval_func_end__
 
 # __plot_begin__
-dfs = analysis.trial_dataframes
+dfs = {result.log_dir: result.metrics_dataframe for result in results}
 [d.mean_accuracy.plot() for d in dfs.values()]
 # __plot_end__
 
 # __run_scheduler_begin__
-analysis = tune.run(
+tuner = tune.Tuner(
     train_mnist,
-    num_samples=20,
-    scheduler=ASHAScheduler(metric="mean_accuracy", mode="max"),
-    config=search_space,
+    tune_config=tune.TuneConfig(
+        num_samples=20,
+        scheduler=ASHAScheduler(metric="mean_accuracy", mode="max"),
+    ),
+    param_space=search_space,
 )
+results = tuner.fit()
 
 # Obtain a trial dataframe from all run trials of this `tune.run` call.
-dfs = analysis.trial_dataframes
+dfs = {result.log_dir: result.metrics_dataframe for result in results}
 # __run_scheduler_end__
 
 # fmt: off
@@ -156,16 +163,23 @@ for d in dfs.values():
 
 # __run_searchalg_begin__
 from hyperopt import hp
-from ray.tune.suggest.hyperopt import HyperOptSearch
+from ray.tune.search.hyperopt import HyperOptSearch
 
 space = {
-    "lr": hp.loguniform("lr", 1e-10, 0.1),
+    "lr": hp.loguniform("lr", -10, -1),
     "momentum": hp.uniform("momentum", 0.1, 0.9),
 }
 
 hyperopt_search = HyperOptSearch(space, metric="mean_accuracy", mode="max")
 
-analysis = tune.run(train_mnist, num_samples=10, search_alg=hyperopt_search)
+tuner = tune.Tuner(
+    train_mnist,
+    tune_config=tune.TuneConfig(
+        num_samples=10,
+        search_alg=hyperopt_search,
+    ),
+)
+results = tuner.fit()
 
 # To enable GPUs, use this instead:
 # analysis = tune.run(
@@ -176,8 +190,7 @@ analysis = tune.run(train_mnist, num_samples=10, search_alg=hyperopt_search)
 # __run_analysis_begin__
 import os
 
-df = analysis.results_df
-logdir = analysis.get_best_logdir("mean_accuracy", mode="max")
+logdir = results.get_best_result("mean_accuracy", mode="max").log_dir
 state_dict = torch.load(os.path.join(logdir, "model.pth"))
 
 model = ConvNet()
@@ -192,5 +205,10 @@ search_space = {
     "momentum": tune.uniform(0.1, 0.9),
 }
 
-analysis = tune.run(TrainMNIST, config=search_space, stop={"training_iteration": 10})
+tuner = tune.Tuner(
+    TrainMNIST,
+    run_config=air.RunConfig(stop={"training_iteration": 10}),
+    param_space=search_space,
+)
+results = tuner.fit()
 # __trainable_run_end__

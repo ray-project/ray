@@ -1,24 +1,26 @@
-from enum import Enum
-from tempfile import TemporaryDirectory
-from filelock import FileLock
 import hashlib
 import logging
 import os
-from pathlib import Path
 import shutil
+from enum import Enum
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
 from zipfile import ZipFile
-from ray.experimental.internal_kv import (
-    _internal_kv_put,
-    _internal_kv_get,
-    _internal_kv_exists,
-    _pin_runtime_env_uri,
-)
-from ray._private.thirdparty.pathspec import PathSpec
-from ray.ray_constants import (
+
+from filelock import FileLock
+
+from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT,
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
+)
+from ray._private.gcs_utils import GcsAioClient
+from ray._private.thirdparty.pathspec import PathSpec
+from ray.experimental.internal_kv import (
+    _internal_kv_exists,
+    _internal_kv_put,
+    _pin_runtime_env_uri,
 )
 
 default_logger = logging.getLogger(__name__)
@@ -28,9 +30,16 @@ FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 # The size is bounded by the max gRPC message size.
 # Keep in sync with max_grpc_message_size in ray_config_def.h.
 GCS_STORAGE_MAX_SIZE = int(
-    os.environ.get("RAY_max_grpc_message_size", 250 * 1024 * 1024)
+    os.environ.get("RAY_max_grpc_message_size", 500 * 1024 * 1024)
 )
 RAY_PKG_PREFIX = "_ray_pkg_"
+
+RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR = (
+    "RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING"
+)
+RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR = (
+    "RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING"
+)
 
 
 def _mib_string(num_bytes: float) -> str:
@@ -118,11 +127,22 @@ def _hash_directory(
         md5 = hashlib.md5()
         md5.update(str(path.relative_to(relative_path)).encode())
         if not path.is_dir():
-            with path.open("rb") as f:
-                data = f.read(BUF_SIZE)
-                while len(data) != 0:
-                    md5.update(data)
+            try:
+                f = path.open("rb")
+            except Exception as e:
+                logger.debug(
+                    f"Skipping contents of file {path} when calculating package hash "
+                    f"because the file could not be opened: {e}"
+                )
+            else:
+                try:
                     data = f.read(BUF_SIZE)
+                    while len(data) != 0:
+                        md5.update(data)
+                        data = f.read(BUF_SIZE)
+                finally:
+                    f.close()
+
         nonlocal hash_val
         hash_val = _xor_bytes(hash_val, md5.digest())
 
@@ -186,7 +206,13 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             -> ("file", "file__path_to_test_module.zip")
     """
     uri = urlparse(pkg_uri)
-    protocol = Protocol(uri.scheme)
+    try:
+        protocol = Protocol(uri.scheme)
+    except ValueError as e:
+        raise ValueError(
+            f"Invalid protocol for runtime_env URI {pkg_uri}. "
+            f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
+        )
     if protocol == Protocol.S3 or protocol == Protocol.GS:
         return (protocol, f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
     elif protocol == Protocol.HTTPS:
@@ -322,6 +348,10 @@ def _store_package_in_gcs(
 
     logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to Ray cluster...")
     try:
+        if os.environ.get(RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR):
+            raise RuntimeError(
+                "Simulating failure to upload package for testing purposes."
+            )
         _internal_kv_put(pkg_uri, data)
     except Exception as e:
         raise RuntimeError(
@@ -450,13 +480,26 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
     )
 
 
-def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes):
+def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes) -> None:
+    """Upload a local package to GCS.
+
+    Args:
+        pkg_uri: The URI of the package, e.g. gcs://my_package.zip
+        pkg_bytes: The data to be uploaded.
+
+    Raises:
+        RuntimeError: If the upload fails.
+        ValueError: If the pkg_uri is a remote path or if the data's
+            size exceeds GCS_STORAGE_MAX_SIZE.
+        NotImplementedError: If the protocol of the URI is not supported.
+
+    """
     protocol, pkg_name = parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
         _store_package_in_gcs(pkg_uri, pkg_bytes)
     elif protocol in Protocol.remote_protocols():
-        raise RuntimeError(
-            "upload_package_to_gcs should not be called with remote path."
+        raise ValueError(
+            "upload_package_to_gcs should not be called with a remote path."
         )
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
@@ -508,6 +551,12 @@ def upload_package_if_needed(
         include_parent_dir: If true, includes the top-level directory as a
             directory inside the zip file.
         excludes: List specifying files to exclude.
+
+    Raises:
+        RuntimeError: If the upload fails.
+        ValueError: If the pkg_uri is a remote path or if the data's
+            size exceeds GCS_STORAGE_MAX_SIZE.
+        NotImplementedError: If the protocol of the URI is not supported.
     """
     if excludes is None:
         excludes = []
@@ -543,16 +592,36 @@ def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
     return local_dir
 
 
-def download_and_unpack_package(
+async def download_and_unpack_package(
     pkg_uri: str,
     base_directory: str,
+    gcs_aio_client: GcsAioClient,
     logger: Optional[logging.Logger] = default_logger,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
 
     Will be written to a file or directory named {base_directory}/{uri}.
     Returns the path to this file or directory.
+
+    Args:
+        pkg_uri: URI of the package to download.
+        base_directory: Directory to use as the parent directory of the target
+            directory for the unpacked files.
+        gcs_aio_client: Client to use for downloading from the GCS.
+        logger: The logger to use.
+
+    Returns:
+        Path to the local directory containing the unpacked package files.
+
+    Raises:
+        IOError: If the download fails.
+        ImportError: If smart_open is not installed and a remote URI is used.
+        NotImplementedError: If the protocol of the URI is not supported.
+
     """
+    if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):
+        raise IOError("Failed to download package. (Simulated failure for testing)")
+
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
     with FileLock(str(pkg_file) + ".lock"):
         if logger is None:
@@ -568,9 +637,17 @@ def download_and_unpack_package(
             protocol, pkg_name = parse_uri(pkg_uri)
             if protocol == Protocol.GCS:
                 # Download package from the GCS.
-                code = _internal_kv_get(pkg_uri)
+                code = await gcs_aio_client.internal_kv_get(
+                    pkg_uri.encode(), namespace=None, timeout=None
+                )
                 if code is None:
-                    raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
+                    raise IOError(
+                        f"Failed to download runtime_env file package {pkg_uri} "
+                        "from the GCS to the Ray worker node. The package may "
+                        "have prematurely been deleted from the GCS due to a "
+                        "problem with Ray. Try re-running the statement or "
+                        "restarting the Ray cluster."
+                    )
                 code = code or b""
                 pkg_file.write_bytes(code)
 
@@ -590,8 +667,8 @@ def download_and_unpack_package(
 
                 if protocol == Protocol.S3:
                     try:
-                        from smart_open import open as open_file
                         import boto3
+                        from smart_open import open as open_file
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` and "
@@ -601,8 +678,8 @@ def download_and_unpack_package(
                     tp = {"client": boto3.client("s3")}
                 elif protocol == Protocol.GS:
                     try:
-                        from smart_open import open as open_file
                         from google.cloud import storage  # noqa: F401
+                        from smart_open import open as open_file
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` and "

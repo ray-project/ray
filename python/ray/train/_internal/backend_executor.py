@@ -1,23 +1,29 @@
 import logging
 import os
 from collections import defaultdict
-from typing import Callable, List, Optional, Dict, Type, Tuple, TypeVar
+from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
+from ray._private.ray_constants import env_integer
 from ray.exceptions import RayActorError
-from ray.ray_constants import env_integer
+from ray.train._internal.dataset_spec import RayDatasetSpec
+from ray.air.checkpoint import Checkpoint
+from ray.train._internal.session import (
+    TrainingResult,
+    TrialInfo,
+    get_session,
+    init_session,
+    shutdown_session,
+)
+from ray.train._internal.utils import check_for_failure
+from ray.train._internal.worker_group import WorkerGroup
+from ray.train.backend import BackendConfig
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
+    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
 )
-from ray.train.backend import BackendConfig
-from ray.train._internal.dataset_spec import RayDatasetSpec
-from ray.train._internal.session import TrainingResult
-from ray.train._internal.session import init_session, get_session, shutdown_session
-from ray.train._internal.utils import check_for_failure
-from ray.train._internal.worker_group import WorkerGroup
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
 T = TypeVar("T")
@@ -38,7 +44,7 @@ class BackendExecutor:
 
     This class holds a worker group and is responsible for executing the
     training function on the workers, and collecting intermediate results
-    from ``train.report()`` and ``train.checkpoint()``.
+    from ``session.report()``.
 
     Args:
         backend_config: The configurations for this
@@ -57,6 +63,8 @@ class BackendExecutor:
     def __init__(
         self,
         backend_config: BackendConfig,
+        # TODO(xwjiang): Legacy Ray Train trainer clean up!
+        trial_info: Optional[TrialInfo] = None,
         num_workers: int = 1,
         num_cpus_per_worker: float = 1,
         num_gpus_per_worker: float = 0,
@@ -73,8 +81,11 @@ class BackendExecutor:
         if self._max_failures < 0:
             self._max_failures = float("inf")
         self._num_failures = 0
+        self._last_failure = None
         self._initialization_hook = None
         self._placement_group = None
+
+        self._trial_info = trial_info
 
         self.worker_group = InactiveWorkerGroup()
         self.dataset_shards = None
@@ -137,8 +148,9 @@ class BackendExecutor:
         self._placement_group.
         """
         current_placement_group = get_current_placement_group()
+        worker = ray._private.worker.global_worker
         should_capture_child_tasks_in_placement_group = (
-            ray.worker.global_worker.should_capture_child_tasks_in_placement_group
+            worker.should_capture_child_tasks_in_placement_group
         )
         should_create_placement_group = (
             current_placement_group is None
@@ -264,7 +276,7 @@ class BackendExecutor:
         self,
         train_func: Callable[[], T],
         dataset_spec: RayDatasetSpec,
-        checkpoint: Optional[Dict] = None,
+        checkpoint: Optional[Checkpoint] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
 
@@ -277,7 +289,7 @@ class BackendExecutor:
                 Dataset.
             checkpoint: The checkpoint data that
                 should be loaded onto each worker and accessed by the
-                training function via ``train.load_checkpoint()``. If this
+                training function via ``session.get_checkpoint()``. If this
                 is ``None`` then no checkpoint will be loaded.
         """
         use_detailed_autofilled_metrics = env_integer(
@@ -290,6 +302,7 @@ class BackendExecutor:
             world_rank,
             local_rank,
             world_size,
+            trial_info,
             checkpoint,
             dataset_shard,
             encode_data_fn,
@@ -300,6 +313,7 @@ class BackendExecutor:
                     world_rank=world_rank,
                     local_rank=local_rank,
                     world_size=world_size,
+                    trial_info=trial_info,
                     dataset_shard=dataset_shard,
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
@@ -328,6 +342,7 @@ class BackendExecutor:
                     world_rank=index,
                     local_rank=local_rank_map[index],
                     world_size=len(self.worker_group),
+                    trial_info=self._trial_info,
                     train_func=train_func,
                     dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint,
@@ -348,8 +363,7 @@ class BackendExecutor:
         """Fetches the next ``TrainingResult`` from each worker.
 
         Each ``TrainingResult`` is expected to correspond to the same step from
-        each worker (e.g. the same call to ``train.report()`` or
-        ``train.checkpoint()``).
+        each worker (e.g. the same call to ``session.report()``).
 
         Returns:
             A list of ``TrainingResult``s with the same
@@ -382,7 +396,8 @@ class BackendExecutor:
                 raise RuntimeError(
                     "Some workers returned results while "
                     "others didn't. Make sure that "
-                    "`train.report()` and `train.save_checkpoint()` "
+                    "`session.report()` (legacy API:"
+                    "`train.report()` and `train.save_checkpoint()`) "
                     "are called the same number of times on all "
                     "workers."
                 )
@@ -394,10 +409,11 @@ class BackendExecutor:
         if any(r.type != result_type for r in results):
             raise RuntimeError(
                 "Some workers returned results with "
-                "different types. Make sure `train.report()` "
-                "and `train.save_checkpoint()` are called the "
-                "same number of times and in the same order on "
-                "each worker."
+                "different types. Make sure that "
+                "`session.report()` (legacy API:"
+                "`train.report()` and `train.save_checkpoint()`) "
+                "are called the same number of times on all "
+                "workers."
             )
         return results
 
@@ -459,10 +475,11 @@ class BackendExecutor:
         Returns:
             The resolved objects represented by the passed in ObjectRefs.
         """
-        success = check_for_failure(remote_values)
+        success, exception = check_for_failure(remote_values)
         if success:
             return ray.get(remote_values)
         else:
+            self._last_failure = exception
             self._increment_failures()
             logger.warning(
                 "Failure identified during training. Restarting all workers and "
@@ -506,13 +523,14 @@ class BackendExecutor:
     def _increment_failures(self):
         self._num_failures += 1
         if self._num_failures >= self._max_failures:
-            raise RuntimeError(
-                "Training has failed even after "
+            exc = RuntimeError(
+                "Training has failed after "
                 f"{self._num_failures} "
                 "attempts. You can change the number of max "
                 "failure attempts by setting the "
                 "`max_retries` arg in your `Trainer`."
-            ) from None
+            )
+            raise exc.with_traceback(None) from self._last_failure
 
     def get_worker_group(self):
         return self.worker_group

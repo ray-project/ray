@@ -1,25 +1,27 @@
 # Based on
 # huggingface/notebooks/examples/language_modeling_from_scratch.ipynb
 
+# This example is tested with transformers==4.19.1
+
 import argparse
 import tempfile
+
+import pandas as pd
+import torch
 from datasets import load_dataset
 from transformers import (
-    AutoTokenizer,
     AutoConfig,
     AutoModelForCausalLM,
+    AutoTokenizer,
     Trainer,
     TrainingArguments,
 )
 
-import pandas as pd
-import torch
-
 import ray
 import ray.data
-from ray.train.huggingface import HuggingFaceTrainer
-from ray.air.predictors.integrations.huggingface import HuggingFacePredictor
-from ray.air.batch_predictor import BatchPredictor
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
+from ray.air.config import ScalingConfig
 
 
 def main(
@@ -88,11 +90,12 @@ def main(
         training_args = TrainingArguments(
             training_dir,
             evaluation_strategy="epoch",
+            save_strategy="epoch",
+            logging_strategy="epoch",
             num_train_epochs=num_epochs,
             learning_rate=2e-5,
             weight_decay=0.01,
             disable_tqdm=True,
-            save_strategy="epoch",
             # Required to avoid an exception
             no_cuda=not torch.cuda.is_available(),
         )
@@ -112,7 +115,7 @@ def main(
 
     trainer = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
-        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         datasets={"train": ray_train, "evaluation": ray_validation},
     )
     results = trainer.fit()
@@ -128,9 +131,8 @@ def main(
     )
     data = ray.data.from_pandas(pd.DataFrame(prompt, columns=["prompt"]))
     prediction = predictor.predict(data, num_gpus_per_worker=int(use_gpu))
-    prediction = prediction.to_pandas().iloc[0]["generated_text"]
 
-    print(f"Generated text for prompt '{prompt}': '{prediction}'")
+    print(f"Generated text for prompt '{prompt}': '{prediction.take(1)}'")
 
 
 if __name__ == "__main__":

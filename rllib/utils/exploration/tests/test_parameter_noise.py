@@ -35,7 +35,7 @@ class TestParameterNoise(unittest.TestCase):
         )
 
     def do_test_parameter_noise_exploration(
-        self, trainer_cls, config, env, env_config, obs
+        self, algo_cls, config, env, env_config, obs
     ):
         """Tests, whether an Agent works with ParameterNoise."""
         core_config = config.copy()
@@ -50,8 +50,8 @@ class TestParameterNoise(unittest.TestCase):
             config["exploration_config"] = {"type": "ParameterNoise"}
             config["explore"] = True
 
-            trainer = trainer_cls(config=config, env=env)
-            policy = trainer.get_policy()
+            algo = algo_cls(config=config, env=env)
+            policy = algo.get_policy()
             pol_sess = policy.get_session()
             # Remove noise that has been added during policy initialization
             # (exploration.postprocess_trajectory does add noise to measure
@@ -74,7 +74,7 @@ class TestParameterNoise(unittest.TestCase):
             check(initial_weights, weights_after_ep_start)
 
             # Setting explore=False should always return the same action.
-            a_ = trainer.compute_single_action(obs, explore=False)
+            a_ = algo.compute_single_action(obs, explore=False)
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             noise = self._get_current_noise(policy, fw)
             # We sampled the first noise (not zero anymore).
@@ -82,7 +82,7 @@ class TestParameterNoise(unittest.TestCase):
             # But still not applied b/c explore=False.
             check(self._get_current_weight(policy, fw), initial_weights)
             for _ in range(10):
-                a = trainer.compute_single_action(obs, explore=False)
+                a = algo.compute_single_action(obs, explore=False)
                 check(a, a_)
                 # Noise never gets applied.
                 check(self._get_current_weight(policy, fw), initial_weights)
@@ -94,7 +94,7 @@ class TestParameterNoise(unittest.TestCase):
             actions = []
             current_weight = None
             for _ in range(10):
-                actions.append(trainer.compute_single_action(obs))
+                actions.append(algo.compute_single_action(obs))
                 self.assertTrue(policy.exploration.weights_are_currently_noisy)
                 # Now, noise actually got applied (explore=True).
                 current_weight = self._get_current_weight(policy, fw)
@@ -107,15 +107,15 @@ class TestParameterNoise(unittest.TestCase):
             policy.exploration.on_episode_end(policy, tf_sess=pol_sess)
             weights_after_ep_end = self._get_current_weight(policy, fw)
             check(current_weight - noise, weights_after_ep_end, decimals=5)
-            trainer.stop()
+            algo.stop()
 
             # DQN with ParameterNoise exploration (config["explore"]=False).
             # ----
             config = core_config.copy()
             config["exploration_config"] = {"type": "ParameterNoise"}
             config["explore"] = False
-            trainer = trainer_cls(config=config, env=env)
-            policy = trainer.get_policy()
+            algo = algo_cls(config=config, env=env)
+            policy = algo.get_policy()
             pol_sess = policy.get_session()
             # Remove noise that has been added during policy initialization
             # (exploration.postprocess_trajectory does add noise to measure
@@ -143,14 +143,14 @@ class TestParameterNoise(unittest.TestCase):
 
             # Setting explore=False or None should always return the same
             # action.
-            a_ = trainer.compute_single_action(obs, explore=False)
+            a_ = algo.compute_single_action(obs, explore=False)
             # Now we have re-sampled.
             noise = self._get_current_noise(policy, fw)
             check(noise, 0.0, false=True)
             for _ in range(5):
-                a = trainer.compute_single_action(obs, explore=None)
+                a = algo.compute_single_action(obs, explore=None)
                 check(a, a_)
-                a = trainer.compute_single_action(obs, explore=False)
+                a = algo.compute_single_action(obs, explore=False)
                 check(a, a_)
 
             # Pseudo-end the episode and compare weights again.
@@ -163,12 +163,12 @@ class TestParameterNoise(unittest.TestCase):
             # beginning of episode).
             noise_after = self._get_current_noise(policy, fw)
             check(noise, noise_after)
-            trainer.stop()
+            algo.stop()
 
             # Switch off underlying exploration entirely.
             # ----
             config = core_config.copy()
-            if trainer_cls is dqn.DQN:
+            if algo_cls is dqn.DQN:
                 sub_config = {
                     "type": "EpsilonGreedy",
                     "initial_epsilon": 0.0,  # <- no randomness whatsoever
@@ -186,17 +186,17 @@ class TestParameterNoise(unittest.TestCase):
                 "sub_exploration": sub_config,
             }
             config["explore"] = True
-            trainer = trainer_cls(config=config, env=env)
+            algo = algo_cls(config=config, env=env)
             # Now, when we act - even with explore=True - we would expect
             # the same action for the same input (parameter noise is
             # deterministic).
-            policy = trainer.get_policy()
+            policy = algo.get_policy()
             policy.exploration.on_episode_start(policy, tf_sess=pol_sess)
-            a_ = trainer.compute_single_action(obs)
+            a_ = algo.compute_single_action(obs)
             for _ in range(10):
-                a = trainer.compute_single_action(obs, explore=True)
+                a = algo.compute_single_action(obs, explore=True)
                 check(a, a_)
-            trainer.stop()
+            algo.stop()
 
     def _get_current_noise(self, policy, fw):
         # If noise not even created yet, return 0.0.

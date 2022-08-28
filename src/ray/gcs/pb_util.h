@@ -198,9 +198,11 @@ inline std::string GenErrorMessageFromDeathCause(
     return death_cause.runtime_env_failed_context().error_message();
   } else if (death_cause.context_case() == ContextCase::kActorUnschedulableContext) {
     return death_cause.actor_unschedulable_context().error_message();
-  } else {
-    RAY_CHECK(death_cause.context_case() == ContextCase::kActorDiedErrorContext);
+  } else if (death_cause.context_case() == ContextCase::kActorDiedErrorContext) {
     return death_cause.actor_died_error_context().error_message();
+  } else {
+    RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
+    return "Death cause not recorded.";
   }
 }
 

@@ -23,9 +23,8 @@ import sys
 import yaml
 
 import ray
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.utils.debug.memory import check_memory_leaks
-from ray.rllib import _register_all
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -111,7 +110,7 @@ if __name__ == "__main__":
         leaking = True
         try:
             ray.init(num_cpus=5, local_mode=args.local_mode)
-            trainer = get_trainer_class(experiment["run"])(experiment["config"])
+            trainer = get_algorithm_class(experiment["run"])(experiment["config"])
             results = check_memory_leaks(
                 trainer,
                 to_check=set(args.to_check),
@@ -120,7 +119,6 @@ if __name__ == "__main__":
                 leaking = False
         finally:
             ray.shutdown()
-            _register_all()
 
         if not leaking:
             print("Memory leak test PASSED")

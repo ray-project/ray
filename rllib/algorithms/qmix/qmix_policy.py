@@ -447,6 +447,7 @@ class QMixTorchPolicy(TorchPolicy):
         # Optimise
         self.rmsprop_optimizer.zero_grad()
         loss_out.backward()
+        grad_norm_info = apply_grad_clipping(self, self.rmsprop_optimizer, loss_out)
         self.rmsprop_optimizer.step()
 
         mask_elems = mask.sum().item()
@@ -456,7 +457,8 @@ class QMixTorchPolicy(TorchPolicy):
             "q_taken_mean": (chosen_action_qvals * mask).sum().item() / mask_elems,
             "target_mean": (targets * mask).sum().item() / mask_elems,
         }
-        stats.update(apply_grad_clipping(self, self.rmsprop_optimizer, loss_out))
+        stats.update(grad_norm_info)
+
         return {LEARNER_STATS_KEY: stats}
 
     @override(TorchPolicy)

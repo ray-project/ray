@@ -1,26 +1,31 @@
-import os
-from typing import Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 from ray.air.checkpoint import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
-from ray.air._internal.checkpointing import load_preprocessor_from_dir
+from ray.train.xgboost.xgboost_checkpoint import XGBoostCheckpoint
 from ray.util.annotations import PublicAPI
-from ray.train.constants import MODEL_KEY
 
 import xgboost
 import xgboost_ray
-from xgboost_ray.tune import TuneReportCheckpointCallback
+from xgboost_ray.tune import TuneReportCheckpointCallback, TuneReportCallback
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class XGBoostTrainer(GBDTTrainer):
     """A Trainer for data parallel XGBoost training.
 
     This Trainer runs the XGBoost training loop in a distributed manner
     using multiple Ray Actors.
+
+    .. note::
+        ``XGBoostTrainer`` does not modify or otherwise alter the working
+        of the XGBoost distributed training algorithm.
+        Ray only provides orchestration, data ingest and fault tolerance.
+        For more information on XGBoost distributed training, refer to
+        `XGBoost documentation <https://xgboost.readthedocs.io>`__.
 
     Example:
         .. code-block:: python
@@ -28,13 +33,14 @@ class XGBoostTrainer(GBDTTrainer):
             import ray
 
             from ray.train.xgboost import XGBoostTrainer
+            from ray.air.config import ScalingConfig
 
             train_dataset = ray.data.from_items(
                 [{"x": x, "y": x + 1} for x in range(32)])
             trainer = XGBoostTrainer(
                 label_column="y",
                 params={"objective": "reg:squarederror"},
-                scaling_config={"num_workers": 3},
+                scaling_config=ScalingConfig(num_workers=3),
                 datasets={"train": train_dataset}
             )
             result = trainer.fit()
@@ -57,7 +63,7 @@ class XGBoostTrainer(GBDTTrainer):
             be used to add sample weights with the ``weights`` parameter.
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.air.preprocessor.Preprocessor to preprocess the
+        preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
         **train_kwargs: Additional kwargs passed to ``xgboost.train()`` function.
@@ -65,7 +71,13 @@ class XGBoostTrainer(GBDTTrainer):
 
     _dmatrix_cls: type = xgboost_ray.RayDMatrix
     _ray_params_cls: type = xgboost_ray.RayParams
-    _tune_callback_cls: type = TuneReportCheckpointCallback
+    _tune_callback_report_cls: type = TuneReportCallback
+    _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
+    _default_ray_params: Dict[str, Any] = {
+        "num_actors": 1,
+        "cpus_per_actor": 1,
+        "gpus_per_actor": 0,
+    }
     _init_model_arg_name: str = "xgb_model"
 
     def _train(self, **kwargs):
@@ -74,25 +86,14 @@ class XGBoostTrainer(GBDTTrainer):
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[xgboost.Booster, Optional["Preprocessor"]]:
-        return load_checkpoint(checkpoint)
+        checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
+        return checkpoint.get_model(), checkpoint.get_preprocessor()
 
+    def _save_model(self, model: xgboost.Booster, path: str):
+        model.save_model(path)
 
-def load_checkpoint(
-    checkpoint: Checkpoint,
-) -> Tuple[xgboost.Booster, Optional["Preprocessor"]]:
-    """Load a Checkpoint from ``XGBoostTrainer``.
-
-    Args:
-        checkpoint: The checkpoint to load the model and
-            preprocessor from. It is expected to be from the result of a
-            ``XGBoostTrainer`` run.
-
-    Returns:
-        The model and AIR preprocessor contained within.
-    """
-    with checkpoint.as_directory() as checkpoint_path:
-        xgb_model = xgboost.Booster()
-        xgb_model.load_model(os.path.join(checkpoint_path, MODEL_KEY))
-        preprocessor = load_preprocessor_from_dir(checkpoint_path)
-
-    return xgb_model, preprocessor
+    def _model_iteration(self, model: xgboost.Booster) -> int:
+        if not hasattr(model, "num_boosted_rounds"):
+            # Compatibility with XGBoost < 1.4
+            return len(model.get_dump())
+        return model.num_boosted_rounds()

@@ -24,7 +24,7 @@ from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -49,7 +49,7 @@ class DynamicTFPolicy(TFPolicy):
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         loss_fn: Callable[
             [Policy, ModelV2, Type[TFActionDistribution], SampleBatch], TensorType
         ],
@@ -62,12 +62,13 @@ class DynamicTFPolicy(TFPolicy):
         ] = None,
         before_loss_init: Optional[
             Callable[
-                [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], None
+                [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict], None
             ]
         ] = None,
         make_model: Optional[
             Callable[
-                [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], ModelV2
+                [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict],
+                ModelV2,
             ]
         ] = None,
         action_sampler_fn: Optional[
@@ -111,14 +112,14 @@ class DynamicTFPolicy(TFPolicy):
                 input tensors - returns a dict mapping str to TF ops.
                 These ops are fetched from the graph after loss calculations
                 and the resulting values can be found in the results dict
-                returned by e.g. `Trainer.train()` or in tensorboard (if TB
+                returned by e.g. `Algorithm.train()` or in tensorboard (if TB
                 logging is enabled).
             grad_stats_fn: Optional callable that - given the policy, batch
                 input tensors, and calculated loss gradient tensors - returns
                 a dict mapping str to TF ops. These ops are fetched from the
                 graph after loss and gradient calculations and the resulting
                 values can be found in the results dict returned by e.g.
-                `Trainer.train()` or in tensorboard (if TB logging is
+                `Algorithm.train()` or in tensorboard (if TB logging is
                 enabled).
             before_loss_init: Optional function to run prior to
                 loss init that takes the same arguments as __init__.
@@ -820,6 +821,7 @@ class DynamicTFPolicy(TFPolicy):
                         SampleBatch.DONES,
                         SampleBatch.REWARDS,
                         SampleBatch.INFOS,
+                        SampleBatch.T,
                         SampleBatch.OBS_EMBEDS,
                     ]
                 ):
@@ -841,6 +843,7 @@ class DynamicTFPolicy(TFPolicy):
                         SampleBatch.DONES,
                         SampleBatch.REWARDS,
                         SampleBatch.INFOS,
+                        SampleBatch.T,
                     ]
                     and key not in self.model.view_requirements
                 ):

@@ -1,36 +1,36 @@
 import copy
-
-from click.exceptions import ClickException
-import pytest
 from unittest.mock import Mock, patch
 
+import pytest
+from click.exceptions import ClickException
+
+import ray.tests.aws.utils.helpers as helpers
+import ray.tests.aws.utils.stubs as stubs
 from ray.autoscaler._private.aws.config import (
+    DEFAULT_AMI,
     _configure_subnet,
     _get_subnets_or_die,
     bootstrap_aws,
     log_to_cli,
-    DEFAULT_AMI,
 )
 from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
 from ray.autoscaler._private.providers import _get_node_provider
-import ray.tests.aws.utils.stubs as stubs
-import ray.tests.aws.utils.helpers as helpers
 from ray.tests.aws.utils.constants import (
-    AUX_SUBNET,
-    DEFAULT_SUBNET,
-    DEFAULT_SG_AUX_SUBNET,
-    DEFAULT_SG,
-    DEFAULT_SG_DUAL_GROUP_RULES,
-    DEFAULT_SG_WITH_RULES_AUX_SUBNET,
     AUX_SG,
-    DEFAULT_SG_WITH_RULES,
+    AUX_SUBNET,
+    CUSTOM_IN_BOUND_RULES,
+    DEFAULT_CLUSTER_NAME,
+    DEFAULT_INSTANCE_PROFILE,
+    DEFAULT_KEY_PAIR,
+    DEFAULT_LT,
+    DEFAULT_SG,
+    DEFAULT_SG_AUX_SUBNET,
+    DEFAULT_SG_DUAL_GROUP_RULES,
     DEFAULT_SG_WITH_NAME,
     DEFAULT_SG_WITH_NAME_AND_RULES,
-    CUSTOM_IN_BOUND_RULES,
-    DEFAULT_KEY_PAIR,
-    DEFAULT_INSTANCE_PROFILE,
-    DEFAULT_CLUSTER_NAME,
-    DEFAULT_LT,
+    DEFAULT_SG_WITH_RULES,
+    DEFAULT_SG_WITH_RULES_AUX_SUBNET,
+    DEFAULT_SUBNET,
 )
 
 
@@ -727,7 +727,7 @@ def test_terminate_nodes(num_on_demand_nodes, num_spot_nodes, stop):
     }
     node_ids = list(on_demand_nodes.union(spot_nodes))
 
-    with patch("ray.autoscaler._private.aws.node_provider.make_ec2_client"):
+    with patch("ray.autoscaler._private.aws.node_provider.make_ec2_resource"):
         provider = AWSNodeProvider(
             provider_config={"region": "nowhere", "cache_stopped_nodes": stop},
             cluster_name="default",
@@ -792,6 +792,366 @@ def test_use_subnets_ordered_by_az(ec2_client_stub):
         assert set(offsets[:5]) == {2}, "First 5 should be in us-west-2c"
         assert set(offsets[5:10]) == {3}, "Next 5 should be in us-west-2d"
         assert set(offsets[10:15]) == {0}, "Last 5 should be in us-west-2a"
+
+
+def test_cloudwatch_dashboard_creation(cloudwatch_client_stub, ssm_client_stub):
+    # create test cluster node IDs and an associated cloudwatch helper
+    node_id = "i-abc"
+    cloudwatch_helper = helpers.get_cloudwatch_helper(node_id)
+
+    # given a directive to create a cluster CloudWatch Dashboard...
+    # expect to make a call to create a dashboard for each node in the cluster
+    stubs.put_cluster_dashboard_success(
+        cloudwatch_client_stub,
+        cloudwatch_helper,
+    )
+
+    # given our mocks and the example CloudWatch Dashboard config as input...
+    # expect a cluster CloudWatch Dashboard to be created successfully
+    cloudwatch_helper._put_cloudwatch_dashboard()
+    # expect no pending responses left in the CloudWatch client stub queue
+    cloudwatch_client_stub.assert_no_pending_responses()
+
+
+def test_cloudwatch_alarm_creation(cloudwatch_client_stub, ssm_client_stub):
+    # create test cluster node IDs and an associated cloudwatch helper
+    node_id = "i-abc"
+    cloudwatch_helper = helpers.get_cloudwatch_helper(node_id)
+
+    # given a directive to update a cluster CloudWatch Alarm Config without any
+    # change...
+    # expect the stored the CloudWatch Alarm Config is same as local config
+    cw_ssm_param_name = helpers.get_ssm_param_name(
+        cloudwatch_helper.cluster_name, "alarm"
+    )
+    stubs.get_param_ssm_same(
+        ssm_client_stub, cw_ssm_param_name, cloudwatch_helper, "alarm"
+    )
+
+    # given a directive to create cluster CloudWatch alarms...
+    # expect to make a call to create alarms for each node in the cluster
+    stubs.put_cluster_alarms_success(cloudwatch_client_stub, cloudwatch_helper)
+
+    # given our mocks and the example CloudWatch Alarm config as input...
+    # expect cluster alarms to be created successfully
+    cloudwatch_helper._put_cloudwatch_alarm()
+
+    # expect no pending responses left in the CloudWatch client stub queue
+    cloudwatch_client_stub.assert_no_pending_responses()
+
+
+def test_cloudwatch_agent_update_without_change_head_node(
+    ssm_client_stub, ec2_client_stub
+):
+    # create test cluster head node ID and an associated cloudwatch helper
+    node_id = "i-abc"
+    is_head_node = True
+    cloudwatch_helper = helpers.get_cloudwatch_helper(node_id)
+
+    # given a directive to check for the Unified CloudWatch Agent status...
+    # expect CloudWatch Agent is installed
+    stubs.get_ec2_cwa_installed_tag_true(ec2_client_stub, node_id)
+
+    # given a directive to update a cluster CloudWatch Agent Config without any
+    # change...
+    # expect the stored the CloudWatch Agent Config is same as local config
+    cw_ssm_param_name = helpers.get_ssm_param_name(
+        cloudwatch_helper.cluster_name, "agent"
+    )
+    stubs.get_param_ssm_same(
+        ssm_client_stub, cw_ssm_param_name, cloudwatch_helper, "agent"
+    )
+
+    # given our mocks and the same cloudwatch agent config as input...
+    # expect no update performed on CloudWatch Agent Config
+    cloudwatch_helper._update_cloudwatch_config("agent", is_head_node)
+
+
+def test_cloudwatch_agent_update_with_change_head_node(
+    ec2_client_stub, ssm_client_stub
+):
+    # create test cluster head node ID and an associated cloudwatch helper
+    node_id = "i-abc"
+    is_head_node = True
+    cloudwatch_helper = helpers.get_cloudwatch_helper(node_id)
+
+    # given a directive to check for the Unified CloudWatch Agent status...
+    # expect CloudWatch Agent is installed
+    stubs.get_ec2_cwa_installed_tag_true(ec2_client_stub, node_id)
+    # given a directive to update a cluster CloudWatch Agent Config with new
+    # changes...
+    # expect the stored the CloudWatch Agent Config is different from local
+    # config
+    cw_ssm_param_name = helpers.get_ssm_param_name(
+        cloudwatch_helper.cluster_name, "agent"
+    )
+    stubs.get_param_ssm_different(ssm_client_stub, cw_ssm_param_name)
+
+    # given an updated CloudWatch Agent Config file...
+    # expect to store the new CloudWatch Agent config as an SSM parameter
+    cmd_id = stubs.put_parameter_cloudwatch_config(
+        ssm_client_stub, cloudwatch_helper.cluster_name, "agent"
+    )
+
+    # given an updated CloudWatch Agent Config file...
+    # expect to update the node tag equal to updated config file sha1 hash
+    # to reflect the changes in config file
+    stubs.update_hash_tag_success(ec2_client_stub, node_id, "agent", cloudwatch_helper)
+    # given that updated CloudWatch Agent Config is put to Parameter Store...
+    # expect to send an SSM command to restart CloudWatch Agent on all nodes
+    cmd_id = stubs.send_command_stop_cwa(ssm_client_stub, node_id)
+    # given a SSM command to stop CloudWatch Agent sent to all nodes...
+    # expect to wait for the command to complete successfully on every node
+    stubs.list_command_invocations_success(ssm_client_stub, node_id, cmd_id)
+    cmd_id = stubs.send_command_start_cwa(ssm_client_stub, node_id, cw_ssm_param_name)
+    # given a SSM command to start CloudWatch Agent sent to all nodes...
+    # expect to wait for the command to complete successfully on every node
+    stubs.list_command_invocations_success(ssm_client_stub, node_id, cmd_id)
+
+    # given our mocks and the example CloudWatch Agent config as input...
+    # expect CloudWatch Agent configured to use updated file on each cluster
+    # node successfully
+    cloudwatch_helper._update_cloudwatch_config("agent", is_head_node)
+
+    # expect no pending responses left in client stub queues
+    ec2_client_stub.assert_no_pending_responses()
+    ssm_client_stub.assert_no_pending_responses()
+
+
+def test_cloudwatch_agent_update_with_change_worker_node(
+    ec2_client_stub, ssm_client_stub
+):
+    # create test cluster worker node ID and an associated cloudwatch helper
+    node_id = "i-abc"
+    is_head_node = False
+    cloudwatch_helper = helpers.get_cloudwatch_helper(node_id)
+
+    # given a directive to check for the Unified CloudWatch Agent status...
+    # expect CloudWatch Agent is installed
+    stubs.get_ec2_cwa_installed_tag_true(ec2_client_stub, node_id)
+
+    # given a directive to update a cluster CloudWatch Agent Config with new
+    # changes...
+    # expect the stored the CloudWatch Agent Config is different from local
+    # config
+    stubs.get_head_node_config_hash_different(
+        ec2_client_stub, "agent", cloudwatch_helper, node_id
+    )
+    stubs.get_cur_node_config_hash_different(ec2_client_stub, "agent", node_id)
+
+    # given an updated CloudWatch Agent Config file...
+    # expect to update the node tag equal to updated config file sha1 hash
+    # to reflect the changes in config file
+    stubs.update_hash_tag_success(ec2_client_stub, node_id, "agent", cloudwatch_helper)
+    # given that updated CloudWatch Agent Config is put to Parameter Store...
+    # expect to send an SSM command to restart CloudWatch Agent on all nodes
+    cmd_id = stubs.send_command_stop_cwa(ssm_client_stub, node_id)
+    # given a SSM command to stop CloudWatch Agent sent to all nodes...
+    # expect to wait for the command to complete successfully on every node
+    stubs.list_command_invocations_success(ssm_client_stub, node_id, cmd_id)
+    cw_ssm_param_name = helpers.get_ssm_param_name(
+        cloudwatch_helper.cluster_name, "agent"
+    )
+    cmd_id = stubs.send_command_start_cwa(ssm_client_stub, node_id, cw_ssm_param_name)
+    # given a SSM command to start CloudWatch Agent sent to all nodes...
+    # expect to wait for the command to complete successfully on every node
+    stubs.list_command_invocations_success(ssm_client_stub, node_id, cmd_id)
+
+    # given our mocks and the example CloudWatch Agent config as input...
+    # expect CloudWatch Agent configured to use updated file on each cluster
+    # node successfully
+    cloudwatch_helper._update_cloudwatch_config("agent", is_head_node)
+
+    # expect no pending responses left in client stub queues
+    ec2_client_stub.assert_no_pending_responses()
+    ssm_client_stub.assert_no_pending_responses()
+
+
+def test_cloudwatch_dashboard_update_head_node(
+    ec2_client_stub, ssm_client_stub, cloudwatch_client_stub
+):
+    # create test cluster head node ID and an associated cloudwatch helper
+    node_id = "i-abc"
+    is_head_node = True
+    cloudwatch_helper = helpers.get_cloudwatch_helper(node_id)
+
+    # given a directive to check for the Unified CloudWatch Agent status...
+    # expect CloudWatch Agent is installed
+    stubs.get_ec2_cwa_installed_tag_true(ec2_client_stub, node_id)
+
+    # given a directive to update a cluster CloudWatch Dashboard Config
+    # with new changes...
+    # expect the stored the CloudWatch Dashboard Config is different from local
+    # config
+    cw_ssm_param_name = helpers.get_ssm_param_name(
+        cloudwatch_helper.cluster_name, "dashboard"
+    )
+    stubs.get_param_ssm_different(ssm_client_stub, cw_ssm_param_name)
+
+    # given an updated CloudWatch Dashboard Config file...
+    # expect to store the new CloudWatch Dashboard config as an SSM parameter
+    stubs.put_parameter_cloudwatch_config(
+        ssm_client_stub, cloudwatch_helper.cluster_name, "dashboard"
+    )
+
+    # given an updated CloudWatch Dashboard Config file...
+    # expect to update the node tag equal to updated config file sha1 hash
+    # to reflect the changes in config file
+    stubs.update_hash_tag_success(
+        ec2_client_stub, node_id, "dashboard", cloudwatch_helper
+    )
+
+    # given a directive to create a cluster CloudWatch dashboard...
+    # expect to make a call to create a dashboard for each node in the cluster
+    stubs.put_cluster_dashboard_success(
+        cloudwatch_client_stub,
+        cloudwatch_helper,
+    )
+    # given our mocks and the example CloudWatch Dashboard config as input...
+    # expect CloudWatch Dashboard configured to use updated file
+    # on each cluster node successfully
+    cloudwatch_helper._update_cloudwatch_config("dashboard", is_head_node)
+
+    # expect no pending responses left in client stub queues
+    ec2_client_stub.assert_no_pending_responses()
+    ssm_client_stub.assert_no_pending_responses()
+
+
+def test_cloudwatch_dashboard_update_worker_node(
+    ec2_client_stub, ssm_client_stub, cloudwatch_client_stub
+):
+    # create test cluster worker node ID and an associated cloudwatch helper
+    node_id = "i-abc"
+    is_head_node = False
+    cloudwatch_helper = helpers.get_cloudwatch_helper(node_id)
+
+    # given a directive to check for the Unified CloudWatch Agent status...
+    # expect CloudWatch Agent is installed
+    stubs.get_ec2_cwa_installed_tag_true(ec2_client_stub, node_id)
+
+    # given a directive to update a cluster CloudWatch Dashboard Config
+    # with new changes...
+    # expect the stored the CloudWatch Dashboard Config is different from local
+    # config
+    stubs.get_head_node_config_hash_different(
+        ec2_client_stub, "dashboard", cloudwatch_helper, node_id
+    )
+    stubs.get_cur_node_config_hash_different(ec2_client_stub, "dashboard", node_id)
+
+    # given an updated CloudWatch Dashboard Config file...
+    # expect to update the node tag equal to updated config file sha1 hash
+    # to reflect the changes in config file
+    stubs.update_hash_tag_success(
+        ec2_client_stub, node_id, "dashboard", cloudwatch_helper
+    )
+
+    # given our mocks and the example CloudWatch Dashboard config as input...
+    # expect CloudWatch Dashboard configured to use updated file
+    # on each cluster node successfully
+    cloudwatch_helper._update_cloudwatch_config("dashboard", is_head_node)
+
+    # expect no pending responses left in client stub queues
+    ec2_client_stub.assert_no_pending_responses()
+    ssm_client_stub.assert_no_pending_responses()
+
+
+def test_cloudwatch_alarm_update_head_node(
+    ec2_client_stub, ssm_client_stub, cloudwatch_client_stub
+):
+    # create test cluster head node ID and an associated cloudwatch helper
+    node_id = "i-abc"
+    is_head_node = True
+    cloudwatch_helper = helpers.get_cloudwatch_helper(node_id)
+
+    # given a directive to check for the Unified CloudWatch Agent status...
+    # expect CloudWatch Agent is installed
+    stubs.get_ec2_cwa_installed_tag_true(ec2_client_stub, node_id)
+
+    # given a directive to update a cluster CloudWatch Alarm Config with new
+    # changes...
+    # expect the stored the CloudWatch Alarm Config is different from local
+    # config
+    cw_ssm_param_name = helpers.get_ssm_param_name(
+        cloudwatch_helper.cluster_name, "alarm"
+    )
+    stubs.get_param_ssm_different(ssm_client_stub, cw_ssm_param_name)
+
+    # given an updated CloudWatch Alarm Config file...
+    # expect to store the new CloudWatch Alarm config as an SSM parameter
+    stubs.put_parameter_cloudwatch_config(
+        ssm_client_stub, cloudwatch_helper.cluster_name, "alarm"
+    )
+
+    # given an updated CloudWatch Alarm Config file...
+    # expect to update the node tag equal to updated config file sha1 hash
+    # to reflect the changes in config file
+    stubs.update_hash_tag_success(ec2_client_stub, node_id, "alarm", cloudwatch_helper)
+    stubs.get_param_ssm_same(
+        ssm_client_stub, cw_ssm_param_name, cloudwatch_helper, "alarm"
+    )
+
+    # given a directive to create cluster  CloudWatch Alarms...
+    # expect to make a call to create alarms for each node in the cluster
+    stubs.put_cluster_alarms_success(cloudwatch_client_stub, cloudwatch_helper)
+
+    # given our mocks and the example  CloudWatch Alarm config as input...
+    # expect  CloudWatch Alarm configured to use updated file on each cluster
+    # node successfully
+    cloudwatch_helper._update_cloudwatch_config("alarm", is_head_node)
+
+    # expect no pending responses left in client stub queues
+    ec2_client_stub.assert_no_pending_responses()
+    ssm_client_stub.assert_no_pending_responses()
+
+
+def test_cloudwatch_alarm_update_worker_node(
+    ec2_client_stub, ssm_client_stub, cloudwatch_client_stub
+):
+    # create test cluster worker node ID and an associated cloudwatch helper
+    node_id = "i-abc"
+    is_head_node = False
+    cloudwatch_helper = helpers.get_cloudwatch_helper(node_id)
+
+    # given a directive to check for the Unified CloudWatch Agent status...
+    # expect CloudWatch Agent is installed
+    stubs.get_ec2_cwa_installed_tag_true(ec2_client_stub, node_id)
+
+    # given a directive to update a cluster CloudWatch Alarm Config with new
+    # changes...
+    # expect the stored the CloudWatch Alarm Config is different from local
+    # config
+    cw_ssm_param_name = helpers.get_ssm_param_name(
+        cloudwatch_helper.cluster_name, "alarm"
+    )
+
+    # given a directive to update a cluster CloudWatch Alarm Config with new
+    # changes...
+    # expect the stored the CloudWatch Alarm Config is different from local
+    # config
+    stubs.get_head_node_config_hash_different(
+        ec2_client_stub, "alarm", cloudwatch_helper, node_id
+    )
+    stubs.get_cur_node_config_hash_different(ec2_client_stub, "alarm", node_id)
+
+    # given an updated CloudWatch Alarm Config file...
+    # expect to update the node tag equal to updated config file sha1 hash
+    # to reflect the changes in config file
+    stubs.update_hash_tag_success(ec2_client_stub, node_id, "alarm", cloudwatch_helper)
+    stubs.get_param_ssm_same(
+        ssm_client_stub, cw_ssm_param_name, cloudwatch_helper, "alarm"
+    )
+
+    # given a directive to create cluster CloudWatch Alarms...
+    # expect to make a call to create alarms for each node in the cluster
+    stubs.put_cluster_alarms_success(cloudwatch_client_stub, cloudwatch_helper)
+    # given our mocks and the example CloudWatch Alarm config as input...
+    # expect CloudWatch Alarm configured to use updated file on each cluster
+    # node successfully
+    cloudwatch_helper._update_cloudwatch_config("alarm", is_head_node)
+
+    # expect no pending responses left in client stub queues
+    ec2_client_stub.assert_no_pending_responses()
+    ssm_client_stub.assert_no_pending_responses()
 
 
 if __name__ == "__main__":

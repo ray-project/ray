@@ -10,17 +10,17 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import tune
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.tune import Trainable
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
+from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
 from ray._private.test_utils import object_memory_usage
 
 
 # Import psutil after ray so the packaged version is used.
 import psutil
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 MB = 1024 ** 2
 

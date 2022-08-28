@@ -1,21 +1,20 @@
 import logging
 from pathlib import Path
-from typing import List, Optional, Dict, Union, Callable
+from typing import Callable, Dict, List, Optional, Union
 
-from ray.air import Checkpoint
+from ray.air import Checkpoint, CheckpointConfig
+from ray.air._internal.checkpoint_manager import CheckpointStorage
+from ray.air._internal.checkpoint_manager import (
+    _CheckpointManager as CommonCheckpointManager,
+)
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+from ray.train._internal.session import TrainingResult
+from ray.train._internal.utils import construct_path
 from ray.train.constants import (
     TIMESTAMP,
     TRAIN_CHECKPOINT_SUBDIR,
     TUNE_CHECKPOINT_ID,
     TUNE_INSTALLED,
-)
-from ray.train._internal.session import TrainingResult
-from ray.train._internal.utils import construct_path
-from ray.util.ml_utils.checkpoint_manager import (
-    _CheckpointManager as CommonCheckpointManager,
-    _TrackedCheckpoint,
-    CheckpointStrategy,
-    CheckpointStorage,
 )
 
 if TUNE_INSTALLED:
@@ -68,7 +67,7 @@ class CheckpointManager(CommonCheckpointManager):
     def __init__(
         self,
         run_dir: Optional[Path] = None,
-        checkpoint_strategy: Optional[CheckpointStrategy] = None,
+        checkpoint_strategy: Optional[CheckpointConfig] = None,
     ):
         self.run_dir = run_dir
 
@@ -80,13 +79,16 @@ class CheckpointManager(CommonCheckpointManager):
         if self._checkpoint_strategy.checkpoint_score_attribute is None:
             self._checkpoint_strategy.checkpoint_score_attribute = TIMESTAMP
 
+    # TODO(xwjiang): Legacy Ray Train trainer clean up!
     def _load_checkpoint(
-        self, checkpoint_to_load: Optional[Union[Dict, str, Path]]
-    ) -> Optional[Dict]:
+        self, checkpoint_to_load: Optional[Union[Dict, str, Path, Checkpoint]]
+    ) -> Optional[Union[Dict, Checkpoint]]:
         """Load the checkpoint dictionary from the input dict or path."""
         if checkpoint_to_load is None:
             return None
         if isinstance(checkpoint_to_load, Dict):
+            return checkpoint_to_load
+        if isinstance(checkpoint_to_load, Checkpoint):
             return checkpoint_to_load
         else:
             # Load checkpoint from path.
@@ -114,7 +116,7 @@ class CheckpointManager(CommonCheckpointManager):
                 f"checkpoint_score_attribute: "
                 f"{score_attr}. "
                 f"Include this attribute in the call to "
-                f"train.save_checkpoint."
+                f"`session.report()`."
             )
 
         tracked_checkpoint = _TrackedCheckpoint(
@@ -134,11 +136,11 @@ class CheckpointManager(CommonCheckpointManager):
 
     def on_start_training(
         self,
-        checkpoint_strategy: Optional[CheckpointStrategy],
+        checkpoint_strategy: Optional[CheckpointConfig],
         run_dir: Path,
         latest_checkpoint_id: Optional[int] = 0,
     ):
-        checkpoint_strategy = checkpoint_strategy or CheckpointStrategy()
+        checkpoint_strategy = checkpoint_strategy or CheckpointConfig()
         self._checkpoint_strategy = checkpoint_strategy
 
         self._validate_checkpoint_strategy()
@@ -198,14 +200,22 @@ class CheckpointManager(CommonCheckpointManager):
 
 class TuneCheckpointManager(CheckpointManager):
     def _load_checkpoint(
-        self, checkpoint_to_load: Optional[Union[Dict, str, Path]]
-    ) -> Optional[Dict]:
+        self, checkpoint_to_load: Optional[Union[Dict, str, Path, Checkpoint]]
+    ) -> Optional[Union[Dict, Checkpoint]]:
+        # TODO(xwjiang): Legacy Ray Train trainer clean up!
         loaded_checkpoint = super()._load_checkpoint(checkpoint_to_load)
+        # New path...
+        if isinstance(loaded_checkpoint, Checkpoint):
+            # The new logic
+            checkpoint_dict = loaded_checkpoint.to_dict()
+            self._latest_checkpoint_id = checkpoint_dict.get(TUNE_CHECKPOINT_ID, 0)
+            return loaded_checkpoint
+        # legacy path...
         if loaded_checkpoint is not None:
             # If the Tune trial is restarted, a new Trainer is instantiated.
             # However, we want the checkpoint_id to continue incrementing
             # from the previous run.
-            self._latest_checkpoint_id = loaded_checkpoint[TUNE_CHECKPOINT_ID]
+            self._latest_checkpoint_id = loaded_checkpoint.get(TUNE_CHECKPOINT_ID, 0)
         return loaded_checkpoint
 
     def add_tune_checkpoint_id(self, checkpoint: Dict):

@@ -1,23 +1,21 @@
 # coding: utf-8
-import os
 import logging
+import os
+import subprocess
 import sys
+import tempfile
 import threading
 import time
-import tempfile
-import subprocess
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
-from unittest.mock import MagicMock, patch
-
-from ray.cluster_utils import Cluster, cluster_not_supported
+from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 from ray._private.test_utils import client_test_enabled
+from ray.cluster_utils import Cluster, cluster_not_supported
+from ray.exceptions import GetTimeoutError, RayTaskError
 from ray.tests.client_test_utils import create_remote_signal_actor
-from ray.exceptions import GetTimeoutError
-from ray.exceptions import RayTaskError
-from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 
 if client_test_enabled():
     from ray.util.client import ray
@@ -382,6 +380,10 @@ def test_get_with_timeout(ray_start_regular_shared):
     with pytest.raises(GetTimeoutError):
         ray.get(result_id, timeout=0.1)
 
+    assert issubclass(GetTimeoutError, TimeoutError)
+    with pytest.raises(TimeoutError):
+        ray.get(result_id, timeout=0.1)
+
     # Check that a subsequent get() returns early.
     ray.get(signal.send.remote())
     start = time.time()
@@ -452,7 +454,7 @@ def test_skip_plasma(ray_start_regular_shared):
     a = Actor.remote()
     obj_ref = a.f.remote(1)
     # it is not stored in plasma
-    assert not ray.worker.global_worker.core_worker.object_exists(obj_ref)
+    assert not ray._private.worker.global_worker.core_worker.object_exists(obj_ref)
     assert ray.get(obj_ref) == 2
 
 
@@ -469,10 +471,10 @@ def test_actor_large_objects(ray_start_regular_shared):
 
     a = Actor.remote()
     obj_ref = a.f.remote()
-    assert not ray.worker.global_worker.core_worker.object_exists(obj_ref)
+    assert not ray._private.worker.global_worker.core_worker.object_exists(obj_ref)
     done, _ = ray.wait([obj_ref])
     assert len(done) == 1
-    assert ray.worker.global_worker.core_worker.object_exists(obj_ref)
+    assert ray._private.worker.global_worker.core_worker.object_exists(obj_ref)
     assert isinstance(ray.get(obj_ref), np.ndarray)
 
 
@@ -651,10 +653,35 @@ def test_duplicate_args(ray_start_regular_shared):
     arg2 = ray.put([2])
     ray.get(f.remote(arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
 
+    # Test by-reference arguments on an actor task.
+    @ray.remote
+    class Actor:
+        def f(
+            self,
+            arg1,
+            arg2,
+            arg1_duplicate,
+            kwarg1=None,
+            kwarg2=None,
+            kwarg1_duplicate=None,
+        ):
+            assert arg1 == kwarg1
+            assert arg1 != arg2
+            assert arg1 == arg1_duplicate
+            assert kwarg1 != kwarg2
+            assert kwarg1 == kwarg1_duplicate
+
+    actor = Actor.remote()
+    ray.get(
+        actor.f.remote(
+            arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1
+        )
+    )
+
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_get_correct_node_ip():
-    with patch("ray.worker") as worker_mock:
+    with patch("ray._private.worker") as worker_mock:
         node_mock = MagicMock()
         node_mock.node_ip_address = "10.0.0.111"
         worker_mock._global_node = node_mock
@@ -732,11 +759,11 @@ def test_use_dynamic_function_and_class():
     # the same as in `FunctionActorManager.export`.
     key_func = (
         b"RemoteFunction:"
-        + ray.worker.global_worker.current_job_id.hex().encode()
+        + ray._private.worker.global_worker.current_job_id.hex().encode()
         + b":"
         + f._function_descriptor.function_id.binary()
     )
-    assert ray.worker.global_worker.gcs_client.internal_kv_exists(
+    assert ray._private.worker.global_worker.gcs_client.internal_kv_exists(
         key_func, KV_NAMESPACE_FUNCTION_TABLE
     )
     foo_actor = Foo.remote()
@@ -747,11 +774,11 @@ def test_use_dynamic_function_and_class():
     # the same as in `FunctionActorManager.export_actor_class`.
     key_cls = (
         b"ActorClass:"
-        + ray.worker.global_worker.current_job_id.hex().encode()
+        + ray._private.worker.global_worker.current_job_id.hex().encode()
         + b":"
         + foo_actor._ray_actor_creation_function_descriptor.function_id.binary()
     )
-    assert ray.worker.global_worker.gcs_client.internal_kv_exists(
+    assert ray._private.worker.global_worker.gcs_client.internal_kv_exists(
         key_cls, namespace=KV_NAMESPACE_FUNCTION_TABLE
     )
 
@@ -760,4 +787,7 @@ if __name__ == "__main__":
     import pytest
 
     # Skip test_basic_2_client_mode for now- the test suite is breaking.
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

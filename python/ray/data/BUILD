@@ -5,17 +5,38 @@
 # --------------------------------------------------------------------
 load("//bazel:python.bzl", "py_test_module_list")
 
-SRCS = [] + select({
-    "@bazel_tools//src/conditions:windows": glob([
-        "**/conftest.py",
-    ]),
-    "//conditions:default": [],
-})
+py_library(
+    name = "conftest",
+    srcs = ["tests/conftest.py"],
+    deps = ["//python/ray/tests:conftest"],
+)
+
+py_test(
+    name = "test_preprocessors",
+    size = "small",
+    srcs = ["tests/test_preprocessors.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_dataset_formats",
+    size = "large",
+    srcs = ["tests/test_dataset_formats.py"],
+    data = glob(["tests/image-folder/**/*"]),
+    tags = ["team:core", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
 
 py_test_module_list(
-  files = glob(["tests/test_*.py"]),
+  files = glob(
+    include=["tests/test_*.py"],
+    exclude=[
+        "tests/test_preprocessors.py",
+        "tests/test_dataset_formats.py",
+    ],
+  ),
   size = "large",
-  extra_srcs = SRCS,
   tags = ["team:core", "exclusive"],
-  deps = ["//:ray_lib"],
+  deps = ["//:ray_lib", ":conftest"],
 )

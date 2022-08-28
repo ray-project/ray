@@ -1,5 +1,4 @@
 from abc import ABCMeta, abstractmethod
-from collections import namedtuple
 import gym
 from gym.spaces import Box
 import logging
@@ -7,6 +6,7 @@ import numpy as np
 import platform
 import tree  # pip install dm_tree
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -14,7 +14,6 @@ from typing import (
     Optional,
     Tuple,
     Type,
-    TYPE_CHECKING,
     Union,
 )
 
@@ -25,9 +24,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.annotations import (
-    PublicAPI,
     DeveloperAPI,
     ExperimentalAPI,
     OverrideToImplementCustomLogic,
@@ -38,6 +35,8 @@ from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.serialization import space_from_dict, space_to_dict
 from ray.rllib.utils.spaces.space_utils import (
     get_base_struct_from_space,
     get_dummy_batch_for_space,
@@ -45,15 +44,16 @@ from ray.rllib.utils.spaces.space_utils import (
 )
 from ray.rllib.utils.typing import (
     AgentID,
+    AlgorithmConfigDict,
     ModelGradients,
     ModelWeights,
     PolicyID,
     PolicyState,
     T,
-    TensorType,
     TensorStructType,
-    TrainerConfigDict,
+    TensorType,
 )
+from ray.util.annotations import PublicAPI
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -63,36 +63,87 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# A policy spec used in the "config.multiagent.policies" specification dict
-# as values (keys are the policy IDs (str)). E.g.:
-# config:
-#   multiagent:
-#     policies: {
-#       "pol1": PolicySpec(None, Box, Discrete(2), {"lr": 0.0001}),
-#       "pol2": PolicySpec(config={"lr": 0.001}),
-#     }
-PolicySpec = PublicAPI(
-    namedtuple(
-        "PolicySpec",
-        [
-            # If None, use the Trainer's default policy class stored under
-            # `Trainer._policy_class`.
-            "policy_class",
-            # If None, use the env's observation space. If None and there is no Env
-            # (e.g. offline RL), an error is thrown.
-            "observation_space",
-            # If None, use the env's action space. If None and there is no Env
-            # (e.g. offline RL), an error is thrown.
-            "action_space",
-            # Overrides defined keys in the main Trainer config.
-            # If None, use {}.
-            "config",
-        ],
-    )
-)  # defaults=(None, None, None, None)
-# TODO: From 3.7 on, we could pass `defaults` into the above constructor.
-#  We still support py3.6.
-PolicySpec.__new__.__defaults__ = (None, None, None, None)
+
+@PublicAPI
+class PolicySpec:
+    """A policy spec used in the "config.multiagent.policies" specification dict.
+
+    As values (keys are the policy IDs (str)). E.g.:
+    config:
+        multiagent:
+            policies: {
+                "pol1": PolicySpec(None, Box, Discrete(2), {"lr": 0.0001}),
+                "pol2": PolicySpec(config={"lr": 0.001}),
+            }
+    """
+
+    def __init__(
+        self, policy_class=None, observation_space=None, action_space=None, config=None
+    ):
+        # If None, use the Algorithm's default policy class stored under
+        # `Algorithm._policy_class`.
+        self.policy_class = policy_class
+        # If None, use the env's observation space. If None and there is no Env
+        # (e.g. offline RL), an error is thrown.
+        self.observation_space = observation_space
+        # If None, use the env's action space. If None and there is no Env
+        # (e.g. offline RL), an error is thrown.
+        self.action_space = action_space
+        # Overrides defined keys in the main Algorithm config.
+        # If None, use {}.
+        self.config = config
+
+    def __eq__(self, other: "PolicySpec"):
+        return (
+            self.policy_class == other.policy_class
+            and self.observation_space == other.observation_space
+            and self.action_space == other.action_space
+            and self.config == other.config
+        )
+
+    def serialize(self) -> Dict:
+        from ray.rllib.algorithms.registry import get_policy_class_name
+
+        # Try to figure out a durable name for this policy.
+        cls = get_policy_class_name(self.policy_class)
+        if cls is None:
+            logger.warning(
+                f"Can not figure out a durable policy name for {self.policy_class}. "
+                f"You are probably trying to checkpoint a custom policy. "
+                f"Raw policy class may cause problems when the checkpoint needs to "
+                "be loaded in the future. To fix this, make sure you add your "
+                "custom policy in rllib.algorithms.registry.POLICIES."
+            )
+            cls = self.policy_class
+
+        return {
+            "policy_class": cls,
+            "observation_space": space_to_dict(self.observation_space),
+            "action_space": space_to_dict(self.action_space),
+            # TODO(jungong) : try making the config dict durable by maybe
+            # getting rid of all the fields that are not JSON serializable.
+            "config": self.config,
+        }
+
+    @classmethod
+    def deserialize(cls, spec: Dict) -> "PolicySpec":
+        if isinstance(spec["policy_class"], str):
+            # Try to recover the actual policy class from durable name.
+            from ray.rllib.algorithms.registry import get_policy_class
+
+            policy_class = get_policy_class(spec["policy_class"])
+        elif isinstance(spec["policy_class"], type):
+            # Policy spec is already a class type. Simply use it.
+            policy_class = spec["policy_class"]
+        else:
+            raise AttributeError(f"Unknown policy class spec {spec['policy_class']}")
+
+        return cls(
+            policy_class=policy_class,
+            observation_space=space_from_dict(spec["observation_space"]),
+            action_space=space_from_dict(spec["action_space"]),
+            config=spec["config"],
+        )
 
 
 @DeveloperAPI
@@ -159,14 +210,14 @@ class Policy(metaclass=ABCMeta):
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         """Initializes a Policy instance.
 
         Args:
             observation_space: Observation space of the policy.
             action_space: Action space of the policy.
-            config: A complete Trainer/Policy config dict. For the default
+            config: A complete Algorithm/Policy config dict. For the default
                 config keys and values, see rllib/trainer/trainer.py.
         """
         self.observation_space: gym.Space = observation_space
@@ -177,13 +228,13 @@ class Policy(metaclass=ABCMeta):
         self.observation_space_struct = get_base_struct_from_space(observation_space)
         self.action_space_struct = get_base_struct_from_space(action_space)
 
-        self.config: TrainerConfigDict = config
+        self.config: AlgorithmConfigDict = config
         self.framework = self.config.get("framework")
         # Create the callbacks object to use for handling custom callbacks.
         if self.config.get("callbacks"):
             self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
         else:
-            from ray.rllib.agents.callbacks import DefaultCallbacks
+            from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
             self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
 
@@ -201,6 +252,10 @@ class Policy(metaclass=ABCMeta):
         # Whether the Model's initial state (method) has been added
         # automatically based on the given view requirements of the model.
         self._model_init_state_automatically_added = False
+
+        # Connectors.
+        self.agent_connectors = None
+        self.action_connectors = None
 
     @DeveloperAPI
     def init_view_requirements(self):
@@ -557,7 +612,7 @@ class Policy(metaclass=ABCMeta):
         # Note that for better performance (less data sent through the
         # network), this policy should be co-located on the same node
         # as `replay_actor`. Such a co-location step is usually done during
-        # the Trainer's `setup()` phase.
+        # the Algorithm's `setup()` phase.
         batch = ray.get(replay_actor.replay.remote(policy_id=policy_id))
         if batch is None:
             return {}
@@ -743,7 +798,44 @@ class Policy(metaclass=ABCMeta):
             # The current global timestep.
             "global_timestep": self.global_timestep,
         }
+        if self.config.get("enable_connectors", False):
+            # Checkpoint connectors state as well if enabled.
+            connector_configs = {}
+            if self.agent_connectors:
+                connector_configs["agent"] = self.agent_connectors.to_config()
+            if self.action_connectors:
+                connector_configs["action"] = self.action_connectors.to_config()
+            state["connector_configs"] = connector_configs
         return state
+
+    @PublicAPI(stability="alpha")
+    def restore_connectors(self, state: PolicyState):
+        """Restore agent and action connectors if configs available.
+
+        Args:
+            state: The new state to set this policy to. Can be
+                obtained by calling `self.get_state()`.
+        """
+        # To avoid a circular dependency problem cause by SampleBatch.
+        from ray.rllib.connectors.util import restore_connectors_for_policy
+
+        # No-op if connector is not enabled.
+        if not self.config.get("enable_connectors", False):
+            return
+
+        connector_configs = state.get("connector_configs", {})
+        if "agent" in connector_configs:
+            self.agent_connectors = restore_connectors_for_policy(
+                self, connector_configs["agent"]
+            )
+            logger.info("restoring agent connectors:")
+            logger.info(self.agent_connectors.__str__(indentation=4))
+        if "action" in connector_configs:
+            self.action_connectors = restore_connectors_for_policy(
+                self, connector_configs["action"]
+            )
+            logger.info("restoring action connectors:")
+            logger.info(self.action_connectors.__str__(indentation=4))
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -755,7 +847,7 @@ class Policy(metaclass=ABCMeta):
                 obtained by calling `self.get_state()`.
         """
         self.set_weights(state["weights"])
-        self.global_timestep = state["global_timestep"]
+        self.restore_connectors(state)
 
     @ExperimentalAPI
     def apply(
@@ -853,6 +945,41 @@ class Policy(metaclass=ABCMeta):
         """
         return platform.node()
 
+    def _get_num_gpus_for_policy(self) -> int:
+        """Decide on the number of CPU/GPU nodes this policy should run on.
+
+        Return:
+            0 if policy should run on CPU. >0 if policy should run on 1 or
+            more GPUs.
+        """
+        worker_idx = self.config.get("worker_index", 0)
+        fake_gpus = self.config.get("_fake_gpus", False)
+        if (
+            ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
+            and not fake_gpus
+        ):
+            # If in local debugging mode, and _fake_gpus is not on.
+            num_gpus = 0
+        elif worker_idx == 0:
+            # If head node, take num_gpus.
+            num_gpus = self.config["num_gpus"]
+        else:
+            # If worker node, take num_gpus_per_worker
+            num_gpus = self.config["num_gpus_per_worker"]
+
+        if num_gpus == 0:
+            dev = "CPU"
+        else:
+            dev = "{} {}".format(num_gpus, "fake-GPUs" if fake_gpus else "GPUs")
+
+        logger.info(
+            "Policy (worker={}) running on {}.".format(
+                worker_idx if worker_idx > 0 else "local", dev
+            )
+        )
+
+        return num_gpus
+
     def _create_exploration(self) -> Exploration:
         """Creates the Policy's Exploration object.
 
@@ -895,7 +1022,10 @@ class Policy(metaclass=ABCMeta):
         return {
             SampleBatch.OBS: ViewRequirement(space=self.observation_space),
             SampleBatch.NEXT_OBS: ViewRequirement(
-                data_col=SampleBatch.OBS, shift=1, space=self.observation_space
+                data_col=SampleBatch.OBS,
+                shift=1,
+                space=self.observation_space,
+                used_for_compute_actions=False,
             ),
             SampleBatch.ACTIONS: ViewRequirement(
                 space=self.action_space, used_for_compute_actions=False
@@ -912,11 +1042,12 @@ class Policy(metaclass=ABCMeta):
                 data_col=SampleBatch.REWARDS, shift=-1
             ),
             SampleBatch.DONES: ViewRequirement(),
-            SampleBatch.INFOS: ViewRequirement(),
+            SampleBatch.INFOS: ViewRequirement(used_for_compute_actions=False),
+            SampleBatch.T: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
-            "t": ViewRequirement(),
+            SampleBatch.T: ViewRequirement(),
         }
 
     def _initialize_loss_from_dummy_batch(
@@ -1052,6 +1183,7 @@ class Policy(metaclass=ABCMeta):
                             SampleBatch.DONES,
                             SampleBatch.REWARDS,
                             SampleBatch.INFOS,
+                            SampleBatch.T,
                         ]
                     ):
                         self.view_requirements[key].used_for_training = False
@@ -1069,6 +1201,7 @@ class Policy(metaclass=ABCMeta):
                             SampleBatch.DONES,
                             SampleBatch.REWARDS,
                             SampleBatch.INFOS,
+                            SampleBatch.T,
                         ]
                         and key not in self.model.view_requirements
                     ):
@@ -1131,27 +1264,15 @@ class Policy(metaclass=ABCMeta):
             # Non-flattened dummy batch.
             else:
                 # Range of indices on time-axis, e.g. "-50:-1".
-                if view_req.shift_from is not None:
-                    ret[view_col] = get_dummy_batch_for_space(
-                        view_req.space,
-                        batch_size=batch_size,
-                        time_size=view_req.shift_to - view_req.shift_from + 1,
+                if isinstance(view_req.space, gym.spaces.Space):
+                    time_size = (
+                        len(view_req.shift_arr) if len(view_req.shift_arr) > 1 else None
                     )
-                # Sequence of (probably non-consecutive) indices.
-                elif isinstance(view_req.shift, (list, tuple)):
                     ret[view_col] = get_dummy_batch_for_space(
-                        view_req.space,
-                        batch_size=batch_size,
-                        time_size=len(view_req.shift),
+                        view_req.space, batch_size=batch_size, time_size=time_size
                     )
-                # Single shift int value.
                 else:
-                    if isinstance(view_req.space, gym.spaces.Space):
-                        ret[view_col] = get_dummy_batch_for_space(
-                            view_req.space, batch_size=batch_size, fill_value=0.0
-                        )
-                    else:
-                        ret[view_col] = [view_req.space for _ in range(batch_size)]
+                    ret[view_col] = [view_req.space for _ in range(batch_size)]
 
         # Due to different view requirements for the different columns,
         # columns in the resulting batch may not all have the same batch size.

@@ -35,15 +35,15 @@ if __name__ == "__main__":
         "obs": np.random.uniform(0, 1.0, size=(10, 4)).astype(np.float32),
     }
 
-    # Start Ray and initialize a PPO trainer
+    # Start Ray and initialize a PPO Algorithm
     ray.init()
-    trainer = config.build(env="CartPole-v0")
+    algo = config.build(env="CartPole-v0")
 
     # You could train the model here via:
-    # trainer.train()
+    # algo.train()
 
     # Let's run inference on the tensorflow model
-    policy = trainer.get_policy()
+    policy = algo.get_policy()
     result_tf, _ = policy.model(test_data)
 
     # Evaluate tensor to fetch numpy array.
@@ -54,7 +54,7 @@ if __name__ == "__main__":
     # This line will export the model to ONNX.
     policy.export_model(outdir, onnx=11)
     # Equivalent to:
-    # trainer.export_policy_model(outdir, onnx=11)
+    # algo.export_policy_model(outdir, onnx=11)
 
     # Import ONNX model.
     exported_model_file = os.path.join(outdir, "saved_model.onnx")

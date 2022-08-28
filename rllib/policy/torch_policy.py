@@ -1,14 +1,12 @@
 import copy
 import functools
-import gym
 import logging
 import math
-import numpy as np
 import os
 import threading
 import time
-import tree  # pip install dm_tree
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -18,8 +16,11 @@ from typing import (
     Tuple,
     Type,
     Union,
-    TYPE_CHECKING,
 )
+
+import gym
+import numpy as np
+import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
@@ -29,7 +30,7 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import force_list, NullContextManager
+from ray.rllib.utils import NullContextManager, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
@@ -39,12 +40,12 @@ from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     GradInfoDict,
     ModelGradients,
     ModelWeights,
-    TensorType,
     TensorStructType,
-    TrainerConfigDict,
+    TensorType,
 )
 
 if TYPE_CHECKING:
@@ -64,7 +65,7 @@ class TorchPolicy(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         *,
         model: Optional[TorchModelV2] = None,
         loss: Optional[
@@ -142,6 +143,7 @@ class TorchPolicy(Policy):
                 divisibility requirement for sample batches given the Policy.
         """
         self.framework = config["framework"] = "torch"
+        self._loss_initialized = False
         super().__init__(observation_space, action_space, config)
 
         # Create multi-GPU model towers, if necessary.
@@ -172,26 +174,15 @@ class TorchPolicy(Policy):
                 action_distribution_class = dist_class
 
         # Get devices to build the graph on.
-        worker_idx = self.config.get("worker_index", 0)
-        if not config["_fake_gpus"] and ray.worker._mode() == ray.worker.LOCAL_MODE:
-            num_gpus = 0
-        elif worker_idx == 0:
-            num_gpus = config["num_gpus"]
-        else:
-            num_gpus = config["num_gpus_per_worker"]
+        num_gpus = self._get_num_gpus_for_policy()
         gpu_ids = list(range(torch.cuda.device_count()))
+        logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
 
         # Place on one or more CPU(s) when either:
         # - Fake GPU mode.
         # - num_gpus=0 (either set by user or we are in local_mode=True).
         # - No GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
-            logger.info(
-                "TorchPolicy (worker={}) running on {}.".format(
-                    worker_idx if worker_idx > 0 else "local",
-                    "{} fake-GPUs".format(num_gpus) if config["_fake_gpus"] else "CPU",
-                )
-            )
             self.device = torch.device("cpu")
             self.devices = [self.device for _ in range(int(math.ceil(num_gpus)) or 1)]
             self.model_gpu_towers = [
@@ -209,14 +200,9 @@ class TorchPolicy(Policy):
         # - actual GPUs available AND
         # - non-fake GPU mode.
         else:
-            logger.info(
-                "TorchPolicy (worker={}) running on {} GPU(s).".format(
-                    worker_idx if worker_idx > 0 else "local", num_gpus
-                )
-            )
             # We are a remote worker (WORKER_MODE=1):
             # GPUs should be assigned to us by ray.
-            if ray.worker._mode() == ray.worker.WORKER_MODE:
+            if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
                 gpu_ids = ray.get_gpu_ids()
 
             if len(gpu_ids) < num_gpus:
@@ -767,7 +753,11 @@ class TorchPolicy(Policy):
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
-        # Then the Policy's (NN) weights.
+
+        # Restore glbal timestep.
+        self.global_timestep = state["global_timestep"]
+
+        # Then the Policy's (NN) weights and connectors.
         super().set_state(state)
 
     @DeveloperAPI

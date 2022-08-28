@@ -71,6 +71,15 @@ Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentActorId(JNIEnv *
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_context_NativeWorkerContext_nativeGetRpcAddress(JNIEnv *, jclass);
 
+/*
+ * Class:     io_ray_runtime_context_NativeWorkerContext
+ * Method:    nativeGetSerializedRuntimeEnv
+ * Signature: ()Ljava/lang/String;
+ */
+JNIEXPORT jstring JNICALL
+Java_io_ray_runtime_context_NativeWorkerContext_nativeGetSerializedRuntimeEnv(JNIEnv *,
+                                                                              jclass);
+
 #ifdef __cplusplus
 }
 #endif

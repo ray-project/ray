@@ -152,7 +152,7 @@ def test_ray_server_basic(docker_cluster):
     header, worker = docker_cluster
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
     assert output.exit_code == 0
-    assert b"Adding 1 replicas to deployment 'Counter'." in output.output
+    assert b"Adding 1 replica to deployment 'Counter'." in output.output
     # somehow this is not working and the port is not exposed to the host.
     # worker_cli = worker.client()
     # print(worker_cli.request("GET", "/api/incr"))
@@ -188,4 +188,9 @@ def test_ray_server_basic(docker_cluster):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-vs", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

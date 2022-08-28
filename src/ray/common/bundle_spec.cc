@@ -62,20 +62,6 @@ const ResourceRequest &BundleSpecification::GetRequiredResources() const {
   return *unit_resource_;
 }
 
-absl::flat_hash_map<std::string, double> BundleSpecification::GetWildcardResources()
-    const {
-  absl::flat_hash_map<std::string, double> wildcard_resources;
-  std::string pattern("_group_");
-  for (const auto &[name, capacity] : bundle_resource_labels_) {
-    auto idx = name.find(pattern);
-    if (idx != std::string::npos &&
-        name.find("_", idx + pattern.size()) == std::string::npos) {
-      wildcard_resources[name] = capacity;
-    }
-  }
-  return wildcard_resources;
-}
-
 BundleID BundleSpecification::BundleId() const {
   if (message_->bundle_id()
           .placement_group_id()
@@ -145,6 +131,19 @@ std::string GetOriginalResourceName(const std::string &resource) {
   return resource.substr(0, idx);
 }
 
+std::string GetOriginalResourceNameFromWildcardResource(const std::string &resource) {
+  static const std::regex wild_card_resource_pattern("^(.*)_group_([0-9a-f]+)$");
+  std::smatch match_groups;
+  if (!std::regex_match(resource, match_groups, wild_card_resource_pattern) ||
+      match_groups.size() != 3) {
+    return "";
+  }
+
+  // group 0: resource
+  // group 1: pg id
+  return match_groups[1].str();
+}
+
 std::string GetDebugStringForBundles(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles) {
   std::ostringstream debug_info;
@@ -153,5 +152,44 @@ std::string GetDebugStringForBundles(
   }
   return debug_info.str();
 };
+
+std::unordered_map<std::string, double> AddPlacementGroupConstraint(
+    const std::unordered_map<std::string, double> &resources,
+    const PlacementGroupID &placement_group_id,
+    int64_t bundle_index) {
+  std::unordered_map<std::string, double> new_resources;
+  if (!placement_group_id.IsNil()) {
+    RAY_CHECK((bundle_index == -1 || bundle_index >= 0))
+        << "Invalid bundle index " << bundle_index;
+    for (auto iter = resources.begin(); iter != resources.end(); iter++) {
+      auto wildcard_name =
+          FormatPlacementGroupResource(iter->first, placement_group_id, -1);
+      new_resources[wildcard_name] = iter->second;
+      if (bundle_index >= 0) {
+        auto index_name =
+            FormatPlacementGroupResource(iter->first, placement_group_id, bundle_index);
+        new_resources[index_name] = iter->second;
+      }
+    }
+    return new_resources;
+  }
+  return resources;
+}
+
+std::unordered_map<std::string, double> AddPlacementGroupConstraint(
+    const std::unordered_map<std::string, double> &resources,
+    const rpc::SchedulingStrategy &scheduling_strategy) {
+  auto placement_group_id = PlacementGroupID::Nil();
+  auto bundle_index = -1;
+  if (scheduling_strategy.scheduling_strategy_case() ==
+      rpc::SchedulingStrategy::SchedulingStrategyCase::
+          kPlacementGroupSchedulingStrategy) {
+    placement_group_id = PlacementGroupID::FromBinary(
+        scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
+    bundle_index = scheduling_strategy.placement_group_scheduling_strategy()
+                       .placement_group_bundle_index();
+  }
+  return AddPlacementGroupConstraint(resources, placement_group_id, bundle_index);
+}
 
 }  // namespace ray

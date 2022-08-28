@@ -1,27 +1,30 @@
 import logging
 import os
 from typing import Dict, List, Optional
-import asyncio
 
-from ray.experimental.internal_kv import _internal_kv_initialized
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
-    download_and_unpack_package,
     delete_package,
+    download_and_unpack_package,
     get_local_dir_from_uri,
     is_jar_uri,
 )
-from ray._private.utils import get_directory_size_bytes
-from ray._private.utils import try_to_create_directory
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray.exceptions import RuntimeEnvSetupError
 
 default_logger = logging.getLogger(__name__)
 
 
-class JavaJarsManager:
-    def __init__(self, resources_dir: str):
+class JavaJarsPlugin(RuntimeEnvPlugin):
+
+    name = "java_jars"
+
+    def __init__(self, resources_dir: str, gcs_aio_client: GcsAioClient):
         self._resources_dir = os.path.join(resources_dir, "java_jars_files")
+        self._gcs_aio_client = gcs_aio_client
         try_to_create_directory(self._resources_dir)
-        assert _internal_kv_initialized()
 
     def _get_local_dir_from_uri(self, uri: str):
         return get_local_dir_from_uri(uri, self._resources_dir)
@@ -40,14 +43,21 @@ class JavaJarsManager:
 
         return local_dir_size
 
-    def get_uris(self, runtime_env: dict) -> Optional[List[str]]:
+    def get_uris(self, runtime_env: dict) -> List[str]:
         return runtime_env.java_jars()
 
-    def _download_jars(
+    async def _download_jars(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
     ):
         """Download a jar URI."""
-        jar_file = download_and_unpack_package(uri, self._resources_dir, logger=logger)
+        try:
+            jar_file = await download_and_unpack_package(
+                uri, self._resources_dir, self._gcs_aio_client, logger=logger
+            )
+        except Exception as e:
+            raise RuntimeEnvSetupError(
+                "Failed to download jar file: {}".format(e)
+            ) from e
         module_dir = self._get_local_dir_from_uri(uri)
         logger.debug(f"Succeeded to download jar file {jar_file} .")
         return module_dir
@@ -59,28 +69,29 @@ class JavaJarsManager:
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-        def _create():
-            if is_jar_uri(uri):
-                module_dir = self._download_jars(uri=uri, logger=logger)
-            else:
-                module_dir = download_and_unpack_package(
-                    uri, self._resources_dir, logger=logger
+        if not uri:
+            return 0
+        if is_jar_uri(uri):
+            module_dir = await self._download_jars(uri=uri, logger=logger)
+        else:
+            try:
+                module_dir = await download_and_unpack_package(
+                    uri, self._resources_dir, self._gcs_aio_client, logger=logger
                 )
+            except Exception as e:
+                raise RuntimeEnvSetupError(
+                    "Failed to download jar file: {}".format(e)
+                ) from e
 
-            return get_directory_size_bytes(module_dir)
-
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _create)
+        return get_directory_size_bytes(module_dir)
 
     def modify_context(
         self,
-        uris: Optional[List[str]],
+        uris: List[str],
         runtime_env_dict: Dict,
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ):
-        if uris is None:
-            return
         for uri in uris:
             module_dir = self._get_local_dir_from_uri(uri)
             if not module_dir.exists():

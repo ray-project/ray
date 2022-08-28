@@ -6,7 +6,7 @@ import ray.cloudpickle as cpickle
 from ray.air.constants import PREPROCESSOR_KEY
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
 def save_preprocessor_to_dir(

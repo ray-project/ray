@@ -9,8 +9,9 @@ from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 
-from ray.train.xgboost import XGBoostTrainer, load_checkpoint
-from ray.air.preprocessor import Preprocessor
+from ray.train.xgboost import XGBoostCheckpoint, XGBoostTrainer
+from ray.air.config import ScalingConfig
+from ray.data.preprocessor import Preprocessor
 
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
@@ -24,7 +25,7 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-scale_config = {"num_workers": 2}
+scale_config = ScalingConfig(num_workers=2)
 
 data_raw = load_breast_cancer()
 dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
@@ -66,8 +67,8 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
-    checkpoint = result.checkpoint
-    xgb_model, _ = load_checkpoint(checkpoint)
+    checkpoint = XGBoostCheckpoint.from_checkpoint(result.checkpoint)
+    xgb_model = checkpoint.get_model()
     assert get_num_trees(xgb_model) == 5
 
     # Move checkpoint to a different directory.
@@ -85,9 +86,51 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
         resume_from_checkpoint=resume_from,
     )
     result = trainer.fit()
-    checkpoint = result.checkpoint
-    model, _ = load_checkpoint(checkpoint)
+    checkpoint = XGBoostCheckpoint.from_checkpoint(result.checkpoint)
+    model = checkpoint.get_model()
     assert get_num_trees(model) == 10
+
+
+@pytest.mark.parametrize(
+    "freq_end_expected",
+    [
+        (4, True, 7),  # 4, 8, 12, 16, 20, 24, 25
+        (4, False, 6),  # 4, 8, 12, 16, 20, 24
+        (5, True, 5),  # 5, 10, 15, 20, 25
+        (0, True, 1),
+        (0, False, 0),
+    ],
+)
+def test_checkpoint_freq(ray_start_4_cpus, freq_end_expected):
+    freq, end, expected = freq_end_expected
+
+    train_dataset = ray.data.from_pandas(train_df)
+    valid_dataset = ray.data.from_pandas(test_df)
+    trainer = XGBoostTrainer(
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(
+                checkpoint_frequency=freq, checkpoint_at_end=end
+            )
+        ),
+        scaling_config=scale_config,
+        label_column="target",
+        params=params,
+        num_boost_round=25,
+        datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
+    )
+    result = trainer.fit()
+
+    # Assert number of checkpoints
+    assert len(result.best_checkpoints) == expected, str(
+        [
+            (metrics["training_iteration"], _cp._local_path)
+            for _cp, metrics in result.best_checkpoints
+        ]
+    )
+
+    # Assert checkpoint numbers are increasing
+    cp_paths = [cp._local_path for cp, _ in result.best_checkpoints]
+    assert cp_paths == sorted(cp_paths), str(cp_paths)
 
 
 def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
@@ -120,7 +163,9 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
     checkpoint_path = checkpoint.to_directory(tmpdir)
     resume_from = Checkpoint.from_directory(checkpoint_path)
 
-    model, preprocessor = load_checkpoint(resume_from)
+    resume_from = XGBoostCheckpoint.from_checkpoint(resume_from)
+
+    model, preprocessor = resume_from.get_model(), resume_from.get_preprocessor()
     assert get_num_trees(model) == 10
     assert preprocessor.is_same
     assert preprocessor.fitted_
@@ -151,14 +196,14 @@ def test_validation(ray_start_4_cpus):
     valid_dataset = ray.data.from_pandas(test_df)
     with pytest.raises(KeyError, match=TRAIN_DATASET_KEY):
         XGBoostTrainer(
-            scaling_config={"num_workers": 2},
+            scaling_config=ScalingConfig(num_workers=2),
             label_column="target",
             params=params,
             datasets={"valid": valid_dataset},
         )
     with pytest.raises(KeyError, match="dmatrix_params"):
         XGBoostTrainer(
-            scaling_config={"num_workers": 2},
+            scaling_config=ScalingConfig(num_workers=2),
             label_column="target",
             params=params,
             dmatrix_params={"data": {}},

@@ -11,7 +11,7 @@ toml
 python-dotenv
 expiringdict
 requests
-protobuf<4
+protobuf >= 3.15.3, < 4.0.0
 pytz
 git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray
 git+https://github.com/ray-project/lightgbm_ray.git#lightgbm_ray

@@ -1,3 +1,4 @@
+import ray.rllib.agents.ppo.appo as appo  # noqa
 from ray.rllib.algorithms.ppo.ppo import PPOConfig, PPO as PPOTrainer, DEFAULT_CONFIG
 from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy, PPOTF2Policy
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy

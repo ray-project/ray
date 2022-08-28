@@ -21,10 +21,10 @@ class TestPolicy(unittest.TestCase):
     def test_policy_get_and_set_state(self):
         config = PPOConfig()
         for fw in framework_iterator(config):
-            trainer = config.build(env="CartPole-v0")
-            policy = trainer.get_policy()
+            algo = config.build(env="CartPole-v0")
+            policy = algo.get_policy()
             state1 = policy.get_state()
-            trainer.train()
+            algo.train()
             state2 = policy.get_state()
             check(state1["global_timestep"], state2["global_timestep"], false=True)
 

@@ -33,22 +33,22 @@ class ServeRLlibPolicy:
 
     All the necessary serving logic is implemented in here:
     - Creation and restoring of the (already trained) RLlib Trainer.
-    - Calls to trainer.compute_action upon receiving an action request
+    - Calls to algo.compute_action upon receiving an action request
       (with a current observation).
     """
 
     def __init__(self, config, checkpoint_path):
         # Create the Trainer.
-        self.trainer = dqn.DQN(config=config)
-        # Load an already trained state for the trainer.
-        self.trainer.restore(checkpoint_path)
+        self.algo = dqn.DQN(config=config)
+        # Load an already trained state for the algo.
+        self.algo.restore(checkpoint_path)
 
     async def __call__(self, request: Request):
         json_input = await request.json()
 
         # Compute and return the action for the given observation.
         obs = json_input["observation"]
-        action = self.trainer.compute_single_action(obs)
+        action = self.algo.compute_single_action(obs)
 
         return {"action": int(action)}
 
@@ -59,15 +59,15 @@ def train_rllib_policy(config):
     Saves the trained Trainer to disk and returns the checkpoint path.
 
     Returns:
-        str: The saved checkpoint to restore the trainer DQN from.
+        str: The saved checkpoint to restore DQN from.
     """
-    # Create trainer from config.
-    trainer = dqn.DQN(config=config)
+    # Create algorithm from config.
+    algo = dqn.DQN(config=config)
 
     # Train for n iterations, then save.
     for _ in range(args.train_iters):
-        print(trainer.train())
-    return trainer.save()
+        print(algo.train())
+    return algo.save()
 
 
 if __name__ == "__main__":

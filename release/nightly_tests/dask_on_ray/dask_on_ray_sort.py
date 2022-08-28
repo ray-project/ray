@@ -1,15 +1,14 @@
+import csv
+import json
+import os.path
+import time
+
+import boto3
 import dask
 import dask.dataframe as dd
-import json
-import pandas as pd
 import numpy as np
-import os.path
-import csv
-import boto3
-
+import pandas as pd
 from dask.distributed import Client
-
-import time
 
 
 def load_dataset(client, data_dir, s3_bucket, nbytes, npartitions):
@@ -185,7 +184,7 @@ if __name__ == "__main__":
         import ray
 
         ray.init(address="auto")
-        from ray.util.dask import ray_dask_get, dataframe_optimize
+        from ray.util.dask import dataframe_optimize, ray_dask_get
 
         dask.config.set(scheduler=ray_dask_get, dataframe_optimize=dataframe_optimize)
         client = None
@@ -236,7 +235,7 @@ if __name__ == "__main__":
         )
     )
 
-    print(ray.internal.internal_api.memory_summary(stats_only=True))
+    print(ray._private.internal_api.memory_summary(stats_only=True))
     duration = np.mean(output)
 
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:

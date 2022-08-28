@@ -5,10 +5,10 @@ It supports both traced and non-traced eager execution modes."""
 import functools
 import logging
 import threading
-import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple
 
-from ray.util.debug import log_once
+import tree  # pip install dm_tree
+
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.repeated_values import RepeatedValues
@@ -16,8 +16,8 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
-from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
+from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -26,6 +26,7 @@ from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, TensorType
+from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -294,7 +295,7 @@ def _build_eager_tf_policy(
     much simpler, but has lower performance.
 
     You shouldn't need to call this directly. Rather, prefer to build a TF
-    graph policy and use set {"framework": "tfe"} in the trainer config to have
+    graph policy and use set {"framework": "tfe"} in the Algorithm's config to have
     it automatically be converted to an eager policy.
 
     This has the same signature as build_tf_policy()."""
@@ -330,22 +331,10 @@ def _build_eager_tf_policy(
             )
 
             # Log device and worker index.
-            from ray.rllib.evaluation.rollout_worker import get_global_worker
-
-            worker = get_global_worker()
-            worker_idx = worker.worker_index if worker else 0
-            if get_gpu_devices():
-                logger.info(
-                    "TF-eager Policy (worker={}) running on GPU.".format(
-                        worker_idx if worker_idx > 0 else "local"
-                    )
-                )
-            else:
-                logger.info(
-                    "TF-eager Policy (worker={}) running on CPU.".format(
-                        worker_idx if worker_idx > 0 else "local"
-                    )
-                )
+            num_gpus = self._get_num_gpus_for_policy()
+            if num_gpus > 0:
+                gpu_ids = get_gpu_devices()
+                logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
 
             self._is_training = False
 
@@ -733,9 +722,12 @@ def _build_eager_tf_policy(
             # Set exploration's state.
             if hasattr(self, "exploration") and "_exploration_state" in state:
                 self.exploration.set_state(state=state["_exploration_state"])
-            # Weights and global_timestep (tf vars).
-            self.set_weights(state["weights"])
+
+            # Restore glbal timestep (tf vars).
             self.global_timestep.assign(state["global_timestep"])
+
+            # Then the Policy's (NN) weights and connectors.
+            super().set_state(state)
 
         @override(Policy)
         def export_checkpoint(self, export_dir):

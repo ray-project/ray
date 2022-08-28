@@ -1,26 +1,26 @@
+import asyncio
 import os
-import pytest
 import subprocess
 import sys
-import asyncio
-
 from pathlib import Path
 
-import ray
 import psutil
-import ray.ray_constants as ray_constants
+import pytest
+
+import ray
+import ray._private.ray_constants as ray_constants
 from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
-from ray._private.utils import detect_fate_sharing_support
 from ray._private.test_utils import (
+    Semaphore,
     check_call_ray,
+    check_call_subprocess,
+    kill_process_by_name,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_children_of_pid,
     wait_for_children_of_pid_to_exit,
-    kill_process_by_name,
-    Semaphore,
-    check_call_subprocess,
 )
+from ray._private.utils import detect_fate_sharing_support
 
 
 def test_calling_start_ray_head(call_ray_stop_only):
@@ -396,7 +396,7 @@ print("success")
         driver_script = driver_script_template.format(address, nonexistent_id.hex())
         out = run_string_as_driver(driver_script)
         # Simulate the nonexistent dependency becoming available.
-        ray.worker.global_worker.put_object(None, nonexistent_id)
+        ray._private.worker.global_worker.put_object(None, nonexistent_id)
         # Make sure the first driver ran to completion.
         assert "success" in out
 
@@ -420,7 +420,7 @@ print("success")
         driver_script = driver_script_template.format(address, nonexistent_id.hex())
         out = run_string_as_driver(driver_script)
         # Simulate the nonexistent dependency becoming available.
-        ray.worker.global_worker.put_object(None, nonexistent_id)
+        ray._private.worker.global_worker.put_object(None, nonexistent_id)
         # Make sure the first driver ran to completion.
         assert "success" in out
 
@@ -574,4 +574,7 @@ if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

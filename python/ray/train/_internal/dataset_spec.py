@@ -1,13 +1,12 @@
 from dataclasses import dataclass
-from typing import Optional, Union, Dict, Callable, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Union
 
 from ray.actor import ActorHandle
-
 from ray.air.config import DatasetConfig
 
 if TYPE_CHECKING:
     from ray.data import Dataset, DatasetPipeline
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 RayDataset = Union["Dataset", "DatasetPipeline"]
 
@@ -18,10 +17,10 @@ class RayDatasetSpec:
 
     dataset_or_dict: An optional Ray Dataset (or DatasetPipeline) or a dictionary of
         datasets to be sharded across all the training workers, which can be accessed
-        from the training function via ``train.get_dataset_shard()``. Multiple Datasets
-        can be passed in as a dictionary that maps each name key to a Dataset value,
-        and each Dataset can be accessed from the training function by passing in a
-        `dataset_name` argument to ``train.get_dataset_shard()``.
+        from the training function via ``session.get_dataset_shard()``. Multiple
+        Datasets can be passed in as a dictionary that maps each name key to a
+        Dataset value, and each Dataset can be accessed from the training function
+        by passing in a `dataset_name` argument to ``session.get_dataset_shard()``.
     dataset_split_fn: An optional callable to specify how the provided ``dataset``
         should be split across the training workers. It is expected to take in two
         arguments. The first one is the ``dataset``, just as is passed in to the
@@ -29,8 +28,7 @@ class RayDatasetSpec:
         training workers (to use as locality hints). The Callable is expected to
         return a list of RayDatasets or a list of dictionaries of RayDatasets,
         with the length of the list equal to the length of the list of actor handles.
-        If None is provided, the provided Ray Dataset(s) will be simply be split using
-        the actor handles as locality hints.
+        If None is provided, the provided Ray Dataset(s) will be equally split.
 
     """
 
@@ -124,6 +122,14 @@ class DataParallelIngestSpec:
         Returns:
             Dict of transformed datasets.
         """
+
+        for key, dataset in list(datasets.items()):
+            conf = self._config(key)
+            # If globally shuffling, don't randomize unless using the stream API.
+            local_window = conf.use_stream_api and conf.stream_window_size > 0
+            if conf.randomize_block_order and (not conf.global_shuffle or local_window):
+                datasets[key] = dataset.randomize_block_order()
+
         if prep:
             ds_to_fit = None
             for k, conf in self.dataset_config.items():
@@ -179,15 +185,24 @@ class DataParallelIngestSpec:
                     ).repeat()
                     # In windowed mode, we re-apply the preprocessor on each iteration.
                     if self.preprocessor:
+                        # TODO: Replace with self.preprocessor.transform when possible.
                         prep = self.preprocessor.transform_batch
                         dataset = dataset.map_batches(prep, batch_format="pandas")
                 else:
                     # If the window size is infinity, the preprocessor is cached and
                     # we don't need to re-apply it each time.
                     dataset = dataset.repeat()
+                # Always re-randomize each window; this doesn't help with reducing
+                # cluster hot-spots since we already randomized the based blocks, but
+                # can help with improving randomness in combination with local shuffle.
+                if config.randomize_block_order and not config.global_shuffle:
+                    dataset = dataset.randomize_block_order_each_window()
 
             if config.global_shuffle:
-                dataset = dataset.random_shuffle_each_window()
+                if config.use_stream_api:
+                    dataset = dataset.random_shuffle_each_window()
+                else:
+                    dataset = dataset.random_shuffle()
 
             if config.split:
                 dataset_splits = dataset.split(

@@ -58,9 +58,17 @@ RLlib Feature Guides
     :img-top: /rllib/images/rllib-logo.svg
 
     +++
+    .. link-button:: rllib-replay-buffers
+        :type: ref
+        :text: Working with ReplayBuffers
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /rllib/images/rllib-logo.svg
+
+    +++
     .. link-button:: rllib-dev
         :type: ref
         :text: How To Contribute To RLlib?
         :classes: btn-link btn-block stretched-link
 
-.. include:: /_includes/rllib/announcement_bottom.rst

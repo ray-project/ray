@@ -6,8 +6,9 @@ from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 
-from ray.train.sklearn import SklearnTrainer, load_checkpoint
-from ray.air.preprocessor import Preprocessor
+from ray.train.sklearn import SklearnCheckpoint, SklearnTrainer
+from ray.air.config import ScalingConfig
+from ray.data.preprocessor import Preprocessor
 
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
@@ -22,7 +23,7 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-scale_config = {"trainer_resources": {"CPU": 2}}
+scale_config = ScalingConfig(trainer_resources={"CPU": 2})
 
 data_raw = load_breast_cancer()
 dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
@@ -91,7 +92,8 @@ def test_no_auto_cpu_params(ray_start_4_cpus, tmpdir):
     )
     result = trainer.fit()
 
-    model, _ = load_checkpoint(result.checkpoint)
+    checkpoint = SklearnCheckpoint.from_checkpoint(result.checkpoint)
+    model = checkpoint.get_estimator()
     assert model.n_jobs == 1
 
 
@@ -125,7 +127,10 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
     checkpoint_path = checkpoint.to_directory(tmpdir)
     resume_from = Checkpoint.from_directory(checkpoint_path)
 
-    model, preprocessor = load_checkpoint(resume_from)
+    checkpoint = SklearnCheckpoint.from_checkpoint(resume_from)
+
+    model = checkpoint.get_estimator()
+    preprocessor = checkpoint.get_preprocessor()
     assert hasattr(model, "feature_importances_")
     assert preprocessor.is_same
     assert preprocessor.fitted_
@@ -172,17 +177,17 @@ def test_validation(ray_start_4_cpus):
             label_column="target",
             datasets={TRAIN_DATASET_KEY: train_dataset, "cv": valid_dataset},
         )
-    with pytest.raises(ValueError, match="are not allowed to be set"):
+    with pytest.raises(ValueError, match="are not allowed to be updated"):
         SklearnTrainer(
             estimator=RandomForestClassifier(),
-            scaling_config={"num_workers": 2},
+            scaling_config=ScalingConfig(num_workers=2),
             label_column="target",
             datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         )
     with pytest.raises(ValueError, match="parallelize_cv"):
         SklearnTrainer(
             estimator=RandomForestClassifier(),
-            scaling_config={"trainer_resources": {"GPU": 1}},
+            scaling_config=ScalingConfig(trainer_resources={"GPU": 1}),
             label_column="target",
             cv=5,
             parallelize_cv=True,

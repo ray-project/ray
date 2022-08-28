@@ -5,50 +5,45 @@ Simple Q-Learning
 This module provides a basic implementation of the DQN algorithm without any
 optimizations.
 
-This file defines the distributed Trainer class for the Simple Q algorithm.
+This file defines the distributed Algorithm class for the Simple Q algorithm.
 See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
 """
 
 import logging
 from typing import List, Optional, Type, Union
 
-from ray.rllib.algorithms.simple_q.simple_q_tf_policy import SimpleQTFPolicy
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.simple_q.simple_q_tf_policy import (
+    SimpleQTF1Policy,
+    SimpleQTF2Policy,
+)
 from ray.rllib.algorithms.simple_q.simple_q_torch_policy import SimpleQTorchPolicy
-from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.trainer_config import TrainerConfig
-from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
-from ray.rllib.utils.replay_buffers.utils import (
-    validate_buffer_config,
-    update_priorities_in_replay_buffer,
-)
-from ray.rllib.execution.rollout_ops import (
-    synchronous_parallel_sample,
-)
-from ray.rllib.execution.train_ops import (
-    train_one_step,
-    multi_gpu_train_one_step,
-)
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
-from ray.rllib.utils.annotations import ExperimentalAPI, override
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_TARGET_UPDATES,
+    SYNCH_WORKER_WEIGHTS_TIMER,
     TARGET_NET_UPDATE_TIMER,
 )
-from ray.rllib.utils.typing import (
-    ResultDict,
-    TrainerConfigDict,
+from ray.rllib.utils.replay_buffers.utils import (
+    update_priorities_in_replay_buffer,
+    validate_buffer_config,
 )
+from ray.rllib.utils.typing import AlgorithmConfigDict, ResultDict
 
 logger = logging.getLogger(__name__)
 
 
-class SimpleQConfig(TrainerConfig):
-    """Defines a configuration class from which a SimpleQ Trainer can be built.
+class SimpleQConfig(AlgorithmConfig):
+    """Defines a configuration class from which a SimpleQ Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
@@ -87,7 +82,6 @@ class SimpleQConfig(TrainerConfig):
         >>>     })
         >>> config = SimpleQConfig().rollouts(rollout_fragment_length=32)\
         >>>                         .exploration(exploration_config=explore_config)\
-        >>>                         .training(learning_starts=200)
 
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
@@ -102,23 +96,25 @@ class SimpleQConfig(TrainerConfig):
         >>>                         .exploration(exploration_config=explore_config)
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a SimpleQConfig instance."""
-        super().__init__(trainer_class=trainer_class or SimpleQ)
+        super().__init__(algo_class=algo_class or SimpleQ)
 
         # Simple Q specific
         # fmt: off
         # __sphinx_doc_begin__
         self.target_network_update_freq = 500
         self.replay_buffer_config = {
-            # How many steps of the model to sample before learning starts.
-            "learning_starts": 1000,
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
             # The number of contiguous environment steps to replay at once. This
             # may be set to greater than 1 to support recurrent models.
             "replay_sequence_length": 1,
         }
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        self.num_steps_sampled_before_learning_starts = 1000
         self.store_buffer_in_checkpoints = False
         self.lr_schedule = None
         self.adam_epsilon = 1e-8
@@ -126,7 +122,7 @@ class SimpleQConfig(TrainerConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-        # Overrides of TrainerConfig defaults
+        # Overrides of AlgorithmConfig defaults
         # `rollouts()`
         self.num_workers = 0
         self.rollout_fragment_length = 4
@@ -147,8 +143,8 @@ class SimpleQConfig(TrainerConfig):
         self.evaluation_config = {"explore": False}
 
         # `reporting()`
-        self.min_time_s_per_reporting = 1
-        self.min_sample_timesteps_per_reporting = 1000
+        self.min_time_s_per_iteration = None
+        self.min_sample_timesteps_per_iteration = 1000
 
         # Deprecated.
         self.buffer_size = DEPRECATED_VALUE
@@ -161,7 +157,7 @@ class SimpleQConfig(TrainerConfig):
         self.prioritized_replay_beta = DEPRECATED_VALUE
         self.prioritized_replay_eps = DEPRECATED_VALUE
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -171,6 +167,7 @@ class SimpleQConfig(TrainerConfig):
         lr_schedule: Optional[List[List[Union[int, float]]]] = None,
         adam_epsilon: Optional[float] = None,
         grad_clip: Optional[int] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "SimpleQConfig":
         """Sets the training related configuration.
@@ -185,7 +182,6 @@ class SimpleQConfig(TrainerConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "learning_starts": 1000,
                 "capacity": 50000,
                 "replay_sequence_length": 1,
                 }
@@ -226,9 +222,13 @@ class SimpleQConfig(TrainerConfig):
                 timestep 0.
             adam_epsilon: Adam optimizer's epsilon hyper parameter.
             grad_clip: If not None, clip gradients during optimization at this value.
+            num_steps_sampled_before_learning_starts: Number of timesteps to collect
+                from rollout workers before we start sampling from replay buffers for
+                learning. Whether we count this in agent steps  or environment steps
+                depends on config["multiagent"]["count_steps_by"].
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -254,18 +254,22 @@ class SimpleQConfig(TrainerConfig):
             self.adam_epsilon = adam_epsilon
         if grad_clip is not None:
             self.grad_clip = grad_clip
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
 
         return self
 
 
-class SimpleQ(Trainer):
+class SimpleQ(Algorithm):
     @classmethod
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return SimpleQConfig().to_dict()
 
-    @override(Trainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    @override(Algorithm)
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         """Validates the Trainer's config dict.
 
         Args:
@@ -301,18 +305,19 @@ class SimpleQ(Trainer):
                 "`simple_optimizer=True` if this doesn't work for you."
             )
 
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_policy_class(
-        self, config: TrainerConfigDict
+        self, config: AlgorithmConfigDict
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return SimpleQTorchPolicy
+        elif config["framework"] == "tf":
+            return SimpleQTF1Policy
         else:
-            return SimpleQTFPolicy
+            return SimpleQTF2Policy
 
-    @ExperimentalAPI
-    @override(Trainer)
-    def training_iteration(self) -> ResultDict:
+    @override(Algorithm)
+    def training_step(self) -> ResultDict:
         """Simple Q training iteration function.
 
         Simple Q consists of the following steps:
@@ -345,54 +350,47 @@ class SimpleQ(Trainer):
         global_vars = {
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
-
-        # Use deprecated replay() to support old replay buffers for now
-        train_batch = self.local_replay_buffer.sample(batch_size)
-        # If not yet learning, early-out here and do not perform learning, weight-
-        # synching, or target net updating.
-        if train_batch is None or len(train_batch) == 0:
-            self.workers.local_worker().set_global_vars(global_vars)
-            return {}
-
-        # Learn on the training batch.
-        # Use simple optimizer (only for multi-agent or tf-eager; all other
-        # cases should use the multi-GPU optimizer, even if only using 1 GPU)
-        if self.config.get("simple_optimizer") is True:
-            train_results = train_one_step(self, train_batch)
-        else:
-            train_results = multi_gpu_train_one_step(self, train_batch)
-
-        # Update replay buffer priorities.
-        update_priorities_in_replay_buffer(
-            self.local_replay_buffer,
-            self.config,
-            train_batch,
-            train_results,
-        )
-
-        # TODO: Move training steps counter update outside of `train_one_step()` method.
-        # # Update train step counters.
-        # self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
-        # self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
-
         # Update target network every `target_network_update_freq` sample steps.
         cur_ts = self._counters[
             NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
         ]
-        last_update = self._counters[LAST_TARGET_UPDATE_TS]
-        if cur_ts - last_update >= self.config["target_network_update_freq"]:
-            with self._timers[TARGET_NET_UPDATE_TIMER]:
-                to_update = local_worker.get_policies_to_train()
-                local_worker.foreach_policy_to_train(
-                    lambda p, pid: pid in to_update and p.update_target()
-                )
-            self._counters[NUM_TARGET_UPDATES] += 1
-            self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
-        # Update weights and global_vars - after learning on the local worker - on all
-        # remote workers.
-        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            self.workers.sync_weights(global_vars=global_vars)
+        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+            # Use deprecated replay() to support old replay buffers for now
+            train_batch = self.local_replay_buffer.sample(batch_size)
+
+            # Learn on the training batch.
+            # Use simple optimizer (only for multi-agent or tf-eager; all other
+            # cases should use the multi-GPU optimizer, even if only using 1 GPU)
+            if self.config.get("simple_optimizer") is True:
+                train_results = train_one_step(self, train_batch)
+            else:
+                train_results = multi_gpu_train_one_step(self, train_batch)
+
+            # Update replay buffer priorities.
+            update_priorities_in_replay_buffer(
+                self.local_replay_buffer,
+                self.config,
+                train_batch,
+                train_results,
+            )
+
+            last_update = self._counters[LAST_TARGET_UPDATE_TS]
+            if cur_ts - last_update >= self.config["target_network_update_freq"]:
+                with self._timers[TARGET_NET_UPDATE_TIMER]:
+                    to_update = local_worker.get_policies_to_train()
+                    local_worker.foreach_policy_to_train(
+                        lambda p, pid: pid in to_update and p.update_target()
+                    )
+                self._counters[NUM_TARGET_UPDATES] += 1
+                self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+
+            # Update weights and global_vars - after learning on the local worker -
+            # on all remote workers.
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                self.workers.sync_weights(global_vars=global_vars)
+        else:
+            train_results = {}
 
         # Return all collected metrics for the iteration.
         return train_results

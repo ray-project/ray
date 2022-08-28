@@ -1,11 +1,8 @@
-from typing import TYPE_CHECKING
-from typing import Optional, Dict, Union
 import warnings
+from typing import TYPE_CHECKING, Dict, Optional, Union
 
+from ray.train._internal.session import get_session
 from ray.train.constants import SESSION_MISUSE_LOG_ONCE_KEY
-from ray.train._internal.session import (
-    get_session,
-)
 from ray.util import PublicAPI, log_once
 
 if TYPE_CHECKING:
@@ -34,8 +31,8 @@ def get_dataset_shard(
 ) -> Optional[Union["Dataset", "DatasetPipeline"]]:
     """Returns the Ray Dataset or DatasetPipeline shard for this worker.
 
-    You should call ``to_torch()`` or ``to_tf()`` on this shard to convert
-    it to the appropriate framework-specific Dataset.
+    You should call ``iter_torch_batches()`` or ``iter_tf_batches()`` on this shard
+    to convert it to the appropriate framework-specific data type.
 
     .. code-block:: python
 
@@ -45,8 +42,9 @@ def get_dataset_shard(
         def train_func():
             model = Net()
             for iter in range(100):
-                data_shard = train.get_dataset_shard().to_torch()
-                model.train(data_shard)
+                data_shard = session.get_dataset_shard("train")
+                for batch in data_shard.iter_torch_batches():
+                    # ...
             return model
 
         dataset = ray.data.read_csv("train.csv")
@@ -118,7 +116,7 @@ def report(**kwargs) -> None:
     if session is None:
         _warn_session_misuse(report.__name__)
         return
-    session.report(**kwargs)
+    session._report_legacy(**kwargs)
 
 
 @PublicAPI(stability="beta")

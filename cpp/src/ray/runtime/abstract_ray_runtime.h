@@ -75,7 +75,7 @@ class AbstractRayRuntime : public RayRuntime {
 
   void RemoveLocalReference(const std::string &id);
 
-  std::string GetActorId(const std::string &actor_name);
+  std::string GetActorId(const std::string &actor_name, const std::string &ray_namespace);
 
   void KillActor(const std::string &str_actor_id, bool no_restart);
 
@@ -90,7 +90,9 @@ class AbstractRayRuntime : public RayRuntime {
 
   const JobID &GetCurrentJobID();
 
-  virtual const WorkerContext &GetWorkerContext();
+  const ActorID &GetCurrentActorID();
+
+  virtual const WorkerContext &GetWorkerContext() = 0;
 
   static std::shared_ptr<AbstractRayRuntime> GetInstance();
   static std::shared_ptr<AbstractRayRuntime> DoInit();
@@ -101,11 +103,14 @@ class AbstractRayRuntime : public RayRuntime {
 
   bool WasCurrentActorRestarted();
 
-  virtual ActorID GetCurrentActorID() { return ActorID::Nil(); }
-
   virtual std::vector<PlacementGroup> GetAllPlacementGroups();
   virtual PlacementGroup GetPlacementGroupById(const std::string &id);
   virtual PlacementGroup GetPlacementGroup(const std::string &name);
+
+  std::string GetNamespace();
+  std::string SerializeActorHandle(const std::string &actor_id);
+  std::string DeserializeAndRegisterActorHandle(
+      const std::string &serialized_actor_handle);
 
  protected:
   std::unique_ptr<TaskSubmitter> task_submitter_;

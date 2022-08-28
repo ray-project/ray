@@ -156,6 +156,3 @@ head_start_ray_commands:
 worker_start_ray_commands:
     - ray stop
     - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
-
-head_node: {}
-worker_nodes: {}

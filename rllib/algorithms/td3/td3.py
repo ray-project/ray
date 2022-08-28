@@ -6,20 +6,20 @@ TD3 paper.
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 
 class TD3Config(DDPGConfig):
-    """Defines a configuration class from which a TD3 Trainer can be built.
+    """Defines a configuration class from which a TD3 Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.td3 import TD3Config
         >>> config = TD3Config().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run one training iteration.
-        >>> trainer = config.build(env="Pendulum-v1")
-        >>> trainer.train()
+        >>> # Build a Algorithm object from the config and run one training iteration.
+        >>> algo = config.build(env="Pendulum-v1")
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.td3 import TD3Config
@@ -41,14 +41,14 @@ class TD3Config(DDPGConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a TD3Config instance."""
-        super().__init__(trainer_class=trainer_class or TD3)
+        super().__init__(algo_class=algo_class or TD3)
 
         # fmt: off
         # __sphinx_doc_begin__
 
-        # Override some of DDPG/SimpleQ/Trainer's default values with TD3-specific
+        # Override some of DDPG/SimpleQ/Algorithm's default values with TD3-specific
         # values.
 
         # .training()
@@ -71,9 +71,12 @@ class TD3Config(DDPGConfig):
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
             "capacity": 1000000,
-            "learning_starts": 10000,
             "worker_side_prioritization": False,
         }
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        self.num_steps_sampled_before_learning_starts = 10000
 
         # .exploration()
         # TD3 uses Gaussian Noise by default.
@@ -101,7 +104,7 @@ class TD3Config(DDPGConfig):
 class TD3(DDPG):
     @classmethod
     @override(DDPG)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return TD3Config().to_dict()
 
 

@@ -51,7 +51,6 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
             capacity=self.capacity,
             storage_unit="episodes",
             replay_ratio=0.5,
-            learning_starts=0,
         )
 
         # If we insert and replay n times, expect roughly return batches of
@@ -72,7 +71,11 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         """Test sampling of sequences."""
         # 50% replay ratio.
         buffer = MultiAgentMixInReplayBuffer(
-            capacity=100, storage_unit="sequences", replay_ratio=0.5, learning_starts=0
+            capacity=100,
+            storage_unit="sequences",
+            replay_ratio=0.5,
+            replay_sequence_length=2,
+            replay_sequence_override=True,
         )
 
         # If we insert and replay n times, expect roughly return batches of
@@ -94,7 +97,6 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
             capacity=self.capacity,
             storage_unit="timesteps",
             replay_ratio=0.333,
-            learning_starts=0,
         )
         # Expect exactly 0 samples to be returned (buffer empty).
         sample = buffer.sample(10)
@@ -127,7 +129,8 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
 
         # 90% replay ratio.
         buffer = MultiAgentMixInReplayBuffer(
-            capacity=self.capacity, replay_ratio=0.9, learning_starts=0
+            capacity=self.capacity,
+            replay_ratio=0.9,
         )
 
         # If we insert and replay n times, expect roughly return batches of
@@ -143,7 +146,8 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
 
         # 0% replay ratio -> Only new samples.
         buffer = MultiAgentMixInReplayBuffer(
-            capacity=self.capacity, replay_ratio=0.0, learning_starts=0
+            capacity=self.capacity,
+            replay_ratio=0.0,
         )
         # Add a new batch.
         batch = self._generate_single_timesteps()
@@ -170,7 +174,8 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
 
         # 100% replay ratio -> Only new samples.
         buffer = MultiAgentMixInReplayBuffer(
-            capacity=self.capacity, replay_ratio=1.0, learning_starts=0
+            capacity=self.capacity,
+            replay_ratio=1.0,
         )
         # Expect exactly 0 samples to be returned (buffer empty).
         sample = buffer.sample(1)

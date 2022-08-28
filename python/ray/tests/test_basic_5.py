@@ -4,16 +4,15 @@ import logging
 import os
 import sys
 import time
+
 import pytest
 
+import ray
 import ray.cluster_utils
 from ray._private.test_utils import (
-    wait_for_pid_to_exit,
-    client_test_enabled,
     run_string_as_driver,
+    wait_for_pid_to_exit,
 )
-
-import ray
 
 logger = logging.getLogger(__name__)
 
@@ -83,9 +82,6 @@ def test_actor_killing(shutdown_only):
     assert ray.get(worker_2.foo.remote()) is None
 
 
-@pytest.mark.skipif(
-    client_test_enabled(), reason="client api doesn't support namespace right now."
-)
 def test_internal_kv(ray_start_regular):
     import ray.experimental.internal_kv as kv
 
@@ -93,6 +89,8 @@ def test_internal_kv(ray_start_regular):
     assert kv._internal_kv_put("k1", "v1") is False
     assert kv._internal_kv_put("k1", "v1") is True
     assert kv._internal_kv_get("k1") == b"v1"
+    assert kv._internal_kv_exists(b"k1") is True
+    assert kv._internal_kv_exists(b"k2") is False
 
     assert kv._internal_kv_get("k1", namespace="n") is None
     assert kv._internal_kv_put("k1", "v1", namespace="n") is False
@@ -124,7 +122,26 @@ def test_internal_kv(ray_start_regular):
         kv._internal_kv_list("@namespace_abc", namespace="n")
 
 
-def test_run_on_all_workers(ray_start_regular, tmp_path):
+def test_exit_logging():
+    log = run_string_as_driver(
+        """
+import ray
+
+@ray.remote
+class A:
+    def pid(self):
+        import os
+        return os.getpid()
+
+
+a = A.remote()
+ray.get(a.pid.remote())
+    """
+    )
+    assert "Traceback" not in log
+
+
+def test_run_on_all_workers(call_ray_start, tmp_path):
     # This test is to ensure run_function_on_all_workers are executed
     # on all workers.
     lock_file = tmp_path / "lock"
@@ -147,14 +164,14 @@ def init_func(worker_info):
         old.append(worker_info['worker'].worker_id)
         data_file.write_bytes(pickle.dumps(old))
 
-ray.worker.global_worker.run_function_on_all_workers(init_func)
+ray._private.worker.global_worker.run_function_on_all_workers(init_func)
 ray.init(address='auto')
 
 @ray.remote
 def ready():
     with FileLock(lock_file):
         worker_ids = pickle.loads(data_file.read_bytes())
-        assert ray.worker.global_worker.worker_id in worker_ids
+        assert ray._private.worker.global_worker.worker_id in worker_ids
 
 ray.get(ready.remote())
 """
@@ -164,4 +181,7 @@ ray.get(ready.remote())
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -1,9 +1,11 @@
-from typing import Any, Dict, Optional, Union, List
 import uuid
+from typing import Any, Dict, List, Optional, Union
 
 import ray._private.gcs_utils as gcs_utils
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI
 class JobConfig:
     """A class used to store the configurations of a job.
 
@@ -96,7 +98,7 @@ class JobConfig:
         # TODO(edoakes): this is really unfortunate, but JobConfig is imported
         # all over the place so this causes circular imports. We should remove
         # this dependency and pass in a validated runtime_env instead.
-        from ray.utils import get_runtime_env_info
+        from ray._private.utils import get_runtime_env_info
 
         if self._cached_pb is None:
             pb = gcs_utils.JobConfig()
@@ -124,9 +126,8 @@ class JobConfig:
 
         return self._cached_pb
 
-    def runtime_env_has_uris(self):
-        """Whether there are uris in runtime env or not"""
-        return self._validate_runtime_env().has_uris()
+    def runtime_env_has_working_dir(self):
+        return self._validate_runtime_env().has_working_dir()
 
     def get_serialized_runtime_env(self) -> str:
         """Return the JSON-serialized parsed runtime env dict"""

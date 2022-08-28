@@ -7,13 +7,10 @@ import time
 import psutil
 import pytest
 import requests
-from ray._private.test_utils import (
-    run_string_as_driver,
-    wait_for_condition,
-)
 
 import ray
-from ray import ray_constants
+from ray._private import ray_constants
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 
 
 def search_agents(cluster):
@@ -37,7 +34,10 @@ def search_agents(cluster):
 def test_ray_start_default_port_conflict(call_ray_stop_only, shutdown_only):
     subprocess.check_call(["ray", "start", "--head"])
     ray.init(address="auto")
-    assert str(ray_constants.DEFAULT_DASHBOARD_PORT) in ray.worker.get_dashboard_url()
+    assert (
+        str(ray_constants.DEFAULT_DASHBOARD_PORT)
+        in ray._private.worker.get_dashboard_url()
+    )
 
     error_raised = False
     try:
@@ -61,7 +61,7 @@ def test_ray_start_default_port_conflict(call_ray_stop_only, shutdown_only):
 
 def test_port_auto_increment(shutdown_only):
     ray.init()
-    url = ray.worker.get_dashboard_url()
+    url = ray._private.worker.get_dashboard_url()
 
     def dashboard_available():
         try:
@@ -78,7 +78,7 @@ import ray
 from ray._private.test_utils import wait_for_condition
 import requests
 ray.init()
-url = ray.worker.get_dashboard_url()
+url = ray._private.worker.get_dashboard_url()
 assert url != "{url}"
 def dashboard_available():
     try:
@@ -123,7 +123,7 @@ def test_port_conflict(listen_port, call_ray_stop_only, shutdown_only):
 def test_dashboard(shutdown_only):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     dashboard_url = addresses["webui_url"]
-    assert ray.worker.get_dashboard_url() == dashboard_url
+    assert ray._private.worker.get_dashboard_url() == dashboard_url
 
     assert re.match(r"^(localhost|\d+\.\d+\.\d+\.\d+):\d+$", dashboard_url)
 
@@ -148,13 +148,6 @@ def test_dashboard(shutdown_only):
                     "Timed out while waiting for dashboard to start. "
                     f"Dashboard output log: {out_log}\n"
                 )
-
-
-@pytest.fixture
-def set_agent_failure_env_var():
-    os.environ["_RAY_AGENT_FAILING"] = "1"
-    yield
-    del os.environ["_RAY_AGENT_FAILING"]
 
 
 conflict_port = 34567
@@ -239,4 +232,7 @@ def test_dashboard_agent_metrics_or_http_port_conflict(listen_port, call_ray_sta
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

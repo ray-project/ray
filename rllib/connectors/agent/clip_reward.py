@@ -1,17 +1,18 @@
-import numpy as np
 from typing import Any, List
 
+import numpy as np
+
 from ray.rllib.connectors.connector import (
-    ConnectorContext,
     AgentConnector,
+    ConnectorContext,
     register_connector,
 )
-from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import AgentConnectorDataType
+from ray.util.annotations import PublicAPI
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 class ClipRewardAgentConnector(AgentConnector):
     def __init__(self, ctx: ConnectorContext, sign=False, limit=None):
         super().__init__(ctx)
@@ -21,7 +22,7 @@ class ClipRewardAgentConnector(AgentConnector):
         self.sign = sign
         self.limit = limit
 
-    def __call__(self, ac_data: AgentConnectorDataType) -> List[AgentConnectorDataType]:
+    def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
         d = ac_data.data
         assert (
             type(d) == dict
@@ -36,7 +37,7 @@ class ClipRewardAgentConnector(AgentConnector):
                 a_min=-self.limit,
                 a_max=self.limit,
             )
-        return [ac_data]
+        return ac_data
 
     def to_config(self):
         return ClipRewardAgentConnector.__name__, {

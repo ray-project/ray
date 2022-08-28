@@ -1,14 +1,14 @@
-import pytest
 import random
 from typing import Optional
 
-import ray
-from ray.data import Dataset, DatasetPipeline
-from ray.air.config import DatasetConfig
-from ray import train
+import pytest
 
+import ray
+from ray.air import session
+from ray.air.config import DatasetConfig, ScalingConfig
+from ray.data import Dataset, DatasetPipeline
+from ray.data.preprocessors import BatchMapper
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.air.preprocessors import BatchMapper
 
 
 @pytest.fixture
@@ -29,13 +29,13 @@ class TestBasic(DataParallelTrainer):
         self, num_workers: int, expect_ds: bool, expect_sizes: Optional[dict], **kwargs
     ):
         def train_loop_per_worker():
-            data_shard = train.get_dataset_shard("train")
+            data_shard = session.get_dataset_shard("train")
             if expect_ds:
                 assert isinstance(data_shard, Dataset), data_shard
             else:
                 assert isinstance(data_shard, DatasetPipeline), data_shard
             for k, v in expect_sizes.items():
-                shard = train.get_dataset_shard(k)
+                shard = session.get_dataset_shard(k)
                 if v == -1:
                     assert shard is None, shard
                 else:
@@ -44,9 +44,10 @@ class TestBasic(DataParallelTrainer):
                     else:
                         assert shard.count() == v, shard
 
+        kwargs.pop("scaling_config", None)
         super().__init__(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config={"num_workers": num_workers},
+            scaling_config=ScalingConfig(num_workers=num_workers),
             **kwargs,
         )
 
@@ -59,7 +60,7 @@ class TestWildcard(TestBasic):
 
 
 def test_basic(ray_start_4_cpus):
-    ds = ray.data.range(10)
+    ds = ray.data.range_table(10)
 
     # Single worker basic case.
     test = TestBasic(
@@ -104,7 +105,7 @@ def test_basic(ray_start_4_cpus):
 
 
 def test_error(ray_start_4_cpus):
-    ds = ray.data.range(10)
+    ds = ray.data.range_table(10)
 
     # Missing required dataset.
     with pytest.raises(ValueError):
@@ -135,7 +136,7 @@ def test_error(ray_start_4_cpus):
 
 
 def test_use_stream_api_config(ray_start_4_cpus):
-    ds = ray.data.range(10)
+    ds = ray.data.range_table(10)
 
     # Single worker basic case.
     test = TestBasic(
@@ -159,7 +160,7 @@ def test_use_stream_api_config(ray_start_4_cpus):
 
 
 def test_fit_transform_config(ray_start_4_cpus):
-    ds = ray.data.range(10)
+    ds = ray.data.range_table(10)
 
     def drop_odd(rows):
         key = list(rows)[0]
@@ -197,16 +198,37 @@ class TestStream(DataParallelTrainer):
 
     def __init__(self, check_results_fn, **kwargs):
         def train_loop_per_worker():
-            data_shard = train.get_dataset_shard("train")
+            data_shard = session.get_dataset_shard("train")
             assert isinstance(data_shard, DatasetPipeline), data_shard
             results = []
             for epoch in data_shard.iter_epochs(2):
                 results.append(epoch.take())
             check_results_fn(data_shard, results)
 
+        kwargs.pop("scaling_config", None)
         super().__init__(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config={"num_workers": 1},
+            scaling_config=ScalingConfig(num_workers=1),
+            **kwargs,
+        )
+
+
+class TestBatch(DataParallelTrainer):
+    _dataset_config = {
+        "train": DatasetConfig(split=True, required=True, use_stream_api=False),
+    }
+
+    def __init__(self, check_results_fn, **kwargs):
+        def train_loop_per_worker():
+            data_shard = session.get_dataset_shard("train")
+            assert isinstance(data_shard, Dataset), data_shard
+            results = data_shard.take()
+            check_results_fn(data_shard, results)
+
+        kwargs.pop("scaling_config", None)
+        super().__init__(
+            train_loop_per_worker=train_loop_per_worker,
+            scaling_config=ScalingConfig(num_workers=1),
             **kwargs,
         )
 
@@ -224,7 +246,7 @@ def test_stream_inf_window_cache_prep(ray_start_4_cpus):
         return [random.random() for _ in range(len(x))]
 
     prep = BatchMapper(rand)
-    ds = ray.data.range(5)
+    ds = ray.data.range_table(5)
     test = TestStream(
         checker,
         preprocessor=prep,
@@ -239,7 +261,7 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         return [random.random() for _ in range(len(x))]
 
     prep = BatchMapper(rand)
-    ds = ray.data.range(5)
+    ds = ray.data.range_table(5)
 
     # Test the default 1GiB window size.
     def checker(shard, results):
@@ -249,7 +271,10 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         assert results[0] != results[1], results
         stats = shard.stats()
         assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
-        assert "Stage 1 read->map_batches: 5/5 blocks executed " in stats, stats
+        assert (
+            "Stage 1 read->randomize_block_order->map_batches: 5/5 blocks executed "
+            in stats
+        ), stats
 
     test = TestStream(
         checker,
@@ -267,7 +292,10 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         assert results[0] != results[1], results
         stats = shard.stats()
         assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
-        assert "Stage 1 read->map_batches: 1/1 blocks executed " in stats, stats
+        assert (
+            "Stage 1 read->randomize_block_order->map_batches: 1/1 blocks executed "
+            in stats
+        ), stats
 
     test = TestStream(
         checker,
@@ -284,9 +312,9 @@ def test_global_shuffle(ray_start_4_cpus):
         assert results[0] != results[1], results
         stats = shard.stats()
         assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
-        assert "Stage 1 read->random_shuffle" in stats, stats
+        assert "Stage 1 read->randomize_block_order->random_shuffle" in stats, stats
 
-    ds = ray.data.range(5)
+    ds = ray.data.range_table(5)
     test = TestStream(
         checker,
         datasets={"train": ds},
@@ -294,9 +322,60 @@ def test_global_shuffle(ray_start_4_cpus):
     )
     test.fit()
 
+    def checker(shard, results):
+        assert len(results) == 5, results
+        stats = shard.stats()
+        assert "Stage 1 read->random_shuffle" in stats, stats
+
+    ds = ray.data.range_table(5)
+    test = TestBatch(
+        checker,
+        datasets={"train": ds},
+        dataset_config={"train": DatasetConfig(global_shuffle=True)},
+    )
+    test.fit()
+
+
+def test_randomize_block_order(ray_start_4_cpus):
+    def checker(shard, results):
+        stats = shard.stats()
+        assert "randomize_block_order: 5/5 blocks executed in 0s" in stats, stats
+
+    ds = ray.data.range_table(5)
+    test = TestStream(
+        checker,
+        datasets={"train": ds},
+    )
+    test.fit()
+
+    def checker(shard, results):
+        stats = shard.stats()
+        assert "randomize_block_order" not in stats, stats
+
+    ds = ray.data.range_table(5)
+    test = TestStream(
+        checker,
+        datasets={"train": ds},
+        dataset_config={"train": DatasetConfig(randomize_block_order=False)},
+    )
+    test.fit()
+
+    def checker(shard, results):
+        assert len(results) == 5, results
+        stats = shard.stats()
+        assert "randomize_block_order: 5/5 blocks executed" in stats, stats
+
+    ds = ray.data.range_table(5)
+    test = TestBatch(
+        checker,
+        datasets={"train": ds},
+    )
+    test.fit()
+
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

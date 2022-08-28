@@ -4,11 +4,11 @@ through HTTP requests from remote CoordinatorSenderNodeProvider and runs them
 locally in LocalNodeProvider. To start the webserver the user runs:
 `python coordinator_server.py --ips <comma separated ips> --port <PORT>`."""
 import argparse
-import logging
-import threading
-from http.server import SimpleHTTPRequestHandler, HTTPServer
 import json
+import logging
 import socket
+import threading
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 from ray.autoscaler._private.local.node_provider import LocalNodeProvider
 

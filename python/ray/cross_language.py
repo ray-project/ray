@@ -1,71 +1,14 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 from ray import Language
+from ray._raylet import CppFunctionDescriptor, JavaFunctionDescriptor
 from ray.util.annotations import PublicAPI
-from ray._raylet import JavaFunctionDescriptor
-from ray._raylet import CppFunctionDescriptor
 
 __all__ = [
     "java_function",
     "java_actor_class",
     "cpp_function",
 ]
-
-
-def format_args(worker, args, kwargs):
-    """Format args for various languages.
-
-    Args:
-        worker: The global worker instance.
-        args: The arguments for cross language.
-        kwargs: The keyword arguments for cross language.
-
-    Returns:
-        List of args and kwargs (if supported).
-    """
-    if not worker.load_code_from_local:
-        raise ValueError(
-            "Cross language feature needs --load-code-from-local to be set."
-        )
-    if kwargs:
-        raise TypeError("Cross language remote functions does not support kwargs.")
-    return args
-
-
-def get_function_descriptor_for_actor_method(
-    language: str, actor_creation_function_descriptor, method_name: str, signature: str
-):
-    """Get function descriptor for cross language actor method call.
-
-    Args:
-        language: Target language.
-        actor_creation_function_descriptor:
-            The function signature for actor creation.
-        method_name: The name of actor method.
-        signature: The signature for the actor method. When calling Java from Python,
-            it should be string in the form of "{length_of_args}".
-
-    Returns:
-        Function descriptor for cross language actor method call.
-    """
-    if language == Language.JAVA:
-        return JavaFunctionDescriptor(
-            actor_creation_function_descriptor.class_name,
-            method_name,
-            signature,
-        )
-    elif language == Language.CPP:
-        return CppFunctionDescriptor(
-            method_name,
-            "PYTHON",
-            actor_creation_function_descriptor.class_name,
-        )
-    else:
-        raise NotImplementedError(
-            "Cross language remote actor method " f"not support language {language}"
-        )
 
 
 @PublicAPI(stability="beta")
@@ -135,3 +78,57 @@ def cpp_actor_class(create_function_name: str, class_name: str):
         CppFunctionDescriptor(create_function_name, "PYTHON", class_name),
         {},
     )
+
+
+def _format_args(worker, args, kwargs):
+    """Format args for various languages.
+
+    Args:
+        worker: The global worker instance.
+        args: The arguments for cross language.
+        kwargs: The keyword arguments for cross language.
+
+    Returns:
+        List of args and kwargs (if supported).
+    """
+    if not worker.load_code_from_local:
+        raise ValueError(
+            "Cross language feature needs --load-code-from-local to be set."
+        )
+    if kwargs:
+        raise TypeError("Cross language remote functions does not support kwargs.")
+    return args
+
+
+def _get_function_descriptor_for_actor_method(
+    language: str, actor_creation_function_descriptor, method_name: str, signature: str
+):
+    """Get function descriptor for cross language actor method call.
+
+    Args:
+        language: Target language.
+        actor_creation_function_descriptor:
+            The function signature for actor creation.
+        method_name: The name of actor method.
+        signature: The signature for the actor method. When calling Java from Python,
+            it should be string in the form of "{length_of_args}".
+
+    Returns:
+        Function descriptor for cross language actor method call.
+    """
+    if language == Language.JAVA:
+        return JavaFunctionDescriptor(
+            actor_creation_function_descriptor.class_name,
+            method_name,
+            signature,
+        )
+    elif language == Language.CPP:
+        return CppFunctionDescriptor(
+            method_name,
+            "PYTHON",
+            actor_creation_function_descriptor.class_name,
+        )
+    else:
+        raise NotImplementedError(
+            "Cross language remote actor method " f"not support language {language}"
+        )

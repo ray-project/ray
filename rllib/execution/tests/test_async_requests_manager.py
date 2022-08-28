@@ -1,16 +1,17 @@
-import random
 import pytest
+import random
+import time
 import unittest
 
 import ray
-import time
-
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 
 
 @ray.remote
 class RemoteRLlibActor:
     def __init__(self, sleep_time):
+        self.num_task_called = 0
+        self.num_task2_called = 0
         self.sleep_time = sleep_time
 
     def apply(self, func, *_args, **_kwargs):
@@ -18,10 +19,12 @@ class RemoteRLlibActor:
 
     def task(self):
         time.sleep(self.sleep_time)
+        self.num_task_called += 1
         return "done"
 
     def task2(self, a, b):
         time.sleep(self.sleep_time)
+        self.num_task2_called += 1
         return a + b
 
 
@@ -219,6 +222,42 @@ class TestAsyncRequestsManager(unittest.TestCase):
             )
         with pytest.raises(ValueError, match=".*has not been added to the manager.*"):
             manager.call(lambda w: w.task(), actor=worker_not_in_manager)
+
+    def test_high_load(self):
+        workers = [
+            RemoteRLlibActor.remote(sleep_time=random.random() * 2.0) for _ in range(60)
+        ]
+        manager = AsyncRequestsManager(
+            workers,
+            max_remote_requests_in_flight_per_worker=2,
+            return_object_refs=True,
+            ray_wait_timeout_s=0.0,
+        )
+        num_ready = 0
+        for i in range(2000):
+            manager.call_on_all_available(lambda w: w.task())
+            time.sleep(0.01)
+
+            ready = manager.get_ready()
+
+            for reqs in ready.values():
+                num_ready += len(reqs)
+                ray.get(reqs)
+
+            for worker in ready.keys():
+                worker.task2.remote(1, 3)
+
+        time.sleep(20)
+
+        ready = manager.get_ready()
+        num_ready += sum(len(reqs) for reqs in ready.values())
+
+        actually_called = sum(
+            ray.get(
+                [worker.apply.remote(lambda w: w.num_task_called) for worker in workers]
+            )
+        )
+        assert actually_called == num_ready, (actually_called, num_ready)
 
 
 if __name__ == "__main__":

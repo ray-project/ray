@@ -1,7 +1,7 @@
-import numpy as np
 import os
-import scipy.optimize
 
+import numpy as np
+import scipy.optimize
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 

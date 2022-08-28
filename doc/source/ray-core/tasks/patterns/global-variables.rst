@@ -1,18 +1,13 @@
-Antipattern: Unnecessary call of ray.get in a task
-==================================================
+Antipattern: Accessing Global Variable in Tasks/Actors
+======================================================
 
-**TLDR:** Avoid calling ``ray.get`` too frequently/for intermediate steps. Work with object references directly, and only call ``ray.get`` at the end to get the final result.
+**TLDR:** Don't modify global variables in remote functions. Instead, encapsulate the global variables into actors.
 
-When ``ray.get`` is called, objects must be transferred to the worker/node that calls ``ray.get``. If you don't need to manipulate the object in a task, you probably don't need to call ``ray.get`` on it!
-
-Typically, it’s a best practice to wait as long as possible before calling ``ray.get``, or even design your program to avoid having to call ``ray.get`` too soon.
-
-
-Notes
------
-Notice in the first example, we call ``ray.get`` which forces us to transfer the large rollout to the driver, then to *reducer* after that.
-
-In the fixed version, we only pass the reference to the object to the *reducer*. The ``reducer`` automatically calls ``ray.get`` once, which means the data is passed directly from ``generate_rollout`` to ``reduce``, avoiding the driver.
+Ray tasks and actors decorated by ``@ray.remote`` are running in
+different processes that don’t share the same address space as ray driver
+(Python script that runs ray.init). That says if you define a global variable
+and change the value inside a driver, changes are not reflected in the workers
+(a.k.a tasks and actors).
 
 
 Code example
@@ -22,25 +17,52 @@ Code example
 
 .. code-block:: python
 
-    @ray.remote
-    def generate_rollout():
-        return np.ones((10000, 10000))
-
+    import ray
+    global_v = 3
 
     @ray.remote
-    def reduce(rollout):
-        return np.sum(rollout)
+    class A:
+        def f(self):
+            return global_v + 3
 
-    # `ray.get` downloads the result here.
-    rollout = ray.get(generate_rollout.remote())
-    # Now we have to reupload `rollout`
-    reduced = ray.get(reduce.remote(rollout))
+    actor = A.remote()
+    global_v = 4
+    # This prints 6, not 7. It is because the value  change of global_v inside a driver is not
+    # reflected to the actor because they are running in different processes.
+    print(ray.get(actor.f.remote()))
 
-**Better approach:**
+**Better approach:** Use an actor’s instance variables to hold the global state that needs to be modified / accessed by multiple workers (tasks and actors).
 
 .. code-block:: python
 
-    # Don't need ray.get here.
-    rollout = generate_rollout.remote()
-    # Rollout object is passed by reference.
-    reduced = ray.get(reduce.remote(rollout))
+    import ray
+
+    @ray.remote
+    class GlobalVarActor:
+        def __init__(self):
+            self.global_v = 3
+        def set_global_v(self, v):
+            self.global_v = v
+        def get_global_v(self):
+            return self.global_v
+
+    @ray.remote
+    class A:
+        def __init__(self, global_v_registry):
+            self.global_v_registry = global_v_registry
+        def f(self):
+            return ray.get(self.global_v_registry.get_global_v.remote()) + 3
+
+    global_v_registry = GlobalVarActor.remote()
+    actor = A.remote(global_v_registry)
+    ray.get(global_v_registry.set_global_v.remote(4))
+    # This will print 7 correctly.
+    print(ray.get(actor.f.remote()))
+
+Notes
+-----
+Note that using class variables to update/manage state between instances
+of the same class is not currently supported.
+Each actor instance is instantiated across multiple processes,
+so each actor will have its own copy of the class variables.
+

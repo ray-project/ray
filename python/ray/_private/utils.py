@@ -3,37 +3,46 @@ import errno
 import functools
 import hashlib
 import importlib
+import inspect
 import logging
 import multiprocessing
 import os
+import re
 import signal
 import subprocess
 import sys
 import tempfile
 import threading
 import time
-from typing import Optional, Sequence, Tuple, Any, Union, Dict
 import uuid
-import grpc
 import warnings
+from inspect import signature
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
+
+import grpc
+import numpy as np
+
+# Import psutil after ray so the packaged version is used.
+import psutil
+from google.protobuf import json_format
+
+import ray
+import ray._private.ray_constants as ray_constants
+from ray._private.tls_utils import load_certs_from_env
+from ray.core.generated.gcs_pb2 import ErrorTableData
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnvInfo as ProtoRuntimeEnvInfo,
+)
+
+if TYPE_CHECKING:
+    from ray.runtime_env import RuntimeEnv
 
 try:
     from grpc import aio as aiogrpc
 except ImportError:
     from grpc.experimental import aio as aiogrpc
 
-import inspect
-from inspect import signature
-from pathlib import Path
-import numpy as np
-
-import ray
-from ray.core.generated.gcs_pb2 import ErrorTableData
-import ray.ray_constants as ray_constants
-from ray._private.tls_utils import load_certs_from_env
-
-# Import psutil after ray so the packaged version is used.
-import psutil
 
 pwd = None
 if sys.platform != "win32":
@@ -49,6 +58,9 @@ linux_prctl = None
 # We keep a global job object to tie its lifetime to that of our own process.
 win32_job = None
 win32_AssignProcessToJobObject = None
+
+
+ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
 
 
 def get_user_temp_dir():
@@ -67,6 +79,48 @@ def get_user_temp_dir():
 
 def get_ray_temp_dir():
     return os.path.join(get_user_temp_dir(), "ray")
+
+
+def get_ray_address_file(temp_dir: Optional[str]):
+    if temp_dir is None:
+        temp_dir = get_ray_temp_dir()
+    return os.path.join(temp_dir, "ray_current_cluster")
+
+
+def write_ray_address(ray_address: str, temp_dir: Optional[str] = None):
+    address_file = get_ray_address_file(temp_dir)
+    if os.path.exists(address_file):
+        with open(address_file, "r") as f:
+            prev_address = f.read()
+        if prev_address == ray_address:
+            return
+
+        logger.info(
+            f"Overwriting previous Ray address ({prev_address}). "
+            "Running ray.init() on this node will now connect to the new "
+            f"instance at {ray_address}. To override this behavior, pass "
+            f"address={prev_address} to ray.init()."
+        )
+
+    with open(address_file, "w+") as f:
+        f.write(ray_address)
+
+
+def reset_ray_address(temp_dir: Optional[str] = None):
+    address_file = get_ray_address_file(temp_dir)
+    if os.path.exists(address_file):
+        try:
+            os.remove(address_file)
+        except OSError:
+            pass
+
+
+def read_ray_address(temp_dir: Optional[str] = None) -> str:
+    address_file = get_ray_address_file(temp_dir)
+    if not os.path.exists(address_file):
+        return None
+    with open(address_file, "r") as f:
+        return f.read().strip()
 
 
 def _random_string():
@@ -413,10 +467,11 @@ def get_system_memory(
     docker_limit = None
     if os.path.exists(memory_limit_filename):
         with open(memory_limit_filename, "r") as f:
-            docker_limit = int(f.read())
+            docker_limit = int(f.read().strip())
     elif os.path.exists(memory_limit_filename_v2):
         with open(memory_limit_filename_v2, "r") as f:
-            max_file = f.read()
+            # Don't forget to strip() the newline:
+            max_file = f.read().strip()
             if max_file.isnumeric():
                 docker_limit = int(max_file)
             else:
@@ -500,7 +555,20 @@ def _get_docker_cpus(
     return cpu_quota or cpuset_num
 
 
-def get_num_cpus() -> int:
+def get_num_cpus(
+    override_docker_cpu_warning: bool = ENV_DISABLE_DOCKER_CPU_WARNING,
+) -> int:
+    """
+    Get the number of CPUs available on this node.
+    Depending on the situation, use multiprocessing.cpu_count() or cgroups.
+
+    Args:
+        override_docker_cpu_warning: An extra flag to explicitly turn off the Docker
+            warning. Setting this flag True has the same effect as setting the env
+            RAY_DISABLE_DOCKER_CPU_WARNING. By default, whether or not to log
+            the warning is determined by the env variable
+            RAY_DISABLE_DOCKER_CPU_WARNING.
+    """
     cpu_count = multiprocessing.cpu_count()
     if os.environ.get("RAY_USE_MULTIPROCESSING_CPU_COUNT"):
         logger.info(
@@ -519,8 +587,9 @@ def get_num_cpus() -> int:
             # Don't log this warning if we're on K8s or if the warning is
             # explicitly disabled.
             if (
-                "RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ
-                and "KUBERNETES_SERVICE_HOST" not in os.environ
+                "KUBERNETES_SERVICE_HOST" not in os.environ
+                and not ENV_DISABLE_DOCKER_CPU_WARNING
+                and not override_docker_cpu_warning
             ):
                 logger.warning(
                     "Detecting docker specified CPUs. In "
@@ -670,7 +739,7 @@ def detect_fate_sharing_support_win32():
         import ctypes
 
         try:
-            from ctypes.wintypes import BOOL, DWORD, HANDLE, LPVOID, LPCWSTR
+            from ctypes.wintypes import BOOL, DWORD, HANDLE, LPCWSTR, LPVOID
 
             kernel32 = ctypes.WinDLL("kernel32")
             kernel32.CreateJobObjectW.argtypes = (LPVOID, LPCWSTR)
@@ -752,7 +821,7 @@ def detect_fate_sharing_support_linux():
     global linux_prctl
     if linux_prctl is None and sys.platform.startswith("linux"):
         try:
-            from ctypes import c_int, c_ulong, CDLL
+            from ctypes import CDLL, c_int, c_ulong
 
             prctl = CDLL(None).prctl
             prctl.restype = c_int
@@ -979,6 +1048,18 @@ def get_call_location(back: int = 1):
         return "UNKNOWN"
 
 
+def get_ray_doc_version():
+    """Get the docs.ray.io version corresponding to the ray.__version__."""
+    # The ray.__version__ can be official Ray release (such as 1.12.0), or
+    # dev (3.0.0dev0) or release candidate (2.0.0rc0). For the later we map
+    # to the master doc version at docs.ray.io.
+    if re.match(r"^\d+\.\d+\.\d+$", ray.__version__) is None:
+        return "master"
+    # For the former (official Ray release), we have corresponding doc version
+    # released as well.
+    return f"releases-{ray.__version__}"
+
+
 # Used to only print a deprecation warning once for a given function if we
 # don't wish to spam the caller.
 _PRINTED_WARNING = set()
@@ -991,6 +1072,7 @@ def deprecated(
     removal_release: Optional[str] = None,
     removal_date: Optional[str] = None,
     warn_once: bool = True,
+    stacklevel=2,
 ):
     """
     Creates a decorator for marking functions as deprecated. The decorator
@@ -1010,6 +1092,7 @@ def deprecated(
         warn_once: If true, the deprecation warning will only be logged
             on the first invocation. Otherwise, the deprecation warning will
             be logged on every invocation. Defaults to True.
+        stacklevel: adjust the warnings stacklevel to trace the source call
 
     Returns:
         A decorator to be used for wrapping deprecated functions.
@@ -1040,7 +1123,7 @@ def deprecated(
                     )
                     + (f" {instructions}" if instructions is not None else "")
                 )
-                warnings.warn(msg)
+                warnings.warn(msg, stacklevel=stacklevel)
             return func(*args, **kwargs)
 
         return new_func
@@ -1229,7 +1312,7 @@ def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
             logger.debug(f"Fetched {prefix}=None from KV. Retrying.")
             time.sleep(2)
     if result is None:
-        raise RuntimeError(
+        raise ConnectionError(
             f"Could not list '{prefix}' from GCS. Did GCS start successfully?"
         )
     return result
@@ -1263,7 +1346,7 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
             logger.debug(f"Fetched {key}=None from KV. Retrying.")
             time.sleep(2)
     if not result:
-        raise RuntimeError(
+        raise ConnectionError(
             f"Could not read '{key.decode()}' from GCS. Did GCS start successfully?"
         )
     return result
@@ -1349,3 +1432,85 @@ def check_version_info(cluster_metadata):
             "    Python: " + version_info[1] + "\n"
         )
         raise RuntimeError(error_message)
+
+
+def get_runtime_env_info(
+    runtime_env: "RuntimeEnv",
+    *,
+    is_job_runtime_env: bool = False,
+    serialize: bool = False,
+):
+    """Create runtime env info from runtime env.
+
+    In the user interface, the argument `runtime_env` contains some fields
+    which not contained in `ProtoRuntimeEnv` but in `ProtoRuntimeEnvInfo`,
+    such as `eager_install`. This function will extract those fields from
+    `RuntimeEnv` and create a new `ProtoRuntimeEnvInfo`, and serialize it.
+    """
+    from ray.runtime_env import RuntimeEnvConfig
+
+    proto_runtime_env_info = ProtoRuntimeEnvInfo()
+
+    if runtime_env.working_dir_uri():
+        proto_runtime_env_info.uris.working_dir_uri = runtime_env.working_dir_uri()
+    if len(runtime_env.py_modules_uris()) > 0:
+        proto_runtime_env_info.uris.py_modules_uris[:] = runtime_env.py_modules_uris()
+
+    # TODO(Catch-Bull): overload `__setitem__` for `RuntimeEnv`, change the
+    # runtime_env of all internal code from dict to RuntimeEnv.
+
+    runtime_env_config = runtime_env.get("config")
+    if runtime_env_config is None:
+        runtime_env_config = RuntimeEnvConfig.default_config()
+    else:
+        runtime_env_config = RuntimeEnvConfig.parse_and_validate_runtime_env_config(
+            runtime_env_config
+        )
+
+    proto_runtime_env_info.runtime_env_config.CopyFrom(
+        runtime_env_config.build_proto_runtime_env_config()
+    )
+
+    # Normally, `RuntimeEnv` should guarantee the accuracy of field eager_install,
+    # but so far, the internal code has not completely prohibited direct
+    # modification of fields in RuntimeEnv, so we should check it for insurance.
+    eager_install = (
+        runtime_env_config.get("eager_install")
+        if runtime_env_config is not None
+        else None
+    )
+    if is_job_runtime_env or eager_install is not None:
+        if eager_install is None:
+            eager_install = True
+        elif not isinstance(eager_install, bool):
+            raise TypeError(
+                f"eager_install must be a boolean. got {type(eager_install)}"
+            )
+        proto_runtime_env_info.runtime_env_config.eager_install = eager_install
+
+    proto_runtime_env_info.serialized_runtime_env = runtime_env.serialize()
+
+    if not serialize:
+        return proto_runtime_env_info
+
+    return json_format.MessageToJson(proto_runtime_env_info)
+
+
+def parse_runtime_env(runtime_env: Optional[Union[Dict, "RuntimeEnv"]]):
+    from ray.runtime_env import RuntimeEnv
+
+    # Parse local pip/conda config files here. If we instead did it in
+    # .remote(), it would get run in the Ray Client server, which runs on
+    # a remote node where the files aren't available.
+    if runtime_env:
+        if isinstance(runtime_env, dict):
+            return RuntimeEnv(**(runtime_env or {}))
+        raise TypeError(
+            "runtime_env must be dict or RuntimeEnv, ",
+            f"but got: {type(runtime_env)}",
+        )
+    else:
+        # Keep the new_runtime_env as None.  In .remote(), we need to know
+        # if runtime_env is None to know whether or not to fall back to the
+        # runtime_env specified in the @ray.remote decorator.
+        return None

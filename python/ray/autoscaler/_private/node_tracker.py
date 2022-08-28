@@ -1,5 +1,6 @@
-from ray.autoscaler._private import constants
 from typing import List, Set, Tuple
+
+from ray.autoscaler._private import constants
 
 
 class NodeTracker:

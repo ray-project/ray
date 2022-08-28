@@ -2,7 +2,7 @@
 Deep Q-Networks (DQN, Rainbow, Parametric DQN)
 ==============================================
 
-This file defines the distributed Trainer class for the Deep Q-Networks
+This file defines the distributed Algorithm class for the Deep Q-Networks
 algorithm. See `dqn_[tf|torch]_policy.py` for the definition of the policies.
 
 Detailed documentation:
@@ -32,7 +32,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
 from ray.rllib.utils.typing import (
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
@@ -41,7 +41,6 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.deprecation import (
     Deprecated,
 )
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
 from ray.rllib.execution.common import (
     LAST_TARGET_UPDATE_TS,
@@ -54,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 
 class DQNConfig(SimpleQConfig):
-    """Defines a configuration class from which a DQN Trainer can be built.
+    """Defines a configuration class from which a DQN Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
@@ -116,9 +115,9 @@ class DQNConfig(SimpleQConfig):
         >>>       .exploration(exploration_config=explore_config)
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a DQNConfig instance."""
-        super().__init__(trainer_class=trainer_class or DQN)
+        super().__init__(algo_class=algo_class or DQN)
 
         # DQN specific config settings.
         # fmt: off
@@ -218,7 +217,6 @@ class DQNConfig(SimpleQConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "learning_starts": 1000,
                 "capacity": 50000,
                 "replay_sequence_length": 1,
                 }
@@ -249,7 +247,7 @@ class DQNConfig(SimpleQConfig):
                 zero, there is still a chance of drawing the sample.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -282,7 +280,7 @@ class DQNConfig(SimpleQConfig):
         return self
 
 
-def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
+def calculate_rr_weights(config: AlgorithmConfigDict) -> List[float]:
     """Calculate the round robin weights for the rollout and train steps"""
     if not config["training_intensity"]:
         return [1, 1]
@@ -312,11 +310,11 @@ def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
 class DQN(SimpleQ):
     @classmethod
     @override(SimpleQ)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return DEFAULT_CONFIG
 
     @override(SimpleQ)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -326,15 +324,15 @@ class DQN(SimpleQ):
 
     @override(SimpleQ)
     def get_default_policy_class(
-        self, config: TrainerConfigDict
+        self, config: AlgorithmConfigDict
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
             return DQNTorchPolicy
         else:
             return DQNTFPolicy
 
-    @ExperimentalAPI
-    def training_iteration(self) -> ResultDict:
+    @override(SimpleQ)
+    def training_step(self) -> ResultDict:
         """DQN training iteration function.
 
         Each training iteration, we:
@@ -371,62 +369,57 @@ class DQN(SimpleQ):
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
 
-        for _ in range(sample_and_train_weight):
-            # Sample training batch (MultiAgentBatch) from replay buffer.
-            train_batch = sample_min_n_steps_from_buffer(
-                self.local_replay_buffer,
-                self.config["train_batch_size"],
-                count_by_agent_steps=self._by_agent_steps,
-            )
+        # Update target network every `target_network_update_freq` sample steps.
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+        ]
 
-            # Old-style replay buffers return None if learning has not started
-            if train_batch is None or len(train_batch) == 0:
-                self.workers.local_worker().set_global_vars(global_vars)
-                break
-
-            # Postprocess batch before we learn on it
-            post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
-            train_batch = post_fn(train_batch, self.workers, self.config)
-
-            # for policy_id, sample_batch in train_batch.policy_batches.items():
-            #     print(len(sample_batch["obs"]))
-            #     print(sample_batch.count)
-
-            # Learn on training batch.
-            # Use simple optimizer (only for multi-agent or tf-eager; all other
-            # cases should use the multi-GPU optimizer, even if only using 1 GPU)
-            if self.config.get("simple_optimizer") is True:
-                train_results = train_one_step(self, train_batch)
-            else:
-                train_results = multi_gpu_train_one_step(self, train_batch)
-
-            # Update replay buffer priorities.
-            update_priorities_in_replay_buffer(
-                self.local_replay_buffer,
-                self.config,
-                train_batch,
-                train_results,
-            )
-
-            # Update target network every `target_network_update_freq` sample steps.
-            cur_ts = self._counters[
-                NUM_AGENT_STEPS_SAMPLED
-                if self._by_agent_steps
-                else NUM_ENV_STEPS_SAMPLED
-            ]
-            last_update = self._counters[LAST_TARGET_UPDATE_TS]
-            if cur_ts - last_update >= self.config["target_network_update_freq"]:
-                to_update = self.workers.local_worker().get_policies_to_train()
-                self.workers.local_worker().foreach_policy_to_train(
-                    lambda p, pid: pid in to_update and p.update_target()
+        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+            for _ in range(sample_and_train_weight):
+                # Sample training batch (MultiAgentBatch) from replay buffer.
+                train_batch = sample_min_n_steps_from_buffer(
+                    self.local_replay_buffer,
+                    self.config["train_batch_size"],
+                    count_by_agent_steps=self._by_agent_steps,
                 )
-                self._counters[NUM_TARGET_UPDATES] += 1
-                self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
-            # Update weights and global_vars - after learning on the local worker -
-            # on all remote workers.
-            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights(global_vars=global_vars)
+                # Postprocess batch before we learn on it
+                post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
+                train_batch = post_fn(train_batch, self.workers, self.config)
+
+                # for policy_id, sample_batch in train_batch.policy_batches.items():
+                #     print(len(sample_batch["obs"]))
+                #     print(sample_batch.count)
+
+                # Learn on training batch.
+                # Use simple optimizer (only for multi-agent or tf-eager; all other
+                # cases should use the multi-GPU optimizer, even if only using 1 GPU)
+                if self.config.get("simple_optimizer") is True:
+                    train_results = train_one_step(self, train_batch)
+                else:
+                    train_results = multi_gpu_train_one_step(self, train_batch)
+
+                # Update replay buffer priorities.
+                update_priorities_in_replay_buffer(
+                    self.local_replay_buffer,
+                    self.config,
+                    train_batch,
+                    train_results,
+                )
+
+                last_update = self._counters[LAST_TARGET_UPDATE_TS]
+                if cur_ts - last_update >= self.config["target_network_update_freq"]:
+                    to_update = self.workers.local_worker().get_policies_to_train()
+                    self.workers.local_worker().foreach_policy_to_train(
+                        lambda p, pid: pid in to_update and p.update_target()
+                    )
+                    self._counters[NUM_TARGET_UPDATES] += 1
+                    self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+
+                # Update weights and global_vars - after learning on the local worker -
+                # on all remote workers.
+                with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                    self.workers.sync_weights(global_vars=global_vars)
 
         # Return all collected metrics for the iteration.
         return train_results

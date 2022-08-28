@@ -6,7 +6,7 @@
 import torch
 
 from ray.train.trainer import BaseTrainer
-from ray import tune
+from ray.air import session
 
 
 class MyPytorchTrainer(BaseTrainer):
@@ -20,16 +20,16 @@ class MyPytorchTrainer(BaseTrainer):
         # preprocessed by self.preprocessor
         dataset = self.datasets["train"]
 
-        torch_ds = dataset.to_torch(label_column="y")
         loss_fn = torch.nn.MSELoss()
 
         for epoch_idx in range(10):
             loss = 0
             num_batches = 0
-            for X, y in iter(torch_ds):
+            for batch in dataset.iter_torch_batches(dtypes=torch.float):
                 # Compute prediction error
-                pred = self.model(X.float())
-                batch_loss = loss_fn(pred, y.float())
+                X, y = torch.unsqueeze(batch["x"], 1), batch["y"]
+                pred = self.model(X)
+                batch_loss = loss_fn(pred, y)
 
                 # Backpropagation
                 self.optimizer.zero_grad()
@@ -42,7 +42,7 @@ class MyPytorchTrainer(BaseTrainer):
 
             # Use Tune functions to report intermediate
             # results.
-            tune.report(loss=loss, epoch=epoch_idx)
+            session.report({"loss": loss, "epoch": epoch_idx})
 
 
 # __custom_trainer_end__

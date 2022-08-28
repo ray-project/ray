@@ -7,18 +7,18 @@ import random
 import shutil
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-from ray.tune import trial_runner
+from ray.air._internal.checkpoint_manager import CheckpointStorage
+from ray.tune.execution import trial_runner
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
-from ray.tune.suggest import SearchGenerator
+from ray.tune.search import SearchGenerator
 from ray.tune.utils.util import SafeFallbackEncoder
-from ray.tune.sample import Domain, Function
+from ray.tune.search.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.suggest.variant_generator import format_vars
-from ray.tune.trial import Trial
+from ray.tune.search.variant_generator import format_vars
+from ray.tune.experiment import Trial
 from ray.util import PublicAPI
 from ray.util.debug import log_once
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ class PopulationBasedTraining(FIFOScheduler):
     This Tune PBT implementation considers all trials added as part of the
     PBT population. If the number of trials exceeds the cluster capacity,
     they will be time-multiplexed as to balance training progress across the
-    population. To run multiple trials, use `tune.run(num_samples=<int>)`.
+    population. To run multiple trials, use `tune.TuneConfig(num_samples=<int>)`.
 
     In {LOG_DIR}/{MY_EXPERIMENT_NAME}/, all mutations are logged in
     `pbt_global.txt` and individual policy perturbations are recorded
@@ -236,7 +236,15 @@ class PopulationBasedTraining(FIFOScheduler):
                 # factor_4 is treated as a continuous hyperparameter.
                 "factor_4": tune.choice([1, 10, 100, 1000, 10000]),
             })
-        tune.run({...}, num_samples=8, scheduler=pbt)
+        tuner = tune.Tuner(
+            trainable,
+            tune_config=tune.TuneConfig(
+                scheduler=pbt,
+                num_samples=8,
+            ),
+        )
+        tuner.fit()
+
     """
 
     def __init__(
@@ -359,7 +367,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 "{} has been instantiated without a valid `metric` ({}) or "
                 "`mode` ({}) parameter. Either pass these parameters when "
                 "instantiating the scheduler, or pass them as parameters "
-                "to `tune.run()`".format(
+                "to `tune.TuneConfig()`".format(
                     self.__class__.__name__, self._metric, self._mode
                 )
             )
@@ -758,7 +766,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
     .. code-block:: python
 
         # Replaying a result from ray.tune.examples.pbt_convnet_example
-        from ray import tune
+        from ray import air, tune
 
         from ray.tune.examples.pbt_convnet_example import PytorchTrainable
         from ray.tune.schedulers import PopulationBasedTrainingReplay
@@ -766,10 +774,16 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         replay = PopulationBasedTrainingReplay(
             "~/ray_results/pbt_test/pbt_policy_XXXXX_00001.txt")
 
-        tune.run(
+        tuner = tune.Tuner(
             PytorchTrainable,
-            scheduler=replay,
-            stop={"training_iteration": 100})
+            run_config=air.RunConfig(
+                stop={"training_iteration": 100}
+            ),
+            tune_config=tune.TuneConfig(
+                scheduler=replay,
+            ),
+        )
+        tuner.fit()
 
 
     """
@@ -844,7 +858,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         elif not self._trial.config and not self._policy:
             raise ValueError(
                 "No replay policy found and trial initialized without a "
-                "valid config. Either pass a `config` argument to `tune.run()`"
+                "valid config. Either pass a `config` argument to `tune.Tuner()`"
                 "or consider not using PBT replay for this run."
             )
         self._trial.set_config(self.config)

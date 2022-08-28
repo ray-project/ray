@@ -31,7 +31,7 @@ class TestMARWIL(unittest.TestCase):
         ray.shutdown()
 
     def test_marwil_compilation_and_learning_from_offline_file(self):
-        """Test whether a MARWILTrainer can be built with all frameworks.
+        """Test whether a MARWILAlgorithm can be built with all frameworks.
 
         Learns from a historic-data file.
         To generate this data, first run:
@@ -54,6 +54,7 @@ class TestMARWIL(unittest.TestCase):
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
                 evaluation_config={"input": "sampler"},
+                off_policy_estimation_methods={},
             )
             .offline_data(input_=[data_file])
         )
@@ -83,7 +84,7 @@ class TestMARWIL(unittest.TestCase):
 
             if not learnt:
                 raise ValueError(
-                    "MARWILTrainer did not reach {} reward from expert "
+                    "MARWILAlgorithm did not reach {} reward from expert "
                     "offline data!".format(min_reward)
                 )
 
@@ -115,11 +116,11 @@ class TestMARWIL(unittest.TestCase):
                 evaluation_parallel_to_training=True,
                 # Evaluate on actual environment.
                 evaluation_config={"input": "sampler"},
+                off_policy_estimation_methods={},
             )
             .offline_data(
                 # Learn from offline data.
                 input_=[data_file],
-                off_policy_estimation_methods=[],
             )
         )
 

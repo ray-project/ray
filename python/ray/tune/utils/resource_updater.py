@@ -1,10 +1,10 @@
-from typing import Optional, Dict, Any
 import logging
 import os
 import time
+from typing import Any, Dict, Optional
 
 import ray
-from ray import ray_constants
+from ray._private import ray_constants
 from ray._private.resource_spec import NODE_ID_PREFIX
 from ray.tune.resources import Resources
 

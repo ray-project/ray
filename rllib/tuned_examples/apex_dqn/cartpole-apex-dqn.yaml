@@ -21,11 +21,11 @@ cartpole-apex-dqn-training-itr:
         replay_buffer_config:
           type: MultiAgentPrioritizedReplayBuffer
           capacity: 20000
-          learning_starts: 1000
+        num_steps_sampled_before_learning_starts: 1000
 
         num_gpus: 0
 
-        min_time_s_per_reporting: 5
+        min_time_s_per_iteration: 5
         target_network_update_freq: 500
-        min_sample_timesteps_per_reporting: 1000
+        min_sample_timesteps_per_iteration: 1000
         training_intensity: 4

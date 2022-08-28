@@ -1,19 +1,17 @@
-from typing import Callable, Optional, Dict, Tuple, Union, TYPE_CHECKING
-import torch
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Union
 
+from ray.air.checkpoint import Checkpoint
+from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch.config import TorchConfig
 from ray.train.trainer import GenDataset
-from ray.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
-from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
-from ray.air.checkpoint import Checkpoint
-from ray.air._internal.torch_utils import load_torch_model
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TorchTrainer(DataParallelTrainer):
     """A Trainer for data parallel PyTorch training.
 
@@ -40,39 +38,37 @@ class TorchTrainer(DataParallelTrainer):
 
     If the ``datasets`` dict contains a training dataset (denoted by
     the "train" key), then it will be split into multiple dataset
-    shards that can then be accessed by ``ray.train.get_dataset_shard("train")`` inside
+    shards that can then be accessed by ``session.get_dataset_shard("train")`` inside
     ``train_loop_per_worker``. All the other datasets will not be split and
-    ``ray.train.get_dataset_shard(...)`` will return the the entire Dataset.
+    ``session.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray Train function utils <train-api-func-utils>`.
+    :ref:`Ray AIR session methods <air-session-ref>`.
 
     .. code-block:: python
 
         def train_loop_per_worker():
-            # Report intermediate results for callbacks or logging.
-            train.report(...)
-
-            # Checkpoints the provided args as restorable state.
-            train.save_checkpoint(...)
+            # Report intermediate results for callbacks or logging and
+            # checkpoint data.
+            session.report(...)
 
             # Returns dict of last saved checkpoint.
-            train.load_checkpoint()
+            session.get_checkpoint()
 
             # Returns the Ray Dataset shard for the given key.
-            train.get_dataset_shard("my_dataset")
+            session.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
-            train.get_world_size()
+            session.get_world_size()
 
             # Returns the rank of this worker.
-            train.get_world_rank()
+            session.get_world_rank()
 
             # Returns the rank of the worker on the current node.
-            train.get_local_rank()
+            session.get_local_rank()
 
-    You can also use any of the :ref:`Torch specific function utils
-    <train-api-torch-utils>`.
+    You can also use any of the Torch specific function utils,
+    such as :func:`ray.train.torch.get_device` and :func:`ray.train.torch.prepare_model`
 
     .. code-block:: python
 
@@ -84,14 +80,17 @@ class TorchTrainer(DataParallelTrainer):
             # Configures the dataloader for distributed training by adding a
             # `DistributedSampler`.
             # You should NOT use this if you are doing
-            # `train.get_dataset_shard(...).to_torch(...)`
+            # `session.get_dataset_shard(...).iter_torch_batches(...)`
             train.torch.prepare_data_loader(...)
 
             # Returns the current torch device.
             train.torch.get_device()
 
+    Any returns from the ``train_loop_per_worker`` will be discarded and not
+    used or persisted anywhere.
+
     To save a model to use for the ``TorchPredictor``, you must save it under the
-    "model" kwarg in ``train.save_checkpoint()``.
+    "model" kwarg in ``Checkpoint`` passed to ``session.report()``.
 
     Example:
         .. code-block:: python
@@ -101,7 +100,9 @@ class TorchTrainer(DataParallelTrainer):
 
             import ray
             from ray import train
+            from ray.air import session, Checkpoint
             from ray.train.torch import TorchTrainer
+            from ray.air.config import ScalingConfig
 
             input_size = 1
             layer_size = 15
@@ -119,28 +120,38 @@ class TorchTrainer(DataParallelTrainer):
                     return self.layer2(self.relu(self.layer1(input)))
 
             def train_loop_per_worker():
-                dataset_shard = train.get_dataset_shard("train")
+                dataset_shard = session.get_dataset_shard("train")
                 model = NeuralNetwork()
                 loss_fn = nn.MSELoss()
-                optimizer = optim.SGD(model.parameters(), lr=0.1)
+                optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
 
                 model = train.torch.prepare_model(model)
 
                 for epoch in range(num_epochs):
-                    for batch in iter(dataset_shard.to_torch(batch_size=32)):
-                        output = model(input)
+                    for batches in dataset_shard.iter_torch_batches(
+                        batch_size=32, dtypes=torch.float
+                    ):
+                        inputs, labels = torch.unsqueeze(batches["x"], 1), batches["y"]
+                        output = model(inputs)
                         loss = loss_fn(output, labels)
                         optimizer.zero_grad()
                         loss.backward()
                         optimizer.step()
                         print(f"epoch: {epoch}, loss: {loss.item()}")
 
-                    train.save_checkpoint(model=model.state_dict())
+                    session.report(
+                        {},
+                        checkpoint=Checkpoint.from_dict(
+                            dict(epoch=epoch, model=model.state_dict())
+                        ),
+                    )
 
-            train_dataset = ray.data.from_items([1, 2, 3])
-            scaling_config = {"num_workers": 3}
+            train_dataset = ray.data.from_items(
+                [{"x": x, "y": 2 * x + 1} for x in range(200)]
+            )
+            scaling_config = ScalingConfig(num_workers=3)
             # If using GPUs, use the below scaling config instead.
-            # scaling_config = {"num_workers": 3, "use_gpu": True}
+            # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
             trainer = TorchTrainer(
                 train_loop_per_worker=train_loop_per_worker,
                 scaling_config=scaling_config,
@@ -163,7 +174,7 @@ class TorchTrainer(DataParallelTrainer):
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
-        preprocessor: A ``ray.air.preprocessor.Preprocessor`` to preprocess the
+        preprocessor: A ``ray.data.Preprocessor`` to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
@@ -195,24 +206,3 @@ class TorchTrainer(DataParallelTrainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
-
-
-def load_checkpoint(
-    checkpoint: Checkpoint, model: Optional[torch.nn.Module] = None
-) -> Tuple[torch.nn.Module, Optional["Preprocessor"]]:
-    """Load a Checkpoint from ``TorchTrainer``.
-
-    Args:
-        checkpoint: The checkpoint to load the model and
-            preprocessor from. It is expected to be from the result of a
-            ``TorchTrainer`` run.
-        model: If the checkpoint contains a model state dict, and not
-            the model itself, then the state dict will be loaded to this
-            ``model``.
-
-    Returns:
-        The model with set weights and AIR preprocessor contained within.
-    """
-    saved_model, preprocessor = _load_checkpoint(checkpoint, "TorchTrainer")
-    model = load_torch_model(saved_model=saved_model, model_definition=model)
-    return model, preprocessor

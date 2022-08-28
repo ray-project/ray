@@ -46,12 +46,12 @@ class TestMADDPG(unittest.TestCase):
 
         # Only working for tf right now.
         for _ in framework_iterator(config, frameworks="tf"):
-            trainer = config.build()
+            algo = config.build()
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
-            trainer.stop()
+            algo.stop()
 
 
 if __name__ == "__main__":

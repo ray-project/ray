@@ -17,25 +17,21 @@ from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import (
     EntropyCoeffSchedule,
-    LearningRateSchedule,
     KLCoeffMixin,
+    LearningRateSchedule,
     ValueNetworkMixin,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_utils import explained_variance
-from ray.rllib.utils.typing import (
-    TensorType,
-    TFPolicyV2Type,
-    TrainerConfigDict,
-)
+from ray.rllib.utils.tf_utils import explained_variance, warn_if_infinite_kl_divergence
+from ray.rllib.utils.typing import AlgorithmConfigDict, TensorType, TFPolicyV2Type
 
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
 
-def validate_config(config: TrainerConfigDict) -> None:
+def validate_config(config: AlgorithmConfigDict) -> None:
     """Executed before Policy is "initialized" (at beginning of constructor).
     Args:
         config: The Policy's config.
@@ -50,7 +46,7 @@ def validate_config(config: TrainerConfigDict) -> None:
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
+def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     """Construct a PPOTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
@@ -79,6 +75,8 @@ def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             base.enable_eager_execution_if_necessary()
 
             config = dict(ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(), **config)
+            # TODO: Move into Policy API, if needed at all here. Why not move this into
+            #  `PPOConfig`?.
             validate_config(config)
 
             # Initialize base class.
@@ -151,6 +149,7 @@ def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             if self.config["kl_coeff"] > 0.0:
                 action_kl = prev_action_dist.kl(curr_action_dist)
                 mean_kl_loss = reduce_mean_valid(action_kl)
+                warn_if_infinite_kl_divergence(self, mean_kl_loss)
             else:
                 mean_kl_loss = tf.constant(0.0)
 
@@ -229,8 +228,11 @@ def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
                 self, sample_batch, other_agent_batches, episode
             )
 
+    PPOTFPolicy.__name__ = name
+    PPOTFPolicy.__qualname__ = name
+
     return PPOTFPolicy
 
 
-PPOTF1Policy = get_ppo_tf_policy(DynamicTFPolicyV2)
-PPOTF2Policy = get_ppo_tf_policy(EagerTFPolicyV2)
+PPOTF1Policy = get_ppo_tf_policy("PPOTF1Policy", DynamicTFPolicyV2)
+PPOTF2Policy = get_ppo_tf_policy("PPOTF2Policy", EagerTFPolicyV2)

@@ -7,7 +7,10 @@ import ray
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
-from ray._private.test_utils import wait_for_condition, run_string_as_driver_nonblocking
+from ray._private.test_utils import (
+    wait_for_condition,
+    run_string_as_driver_nonblocking,
+)
 
 
 def get_all_ray_worker_processes():
@@ -153,4 +156,9 @@ time.sleep(100)
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

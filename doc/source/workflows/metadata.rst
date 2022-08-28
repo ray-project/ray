@@ -19,7 +19,7 @@ For example:
     def add(left: int, right: int) -> int:
         return left + right
 
-    workflow.create(add.bind(10, 20)).run("add_example")
+    workflow.run(add.bind(10, 20), workflow_id="add_example")
 
     workflow_metadata = workflow.get_metadata("add_example")
 
@@ -32,11 +32,13 @@ providing the task name:
 
 .. code-block:: python
 
-    workflow.create(add.options(**workflow.options(name="add_task")).bind(10, 20)).run("add_example_2")
+    workflow.run(
+        add.options(
+            **workflow.options(name="add_task")
+        ).bind(10, 20), workflow_id="add_example_2")
 
     task_metadata = workflow.get_metadata("add_example_2", name="add_task")
 
-    assert "task_options" in task_metadata
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" in workflow_metadata["stats"]
 
@@ -51,8 +53,8 @@ workflow or workflow task.
 
 .. code-block:: python
 
-    workflow.create(add.options(**workflow.options(name="add_task", metadata={"task_k": "task_v"})).bind(10, 20))\
-    .run("add_example_3", metadata={"workflow_k": "workflow_v"})
+    workflow.run(add.options(**workflow.options(name="add_task", metadata={"task_k": "task_v"})).bind(10, 20),
+        workflow_id="add_example_3", metadata={"workflow_k": "workflow_v"})
 
     assert workflow.get_metadata("add_example_3")["user_metadata"] == {"workflow_k": "workflow_v"}
     assert workflow.get_metadata("add_example_3", name="add_task")["user_metadata"] == {"task_k": "task_v"}
@@ -92,7 +94,7 @@ is completed).
         time.sleep(1000)
         return 0
 
-    workflow.create(simple.bind()).run_async(workflow_id)
+    workflow.run_async(simple.bind(), workflow_id=workflow_id)
 
     # make sure workflow task starts running
     while not flag.exists():
@@ -107,6 +109,7 @@ is completed).
 
     workflow_metadata = workflow.get_metadata(workflow_id)
     assert workflow_metadata["status"] == "CANCELED"
+    assert "task_options" in workflow_metadata
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" not in workflow_metadata["stats"]
 
@@ -126,20 +129,20 @@ be updated whenever a workflow is resumed.
         return 0
 
     with pytest.raises(ray.exceptions.RaySystemError):
-        workflow.create(simple.bind()).run(workflow_id)
+        workflow.run(simple.bind(), workflow_id=workflow_id)
 
     workflow_metadata_failed = workflow.get_metadata(workflow_id)
     assert workflow_metadata_failed["status"] == "FAILED"
 
     # remove flag to make task success
     error_flag.unlink()
-    ref = workflow.resume(workflow_id)
+    ref = workflow.resume_async(workflow_id)
     assert ray.get(ref) == 0
 
     workflow_metadata_resumed = workflow.get_metadata(workflow_id)
     assert workflow_metadata_resumed["status"] == "SUCCESSFUL"
 
     # make sure resume updated running metrics
-    assert  workflow_metadata_resumed["stats"]["start_time"] > workflow_metadata_failed["stats"]["start_time"]
+    assert workflow_metadata_resumed["stats"]["start_time"] > workflow_metadata_failed["stats"]["start_time"]
     assert workflow_metadata_resumed["stats"]["end_time"] > workflow_metadata_failed["stats"]["end_time"]
 
