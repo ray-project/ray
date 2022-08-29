@@ -64,7 +64,7 @@ google-cloud-storage
 gym-minigrid==1.0.3
 kubernetes
 lxml
-moto[s3,server]
+moto[s3,server] < 4.0.0
 mypy
 networkx
 numba

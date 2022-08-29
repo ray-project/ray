@@ -33,7 +33,7 @@ The Ray docs present all the information you need to start running Ray workloads
 ```{eval-rst}
 .. panels::
     :container: text-center
-    :column: col-lg-12 p-2
+    :column: col-lg-6 px-2 py-2
     :card:
 
     **Getting Started**
@@ -90,7 +90,7 @@ the project.
 and discussion of new and upcoming features.
 
 ```{note}
-The KubeRay operator replaces the older Ray operator hosted in the [Ray repository](https://github.com/ray-project/ray/tree/releases/2.0.0/python/ray/ray_operator).
+The KubeRay operator replaces the older Ray operator hosted in the [Ray repository](https://github.com/ray-project/ray/tree/master/python/ray/ray_operator).
 Check the linked README for migration notes.
 
 If you have used the legacy Ray operator in the past,

@@ -122,7 +122,6 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             # that base.__init__ will use the make_model() call.
             VTraceClipGradients.__init__(self)
             VTraceOptimizer.__init__(self)
-            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
 
             # Initialize base class.
             base.__init__(
@@ -134,6 +133,9 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                 existing_model=existing_model,
             )
 
+            # TF LearningRateSchedule depends on self.framework, so initialize
+            # after base.__init__() is called.
+            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
             EntropyCoeffSchedule.__init__(
                 self, config["entropy_coeff"], config["entropy_coeff_schedule"]
             )
