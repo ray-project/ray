@@ -1402,6 +1402,7 @@ def wandb_setup_api_key_hook():
     return "abcd"
 
 
+# Get node stats from node manager.
 def get_node_stats(raylet, num_retry=5, timeout=2):
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
     channel = ray._private.utils.init_grpc_channel(raylet_address)
