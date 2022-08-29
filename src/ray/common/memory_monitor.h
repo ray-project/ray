@@ -20,11 +20,25 @@
 #include "ray/common/asio/periodical_runner.h"
 
 namespace ray {
+
+/// A snapshot of memory information.
+struct MemorySnapshot {
+  /// The memory used.
+  int64_t used_bytes;
+
+  /// The total memory that can be used. >= used_bytes;
+  int64_t total_bytes;
+
+  friend std::ostream &operator<<(std::ostream &os, const MemorySnapshot &stack_trace);
+};
+
 /// Callback that runs at each monitoring interval.
 ///
-/// \param is_usage_above_threshold true if memory usage is above the usage
+/// \param is_usage_above_threshold true if memory usage is above the threshold
+/// \param system_memory snapshot of system memory information.
+/// \param usage_threshold the memory usage threshold.
 /// threshold at this instant.
-using MemoryUsageRefreshCallback = std::function<void(bool is_usage_above_threshold)>;
+using MemoryUsageRefreshCallback = std::function<void(bool is_usage_above_threshold, MemorySnapshot system_memory, float usage_threshold)>;
 
 /// Monitors the memory usage of the node.
 /// It checks the memory usage p
@@ -60,8 +74,9 @@ class MemoryMonitor {
   static constexpr uint32_t kLogIntervalMs = 5000;
   static constexpr int64_t kNull = -1;
 
+  /// \param system_memory snapshot of system memory information.
   /// \return true if the memory usage of this node is above the threshold.
-  bool IsUsageAboveThreshold();
+  bool IsUsageAboveThreshold(MemorySnapshot system_memory);
 
   /// \return the used and total memory in bytes.
   std::tuple<int64_t, int64_t> GetMemoryBytes();

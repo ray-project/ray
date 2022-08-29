@@ -41,8 +41,13 @@ MemoryMonitor::MemoryMonitor(float usage_threshold,
 #ifdef __linux__
     runner_.RunFnPeriodically(
         [this] {
-          bool is_usage_above_threshold = IsUsageAboveThreshold();
-          monitor_callback_(is_usage_above_threshold);
+          auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
+          MemorySnapshot system_memory;
+          system_memory.used_bytes = used_memory_bytes;
+          system_memory.total_bytes = total_memory_bytes;
+
+          bool is_usage_above_threshold = IsUsageAboveThreshold(system_memory);
+          monitor_callback_(is_usage_above_threshold, system_memory, usage_threshold_);
         },
         monitor_interval_ms,
         "MemoryMonitor.CheckIsMemoryUsageAboveThreshold");
@@ -57,15 +62,16 @@ MemoryMonitor::MemoryMonitor(float usage_threshold,
   }
 }
 
-bool MemoryMonitor::IsUsageAboveThreshold() {
-  auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
+bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory) {
+  int64_t used_memory_bytes = system_memory.used_bytes;
+  int64_t total_memory_bytes = system_memory.total_bytes;
   if (total_memory_bytes == kNull || used_memory_bytes == kNull) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
         << "Unable to capture node memory. Monitor will not be able "
         << "to detect memory usage above threshold.";
     return false;
   }
-  auto usage_fraction = static_cast<float>(used_memory_bytes) / total_memory_bytes;
+  float usage_fraction = static_cast<float>(used_memory_bytes) / total_memory_bytes;
   bool is_usage_above_threshold = usage_fraction > usage_threshold_;
   if (is_usage_above_threshold) {
     RAY_LOG_EVERY_MS(INFO, kLogIntervalMs)
@@ -186,9 +192,9 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
 }
 
 int64_t MemoryMonitor::GetProcessMemoryBytes(int64_t process_id) {
-  std::stringstream ss;
-  ss << "/proc/" << std::to_string(process_id) << "/smaps_rollup";
-  return GetLinuxProcessMemoryBytesFromSmap(ss.str());
+  std::stringstream smap_path;
+  smap_path << "/proc/" << std::to_string(process_id) << "/smaps_rollup";
+  return GetLinuxProcessMemoryBytesFromSmap(smap_path.str());
 }
 
 /// TODO:(clarng) align logic with psutil / Python-side memory calculations
@@ -247,6 +253,11 @@ MemoryMonitor::~MemoryMonitor() {
   if (monitor_thread_.joinable()) {
     monitor_thread_.join();
   }
+}
+
+std::ostream &operator<<(std::ostream &os, const MemorySnapshot& obj) {
+  os << "Used bytes: " << obj.used_bytes << ", Total bytes: " << obj.total_bytes;
+  return os;
 }
 
 }  // namespace ray

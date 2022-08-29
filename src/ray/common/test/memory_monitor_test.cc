@@ -26,7 +26,7 @@ TEST_F(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold) {
   MemoryMonitor monitor(
       0 /*usage_threshold*/,
       0 /*refresh_interval_ms*/,
-      [](bool is_usage_above_threshold) { FAIL() << "Expected monitor to not run"; });
+      [](bool is_usage_above_threshold, MemorySnapshot system_memory, float usage_threshold) { FAIL() << "Expected monitor to not run"; });
   ASSERT_TRUE(monitor.IsUsageAboveThreshold());
 }
 
@@ -34,7 +34,7 @@ TEST_F(MemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold) {
   MemoryMonitor monitor(
       1 /*usage_threshold*/,
       0 /*refresh_interval_ms*/,
-      [](bool is_usage_above_threshold) { FAIL() << "Expected monitor to not run"; });
+      [](bool is_usage_above_threshold, MemorySnapshot system_memory, float usage_threshold) { FAIL() << "Expected monitor to not run"; });
   ASSERT_FALSE(monitor.IsUsageAboveThreshold());
 }
 
@@ -43,7 +43,7 @@ TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive) {
     MemoryMonitor monitor(
         0 /*usage_threshold*/,
         0 /*refresh_interval_ms*/,
-        [](bool is_usage_above_threshold) { FAIL() << "Expected monitor to not run"; });
+        [](bool is_usage_above_threshold, MemorySnapshot system_memory, float usage_threshold) { FAIL() << "Expected monitor to not run"; });
     auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
     ASSERT_GT(total_bytes, 0);
     ASSERT_GT(total_bytes, used_bytes);
@@ -55,7 +55,7 @@ TEST_F(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
     MemoryMonitor monitor(
         0 /*usage_threshold*/,
         0 /*refresh_interval_ms*/,
-        [](bool is_usage_above_threshold) { FAIL() << "Expected monitor to not run"; });
+        [](bool is_usage_above_threshold, MemorySnapshot system_memory, float usage_threshold) { FAIL() << "Expected monitor to not run"; });
     auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
     auto [cgroup_used_bytes, cgroup_total_bytes] = monitor.GetCGroupMemoryBytes();
 
@@ -86,7 +86,12 @@ TEST_F(MemoryMonitorTest, TestMonitorPeriodSetCallbackExecuted) {
   MemoryMonitor monitor(
       1 /*usage_threshold*/,
       1 /*refresh_interval_ms*/,
-      [&callback_ran](bool is_usage_above_threshold) { callback_ran.notify_all(); });
+      [&callback_ran](bool is_usage_above_threshold, MemorySnapshot system_memory, float usage_threshold) {
+        ASSERT_EQ(1.0f, usage_threshold);
+        ASSERT_GT(system_memory.total_bytes, 0);
+        ASSERT_GT(system_memory.used_bytes, 0);
+        callback_ran.notify_all();
+        });
   std::unique_lock<std::mutex> callback_ran_mutex_lock(callback_ran_mutex);
   callback_ran.wait(callback_ran_mutex_lock);
 }

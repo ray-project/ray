@@ -157,19 +157,14 @@ enum class RayLogLevel {
 // Occasional logging with DEBUG fallback:
 // If DEBUG is not enabled, log every n'th occurrence of an event.
 // Otherwise, if DEBUG is enabled, always log as DEBUG events.
-#define RAY_LOG_EVERY_N_OR_DEBUG(level, n) RAY_LOG_EVERY_N_OR(level, n, DEBUG)
-
-// Occasional logging with orlevel fallback:
-// If orlevel is not enabled, log every n'th occurrence of an event.
-// Otherwise, if orlevel is enabled, always log as orlevel events.
-#define RAY_LOG_EVERY_N_OR(level, n, orlevel)                           \
+#define RAY_LOG_EVERY_N_OR_DEBUG(level, n)                              \
   static std::atomic<uint64_t> RAY_LOG_OCCURRENCES(0);                  \
-  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::orlevel) ||         \
+  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::DEBUG) ||           \
       (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) &&          \
        RAY_LOG_OCCURRENCES.fetch_add(1) % n == 0))                      \
   RAY_LOG_INTERNAL(ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) \
                        ? ray::RayLogLevel::level                        \
-                       : ray::RayLogLevel::orlevel)                     \
+                       : ray::RayLogLevel::DEBUG)                       \
       << "[" << RAY_LOG_OCCURRENCES << "] "
 
 /// Macros for RAY_LOG_EVERY_MS
@@ -192,6 +187,21 @@ enum class RayLogLevel {
   if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) &&                            \
       RAY_LOG_TIME_DELTA > RAY_LOG_TIME_PERIOD)                                          \
   RAY_LOG_INTERNAL(ray::RayLogLevel::level)
+
+#define RAY_LOG_EVERY_MS_OR(level, ms, otherLevel)                                       \
+  constexpr std::chrono::milliseconds RAY_LOG_TIME_PERIOD(ms);                           \
+  static std::atomic<int64_t> RAY_LOG_PREVIOUS_TIME_RAW;                                 \
+  const auto RAY_LOG_CURRENT_TIME = std::chrono::steady_clock::now().time_since_epoch(); \
+  const decltype(RAY_LOG_CURRENT_TIME) RAY_LOG_PREVIOUS_TIME(                            \
+      RAY_LOG_PREVIOUS_TIME_RAW.load(std::memory_order_relaxed));                        \
+  const auto RAY_LOG_TIME_DELTA = RAY_LOG_CURRENT_TIME - RAY_LOG_PREVIOUS_TIME;          \
+  if (RAY_LOG_TIME_DELTA > RAY_LOG_TIME_PERIOD)                                          \
+    RAY_LOG_PREVIOUS_TIME_RAW.store(RAY_LOG_CURRENT_TIME.count(),                        \
+                                    std::memory_order_relaxed);                          \
+  RAY_LOG_INTERNAL(ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)                  \
+      && RAY_LOG_TIME_DELTA > RAY_LOG_TIME_PERIOD                                        \
+    ? ray::RayLogLevel::level                                                            \
+    : ray::RayLogLevel::otherLevel)
 
 // To make the logging lib plugable with other logging libs and make
 // the implementation unawared by the user, RayLog is only a declaration
