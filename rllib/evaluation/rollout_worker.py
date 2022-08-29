@@ -1259,7 +1259,7 @@ class RolloutWorker(ParallelIteratorWorker):
             new_policy.set_state(policy_state)
 
         # Enabling connectors is not per policy, so we can use the general config here
-        if self.config.get("enable_connectors"):
+        if self.policy_config.get("enable_connectors"):
             ctx = ConnectorContext.from_policy(new_policy)
             connector = get_synced_filter_connector(
                 ctx,
