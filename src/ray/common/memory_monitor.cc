@@ -72,7 +72,7 @@ bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory) {
     return false;
   }
   float usage_fraction = static_cast<float>(used_memory_bytes) / total_memory_bytes;
-  bool is_usage_above_threshold = usage_fraction > usage_threshold_;
+  bool is_usage_above_threshold = usage_fraction >= usage_threshold_;
   if (is_usage_above_threshold) {
     RAY_LOG_EVERY_MS(INFO, kLogIntervalMs)
         << "Node memory usage above threshold, used: " << used_memory_bytes

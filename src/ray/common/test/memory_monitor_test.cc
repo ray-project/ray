@@ -29,7 +29,7 @@ TEST_F(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold) {
       [](bool is_usage_above_threshold,
          MemorySnapshot system_memory,
          float usage_threshold) { FAIL() << "Expected monitor to not run"; });
-  ASSERT_TRUE(monitor.IsUsageAboveThreshold());
+  ASSERT_TRUE(monitor.IsUsageAboveThreshold({1, 10}));
 }
 
 TEST_F(MemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold) {
@@ -39,7 +39,19 @@ TEST_F(MemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold) {
       [](bool is_usage_above_threshold,
          MemorySnapshot system_memory,
          float usage_threshold) { FAIL() << "Expected monitor to not run"; });
-  ASSERT_FALSE(monitor.IsUsageAboveThreshold());
+  ASSERT_FALSE(monitor.IsUsageAboveThreshold({9, 10}));
+}
+
+TEST_F(MemoryMonitorTest, TestUsageAtThresholdReportsTrue) {
+  MemoryMonitor monitor(
+      0.5 /*usage_threshold*/,
+      0 /*refresh_interval_ms*/,
+      [](bool is_usage_above_threshold,
+         MemorySnapshot system_memory,
+         float usage_threshold) { FAIL() << "Expected monitor to not run"; });
+  ASSERT_FALSE(monitor.IsUsageAboveThreshold({4, 10}));
+  ASSERT_TRUE(monitor.IsUsageAboveThreshold({5, 10}));
+  ASSERT_TRUE(monitor.IsUsageAboveThreshold({6, 10}));
 }
 
 TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive) {
