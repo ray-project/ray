@@ -56,11 +56,11 @@ class ObsPreprocessorConnector(AgentConnector):
 
         return ac_data
 
-    def to_config(self):
+    def to_state(self):
         return ObsPreprocessorConnector.__name__, {}
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: List[Any]):
         return ObsPreprocessorConnector(ctx, **params)
 
 
