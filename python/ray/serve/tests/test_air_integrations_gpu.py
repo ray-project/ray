@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 import requests
 
@@ -22,17 +23,16 @@ def test_automatic_enable_gpu(serve_instance):
         def from_checkpoint(cls, checkpoint: Checkpoint, use_gpu: bool = False):
             return cls(use_gpu)
 
-        def predict(self, data, **kwargs):
+        def predict(self, data: np.ndarray, **kwargs):
             if not self.use_gpu:
                 raise ValueError("GPU not enabled")
-            return data
+            return [{"value": val} for val in data.tolist()]
 
     _ = PredictorDeployment.options(
         name="GPU", ray_actor_options={"num_gpus": 1}
     ).deploy(predictor_cls=DummyGPUPredictor, checkpoint=Checkpoint.from_dict({"x": 1}))
 
-    with pytest.raises(ValueError, match="GPU enabled"):
-        ray.get(send_request.remote(json={"array": [40]}))
+    assert ray.get(send_request.remote(json={"array": [40]})) == {"value": [40]}
 
 
 if __name__ == "__main__":
