@@ -111,7 +111,7 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     result2 = trainer2.fit()
 
     assert result2.metrics["epoch"] == epochs + 1
-    if logging_steps > 2:
+    if logging_steps % 2 != 0:
         assert (
             result2.metrics["training_iteration"]
             == math.ceil(1 * 2 / logging_steps) + 1
