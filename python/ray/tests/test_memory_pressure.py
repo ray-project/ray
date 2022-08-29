@@ -12,7 +12,7 @@ from ray._private.test_utils import get_node_stats, wait_for_condition
 
 memory_usage_threshold_fraction = 0.7
 memory_monitor_interval_ms = 100
-
+expected_worker_eviction_message = "System memory low at node with IP"
 
 @pytest.fixture
 def ray_with_memory_monitor(shutdown_only):
@@ -218,7 +218,7 @@ async def test_actor_oom_logs_error(ray_with_memory_monitor):
     for worker in result.worker_table_data:
         if worker.worker_address.worker_id.hex() == worker_id:
             assert (
-                "Memory monitor evicting worker of the last submitted task"
+                expected_worker_eviction_message
                 in worker.exit_detail
             )
             verified = True
@@ -231,7 +231,7 @@ async def test_actor_oom_logs_error(ray_with_memory_monitor):
             assert actor.death_cause
             assert actor.death_cause.actor_died_error_context
             assert (
-                "Memory monitor evicting worker of the last submitted task"
+                expected_worker_eviction_message
                 in actor.death_cause.actor_died_error_context.error_message
             )
             verified = True
@@ -262,7 +262,7 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
     for worker in result.worker_table_data:
         if worker.exit_detail:
             assert (
-                "Memory monitor evicting worker of the last submitted task"
+                expected_worker_eviction_message
                 in worker.exit_detail
             )
         verified = True

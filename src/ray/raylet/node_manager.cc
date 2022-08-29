@@ -2926,48 +2926,39 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
 
           float usage_fraction =
               static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
+          std::string used_bytes_gb = FormatFloat(static_cast<float>(system_memory.used_bytes) / 1024 / 1024 / 1024, 2);
+          std::string total_bytes_gb = FormatFloat(static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024, 2);
+          std::stringstream id_ss;
+          if (latest_worker->GetActorId().IsNil()) {
+            id_ss << "task ID " << latest_worker->GetAssignedTaskId();
+          } else {
+            id_ss << "actor ID " << latest_worker->GetActorId();
+          }
           std::stringstream worker_exit_message_ss;
           worker_exit_message_ss
-              << "Memory monitor evicting worker of the last submitted task to prevent "
-                 "running out of memory"
-              << ". Memory used fraction: " << usage_fraction
-              << ", eviction threshold: " << usage_threshold
-              << ", system memory: " << system_memory << ", task name: "
-              << latest_worker->GetAssignedTask().GetTaskSpecification().GetName();
-          if (latest_worker->GetActorId().IsNil()) {
-            worker_exit_message_ss << ", task id: " << latest_worker->GetAssignedTaskId();
-          } else {
-            worker_exit_message_ss << ", actor id: " << latest_worker->GetActorId();
-          }
+              << "System memory low at node with IP " << latest_worker->IpAddress()  << ". Used memory (" << used_bytes_gb << "GB) / total capacity (" << total_bytes_gb << "GB) (" << usage_fraction <<  ") exceeds threshold " << usage_threshold << ", killing latest task with name " << latest_worker->GetAssignedTask().GetTaskSpecification().GetName() << " and " << id_ss.str() << " to avoid running out of memory.\n"
+              << "This may indicate a memory leak in a task or actor, or that too many tasks are running in parallel.\n";
           std::string worker_exit_message = worker_exit_message_ss.str();
 
           std::stringstream error_log_ss;
           error_log_ss << worker_exit_message
-                       << ". Find details of the worker evicted with `ray get workers "
+                       << "To find the details of the worker evicted, use `ray get workers "
                        << latest_worker->WorkerId() << "`. ";
           /// TODO: (clarng) We only direct user if it is an actor because task is
           /// currently not visible if it is already terminated, and ray logs -t is not
           /// yet supported.
           if (!latest_worker->GetActorId().IsNil()) {
-            error_log_ss << "Find details of the actor evicted with `ray get actors "
+            error_log_ss << " To find details of the actor evicted, use `ray get actors "
                          << latest_worker->GetActorId()
-                         << "` and the actor logs with `ray logs -a "
+                         << "`. To find the logs of the actor use `ray logs -a "
                          << latest_worker->GetActorId() << "`. ";
           }
           error_log_ss
-              << "More details of the workload at the time of eviction can be found in "
-                 "the raylet log with `ray logs raylet.out -ip "
-              << latest_worker->IpAddress()
-              << "`. Eviction happens when the node runs low on memory and can happen "
-                 "due to 1) memory leak of the tasks or actors "
-              << "2) too many tasks running in parallel that is consuming more memory "
-                 "than the node has. "
-              << "Consider provisioning more memory on the node or reduce the amount of "
-                 "parallelism by requesting more resource (e.g. cpu or memory) per task. "
-              << "The memory monitor can be disabled or the eviction threshold adjusted "
-                 "via configuration parameters memory_monitor_interval_ms and "
-                 "memory_usage_threshold_fraction. "
-              << "Refer to the Ray documentation for more details.";
+              << "To find the highest memory consumers, use `ray logs raylet.out -ip " << latest_worker->IpAddress() 
+              << "`.\n"
+              << "Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. " 
+              << "To adjust the eviction threshold, set the environment variable `RAY_memory_usage_threshold_fraction` when starting Ray. "
+              << "To disable worker eviction, set the environment variable `RAY_memory_monitor_interval_ms` to zero.";
           /// TODO: (clarng) add a link to the oom killer / memory manager documentation
           RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << error_log_ss.str();
 
