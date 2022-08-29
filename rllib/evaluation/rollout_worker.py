@@ -1241,9 +1241,16 @@ class RolloutWorker(ParallelIteratorWorker):
         if policy_state:
             new_policy.set_state(policy_state)
 
-        self.filters[policy_id] = get_filter(
-            self.observation_filter, new_policy.observation_space.shape
+        filter_shape = tree.map_structure(
+            lambda s: (
+                None
+                if isinstance(s, (Discrete, MultiDiscrete))  # noqa
+                else np.array(s.shape)
+            ),
+            new_policy.observation_space_struct,
         )
+
+        self.filters[policy_id] = get_filter(self.observation_filter, filter_shape)
 
         self.set_policy_mapping_fn(policy_mapping_fn)
         if policies_to_train is not None:
