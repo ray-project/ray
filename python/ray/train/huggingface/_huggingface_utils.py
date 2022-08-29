@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Optional, Tuple, Type
 import datasets.iterable_dataset
 import transformers.trainer
 from transformers.trainer_callback import TrainerCallback
+from transformers.trainer_utils import IntervalStrategy
 
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
@@ -122,10 +123,19 @@ class TrainReportCallback(TrainerCallback):
         # we delay the session.report call after the checkpoint is reported
         # to Ray Train.
         self.delayed_report = {"metrics": {}, "checkpoint": None}
+        self.last_metrics = {}
+        self.last_step = 0
         super().__init__()
 
     def on_epoch_end(self, args, state, control, **kwargs):
         if control.should_training_stop:
+            # If the last step was the final step of the entire
+            # loop, do not log again (would cause a divide by zero error)
+            if state.global_step != self.last_step:
+                if args.evaluation_strategy not in ("no", IntervalStrategy.NO):
+                    control.should_evaluate = True
+                control.should_log = True
+
             # Always save at the end.
             control.should_save = True
         return control
@@ -134,6 +144,7 @@ class TrainReportCallback(TrainerCallback):
         # Log is called in multiple places (evaluation, train metrics).
         report = {**logs, "step": state.global_step, "epoch": state.epoch}
         self.delayed_report["metrics"].update(report)
+        self.last_step = state.global_step
 
     def on_save(self, args, state, control, **kwargs):
         # Save is called after evaluation.
@@ -151,6 +162,7 @@ class TrainReportCallback(TrainerCallback):
     def _report(self):
         if self.delayed_report["metrics"]:
             session.report(**self.delayed_report)
+            self.last_metrics = self.delayed_report["metrics"]
             self.delayed_report = {"metrics": {}, "checkpoint": None}
 
     def on_epoch_begin(self, args, state, control, **kwargs):
@@ -165,4 +177,10 @@ class TrainReportCallback(TrainerCallback):
 
     def on_train_end(self, args, state, control, **kwargs):
         # Final callback. Train metrics are logged right before this.
+
+        # Use last eval metrics
+        self.delayed_report["metrics"] = {
+            **self.last_metrics,
+            **self.delayed_report["metrics"],
+        }
         self._report()

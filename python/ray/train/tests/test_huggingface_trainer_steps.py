@@ -92,6 +92,7 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     assert result.metrics["epoch"] == epochs
     assert result.metrics["training_iteration"] == math.ceil(epochs * 2 / logging_steps)
     assert result.checkpoint
+    assert "eval_loss" in result.metrics
 
     trainer2 = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
@@ -110,8 +111,15 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     result2 = trainer2.fit()
 
     assert result2.metrics["epoch"] == epochs + 1
-    assert result2.metrics["training_iteration"] == math.ceil(1 * 2 / logging_steps)
+    if logging_steps > 2:
+        assert (
+            result2.metrics["training_iteration"]
+            == math.ceil(1 * 2 / logging_steps) + 1
+        )
+    else:
+        assert result2.metrics["training_iteration"] == math.ceil(1 * 2 / logging_steps)
     assert result2.checkpoint
+    assert "eval_loss" in result2.metrics
 
     predictor = BatchPredictor.from_checkpoint(
         result2.checkpoint,

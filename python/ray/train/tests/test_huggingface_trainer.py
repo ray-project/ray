@@ -76,6 +76,7 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result.metrics["epoch"] == 4
     assert result.metrics["training_iteration"] == 4
     assert result.checkpoint
+    assert "eval_loss" in result.metrics
 
     trainer2 = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
@@ -92,6 +93,7 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result2.metrics["epoch"] == 5
     assert result2.metrics["training_iteration"] == 1
     assert result2.checkpoint
+    assert "eval_loss" in result2.metrics
 
     predictor = BatchPredictor.from_checkpoint(
         result2.checkpoint,
