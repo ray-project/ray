@@ -1,5 +1,4 @@
 from math import ceil
-import os
 import sys
 import time
 
@@ -7,6 +6,7 @@ import psutil
 import pytest
 
 import ray
+from ray._private import test_utils
 from ray._private.test_utils import get_node_stats, wait_for_condition
 
 
@@ -76,7 +76,11 @@ class Leaker:
 
         time.sleep(sleep_time_s / 1000)
 
-        return os.getpid()
+    def get_worker_id(self):
+        return ray._private.worker.global_worker.core_worker.get_worker_id().hex()
+
+    def get_actor_id(self):
+        return ray._private.worker.global_worker.core_worker.get_actor_id().hex()
 
 
 def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> None:
@@ -189,20 +193,84 @@ def test_memory_pressure_kill_task_if_actor_submitted_task_first(
     assert "leaker1" in actors
 
 
+@pytest.mark.asyncio
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_worker_dump(ray_with_memory_monitor):
-    leakers = [Leaker.options(name=str(i)).remote() for i in range(7)]
-    _ = [ray.get(leaker.allocate.remote(0)) for leaker in leakers]
-    oom_actor = Leaker.options(name="oom_actor").remote()
+async def test_actor_oom_logs_error(ray_with_memory_monitor):
+    first_actor = Leaker.options(name="first_random_actor").remote()
+    ray.get(first_actor.get_worker_id.remote())
+
+    oom_actor = Leaker.options(name="the_real_oom_actor").remote()
+    worker_id = ray.get(oom_actor.get_worker_id.remote())
+    actor_id = ray.get(oom_actor.get_actor_id.remote())
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
     with pytest.raises(ray.exceptions.RayActorError) as _:
         ray.get(
             oom_actor.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3)
         )
+
+    state_api_client = test_utils.get_local_state_client()
+    result = await state_api_client.get_all_worker_info(timeout=5, limit=10)
+    verified = False
+    for worker in result.worker_table_data:
+        if worker.worker_address.worker_id.hex() == worker_id:
+            assert (
+                "Memory monitor evicting worker of the last submitted task"
+                in worker.exit_detail
+            )
+            verified = True
+    assert verified
+
+    result = await state_api_client.get_all_actor_info(timeout=5, limit=10)
+    verified = False
+    for actor in result.actor_table_data:
+        if actor.actor_id.hex() == actor_id:
+            assert actor.death_cause
+            assert actor.death_cause.actor_died_error_context
+            assert (
+                "Memory monitor evicting worker of the last submitted task"
+                in actor.death_cause.actor_died_error_context.error_message
+            )
+            verified = True
+    assert verified
+
+    # TODO(clarng): verify log info once state api can dump log info
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+async def test_task_oom_logs_error(ray_with_memory_monitor):
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
+    with pytest.raises(ray.exceptions.WorkerCrashedError) as _:
+        ray.get(
+            no_retry.remote(
+                allocate_bytes=bytes_to_alloc,
+                allocate_interval_s=0,
+                post_allocate_sleep_s=1000,
+            )
+        )
+
+    state_api_client = test_utils.get_local_state_client()
+    result = await state_api_client.get_all_worker_info(timeout=5, limit=10)
+    verified = False
+    for worker in result.worker_table_data:
+        if worker.exit_detail:
+            assert (
+                "Memory monitor evicting worker of the last submitted task"
+                in worker.exit_detail
+            )
+        verified = True
+    assert verified
+
+    # TODO(clarng): verify task info once state_api_client.get_task_info
+    # returns the crashed task.
+    # TODO(clarng): verify log info once state api can dump log info
 
 
 if __name__ == "__main__":

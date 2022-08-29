@@ -21,6 +21,7 @@ import grpc
 import numpy as np
 import psutil  # We must import psutil after ray because we bundle it with ray.
 import pytest
+from ray.experimental.state.state_manager import StateDataSourceClient
 import yaml
 from grpc._channel import _InactiveRpcError
 
@@ -1415,6 +1416,26 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
             continue
     assert reply is not None
     return reply
+
+
+# Creates a state api client assuming the head node (gcs) is local.
+def get_local_state_client():
+    hostname = ray.worker._global_node.gcs_address
+
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        hostname, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=True
+    )
+
+    gcs_aio_client = gcs_utils.GcsAioClient(address=hostname, nums_reconnect_retry=0)
+    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        ip = node["NodeManagerAddress"]
+        port = int(node["NodeManagerPort"])
+        client.register_raylet_client(node_id, ip, port)
+        client.register_agent_client(node_id, ip, port)
+
+    return client
 
 
 # Global counter to test different return values
