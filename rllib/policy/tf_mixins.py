@@ -224,7 +224,7 @@ class TargetNetworkMixin:
 
         # Hard initial update.
         self._do_update = update_target_fn
-        self.update_target(tau=1.0)
+        self.update_target(tau=self.config.get("tau", 1.0))
 
     @property
     def q_func_vars(self):
@@ -240,7 +240,7 @@ class TargetNetworkMixin:
 
     # Support both hard and soft sync.
     def update_target(self, tau: int = None) -> None:
-        self._do_update(np.float32(tau or self.config.get("tau")))
+        self._do_update(np.float32(tau or self.config.get("tau", 1.0)))
 
     @override(TFPolicy)
     def variables(self) -> List[TensorType]:
