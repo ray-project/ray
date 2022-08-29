@@ -25,7 +25,7 @@ class TestAgentConnector(unittest.TestCase):
         ctx = ConnectorContext()
         connectors = [ClipRewardAgentConnector(ctx, False, 1.0)]
         pipeline = AgentConnectorPipeline(ctx, connectors)
-        name, params = pipeline.to_config()
+        name, params = pipeline.to_state()
         restored = get_connector(ctx, name, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
         self.assertTrue(isinstance(restored.connectors[0], ClipRewardAgentConnector))
@@ -42,7 +42,7 @@ class TestAgentConnector(unittest.TestCase):
         ctx = ConnectorContext(config={}, observation_space=obs_space)
 
         c = ObsPreprocessorConnector(ctx)
-        name, params = c.to_config()
+        name, params = c.to_state()
 
         restored = get_connector(ctx, name, params)
         self.assertTrue(isinstance(restored, ObsPreprocessorConnector))
@@ -70,7 +70,7 @@ class TestAgentConnector(unittest.TestCase):
         ctx = ConnectorContext()
 
         c = ClipRewardAgentConnector(ctx, limit=2.0)
-        name, params = c.to_config()
+        name, params = c.to_state()
 
         self.assertEqual(name, "ClipRewardAgentConnector")
         self.assertAlmostEqual(params["limit"], 2.0)
@@ -95,7 +95,7 @@ class TestAgentConnector(unittest.TestCase):
 
         c = FlattenDataAgentConnector(ctx)
 
-        name, params = c.to_config()
+        name, params = c.to_state()
         restored = get_connector(ctx, name, params)
         self.assertTrue(isinstance(restored, FlattenDataAgentConnector))
 
@@ -413,11 +413,11 @@ class TestViewRequirementConnector(unittest.TestCase):
         ]
         agent_connector = AgentConnectorPipeline(ctx, connectors)
 
-        name, params = agent_connector.to_config()
+        name, params = agent_connector.to_state()
         restored = get_connector(ctx, name, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
         for cidx, c in enumerate(connectors):
-            check(restored.connectors[cidx].to_config(), c.to_config())
+            check(restored.connectors[cidx].to_state(), c.to_state())
 
         # simulate a rollout
         n_steps = 10
