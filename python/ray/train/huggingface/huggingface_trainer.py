@@ -136,8 +136,7 @@ class HuggingFaceTrainer(TorchTrainer):
     argument in ``TrainingArguments`` will be automatically set. Please note
     that if you want to use CPU training, you will need to set the ``no_cuda``
     argument in ``TrainingArguments`` manually - otherwise, an exception
-    (segfault) may be thrown. Furthermore, 'steps' value for ``save_strategy``,
-    ``logging_strategy`` and ``evaluation_strategy`` is not yet supported.
+    (segfault) may be thrown.
 
     This Trainer requires ``transformers>=4.19.0`` package.
 
