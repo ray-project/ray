@@ -2975,6 +2975,9 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           RAY_LOG(INFO) << "Latest 10 worker details:\n"
                         << this->WorkersDebugString(workers, max_to_print);
 
+          /// TODO: (clarng) right now destroy is called after the messages are created
+          /// since we print the process memory in the message. Destroy should be called
+          /// as soon as possible to free up memory.
           DestroyWorker(high_memory_eviction_target_,
                         rpc::WorkerExitType::USER_ERROR,
                         worker_exit_message,
