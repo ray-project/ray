@@ -80,6 +80,10 @@ external_toc_path = "_toc.yml"
 
 html_extra_path = ["robots.txt"]
 
+# Omit prompt when using copy button
+copybutton_prompt_text = r"\$ "
+copybutton_prompt_is_regexp = True
+
 
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
 # of imports.
