@@ -255,8 +255,8 @@ MemoryMonitor::~MemoryMonitor() {
   }
 }
 
-std::ostream &operator<<(std::ostream &os, const MemorySnapshot& obj) {
-  os << "Used bytes: " << obj.used_bytes << ", Total bytes: " << obj.total_bytes;
+std::ostream &operator<<(std::ostream &os, const MemorySnapshot& memory_snapshot) {
+  os << "Used bytes: " << memory_snapshot.used_bytes << ", Total bytes: " << memory_snapshot.total_bytes;
   return os;
 }
 

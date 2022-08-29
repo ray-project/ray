@@ -29,7 +29,7 @@ struct MemorySnapshot {
   /// The total memory that can be used. >= used_bytes;
   int64_t total_bytes;
 
-  friend std::ostream &operator<<(std::ostream &os, const MemorySnapshot &stack_trace);
+  friend std::ostream &operator<<(std::ostream &os, const MemorySnapshot &memory_snapshot);
 };
 
 /// Callback that runs at each monitoring interval.
@@ -88,7 +88,7 @@ class MemoryMonitor {
   std::tuple<int64_t, int64_t> GetLinuxMemoryBytes();
 
   /// \param smap_path file path to the smap file
-  /// \return the used memory in bytes from the given smap file.
+  /// \return the used memory in bytes from the given smap file or kNull if the file does not exist or if it fails to read a valid value.
   static int64_t GetLinuxProcessMemoryBytesFromSmap(const std::string smap_path);
 
   /// \return the smaller of the two integers, kNull if both are kNull,
