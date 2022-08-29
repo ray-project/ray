@@ -107,7 +107,7 @@ const ray::rpc::ActorDeathCause GenActorOutOfScopeCause(const ray::gcs::GcsActor
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
   AddActorInfo(actor, actor_died_error_ctx);
   actor_died_error_ctx->set_error_message(
-      "The actor is dead because because all references to the actor were removed.");
+      "The actor is dead because all references to the actor were removed.");
   return death_cause;
 }
 }  // namespace
@@ -801,6 +801,11 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         created_actors_.erase(node_it);
       }
     } else {
+      if (!worker_id.IsNil()) {
+        // The actor is in phase of creating, so we need to notify the core
+        // worker exit to avoid process and resource leak.
+        NotifyCoreWorkerToKillActor(actor, death_cause, force_kill);
+      }
       CancelActorInScheduling(actor, TaskID::ForActorCreationTask(actor_id));
     }
   }
@@ -1441,6 +1446,12 @@ void GcsActorManager::KillActor(const ActorID &actor_id,
     const auto &task_id = actor->GetCreationTaskSpecification().TaskId();
     RAY_LOG(DEBUG) << "The actor " << actor->GetActorID()
                    << " hasn't been created yet, cancel scheduling " << task_id;
+    if (!worker_id.IsNil()) {
+      // The actor is in phase of creating, so we need to notify the core
+      // worker exit to avoid process and resource leak.
+      NotifyCoreWorkerToKillActor(
+          actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill, no_restart);
+    }
     CancelActorInScheduling(actor, task_id);
     ReconstructActor(actor_id,
                      /*need_reschedule=*/true,

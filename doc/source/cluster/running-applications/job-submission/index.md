@@ -32,5 +32,6 @@ quickstart
 sdk
 rest
 jobs-package-ref
+cli
 ray-client
 ```
