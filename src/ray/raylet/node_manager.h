@@ -189,14 +189,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Returns workers sorted by the time of the last submitted task, in descending order.
   ///
   /// \return the list of sorted workers
-  const std::vector<std::shared_ptr<WorkerInterface>> WorkersWithLatestSubmittedTasks() const;
+  const std::vector<std::shared_ptr<WorkerInterface>> WorkersWithLatestSubmittedTasks()
+      const;
 
   /// Returns debug string of the workers.
   ///
   /// \param workers The workers to be printed.
-  /// \param num_workers The number of workers to print starting from the beginning of the worker list.
-  /// \return the debug string.
-  std::string WorkersDebugString(const std::vector<std::shared_ptr<WorkerInterface>> workers, int64_t num_workers) const;
+  /// \param num_workers The number of workers to print starting from the beginning of the
+  /// worker list. \return the debug string.
+  std::string WorkersDebugString(
+      const std::vector<std::shared_ptr<WorkerInterface>> workers,
+      int64_t num_workers) const;
 
   /// Record metrics.
   void RecordMetrics();

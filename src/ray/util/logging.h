@@ -198,10 +198,10 @@ enum class RayLogLevel {
   if (RAY_LOG_TIME_DELTA > RAY_LOG_TIME_PERIOD)                                          \
     RAY_LOG_PREVIOUS_TIME_RAW.store(RAY_LOG_CURRENT_TIME.count(),                        \
                                     std::memory_order_relaxed);                          \
-  RAY_LOG_INTERNAL(ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)                  \
-      && RAY_LOG_TIME_DELTA > RAY_LOG_TIME_PERIOD                                        \
-    ? ray::RayLogLevel::level                                                            \
-    : ray::RayLogLevel::otherLevel)
+  RAY_LOG_INTERNAL(ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) &&               \
+                           RAY_LOG_TIME_DELTA > RAY_LOG_TIME_PERIOD                      \
+                       ? ray::RayLogLevel::level                                         \
+                       : ray::RayLogLevel::otherLevel)
 
 // To make the logging lib plugable with other logging libs and make
 // the implementation unawared by the user, RayLog is only a declaration

@@ -2398,17 +2398,18 @@ std::string NodeManager::DebugString() const {
   return result.str();
 }
 
-std::string NodeManager::WorkersDebugString(const std::vector<std::shared_ptr<WorkerInterface>> workers, int64_t num_workers) const {
+std::string NodeManager::WorkersDebugString(
+    const std::vector<std::shared_ptr<WorkerInterface>> workers,
+    int64_t num_workers) const {
   std::stringstream result;
   int64_t index = 1;
   for (auto &worker : workers) {
     auto pid = worker->GetProcess().GetId();
     auto used_memory = memory_monitor_->GetProcessMemoryBytes(pid);
-    result
-        << "Worker " << index << ": task assigned time counter "
-        << worker->GetAssignedTaskTime().time_since_epoch().count()
-        << " memory used " << used_memory << " task spec "
-        << worker->GetAssignedTask().GetTaskSpecification().DebugString() << "\n";
+    result << "Worker " << index << ": task assigned time counter "
+           << worker->GetAssignedTaskTime().time_since_epoch().count() << " memory used "
+           << used_memory << " task spec "
+           << worker->GetAssignedTask().GetTaskSpecification().DebugString() << "\n";
     index += 1;
     if (index > num_workers) {
       break;
@@ -2898,7 +2899,9 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
 // memory usage of each process and kill enough processes to put it
 // below the memory threshold.
 MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
-  return [this](bool is_usage_above_threshold, MemorySnapshot system_memory, float usage_threshold) {
+  return [this](bool is_usage_above_threshold,
+                MemorySnapshot system_memory,
+                float usage_threshold) {
     if (high_memory_eviction_target_ != nullptr) {
       if (!high_memory_eviction_target_->GetProcess().IsAlive()) {
         RAY_LOG(INFO) << "Worker evicted and process killed to reclaim memory. "
@@ -2921,11 +2924,16 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           std::shared_ptr<WorkerInterface> latest_worker = workers.front();
           high_memory_eviction_target_ = latest_worker;
 
-          float usage_fraction = static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
+          float usage_fraction =
+              static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
           std::stringstream worker_exit_message_ss;
-          worker_exit_message_ss << "Memory monitor evicting worker of the last submitted task to prevent running out of memory"
-          << ". Memory used fraction: " << usage_fraction << ", eviction threshold: " << usage_threshold << ", system memory: " << system_memory
-          << ", task name: " << latest_worker->GetAssignedTask().GetTaskSpecification().GetName();
+          worker_exit_message_ss
+              << "Memory monitor evicting worker of the last submitted task to prevent "
+                 "running out of memory"
+              << ". Memory used fraction: " << usage_fraction
+              << ", eviction threshold: " << usage_threshold
+              << ", system memory: " << system_memory << ", task name: "
+              << latest_worker->GetAssignedTask().GetTaskSpecification().GetName();
           if (latest_worker->GetActorId().IsNil()) {
             worker_exit_message_ss << ", task id: " << latest_worker->GetAssignedTaskId();
           } else {
@@ -2935,35 +2943,42 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
 
           std::stringstream error_log_ss;
           error_log_ss << worker_exit_message
-          << ". Find details of the worker evicted with `ray get workers "
-          << latest_worker->WorkerId()
-          << "`. ";
-          /// TODO: (clarng) We only direct user if it is an actor because task is currently not visible if it is already terminated, and ray logs -t is not yet supported.
+                       << ". Find details of the worker evicted with `ray get workers "
+                       << latest_worker->WorkerId() << "`. ";
+          /// TODO: (clarng) We only direct user if it is an actor because task is
+          /// currently not visible if it is already terminated, and ray logs -t is not
+          /// yet supported.
           if (!latest_worker->GetActorId().IsNil()) {
             error_log_ss << "Find details of the actor evicted with `ray get actors "
-            << latest_worker->GetActorId()
-            << "` and the actor logs with `ray logs -a "
-            << latest_worker->GetActorId()
-            << "`. ";
+                         << latest_worker->GetActorId()
+                         << "` and the actor logs with `ray logs -a "
+                         << latest_worker->GetActorId() << "`. ";
           }
-          error_log_ss << "More details of the workload at the time of eviction can be found in the raylet log with `ray logs raylet.out -ip " << latest_worker->IpAddress()
-          << "`. Eviction happens when the node runs low on memory and can happen due to 1) memory leak of the tasks or actors "
-          << "2) too many tasks running in parallel that is consuming more memory than the node has. "
-          << "Consider provisioning more memory on the node or reduce the amount of parallelism by requesting more resource (e.g. cpu or memory) per task. "
-          << "The memory monitor can be disabled or the eviction threshold adjusted via configuration parameters memory_monitor_interval_ms and memory_usage_threshold_fraction. "
-          << "Refer to the Ray documentation for more details.";
+          error_log_ss
+              << "More details of the workload at the time of eviction can be found in "
+                 "the raylet log with `ray logs raylet.out -ip "
+              << latest_worker->IpAddress()
+              << "`. Eviction happens when the node runs low on memory and can happen "
+                 "due to 1) memory leak of the tasks or actors "
+              << "2) too many tasks running in parallel that is consuming more memory "
+                 "than the node has. "
+              << "Consider provisioning more memory on the node or reduce the amount of "
+                 "parallelism by requesting more resource (e.g. cpu or memory) per task. "
+              << "The memory monitor can be disabled or the eviction threshold adjusted "
+                 "via configuration parameters memory_monitor_interval_ms and "
+                 "memory_usage_threshold_fraction. "
+              << "Refer to the Ray documentation for more details.";
           /// TODO: (clarng) add a link to the oom killer / memory manager documentation
           RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << error_log_ss.str();
 
           const static int64_t max_to_print = 10;
-          RAY_LOG(INFO)
-              << "Latest 10 worker details:\n" << this->WorkersDebugString(workers, max_to_print);
+          RAY_LOG(INFO) << "Latest 10 worker details:\n"
+                        << this->WorkersDebugString(workers, max_to_print);
 
-          DestroyWorker(
-              high_memory_eviction_target_,
-              rpc::WorkerExitType::USER_ERROR,
-              worker_exit_message,
-              true /* force */);
+          DestroyWorker(high_memory_eviction_target_,
+                        rpc::WorkerExitType::USER_ERROR,
+                        worker_exit_message,
+                        true /* force */);
 
           if (latest_worker->GetActorId().IsNil()) {
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
@@ -2978,12 +2993,13 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
   };
 }
 
-const std::vector<std::shared_ptr<WorkerInterface>> NodeManager::WorkersWithLatestSubmittedTasks() const {
+const std::vector<std::shared_ptr<WorkerInterface>>
+NodeManager::WorkersWithLatestSubmittedTasks() const {
   auto workers = worker_pool_.GetAllRegisteredWorkers();
   std::sort(workers.begin(),
             workers.end(),
             [](std::shared_ptr<WorkerInterface> const &left,
-                std::shared_ptr<WorkerInterface> const &right) -> bool {
+               std::shared_ptr<WorkerInterface> const &right) -> bool {
               return left->GetAssignedTaskTime() > right->GetAssignedTaskTime();
             });
   return workers;
