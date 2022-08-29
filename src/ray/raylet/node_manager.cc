@@ -2951,18 +2951,6 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           std::stringstream error_log_ss;
           error_log_ss
               << worker_exit_message
-              << "To find the details of the worker evicted, use `ray get workers "
-              << latest_worker->WorkerId() << "`. ";
-          /// TODO: (clarng) We only direct user if it is an actor because task is
-          /// currently not visible if it is already terminated, and ray logs -t is not
-          /// yet supported.
-          if (!latest_worker->GetActorId().IsNil()) {
-            error_log_ss << "To find details of the actor evicted, use `ray get actors "
-                         << latest_worker->GetActorId()
-                         << "`. To find the logs of the actor use `ray logs -a "
-                         << latest_worker->GetActorId() << "`. ";
-          }
-          error_log_ss
               << "To find the highest memory consumers, use `ray logs raylet.out -ip "
               << latest_worker->IpAddress() << "`.\n"
               << "Consider provisioning more memory on this node or reducing task "
