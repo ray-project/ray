@@ -14,6 +14,7 @@ memory_usage_threshold_fraction = 0.7
 memory_monitor_interval_ms = 100
 expected_worker_eviction_message = "System memory low at node with IP"
 
+
 @pytest.fixture
 def ray_with_memory_monitor(shutdown_only):
     metrics_report_interval_ms = 100
@@ -217,10 +218,7 @@ async def test_actor_oom_logs_error(ray_with_memory_monitor):
     verified = False
     for worker in result.worker_table_data:
         if worker.worker_address.worker_id.hex() == worker_id:
-            assert (
-                expected_worker_eviction_message
-                in worker.exit_detail
-            )
+            assert expected_worker_eviction_message in worker.exit_detail
             verified = True
     assert verified
 
@@ -261,10 +259,7 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
     verified = False
     for worker in result.worker_table_data:
         if worker.exit_detail:
-            assert (
-                expected_worker_eviction_message
-                in worker.exit_detail
-            )
+            assert expected_worker_eviction_message in worker.exit_detail
         verified = True
     assert verified
 

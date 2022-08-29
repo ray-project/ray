@@ -403,5 +403,4 @@ std::string FormatFloat(float value, int32_t precision) {
   return ss.str();
 }
 
-
 }  // namespace ray
