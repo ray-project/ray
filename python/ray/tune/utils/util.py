@@ -2,11 +2,13 @@ import copy
 import glob
 import inspect
 import logging
+import multiprocessing
 import os
 import threading
 import time
 from collections import defaultdict
 from datetime import datetime
+from numbers import Number
 from threading import Thread
 from typing import Dict, List, Union, Type, Callable, Any, Optional
 
@@ -124,18 +126,30 @@ class UtilMonitor(Thread):
 @DeveloperAPI
 def retry_fn(
     fn: Callable[[], Any],
-    exception_type: Type[Exception],
+    exception_type: Type[Exception] = Exception,
     num_retries: int = 3,
     sleep_time: int = 1,
-):
-    for i in range(num_retries):
-        try:
-            fn()
-        except exception_type as e:
-            logger.warning(e)
-            time.sleep(sleep_time)
-        else:
-            break
+    timeout: Optional[Number] = None,
+) -> bool:
+    def _retry_fn():
+        for i in range(num_retries):
+            try:
+                fn()
+            except exception_type as e:
+                logger.warning(e)
+                time.sleep(sleep_time)
+            else:
+                return
+
+    proc = multiprocessing.Process(target=_retry_fn)
+    proc.start()
+    proc.join(timeout=timeout)
+
+    if proc.exitcode is None:
+        proc.terminate()
+        return False
+
+    return proc.exitcode == 0
 
 
 @ray.remote

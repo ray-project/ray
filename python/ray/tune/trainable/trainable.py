@@ -61,6 +61,14 @@ logger = logging.getLogger(__name__)
 SETUP_TIME_THRESHOLD = 10
 
 
+def _sync_timeout() -> Optional[float]:
+    sync_timeout = float(os.environ.get("TUNE_SYNC_TIMEOUT", "600"))
+    if sync_timeout == 0:
+        return None
+
+    return sync_timeout
+
+
 @PublicAPI
 class Trainable:
     """Abstract class for trainable models, functions, etc.
@@ -517,6 +525,7 @@ class Trainable:
             subprocess.CalledProcessError,
             num_retries=3,
             sleep_time=1,
+            timeout=_sync_timeout(),
         )
         return True
 
@@ -551,6 +560,7 @@ class Trainable:
             subprocess.CalledProcessError,
             num_retries=3,
             sleep_time=1,
+            timeout=_sync_timeout(),
         )
 
         return True
@@ -724,6 +734,7 @@ class Trainable:
                         subprocess.CalledProcessError,
                         num_retries=3,
                         sleep_time=1,
+                        timeout=_sync_timeout(),
                     )
 
         if os.path.exists(checkpoint_dir):
