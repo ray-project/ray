@@ -21,7 +21,7 @@ idle_timeout_minutes: 5
 
 # Cloud-provider specific configuration.
 provider:
-    type: gen2
+    type: ibm_gen2
     cache_stopped_nodes: false
     endpoint: https://eu-de.iaas.cloud.ibm.com
     region: eu-de

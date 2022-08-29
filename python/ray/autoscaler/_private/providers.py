@@ -95,10 +95,10 @@ def _import_aliyun(provider_config):
     return AliyunNodeProvider
 
 
-def _import_gen2(provider_config):
-    from ray.autoscaler._private.gen2.node_provider import Gen2NodeProvider
+def _import_ibm_gen2(provider_config):
+    from ray.autoscaler._private.ibm_gen2.node_provider import IBMGen2NodeProvider
 
-    return Gen2NodeProvider
+    return IBMGen2NodeProvider
 
 
 def _load_fake_multinode_docker_defaults_config():
@@ -145,10 +145,10 @@ def _load_aliyun_defaults_config():
     return os.path.join(os.path.dirname(ray_aliyun.__file__), "defaults.yaml")
 
 
-def _load_gen2_defaults_config():
-    import ray.autoscaler.gen2 as gen2
+def _load_ibm_gen2_defaults_config():
+    import ray.autoscaler.ibm_gen2 as ibm_gen2
 
-    return os.path.join(os.path.dirname(gen2.__file__), "defaults.yaml")
+    return os.path.join(os.path.dirname(ibm_gen2.__file__), "defaults.yaml")
 
 
 def _import_external(provider_config):
@@ -167,7 +167,7 @@ _NODE_PROVIDERS = {
     "kubernetes": _import_kubernetes,
     "kuberay": _import_kuberay,
     "aliyun": _import_aliyun,
-    "gen2": _import_gen2,
+    "ibm_gen2": _import_ibm_gen2,
     "external": _import_external,  # Import an external module
 }
 
@@ -182,7 +182,7 @@ _PROVIDER_PRETTY_NAMES = {
     "kubernetes": "Kubernetes",
     "kuberay": "Kuberay",
     "aliyun": "Aliyun",
-    "gen2": "IBM Gen2",
+    "ibm_gen2": "IBM Gen2",
     "external": "External",
 }
 
@@ -193,7 +193,7 @@ _DEFAULT_CONFIGS = {
     "gcp": _load_gcp_defaults_config,
     "azure": _load_azure_defaults_config,
     "aliyun": _load_aliyun_defaults_config,
-    "gen2": _load_gen2_defaults_config,
+    "ibm_gen2": _load_ibm_gen2_defaults_config,
     "kubernetes": _load_kubernetes_defaults_config,
 }
 

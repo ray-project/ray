@@ -49,8 +49,7 @@ PENDING_TIMEOUT = 120
 PROFILE_NAME_DEFAULT = "cx2-2x4"
 VOLUME_TIER_NAME_DEFAULT = "general-purpose"
 RAY_RECYCLABLE = "ray-recyclable"
-RETRIES = 10
-
+GEN2_TAGS = ".ray-gen2-tags"
 
 def _get_vpc_client(endpoint, authenticator):
     """
@@ -62,16 +61,16 @@ def _get_vpc_client(endpoint, authenticator):
     return ibm_vpc_client
 
 
-class Gen2NodeProvider(NodeProvider):
+class IBMGen2NodeProvider(NodeProvider):
     """Node Provider for IBM Gen2
 
     This provider assumes ray-cluster.yaml contains IBM Cloud credentials and
-    all necessary gen2 details including existing VPC id, VS image, security
+    all necessary ibm gen2 details including existing VPC id, VS image, security
     group...etc.
 
     Most convinient way to generate config file is to use `lithopscloud` config
     tool. Install it using `pip install lithopscloud`, run it with --pr flag,
-    choose `Ray Gen2` and follow interactive wizard.
+    choose `Ray IBM Gen2` and follow interactive wizard.
 
     Currently, instance tagging is implemented using internal cache
 
@@ -80,39 +79,6 @@ class Gen2NodeProvider(NodeProvider):
     cluster head node, while worker nodes are provisioned with private ips only.
     """
 
-    """
-    Decorator to wrap a function to reinit clients and retry on except.
-    """
-
-    def retry_on_except(func):
-        def decorated_func(*args, **kwargs):
-            name = func.__name__
-            ex = None
-            for retry in range(RETRIES):
-                try:
-                    result = func(*args, **kwargs)
-                    return result
-                except Exception as e:
-                    ex = e
-                    msg = f"Err in {name}, {e}, retries left {RETRIES-retry}"
-                    cli_logger.error(msg)
-                    logger.exception(msg)
-
-                    logger.debug("reiniting clients and waiting few seconds")
-
-                    _self = args[0]
-                    with _self.lock:
-                        _self.ibm_vpc_client = _get_vpc_client(
-                            _self.endpoint,
-                            IAMAuthenticator(_self.iam_api_key, url=_self.iam_endpoint),
-                        )
-
-                    time.sleep(1)
-
-            # we got run out of retries, now raising
-            raise ex
-
-        return decorated_func
 
     """
     Tracing decorator. Needed for debugging. Will be removed before merging.
@@ -145,10 +111,8 @@ class Gen2NodeProvider(NodeProvider):
 
     def _load_tags(self):
         self.nodes_tags = {}
-        ray_cache = Path(Path.home(), Path(".ray"))
-        ray_cache.mkdir(exist_ok=True)
 
-        self.tags_file = Path(ray_cache, Path("tags.json"))
+        self.tags_file = Path.home() / GEN2_TAGS
         if self.tags_file.is_file():
             all_tags = json.loads(self.tags_file.read_text())
             tags = all_tags.get(self.cluster_name, {})
@@ -181,9 +145,7 @@ class Gen2NodeProvider(NodeProvider):
                 if node:
                     logger.debug(f"{name} is node {node} in vpc")
 
-                    ray_bootstrap_config = Path(
-                        Path.home(), Path("ray_bootstrap_config.yaml")
-                    )
+                    ray_bootstrap_config = Path.home() / "ray_bootstrap_config.yaml"
                     config = json.loads(ray_bootstrap_config.read_text())
                     (runtime_hash, mounts_contents_hash) = hash_runtime_conf(
                         config["file_mounts"], None, config
@@ -425,14 +387,13 @@ class Gen2NodeProvider(NodeProvider):
     @log_in_out
     def set_node_tags(self, node_id, tags):
         with self.lock:
-            # update inmemory cache
+            # update in-memory cache
             if node_id and tags:
                 node_cache = self.nodes_tags.setdefault(node_id, {})
                 node_cache.update(tags)
 
-            # dump inmemory cache to file
-            ray_cache = Path(Path.home(), Path(".ray"))
-            self.tags_file = Path(ray_cache, Path("tags.json"))
+            # dump in-memory cache to file
+            self.tags_file = Path.home() / GEN2_TAGS
 
             all_tags = {}
             if self.tags_file.is_file():
@@ -655,6 +616,12 @@ class Gen2NodeProvider(NodeProvider):
 
         all_created_nodes = stopped_nodes_dict
         all_created_nodes.update(created_nodes_dict)
+
+        # this sleep is required due to race condition with non_terminated_nodes
+        # called in separate thread by autoscaler. not a lost as anyway the vsi
+        # operating system takes time to start
+        time.sleep(5)
+
         return all_created_nodes
 
     def _delete_node(self, node_id):

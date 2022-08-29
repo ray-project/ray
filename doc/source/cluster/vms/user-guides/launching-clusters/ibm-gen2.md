@@ -8,7 +8,7 @@ interactive config tool to generate ray cluster config file for IBM VPC.
 
 
 ```{note}
-The IBM VPC integration is community-maintained. Please reach out to the integration maintainers on Github
+The IBM Gen2 VPC integration is community-maintained. Please reach out to the integration maintainers on Github
 if you run into any problems: kpavel.
 ```
 
@@ -30,7 +30,7 @@ pip install -U ray[default]
 # install dependencies
 pip install ibm_vpc ibm_platform_services ibm_cloud_sdk_core
 # install config tool
-pip install -U lithopscloud
+pip install lithopscloud
 ```
 
 ### Obtain IBM Cloud API Key
