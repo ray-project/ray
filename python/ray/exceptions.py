@@ -295,7 +295,12 @@ class RayActorError(RayError):
             if cause.node_ip_address != "":
                 error_msg_lines.append(f"\tip: {cause.node_ip_address}")
             error_msg_lines.append(cause.error_message)
+            if cause.never_started:
+                error_msg_lines.append(
+                    "The actor never ran - it was cancelled before it started running."
+                )
             self.error_msg = "\n".join(error_msg_lines)
+            self.actor_id = ActorID(cause.actor_id).hex()
 
     @property
     def actor_init_failed(self) -> bool:
@@ -445,6 +450,26 @@ class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
         )
 
 
+@DeveloperAPI
+class ObjectFreedError(ObjectLostError):
+    """Indicates that an object was manually freed by the application.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "The object was manually freed using the internal `free` call. "
+                "Please ensure that `free` is only called once the object is no "
+                "longer needed."
+            )
+        )
+
+
 @PublicAPI
 class OwnerDiedError(ObjectLostError):
     """Indicates that the owner of the object has died while there is still a
@@ -582,7 +607,7 @@ class RuntimeEnvSetupError(RayError):
         self.error_message = error_message
 
     def __str__(self):
-        msgs = ["Failed to setup runtime environment."]
+        msgs = ["Failed to set up runtime environment."]
         if self.error_message:
             msgs.append(self.error_message)
         return "\n".join(msgs)

@@ -194,11 +194,11 @@ Your ``my_trainable`` is either a:
 
 1. **Model with an existing Ray integration**
 
-  * XGBoost (:ref:`example <xgboost-ray-tuning>`)
+  * XGBoost (`example <https://github.com/ray-project/xgboost_ray#hyperparameter-tuning>`__)
   * Pytorch (:doc:`example </tune/examples/tune-pytorch-cifar>`)
   * Pytorch Lightning (:ref:`example <pytorch-lightning-tune>`)
   * Tensorflow/Keras (:doc:`example </tune/examples/tune_mnist_keras>`)
-  * LightGBM (:ref:`example <lightgbm-ray-tuning>`)
+  * LightGBM (`example <https://github.com/ray-project/lightgbm_ray/#hyperparameter-tuning>`__)
 
 2. **Custom training function**
 
@@ -256,23 +256,10 @@ In this example, checkpoints will be saved:
 * **On head node**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node)
 * **On workers nodes**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node)
 
-If your run stopped for any reason (finished, errored, user CTRL+C), you can restart it any time by running the script above again -- note with ``resume="AUTO"``, it will detect the previous run so long as the ``sync_config`` points to the same location.
-
-If, however, you prefer not to use ``resume="AUTO"`` (or are on an older version of Ray) you can resume manaully:
-
-.. code-block:: python
-
-    # Restored previous trial from the given checkpoint
-    tune.run(
-        # our same trainable as before
-        my_trainable,
-
-        # The name can be different from your original name
-        name="my-tune-exp-restart",
-
-        # our same config as above!
-        restore=sync_config,
-    )
+If your run stopped for any reason (finished, errored, user CTRL+C), you can restart it any time by
+``tuner=Tuner.restore(experiment_checkpoint_dir).fit()``.
+There are a few options for restoring an experiment:
+"resume_unfinished", "resume_errored" and "restart_errored". See ``Tuner.restore()`` for more details.
 
 .. _rsync-checkpointing:
 
@@ -330,7 +317,7 @@ Distributed Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node.
-This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also
+This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-index>` and also
 requires rsync to be installed.
 
 Note that you must use the ``session.report`` API to trigger syncing

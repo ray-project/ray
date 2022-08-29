@@ -26,6 +26,7 @@ from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
@@ -778,7 +779,7 @@ class Impala(Algorithm):
                 sum(b.count for b in self.batch_being_built)
                 >= self.config["train_batch_size"]
             ):
-                batch_to_add = SampleBatch.concat_samples(self.batch_being_built)
+                batch_to_add = concat_samples(self.batch_being_built)
                 self.batches_to_place_on_learner.append(batch_to_add)
                 self.batch_being_built = []
 

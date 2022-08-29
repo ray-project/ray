@@ -5,6 +5,8 @@ import pandas as pd
 import tensorflow as tf
 from pandas.api.types import is_object_dtype
 
+from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
+
 
 def convert_pandas_to_tf_tensor(
     df: pd.DataFrame, dtype: Optional[tf.dtypes.DType] = None
@@ -83,6 +85,23 @@ def convert_pandas_to_tf_tensor(
     return concatenated_tensor
 
 
+def convert_ndarray_to_tf_tensor(
+    ndarray: np.ndarray,
+    dtype: Optional[tf.dtypes.DType] = None,
+) -> tf.Tensor:
+    """Convert a NumPy ndarray to a TensorFlow Tensor.
+
+    Args:
+        ndarray: A NumPy ndarray that we wish to convert to a TensorFlow Tensor.
+        dtype: A TensorFlow dtype for the created tensor; if None, the dtype will be
+            inferred from the NumPy ndarray data.
+
+    Returns: A TensorFlow Tensor.
+    """
+    ndarray = _unwrap_ndarray_object_type_if_needed(ndarray)
+    return tf.convert_to_tensor(ndarray, dtype=dtype)
+
+
 def convert_ndarray_batch_to_tf_tensor_batch(
     ndarrays: Union[np.ndarray, Dict[str, np.ndarray]],
     dtypes: Optional[Union[tf.dtypes.DType, Dict[str, tf.dtypes.DType]]] = None,
@@ -106,11 +125,11 @@ def convert_ndarray_batch_to_tf_tensor_batch(
                     f"should be given, instead got: {dtypes}"
                 )
             dtypes = next(iter(dtypes.values()))
-        batch = tf.convert_to_tensor(ndarrays, dtype=dtypes)
+        batch = convert_ndarray_to_tf_tensor(ndarrays, dtypes)
     else:
         # Multi-tensor case.
         batch = {
-            col_name: tf.convert_to_tensor(
+            col_name: convert_ndarray_to_tf_tensor(
                 col_ndarray,
                 dtype=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
             )

@@ -18,7 +18,7 @@ torch, nn = try_import_torch()
 @DeveloperAPI
 class FQETorchModel:
     """Pytorch implementation of the Fitted Q-Evaluation (FQE) model from
-    https://arxiv.org/pdf/1911.06854.pdf
+    https://arxiv.org/abs/1911.06854
     """
 
     def __init__(
@@ -28,10 +28,10 @@ class FQETorchModel:
         model: ModelConfigDict = None,
         n_iters: int = 1,
         lr: float = 1e-3,
-        delta: float = 1e-4,
+        min_loss_threshold: float = 1e-4,
         clip_grad_norm: float = 100.0,
         minibatch_size: int = None,
-        tau: float = 1.0,
+        polyak_coef: float = 1.0,
     ) -> None:
         """
         Args:
@@ -44,12 +44,12 @@ class FQETorchModel:
                     "vf_share_layers": True,
                 },
             n_iters: Number of gradient steps to run on batch, defaults to 1
-            lr: Learning rate for Q-model optimizer
-            delta: Early stopping threshold if the mean loss < delta
-            clip_grad_norm: Clip gradients to this maximum value
+            lr: Learning rate for Adam optimizer
+            min_loss_threshold: Early stopping if mean loss < min_loss_threshold
+            clip_grad_norm: Clip loss gradients to this maximum value
             minibatch_size: Minibatch size for training Q-function;
                 if None, train on the whole batch
-            tau: Polyak averaging factor for target Q-function
+            polyak_coef: Polyak averaging factor for target Q-function
         """
         self.policy = policy
         assert isinstance(
@@ -61,7 +61,7 @@ class FQETorchModel:
 
         if model is None:
             model = {
-                "fcnet_hiddens": [8, 8],
+                "fcnet_hiddens": [32, 32, 32],
                 "fcnet_activation": "relu",
                 "vf_share_layers": True,
             }
@@ -75,6 +75,7 @@ class FQETorchModel:
             framework="torch",
             name="TorchQModel",
         ).to(self.device)
+
         self.target_q_model: TorchModelV2 = ModelCatalog.get_model_v2(
             self.observation_space,
             self.action_space,
@@ -83,16 +84,17 @@ class FQETorchModel:
             framework="torch",
             name="TargetTorchQModel",
         ).to(self.device)
+
         self.n_iters = n_iters
         self.lr = lr
-        self.delta = delta
+        self.min_loss_threshold = min_loss_threshold
         self.clip_grad_norm = clip_grad_norm
         self.minibatch_size = minibatch_size
-        self.tau = tau
+        self.polyak_coef = polyak_coef
         self.optimizer = torch.optim.Adam(self.q_model.variables(), self.lr)
         initializer = get_initializer("xavier_uniform", framework="torch")
         # Hard update target
-        self.update_target(tau=1.0)
+        self.update_target(polyak_coef=1.0)
 
         def f(m):
             if isinstance(m, nn.Linear):
@@ -158,7 +160,7 @@ class FQETorchModel:
                 minibatch_losses.append(loss.item())
             iter_loss = sum(minibatch_losses) / len(minibatch_losses)
             losses.append(iter_loss)
-            if iter_loss < self.delta:
+            if iter_loss < self.min_loss_threshold:
                 break
             self.update_target()
         return losses
@@ -182,16 +184,16 @@ class FQETorchModel:
         v_values = torch.sum(q_values * action_probs, axis=-1)
         return v_values
 
-    def update_target(self, tau=None):
+    def update_target(self, polyak_coef=None):
         # Update_target will be called periodically to copy Q network to
-        # target Q network, using (soft) tau-synching.
-        tau = tau or self.tau
+        # target Q network, using (soft) polyak_coef-synching.
+        polyak_coef = polyak_coef or self.polyak_coef
         model_state_dict = self.q_model.state_dict()
         # Support partial (soft) synching.
-        # If tau == 1.0: Full sync from Q-model to target Q-model.
+        # If polyak_coef == 1.0: Full sync from Q-model to target Q-model.
         target_state_dict = self.target_q_model.state_dict()
         model_state_dict = {
-            k: tau * model_state_dict[k] + (1 - tau) * v
+            k: polyak_coef * model_state_dict[k] + (1 - polyak_coef) * v
             for k, v in target_state_dict.items()
         }
 

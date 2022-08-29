@@ -201,8 +201,8 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
     https://prometheus.io/docs/guides/file-sd/ for more details.
 
     Args:
-        gcs_address(str): Gcs address for this cluster.
-        temp_dir(str): Temporary directory used by
+        gcs_address: Gcs address for this cluster.
+        temp_dir: Temporary directory used by
             Ray to store logs and metadata.
     """
 

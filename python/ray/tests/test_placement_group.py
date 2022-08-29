@@ -490,6 +490,28 @@ def test_placement_group_scheduling_warning(ray_start_regular_shared):
     assert not w
 
 
+def test_object_store_memory_deprecation_warning(ray_start_regular_shared):
+    with warnings.catch_warnings(record=True) as w:
+
+        @ray.remote(object_store_memory=1)
+        class Actor:
+            pass
+
+        Actor.remote()
+    assert any(
+        "Setting 'object_store_memory' for actors is deprecated" in str(warning.message)
+        for warning in w
+    )
+
+    with warnings.catch_warnings(record=True) as w:
+        ray.util.placement_group([{"object_store_memory": 1}], strategy="STRICT_PACK")
+    assert any(
+        "Setting 'object_store_memory' for bundles is deprecated"
+        in str(warning.message)
+        for warning in w
+    )
+
+
 if __name__ == "__main__":
     import os
 

@@ -37,6 +37,7 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import pandas
@@ -298,18 +299,19 @@ class DatasetPipeline(Generic[T]):
     def _split(
         self, n: int, splitter: Callable[[Dataset], List["Dataset[T]"]]
     ) -> List["DatasetPipeline[T]"]:
-        resources = {}
+        ctx = DatasetContext.get_current()
+        scheduling_strategy = ctx.scheduling_strategy
         if not ray.util.client.ray.is_connected():
             # Pin the coordinator (and any child actors) to the local node to avoid
             # errors during node failures. If the local node dies, then the driver
             # will fate-share with the coordinator anyway.
-            resources["node:{}".format(ray.util.get_node_ip_address())] = 0.0001
-
-        ctx = DatasetContext.get_current()
+            scheduling_strategy = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(),
+                soft=False,
+            )
 
         coordinator = PipelineSplitExecutorCoordinator.options(
-            resources=resources,
-            scheduling_strategy=ctx.scheduling_strategy,
+            scheduling_strategy=scheduling_strategy,
         ).remote(self, n, splitter, DatasetContext.get_current())
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
@@ -427,8 +429,13 @@ class DatasetPipeline(Generic[T]):
         else:
             length = None
 
+        # The newly created DatasetPipeline will contain a PipelineExecutor (because
+        # this will execute the pipeline so far to iter the datasets). In order to
+        # make this new DatasetPipeline serializable, we need to make sure the
+        # PipelineExecutor has not been iterated. So this uses
+        # _iter_datasets_without_peek() instead of iter_datasets().
         return DatasetPipeline(
-            WindowIterable(self.iter_datasets()),
+            WindowIterable(self._iter_datasets_without_peek()),
             length=length,
         )
 
@@ -1040,6 +1047,16 @@ class DatasetPipeline(Generic[T]):
             unsqueeze_label_tensor=unsqueeze_label_tensor,
             unsqueeze_feature_tensors=unsqueeze_feature_tensors,
         )
+
+    def _iter_datasets_without_peek(self):
+        """This is similar to iter_datasets(), but without peeking PipelineExecutor."""
+        if self._executed[0]:
+            raise RuntimeError("Pipeline cannot be read multiple times.")
+        self._executed[0] = True
+        if self._first_dataset:
+            raise RuntimeError("The pipeline has been peeked.")
+        self._optimize_stages()
+        return PipelineExecutor(self)
 
     @DeveloperAPI
     def iter_datasets(self) -> Iterator[Dataset[T]]:

@@ -11,7 +11,7 @@ from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
 from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.dict import flatten_dict
+from ray._private.dict import flatten_dict
 
 if TYPE_CHECKING:
     import xgboost_ray
@@ -26,18 +26,41 @@ def _convert_scaling_config_to_ray_params(
     ray_params_cls: Type["xgboost_ray.RayParams"],
     default_ray_params: Optional[Dict[str, Any]] = None,
 ) -> "xgboost_ray.RayParams":
-    default_ray_params = default_ray_params or {}
-    resources_per_worker = scaling_config.additional_resources_per_worker
-    num_workers = scaling_config.num_workers
-    cpus_per_worker = scaling_config.num_cpus_per_worker
-    gpus_per_worker = scaling_config.num_gpus_per_worker
+    """Scaling config parameters have precedence over default ray params.
 
+    Default ray params are defined in the trainers (xgboost/lightgbm),
+    but if the user requests something else, that should be respected.
+    """
+    resources = (scaling_config.resources_per_worker or {}).copy()
+
+    cpus_per_actor = resources.pop("CPU", 0)
+    if not cpus_per_actor:
+        cpus_per_actor = default_ray_params.get("cpus_per_actor", 0)
+
+    gpus_per_actor = resources.pop("GPU", int(scaling_config.use_gpu))
+    if not gpus_per_actor:
+        gpus_per_actor = default_ray_params.get("gpus_per_actor", 0)
+
+    resources_per_actor = resources
+    if not resources_per_actor:
+        resources_per_actor = default_ray_params.get("resources_per_actor", None)
+
+    num_actors = scaling_config.num_workers
+    if not num_actors:
+        num_actors = default_ray_params.get("num_actors", 0)
+
+    ray_params_kwargs = default_ray_params.copy() or {}
+
+    ray_params_kwargs.update(
+        {
+            "cpus_per_actor": int(cpus_per_actor),
+            "gpus_per_actor": int(gpus_per_actor),
+            "resources_per_actor": resources_per_actor,
+            "num_actors": int(num_actors),
+        }
+    )
     ray_params = ray_params_cls(
-        num_actors=int(num_workers),
-        cpus_per_actor=int(cpus_per_worker),
-        gpus_per_actor=int(gpus_per_worker),
-        resources_per_actor=resources_per_worker,
-        **default_ray_params,
+        **ray_params_kwargs,
     )
 
     return ray_params

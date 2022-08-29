@@ -43,16 +43,13 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.dashboard.modules.job.cli import job_cli_group
 from ray.experimental.state.api import get_log, list_logs
 from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
 from ray.util.annotations import PublicAPI
 
 from ray.experimental.state.state_cli import (
-    _alpha_doc,
-    get as state_cli_get,
-    list as state_cli_list,
-    get_api_server_url,
+    ray_get,
+    ray_list,
     output_with_format,
     summary_state_cli_group,
     AvailableFormat,
@@ -733,7 +730,12 @@ def start(
         if address is None:
             default_address = f"{ray_params.node_ip_address}:{port}"
             bootstrap_address = services.find_bootstrap_address(temp_dir)
-            if default_address == bootstrap_address:
+            if (
+                default_address == bootstrap_address
+                and bootstrap_address in services.find_gcs_addresses()
+            ):
+                # The default address is already in use by a local running GCS
+                # instance.
                 raise ConnectionError(
                     f"Ray is trying to start at {default_address}, "
                     f"but is already running at {bootstrap_address}. "
@@ -1958,7 +1960,7 @@ def local_dump(
     )
 
 
-@cli.command(hidden=True)
+@cli.command(name="logs")
 @click.argument(
     "glob_filter",
     required=False,
@@ -2036,8 +2038,16 @@ def local_dump(
         "this option will be ignored."
     ),
 )
-@_alpha_doc()
-def logs(
+@click.option(
+    "--address",
+    default=None,
+    help=(
+        "The address of Ray API server. If not provided, it will be configured "
+        "automatically from querying the GCS server."
+    ),
+)
+@PublicAPI(stability="alpha")
+def ray_logs(
     glob_filter,
     node_ip: str,
     node_id: str,
@@ -2048,22 +2058,54 @@ def logs(
     tail: int,
     interval: float,
     timeout: int,
+    address: Optional[str],
 ):
-    # TODO: We will need to finalize on some example usage of the command.
-    """
-    Get logs from the ray cluster
+    """Print the log file that matches the GLOB_FILTER.
 
+    By default, it prints a list of log files that match the filter.
+    If there's only 1 match, it will print the log file.
+    By default, it prints the head node logs.
+
+    Usage:
+
+        Print the last 500 lines of raylet.out on a head node.
+
+        ```
+        ray logs raylet.out -tail 500
+        ```
+
+        Print the last 500 lines of raylet.out on a worker node id A.
+
+        ```
+        ray logs raylet.out -tail 500 —-node-id A
+        ```
+
+        Follow the log file with an actor id ABC.
+
+        ```
+        ray logs --actor-id ABC --follow
+        ```
+
+        Get the actor log from pid 123, ip ABC.
+        Note that this goes well with the driver log of Ray which prints
+        (ip=ABC, pid=123, class_name) logs.
+
+        ```
+        ray logs —ip=ABC pid=123
+        ```
+
+        Download the gcs_server.txt file to the local machine.
+
+        ```
+        ray logs gcs_server.out -tail -1 > gcs_server.txt
+        ```
     """
     if task_id is not None:
         raise NotImplementedError("--task-id is not yet supported")
 
-    api_server_url = get_api_server_url()
-
     # If both id & ip are not provided, choose a head node as a default.
     if node_id is None and node_ip is None:
-        # TODO(swang): This command should also support
-        # passing --address or RAY_ADDRESS, like others.
-        address = ray._private.services.canonicalize_bootstrap_address_or_die(None)
+        address = ray._private.services.canonicalize_bootstrap_address_or_die(address)
         node_ip = address.split(":")[0]
 
     filename = None
@@ -2072,7 +2114,7 @@ def logs(
     # If there's no unique match, try listing logs based on the glob filter.
     if not match_unique:
         logs = list_logs(
-            api_server_url=api_server_url,
+            address=address,
             node_id=node_id,
             node_ip=node_ip,
             glob_filter=glob_filter,
@@ -2093,7 +2135,7 @@ def logs(
                 print(f"Node ID: {node_id}")
             elif node_ip:
                 print(f"Node IP: {node_ip}")
-            print(output_with_format(logs, format=AvailableFormat.YAML))
+            print(output_with_format(logs, schema=None, format=AvailableFormat.YAML))
 
     # If there's an unique match, print the log file.
     if match_unique:
@@ -2107,7 +2149,7 @@ def logs(
                 )
 
         for chunk in get_log(
-            api_server_url=api_server_url,
+            address=address,
             node_id=node_id,
             node_ip=node_ip,
             filename=filename,
@@ -2522,10 +2564,17 @@ cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
-add_command_alias(job_cli_group, name="job", hidden=True)
-cli.add_command(state_cli_list)
-cli.add_command(state_cli_get)
-add_command_alias(summary_state_cli_group, name="summary", hidden=True)
+cli.add_command(ray_list, name="list")
+cli.add_command(ray_get, name="get")
+add_command_alias(summary_state_cli_group, name="summary", hidden=False)
+
+try:
+    from ray.dashboard.modules.job.cli import job_cli_group
+
+    add_command_alias(job_cli_group, name="job", hidden=True)
+except Exception as e:
+    logger.debug(f"Integrating ray jobs command line tool failed with {e}")
+
 
 try:
     from ray.serve.scripts import serve_cli

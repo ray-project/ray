@@ -92,7 +92,7 @@ def test_dedupe_download_raw_ref(workflow_start_regular):
 )
 def test_nested_workflow_no_download(workflow_start_regular):
     """Test that we _only_ load from storage on recovery. For a nested workflow
-    step, we should checkpoint the input/output, but continue to reuse the
+    task, we should checkpoint the input/output, but continue to reuse the
     in-memory value.
     """
 
@@ -127,7 +127,7 @@ def test_nested_workflow_no_download(workflow_start_regular):
 
 
 @ray.remote
-def the_failed_step(x):
+def the_failed_task(x):
     if not utils.check_global_mark():
         import os
 
@@ -140,7 +140,7 @@ def test_recovery_simple_1(workflow_start_regular):
     workflow_id = "test_recovery_simple_1"
     with pytest.raises(workflow.WorkflowExecutionError):
         # internally we get WorkerCrashedError
-        workflow.run(the_failed_step.bind("x"), workflow_id=workflow_id)
+        workflow.run(the_failed_task.bind("x"), workflow_id=workflow_id)
 
     assert workflow.get_status(workflow_id) == workflow.WorkflowStatus.FAILED
 
@@ -154,7 +154,7 @@ def test_recovery_simple_1(workflow_start_regular):
 def test_recovery_simple_2(workflow_start_regular):
     @ray.remote
     def simple(x):
-        return workflow.continuation(the_failed_step.bind(x))
+        return workflow.continuation(the_failed_task.bind(x))
 
     utils.unset_global_mark()
     workflow_id = "test_recovery_simple_2"
@@ -184,7 +184,7 @@ def test_recovery_simple_3(workflow_start_regular):
     @ray.remote
     def simple(x):
         x = append1.bind(x)
-        y = the_failed_step.bind(x)
+        y = the_failed_task.bind(x)
         z = append2.bind(y)
         return workflow.continuation(z)
 
@@ -225,7 +225,7 @@ def test_recovery_complex(workflow_start_regular):
         x2 = source1.bind()
         v = join.bind(x1, x2)
         y = append1.bind(x1)
-        y = the_failed_step.bind(y)
+        y = the_failed_task.bind(y)
         z = append2.bind(x2)
         u = join.bind(y, z)
         return workflow.continuation(join.bind(u, v))
@@ -337,11 +337,18 @@ def test_shortcut(workflow_start_regular):
             return 100
 
     assert workflow.run(recursive_chain.bind(0), workflow_id="shortcut") == 100
-    # the shortcut points to the step with output checkpoint
-    store = workflow_storage.get_workflow_storage("shortcut")
-    task_id = store.get_entrypoint_step_id()
-    output_step_id = store.inspect_step(task_id).output_step_id
-    assert store.inspect_step(output_step_id).output_object_valid
+
+    from ray._private.client_mode_hook import client_mode_wrap
+
+    # the shortcut points to the task with output checkpoint
+    @client_mode_wrap
+    def check():
+        store = workflow_storage.WorkflowStorage("shortcut")
+        task_id = store.get_entrypoint_task_id()
+        output_task_id = store.inspect_task(task_id).output_task_id
+        return store.inspect_task(output_task_id).output_object_valid
+
+    assert check()
 
 
 def test_resume_different_storage(shutdown_only, tmp_path):

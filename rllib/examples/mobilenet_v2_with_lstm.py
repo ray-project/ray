@@ -7,7 +7,7 @@ from gym.spaces import Discrete, Box
 import numpy as np
 import os
 
-from ray import tune
+from ray import air, tune
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.examples.models.mobilenet_v2_with_lstm_models import (
     MobileV2PlusRNNModel,
@@ -82,4 +82,6 @@ if __name__ == "__main__":
         },
     }
 
-    tune.run("PPO", config=config, stop=stop, verbose=1)
+    tune.Tuner(
+        "PPO", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+    ).fit()

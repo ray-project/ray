@@ -1,11 +1,9 @@
 import itertools
 import logging
-import time
 from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
 import numpy as np
 
-import ray
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -61,8 +59,8 @@ PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO = 0.01
 # Parquet encoding ratio.
 # This is to restrict `PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO` within the
 # proper boundary.
-PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES = 4
-PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 20
+PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES = 2
+PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
 
 # The number of rows to read from each file for sampling. Try to keep it low to avoid
 # reading too much data into memory.
@@ -292,7 +290,6 @@ class _ParquetDatasourceReader(Reader):
         # Launch tasks to sample multiple files remotely in parallel.
         # Evenly distributed to sample N rows in i-th row group in i-th file.
         # TODO(ekl/cheng) take into account column pruning.
-        start_time = time.perf_counter()
         num_files = len(self._pq_ds.pieces)
         num_samples = int(num_files * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
         min_num_samples = min(
@@ -314,16 +311,17 @@ class _ParquetDatasourceReader(Reader):
         futures = []
         for idx, sample in enumerate(file_samples):
             # Sample i-th row group in i-th file.
-            futures.append(sample_piece.remote(_SerializedPiece(sample), idx))
-        sample_ratios = ray.get(futures)
-        ratio = np.mean(sample_ratios)
-
-        sampling_duration = time.perf_counter() - start_time
-        if sampling_duration > 5:
-            logger.info(
-                "Parquet input size estimation took "
-                f"{round(sampling_duration, 2)} seconds."
+            # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
+            # same machine to cause OOM issue, as sampling can be memory-intensive.
+            futures.append(
+                sample_piece.options(scheduling_strategy="SPREAD").remote(
+                    _SerializedPiece(sample), idx
+                )
             )
+        sample_bar = ProgressBar("Parquet Files Sample", len(futures))
+        sample_ratios = sample_bar.fetch_until_complete(futures)
+        sample_bar.close()
+        ratio = np.mean(sample_ratios)
         logger.debug(f"Estimated Parquet encoding ratio from sampling is {ratio}.")
         return max(ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
 
@@ -331,6 +329,9 @@ class _ParquetDatasourceReader(Reader):
 def _read_pieces(
     block_udf, reader_args, columns, schema, serialized_pieces: List[_SerializedPiece]
 ) -> Iterator["pyarrow.Table"]:
+    # This import is necessary to load the tensor extension type.
+    from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
+
     # Deserialize after loading the filesystem class.
     pieces: List[
         "pyarrow._dataset.ParquetFileFragment"

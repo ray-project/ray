@@ -2,7 +2,7 @@ import { CssBaseline } from "@material-ui/core";
 import { ThemeProvider } from "@material-ui/core/styles";
 import React, { Suspense, useEffect, useState } from "react";
 import { Provider } from "react-redux";
-import { HashRouter, Route, Switch } from "react-router-dom";
+import { HashRouter, Redirect, Route, Switch } from "react-router-dom";
 import Dashboard from "./pages/dashboard/Dashboard";
 import Events from "./pages/event/Events";
 import Loading from "./pages/exception/Loading";
@@ -83,7 +83,12 @@ const App = () => {
             <CssBaseline />
             <HashRouter>
               <Switch>
-                <Route component={Dashboard} exact path="/" />
+                <Route
+                  component={() => <Redirect to="/node" />}
+                  exact
+                  path="/"
+                />
+                <Route component={Dashboard} exact path="/legacy" />
                 <Route
                   render={(props) => (
                     <BasicLayout {...props} setTheme={setTheme} theme={theme}>

@@ -52,7 +52,7 @@ def test_warnings(shutdown_only):
     assert dataset.logger.infos == [
         "Created DatasetPipeline with 10 windows: 8b min, 8b max, 8b mean",
         "Blocks per window: 1 min, 1 max, 1 mean",
-        f"{OK_PREFIX} This pipeline's windows can each fit in object store memory "
+        f"{OK_PREFIX} This pipeline's windows likely fit in object store memory "
         "without spilling.",
     ]
 
@@ -117,7 +117,7 @@ def test_warnings(shutdown_only):
         "Blocks per window: 10 min, 10 max, 10 mean",
         f"{OK_PREFIX} This pipeline's per-window parallelism is high enough to fully "
         "utilize the cluster.",
-        f"{OK_PREFIX} This pipeline's windows can each fit in object store memory "
+        f"{OK_PREFIX} This pipeline's windows likely fit in object store memory "
         "without spilling.",
     ]
 
@@ -686,11 +686,9 @@ def test_in_place_transformation_split_doesnt_clear_objects(ray_start_regular_sh
         .randomize_block_order_each_window()
         .randomize_block_order_each_window()
     )
-    # TODO(https://github.com/ray-project/ray/issues/26766): re-enable this after the
-    # bug is fixed.
-    # verify_integrity(
-    #     ds.repeat(10).randomize_block_order_each_window().rewindow(blocks_per_window=1)
-    # )
+    verify_integrity(
+        ds.repeat(10).randomize_block_order_each_window().rewindow(blocks_per_window=1)
+    )
     # Mix in-place and non-in place transforms.
     verify_integrity(
         ds.repeat(10)
@@ -704,6 +702,22 @@ def test_in_place_transformation_split_doesnt_clear_objects(ray_start_regular_sh
         .randomize_block_order_each_window()
         .randomize_block_order_each_window()
     )
+
+
+def test_pipeline_executor_cannot_serialize_once_started(ray_start_regular_shared):
+    class Iterable:
+        def __init__(self, iter):
+            self._iter = iter
+
+        def __next__(self):
+            ds = next(self._iter)
+            return lambda: ds
+
+    p1 = ray.data.range(10).repeat()
+    p2 = DatasetPipeline.from_iterable(Iterable(p1.iter_datasets()))
+    with pytest.raises(RuntimeError) as error:
+        p2.split(2)
+    assert "PipelineExecutor is not serializable once it has started" in str(error)
 
 
 def test_if_blocks_owned_by_consumer(ray_start_regular_shared):

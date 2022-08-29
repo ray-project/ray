@@ -10,6 +10,7 @@ Framework-specific Examples
 
 - :doc:`/ray-air/examples/lightgbm_example`: Distributed training with LightGBM
 - :doc:`/ray-air/examples/xgboost_example`: Distributed training with XGBoost
+- :doc:`/ray-air/examples/analyze_tuning_results`: Distributed tuning with XGBoost
 - :doc:`/ray-air/examples/sklearn_example`: Integrating with Scikit-Learn (non-distributed)
 - :doc:`/ray-air/examples/convert_existing_pytorch_code_to_ray_air`: How to get started with Ray AIR from your code base
 

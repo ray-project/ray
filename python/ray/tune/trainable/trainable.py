@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Union, TYPE_CHECKING
 
 import ray
+from ray.air._internal.util import skip_exceptions
 from ray.air.checkpoint import (
     Checkpoint,
     _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
@@ -46,8 +47,8 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import (
     Tee,
-    delete_external_checkpoint,
-    get_checkpoint_from_remote_node,
+    _delete_external_checkpoint,
+    _get_checkpoint_from_remote_node,
     retry_fn,
 )
 from ray.util.annotations import PublicAPI
@@ -344,7 +345,11 @@ class Trainable:
         if self._warmup_time is None:
             self._warmup_time = time.time() - self._start_time
         start = time.time()
-        result = self.step()
+        try:
+            result = self.step()
+        except Exception as e:
+            raise skip_exceptions(e) from None
+
         assert isinstance(result, dict), "step() needs to return a dict."
 
         # We do not modify internal state nor update this result if duplicate.
@@ -621,7 +626,7 @@ class Trainable:
             # And the source IP is different to the current IP
             and checkpoint_node_ip != ray.util.get_node_ip_address()
         ):
-            checkpoint = get_checkpoint_from_remote_node(
+            checkpoint = _get_checkpoint_from_remote_node(
                 checkpoint_path, checkpoint_node_ip
             )
             if checkpoint:
@@ -715,7 +720,7 @@ class Trainable:
                 else:
                     checkpoint_uri = self._storage_path(checkpoint_dir)
                     retry_fn(
-                        lambda: delete_external_checkpoint(checkpoint_uri),
+                        lambda: _delete_external_checkpoint(checkpoint_uri),
                         subprocess.CalledProcessError,
                         num_retries=3,
                         sleep_time=1,

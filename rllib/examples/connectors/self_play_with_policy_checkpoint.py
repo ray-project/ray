@@ -4,10 +4,11 @@ The checkpointed policy may be trained with a different algorithm too.
 """
 
 import argparse
+from pathlib import Path
 import pyspiel
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.policy.policy import PolicySpec
@@ -23,7 +24,10 @@ parser.add_argument(
     "--checkpoint_file",
     type=str,
     default="",
-    help="Path to a connector enabled checkpoint file for restoring.",
+    help=(
+        "Path to a connector enabled checkpoint file for restoring,"
+        "relative to //ray/rllib/ folder."
+    ),
 )
 parser.add_argument(
     "--policy_id",
@@ -46,8 +50,13 @@ class AddPolicyCallback(DefaultCallbacks):
         super().__init__()
 
     def on_algorithm_init(self, *, algorithm, **kwargs):
+        checkpoint_path = str(
+            Path(__file__)
+            .parent.parent.parent.absolute()
+            .joinpath(args.checkpoint_file)
+        )
         policy_config, policy_specs, policy_states = parse_policy_specs_from_checkpoint(
-            args.checkpoint_file
+            checkpoint_path
         )
 
         assert args.policy_id in policy_specs, (
@@ -123,23 +132,28 @@ if __name__ == "__main__":
     }
 
     # Train the "main" policy to play really well using self-play.
-    tune.run(
+    tuner = tune.Tuner(
         "SAC",
-        config=config,
-        stop=stop,
-        checkpoint_at_end=True,
-        checkpoint_freq=10,
-        verbose=2,
-        progress_reporter=CLIReporter(
-            metric_columns={
-                "training_iteration": "iter",
-                "time_total_s": "time_total_s",
-                "timesteps_total": "ts",
-                "episodes_this_iter": "train_episodes",
-                "policy_reward_mean/main": "reward_main",
-            },
-            sort_by_metric=True,
+        param_space=config,
+        run_config=air.RunConfig(
+            stop=stop,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_at_end=True,
+                checkpoint_frequency=10,
+            ),
+            verbose=2,
+            progress_reporter=CLIReporter(
+                metric_columns={
+                    "training_iteration": "iter",
+                    "time_total_s": "time_total_s",
+                    "timesteps_total": "ts",
+                    "episodes_this_iter": "train_episodes",
+                    "policy_reward_mean/main": "reward_main",
+                },
+                sort_by_metric=True,
+            ),
         ),
     )
+    tuner.fit()
 
     ray.shutdown()

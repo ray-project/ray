@@ -8,14 +8,14 @@ Key Concepts
 .. TODO: should we at least mention "Stopper" classes here?
 
 Let's quickly walk through the key concepts you need to know to use Tune.
-If you want to see practical tutorials right away, go visit our :ref:`user guides<tune-guides>`.
+If you want to see practical tutorials right away, go visit our :ref:`user guides <tune-guides>`.
 In essence, Tune has six crucial components that you need to understand.
 
 First, you define the hyperparameters you want to tune in a `search space` and pass them into a `trainable`
 that specifies the objective you want to tune.
 Then you select a `search algorithm` to effectively optimize your parameters and optionally use a
 `scheduler` to stop searches early and speed up your experiments.
-Together with other configuration, your `trainable`, algorithm, and scheduler are passed into ``Tuner``,
+Together with other configuration, your `trainable`, search algorithm, and scheduler are passed into ``Tuner``,
 which runs your experiments and creates `trials`.
 These trials can then be used in `analyses` to inspect your experiment results.
 The following figure shows an overview of these components, which we cover in detail in the next sections.
@@ -25,9 +25,9 @@ The following figure shows an overview of these components, which we cover in de
 Trainables
 ----------
 
-In short, a :ref:`Trainable<trainable-docs>` is an object that you can pass into a Tune run.
+In short, a :ref:`Trainable <trainable-docs>` is an object that you can pass into a Tune run.
 Ray Tune has two ways of defining a `trainable`, namely the :ref:`Function API <tune-function-api>`
-and the :ref:`Class API<tune-class-api>`.
+and the :ref:`Class API <tune-class-api>`.
 Both are valid ways of defining a `trainable`, but the Function API is generally recommended and is used
 throughout the rest of this guide.
 
@@ -64,7 +64,7 @@ Given concrete choices for ``a``, ``b`` and ``x`` we can evaluate the objective 
 
     .. tip:: ``session.report`` can't be used within a ``Trainable`` class.
 
-Learn more about the details of :ref:`Trainables here<trainable-docs>`
+Learn more about the details of :ref:`Trainables here <trainable-docs>`
 and :ref:`have a look at our examples <tune-general-examples>`.
 Next, let's have a closer look at what the ``config`` dictionary is that you pass into your trainables.
 
@@ -151,7 +151,9 @@ Here's an example of uniformly sampling between ``[0, 1]`` for ``a`` and ``b``:
     :end-before: __search_space_end__
 
 To learn more about the various ways of configuring your Tune runs,
-check out the :ref:`Tuner API reference<tune-run-ref>`.
+check out the :ref:`Tuner API reference <tune-run-ref>`.
+
+.. _search-alg-ref:
 
 Search Algorithms
 -----------------
@@ -336,7 +338,7 @@ which can wrap around any other scheduler.
      - Not Compatible
      - :doc:`Basic Example </tune/examples/includes/pb2_example>`, :doc:`PPO example </tune/examples/includes/pb2_ppo_example>`
 
-Learn more about trial schedulers in :ref:`the scheduler API documentation<schedulers-ref>`.
+Learn more about trial schedulers in :ref:`the scheduler API documentation <schedulers-ref>`.
 
 .. _tune-concepts-analysis:
 

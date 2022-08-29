@@ -166,7 +166,7 @@ def test_invalid_memory_entry():
 
 def test_valid_reference_memory_entry():
     memory_entry = build_local_reference_entry()
-    assert memory_entry.reference_type == ReferenceType.LOCAL_REFERENCE
+    assert memory_entry.reference_type == ReferenceType.LOCAL_REFERENCE.value
     assert memory_entry.object_ref == ray.ObjectRef(
         decode_object_ref_if_needed(OBJECT_ID)
     )
@@ -176,19 +176,19 @@ def test_valid_reference_memory_entry():
 def test_reference_type():
     # pinned in memory
     memory_entry = build_pinned_in_memory_entry()
-    assert memory_entry.reference_type == ReferenceType.PINNED_IN_MEMORY
+    assert memory_entry.reference_type == ReferenceType.PINNED_IN_MEMORY.value
 
     # used by pending task
     memory_entry = build_used_by_pending_task_entry()
-    assert memory_entry.reference_type == ReferenceType.USED_BY_PENDING_TASK
+    assert memory_entry.reference_type == ReferenceType.USED_BY_PENDING_TASK.value
 
     # captued in object
     memory_entry = build_captured_in_object_entry()
-    assert memory_entry.reference_type == ReferenceType.CAPTURED_IN_OBJECT
+    assert memory_entry.reference_type == ReferenceType.CAPTURED_IN_OBJECT.value
 
     # actor handle
     memory_entry = build_actor_handle_entry()
-    assert memory_entry.reference_type == ReferenceType.ACTOR_HANDLE
+    assert memory_entry.reference_type == ReferenceType.ACTOR_HANDLE.value
 
 
 def test_memory_table_summary():
@@ -228,7 +228,7 @@ def test_memory_table_sort_by_reference_type():
     ]
     entries = [build_entry(reference_type=reference_type) for reference_type in unsort]
     memory_table = MemoryTable(entries, sort_by_type=SortingType.REFERENCE_TYPE)
-    sort = sorted(unsort)
+    sort = sorted([entry.value for entry in unsort])
     for reference_type, entry in zip(sort, memory_table.table):
         assert reference_type == entry.reference_type
 
