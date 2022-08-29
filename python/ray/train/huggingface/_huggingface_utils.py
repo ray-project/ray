@@ -125,44 +125,21 @@ class TrainReportCallback(TrainerCallback):
         super().__init__()
 
     def on_epoch_end(self, args, state, control, **kwargs):
-        # print(f"on_epoch_end control.should_save {control.should_save}")
-
         if control.should_training_stop:
             # Always save at the end.
             control.should_save = True
-
         return control
 
     def on_log(self, args, state, control, model=None, logs=None, **kwargs):
-        # Log is called in multiple places:
-        # 1. For metrics on train dataset in _maybe_log_save_evaluate
-        # 2. For metrics on eval dataset in _maybe_log_save_evaluate is
-        #    control.should_evaluate
-        # 3. For general metrics on training end
-
-        # print(f"on_log {control}")
-
+        # Log is called in multiple places (evaluation, train metrics).
         report = {**logs, "step": state.global_step, "epoch": state.epoch}
         self.delayed_report["metrics"].update(report)
-        if not (control.should_evaluate or control.should_save):
-            self._report()
-
-    def on_evaluate(self, args, state, control, metrics, **kwargs):
-        # print(f"on_evaluate {control}")
-
-        report = {**metrics, "step": state.global_step, "epoch": state.epoch}
-        self.delayed_report["metrics"].update(report)
-        if not control.should_save and not control.should_training_stop:
-            self._report()
 
     def on_save(self, args, state, control, **kwargs):
-        # print(f"on_save {control}")
-
         # Save is called after evaluation.
         checkpoint_path = Path(
             transformers.trainer.get_last_checkpoint(args.output_dir)
         ).absolute()
-
         if checkpoint_path:
             self.delayed_report["checkpoint"] = Checkpoint.from_dict(
                 {
@@ -170,15 +147,22 @@ class TrainReportCallback(TrainerCallback):
                     CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
                 }
             )
-        if not control.should_training_stop:
-            # If we didn't log at least once, then it means
-            # we need to wait for the logging after the last save.
-            # Therefore, we delay the report.
-            # In all other cases saving happens after logging.
-            self._report()
 
     def _report(self):
         if self.delayed_report["metrics"]:
-            # print(f"reporting {self.delayed_report}")
             session.report(**self.delayed_report)
             self.delayed_report = {"metrics": {}, "checkpoint": None}
+
+    def on_epoch_begin(self, args, state, control, **kwargs):
+        # Report previous step/epoch - this way we ensure everything
+        # is recorded.
+        self._report()
+
+    def on_step_begin(self, args, state, control, **kwargs):
+        # Report previous step/epoch - this way we ensure everything
+        # is recorded.
+        self._report()
+
+    def on_train_end(self, args, state, control, **kwargs):
+        # Final callback. Train metrics are logged right before this.
+        self._report()
