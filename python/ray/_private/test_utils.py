@@ -19,10 +19,10 @@ from typing import Any, Dict, List, Optional
 
 import grpc
 import numpy as np
-import psutil
+import psutil  # We must import psutil after ray because we bundle it with ray.
 from ray._private import (
     ray_constants,
-)  # We must import psutil after ray because we bundle it with ray.
+)
 import yaml
 from grpc._channel import _InactiveRpcError
 
