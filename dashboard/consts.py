@@ -54,7 +54,7 @@ BAD_RUNTIME_ENV_CACHE_TTL_SECONDS = env_integer(
 RAY_CLUSTER_ACTIVITY_HOOK = "RAY_CLUSTER_ACTIVITY_HOOK"
 
 # Whether head node deploy raylet process or not.
-ENABLE_JOB_AGENT = env_bool("ENABLE_JOB_AGENT", False)
+RAY_RAYLETLESS_HEAD_NODE = env_bool("RAY_RAYLETLESS_HEAD_NODE", False)
 # The number of candidate agents
 CANDIDATE_AGENT_NUMBER = max(env_integer("CANDIDATE_AGENT_NUMBER", 1), 1)
 WAIT_RAYLET_START_TIMEOUT_SECONDS = 10

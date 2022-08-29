@@ -110,7 +110,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         self._job_manager = None
         self._gcs_job_info_stub = None
 
-        self._disable_ray_init = dashboard_consts.ENABLE_JOB_AGENT
+        self._disable_ray_init = dashboard_consts.RAY_RAYLETLESS_HEAD_NODE
         # this is a queue of JobAgentSubmissionClient
         self._agents = None
 
@@ -277,7 +277,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         request_submission_id = submit_request.submission_id or submit_request.job_id
 
         try:
-            if dashboard_consts.ENABLE_JOB_AGENT:
+            if dashboard_consts.RAY_RAYLETLESS_HEAD_NODE:
                 job_agent_client = await asyncio.wait_for(
                     self.choose_agent(),
                     timeout=dashboard_consts.WAIT_RAYLET_START_TIMEOUT_SECONDS,
