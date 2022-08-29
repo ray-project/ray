@@ -3,15 +3,15 @@
 It supports both traced and non-traced eager execution modes.
 """
 
+import gym
 import logging
 import os
 import tempfile
 import threading
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
 
-import gym
-import tree  # pip install dm_tree
-
+from ray.air.checkpoint import Checkpoint
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -732,10 +732,14 @@ class EagerTFPolicyV2(Policy):
     @override(Policy)
     def export_checkpoint(
         self, export_dir: str, filename_prefix: str = "model"
-    ) -> None:
-        raise NotImplementedError(
-            "`EagerTFPolicyV2` does not support `export_checkpoint` yet!"
-        )
+    ) -> Checkpoint:
+        assert filename_prefix == "model", \
+            "The arg `filename_prefix` for `Policy.export_checkpoint()` is " \
+            "deprecated and should not be set!"
+        state = self.get_state()
+        checkpoint = Checkpoint.from_dict(state)
+        checkpoint.to_directory(export_dir)
+        return checkpoint
 
     @override(Policy)
     def export_model(self, export_dir, onnx: Optional[int] = None) -> None:

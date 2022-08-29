@@ -13,12 +13,12 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
+from ray.air.checkpoint import Checkpoint
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy, PolicySpec
-from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
@@ -998,8 +998,16 @@ class TorchPolicyV2(Policy):
             traced.save(file_name)
 
     @override(Policy)
-    def export_checkpoint(self, export_dir: str) -> None:
-        raise NotImplementedError
+    def export_checkpoint(
+        self, export_dir: str, filename_prefix: str = "model"
+    ) -> Checkpoint:
+        assert filename_prefix == "model", \
+            "The arg `filename_prefix` for `Policy.export_checkpoint()` is " \
+            "deprecated and should not be set!"
+        state = self.get_state()
+        checkpoint = Checkpoint.from_dict(state)
+        checkpoint.to_directory(export_dir)
+        return checkpoint
 
     @override(Policy)
     @DeveloperAPI

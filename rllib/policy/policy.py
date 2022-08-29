@@ -19,6 +19,7 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
+from ray.air.checkpoint import Checkpoint
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -891,11 +892,20 @@ class Policy(metaclass=ABCMeta):
             self.global_timestep = global_vars["timestep"]
 
     @DeveloperAPI
-    def export_checkpoint(self, export_dir: str) -> None:
-        """Export Policy checkpoint to local directory.
+    def export_checkpoint(
+        self, export_dir: str, filename_prefix: str = "model"
+    ) -> Checkpoint:
+        """Exports Policy checkpoint to a local directory and returns an AIR Checkpoint.
 
         Args:
             export_dir: Local writable directory.
+            filename_prefix: String to use as filename for the saved model.
+                Note that this argument is deprecated and should no longer be used as
+                some policies produce more than one file.
+
+        Returns:
+            The AIR Checkpoint instance created (in addition to writing the given
+            directory).
         """
         raise NotImplementedError
 

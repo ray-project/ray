@@ -527,7 +527,7 @@ class TFPolicy(Policy):
     @DeveloperAPI
     def export_checkpoint(
         self, export_dir: str, filename_prefix: str = "model"
-    ) -> None:
+    ) -> str:
         """Export tensorflow checkpoint to export_dir."""
         try:
             os.makedirs(export_dir)
@@ -539,6 +539,7 @@ class TFPolicy(Policy):
         with self.get_session().graph.as_default():
             saver = tf1.train.Saver()
             saver.save(self.get_session(), save_path)
+        return export_dir
 
     @override(Policy)
     @DeveloperAPI

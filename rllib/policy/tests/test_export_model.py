@@ -1,15 +1,20 @@
 #!/usr/bin/env python
 
+import numpy as np
 import os
 import shutil
 import unittest
 
 import ray
+from ray.air.checkpoint import Checkpoint
 from ray.rllib.algorithms.registry import get_algorithm_class
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.files import dict_contents_to_dir
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.experiment.trial import ExportFormat
 
 tf1, tf, tfv = try_import_tf()
+torch, _ = try_import_torch()
 
 CONFIGS = {
     "A3C": {
@@ -77,8 +82,10 @@ def export_test(alg_name, failures, framework="tf"):
     config["framework"] = framework
     if "DDPG" in alg_name or "SAC" in alg_name:
         algo = cls(config=config, env="Pendulum-v1")
+        test_obs = np.array([[0.1, 0.2, 0.3]])
     else:
         algo = cls(config=config, env="CartPole-v0")
+        test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
 
     for _ in range(1):
         res = algo.train()
@@ -87,36 +94,73 @@ def export_test(alg_name, failures, framework="tf"):
     export_dir = os.path.join(
         ray._private.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
     )
-    print("Exporting model ", alg_name, export_dir)
+
+    print("Exporting policy (`default_policy`) checkpoint", alg_name, export_dir)
+    algo.export_policy_checkpoint(export_dir)
+    if framework == "tf" and not valid_tf_checkpoint(export_dir):
+        failures.append(alg_name)
+    checkpoint = Checkpoint.from_directory(export_dir)
+    if framework != "tf":
+        checkpoint_dict = checkpoint.to_dict()
+        dict_contents_to_dir(checkpoint_dict["model"], export_dir)
+    if framework == "torch":
+        model = torch.load(os.path.join(export_dir, "model.pickle"))
+        assert model
+        # Test forward pass.
+        results = model(
+            input_dict={"obs": torch.from_numpy(test_obs)},
+            # TODO (sven): Make non-RNN models NOT expect these args at all.
+            state=[torch.tensor(0)],  # dummy value
+            seq_lens=torch.tensor(0),  # dummy value
+        )
+        assert len(results) == 2
+        assert results[0].shape == (1, 2)
+        assert results[1] == [torch.tensor(0)]  # dummy
+    elif framework == "tf2":
+        model = tf.saved_model.load(export_dir)
+        assert model
+        results = model(tf.convert_to_tensor(test_obs, dtype=tf.float32))
+        assert len(results) == 2
+        assert results[0].shape == (1, 2)
+        # TODO (sven): Make non-RNN models NOT return states (empty list).
+        assert results[1].shape == (1, 1)  # dummy state-out
+
+    shutil.rmtree(export_dir)
+
+    print("Exporting policy (`default_policy`) model ", alg_name, export_dir)
     algo.export_policy_model(export_dir)
     if framework in ["tf", "tf2", "tfe"] and not valid_tf_model(export_dir):
         failures.append(alg_name)
 
+    # Test loading the exported model.
+    if framework == "torch":
+        model = torch.load(os.path.join(export_dir, ExportFormat.MODEL, "model.pt"))
+        assert model
+        # Test forward pass.
+        results = model(
+            input_dict={"obs": torch.from_numpy(test_obs)},
+            # TODO (sven): Make non-RNN models NOT expect these args at all.
+            state=[torch.tensor(0)],  # dummy value
+            seq_lens=torch.tensor(0),  # dummy value
+        )
+        assert len(results) == 2
+        assert results[0].shape == (1, 2)
+        assert results[1] == [torch.tensor(0)]  # dummy
+    else:
+        model = tf.saved_model.load(export_dir)
+        assert model
+        results = model(tf.convert_to_tensor(test_obs, dtype=tf.float32))
+        assert len(results) == 2
+        assert results[0].shape == (1, 2)
+        # TODO (sven): Make non-RNN models NOT return states (empty list).
+        assert results[1].shape == (1, 1)  # dummy state-out
+
     shutil.rmtree(export_dir)
 
-    if framework == "tf":
-        print("Exporting checkpoint", alg_name, export_dir)
-        algo.export_policy_checkpoint(export_dir)
-        if framework == "tf" and not valid_tf_checkpoint(export_dir):
-            failures.append(alg_name)
-        shutil.rmtree(export_dir)
-
-        print("Exporting default policy", alg_name, export_dir)
-        algo.export_model([ExportFormat.CHECKPOINT, ExportFormat.MODEL], export_dir)
-        if not valid_tf_model(
-            os.path.join(export_dir, ExportFormat.MODEL)
-        ) or not valid_tf_checkpoint(os.path.join(export_dir, ExportFormat.CHECKPOINT)):
-            failures.append(alg_name)
-
-        # Test loading the exported model.
-        model = tf.saved_model.load(os.path.join(export_dir, ExportFormat.MODEL))
-        assert model
-
-        shutil.rmtree(export_dir)
     algo.stop()
 
 
-class TestExport(unittest.TestCase):
+class TestExportModel(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init(num_cpus=4)
@@ -142,16 +186,14 @@ class TestExport(unittest.TestCase):
 
     def test_export_ppo(self):
         failures = []
-        export_test("PPO", failures, "torch")
-        export_test("PPO", failures, "tf2")
-        export_test("PPO", failures, "tf")
+        for fw in framework_iterator():
+            export_test("PPO", failures, fw)
         assert not failures, failures
 
     def test_export_sac(self):
         failures = []
         export_test("SAC", failures, "tf")
         assert not failures, failures
-        print("All export tests passed!")
 
 
 if __name__ == "__main__":

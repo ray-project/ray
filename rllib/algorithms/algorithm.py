@@ -1735,13 +1735,19 @@ class Algorithm(Trainable):
         self._sync_weights_to_workers(worker_set=self.workers)
 
     @override(Trainable)
-    def save_checkpoint(self, checkpoint_dir: str) -> str:
-        checkpoint_path = os.path.join(
-            checkpoint_dir, "checkpoint-{}".format(self.iteration)
-        )
-        pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
+    def save_checkpoint(self, checkpoint_dir: str) -> Optional[Union[str, Dict]]:
+        """Returns a dict with all checkpoint information in it.
 
-        return checkpoint_path
+        Args:
+            checkpoint_dir: The directory where the checkpoint
+                file must be stored. This is handled entirely by Tune and not used here
+                b/c we return a dict instead.
+
+        Returns:
+            A dict that will be automatically serialized by Tune and
+            passed to ``Trainable.load_checkpoint()``.
+        """
+        return self.__getstate__()
 
     @override(Trainable)
     def load_checkpoint(self, checkpoint_path: str) -> None:
