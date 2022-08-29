@@ -302,9 +302,7 @@ def test_log_redirect_to_stderr(shutdown_only, capfd):
     log_components = {
         ray_constants.PROCESS_TYPE_DASHBOARD: "Dashboard head grpc address",
         ray_constants.PROCESS_TYPE_DASHBOARD_AGENT: "Dashboard agent grpc address",
-        # GCS server logs are printed to `gcs_server_xxx.log`
-        # and not affected by `RAY_LOG_TO_STDERR`.
-        # ray_constants.PROCESS_TYPE_GCS_SERVER: "Loading job table data",
+        ray_constants.PROCESS_TYPE_GCS_SERVER: "Loading job table data",
         # No log monitor output if all components are writing to stderr.
         ray_constants.PROCESS_TYPE_LOG_MONITOR: "",
         ray_constants.PROCESS_TYPE_MONITOR: "Starting monitor using ray installation",
@@ -313,9 +311,7 @@ def test_log_redirect_to_stderr(shutdown_only, capfd):
         # TODO(Clark): Add coverage for Ray Client.
         # ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER: "Starting Ray Client server",
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER: "",
-        # Raylet logs are printed to `raylet_xxx.log`
-        # and not affected by `RAY_LOG_TO_STDERR`.
-        # ray_constants.PROCESS_TYPE_RAYLET: "Starting object store with directory",
+        ray_constants.PROCESS_TYPE_RAYLET: "Starting object store with directory",
         # No reaper process run (kernel fate-sharing).
         ray_constants.PROCESS_TYPE_REAPER: "",
         # No reporter process run.
