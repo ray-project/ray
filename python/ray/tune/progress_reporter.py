@@ -351,8 +351,8 @@ class TuneReporterBase(ProgressReporter):
             self._metric_columns.update(user_metrics)
         messages = [
             "== Status ==",
-            time_passed_str(self._start_time, time.time()),
-            memory_debug_str(),
+            _time_passed_str(self._start_time, time.time()),
+            _memory_debug_str(),
             *sys_info,
         ]
         if done:
@@ -386,7 +386,7 @@ class TuneReporterBase(ProgressReporter):
                     sort_by_metric=self._sort_by_metric,
                 )
             )
-            messages.append(trial_errors_str(trials, fmt=fmt, max_rows=max_error))
+            messages.append(_trial_errors_str(trials, fmt=fmt, max_rows=max_error))
 
         return delim.join(messages) + delim
 
@@ -586,8 +586,8 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
             user_metrics = self._infer_user_metrics(trials, self._infer_limit)
             self._metric_columns.update(user_metrics)
 
-        current_time, running_for = get_time_str(self._start_time, time.time())
-        used_gb, total_gb, memory_message = get_memory_usage()
+        current_time, running_for = _get_time_str(self._start_time, time.time())
+        used_gb, total_gb, memory_message = _get_memory_usage()
 
         status_table = tabulate(
             [
@@ -597,7 +597,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
             ],
             tablefmt="html",
         )
-        trial_progress_data = trial_progress_table(
+        trial_progress_data = _trial_progress_table(
             trials=trials,
             metric_columns=self._metric_columns,
             parameter_columns=self._parameter_columns,
@@ -611,7 +611,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
 
         trial_progress = trial_progress_data[0]
         trial_progress_messages = trial_progress_data[1:]
-        trial_errors = trial_errors_str(
+        trial_errors = _trial_errors_str(
             trials, fmt="html", max_rows=None if done else self._max_error_rows
         )
 
@@ -626,7 +626,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
 
         return Template("tune_status.html.j2").render(
             status_table=status_table,
-            sys_info_message=generate_sys_info_str(*sys_info),
+            sys_info_message=_generate_sys_info_str(*sys_info),
             trial_progress=trial_progress,
             messages=msg,
         )
@@ -707,7 +707,7 @@ class CLIReporter(TuneReporterBase):
         print(self._progress_str(trials, done, *sys_info))
 
 
-def get_memory_usage() -> Tuple[float, float, Optional[str]]:
+def _get_memory_usage() -> Tuple[float, float, Optional[str]]:
     """Get the current memory consumption.
 
     Returns:
@@ -743,21 +743,21 @@ def get_memory_usage() -> Tuple[float, float, Optional[str]]:
         )
 
 
-def memory_debug_str() -> str:
+def _memory_debug_str() -> str:
     """Generate a message to be shown to the user showing memory consumption.
 
     Returns:
         String to be shown to the user with formatted memory consumption
             stats.
     """
-    used_gb, total_gb, message = get_memory_usage()
+    used_gb, total_gb, message = _get_memory_usage()
     if np.isnan(used_gb):
         return message
     else:
         return f"Memory usage on this node: {used_gb}/{total_gb} GiB{message}"
 
 
-def get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
+def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
     """Get strings representing the current and elapsed time.
 
     Args:
@@ -792,7 +792,7 @@ def get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
     return f"{current_time_dt:%Y-%m-%d %H:%M:%S}", running_for_str
 
 
-def time_passed_str(start_time: float, current_time: float) -> str:
+def _time_passed_str(start_time: float, current_time: float) -> str:
     """Generate a message describing the current and elapsed time in the run.
 
     Args:
@@ -803,7 +803,7 @@ def time_passed_str(start_time: float, current_time: float) -> str:
         Message with the current and elapsed time for the current tune run,
             formatted to be displayed to the user
     """
-    current_time_str, running_for_str = get_time_str(start_time, current_time)
+    current_time_str, running_for_str = _get_time_str(start_time, current_time)
     return f"Current time: {current_time_str} " f"(running for {running_for_str})"
 
 
@@ -887,7 +887,7 @@ def _trial_progress_str(
     )
 
     if force_table or (has_verbosity(Verbosity.V2_TRIAL_NORM) and done):
-        messages += trial_progress_table(
+        messages += _trial_progress_table(
             trials=trials,
             metric_columns=metric_columns,
             parameter_columns=parameter_columns,
@@ -930,7 +930,7 @@ def _max_len(value: Any, max_len: int = 20, add_addr: bool = False) -> Any:
     return result
 
 
-def get_progress_table_data(
+def _get_progress_table_data(
     trials: List[Trial],
     metric_columns: Union[List[str], Dict[str, str]],
     parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
@@ -1063,7 +1063,7 @@ def get_progress_table_data(
     return trial_table, columns, (overflow, overflow_str)
 
 
-def trial_progress_table(
+def _trial_progress_table(
     trials: List[Trial],
     metric_columns: Union[List[str], Dict[str, str]],
     parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
@@ -1093,7 +1093,7 @@ def trial_progress_table(
     Returns:
         Messages to be shown to the user containing progress tables
     """
-    data, columns, (overflow, overflow_str) = get_progress_table_data(
+    data, columns, (overflow, overflow_str) = _get_progress_table_data(
         trials,
         metric_columns,
         parameter_columns,
@@ -1109,7 +1109,7 @@ def trial_progress_table(
     return messages
 
 
-def generate_sys_info_str(*sys_info) -> str:
+def _generate_sys_info_str(*sys_info) -> str:
     """Format system info into a string.
         *sys_info: System info strings to be included.
 
@@ -1121,7 +1121,7 @@ def generate_sys_info_str(*sys_info) -> str:
     return ""
 
 
-def trial_errors_str(
+def _trial_errors_str(
     trials: List[Trial], fmt: str = "psql", max_rows: Optional[int] = None
 ):
     """Returns a readable message regarding trial errors.
