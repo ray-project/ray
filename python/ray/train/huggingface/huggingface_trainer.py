@@ -78,7 +78,7 @@ class _SyncedTrackedCheckpoint(_TrackedCheckpoint):
                     shutil.move(str(inner.absolute()), str(path.absolute()))
                 except OSError:
                     # This file may have already been moved by another rank worker.
-                    # Disregard.
+                    # Disregard, as the files are identical across all ranks.
                     pass
             # No need to file lock here as each rank worker has its own folder.
             shutil.rmtree(str(source_path.absolute()), ignore_errors=True)
