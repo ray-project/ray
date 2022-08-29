@@ -127,11 +127,17 @@ class GraphVisualizer:
         This function should only be called after a request has been sent through
         self._send_request() separately.
         """
-        result = await self.cache[node_uuid]
-        self.resolved_nodes += 1
-        if self.resolved_nodes == len(self.node_to_block):
-            self.finished_last_inference = True
-        return result
+        try:
+            result = await self.cache[node_uuid]
+            self.resolved_nodes += 1
+            if self.resolved_nodes == len(self.node_to_block):
+                self.finished_last_inference = True
+            return result
+        except BaseException:
+            self.resolved_nodes += 1
+            if self.resolved_nodes == len(self.node_to_block):
+                self.finished_last_inference = True
+            raise
 
     async def _send_request(self, trigger_value: int, *args) -> int:
         """Sends request to the graph and gets results.
@@ -201,7 +207,9 @@ class GraphVisualizer:
             return self._fetch_depths(node, uuid_to_depths)
 
         self.dag.apply_recursive(depths_fn)
-        node_to_depths = {depths_fn.cache[uuid]: uuid_to_depths[uuid] for uuid in uuid_to_depths}
+        node_to_depths = {
+            depths_fn.cache[uuid]: uuid_to_depths[uuid] for uuid in uuid_to_depths
+        }
 
         with gr.Blocks() as demo:
             self._make_blocks(node_to_depths)
@@ -232,4 +240,6 @@ class GraphVisualizer:
             )
 
         if _launch:
-            return demo.launch(server_port=port, prevent_thread_lock=not _block)
+            return demo.launch(
+                show_error=True, server_port=port, prevent_thread_lock=not _block
+            )
