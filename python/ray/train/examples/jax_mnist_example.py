@@ -1,7 +1,7 @@
-# This example showcases how to use Jax (pmap) with Ray Train.
+# This example showcases how to use Jax (pmap) with Ray Train for data parallel training.
 # Original code: (without pmap)
 # https://github.com/google/flax/blob/main/examples/mnist/train.py
-# parallel version: (with flax & pmap)
+# Adapted from parallel version for ensembling: (with flax & pmap)
 # https://flax.readthedocs.io/en/latest/guides/ensembling.html
 
 import argparse
