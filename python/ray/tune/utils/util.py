@@ -130,26 +130,36 @@ def retry_fn(
     sleep_time: int = 1,
     timeout: Optional[Number] = None,
 ) -> bool:
+    errored = threading.Event()
+
     def _retry_fn():
-        for i in range(num_retries):
-            try:
-                fn()
-            except exception_type as e:
-                logger.warning(e)
-                time.sleep(sleep_time)
-            else:
-                return
+        try:
+            fn()
+        except exception_type as e:
+            logger.warning(e)
+            errored.set()
 
-    proc = threading.Thread(target=_retry_fn)
-    proc.daemon = True
-    proc.start()
-    proc.join(timeout=timeout)
+    for i in range(num_retries):
+        errored.clear()
 
-    if proc.is_alive():
-        logger.debug(f"Process timed out: {getattr(fn, '__name__', None)}")
-        return False
+        proc = threading.Thread(target=_retry_fn)
+        proc.daemon = True
+        proc.start()
+        proc.join(timeout=timeout)
 
-    return True
+        if proc.is_alive():
+            logger.debug(
+                f"Process timed out (try {i+1}/{num_retries}): "
+                f"{getattr(fn, '__name__', None)}"
+            )
+        elif not errored.is_set():
+            return True
+
+        # Timed out, sleep and try again
+        time.sleep(sleep_time)
+
+    # Timed out, so return False
+    return False
 
 
 @ray.remote

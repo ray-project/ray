@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_SYNC_PERIOD = 300
 
 # Default sync timeout after which syncing processes are aborted
-DEFAULT_SYNC_TIMEOUT = 3600
+DEFAULT_SYNC_TIMEOUT = 1800
 
 _EXCLUDE_FROM_SYNC = [
     "./checkpoint_-00001",

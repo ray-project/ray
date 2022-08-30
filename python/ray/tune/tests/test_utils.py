@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 from ray.tune.search.variant_generator import format_vars
@@ -68,17 +70,18 @@ def test_retry_fn_timeout(tmpdir):
     marker = tmpdir / "marker"
 
     def _fail_once():
-        if marker.exists():
-            success.write_text(".", encoding="utf-8")
-            return
-        marker.write_text(".", encoding="utf-8")
-        raise RuntimeError("Failing")
+        if not marker.exists():
+            marker.write_text(".", encoding="utf-8")
+            raise RuntimeError("Failing")
+        time.sleep(5)
+        success.write_text(".", encoding="utf-8")
+        return
 
     assert not success.exists()
     assert not marker.exists()
 
     assert not retry_fn(
-        fn=_fail_once, exception_type=RuntimeError, sleep_time=5, timeout=0.1
+        fn=_fail_once, exception_type=RuntimeError, sleep_time=0, timeout=0.1
     )
 
     assert not success.exists()

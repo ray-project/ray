@@ -199,7 +199,7 @@ def test_sync_timeout(tmpdir, hanging):
         orig_upload_fn(*args, **kwargs)
 
     trainable = SavingTrainable(
-        "object", remote_checkpoint_dir="memory:///test/location", sync_timeout=1
+        "object", remote_checkpoint_dir="memory:///test/location", sync_timeout=0.1
     )
 
     with patch("ray.air.checkpoint.upload_to_uri", _hanging_upload):
