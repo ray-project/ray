@@ -143,11 +143,25 @@ def test_validation(ray_start_4_cpus):
     with pytest.raises(RayTaskError):
         trainer.fit().error
 
-    # logging strategy set to no raise an exception
+    # logging strategy set to no should raise an exception
     trainer = HuggingFaceTrainer(
         trainer_init_config={
             "epochs": 1,
             "logging_strategy": "no",
+        },
+        **trainer_conf,
+    )
+    with pytest.raises(RayTaskError):
+        trainer.fit().error
+
+    # logging steps != eval steps should raise an exception
+    trainer = HuggingFaceTrainer(
+        trainer_init_config={
+            "epochs": 1,
+            "logging_strategy": "steps",
+            "evaluation_strategy": "steps",
+            "logging_steps": 20,
+            "eval_steps": 10,
         },
         **trainer_conf,
     )
