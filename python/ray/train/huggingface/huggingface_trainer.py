@@ -261,7 +261,11 @@ class HuggingFaceTrainer(TorchTrainer):
     _checkpoint_manager_cls = _DataParallelSyncingCheckpointManager
 
     _dataset_config = {
-        "train": DatasetConfig(fit=True, split=False, required=True),
+        # training dataset should be split by us
+        "train": DatasetConfig(fit=True, split=True, required=True),
+        # do not split eval dataset, as HF has a system to parallelize
+        # evaluation across workers, and it requires each worker
+        # to have the full eval dataset
         "evaluation": DatasetConfig(split=False),
     }
 
