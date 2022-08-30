@@ -158,35 +158,77 @@ SpaceStruct = Union[gym.spaces.Space, dict, tuple]
 StateBatches = List[List[Any]]
 
 # Format of data output from policy forward pass.
+# __sphinx_doc_begin_policy_output_type__
 PolicyOutputType = Tuple[TensorStructType, StateBatches, Dict]
+# __sphinx_doc_end_policy_output_type__
 
 
-# Data type that is fed into and yielded from agent connectors.
+# __sphinx_doc_begin_agent_connector_data_type__
 @ExperimentalAPI
 class AgentConnectorDataType:
+    """Data type that is fed into and yielded from agent connectors.
+
+    Args:
+        env_id: ID of the environment.
+        agent_id: ID to help identify the agent from which the data is received.
+        data: A payload (``data``). With RLlib's default sampler, the payload
+            is a dictionary of arbitrary data columns (obs, rewards, dones, etc).
+    """
+
     def __init__(self, env_id: str, agent_id: str, data: Any):
         self.env_id = env_id
         self.agent_id = agent_id
         self.data = data
 
 
-# Data type that is fed into and yielded from agent connectors.
+# __sphinx_doc_end_agent_connector_data_type__
+
+
+# __sphinx_doc_begin_action_connector_output__
 @ExperimentalAPI
 class ActionConnectorDataType:
+    """Data type that is fed into and yielded from agent connectors.
+
+    Args:
+        env_id: ID of the environment.
+        agent_id: ID to help identify the agent from which the data is received.
+        output: An object of PolicyOutputType. It is is composed of the
+            action output, the internal state output, and additional data fetches.
+
+    """
+
     def __init__(self, env_id: str, agent_id: str, output: PolicyOutputType):
         self.env_id = env_id
         self.agent_id = agent_id
         self.output = output
 
 
-# Final output data type of agent connectors.
+# __sphinx_doc_end_action_connector_output__
+
+
+# __sphinx_doc_begin_agent_connector_output__
 @ExperimentalAPI
 class AgentConnectorsOutput:
+    """Final output data type of agent connectors.
+
+    Args are populated depending on the AgentConnector settings.
+    The branching happens in ViewRequirementAgentConnector.
+
+    Args:
+        for_training: The raw input dictionary that sampler can use to
+            build episodes and training batches,
+        for_action: The SampleBatch that can be immediately used for
+            querying the policy for next action.
+    """
+
     def __init__(
         self, for_training: Dict[str, TensorStructType], for_action: "SampleBatch"
     ):
         self.for_training = for_training
         self.for_action = for_action
+
+
+# __sphinx_doc_end_agent_connector_output__
 
 
 # Generic type var.

@@ -18,7 +18,6 @@ from ray.tests.test_autoscaler import (
     MockAutoscaler,
 )
 from ray.tests.test_resource_demand_scheduler import MULTI_WORKER_CLUSTER
-from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.providers import (
     _NODE_PROVIDERS,
     _clear_provider_cache,
@@ -205,7 +204,7 @@ class Simulator:
         self.node_launcher = NodeLauncher(
             provider=self.autoscaler.provider,
             pending=self.autoscaler.pending_launches,
-            event_summarizer=EventSummarizer(),
+            event_summarizer=self.autoscaler.event_summarizer,
             node_provider_availability_tracker=self.autoscaler.node_provider_availability_tracker,  # noqa: E501 Flake and black disagree how to format this.
             queue=self.autoscaler.launch_queue,
             index=0,

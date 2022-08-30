@@ -1,4 +1,5 @@
 import inspect
+import logging
 from typing import Any, Dict, Optional, List, Type, Union, Callable
 import pandas as pd
 
@@ -10,6 +11,8 @@ from ray.data.context import DatasetContext
 from ray.data.preprocessors import BatchMapper
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="beta")
@@ -166,8 +169,14 @@ class BatchPredictor:
         # explicit GPU resources
         if (
             "use_gpu" in inspect.signature(predictor_cls.from_checkpoint).parameters
+            and "use_gpu" not in predictor_kwargs
             and num_gpus_per_worker > 0
         ):
+            logger.info(
+                "`num_gpus_per_worker` is set for `BatchPreditor`."
+                "Automatically enabling GPU prediction for this predictor. To "
+                "disable set `use_gpu` to `False` in `BatchPredictor.predict`."
+            )
             predictor_kwargs["use_gpu"] = True
 
         ctx = DatasetContext.get_current()
