@@ -2,7 +2,6 @@ import copy
 import glob
 import inspect
 import logging
-import multiprocessing
 import os
 import threading
 import time
@@ -141,16 +140,16 @@ def retry_fn(
             else:
                 return
 
-    proc = multiprocessing.Process(target=_retry_fn)
+    proc = threading.Thread(target=_retry_fn)
+    proc.daemon = True
     proc.start()
     proc.join(timeout=timeout)
 
-    if proc.exitcode is None:
-        proc.terminate()
+    if proc.is_alive():
         logger.debug(f"Process timed out: {getattr(fn, '__name__', None)}")
         return False
 
-    return proc.exitcode == 0
+    return True
 
 
 @ray.remote
