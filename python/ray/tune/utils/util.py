@@ -147,6 +147,7 @@ def retry_fn(
 
     if proc.exitcode is None:
         proc.terminate()
+        logger.debug(f"Process timed out: {getattr(fn, '__name__', None)}")
         return False
 
     return proc.exitcode == 0
