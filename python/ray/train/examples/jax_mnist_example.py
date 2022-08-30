@@ -51,9 +51,9 @@ def get_datasets():
 
     # Note: use `jax.device_count()` instead of `jax.process_count()`
     # details:
-    # `jax.device_count()`  --- total shard number
-    # `jax.process_count()` --- shard number across different nodes
-    # `jax.local_device_count()` -- shard number within one nodes
+    # `jax.device_count()`  --- total number of training processes
+    # `jax.process_count()` --- number of hosts
+    # `jax.local_device_count()` -- number of processes within one host
     train_ds["image"] = drop_last(_train_ds["image"], jax.device_count())
     test_ds["image"] = drop_last(_test_ds["image"], jax.device_count())
     train_ds["label"] = drop_last(_train_ds["label"], jax.device_count())
