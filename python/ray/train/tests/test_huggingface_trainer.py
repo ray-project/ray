@@ -143,6 +143,40 @@ def test_validation(ray_start_4_cpus):
     with pytest.raises(RayTaskError):
         trainer.fit().error
 
+    # logging strategy set to no raise an exception
+    trainer = HuggingFaceTrainer(
+        trainer_init_config={
+            "epochs": 1,
+            "logging_strategy": "no",
+        },
+        **trainer_conf,
+    )
+    with pytest.raises(RayTaskError):
+        trainer.fit().error
+
+    # mismatched strategies should raise an exception
+    for logging_strategy, evaluation_strategy, save_strategy in (
+        ("steps", "steps", "epoch"),
+        ("epoch", "steps", "steps"),
+        ("epoch", "steps", "epoch"),
+        ("steps", "epoch", "steps"),
+    ):
+        trainer = HuggingFaceTrainer(
+            trainer_init_config={
+                "epochs": 1,
+                "load_best_model_at_end": True,
+                "logging_strategy": logging_strategy,
+                "save_strategy": evaluation_strategy,
+                "evaluation_strategy": save_strategy,
+            },
+            **trainer_conf,
+        )
+        with pytest.raises(RayTaskError):
+            trainer.fit().error
+
+    with pytest.raises(RayTaskError):
+        trainer.fit().error
+
 
 # Tests if checkpointing and restoring during tuning works correctly.
 def test_tune(ray_start_8_cpus):

@@ -42,8 +42,8 @@ def train_function(train_dataset, eval_dataset=None, **config):
     model = AutoModelForCausalLM.from_config(model_config)
     training_args = TrainingArguments(
         f"{model_checkpoint}-wikitext2",
-        evaluation_strategy=config.pop("evaluation_strategy", "epoch"),
-        logging_strategy=config.pop("logging_strategy", "epoch"),
+        evaluation_strategy=config.pop("evaluation_strategy", "steps"),
+        logging_strategy=config.pop("logging_strategy", "steps"),
         num_train_epochs=config.pop("epochs", 3),
         learning_rate=2e-5,
         weight_decay=0.01,
