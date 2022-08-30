@@ -21,7 +21,7 @@ prompts = pd.DataFrame(
     ["Complete me", "And me", "Please complete"], columns=["sentences"]
 )
 
-# We are only testing Casual Language Modeling here
+# We are only testing Causal Language Modeling here
 
 model_checkpoint = "sshleifer/tiny-gpt2"
 tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"

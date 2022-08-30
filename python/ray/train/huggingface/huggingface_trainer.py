@@ -426,13 +426,13 @@ def _huggingface_train_loop_per_worker(config):
         train_torch_dataset, eval_torch_dataset, **config
     )
 
-    if (
-        trainer.args.logging_strategy != trainer.args.evaluation_strategy
-        and trainer.args.evaluation_strategy not in ("no", IntervalStrategy.NO)
-    ) or (
-        trainer.args.logging_strategy != trainer.args.save_strategy
-        and trainer.args.save_strategy not in ("no", IntervalStrategy.NO)
-    ):
+    strategies = [
+        strategy
+        for strategy in (trainer.args.evaluation_strategy, trainer.args.save_strategy)
+        if strategy not in ("no", IntervalStrategy.NO)
+    ]
+    strategies = [trainer.args.logging_strategy] + strategies
+    if not all(strategy == strategies[0] for strategy in strategies[1:]):
         raise ValueError(
             "When using Ray AIR,`logging_strategy`, `evaluation_strategy` "
             "and `save_strategy` must all be set to the same value. "
