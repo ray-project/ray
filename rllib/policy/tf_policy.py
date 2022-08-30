@@ -10,7 +10,7 @@ import tree  # pip install dm_tree
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.policy import Policy, PolicySpec
+from ray.rllib.policy.policy import Policy, PolicySpec, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
@@ -532,7 +532,7 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def set_state(self, state: dict) -> None:
+    def set_state(self, state: PolicyState) -> None:
         # Set optimizer vars first.
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars is not None:

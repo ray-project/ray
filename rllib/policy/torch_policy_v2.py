@@ -927,12 +927,6 @@ class TorchPolicyV2(Policy):
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
 
-        # Recreate entire model (including architecture and weights).
-        if hasattr(self, "model"):
-            tmpdir = tempfile.mkdtemp()
-            dict_contents_to_dir(state["model"], tmpdir)
-            self.model = torch.load(os.path.join(tmpdir, "model.pickle"))
-
         # Restore glbal timestep.
         self.global_timestep = state["global_timestep"]
 

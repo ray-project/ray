@@ -726,7 +726,7 @@ def _build_eager_tf_policy(
             return state
 
         @override(Policy)
-        def set_state(self, state):
+        def set_state(self, state: PolicyState) -> None:
             # Set optimizer vars first.
             optimizer_vars = state.get("_optimizer_variables", None)
             if optimizer_vars and self._optimizer.variables():

@@ -1840,10 +1840,10 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_export_model",
+    name = "tests/test_export_checkpoint_and_model",
     tags = ["team:ml", "policy"],
     size = "medium",
-    srcs = ["policy/tests/test_export_model.py"]
+    srcs = ["policy/tests/test_export_checkpoint_and_model.py"]
 )
 
 py_test(

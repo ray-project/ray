@@ -763,7 +763,7 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def set_state(self, state: dict) -> None:
+    def set_state(self, state: PolicyState) -> None:
         # Set optimizer vars first.
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars:

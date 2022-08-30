@@ -1048,18 +1048,3 @@ class DynamicTFPolicyV2(TFPolicy):
                 return self.compute_gradients_fn(optimizers[0], losses[0])
         else:
             return super().gradients(optimizers, losses)
-
-    @override(TFPolicy)
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def set_state(self, state):
-        super().set_state(state)
-
-        # Recreate entire (tf.keras) model, including architecture and weights.
-        if hasattr(self, "model") and hasattr(self.model, "base_model"):
-            tmpdir = tempfile.mkdtemp()
-            dict_contents_to_dir(state["model"], tmpdir)
-            with self.get_session().graph.as_default():
-                self.model.base_model = tf.keras.models.load_model(filepath=tmpdir)
-        # Backup solution: Try to overwrite model's weights from old 'weights' key.
-        else:
-            self.set_weights(state["weights"])
