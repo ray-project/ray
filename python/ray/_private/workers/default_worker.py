@@ -105,6 +105,23 @@ parser.add_argument(
     help="The configuration of object spilling. Only used by I/O workers.",
 )
 parser.add_argument(
+    "--logging-rotate-bytes",
+    required=False,
+    type=int,
+    default=ray_constants.LOGGING_ROTATE_BYTES,
+    help="Specify the max bytes for rotating "
+    "log file, default is "
+    f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.",
+)
+parser.add_argument(
+    "--logging-rotate-backup-count",
+    required=False,
+    type=int,
+    default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+    help="Specify the backup count of rotated log file, default is "
+    f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.",
+)
+parser.add_argument(
     "--runtime-env-hash",
     required=False,
     type=int,
