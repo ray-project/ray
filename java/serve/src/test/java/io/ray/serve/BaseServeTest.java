@@ -4,6 +4,7 @@ import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
 import io.ray.serve.api.ServeControllerClient;
 import io.ray.serve.config.RayServeConfig;
+import io.ray.serve.poll.LongPollClientFactory;
 import java.lang.reflect.Method;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -37,5 +38,8 @@ public abstract class BaseServeTest {
     } catch (Exception e) {
       LOGGER.error("ray shutdown error", e);
     }
+    LongPollClientFactory.stop();
+    LongPollClientFactory.clearAllCache();
+    Serve.setInternalReplicaContext(null);
   }
 }

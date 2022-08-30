@@ -220,7 +220,7 @@ public class LongPollClientFactory {
       scheduledExecutorService.shutdown();
     }
     inited = false;
-    LOGGER.info("LongPollClient was stopped.");
+    LOGGER.info("LongPollClient was shopped.");
   }
 
   public static boolean isInitialized() {
