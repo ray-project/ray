@@ -229,7 +229,7 @@ if setup_spec.type == SetupType.RAY:
             "requests",
             "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
-            "pydantic",
+            "pydantic < 1.10.0",
             "prometheus_client >= 0.7.1, < 0.14.0",
             "smart_open",
         ],
