@@ -24,8 +24,7 @@ class LightningCheckpoint(Checkpoint):
         *,
         preprocessor: Optional["Preprocessor"] = None,
     ) -> "LightningCheckpoint":
-        """Create a :py:class:`~ray.air.checkpoint.Checkpoint` that stores a Lightning
-        module.
+        """Create a ``ray.air.checkpoint.Checkpoint`` that stores a LightningModule.
 
         Args:
             model: The LightningModule to store in the checkpoint.
