@@ -907,7 +907,13 @@ class Policy(metaclass=ABCMeta):
             The AIR Checkpoint instance created (in addition to writing the given
             directory).
         """
-        raise NotImplementedError
+        assert filename_prefix == "model", \
+            "The arg `filename_prefix` for `Policy.export_checkpoint()` is " \
+            "deprecated and should not be set!"
+        state = self.get_state()
+        checkpoint = Checkpoint.from_dict(state)
+        checkpoint.to_directory(export_dir)
+        return checkpoint
 
     @DeveloperAPI
     def export_model(self, export_dir: str, onnx: Optional[int] = None) -> None:

@@ -896,7 +896,7 @@ class TorchPolicyV2(Policy):
             config=self.config,
         )
 
-        # Save the tf.keras.Model (architecture and weights, so it can be retrieved
+        # Save the torch.Model (architecture and weights, so it can be retrieved
         # w/o access to the original (custom) Model or Policy code).
         if hasattr(self, "model"):
             tmpdir = tempfile.mkdtemp()

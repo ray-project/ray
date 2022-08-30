@@ -33,6 +33,7 @@ from ray.rllib.utils.annotations import (
     is_overridden,
     override,
 )
+from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.files import dict_contents_to_dir, dir_contents_to_dict
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
@@ -730,18 +731,6 @@ class EagerTFPolicyV2(Policy):
         super().set_state(state)
 
     @override(Policy)
-    def export_checkpoint(
-        self, export_dir: str, filename_prefix: str = "model"
-    ) -> Checkpoint:
-        assert filename_prefix == "model", \
-            "The arg `filename_prefix` for `Policy.export_checkpoint()` is " \
-            "deprecated and should not be set!"
-        state = self.get_state()
-        checkpoint = Checkpoint.from_dict(state)
-        checkpoint.to_directory(export_dir)
-        return checkpoint
-
-    @override(Policy)
     def export_model(self, export_dir, onnx: Optional[int] = None) -> None:
         if onnx:
             try:
@@ -757,8 +746,16 @@ class EagerTFPolicyV2(Policy):
                 self.model.base_model,
                 output_path=os.path.join(export_dir, "saved_model.onnx"),
             )
-        else:
+        # Save the tf.keras.Model (architecture and weights, so it can be retrieved
+        # w/o access to the original (custom) Model or Policy code).
+        elif (
+            hasattr(self, "model")
+            and hasattr(self.model, "base_model")
+            and isinstance(self.model.base_model, tf.keras.Model)
+        ):
             self.model.base_model.save(export_dir, save_format="tf")
+        else:
+            raise ValueError(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 
     def variables(self):
         """Return the list of all savable variables for this policy."""

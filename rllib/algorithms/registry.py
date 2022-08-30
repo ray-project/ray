@@ -2,8 +2,13 @@
 
 import importlib
 import traceback
+from typing import Tuple, Type, TYPE_CHECKING, Union
 
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm import Algorithm
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 def _import_a2c():
@@ -241,7 +246,10 @@ ALGORITHMS = {
 }
 
 
-def get_algorithm_class(alg: str, return_config=False) -> type:
+def get_algorithm_class(
+    alg: str,
+    return_config=False,
+) -> Union[Type["Algorithm"], Tuple[Type["Algorithm"], "AlgorithmConfig"]]:
     """Returns the class of a known Trainer given its name."""
 
     try:
