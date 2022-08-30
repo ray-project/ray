@@ -571,12 +571,13 @@ lint_web() {
 
 check_python_test_directories_contain_init_file() {
   cd "${WORKSPACE_DIR}"
-  for test_directory in $(find python -name "tests" -type d); do
+  while IFS= read -r -d '' test_directory
+  do
     if [ ! -e "$test_directory"/__init__.py ]; then
-        echo "Add '__init__.py' to '$test_directory'"
-        exit 1
+      echo "Add '__init__.py' to '$test_directory'"
+      exit 1
     fi
-  done
+  done <   <(find python -name "tests" -type d -print0)
 }
 
 lint_copyright() {
