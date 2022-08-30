@@ -15,7 +15,7 @@ def test_format_vars():
                 ("a", "b", "e"): [[[3, 4]]],
             }
         )
-        == "c=8.12345,d=7_8,e=3_4"
+        == "c=8.1235,d=7_8,e=3_4"
     )
     # Sorted by full keys, but only last key is reported
     assert (
@@ -25,14 +25,14 @@ def test_format_vars():
                 ("a", "b", "x"): 8.1234567,
             }
         )
-        == "x=8.12345,x=7_8"
+        == "x=8.1235,x=7_8"
     )
     # Filter out invalid chars. It's ok to have empty keys or values.
     assert (
         format_vars(
             {
-                ("a  c?x"): " <;%$ok ",
-                ("some"): " ",
+                ("a  c?x",): " <;%$ok ",
+                ("some",): " ",
             }
         )
         == "a_c_x=ok,some="
