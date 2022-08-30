@@ -210,3 +210,17 @@ message StatusOverview {
   ApplicationStatusInfo app_status = 1;
   DeploymentStatusInfoList deployment_statuses = 2;
 }
+
+
+// RPC Schema
+message PredictRequest {
+    string model_name = 1;
+    map<string, bytes> input = 2;
+}
+message PredictResponse {
+   bytes prediction = 1;
+}
+
+service PredictAPIsService {
+   rpc Predict(PredictRequest) returns (PredictResponse);
+}

@@ -4,6 +4,7 @@ import json
 import logging
 import math
 import os
+from platform import node
 import random
 import time
 import traceback
@@ -47,8 +48,13 @@ from ray.serve._private.utils import (
     get_random_letters,
     msgpack_serialize,
     msgpack_deserialize,
+    get_all_node_ids,
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
+
+
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray._private.gcs_utils import GcsClient
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -176,6 +182,7 @@ class ActorReplicaWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
+        scheduling_strategy="SPREAD",
     ):
         self._actor_name = actor_name
         self._detached = detached
@@ -210,6 +217,8 @@ class ActorReplicaWrapper:
         # todo: will be confused with deployment_config.is_cross_language
         self._is_cross_language = False
         self._deployment_is_cross_language = False
+
+        self.scheduling_strategy = scheduling_strategy
 
     @property
     def replica_tag(self) -> str:
@@ -349,10 +358,7 @@ class ActorReplicaWrapper:
             name=self._actor_name,
             namespace=SERVE_NAMESPACE,
             lifetime="detached" if self._detached else None,
-            # Spread replicas to avoid correlated failures on a single node.
-            # This is a soft spread, so if there is only space on a single node
-            # the replicas will be placed there.
-            scheduling_strategy="SPREAD",
+            scheduling_strategy=self.scheduling_strategy,
             **deployment_info.replica_config.ray_actor_options,
         ).remote(*init_args)
 
@@ -633,6 +639,32 @@ class ActorReplicaWrapper:
             pass
 
 
+class DriverActorReplicaWrapper(ActorReplicaWrapper):
+    def __init__(
+        self,
+        actor_name: str,
+        detached: bool,
+        controller_name: str,
+        replica_tag: ReplicaTag,
+        deployment_name: str,
+        node_id: str,
+    ):
+        self.deployed_node_id = node_id
+        super().__init__(
+            actor_name,
+            detached,
+            controller_name,
+            replica_tag,
+            deployment_name,
+            NodeAffinitySchedulingStrategy(self.deployed_node_id, soft=False),
+        )
+
+    @property
+    def node_id(self) -> Optional[str]:
+        """Returns the node id of the actor, None if not placed."""
+        return self.deployed_node_id
+
+
 class DeploymentReplica(VersionedReplica):
     """Manages state transitions for deployment replicas.
 
@@ -646,14 +678,27 @@ class DeploymentReplica(VersionedReplica):
         replica_tag: ReplicaTag,
         deployment_name: str,
         version: DeploymentVersion,
+        # can be grouped to be a class
+        is_driver: bool = False,
+        node_id=None,
     ):
-        self._actor = ActorReplicaWrapper(
-            f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
-            detached,
-            controller_name,
-            replica_tag,
-            deployment_name,
-        )
+        if is_driver:
+            self._actor = DriverActorReplicaWrapper(
+                f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
+                detached,
+                controller_name,
+                replica_tag,
+                deployment_name,
+                node_id,
+            )
+        else:
+            self._actor = ActorReplicaWrapper(
+                f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
+                detached,
+                controller_name,
+                replica_tag,
+                deployment_name,
+            )
         self._controller_name = controller_name
         self._deployment_name = deployment_name
         self._replica_tag = replica_tag
@@ -966,6 +1011,7 @@ class DeploymentState:
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
             self._name, DeploymentStatus.UPDATING
         )
+        self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
     def should_autoscale(self) -> bool:
         """
@@ -1078,6 +1124,8 @@ class DeploymentState:
             self._name, DeploymentStatus.UPDATING
         )
         self._replica_constructor_retry_counter = 0
+
+        # check the autoscaling config if driver mode is set
 
         logger.debug(f"Deploying new version of {self._name}: {target_state.version}.")
 
@@ -1567,6 +1615,32 @@ class DeploymentState:
 
         return running_replicas_changed
 
+    def _deploy_driver(self):
+        deployed_nodes = set()
+        for replica in self._replicas.get(
+            [ReplicaState.STARTING, ReplicaState.RUNNING, ReplicaState.RECOVERING]
+        ):
+            if replica.actor_node_id:
+                deployed_nodes.add(replica.actor_node_id)
+        for node_id, _ in get_all_node_ids(self._gcs_client):
+            if node_id in deployed_nodes:
+                continue
+            replica_name = ReplicaName(self._name, get_random_letters())
+            new_deployment_replica = DeploymentReplica(
+                self._controller_name,
+                self._detached,
+                replica_name.replica_tag,
+                replica_name.deployment_tag,
+                self._target_state.version,
+                True,
+                node_id,
+            )
+            new_deployment_replica.start(
+                self._target_state.info, self._target_state.version
+            )
+
+            self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
+
     def update(self) -> bool:
         """Attempts to reconcile this deployment to match its goal state.
 
@@ -1581,13 +1655,17 @@ class DeploymentState:
             # Add or remove DeploymentReplica instances in self._replicas.
             # This should be the only place we adjust total number of replicas
             # we manage.
-            running_replicas_changed = self._scale_deployment_replicas()
+            if self.target_info.driver_mode:
+                self._deploy_driver()
+                self._check_and_update_replicas()
+            else:
+                running_replicas_changed = self._scale_deployment_replicas()
 
-            # Check the state of existing replicas and transition if necessary.
-            running_replicas_changed |= self._check_and_update_replicas()
+                # Check the state of existing replicas and transition if necessary.
+                running_replicas_changed |= self._check_and_update_replicas()
 
-            if running_replicas_changed:
-                self._notify_running_replicas_changed()
+                if running_replicas_changed:
+                    self._notify_running_replicas_changed()
 
             deleted = self._check_curr_status()
         except Exception:

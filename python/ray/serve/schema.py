@@ -177,6 +177,11 @@ class DeploymentSchema(
         default=DEFAULT.VALUE, description="Options set for each replica actor."
     )
 
+    driver_mode: bool = Field(
+        default=False,
+        description="Driver mode for the deployment, (e.g. 'gRPC', 'HTTP')",
+    )
+
     @root_validator
     def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
         if values.get("num_replicas", None) not in [DEFAULT.VALUE, None] and values.get(

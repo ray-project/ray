@@ -289,6 +289,7 @@ def deployment(
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+    driver_mode: Optional[bool] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
@@ -376,6 +377,8 @@ def deployment(
             "Explicitly specifying version will raise an error in the future!"
         )
 
+    # Check driver mode validation
+
     config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
@@ -401,6 +404,7 @@ def deployment(
                 ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
             ),
             _internal=True,
+            driver_mode=driver_mode,
         )
 
     # This handles both parametrized and non-parametrized usage of the
@@ -511,6 +515,7 @@ def run(
 
     parameter_group = []
 
+    # check if only one deployment has driver mode set
     for deployment in deployments:
         deployment_parameters = {
             "name": deployment._name,
@@ -522,6 +527,7 @@ def run(
             "version": deployment._version,
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
+            "driver_mode": deployment._driver_mode,
         }
         parameter_group.append(deployment_parameters)
     client.deploy_group(

@@ -8,7 +8,6 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.config import HTTPOptions
 from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
-    HTTP_PROXY_TIMEOUT,
     SERVE_CONTROLLER_NAME,
     SERVE_NAMESPACE,
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
@@ -213,18 +212,6 @@ def serve_start(
         head_node_id=head_node_id,
         detached=detached,
     )
-
-    proxy_handles = ray.get(controller.get_http_proxies.remote())
-    if len(proxy_handles) > 0:
-        try:
-            ray.get(
-                [handle.ready.remote() for handle in proxy_handles.values()],
-                timeout=HTTP_PROXY_TIMEOUT,
-            )
-        except ray.exceptions.GetTimeoutError:
-            raise TimeoutError(
-                f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
-            )
 
     client = ServeControllerClient(
         controller,

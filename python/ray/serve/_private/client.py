@@ -50,8 +50,8 @@ class ServeControllerClient:
         self._controller_name = controller_name
         self._detached = detached
         self._shutdown = False
-        self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
-        self._root_url = ray.get(controller.get_root_url.remote())
+        self._http_config = None
+        self._root_url = None
 
         # Each handle has the overhead of long poll client, therefore cached.
         self.handle_cache = dict()
@@ -69,11 +69,11 @@ class ServeControllerClient:
 
     @property
     def root_url(self):
-        return self._root_url
+        raise Exception("Not expected to call root url")
 
     @property
     def http_config(self):
-        return self._http_config
+        raise Exception("Not expected to call http config")
 
     def __del__(self):
         if not self._detached:
@@ -257,6 +257,7 @@ class ServeControllerClient:
                     config=deployment["config"],
                     version=deployment["version"],
                     route_prefix=deployment["route_prefix"],
+                    driver_mode=deployment["driver_mode"],
                 )
             )
 
@@ -429,6 +430,7 @@ class ServeControllerClient:
         config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
         version: Optional[str] = None,
         route_prefix: Optional[str] = None,
+        driver_mode: Optional[str] = None,
     ) -> Dict:
         """
         Takes a deployment's configuration, and returns the arguments needed
@@ -483,6 +485,7 @@ class ServeControllerClient:
             "replica_config_proto_bytes": replica_config.to_proto_bytes(),
             "route_prefix": route_prefix,
             "deployer_job_id": ray.get_runtime_context().job_id,
+            "driver_mode": driver_mode,
         }
 
         return controller_deploy_args

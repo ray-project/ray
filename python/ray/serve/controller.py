@@ -11,7 +11,6 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 import ray
 from ray._private.utils import import_attr
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
 from ray._private.gcs_utils import GcsClient
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
@@ -21,7 +20,6 @@ from ray.serve._private.common import (
     DeploymentInfo,
     EndpointInfo,
     EndpointTag,
-    NodeId,
     RunningReplicaInfo,
     StatusOverview,
 )
@@ -30,13 +28,11 @@ from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
     SERVE_LOGGER_NAME,
     CONTROLLER_MAX_CONCURRENCY,
-    SERVE_ROOT_URL_ENV_KEY,
     SERVE_NAMESPACE,
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
 )
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
-from ray.serve._private.http_state import HTTPState
 from ray.serve._private.logging_utils import configure_component_logger
 from ray.serve._private.long_poll import LongPollHost
 from ray.serve.schema import ServeApplicationSchema
@@ -112,6 +108,7 @@ class ServeController:
 
         self.long_poll_host = LongPollHost()
 
+        """
         self.http_state = HTTPState(
             controller_name,
             detached,
@@ -119,6 +116,7 @@ class ServeController:
             head_node_id,
             gcs_client,
         )
+        """
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
 
         # Fetch all running actors in current cluster as source of current
@@ -213,19 +211,6 @@ class ServeController:
         }
         return EndpointSet(endpoints=data).SerializeToString()
 
-    def get_http_proxies(self) -> Dict[NodeId, ActorHandle]:
-        """Returns a dictionary of node ID to http_proxy actor handles."""
-        return self.http_state.get_http_proxy_handles()
-
-    def get_http_proxy_names(self) -> bytes:
-        """Returns the http_proxy actor name list serialized by protobuf."""
-        from ray.serve.generated.serve_pb2 import ActorNameList
-
-        actor_name_list = ActorNameList(
-            names=self.http_state.get_http_proxy_names().values()
-        )
-        return actor_name_list.SerializeToString()
-
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
@@ -233,11 +218,6 @@ class ServeController:
         while True:
 
             async with self.write_lock:
-                try:
-                    self.http_state.update()
-                except Exception:
-                    logger.exception("Exception updating HTTP state.")
-
                 try:
                     self.deployment_state_manager.update()
                 except Exception:
@@ -302,30 +282,12 @@ class ServeController:
         """Used for testing."""
         return self.deployment_state_manager.get_running_replica_infos()
 
-    def get_http_config(self):
-        """Return the HTTP proxy configuration."""
-        return self.http_state.get_config()
-
-    def get_root_url(self):
-        """Return the root url for the serve instance."""
-        http_config = self.get_http_config()
-        if http_config.root_url == "":
-            if SERVE_ROOT_URL_ENV_KEY in os.environ:
-                return os.environ[SERVE_ROOT_URL_ENV_KEY]
-            else:
-                return (
-                    f"http://{http_config.host}:{http_config.port}"
-                    f"{http_config.root_path}"
-                )
-        return http_config.root_url
-
     async def shutdown(self):
         """Shuts down the serve instance completely."""
         async with self.write_lock:
             self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
             self.deployment_state_manager.shutdown()
             self.endpoint_state.shutdown()
-            self.http_state.shutdown()
 
     def deploy(
         self,
@@ -334,6 +296,7 @@ class ServeController:
         replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
         deployer_job_id: Union["ray._raylet.JobID", bytes],
+        driver_mode: Optional[bool],
     ) -> bool:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
@@ -366,6 +329,7 @@ class ServeController:
             deployer_job_id=deployer_job_id,
             start_time_ms=int(time.time() * 1000),
             autoscaling_policy=autoscaling_policy,
+            driver_mode=driver_mode,
         )
         # TODO(architkulkarni): When a deployment is redeployed, even if
         # the only change was num_replicas, the start_time_ms is refreshed.
