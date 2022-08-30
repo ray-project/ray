@@ -72,11 +72,16 @@ class _SyncedTrackedCheckpoint(_TrackedCheckpoint):
         target_ip = get_node_ip_address()
 
         if source_ip == target_ip:
-            # Move contents of source_path, but not source_path
-            # itself. shutil.move is already recursive.
-            for inner in Path(source_path).iterdir():
-                shutil.move(str(inner.absolute()), str(path))
-            shutil.rmtree(source_path, ignore_errors=True)
+            source_path = Path(source_path)
+            for inner in source_path.iterdir():
+                try:
+                    shutil.move(str(inner.absolute()), str(path.absolute()))
+                except OSError:
+                    # This file may have already been moved by another rank worker.
+                    # Disregard, as the files are identical across all ranks.
+                    pass
+            # No need to file lock here as each rank worker has its own folder.
+            shutil.rmtree(str(source_path.absolute()), ignore_errors=True)
         else:
             sync_dir_between_nodes(
                 source_ip=source_ip,
