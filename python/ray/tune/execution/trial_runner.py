@@ -342,6 +342,9 @@ class TrialRunner:
         else:
             # Manual override
             self._max_pending_trials = int(max_pending_trials)
+
+        sync_config = sync_config or SyncConfig()
+
         self.trial_executor.setup(
             max_pending_trials=self._max_pending_trials,
             trainable_kwargs={"sync_timeout": sync_config.sync_timeout},
@@ -389,7 +392,6 @@ class TrialRunner:
         if self._local_checkpoint_dir:
             os.makedirs(self._local_checkpoint_dir, exist_ok=True)
 
-        sync_config = sync_config or SyncConfig()
         self._remote_checkpoint_dir = remote_checkpoint_dir
 
         self._syncer = get_node_to_storage_syncer(sync_config)
