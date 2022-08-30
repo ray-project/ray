@@ -64,6 +64,8 @@ def train_func(config):
     epochs_to_go = total_epochs
 
     model = resnet18()
+    model = train.torch.prepare_model(model)
+
     # Create optimizer.
     optimizer = torch.optim.SGD(
         model.parameters(),
@@ -82,8 +84,6 @@ def train_func(config):
         checkpoint_epoch = checkpoint_dict["epoch"]
         # Resume training at the epoch we left off at
         epochs_to_go = total_epochs - checkpoint_epoch
-
-    model = train.torch.prepare_model(model)
 
     # Load in training and validation data.
     transform_train = transforms.Compose(
