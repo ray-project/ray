@@ -1,4 +1,4 @@
-# This example showcases how to use Jax (pmap) with Ray Train for data parallel training.
+# This example showcases how to use Jax (pmap) with Ray Train for data parallel training
 # Original code: (without pmap)
 # https://github.com/google/flax/blob/main/examples/mnist/train.py
 # Adapted from parallel version for ensembling: (with flax & pmap)
@@ -37,7 +37,7 @@ def get_datasets():
 
     # Hide any GPUs from TensorFlow. Otherwise TF might reserve memory and make
     # it unavailable to JAX.
-    # reference: 
+    # reference:
     # https://jax.readthedocs.io/en/latest/gpu_memory_allocation.html#common-causes-of-oom-failures
     # this is specifically for `tensorflow_datasets`
     import tensorflow as tf
