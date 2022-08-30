@@ -23,117 +23,134 @@ namespace ray {
 
 namespace raylet_scheduling_policy {
 
+bool HybridSchedulingPolicy::IsNodeFeasible(
+    const scheduling::NodeID &node_id,
+    const NodeFilter &node_filter,
+    const NodeResources &node_resources,
+    const ResourceRequest &resource_request) const {
+  if (!is_node_alive_(node_id)) {
+    return false;
+  }
+
+  if (node_filter != NodeFilter::kAny) {
+    const bool has_gpu = node_resources.total.Has(ResourceID::GPU());
+    if (node_filter == NodeFilter::kGPU && !has_gpu) {
+      return false;
+    } else if (node_filter == NodeFilter::kNonGpu && has_gpu) {
+      return false;
+    }
+  }
+
+  return node_resources.IsFeasible(resource_request);
+}
+
+float ComputeNodeScore(const NodeResources &node_resources, float spread_threshold) {
+  float critical_resource_utilization =
+      node_resources.CalculateCriticalResourceUtilization();
+  if (critical_resource_utilization < spread_threshold) {
+    critical_resource_utilization = 0;
+  }
+  return critical_resource_utilization;
+}
+
+scheduling::NodeID HybridSchedulingPolicy::GetBestNode(
+    std::vector<std::pair<scheduling::NodeID, float>> &node_scores,
+    bool prioritize_local_node,
+    int k,
+    float spread_threshold) const {
+  // Pick the top k nodes with the lowest score.
+  // First, sort nodes so that we always break ties between nodes in the same
+  // order.
+  std::sort(
+      node_scores.begin(),
+      node_scores.end(),
+      [](const std::pair<scheduling::NodeID, float> &a,
+         const std::pair<scheduling::NodeID, float> &b) { return a.first < b.first; });
+  std::stable_sort(
+      node_scores.begin(),
+      node_scores.end(),
+      [](const std::pair<scheduling::NodeID, float> &a,
+         const std::pair<scheduling::NodeID, float> &b) { return a.second < b.second; });
+
+  if (prioritize_local_node) {
+    const auto local_it = nodes_.find(local_node_id_);
+    RAY_CHECK(local_it != nodes_.end());
+    float local_node_score =
+        ComputeNodeScore(local_it->second.GetLocalView(), spread_threshold);
+    if (local_node_score <= node_scores.front().second) {
+      return local_node_id_;
+    }
+  }
+
+  std::uniform_int_distribution<int> distribution(
+      0, std::min(k, static_cast<int>(node_scores.size())) - 1);
+  int node_index = distribution(gen_);
+  return node_scores[node_index].first;
+}
+
 scheduling::NodeID HybridSchedulingPolicy::HybridPolicyWithFilter(
     const ResourceRequest &resource_request,
     float spread_threshold,
     bool force_spillback,
     bool require_node_available,
     NodeFilter node_filter) {
-  // Step 1: Generate the traversal order. We guarantee that the first node is local, to
-  // encourage local scheduling. The rest of the traversal order should be globally
-  // consistent, to encourage using "warm" workers.
-  std::vector<scheduling::NodeID> round;
-  round.reserve(nodes_.size());
-  const auto local_it = nodes_.find(local_node_id_);
-  RAY_CHECK(local_it != nodes_.end());
-  auto predicate = [this, node_filter](scheduling::NodeID node_id,
-                                       const NodeResources &node_resources) {
-    if (!is_node_available_(node_id)) {
-      return false;
-    }
-    if (node_filter == NodeFilter::kAny) {
-      return true;
-    }
-    const bool has_gpu = node_resources.total.Has(ResourceID::GPU());
-    if (node_filter == NodeFilter::kGPU) {
-      return has_gpu;
-    }
-    RAY_CHECK(node_filter == NodeFilter::kNonGpu);
-    return !has_gpu;
-  };
-
-  const auto &local_node_view = local_it->second.GetLocalView();
-  // If we should include local node at all, make sure it is at the front of the list
-  // so that
-  // 1. It's first in traversal order.
-  // 2. It's easy to avoid sorting it.
-  if (predicate(local_node_id_, local_node_view) && !force_spillback) {
-    round.push_back(local_node_id_);
-  }
-
-  const auto start_index = round.size();
+  // Nodes that are feasible and currently have available resources.
+  std::vector<std::pair<scheduling::NodeID, float>> available_nodes;
+  // Nodes that are feasible but currently do not have available resources.
+  std::vector<std::pair<scheduling::NodeID, float>> feasible_nodes;
+  // Check whether the local node is available and feasible. We'll use this to
+  // help prioritize the local node when force_spillback=false.
+  bool local_node_is_available = false;
+  bool local_node_is_feasible = false;
   for (const auto &pair : nodes_) {
-    if (pair.first != local_node_id_ &&
-        predicate(pair.first, pair.second.GetLocalView())) {
-      round.push_back(pair.first);
-    }
-  }
-  // Sort all the nodes, making sure that if we added the local node in front, it stays in
-  // place.
-  std::sort(round.begin() + start_index, round.end());
-
-  scheduling::NodeID best_node_id = scheduling::NodeID::Nil();
-  float best_utilization_score = INFINITY;
-  bool best_is_available = false;
-
-  // Step 2: Perform the round robin.
-  auto round_it = round.begin();
-  for (; round_it != round.end(); round_it++) {
-    const auto &node_id = *round_it;
-    const auto &it = nodes_.find(node_id);
-    RAY_CHECK(it != nodes_.end());
-    const auto &node = it->second;
-    if (!node.GetLocalView().IsFeasible(resource_request)) {
+    const auto &node_id = pair.first;
+    const auto &node_resources = pair.second.GetLocalView();
+    if (force_spillback && node_id == local_node_id_) {
       continue;
     }
-
-    bool ignore_pull_manager_at_capacity = false;
-    if (node_id == local_node_id_) {
-      // It's okay if the local node's pull manager is at
-      // capacity because we will eventually spill the task
-      // back from the waiting queue if its args cannot be
-      // pulled.
-      ignore_pull_manager_at_capacity = true;
-    }
-    bool is_available = node.GetLocalView().IsAvailable(resource_request,
-                                                        ignore_pull_manager_at_capacity);
-    float critical_resource_utilization =
-        node.GetLocalView().CalculateCriticalResourceUtilization();
-    RAY_LOG(DEBUG) << "Node " << node_id.ToInt() << " is "
-                   << (is_available ? "available" : "not available") << " for request "
-                   << resource_request.DebugString()
-                   << " with critical resource utilization "
-                   << critical_resource_utilization << " based on local view "
-                   << node.GetLocalView().DebugString();
-    if (critical_resource_utilization < spread_threshold) {
-      critical_resource_utilization = 0;
-    }
-
-    bool update_best_node = false;
-
-    if (is_available) {
-      // Always prioritize available nodes over nodes where the task must be queued first.
-      if (!best_is_available) {
-        update_best_node = true;
-      } else if (critical_resource_utilization < best_utilization_score) {
-        // Break ties between available nodes by their critical resource utilization.
-        update_best_node = true;
+    if (IsNodeFeasible(node_id, node_filter, node_resources, resource_request)) {
+      bool ignore_pull_manager_at_capacity = false;
+      if (node_id == local_node_id_) {
+        // It's okay if the local node's pull manager is at
+        // capacity because we will eventually spill the task
+        // back from the waiting queue if its args cannot be
+        // pulled.
+        ignore_pull_manager_at_capacity = true;
+        local_node_is_feasible = true;
       }
-    } else if (!best_is_available &&
-               critical_resource_utilization < best_utilization_score &&
-               !require_node_available) {
-      // Pick the best feasible node by critical resource utilization.
-      update_best_node = true;
-    }
-
-    if (update_best_node) {
-      best_node_id = node_id;
-      best_utilization_score = critical_resource_utilization;
-      best_is_available = is_available;
+      bool is_available =
+          node_resources.IsAvailable(resource_request, ignore_pull_manager_at_capacity);
+      if (node_id == local_node_id_ and is_available) {
+        local_node_is_available = true;
+      }
+      float node_score = ComputeNodeScore(node_resources, spread_threshold);
+      RAY_LOG(DEBUG) << "Node " << node_id.ToInt() << " is "
+                     << (is_available ? "available" : "not available") << " for request "
+                     << resource_request.DebugString()
+                     << " with critical resource utilization " << node_score
+                     << " based on local view " << node_resources.DebugString();
+      if (is_available) {
+        available_nodes.push_back({node_id, node_score});
+      } else {
+        feasible_nodes.push_back({node_id, node_score});
+      }
     }
   }
 
-  return best_node_id;
+  if (!available_nodes.empty()) {
+    // First prioritize available nodes.
+    return GetBestNode(available_nodes,
+                       !force_spillback && local_node_is_available,
+                       1,
+                       spread_threshold);
+  } else if (!feasible_nodes.empty() && !require_node_available) {
+    // If there are no available nodes, and the caller is okay with an
+    // unavailable node, check the feasible nodes next.
+    return GetBestNode(
+        feasible_nodes, !force_spillback && local_node_is_feasible, 1, spread_threshold);
+  } else {
+    return scheduling::NodeID::Nil();
+  }
 }
 
 scheduling::NodeID HybridSchedulingPolicy::Schedule(

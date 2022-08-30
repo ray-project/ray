@@ -49,24 +49,16 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
  public:
   HybridSchedulingPolicy(scheduling::NodeID local_node_id,
                          const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
-                         std::function<bool(scheduling::NodeID)> is_node_available)
+                         std::function<bool(scheduling::NodeID)> is_node_alive)
       : local_node_id_(local_node_id),
         nodes_(nodes),
-        is_node_available_(is_node_available) {}
+        is_node_alive_(is_node_alive),
+        gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
 
  private:
-  /// Identifier of local node.
-  const scheduling::NodeID local_node_id_;
-  /// List of nodes in the clusters and their resources organized as a map.
-  /// The key of the map is the node ID.
-  const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_;
-
-  /// Function Checks if node is alive.
-  std::function<bool(scheduling::NodeID)> is_node_available_;
-
   enum class NodeFilter {
     /// Default scheduling.
     kAny,
@@ -77,6 +69,27 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
     /// special handling for this.
     kNonGpu
   };
+
+  bool IsNodeFeasible(const scheduling::NodeID &node_id,
+                      const NodeFilter &node_filter,
+                      const NodeResources &node_resources,
+                      const ResourceRequest &resource_request) const;
+
+  scheduling::NodeID GetBestNode(
+      std::vector<std::pair<scheduling::NodeID, float>> &node_scores,
+      bool force_spillback,
+      int k,
+      float spread_threshold) const;
+
+  /// Identifier of local node.
+  const scheduling::NodeID local_node_id_;
+  /// List of nodes in the clusters and their resources organized as a map.
+  /// The key of the map is the node ID.
+  const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_;
+  /// Function Checks if node is alive.
+  std::function<bool(scheduling::NodeID)> is_node_alive_;
+  /// Random number generator to choose a random node out of the top K.
+  mutable std::mt19937_64 gen_;
 
   /// \param resource_request: The resource request we're attempting to schedule.
   /// \param node_filter: defines the subset of nodes were are allowed to schedule on.
