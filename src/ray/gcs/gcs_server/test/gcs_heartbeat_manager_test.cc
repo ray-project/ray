@@ -29,8 +29,8 @@ class GcsHeartbeatManagerTest : public ::testing::Test {
     RayConfig::instance().initialize(
         R"(
 {
-  "num_heartbeats_timeout": 2,
-  "gcs_failover_worker_reconnect_timeout": 4
+  "num_heartbeats_timeout": 3,
+  "gcs_failover_worker_reconnect_timeout": 5
 }
   )");
   }
@@ -68,13 +68,13 @@ TEST_F(GcsHeartbeatManagerTest, TestBasicTimeout) {
 
   while (true) {
     absl::MutexLock lock(&mutex_);
-    if (absl::Now() - start >= absl::Seconds(1)) {
+    if (absl::Now() - start >= absl::Microseconds(1800)) {
       break;
     }
     ASSERT_TRUE(dead_nodes.empty());
   }
 
-  std::this_thread::sleep_for(2s);
+  std::this_thread::sleep_for(3s);
 
   {
     absl::MutexLock lock(&mutex_);
@@ -89,7 +89,7 @@ TEST_F(GcsHeartbeatManagerTest, TestBasicReport) {
 
   while (true) {
     absl::MutexLock lock(&mutex_);
-    if (absl::Now() - start >= absl::Seconds(3)) {
+    if (absl::Now() - start >= absl::Seconds(4)) {
       break;
     }
     ASSERT_TRUE(dead_nodes.empty());
@@ -124,13 +124,13 @@ TEST_F(GcsHeartbeatManagerTest, TestBasicRestart) {
 
   while (true) {
     absl::MutexLock lock(&mutex_);
-    if (absl::Now() - start >= absl::Seconds(3)) {
+    if (absl::Now() - start >= absl::Seconds(4)) {
       break;
     }
     ASSERT_TRUE(dead_nodes.empty());
   }
 
-  std::this_thread::sleep_for(2s);
+  std::this_thread::sleep_for(3s);
   {
     absl::MutexLock lock(&mutex_);
     ASSERT_EQ(std::vector<NodeID>{node_1}, dead_nodes);
@@ -153,7 +153,7 @@ TEST_F(GcsHeartbeatManagerTest, TestBasicRestart2) {
 
   heartbeat_manager->Initialize(init_data);
 
-  while (absl::Now() - start < absl::Seconds(1)) {
+  while (absl::Now() - start < absl::Seconds(2)) {
     io_service.post(
         [&]() {
           rpc::ReportHeartbeatReply reply;
@@ -169,13 +169,13 @@ TEST_F(GcsHeartbeatManagerTest, TestBasicRestart2) {
 
   while (true) {
     absl::MutexLock lock(&mutex_);
-    if (absl::Now() - start >= absl::Seconds(1)) {
+    if (absl::Now() - start >= absl::Seconds(2)) {
       break;
     }
     ASSERT_TRUE(dead_nodes.empty());
   }
 
-  std::this_thread::sleep_for(2s);
+  std::this_thread::sleep_for(3s);
   {
     absl::MutexLock lock(&mutex_);
     ASSERT_EQ(std::vector<NodeID>{node_1}, dead_nodes);
