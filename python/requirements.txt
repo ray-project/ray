@@ -73,7 +73,7 @@ kubernetes
 # higher version of llvmlite breaks windows
 llvmlite==0.34.0
 lxml
-moto[s3,server]
+moto[s3,server] >= 4.0.0
 mypy
 networkx
 numba
