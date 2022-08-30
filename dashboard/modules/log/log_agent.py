@@ -1,4 +1,5 @@
 import logging
+from typing import Optional, Tuple
 
 import ray.dashboard.modules.log.log_utils as log_utils
 import ray.dashboard.modules.log.log_consts as log_consts
@@ -19,6 +20,205 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 
 # 64 KB
 BLOCK_SIZE = 1 << 16
+
+# Keep-alive interval for reading the file
+DEFAULT_KEEP_ALIVE_INTERVAL_SEC = 1
+
+
+def _find_tail_start_from_last_lines(
+    file: io.BufferedIOBase, lines_to_tail: int, block_size: int = BLOCK_SIZE
+) -> Tuple[int, int]:
+    """
+    Find the start offset of last `lines_to_tail` lines in a file.
+    If the file has no trailing `\n`, it will be treated as if a new line exists.
+
+    Args:
+        file: A binary file object
+        lines_to_tail: Number of lines to tail
+        block_size: Number of bytes for a single file read, tunable for
+            testing purpose mainly
+
+    Return:
+        Tuple of offsets:
+            offset_read_start: the start offset of the last `lines_to_tail`
+            offset_file_end: the end of file offset
+
+    Note:
+        If file is appended concurrently, this function might find an offset
+        that contains more than last `lines_to_tail` from the end of the file.
+
+        This function doesn't handle concurrent overwrite to the file in another
+        thread/process. E.g., if the file is truncated/overwritten, the behavior
+        is undefined, depending how the file has changed.
+
+    """
+
+    assert (
+        lines_to_tail >= 0
+    ), "Non negative input required for number of lines to tail "
+
+    file.seek(0, 2)
+    # The end offset of the last block currently being read
+    offset_file_end = file.tell()
+    # Number of bytes that should be tailed from the end of the file
+    nbytes_from_end = 0
+    # Number of blocks read so far
+    num_blocks_read = 0
+
+    if lines_to_tail == 0:
+        return offset_file_end, offset_file_end
+
+    # Non new line terminating file, adjust the line count and treat the last
+    # line as a new line
+    file.seek(-1, 2)
+    if file.read(1) != b"\n":
+        lines_to_tail -= 1
+
+    # Remaining number of lines to tail
+    lines_more = lines_to_tail
+
+    if offset_file_end > block_size:
+        # More than 1 block data, then read the previous block from
+        # the end offset
+        read_offset = offset_file_end - block_size
+    else:
+        # Less than 1 block data, seek to the beginning directly
+        read_offset = 0
+
+    # So that we know how much to read on the last block (the block 0)
+    prev_offset = offset_file_end
+
+    while lines_more >= 0 and read_offset >= 0:
+
+        # Seek to the current block start
+        file.seek(read_offset, 0)
+
+        # Read the current block (or less than block) data
+        block_data = file.read(min(block_size, prev_offset - read_offset))
+
+        num_lines = block_data.count(b"\n")
+        if num_lines > lines_more:
+            # This is the last block.
+            # Need to find the offset of exact number of lines to tail
+            # in the block.
+            # Use `split` here to split away the last
+            # n=lines_more lines. The length to be tailed lines will be
+            # in the last un-split token:
+            # E.g.,
+            #   block           = 0123\n5678\nabcde\n
+            #   lines_to_tail   = 1
+            #   num_lines       = 3
+            #
+            #   block.split(num_lines - lines_to_tail)
+            #   will produce splits:
+            #
+            #   block           = 0123\n5678\nabcde\n
+            #                     -----|-----|-------
+            #                                 ^
+            #                           where tail should start.
+            lines = block_data.split(b"\n", num_lines - lines_more)
+
+            # len(lines[0]) + 1 for the new line character split
+            nbytes_from_end += len(lines[-1])
+            logger.debug(
+                f"Found {lines_to_tail} lines from last {nbytes_from_end} bytes"
+            )
+            break
+
+        # Need to read more blocks.
+        lines_more -= num_lines
+        num_blocks_read += 1
+        nbytes_from_end += len(block_data)
+
+        logger.debug(
+            f"lines_more={lines_more}, nbytes_from_end={nbytes_from_end}, "
+            f"read_offset={read_offset}, end={offset_file_end}"
+        )
+
+        if read_offset == 0:
+            # We have read all blocks (since the start)
+            if lines_more > 0:
+                logger.debug(
+                    f"Read all {nbytes_from_end} from {file.name}, "
+                    f"but only found {lines_to_tail - lines_more} / {lines_to_tail} "
+                    "lines."
+                )
+            break
+
+        # Continuing with the previous block
+        prev_offset = read_offset
+        read_offset = max(0, read_offset - block_size)
+
+    offset_read_start = offset_file_end - nbytes_from_end
+    assert (
+        offset_read_start >= 0
+    ), f"Read start offset({offset_read_start}) should be non-negative"
+    logger.debug(
+        f"tailing {file.name}'s last {lines_to_tail} lines "
+        f"from {offset_read_start} to {offset_file_end}"
+    )
+    return offset_read_start, offset_file_end
+
+
+async def _stream_log_in_chunk(
+    context: grpc.aio.ServicerContext,
+    file: io.BufferedIOBase,
+    start_offset: int,
+    end_offset: Optional[int] = None,
+    keep_alive_interval_sec: int = -1,
+    block_size: int = BLOCK_SIZE,
+):
+    """Streaming log in chunk from start to end offset.
+
+    Stream binary file content in chunks from start offset to an end
+    offset if provided, else to the end of the file.
+
+    Args:
+        context: gRPC server side context
+        file: Binary file to stream
+        start_offset: File offset where streaming starts
+        end_offset: If None, implying streaming til the EOF.
+        keep_alive_interval_sec: Duration for which streaming will be
+            retried when reaching the file end
+        block_size: Number of bytes per chunk, exposed for testing
+
+    Return:
+        Async generator of StreamReply
+    """
+    assert "b" in file.mode, "Only binary file is supported."
+    assert not (
+        keep_alive_interval_sec >= 0 and end_offset is not None
+    ), "Keep-alive is not allowed when specifying an end offset"
+
+    file.seek(start_offset, 0)
+    cur_offset = start_offset
+
+    # Until gRPC is done
+    while not context.done():
+        # Read in block
+        if end_offset is not None:
+            to_read = min(end_offset - cur_offset, block_size)
+        else:
+            to_read = block_size
+
+        bytes = file.read(to_read)
+
+        if bytes == b"":
+            # Stop reading
+            if keep_alive_interval_sec >= 0:
+                await asyncio.sleep(keep_alive_interval_sec)
+                # Try reading again
+                continue
+
+            # Have read the entire file, done
+            break
+        logger.debug(f"Sending {len(bytes)} bytes at {cur_offset}")
+        yield reporter_pb2.StreamLogReply(data=bytes)
+
+        # Have read the requested section [start_offset, end_offset), done
+        cur_offset += len(bytes)
+        if end_offset is not None and cur_offset >= end_offset:
+            break
 
 
 class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
@@ -75,99 +275,40 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         else:
             with open(filepath, "rb") as f:
                 await context.send_initial_metadata([])
-                # If requesting the whole file, we stream it since it may be large.
-                if lines == -1:
-                    while not context.done():
-                        bytes = f.read(BLOCK_SIZE)
-                        if bytes == b"":
-                            end = f.tell()
-                            break
-                        yield reporter_pb2.StreamLogReply(data=bytes)
-                else:
-                    bytes, end = tail(f, lines)
-                    yield reporter_pb2.StreamLogReply(data=bytes + b"\n")
-                if request.keep_alive:
-                    interval = request.interval if request.interval else 1
-                    f.seek(end)
-                    while not context.done():
-                        await asyncio.sleep(interval)
-                        bytes = f.read()
-                        if bytes != b"":
-                            yield reporter_pb2.StreamLogReply(data=bytes)
 
-        async def _stream_log_in_chunk(
-            context,
-            file,
-            start,
-            end: int = -1,
-            keep_alive_interval: int = -1,
-        ):
-            assert "b" in file.mode, "Only binary file is supported."
-
-            if end == -1:
-                # Read until end of the file
-                file.seek(0, 2)
-                end = f.tell()
-
-            # Until gRPC is done
-            while not context.done():
-                to_read = min(BLOCK_SIZE, end - start)
-                bytes = f.read(to_read)
-
-                read = len(bytes)
-                if read != to_read:
-                    await context.abort(
-                        grpc.INTERNAL, f"Error reading the log file: {file.name}"
+                # Default stream entire file
+                start_offset = 0
+                end_offset = None
+                if lines != -1:
+                    # If specified tail line number,
+                    # look for the file offset with the line count
+                    start_offset, end_offset = _find_tail_start_from_last_lines(
+                        f, lines
                     )
-                start += read
-                yield reporter_pb2.StreamLogReply(data=bytes)
 
-                # Sleep
-                if keep_alive_interval > 0:
-                    await asyncio.sleep(keep_alive_interval)
+                # If keep alive: following the log every 'interval'
+                keep_alive_interval_sec = -1
+                if request.keep_alive:
+                    keep_alive_interval_sec = (
+                        request.interval
+                        if request.interval
+                        else DEFAULT_KEEP_ALIVE_INTERVAL_SEC
+                    )
 
+                    # When following (keep_alive), it will read beyond the end
+                    end_offset = None
 
-def tail(f: io.TextIOBase, lines: int):
-    """Tails the given file (in 'rb' mode)
+                logger.debug(
+                    f"Tailing logs from {start_offset} to {end_offset} for {lines}, "
+                    f"with keep_alive={keep_alive_interval_sec}"
+                )
 
-    We assume that any "lines" parameter is not significant (<100,000 lines)
-    and will result in a buffer with a small memory profile (<1MB)
-
-    Taken from: https://stackoverflow.com/a/136368/8299684
-
-    Examples:
-    Args:
-        f: text file in 'rb' mode
-        lines: The number of lines to read from the end of the file.
-    Returns:
-        string containing the lines of the file,
-        the position of the last byte read in units of bytes
-    """
-
-    total_lines_wanted = lines
-
-    # Seek to the end of the file
-    f.seek(0, 2)
-    block_end_byte = f.tell()
-
-    last_byte_read = block_end_byte
-    lines_to_go = total_lines_wanted
-    block_number = -1
-    blocks = []
-
-    # Read blocks into memory until we have seen at least
-    # `total_lines_wanted` number of lines. Then, return a string
-    # containing the last `total_lines_wanted` number of lines
-    while lines_to_go > 0 and block_end_byte > 0:
-        if block_end_byte - BLOCK_SIZE > 0:
-            f.seek(block_number * BLOCK_SIZE, 2)
-            blocks.append(f.read(BLOCK_SIZE))
-        else:
-            f.seek(0, 0)
-            blocks.append(f.read(block_end_byte))
-        lines_found = blocks[-1].count(b"\n")
-        lines_to_go -= lines_found
-        block_end_byte -= BLOCK_SIZE
-        block_number -= 1
-    all_read_text = b"".join(reversed(blocks))
-    return b"\n".join(all_read_text.splitlines()[-total_lines_wanted:]), last_byte_read
+                # Read and send the file data in chunk
+                async for chunk_res in _stream_log_in_chunk(
+                    context=context,
+                    file=f,
+                    start_offset=start_offset,
+                    end_offset=end_offset,
+                    keep_alive_interval_sec=keep_alive_interval_sec,
+                ):
+                    yield chunk_res

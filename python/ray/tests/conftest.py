@@ -1042,3 +1042,22 @@ def set_runtime_env_plugin_schemas(request):
         yield runtime_env_plugin_schemas
     finally:
         del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]
+
+
+@pytest.fixture(scope="function")
+def temp_file(request):
+    with tempfile.NamedTemporaryFile() as fp:
+        yield fp
+
+
+@pytest.fixture(scope="module")
+def random_ascii_file(request):
+    import random
+    import string
+    file_size = getattr(request, "param", 1 << 10)
+
+    with tempfile.NamedTemporaryFile(mode="w") as fp:
+        fp.write("".join(random.choices(string.ascii_letters, k=file_size)))
+        fp.flush()
+
+        yield fp
