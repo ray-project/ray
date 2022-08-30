@@ -16,7 +16,7 @@ class Controller:
         """Register actor start. Return immediate decision."""
         raise NotImplementedError
 
-    def actor_failed(self, actor_infos: ActorInfo) -> Action:
+    def actor_failed(self, actor_info: ActorInfo) -> Action:
         """Register actor failure. Return immediate decision."""
         raise NotImplementedError
 
