@@ -171,6 +171,17 @@ RAY_CONFIG(int64_t, worker_cap_max_backoff_delay_ms, 1000 * 10)
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
 RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
 
+/// Used by the default hybrid policy only. The scheduler will randomly pick
+/// one node from the top k in the cluster to improve load balancing. The
+/// scheduler guarantees k is at least equal to this fraction * the number of
+/// nodes in the cluster.
+RAY_CONFIG(float, scheduler_top_k_fraction, 0.1);
+
+/// Used by the default hybrid policy only. The scheduler will randomly pick
+/// one node from the top k in the cluster to improve load balancing. Set this
+/// value to a positive integer to set k.
+RAY_CONFIG(int, scheduler_top_k_absolute, -1);
+
 /// Whether to only report the usage of pinned copies of objects in the
 /// object_store_memory resource. This means nodes holding secondary copies only
 /// will become eligible for removal in the autoscaler.

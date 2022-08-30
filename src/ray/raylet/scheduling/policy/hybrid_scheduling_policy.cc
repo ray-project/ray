@@ -137,6 +137,12 @@ scheduling::NodeID HybridSchedulingPolicy::HybridPolicyWithFilter(
     }
   }
 
+  int top_k = RayConfig::instance().scheduler_top_k_absolute();
+  if (top_k <= 0) {
+    top_k = std::max(
+        RayConfig::instance().max_pending_lease_requests_per_scheduling_category(),
+        RayConfig::instance().scheduler_top_k_fraction() * nodes_.size());
+  }
   if (!available_nodes.empty()) {
     // First prioritize available nodes.
     return GetBestNode(available_nodes,
