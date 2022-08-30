@@ -33,7 +33,7 @@ from ray.rllib.utils.annotations import (
     override,
 )
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
-from ray.rllib.utils.files import dict_contents_to_dir, dir_contents_to_dict
+from ray.rllib.utils.files import dir_contents_to_dict
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY

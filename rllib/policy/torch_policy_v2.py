@@ -30,7 +30,7 @@ from ray.rllib.utils.annotations import (
     is_overridden,
     override,
 )
-from ray.rllib.utils.files import dict_contents_to_dir, dir_contents_to_dict
+from ray.rllib.utils.files import dir_contents_to_dict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
