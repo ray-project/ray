@@ -43,7 +43,7 @@ def setup_jax_gpu_environment(master_addr_with_port: str, num_workers: int, inde
 
 
 def release_tpu_lock(try_remove_tpulib_lock: bool = False):
-    """release the tpulib lock file when using tpu for training.
+    """Release the tpulib lock file when using tpu for training.
 
     The jax process is unable to use tpu and fall back to cpu
     when there is the tpulib lock file, so we need to release it.
