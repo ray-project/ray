@@ -216,24 +216,15 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_evaluate_start(
         self,
         *,
-        worker: "RolloutWorker",
-        base_env: BaseEnv,
-        policies: Dict[PolicyID, Policy],
-        episode: Union[Episode, EpisodeV2],
+        algorithm: "Algorithm",
         **kwargs,
     ) -> None:
-        """Callback run on the rollout worker before each evaluation episode starts.
+        """Callback before evaluation starts.
+
+        This method gets called at the beginning of Algorithm.evaluate().
+
         Args:
-            worker: Reference to the current rollout worker.
-            base_env: BaseEnv running the evaluation episode. The underlying
-                sub environment objects can be retrieved by calling
-                `base_env.get_sub_environments()`.
-            policies: Mapping of policy id to policy objects. In single
-                agent mode there will only be a single "default" policy.
-            episode: Episode object which contains the episode's
-                state. You can use the `episode.user_data` dict to store
-                temporary data, and `episode.custom_metrics` to store custom
-                metrics for the episode.
+            algorithm: Reference to the algorithm instance.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -242,29 +233,18 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_evaluate_end(
         self,
         *,
-        worker: "RolloutWorker",
-        base_env: BaseEnv,
-        policies: Dict[PolicyID, Policy],
-        episode: Union[Episode, EpisodeV2, Exception],
+        algorithm: "Algorithm",
+        evaluation_metrics: dict,
         **kwargs,
     ) -> None:
-        """Runs when an evaluation episode is done.
+        """Runs when the evaluation is done.
+
+        Runs at the end of Algorithm.evaluate().
+
         Args:
-            worker: Reference to the current rollout worker.
-            base_env: BaseEnv running the evaluation episode. The underlying
-                sub environment objects can be retrieved by calling
-                `base_env.get_sub_environments()`.
-            policies: Mapping of policy id to policy
-                objects. In single agent mode there will only be a single
-                "default_policy".
-            episode: Episode object which contains episode
-                state. You can use the `episode.user_data` dict to store
-                temporary data, and `episode.custom_metrics` to store custom
-                metrics for the episode.
-                In case of environment failures, episode may also be an Exception
-                that gets thrown from the environment before the episode finishes.
-                Users of this callback may then handle these error cases properly
-                with their custom logics.
+            algorithm: Reference to the algorithm instance.
+            evaluation_metrics: Dict of results to be returned from algorithm.evaluate() call.
+                You can mutate this object to add additional metrics.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -577,40 +557,26 @@ class MultiCallbacks(DefaultCallbacks):
     def on_evaluate_start(
         self,
         *,
-        worker: "RolloutWorker",
-        base_env: BaseEnv,
-        policies: Dict[PolicyID, Policy],
-        episode: Union[Episode, EpisodeV2],
-        env_index: Optional[int] = None,
+        algorithm: "Algorithm",
         **kwargs,
     ) -> None:
         for callback in self._callback_list:
             callback.on_evaluate_start(
-                worker=worker,
-                base_env=base_env,
-                policies=policies,
-                episode=episode,
-                env_index=env_index,
+                algorithm=algorithm
                 **kwargs,
             )
 
     def on_evaluate_end(
         self,
         *,
-        worker: "RolloutWorker",
-        base_env: BaseEnv,
-        policies: Dict[PolicyID, Policy],
-        episode: Union[Episode, EpisodeV2, Exception],
-        env_index: Optional[int] = None,
+        algorithm: "Algorithm",
+        evaluation_metrics: dict,
         **kwargs,
     ) -> None:
         for callback in self._callback_list:
             callback.on_evaluate_end(
-                worker=worker,
-                base_env=base_env,
-                policies=policies,
-                episode=episode,
-                env_index=env_index,
+                algorithm=algorithm,
+                evaluation_metrics=evaluation_metrics,
                 **kwargs,
             )
 
