@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Dict, Type
 
 import ray
-from ray.air.execution.resources.request import ResourceRequest
+from ray.air.execution.resources.request import ResourceRequest, ReadyResource
 
 
 @dataclass
@@ -16,4 +16,5 @@ class ActorRequest:
 @dataclass
 class ActorInfo:
     request: ActorRequest
-    actor: ray.ActorID
+    actor: ray.actor.ActorHandle
+    used_resource: ReadyResource

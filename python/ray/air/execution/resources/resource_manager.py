@@ -7,8 +7,7 @@ from ray.air.execution.resources.request import ResourceRequest, ReadyResource
 
 
 class ResourceManager(abc.ABC):
-    @property
-    def resource_futures(self) -> List[ray.ObjectRef]:
+    def get_resource_futures(self) -> List[ray.ObjectRef]:
         """Return futures for resources to await."""
         return []
 
