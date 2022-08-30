@@ -255,7 +255,7 @@ PyTorch
     :exclude-members: TorchTrainer
     :show-inheritance:
 
-Jax (Experimental)
+Jax (Alpha)
 ##################
 
 .. autoclass:: ray.train.jax.JaxTrainer
