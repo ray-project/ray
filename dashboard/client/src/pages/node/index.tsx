@@ -36,9 +36,9 @@ const useStyles = makeStyles((theme) => ({
 
 const columns = [
   "", // Expand button
+  "Host / Cmd Line",
   "State",
   "ID",
-  "Host / Cmd Line",
   "IP / PID",
   "CPU Usage",
   "Memory",
