@@ -2,6 +2,7 @@ import argparse
 
 import numpy as np
 from ray.air import session
+from ray.air.checkpoint import Checkpoint
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
@@ -59,16 +60,30 @@ def validate_epoch(dataloader, model, loss_fn):
 
 
 def train_func(config):
-    epochs = config.pop("epochs", 3)
-    model = resnet18()
-    model = train.torch.prepare_model(model)
+    total_epochs = config.pop("epochs", 3)
+    epochs_to_go = total_epochs
 
+    model = resnet18()
     # Create optimizer.
     optimizer = torch.optim.SGD(
         model.parameters(),
         lr=config.get("lr", 0.1),
         momentum=config.get("momentum", 0.9),
     )
+
+    if session.get_checkpoint():
+        checkpoint_dict = session.get_checkpoint().to_dict()
+        # Load in model
+        model_state = checkpoint_dict["model_state_dict"]
+        model.load_state_dict(model_state)
+        # Load in optimizer
+        optimizer_state = checkpoint_dict["optimizer_state_dict"]
+        optimizer.load_state_dict(optimizer_state)
+        checkpoint_epoch = checkpoint_dict["epoch"]
+        # Resume training at the epoch we left off at
+        epochs_to_go = total_epochs - checkpoint_epoch
+
+    model = train.torch.prepare_model(model)
 
     # Load in training and validation data.
     transform_train = transforms.Compose(
@@ -111,10 +126,15 @@ def train_func(config):
     criterion = nn.CrossEntropyLoss()
 
     results = []
-    for _ in range(epochs):
+    for epoch in range(epochs_to_go):
         train_epoch(train_loader, model, criterion, optimizer)
         result = validate_epoch(validation_loader, model, criterion)
-        session.report(result)
+        checkpoint = Checkpoint.from_dict({
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+        })
+        session.report(result, checkpoint=checkpoint)
         results.append(result)
 
     # return required for backwards compatibility with the old API
