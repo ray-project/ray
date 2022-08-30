@@ -343,6 +343,8 @@ struct GcsServerMocker {
   class MockedGcsPlacementGroupScheduler : public gcs::GcsPlacementGroupScheduler {
    public:
     using gcs::GcsPlacementGroupScheduler::GcsPlacementGroupScheduler;
+
+    size_t GetWaitingRemovedBundlesSize() { return waiting_removed_bundles_.size(); }
   };
   class MockedGcsActorTable : public gcs::GcsActorTable {
    public:
