@@ -14,6 +14,13 @@ from ray.train.batch_predictor import BatchPredictor
 from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
 from ray.air.config import ScalingConfig
 from ray.train.tests._huggingface_data import train_data, validation_data
+from ray import tune
+from ray.tune import Tuner
+from ray.tune.schedulers.async_hyperband import ASHAScheduler
+from ray.tune.schedulers.resource_changing_scheduler import (
+    DistributeResources,
+    ResourceChangingScheduler,
+)
 
 # 16 first rows of tokenized wikitext-2-raw-v1 training & validation
 train_df = pd.read_json(train_data)
@@ -36,6 +43,14 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
+@pytest.fixture
+def ray_start_8_cpus():
+    address_info = ray.init(num_cpus=8)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 def train_function(train_dataset, eval_dataset=None, **config):
     model_config = AutoConfig.from_pretrained(model_checkpoint)
     model = AutoModelForCausalLM.from_config(model_config)
@@ -44,7 +59,7 @@ def train_function(train_dataset, eval_dataset=None, **config):
         evaluation_strategy=config.pop("evaluation_strategy", "epoch"),
         logging_strategy=config.pop("logging_strategy", "epoch"),
         num_train_epochs=config.pop("epochs", 3),
-        learning_rate=2e-5,
+        learning_rate=config.pop("learning_rate", 2e-5),
         weight_decay=0.01,
         disable_tqdm=True,
         no_cuda=True,
@@ -127,6 +142,47 @@ def test_validation(ray_start_4_cpus):
     )
     with pytest.raises(RayTaskError):
         trainer.fit().error
+
+
+# Tests if checkpointing and restoring during tuning works correctly.
+def test_tune(ray_start_8_cpus):
+    ray_train = ray.data.from_pandas(train_df)
+    ray_validation = ray.data.from_pandas(validation_df)
+    scaling_config = ScalingConfig(
+        num_workers=2, use_gpu=False, trainer_resources={"CPU": 0}
+    )
+    trainer = HuggingFaceTrainer(
+        trainer_init_per_worker=train_function,
+        scaling_config=scaling_config,
+        datasets={"train": ray_train, "evaluation": ray_validation},
+    )
+
+    tune_epochs = 5
+    tuner = Tuner(
+        trainer,
+        param_space={
+            "trainer_init_config": {
+                "learning_rate": tune.loguniform(2e-6, 2e-5),
+                "epochs": tune_epochs,
+                "save_strategy": "epoch",
+            }
+        },
+        tune_config=tune.TuneConfig(
+            metric="eval_loss",
+            mode="min",
+            num_samples=3,
+            scheduler=ResourceChangingScheduler(
+                ASHAScheduler(
+                    max_t=tune_epochs,
+                ),
+                resources_allocation_function=DistributeResources(
+                    add_bundles=True, reserve_resources={"CPU": 1}
+                ),
+            ),
+        ),
+    )
+    tune_results = tuner.fit()
+    assert not tune_results.errors
 
 
 if __name__ == "__main__":
