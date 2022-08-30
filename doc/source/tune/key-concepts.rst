@@ -15,7 +15,7 @@ First, you define the hyperparameters you want to tune in a `search space` and p
 that specifies the objective you want to tune.
 Then you select a `search algorithm` to effectively optimize your parameters and optionally use a
 `scheduler` to stop searches early and speed up your experiments.
-Together with other configuration, your `trainable`, algorithm, and scheduler are passed into ``Tuner``,
+Together with other configuration, your `trainable`, search algorithm, and scheduler are passed into ``Tuner``,
 which runs your experiments and creates `trials`.
 These trials can then be used in `analyses` to inspect your experiment results.
 The following figure shows an overview of these components, which we cover in detail in the next sections.

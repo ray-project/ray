@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #pragma once
+#include <gtest/gtest_prod.h>
 
 #include <utility>
 
@@ -587,6 +588,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
+
+  FRIEND_TEST(GcsActorManagerTest, TestKillActorWhenActorIsCreating);
 };
 
 }  // namespace gcs
