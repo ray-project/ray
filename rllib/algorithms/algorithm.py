@@ -943,7 +943,9 @@ class Algorithm(Trainable):
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
 
-        self.callbacks.on_evaluate_end(algorithm=self, evaluation_metrics=self.evaluation_metrics)
+        self.callbacks.on_evaluate_end(
+            algorithm=self, evaluation_metrics=self.evaluation_metrics
+        )
 
         # Also return the results here for convenience.
         return self.evaluation_metrics

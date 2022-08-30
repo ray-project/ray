@@ -243,7 +243,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
 
         Args:
             algorithm: Reference to the algorithm instance.
-            evaluation_metrics: Dict of results to be returned from algorithm.evaluate() call.
+            evaluation_metrics: Results dict to be returned from algorithm.evaluate().
                 You can mutate this object to add additional metrics.
             kwargs: Forward compatibility placeholder.
         """
@@ -562,7 +562,7 @@ class MultiCallbacks(DefaultCallbacks):
     ) -> None:
         for callback in self._callback_list:
             callback.on_evaluate_start(
-                algorithm=algorithm
+                algorithm=algorithm,
                 **kwargs,
             )
 
