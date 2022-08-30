@@ -21,6 +21,13 @@ from ray.rllib.utils.filter import RunningStat
 
 @PublicAPI(stability="alpha")
 class MeanStdObservationFilterAgentConnector(SyncedFilterAgentConnector):
+    """A connector used to mean-std-filter observations.
+
+    Incoming observations are filtered such that the output of this filter is on
+    average zero and has a standard deviation of 1. This filtering is applied
+    separately per element of the observation space.
+    """
+
     def __init__(
         self,
         ctx: ConnectorContext,
@@ -139,13 +146,19 @@ class MeanStdObservationFilterAgentConnector(SyncedFilterAgentConnector):
             raise ValueError(
                 "{} can only be synced when trainin.".format(self.__name__)
             )
-        return self.filter.sync(other)
+        return self.filter.sync(other.filter)
 
 
 @PublicAPI(stability="alpha")
 class ConcurrentMeanStdObservationFilterAgentConnector(
     MeanStdObservationFilterAgentConnector
 ):
+    """A concurrent version of the MeanStdObservationFilterAgentConnector.
+
+    This version's filter has all operations wrapped by a threading.RLock.
+    It can therefore be safely used by multiple threads.
+    """
+
     def __init__(self, ctx: ConnectorContext, demean=True, destd=True, clip=10.0):
         SyncedFilterAgentConnector.__init__(self, ctx)
         # We simply use the old MeanStdFilter until non-connector env_runner is fully

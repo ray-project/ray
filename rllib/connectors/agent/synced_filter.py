@@ -40,7 +40,7 @@ class SyncedFilterAgentConnector(AgentConnector):
         """Copies all state from other filter to self."""
         # TODO: (artur) inline this as soon as we deprecate ordinary filter with
         #  non-connector env_runner
-        return self.filter.sync(other)
+        return self.filter.sync(other.filter)
 
     def reset_state(self) -> None:
         """Creates copy of current state and resets accumulated state"""
