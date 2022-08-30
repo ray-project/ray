@@ -140,11 +140,11 @@ class DAGDriver:
         await self.app(request.scope, receive=request.receive, send=sender)
         return sender.build_asgi_response()
 
-    async def predict(self, *args, _cache_refs: bool = False, **kwargs):
+    async def predict(self, *args, _ray_cache_refs: bool = False, **kwargs):
         """Perform inference directly without HTTP."""
         return await (
             await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(
-                *args, _cache_refs=_cache_refs, **kwargs
+                *args, _ray_cache_refs=_ray_cache_refs, **kwargs
             )
         )
 

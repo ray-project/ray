@@ -91,7 +91,7 @@ async def test_execute_cached_object_ref(graph1):
     """
     (_, f_node, _, dag) = graph1
 
-    dag.execute([1, 2], _cache_refs=True)
+    dag.execute([1, 2], _ray_cache_refs=True)
     cache = await dag.get_object_refs_from_last_execute()
     assert await cache[f_node.get_stable_uuid()] == 1
     assert await cache[dag.get_stable_uuid()] == 2

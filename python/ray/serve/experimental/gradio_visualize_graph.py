@@ -160,7 +160,7 @@ class GraphVisualizer:
             logger.warning("Last inference has not finished yet.")
             return trigger_value
 
-        self.handle.predict.remote(args, _cache_refs=True)
+        self.handle.predict.remote(args, _ray_cache_refs=True)
         self.cache = await self.handle.get_intermediate_object_refs.remote()
 
         # Set state to track the inference process

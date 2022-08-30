@@ -104,22 +104,23 @@ class DAGNode(DAGNodeBase):
         self.cache_from_last_execute = {}
 
     def execute(
-        self, *args, _cache_refs: bool = False, **kwargs
+        self, *args, _ray_cache_refs: bool = False, **kwargs
     ) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this DAG using the Ray default executor _execute_impl().
 
-        After execution, stores the the default executor's return values
-        on each node in this DAG in a cache. These should be a mix of:
-        - ray.ObjectRefs pointing to the outputs of method and function nodes
-        - Serve handles for class nodes
-        - resolved values representing user input at runtime
+        Args:
+            _cache_refs: If true, stores the the default executor's return values
+                on each node in this DAG in a cache. These should be a mix of:
+                - ray.ObjectRefs pointing to the outputs of method and function nodes
+                - Serve handles for class nodes
+                - resolved values representing user input at runtime
         """
 
         def executor(node):
             return node._execute_impl(*args, **kwargs)
 
         result = self.apply_recursive(executor)
-        if _cache_refs:
+        if _ray_cache_refs:
             self.cache_from_last_execute = executor.cache
         return result
 
