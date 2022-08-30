@@ -75,7 +75,7 @@ def train_func(config: Dict):
     from flax.training.common_utils import shard
     from jax import lax
 
-    # NOTE: the flax nn module has to define inside
+    # NOTE: the flax nn module has to be defined inside `train_func`
     # otherwise, the error message `ValueError: parent must be None, Module or Scope`
     # see: https://github.com/google/flax/discussions/1390
     class MLP(nn.Module):
