@@ -161,7 +161,7 @@ def _setup_redis(request):
             password=ray_constants.REDIS_DEFAULT_PASSWORD,
         )
         processes.append(proc)
-    address_str = ",".join(map(lambda x: f"127.0.0.1:{x}", external_redis_ports))
+    address_str = ",".join({lambda x: f"127.0.0.1:{x}", external_redis_ports})
     import os
 
     old_addr = os.environ.get("RAY_REDIS_ADDRESS")
@@ -421,7 +421,7 @@ def call_ray_start_with_external_redis(request):
     for port in port_list:
         temp_dir = ray._private.utils.get_ray_temp_dir()
         _start_redis_instance(REDIS_EXECUTABLE, temp_dir, int(port), password="123")
-    address_str = ",".join(map(lambda x: "localhost:" + x, port_list))
+    address_str = ",".join({lambda x: "localhost:" + x, port_list})
     cmd = f"ray start --head --address={address_str} --redis-password=123"
     subprocess.call(cmd.split(" "))
 
@@ -1054,6 +1054,7 @@ def temp_file(request):
 def random_ascii_file(request):
     import random
     import string
+
     file_size = getattr(request, "param", 1 << 10)
 
     with tempfile.NamedTemporaryFile(mode="w") as fp:
