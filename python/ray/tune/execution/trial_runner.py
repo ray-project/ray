@@ -198,7 +198,8 @@ class _ExperimentCheckpointManager:
             exclude = ["*/checkpoint_*"]
 
         if self._syncer:
-            # Todo: Implement sync_timeout
+            # Todo: Implement sync_timeout for experiment-level syncing
+            # (it is currently only used for trainable-to-cloud syncing)
             if force:
                 # Wait until previous sync command finished
                 self._syncer.wait()
