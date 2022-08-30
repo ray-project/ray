@@ -37,7 +37,9 @@ def get_datasets():
 
     # Hide any GPUs from TensorFlow. Otherwise TF might reserve memory and make
     # it unavailable to JAX.
-    #  this is specifically for `tensorflow_datasets`
+    # reference: 
+    # https://jax.readthedocs.io/en/latest/gpu_memory_allocation.html#common-causes-of-oom-failures
+    # this is specifically for `tensorflow_datasets`
     import tensorflow as tf
 
     tf.config.experimental.set_visible_devices([], "GPU")
