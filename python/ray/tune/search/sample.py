@@ -533,8 +533,13 @@ class Quantized(Sampler):
         if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
             random_state = _BackwardsCompatibleNumpyRng(random_state)
 
-        values = self.sampler.sample(domain, spec, size, random_state=random_state)
-        quantized = np.floor(np.divide(values - domain.lower, self.q)) * self.q + domain.lower
+        quantized_domain = Domain()
+        quantized_domain.lower = np.ceil(domain.lower / self.q) * self.q
+        quantized_domain.upper = np.floor(domain.upper / self.q) * self.q
+        values = self.sampler.sample(
+            quantized_domain, spec, size, random_state=random_state
+        )
+        quantized = np.round(np.divide(values, self.q)) * self.q
 
         if not isinstance(quantized, np.ndarray):
             return domain.cast(quantized)
@@ -573,7 +578,11 @@ def quniform(lower: float, upper: float, q: float):
     Quantization makes the upper bound inclusive.
 
     """
-    return Float(lower, upper).uniform().quantized(q)
+    return (
+        Float(lower, upper).uniform().quantized(q)
+        if q != 1.0
+        else Float(lower, upper).uniform()
+    )
 
 
 @PublicAPI
@@ -605,7 +614,11 @@ def qloguniform(lower: float, upper: float, q: float, base: float = 10):
         base: Base of the log. Defaults to 10.
 
     """
-    return Float(lower, upper).loguniform(base).quantized(q)
+    return (
+        Float(lower, upper).loguniform(base).quantized(q)
+        if q != 1.0
+        else Float(lower, upper).loguniform(base)
+    )
 
 
 @PublicAPI
@@ -668,7 +681,11 @@ def qrandint(lower: int, upper: int, q: int = 1):
         the bounds stated in the docstring above.
 
     """
-    return Integer(lower, upper).uniform().quantized(q)
+    return (
+        Integer(lower, upper).uniform().quantized(q)
+        if q != 1
+        else Integer(lower, upper).uniform()
+    )
 
 
 @PublicAPI
@@ -687,7 +704,11 @@ def qlograndint(lower: int, upper: int, q: int, base: float = 10):
         the bounds stated in the docstring above.
 
     """
-    return Integer(lower, upper).loguniform(base).quantized(q)
+    return (
+        Integer(lower, upper).loguniform(base).quantized(q)
+        if q != 1
+        else Integer(lower, upper).loguniform(base)
+    )
 
 
 @PublicAPI
@@ -715,4 +736,8 @@ def qrandn(mean: float, sd: float, q: float):
             integer increment of this value.
 
     """
-    return Float(None, None).normal(mean, sd).quantized(q)
+    return (
+        Float(None, None).normal(mean, sd).quantized(q)
+        if q != 1.0
+        else Float(None, None).normal(mean, sd)
+    )
