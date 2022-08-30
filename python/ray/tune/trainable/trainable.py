@@ -61,14 +61,6 @@ logger = logging.getLogger(__name__)
 SETUP_TIME_THRESHOLD = 10
 
 
-def _sync_timeout() -> Optional[float]:
-    sync_timeout = float(os.environ.get("TUNE_SYNC_TIMEOUT", "600"))
-    if sync_timeout == 0:
-        return None
-
-    return sync_timeout
-
-
 @PublicAPI
 class Trainable:
     """Abstract class for trainable models, functions, etc.
@@ -109,8 +101,9 @@ class Trainable:
         logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,
         remote_checkpoint_dir: Optional[str] = None,
         custom_syncer: Optional[Syncer] = None,
+        sync_timeout: Optional[int] = None,
     ):
-        """Initialize an Trainable.
+        """Initialize a Trainable.
 
         Sets up logging and points ``self.logdir`` to a directory in which
         training outputs should be placed.
@@ -128,6 +121,7 @@ class Trainable:
                 which is different from **per checkpoint** directory.
             custom_syncer: Syncer used for synchronizing data from Ray nodes
                 to external storage.
+            sync_timeout: Timeout after which sync processes are aborted.
         """
 
         self._experiment_id = uuid.uuid4().hex
@@ -179,6 +173,7 @@ class Trainable:
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
         self.custom_syncer = custom_syncer
+        self.sync_timeout = sync_timeout
 
     @property
     def uses_cloud_checkpointing(self):
@@ -525,7 +520,7 @@ class Trainable:
             subprocess.CalledProcessError,
             num_retries=3,
             sleep_time=1,
-            timeout=_sync_timeout(),
+            timeout=self.sync_timeout,
         )
         return True
 
@@ -560,7 +555,7 @@ class Trainable:
             subprocess.CalledProcessError,
             num_retries=3,
             sleep_time=1,
-            timeout=_sync_timeout(),
+            timeout=self.sync_timeout,
         )
 
         return True
@@ -734,7 +729,7 @@ class Trainable:
                         subprocess.CalledProcessError,
                         num_retries=3,
                         sleep_time=1,
-                        timeout=_sync_timeout(),
+                        timeout=self.sync_timeout,
                     )
 
         if os.path.exists(checkpoint_dir):

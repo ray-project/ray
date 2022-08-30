@@ -198,6 +198,7 @@ class _ExperimentCheckpointManager:
             exclude = ["*/checkpoint_*"]
 
         if self._syncer:
+            # Todo: Implement sync_timeout
             if force:
                 # Wait until previous sync command finished
                 self._syncer.wait()
@@ -341,7 +342,10 @@ class TrialRunner:
         else:
             # Manual override
             self._max_pending_trials = int(max_pending_trials)
-        self.trial_executor.set_max_pending_trials(self._max_pending_trials)
+        self.trial_executor.setup(
+            max_pending_trials=self._max_pending_trials,
+            trainable_kwargs={"sync_timeout": sync_config.sync_timeout},
+        )
 
         self._metric = metric
 
