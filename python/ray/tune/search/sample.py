@@ -532,8 +532,10 @@ class Quantized(Sampler):
     ):
         if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
             random_state = _BackwardsCompatibleNumpyRng(random_state)
+
         values = self.sampler.sample(domain, spec, size, random_state=random_state)
-        quantized = np.round(np.divide(values, self.q)) * self.q
+        quantized = np.floor(np.divide(values - domain.lower, self.q)) * self.q + domain.lower
+
         if not isinstance(quantized, np.ndarray):
             return domain.cast(quantized)
         return list(quantized)
