@@ -85,12 +85,6 @@ parser.add_argument(
     help="True if code is loaded from local files, as opposed to the GCS.",
 )
 parser.add_argument(
-    "--use-pickle",
-    default=False,
-    action="store_true",
-    help="True if cloudpickle should be used for serialization.",
-)
-parser.add_argument(
     "--worker-type",
     required=False,
     type=str,
@@ -109,23 +103,6 @@ parser.add_argument(
     type=str,
     default="",
     help="The configuration of object spilling. Only used by I/O workers.",
-)
-parser.add_argument(
-    "--logging-rotate-bytes",
-    required=False,
-    type=int,
-    default=ray_constants.LOGGING_ROTATE_BYTES,
-    help="Specify the max bytes for rotating "
-    "log file, default is "
-    f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.",
-)
-parser.add_argument(
-    "--logging-rotate-backup-count",
-    required=False,
-    type=int,
-    default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-    help="Specify the backup count of rotated log file, default is "
-    f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.",
 )
 parser.add_argument(
     "--runtime-env-hash",
