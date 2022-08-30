@@ -38,6 +38,21 @@ def gcs_node_info_to_dict(message):
     )
 
 
+def gcs_stats_to_dict(message):
+    decode_keys = {
+        "actorId",
+        "jobId",
+        "taskId",
+        "parentTaskId",
+        "sourceActorId",
+        "callerId",
+        "rayletId",
+        "workerId",
+        "placementGroupId",
+    }
+    return dashboard_utils.message_to_dict(message, decode_keys)
+
+
 def node_stats_to_dict(message):
     decode_keys = {
         "actorId",
@@ -117,6 +132,10 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         request = gcs_service_pb2.GetAllNodeInfoRequest()
         reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=2)
         if reply.status.code == 0:
+            # Update gcs stats (include ready and infeasible tasks).
+            DataSource.gcs_stats = gcs_stats_to_dict(reply.gcs_stats)
+
+            # Prepare info of worker nodes.
             result = {}
             for node_info in reply.node_info_list:
                 node_info_dict = gcs_node_info_to_dict(node_info)

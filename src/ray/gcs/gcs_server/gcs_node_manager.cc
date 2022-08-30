@@ -30,10 +30,12 @@ namespace gcs {
 GcsNodeManager::GcsNodeManager(
     std::shared_ptr<GcsPublisher> gcs_publisher,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
+    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+    std::shared_ptr<ClusterTaskManager> cluster_task_manager)
     : gcs_publisher_(std::move(gcs_publisher)),
       gcs_table_storage_(std::move(gcs_table_storage)),
-      raylet_client_pool_(std::move(raylet_client_pool)) {}
+      raylet_client_pool_(std::move(raylet_client_pool)),
+      cluster_task_manager_(std::move(cluster_task_manager)) {}
 
 void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                                         rpc::RegisterNodeReply *reply,
@@ -137,6 +139,14 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
 void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
                                           rpc::GetAllNodeInfoReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
+  if (cluster_task_manager_) {
+    // Fill pending queue info of gcs.
+    rpc::GetNodeStatsReply node_stats;
+    cluster_task_manager_->FillPendingActorInfo(&node_stats);
+    reply->mutable_gcs_stats()->mutable_infeasible_tasks()->CopyFrom(
+        node_stats.infeasible_tasks());
+    reply->mutable_gcs_stats()->mutable_ready_tasks()->CopyFrom(node_stats.ready_tasks());
+  }
   // Here the unsafe allocate is safe here, because entry.second's life cycle is longer
   // then reply.
   // The request will be sent when call send_reply_callback and after that, reply will

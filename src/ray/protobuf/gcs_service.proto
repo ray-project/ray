@@ -175,6 +175,12 @@ message GetAllNodeInfoRequest {}
 message GetAllNodeInfoReply {
   GcsStatus status = 1;
   repeated GcsNodeInfo node_info_list = 2;
+  GcsStats gcs_stats = 3;
+}
+
+message GcsStats {
+  repeated TaskSpec infeasible_tasks = 1;
+  repeated TaskSpec ready_tasks = 2;
 }
 
 message ReportHeartbeatRequest {
@@ -583,6 +589,7 @@ message GetAllResourceUsageRequest {}
 message GetAllResourceUsageReply {
   GcsStatus status = 1;
   ResourceUsageBatchData resource_usage_data = 2;
+  bool cluster_full_of_actors_detected_by_gcs = 3;
 }
 
 // Service for node resource info access.
