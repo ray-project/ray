@@ -8,6 +8,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import TensorStructType
+from ray.rllib.utils.serialization import _serialize_ndarray, _deserialize_ndarray
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +155,21 @@ class RunningStat:
     @property
     def shape(self):
         return self.mean_array.shape
+
+    def to_state(self):
+        return {
+            "num_pushes": self.num_pushes,
+            "mean_array": _serialize_ndarray(self.mean_array),
+            "std_array": _serialize_ndarray(self.std_array),
+        }
+
+    @staticmethod
+    def from_state(state):
+        running_stats = RunningStat()
+        running_stats.num_pushes = state["num_pushes"]
+        running_stats.mean_array = _deserialize_ndarray(state["mean_array"])
+        running_stats.std_array = _deserialize_ndarray(state["std_array"])
+        return running_stats
 
 
 @DeveloperAPI

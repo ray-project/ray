@@ -16,11 +16,18 @@ from ray.rllib.utils.filter import MeanStdFilter, ConcurrentMeanStdFilter
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import AgentConnectorDataType
 from ray.util.annotations import PublicAPI
+from ray.rllib.utils.filter import RunningStat
 
 
 @PublicAPI(stability="alpha")
 class MeanStdObservationFilterAgentConnector(SyncedFilterAgentConnector):
-    def __init__(self, ctx: ConnectorContext, demean=True, destd=True, clip=10.0):
+    def __init__(
+        self,
+        ctx: ConnectorContext,
+        demean: bool = True,
+        destd: bool = True,
+        clip: float = 10.0,
+    ):
         SyncedFilterAgentConnector.__init__(self, ctx)
         # We simply use the old MeanStdFilter until non-connector env_runner is fully
         # deprecated to avoid duplicate code
@@ -33,7 +40,7 @@ class MeanStdObservationFilterAgentConnector(SyncedFilterAgentConnector):
             ),
             get_base_struct_from_space(ctx.observation_space),
         )
-        self.filter = MeanStdFilter(filter_shape, demean=True, destd=True, clip=10.0)
+        self.filter = MeanStdFilter(filter_shape, demean=demean, destd=destd, clip=clip)
 
     def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
         d = ac_data.data
@@ -51,16 +58,47 @@ class MeanStdObservationFilterAgentConnector(SyncedFilterAgentConnector):
 
         return ac_data
 
-    def to_state_dict(self):
+    def to_state(self):
+        # Flattening is deterministic
+        flattened_rs = tree.flatten(self.filter.running_stats)
+        flattened_buffer = tree.flatten(self.filter.buffer)
         return MeanStdObservationFilterAgentConnector.__name__, {
-            "filter": self.filter,
+            "shape": self.filter.shape,
+            "no_preprocessor": self.filter.no_preprocessor,
+            "demean": self.filter.demean,
+            "destd": self.filter.destd,
+            "clip": self.filter.clip,
+            "running_stats": [s.to_state() for s in flattened_rs],
+            "buffer": [s.to_state() for s in flattened_buffer],
         }
 
+    # demean, destd, clip, and a state dict
     @staticmethod
-    def from_state_dict(ctx: ConnectorContext, params: List[Any]):
-        connector = MeanStdObservationFilterAgentConnector(ctx)
-        connector.filter = params["filter"]
-        assert all(ctx.observation_space.shape == connector.filter.shape)
+    def from_state(
+        ctx: ConnectorContext,
+        params: List[Any] = None,
+        demean: bool = True,
+        destd: bool = True,
+        clip: float = 10.0,
+    ):
+        connector = MeanStdObservationFilterAgentConnector(ctx, demean, destd, clip)
+        if params:
+            connector.filter.shape = params["shape"]
+            connector.filter.no_preprocessor = params["no_preprocessor"]
+            connector.filter.demean = params["demean"]
+            connector.filter.destd = params["destd"]
+            connector.filter.clip = params["clip"]
+
+            # Unflattening is deterministic
+            running_stats = [RunningStat.from_state(s) for s in params["running_stats"]]
+            connector.filter.running_stats = tree.unflatten_as(
+                connector.filter.shape, running_stats
+            )
+
+            # Unflattening is deterministic
+            buffer = [RunningStat.from_state(s) for s in params["buffer"]]
+            connector.filter.buffer = tree.unflatten_as(connector.filter.shape, buffer)
+
         return connector
 
     def reset_state(self) -> None:

@@ -480,9 +480,9 @@ class TestViewRequirementConnector(unittest.TestCase):
                 filter_connector.transform(ac)
 
             # Create another connector to set state to
-            _, state = filter_connector.to_state_dict()
+            _, state = filter_connector.to_state()
             another_filter_connector = (
-                MeanStdObservationFilterAgentConnector.from_state_dict(ctx, state)
+                MeanStdObservationFilterAgentConnector.from_state(ctx, state)
             )
 
             another_filter_connector.is_training(False)
@@ -507,12 +507,37 @@ class TestViewRequirementConnector(unittest.TestCase):
             self.assertTrue(np.isclose(np.var(transformed_observations), 1, atol=0.01))
 
             # Check if filter parameters where frozen because we are not training
-            self.assertEqual(
-                filter_connector.filter.running_stats,
-                another_filter_connector.filter.running_stats,
+            self.assertTrue(
+                filter_connector.filter.running_stats.num_pushes
+                == another_filter_connector.filter.running_stats.num_pushes,
             )
-            self.assertEqual(
-                filter_connector.filter.buffer, another_filter_connector.filter.buffer
+            self.assertTrue(
+                np.all(
+                    filter_connector.filter.running_stats.mean_array
+                    == another_filter_connector.filter.running_stats.mean_array,
+                )
+            )
+            self.assertTrue(
+                np.all(
+                    filter_connector.filter.running_stats.std_array
+                    == another_filter_connector.filter.running_stats.std_array,
+                )
+            )
+            self.assertTrue(
+                filter_connector.filter.buffer.num_pushes
+                == another_filter_connector.filter.buffer.num_pushes,
+            )
+            self.assertTrue(
+                np.all(
+                    filter_connector.filter.buffer.mean_array
+                    == another_filter_connector.filter.buffer.mean_array,
+                )
+            )
+            self.assertTrue(
+                np.all(
+                    filter_connector.filter.buffer.std_array
+                    == another_filter_connector.filter.buffer.std_array,
+                )
             )
 
 
