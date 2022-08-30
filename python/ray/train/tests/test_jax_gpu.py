@@ -47,6 +47,9 @@ def test_jax_get_device(ray_start_4_cpus_2_gpus):
 
     results = trainer.fit()
     devices = results.metrics["devices"]
+    # To test the correctness of the jax connection across different nodes
+    # we check that on each node, the jax process can "see" the total number of
+    # devices using the collective communication of `pmap`.
     assert len(devices) == 2 and devices[0] == 2 and devices[1] == 2
 
 
