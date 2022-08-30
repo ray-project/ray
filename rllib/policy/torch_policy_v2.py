@@ -998,18 +998,6 @@ class TorchPolicyV2(Policy):
             traced.save(file_name)
 
     @override(Policy)
-    def export_checkpoint(
-        self, export_dir: str, filename_prefix: str = "model"
-    ) -> Checkpoint:
-        assert filename_prefix == "model", \
-            "The arg `filename_prefix` for `Policy.export_checkpoint()` is " \
-            "deprecated and should not be set!"
-        state = self.get_state()
-        checkpoint = Checkpoint.from_dict(state)
-        checkpoint.to_directory(export_dir)
-        return checkpoint
-
-    @override(Policy)
     @DeveloperAPI
     def import_model_from_h5(self, import_file: str) -> None:
         """Imports weights into torch model."""

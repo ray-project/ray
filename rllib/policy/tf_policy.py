@@ -494,7 +494,7 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_state(self) -> PolicyState:
         # For tf Policies, return Policy weights and optimizer var values.
         state = super().get_state()
 
@@ -506,6 +506,7 @@ class TFPolicy(Policy):
             action_space=self.action_space,
             config=self.config,
         )
+
         # Save the tf.keras.Model (architecture and weights, so it can be retrieved
         # w/o access to the original (custom) Model or Policy code).
         if (

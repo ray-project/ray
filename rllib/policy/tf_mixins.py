@@ -182,7 +182,7 @@ class KLCoeffMixin:
             self.kl_coeff.assign(self.kl_coeff_val, read_value=False)
 
     @override(Policy)
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_state(self) -> PolicyState:
         state = super().get_state()
         # Add current kl-coeff value.
         state["current_kl_coeff"] = self.kl_coeff_val

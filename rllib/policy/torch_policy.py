@@ -3,6 +3,7 @@ import functools
 import logging
 import math
 import os
+import tempfile
 import threading
 import time
 from typing import (
@@ -23,16 +24,16 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
-from ray.air.checkpoint import Checkpoint
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import NullContextManager, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.files import dir_contents_to_dict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -731,8 +732,27 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_state(self) -> PolicyState:
+        # Legacy Policy state (w/o torch.nn.Module and w/o PolicySpec).
         state = super().get_state()
+
+        # Add this Policy's spec so it can be retreived w/o access to the original
+        # code.
+        state["policy_spec"] = PolicySpec(
+            policy_class=type(self),
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            config=self.config,
+        )
+
+        # Save the torch.Model (architecture and weights, so it can be retrieved
+        # w/o access to the original (custom) Model or Policy code).
+        if hasattr(self, "model"):
+            tmpdir = tempfile.mkdtemp()
+            filename = os.path.join(tmpdir, "model.pickle")
+            torch.save(self.model, f=filename)
+            state["model"] = dir_contents_to_dict(tmpdir)
+
         state["_optimizer_variables"] = []
         for i, o in enumerate(self._optimizers):
             optim_state_dict = convert_to_numpy(o.state_dict())
@@ -902,18 +922,6 @@ class TorchPolicy(Policy):
             traced = torch.jit.trace(self.model, (dummy_inputs, state_ins, seq_lens))
             file_name = os.path.join(export_dir, "model.pt")
             traced.save(file_name)
-
-    @override(Policy)
-    def export_checkpoint(
-        self, export_dir: str, filename_prefix: str = "model"
-    ) -> Checkpoint:
-        assert filename_prefix == "model", \
-            "The arg `filename_prefix` for `Policy.export_checkpoint()` is " \
-            "deprecated and should not be set!"
-        state = self.get_state()
-        checkpoint = Checkpoint.from_dict(state)
-        checkpoint.to_directory(export_dir)
-        return checkpoint
 
     @override(Policy)
     @DeveloperAPI

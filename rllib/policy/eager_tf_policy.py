@@ -4,21 +4,22 @@ It supports both traced and non-traced eager execution modes."""
 
 import functools
 import logging
+import tempfile
 import threading
-from typing import Dict, List, Optional, Tuple
-
 import tree  # pip install dm_tree
+from typing import Dict, List, Optional, Tuple
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
+from ray.rllib.utils.files import dir_contents_to_dict
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -698,8 +699,25 @@ def _build_eager_tf_policy(
             return []
 
         @override(Policy)
-        def get_state(self):
+        def get_state(self) -> PolicyState:
+            # Legacy Policy state (w/o keras model and w/o PolicySpec).
             state = super().get_state()
+
+            # Add this Policy's spec so it can be retreived w/o access to the original
+            # code.
+            state["policy_spec"] = PolicySpec(
+                policy_class=type(self),
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+                config=self.config,
+            )
+            # Save the tf.keras.Model (architecture and weights, so it can be retrieved
+            # w/o access to the original (custom) Model or Policy code).
+            if hasattr(self, "model") and hasattr(self.model, "base_model"):
+                tmpdir = tempfile.mkdtemp()
+                self.model.base_model.save(filepath=tmpdir, save_format="tf")
+                state["model"] = dir_contents_to_dict(tmpdir)
+
             state["global_timestep"] = state["global_timestep"].numpy()
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()

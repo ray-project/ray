@@ -672,9 +672,10 @@ class EagerTFPolicyV2(Policy):
 
     @override(Policy)
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def get_state(self):
+    def get_state(self) -> PolicyState:
         # Legacy Policy state (w/o keras model and w/o PolicySpec).
         state = super().get_state()
+
         # Add this Policy's spec so it can be retreived w/o access to the original
         # code.
         state["policy_spec"] = PolicySpec(
