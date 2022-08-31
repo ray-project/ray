@@ -195,11 +195,11 @@ public class CrossLanguageInvocationTest extends BaseTest {
           actor.task(PyActorMethod.of("increase", byte[].class), "1".getBytes()).remote();
       Supplier<Boolean> getValue =
           () -> {
-              if (equals(res.get() == "2".getBytes())) {
-                return true;
-              } else {
-                return false;
-              }
+            if (equals(res.get() == "2".getBytes())) {
+              return true;
+            } else {
+              return false;
+            }
           };
       Assert.assertFalse(TestUtils.waitForCondition(getValue, 30000));
     }
