@@ -4,7 +4,7 @@ slackclient
 boto3
 jinja2
 PyGithub
-pydantic
+pydantic < 2.0.0
 pyyaml
 typer[all]
 toml

@@ -20,7 +20,7 @@ pandas
 pickle5
 pillow
 pyarrow
-pydantic<=1.9.2
+pydantic < 2.0.0
 pyyaml
 scikit-optimize
 redis
