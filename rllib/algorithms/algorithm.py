@@ -208,6 +208,35 @@ class Algorithm(Trainable):
         "num_env_steps_trained",
     ]
 
+    @staticmethod
+    def from_state(state: Dict):
+        """Recovers an Algorithm from a state object.
+
+        The `state` of an instantiated Algorithm can be retrieved by calling its
+        `get_state` method. It contains all information necessary
+        to create the Algorithm from scratch. No access to the original code (e.g.
+        configs, knowledge of the Algorithm's class, etc..) is needed.
+
+        Args:
+            state: The state to recover a new Algorithm instance from.
+
+        Returns:
+            A new Algorithm instance.
+        """
+        algo_class: Type[Algorithm] = state.get("algorithm_class")
+        if algo_class is None:
+            raise ValueError(
+                "No `algorithm_class` key was found in given `state`! Cannot create "
+                "new Algorithm."
+            )
+        # Create the new algo.
+        new_algo = algo_class(config=state.get("config"))
+        # Set the new algo's state.
+        new_algo.set_state(state)
+        # Return the new algo.
+        return new_algo
+
+
     @PublicAPI
     def __init__(
         self,
@@ -1747,12 +1776,15 @@ class Algorithm(Trainable):
             A dict that will be automatically serialized by Tune and
             passed to ``Trainable.load_checkpoint()``.
         """
-        return self.__getstate__()
+        return self.get_state()
 
     @override(Trainable)
-    def load_checkpoint(self, checkpoint_path: str) -> None:
-        extra_data = pickle.load(open(checkpoint_path, "rb"))
-        self.__setstate__(extra_data)
+    def load_checkpoint(self, checkpoint: Union[Dict, str]) -> None:
+        if isinstance(checkpoint, str):
+            checkpoint_data = pickle.load(open(checkpoint, "rb"))
+        else:
+            checkpoint_data = checkpoint
+        self.__setstate__(checkpoint_data)
 
     @override(Trainable)
     def log_result(self, result: ResultDict) -> None:
@@ -2478,8 +2510,20 @@ class Algorithm(Trainable):
         else:
             return self.import_policy_model_from_h5(import_file)
 
-    def __getstate__(self) -> dict:
-        state = {}
+    @PublicAPI
+    def get_state(self) -> Dict:
+        """Returns current state of Algorithm, sufficient to restore it from scratch.
+
+        Returns:
+            The current state dict of this Algorithm, which can be used to sufficiently
+            restore the algorithm from scratch without any other information.
+        """
+        # Add config to state so complete Algorithm can be reproduced w/o.
+        state = {
+            "algorithm_class": type(self),
+            "config": self.config,
+        }
+
         if hasattr(self, "workers"):
             state["worker"] = self.workers.local_worker().save()
         # TODO: Experimental functionality: Store contents of replay buffer
@@ -2494,7 +2538,17 @@ class Algorithm(Trainable):
 
         return state
 
-    def __setstate__(self, state: dict):
+    def set_state(self, state: Dict) -> None:
+        """Sets the algorithm to the provided state.
+
+        Args:
+            state: The state dict to restore this Algorithm instance to. `state` may
+                have been returned by a call to an Algorithm's `get_state()` method.
+        """
+
+        # TODO (sven): Validate that our config and the config in state are compatible.
+        #  For example, the model architectures may differ.
+
         if hasattr(self, "workers") and "worker" in state:
             self.workers.local_worker().restore(state["worker"])
             remote_state = ray.put(state["worker"])
@@ -2836,6 +2890,14 @@ class Algorithm(Trainable):
     @Deprecated(new="Trainer.compute_single_action()", error=False)
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
+
+    @Deprecated(new="Algorithm.get_state()")
+    def __getstate__(self):
+        return self.get_state()
+
+    @Deprecated(new="Algorithm.set_state()")
+    def __setstate__(self):
+        return self.set_state()
 
     @Deprecated(new="logic moved into `self.step()`", error=True)
     def step_attempt(self):
