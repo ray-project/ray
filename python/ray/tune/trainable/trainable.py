@@ -524,7 +524,11 @@ class Trainable:
             timeout=self.sync_timeout,
         ):
             logger.error(
-                f"Could not upload checkpoint even after 3 retries: "
+                f"Could not upload checkpoint even after 3 retries."
+                f"Please check if the credentials expired and that the remote "
+                f"filesystem is supported.. For large checkpoints, consider "
+                f"increasing `SyncConfig(sync_timeout)` "
+                f"(current value: {self.sync_timeout} seconds). Checkpoint URI: "
                 f"{checkpoint_uri}"
             )
         return True
