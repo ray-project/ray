@@ -16,7 +16,7 @@
     - PYTHON=3.7 TRAIN_TESTING=1 ./ci/env/install-dependencies.sh
     # Because Python version changed, we need to re-install Ray here
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/ci.sh build
-    - pip install -Ur torch==1.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113
+    - pip install -U torch==1.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only,torch_1_11,-ray_air python/ray/train/...
 

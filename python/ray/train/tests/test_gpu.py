@@ -7,7 +7,6 @@ import pytest
 import torch
 import torchvision
 from torch.nn.parallel import DistributedDataParallel
-from torch.distributed.fsdp import FullyShardedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
 import ray

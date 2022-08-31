@@ -8,7 +8,7 @@ import collections
 from distutils.version import LooseVersion
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Literal
+from typing import Any, Dict, Optional
 
 import ray
 from ray import train
@@ -54,7 +54,7 @@ def get_device() -> torch.device:
 def prepare_model(
     model: torch.nn.Module,
     move_to_device: bool = True,
-    parallel_strategy: Literal["ddp", "fsdp", None] = "ddp",
+    parallel_strategy: Optional[str] = "ddp",
     parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.nn.Module:
     """Prepares the model for distributed execution.
@@ -67,8 +67,8 @@ def prepare_model(
         move_to_device: Whether to move the model to the correct
             device. If set to False, the model needs to manually be moved
             to the correct device.
-        parallel_strategy: Whether to wrap models in
-            ``DistributedDataParallel``, ``FullyShardedDataParallel``,
+        parallel_strategy ("ddp", "fsdp", or None): Whether to wrap models
+            in ``DistributedDataParallel``, ``FullyShardedDataParallel``,
             or neither.
         parallel_strategy_kwargs (Dict[str, Any]): Args to pass into
             ``DistributedDataParallel`` or ``FullyShardedDataParallel``
@@ -275,7 +275,7 @@ class _TorchAccelerator(Accelerator):
         self,
         model: torch.nn.Module,
         move_to_device: bool = True,
-        parallel_strategy: Literal["ddp", "fsdp", None] = "ddp",
+        parallel_strategy: Optional[str] = "ddp",
         parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.nn.Module:
         """Prepares the model for distributed execution.
@@ -288,8 +288,8 @@ class _TorchAccelerator(Accelerator):
             move_to_device: Whether to move the model to the correct
                 device. If set to False, the model needs to manually be moved
                 to the correct device.
-            parallel_strategy: Whether to wrap models in
-                ``DistributedDataParallel``, ``FullyShardedDataParallel``,
+            parallel_strategy ("ddp", "fsdp", or None): Whether to wrap models
+                in ``DistributedDataParallel``, ``FullyShardedDataParallel``,
                 or neither.
             parallel_strategy_kwargs (Dict[str, Any]): Args to pass into
                 ``DistributedDataParallel`` or ``FullyShardedDataParallel``
