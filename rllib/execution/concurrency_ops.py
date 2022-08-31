@@ -23,11 +23,11 @@ def Concurrently(
         output_indexes: If specified, only output results from the
             given ops. For example, if ``output_indexes=[0]``, only results
             from the first op in ops will be returned.
-        round_robin_weights: List of weights to use for round robin
+        round_robin_weights: List of weights to use for round-robin
             mode. For example, ``[2, 1]`` will cause the iterator to pull twice
             as many items from the first iterator as the second. ``[2, 1, *]``
             will cause as many items to be pulled as possible from the third
-            iterator without blocking. This is only allowed in round robin
+            iterator without blocking. This is only allowed in round-robin
             mode.
 
     Examples:
