@@ -421,7 +421,7 @@ class ConnectorPipeline(abc.ABC):
         if not isinstance(key, str):
             if isinstance(key, slice):
                 raise NotImplementedError(
-                    "Slicing of ConnectorPipeline is not " "supported."
+                    "Slicing of ConnectorPipeline is currently not supported."
                 )
             elif isinstance(key, int):
                 return [self.connectors[key]]
@@ -429,7 +429,7 @@ class ConnectorPipeline(abc.ABC):
                 key = key.__name__
             else:
                 raise NotImplementedError(
-                    "Indexing by {} not supported.".format(type(key))
+                    "Indexing by {} is currently not supported.".format(type(key))
                 )
 
         results = []
@@ -438,7 +438,7 @@ class ConnectorPipeline(abc.ABC):
                 results.append(c)
 
         if len(results) == 0:
-            raise IndexError
+            raise []
 
         return results
 
