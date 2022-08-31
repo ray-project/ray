@@ -38,6 +38,21 @@
             "type": "number",
             "minimum": 0
         },
+        "events": {
+          "type": "object",
+          "description": "Event callback configuration",
+          "additionalProperties": true,
+          "properties": {
+            "notification_uri": {
+              "type": "string",
+              "description": "cloud provider resource identifier to send events to"
+            },
+            "parameters": {
+              "type": "object",
+              "description": "additional parameters injected into each outgoing event notification"
+            }
+          }
+        },
         "provider": {
             "type": "object",
             "description": "Cloud-provider specific configuration.",
