@@ -2,13 +2,13 @@ import asyncio
 import dataclasses
 import json
 import logging
-import requests
 import traceback
 from collections import OrderedDict
 from typing import Dict, Optional, Tuple
 
 import aiohttp.web
 from aiohttp.web import Request, Response
+from aiohttp.client import ClientResponse
 
 import ray
 from ray._private import ray_constants
@@ -61,46 +61,33 @@ class JobAgentSubmissionClient:
         dashboard_agent_address: str,
     ):
         self._address = dashboard_agent_address
+        self._session = aiohttp.ClientSession()
 
-    def _do_request(
-        self,
-        method: str,
-        endpoint: str,
-        *,
-        data: Optional[bytes] = None,
-        json_data: Optional[dict] = None,
-        **kwargs,
-    ) -> requests.Response:
-        """Perform the actual HTTP request"""
-        url = self._address + endpoint
-        logger.debug(f"Sending request to {url} with json data: {json_data or {}}.")
-        return requests.request(
-            method,
-            url,
-            data=data,
-            json=json_data,
-            **kwargs,
-        )
+    async def _raise_error(self, r: ClientResponse):
+        status = r.status
+        error_text = await r.text()
+        raise RuntimeError(f"Request failed with status code {status}: {error_text}.")
 
-    def _raise_error(self, r: requests.Response):
-        raise RuntimeError(
-            f"Request failed with status code {r.status_code}: {r.text}."
-        )
-
-    def submit_job_internal(self, req: JobSubmitRequest) -> JobSubmitResponse:
+    async def submit_job_internal(self, req: JobSubmitRequest) -> JobSubmitResponse:
 
         logger.debug(f"Submitting job with submission_id={req.submission_id}.")
 
-        r = self._do_request(
-            "POST",
-            "/api/job_agent/jobs/",
-            json_data=dataclasses.asdict(req),
-        )
+        async with self._session.post(
+            self._address + "/api/job_agent/jobs/", json=dataclasses.asdict(req)
+        ) as resp:
 
-        if r.status_code == 200:
-            return JobSubmitResponse(**r.json())
-        else:
-            self._raise_error(r)
+            if resp.status == 200:
+                result_json = await resp.json()
+                return JobSubmitResponse(**result_json)
+            else:
+                await self._raise_error(resp)
+
+    async def close(self, ignore_error=True):
+        try:
+            await self._session.close()
+        except Exception:
+            if not ignore_error:
+                raise
 
 
 class JobHead(dashboard_utils.DashboardHeadModule):
@@ -132,30 +119,26 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         """
         # the number of agents which has an available HTTP port.
         while True:
-            agent_infos = await DataOrganizer.get_all_agent_infos()
-            if (
-                sum(
-                    map(
-                        lambda agent_ports: agent_ports["httpPort"] > 0,
-                        agent_infos.values(),
-                    )
-                )
-                > 0
-            ):
+            raw_agent_infos = await DataOrganizer.get_all_agent_infos()
+            agent_infos = {
+                key: value
+                for key, value in raw_agent_infos.items()
+                if value.get("httpPort", -1) > 0
+            }
+            if len(agent_infos) > 0:
                 break
             await asyncio.sleep(dashboard_consts.WAIT_RAYLET_START_INTERVAL_SECONDS)
         # delete dead agents.
         for dead_node in set(self._agents) - set(agent_infos):
-            self._agents.pop(dead_node)
+            client = self._agents.pop(dead_node)
+            await client.close()
 
         for node_id, agent_info in agent_infos.items():
             if len(self._agents) >= dashboard_consts.CANDIDATE_AGENT_NUMBER:
                 break
             node_ip = agent_info["ipAddress"]
             http_port = agent_info["httpPort"]
-            # skip agent which already exists or http port unavailable
-            if node_id in self._agents or http_port <= 0:
-                continue
+
             agent_http_address = f"http://{node_ip}:{http_port}"
 
             self._agents[node_id] = JobAgentSubmissionClient(agent_http_address)
@@ -282,7 +265,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                     self.choose_agent(),
                     timeout=dashboard_consts.WAIT_RAYLET_START_TIMEOUT_SECONDS,
                 )
-                resp = job_agent_client.submit_job_internal(submit_request)
+                resp = await job_agent_client.submit_job_internal(submit_request)
             else:
                 submission_id = await self._job_manager.submit_job(
                     entrypoint=submit_request.entrypoint,

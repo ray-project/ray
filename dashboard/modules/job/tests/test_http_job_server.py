@@ -6,7 +6,6 @@ import os
 import shutil
 import sys
 import tempfile
-import time
 from pathlib import Path
 import subprocess
 from typing import Optional
@@ -832,88 +831,6 @@ async def test_job_head_choose_job_agent():
         for _ in range(2):
             job_agent_client = await job_head.choose_agent()
             assert "http://3.3.3.3:3" == job_agent_client._address
-
-
-@pytest.fixture
-def mock_candidate_number():
-    os.environ["CANDIDATE_AGENT_NUMBER"] = "2"
-    yield
-    os.environ.pop("CANDIDATE_AGENT_NUMBER", None)
-
-
-@pytest.mark.skipif(
-    # Only running with RAY_RAYLETLESS_HEAD_NODE is True
-    not dashboard_consts.RAY_RAYLETLESS_HEAD_NODE,
-    reason="Not implemented yet.",
-)
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
-)
-def test_job_head_choose_job_agent_E2E(mock_candidate_number, ray_start_cluster_head):
-    cluster = ray_start_cluster_head
-    assert wait_until_server_available(cluster.webui_url) is True
-    webui_url = cluster.webui_url
-    webui_url = format_web_url(webui_url)
-    cluster.add_node(dashboard_agent_listen_port=52366)
-    cluster.add_node(dashboard_agent_listen_port=52367)
-
-    client = JobSubmissionClient(webui_url)
-
-    def submit_job_and_wait_finish():
-        submission_id = client.submit_job(entrypoint="echo hello")
-
-        wait_for_condition(_check_job_succeeded, client=client, job_id=submission_id)
-
-    submit_job_and_wait_finish()
-    submit_job_and_wait_finish()
-    submit_job_and_wait_finish()
-
-    def get_all_new_supervisor_actor_info(old_supervisor_actor):
-        all_actors = ray.state.state.actor_table(None)
-        res = dict()
-        for actor_id, actor_info in all_actors.items():
-            if actor_id in old_supervisor_actor:
-                continue
-            if not actor_info["Name"].startswith("_ray_internal_job_actor"):
-                continue
-            res[actor_id] = actor_info
-        return res
-
-    old_supervisor_actor = set()
-    new_supervisor_actor = get_all_new_supervisor_actor_info(old_supervisor_actor)
-    new_owner_port = set()
-    for actor_id, actor_info in new_supervisor_actor.items():
-        old_supervisor_actor.add(actor_id)
-        new_owner_port.add(actor_info["OwnerAddress"]["Port"])
-
-    assert len(new_owner_port) == 2
-    old_owner_port = new_owner_port
-
-    # Kill any node of worker nodes
-    list(cluster.worker_nodes)[0].kill_raylet()
-
-    def check_node_dead():
-        for node in ray.state.state.node_table():
-            if not node["Alive"]:
-                return True
-        return False
-
-    wait_for_condition(check_node_dead)
-    # make sure the head updates the info of the dead node.
-    time.sleep(10)
-
-    submit_job_and_wait_finish()
-    submit_job_and_wait_finish()
-    submit_job_and_wait_finish()
-
-    new_supervisor_actor = get_all_new_supervisor_actor_info(old_supervisor_actor)
-    new_owner_port = set()
-    for actor_id, actor_info in new_supervisor_actor.items():
-        old_supervisor_actor.add(actor_id)
-        new_owner_port.add(actor_info["OwnerAddress"]["Port"])
-    assert len(new_owner_port) == 2
-    assert len(old_owner_port - new_owner_port) == 1
-    assert len(new_owner_port - old_owner_port) == 1
 
 
 if __name__ == "__main__":
