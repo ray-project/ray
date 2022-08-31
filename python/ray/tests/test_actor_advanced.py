@@ -1382,6 +1382,41 @@ def test_get_actor_in_remote_workers(ray_start_cluster):
     assert (1, 2) == ray.get(submit_named_actors.remote())
 
 
+def test_resource_leak_when_cancel_actor_in_phase_of_creating(ray_start_cluster):
+    """Make sure there is no resource leak when cancel an actor in phase of
+    creating.
+
+    Check https://github.com/ray-project/ray/issues/27743. # noqa
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self, signal_1, signal_2):
+            signal_1.send.remote()
+            ray.get(signal_2.wait.remote())
+            pass
+
+    signal_1 = SignalActor.remote()
+    signal_2 = SignalActor.remote()
+    actor = Actor.remote(signal_1, signal_2)
+
+    wait_for_condition(lambda: ray.available_resources()["CPU"] != 2)
+
+    # Checking that the constructor of `Actor`` is invoked.
+    ready_ids, _ = ray.wait([signal_1.wait.remote()], timeout=3.0)
+    assert len(ready_ids) == 1
+
+    # Kill the actor which is in the phase of creating.
+    ray.kill(actor)
+
+    # Ensure there is no resource leak.
+    wait_for_condition(lambda: ray.available_resources()["CPU"] == 2)
+
+
 if __name__ == "__main__":
     import pytest
 
