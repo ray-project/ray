@@ -24,6 +24,7 @@ import numpy as np
 import torch
 from torch.cuda.amp import autocast, GradScaler
 from torch.nn.parallel import DistributedDataParallel
+
 if LooseVersion(torch.__version__) < LooseVersion("1.11.0"):
     FullyShardedDataParallel = None
 else:
@@ -357,14 +358,20 @@ class _TorchAccelerator(Accelerator):
             world_size = train.world_size()
 
         if parallel_strategy and world_size > 1:
-            DataParallel = DistributedDataParallel if parallel_strategy == "ddp" else FullyShardedDataParallel
+            if parallel_strategy == "ddp":
+                DataParallel = DistributedDataParallel
+            else:
+                DataParallel = FullyShardedDataParallel
             if rank == 0:
                 logger.info(f"Wrapping provided model in {DataParallel.__name__}.")
             else:
                 logger.debug(f"Wrapping provided model in {DataParallel.__name__}.")
             if torch.cuda.is_available():
                 model = DataParallel(
-                    model, device_ids=[rank], output_device=rank, **parallel_strategy_kwargs
+                    model,
+                    device_ids=[rank],
+                    output_device=rank,
+                    **parallel_strategy_kwargs,
                 )
             else:
                 model = DataParallel(model, **parallel_strategy_kwargs)
