@@ -167,12 +167,13 @@ class TuneController(Controller):
             self._callbacks.on_trial_result(
                 iteration=0, trials=self._all_trials, trial=trial, result=result.metrics
             )
+            trial.last_result = result.metrics.copy()
 
         if decision == TrialScheduler.STOP:
-            self._actors_to_pause.add(actor_info)
+            self._actors_to_terminate.add(actor_info)
             act = action.Stop()
         elif decision == TrialScheduler.PAUSE:
-            self._actors_to_terminate.add(actor_info)
+            self._actors_to_pause.add(actor_info)
             self._pending_actor_requests[actor_info.request] = trial
             act = action.Stop()
         elif decision == TrialScheduler.NOOP:

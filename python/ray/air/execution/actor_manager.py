@@ -20,8 +20,11 @@ class ActorManager:
         self._actors_to_futures = defaultdict(set)
         self._futures_to_actors = {}
 
+    def is_finished(self) -> bool:
+        return self._controller.is_finished()
+
     def step_until_finished(self):
-        while not self._controller.is_finished():
+        while not self.is_finished():
             self.step()
 
     def step(self):
