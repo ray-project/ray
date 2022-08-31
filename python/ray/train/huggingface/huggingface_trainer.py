@@ -120,7 +120,11 @@ class HuggingFaceTrainer(TorchTrainer):
     This Trainer runs the ``transformers.Trainer.train()`` method on multiple
     Ray Actors. The training is carried out in a distributed fashion through PyTorch
     DDP. These actors already have the necessary torch process group already
-    configured for distributed PyTorch training.
+    configured for distributed PyTorch training. If you have PyTorch >= 1.12.0
+    installed, you can also run FSDP training by specifying the ``fsdp`` argument
+    in ``TrainingArguments``. For more information on configuring FSDP,
+    refer to `Hugging Face documentation <https://huggingface.co/docs/transformers/\
+main/en/main_classes/trainer#transformers.TrainingArguments.fsdp>`__.
 
     The training function ran on every Actor will first run the
     specified ``trainer_init_per_worker`` function to obtain an instantiated
