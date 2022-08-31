@@ -563,6 +563,8 @@ def read_csv(
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
         >>> # Convert a date column with a custom format from a CSV file.
+        >>> # For more uses of ConvertOptions see
+        >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html
         >>> from pyarrow import csv
         >>> convert_options = csv.ConvertOptions(
         ...     timestamp_parsers=["%m/%d/%Y"])
