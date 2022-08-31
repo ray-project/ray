@@ -54,6 +54,8 @@ class ActorManager:
 
         self._start_new_actors()
 
+        self._request_actions()
+
     def _handle_next_future(self):
         actor_info, typed_future = self._get_next_future()
 
@@ -115,13 +117,10 @@ class ActorManager:
                     request=actor_request, actor=actor, used_resource=ready_resource
                 )
                 self._active_actors.add(actor_info)
+                self._controller.actor_started(actor_info)
                 new_actors.append(actor_info)
             else:
                 new_actor_requests.append(actor_request)
-
-        for actor_info in new_actors:
-            action = self._controller.actor_started(actor_info)
-            self._act_on_action(actor_info=actor_info, action=action)
 
         self._actor_requests = new_actor_requests
 

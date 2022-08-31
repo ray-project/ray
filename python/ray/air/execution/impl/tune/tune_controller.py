@@ -93,7 +93,7 @@ class TuneController(Controller):
 
         return requests + buffered_requests
 
-    def actor_started(self, actor_info: ActorInfo) -> action.Action:
+    def actor_started(self, actor_info: ActorInfo) -> None:
         """Register actor start. Return immediate decision."""
         trial = self._pending_actor_requests.pop(actor_info.request)
         self._live_actors[actor_info] = trial
@@ -105,12 +105,14 @@ class TuneController(Controller):
         self._callbacks.on_trial_start(
             iteration=0, trials=self._all_trials, trial=trial
         )
-        return action.Continue(
-            futures=[
-                TypedFuture(
-                    future=actor_info.actor.train.remote(), cls=TuneTrainingResult
-                )
-            ]
+        self._actions[actor_info].append(
+            action.Continue(
+                futures=[
+                    TypedFuture(
+                        future=actor_info.actor.train.remote(), cls=TuneTrainingResult
+                    )
+                ]
+            )
         )
 
     def actor_failed(self, actor_info: ActorInfo, exception: Exception) -> None:
