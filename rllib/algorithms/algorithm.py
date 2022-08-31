@@ -2511,6 +2511,8 @@ class Algorithm(Trainable):
             return self.import_policy_model_from_h5(import_file)
 
     @PublicAPI
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    @override(Trainable)
     def get_state(self) -> Dict:
         """Returns current state of Algorithm, sufficient to restore it from scratch.
 
@@ -2518,11 +2520,13 @@ class Algorithm(Trainable):
             The current state dict of this Algorithm, which can be used to sufficiently
             restore the algorithm from scratch without any other information.
         """
+        state = super().get_state()
+
         # Add config to state so complete Algorithm can be reproduced w/o.
-        state = {
+        state.update({
             "algorithm_class": type(self),
             "config": self.config,
-        }
+        })
 
         if hasattr(self, "workers"):
             state["worker"] = self.workers.local_worker().save()
@@ -2538,6 +2542,7 @@ class Algorithm(Trainable):
 
         return state
 
+    @PublicAPI
     def set_state(self, state: Dict) -> None:
         """Sets the algorithm to the provided state.
 
@@ -2891,13 +2896,13 @@ class Algorithm(Trainable):
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
 
-    @Deprecated(new="Algorithm.get_state()")
+    @Deprecated(new="Algorithm.get_state()", error=False)
     def __getstate__(self):
         return self.get_state()
 
-    @Deprecated(new="Algorithm.set_state()")
-    def __setstate__(self):
-        return self.set_state()
+    @Deprecated(new="Algorithm.set_state()", error=False)
+    def __setstate__(self, state):
+        return self.set_state(state)
 
     @Deprecated(new="logic moved into `self.step()`", error=True)
     def step_attempt(self):
