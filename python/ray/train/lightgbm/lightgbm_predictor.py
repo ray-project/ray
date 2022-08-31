@@ -1,3 +1,4 @@
+import numpy as np
 from typing import TYPE_CHECKING, List, Optional, Union
 
 import lightgbm
@@ -5,13 +6,16 @@ import pandas as pd
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.train.lightgbm.utils import load_checkpoint
+from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
+from ray.train.lightgbm.lightgbm_checkpoint import LightGBMCheckpoint
 from ray.train.predictor import Predictor
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
+@PublicAPI(stability="beta")
 class LightGBMPredictor(Predictor):
     """A predictor for LightGBM models.
 
@@ -25,7 +29,13 @@ class LightGBMPredictor(Predictor):
         self, model: lightgbm.Booster, preprocessor: Optional["Preprocessor"] = None
     ):
         self.model = model
-        self.preprocessor = preprocessor
+        super().__init__(preprocessor)
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(model={self.model!r}, "
+            f"preprocessor={self._preprocessor!r})"
+        )
 
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "LightGBMPredictor":
@@ -39,8 +49,10 @@ class LightGBMPredictor(Predictor):
                 ``LightGBMTrainer`` run.
 
         """
-        bst, preprocessor = load_checkpoint(checkpoint)
-        return LightGBMPredictor(model=bst, preprocessor=preprocessor)
+        checkpoint = LightGBMCheckpoint.from_checkpoint(checkpoint)
+        model = checkpoint.get_model()
+        preprocessor = checkpoint.get_preprocessor()
+        return cls(model=model, preprocessor=preprocessor)
 
     def _predict_pandas(
         self,
@@ -104,13 +116,40 @@ class LightGBMPredictor(Predictor):
             Prediction result.
 
         """
+        feature_names = None
         if TENSOR_COLUMN_NAME in data:
             data = data[TENSOR_COLUMN_NAME].to_numpy()
-
+            data = _unwrap_ndarray_object_type_if_needed(data)
             if feature_columns:
+                # In this case feature_columns is a list of integers
                 data = data[:, feature_columns]
         elif feature_columns:
-            data = data[feature_columns]
+            # feature_columns is a list of integers or strings
+            data = data[feature_columns].to_numpy()
+            # Only set the feature names if they are strings
+            if all(isinstance(fc, str) for fc in feature_columns):
+                feature_names = feature_columns
+        else:
+            feature_columns = data.columns.tolist()
+            data = data.to_numpy()
+
+            if all(isinstance(fc, str) for fc in feature_columns):
+                feature_names = feature_columns
+
+        # Turn into dataframe to make dtype resolution easy
+        data = pd.DataFrame(data, columns=feature_names)
+        data = data.infer_objects()
+
+        # Pandas does not detect categorical dtypes. Any remaining object
+        # dtypes are probably categories, so convert them.
+        update_dtypes = {}
+        for column in data.columns:
+            dtype = data.dtypes[column]
+            if dtype == np.object:
+                update_dtypes[column] = pd.CategoricalDtype()
+
+        if update_dtypes:
+            data = data.astype(update_dtypes, copy=False)
 
         df = pd.DataFrame(self.model.predict(data, **predict_kwargs))
         df.columns = (

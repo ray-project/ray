@@ -44,7 +44,7 @@ class BackendExecutor:
 
     This class holds a worker group and is responsible for executing the
     training function on the workers, and collecting intermediate results
-    from ``train.report()`` and ``train.checkpoint()``.
+    from ``session.report()``.
 
     Args:
         backend_config: The configurations for this
@@ -81,6 +81,7 @@ class BackendExecutor:
         if self._max_failures < 0:
             self._max_failures = float("inf")
         self._num_failures = 0
+        self._last_failure = None
         self._initialization_hook = None
         self._placement_group = None
 
@@ -288,7 +289,7 @@ class BackendExecutor:
                 Dataset.
             checkpoint: The checkpoint data that
                 should be loaded onto each worker and accessed by the
-                training function via ``train.load_checkpoint()``. If this
+                training function via ``session.get_checkpoint()``. If this
                 is ``None`` then no checkpoint will be loaded.
         """
         use_detailed_autofilled_metrics = env_integer(
@@ -362,8 +363,7 @@ class BackendExecutor:
         """Fetches the next ``TrainingResult`` from each worker.
 
         Each ``TrainingResult`` is expected to correspond to the same step from
-        each worker (e.g. the same call to ``train.report()`` or
-        ``train.checkpoint()``).
+        each worker (e.g. the same call to ``session.report()``).
 
         Returns:
             A list of ``TrainingResult``s with the same
@@ -396,7 +396,8 @@ class BackendExecutor:
                 raise RuntimeError(
                     "Some workers returned results while "
                     "others didn't. Make sure that "
-                    "`train.report()` and `train.save_checkpoint()` "
+                    "`session.report()` (legacy API:"
+                    "`train.report()` and `train.save_checkpoint()`) "
                     "are called the same number of times on all "
                     "workers."
                 )
@@ -408,10 +409,11 @@ class BackendExecutor:
         if any(r.type != result_type for r in results):
             raise RuntimeError(
                 "Some workers returned results with "
-                "different types. Make sure `train.report()` "
-                "and `train.save_checkpoint()` are called the "
-                "same number of times and in the same order on "
-                "each worker."
+                "different types. Make sure that "
+                "`session.report()` (legacy API:"
+                "`train.report()` and `train.save_checkpoint()`) "
+                "are called the same number of times on all "
+                "workers."
             )
         return results
 
@@ -473,10 +475,11 @@ class BackendExecutor:
         Returns:
             The resolved objects represented by the passed in ObjectRefs.
         """
-        success = check_for_failure(remote_values)
+        success, exception = check_for_failure(remote_values)
         if success:
             return ray.get(remote_values)
         else:
+            self._last_failure = exception
             self._increment_failures()
             logger.warning(
                 "Failure identified during training. Restarting all workers and "
@@ -520,13 +523,14 @@ class BackendExecutor:
     def _increment_failures(self):
         self._num_failures += 1
         if self._num_failures >= self._max_failures:
-            raise RuntimeError(
-                "Training has failed even after "
+            exc = RuntimeError(
+                "Training has failed after "
                 f"{self._num_failures} "
                 "attempts. You can change the number of max "
                 "failure attempts by setting the "
                 "`max_retries` arg in your `Trainer`."
-            ) from None
+            )
+            raise exc.with_traceback(None) from self._last_failure
 
     def get_worker_group(self):
         return self.worker_group

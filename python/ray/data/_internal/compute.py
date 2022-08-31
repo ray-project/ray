@@ -102,6 +102,7 @@ class TaskPoolStrategy(ComputeStrategy):
             data_refs = [r[0] for r in all_refs]
             refs = [r[1] for r in all_refs]
 
+        in_block_owned_by_consumer = block_list._owned_by_consumer
         # Release input block references.
         if clear_input_blocks:
             del blocks
@@ -134,7 +135,11 @@ class TaskPoolStrategy(ComputeStrategy):
             for block, metadata in zip(data_refs, results):
                 new_blocks.append(block)
                 new_metadata.append(metadata)
-        return BlockList(list(new_blocks), list(new_metadata))
+        return BlockList(
+            list(new_blocks),
+            list(new_metadata),
+            owned_by_consumer=in_block_owned_by_consumer,
+        )
 
 
 @PublicAPI
@@ -213,6 +218,7 @@ class ActorPoolStrategy(ComputeStrategy):
         context = DatasetContext.get_current()
 
         blocks_in = block_list.get_blocks_with_metadata()
+        owned_by_consumer = block_list._owned_by_consumer
 
         # Early release block references.
         if clear_input_blocks:
@@ -368,7 +374,9 @@ class ActorPoolStrategy(ComputeStrategy):
                     new_blocks.append(block)
                     new_metadata.append(metadata_mapping[block])
                 new_metadata = ray.get(new_metadata)
-            return BlockList(new_blocks, new_metadata)
+            return BlockList(
+                new_blocks, new_metadata, owned_by_consumer=owned_by_consumer
+            )
 
         except Exception as e:
             try:

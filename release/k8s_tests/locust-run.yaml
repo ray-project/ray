@@ -1,0 +1,19 @@
+loadtest:
+  name: serve_ha_{cluster_id}
+  locust_host: "http://service-{cluster_id}-serve-svc:8000"
+  locust_locustfile_configmap: locusttest-{cluster_id}
+  loadtest.locust_lib_configmap: locusttest-{cluster_id}
+  locust_locustfile: locustfile.py
+worker:
+  replicas: 4
+master:
+  args:
+    - "--spawn-rate=20"
+    - "--users={users}"
+    - "--autostart"
+    - "--run-time={duration}s"
+    - "--csv=test_result_{cluster_id}"
+    - "--print-stats"
+    - "--csv-full-history"
+    - "--reset-stats"
+    - "--enable-rebalancing"

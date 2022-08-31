@@ -11,9 +11,6 @@ from ray.rllib.utils.spaces.flexdict import FlexDict
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
 
-# TODO(jungong) : We need to handle RLlib custom space types,
-# FlexDict, Repeated, and Simplex.
-
 
 def _serialize_ndarray(array: np.ndarray) -> str:
     """Pack numpy ndarray into Base64 encoded strings for serialization.
@@ -139,6 +136,14 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
 
 
 @DeveloperAPI
+def space_to_dict(space: gym.spaces.Space) -> Dict:
+    d = {"space": gym_space_to_dict(space)}
+    if "original_space" in space.__dict__:
+        d["original_space"] = gym_space_to_dict(space.original_space)
+    return d
+
+
+@DeveloperAPI
 def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
     """De-serialize a dict into gym Space.
 
@@ -212,3 +217,11 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
         raise ValueError("Unknown space type for de-serialization, ", space_type)
 
     return space_map[space_type](d)
+
+
+@DeveloperAPI
+def space_from_dict(d: Dict) -> gym.spaces.Space:
+    space = gym_space_from_dict(d["space"])
+    if "original_space" in d:
+        space.original_space = gym_space_from_dict(d["original_space"])
+    return space

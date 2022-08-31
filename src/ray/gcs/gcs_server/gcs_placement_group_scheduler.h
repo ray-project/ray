@@ -332,6 +332,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
                                 std::vector<std::shared_ptr<BundleSpecification>>>
           &group_to_bundles) override;
 
+  /// Add resources changed listener.
+  void AddResourcesChangedListener(std::function<void()> listener);
+
+  void HandleWaitingRemovedBundles();
+
  protected:
   /// Send bundles PREPARE requests to a node. The PREPARE requests will lock resources
   /// on a node until COMMIT or CANCEL requests are sent to a node.
@@ -426,7 +431,16 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// Create scheduling options.
   SchedulingOptions CreateSchedulingOptions(const PlacementGroupID &placement_group_id,
-                                            rpc::PlacementStrategy strategy);
+                                            rpc::PlacementStrategy strategy,
+                                            double max_cpu_fraction_per_node);
+
+  /// Try to release bundle resource to cluster resource manager.
+  ///
+  /// \param bundle The node to which the bundle is scheduled and the bundle's
+  /// specification.
+  /// \return True if the bundle is succesfully released. False otherwise.
+  bool TryReleasingBundleResources(
+      const std::pair<NodeID, std::shared_ptr<const BundleSpecification>> &bundle);
 
   /// A timer that ticks every cancel resource failure milliseconds.
   boost::asio::deadline_timer return_timer_;
@@ -456,6 +470,13 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// The syncer of resource. This is used to report placement group updates.
   /// TODO (iycheng): Remove this one from pg once we finish the refactor
   gcs_syncer::RaySyncer *ray_syncer_;
+
+  /// The resources changed listeners.
+  std::vector<std::function<void()>> resources_changed_listeners_;
+
+  /// The bundles that waiting to be destroyed and release resources.
+  std::list<std::pair<NodeID, std::shared_ptr<const BundleSpecification>>>
+      waiting_removed_bundles_;
 };
 
 }  // namespace gcs

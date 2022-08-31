@@ -31,6 +31,15 @@ class RandomPolicy(Policy):
             self.action_space_for_sampling = self.action_space
 
     @override(Policy)
+    def init_view_requirements(self):
+        super().init_view_requirements()
+        # Disable for_training and action attributes for SampleBatch.INFOS column
+        # since it can not be properly batched.
+        vr = self.view_requirements[SampleBatch.INFOS]
+        vr.used_for_training = False
+        vr.used_for_compute_actions = False
+
+    @override(Policy)
     def compute_actions(
         self,
         obs_batch,

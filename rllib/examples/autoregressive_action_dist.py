@@ -39,7 +39,7 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms import ppo
 from ray.rllib.examples.env.correlated_actions_env import CorrelatedActionsEnv
 from ray.rllib.examples.models.autoregressive_action_model import (
@@ -157,7 +157,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    # manual training loop using PPO without tune.run()
+    # manual training loop using PPO without ``Tuner.fit()``.
     if args.no_tune:
         if args.run != "PPO":
             raise ValueError("Only support --run PPO with --no-tune.")
@@ -191,7 +191,10 @@ if __name__ == "__main__":
 
     # run with Tune for auto env and Algorithm creation and TensorBoard
     else:
-        results = tune.run(args.run, stop=stop, config=config, verbose=2)
+        tuner = tune.Tuner(
+            args.run, run_config=air.RunConfig(stop=stop, verbose=2), param_space=config
+        )
+        results = tuner.fit()
 
         if args.as_test:
             print("Checking if learning goals were achieved")

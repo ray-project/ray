@@ -106,13 +106,13 @@ class TestAPPO(unittest.TestCase):
                     [500, 0.0001],
                 ],
             )
-            .reporting(min_train_timesteps_per_iteration=20)
+            .reporting(
+                min_train_timesteps_per_iteration=20,
+                # 0 metrics reporting delay, this makes sure timestep,
+                # which entropy coeff depends on, is updated after each worker rollout.
+                min_time_s_per_iteration=0,
+            )
         )
-
-        config.min_sample_timesteps_per_iteration = 20
-        # 0 metrics reporting delay, this makes sure timestep,
-        # which entropy coeff depends on, is updated after each worker rollout.
-        config.min_time_s_per_iteration = 0
 
         def _step_n_times(algo, n: int):
             """Step Algorithm n times.
@@ -141,6 +141,80 @@ class TestAPPO(unittest.TestCase):
             self.assertLessEqual(coeff, 0.001)
 
             algo.stop()
+
+    def test_appo_learning_rate_schedule(self):
+        config = (
+            appo.APPOConfig()
+            .rollouts(
+                num_rollout_workers=1,
+                batch_mode="truncate_episodes",
+                rollout_fragment_length=10,
+            )
+            .resources(num_gpus=0)
+            .training(
+                train_batch_size=20,
+                entropy_coeff=0.01,
+                # Setup lr schedule for testing.
+                lr_schedule=[[0, 5e-2], [500, 0.0]],
+            )
+            .reporting(
+                min_train_timesteps_per_iteration=20,
+                # 0 metrics reporting delay, this makes sure timestep,
+                # which entropy coeff depends on, is updated after each worker rollout.
+                min_time_s_per_iteration=0,
+            )
+        )
+
+        def _step_n_times(algo, n: int):
+            """Step Algorithm n times.
+
+            Returns:
+                learning rate at the end of the execution.
+            """
+            for _ in range(n):
+                results = algo.train()
+                print(algo.workers.local_worker().global_vars)
+                print(results)
+            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
+                "cur_lr"
+            ]
+
+        for _ in framework_iterator(config):
+            algo = config.build(env="CartPole-v0")
+
+            lr1 = _step_n_times(algo, 10)  # 200 timesteps
+            lr2 = _step_n_times(algo, 10)  # 200 timesteps
+
+            self.assertGreater(lr1, lr2)
+
+            algo.stop()
+
+    def test_appo_model_variables(self):
+        config = (
+            appo.APPOConfig()
+            .rollouts(
+                num_rollout_workers=1,
+                batch_mode="truncate_episodes",
+                rollout_fragment_length=10,
+            )
+            .resources(num_gpus=0)
+            .training(
+                train_batch_size=20,
+            )
+            .training(
+                model={
+                    "fcnet_hiddens": [16],
+                }
+            )
+        )
+
+        for _ in framework_iterator(config, frameworks=["tf2", "torch"]):
+            algo = config.build(env="CartPole-v0")
+            state = algo.get_policy(DEFAULT_POLICY_ID).get_state()
+            # Weights and Biases for the single hidden layer, the output layer
+            # of the policy and value networks. So 6 tensors in total.
+            # We should not get the tensors from the target model here.
+            self.assertEqual(len(state["weights"]), 6)
 
 
 if __name__ == "__main__":

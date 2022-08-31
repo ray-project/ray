@@ -7,12 +7,13 @@ from ray.workflow.common import WORKFLOW_OPTIONS
 
 from ray.dag import DAGNode, FunctionNode, InputNode
 from ray.dag.input_node import InputAttributeNode, DAGInputData
-
+from ray import cloudpickle
 from ray._private import signature
+from ray._private.client_mode_hook import client_mode_should_convert
 from ray.workflow import serialization_context
 from ray.workflow.common import (
-    StepType,
-    WorkflowStepRuntimeOptions,
+    TaskType,
+    WorkflowTaskRuntimeOptions,
     WorkflowRef,
     validate_user_metadata,
 )
@@ -48,11 +49,32 @@ def slugify(value: str, allow_unicode=False) -> str:
     return re.sub(r"[-\s]+", "-", value)
 
 
+class _DelayedDeserialization:
+    def __init__(self, serialized: bytes):
+        self._serialized = serialized
+
+    def __reduce__(self):
+        return cloudpickle.loads, (self._serialized,)
+
+
+class _SerializationContextPreservingWrapper:
+    """This class is a workaround for preserving serialization context
+    in client mode."""
+
+    def __init__(self, obj: Any):
+        self._serialized = cloudpickle.dumps(obj)
+
+    def __reduce__(self):
+        # This delays the deserialization to the actual worker
+        # instead of the Ray client server.
+        return _DelayedDeserialization, (self._serialized,)
+
+
 def workflow_state_from_dag(
     dag_node: DAGNode, input_context: Optional[DAGInputData], workflow_id: str
 ):
     """
-    Transform a Ray DAG to a workflow. Map FunctionNode to workflow step with
+    Transform a Ray DAG to a workflow. Map FunctionNode to workflow task with
     the workflow decorator.
 
     Args:
@@ -67,10 +89,10 @@ def workflow_state_from_dag(
 
     # TODO(suquark): remove this cyclic importing later by changing the way of
     # task ID assignment.
-    from ray.workflow.workflow_access import get_or_create_management_actor
+    from ray.workflow.workflow_access import get_management_actor
 
-    mgr = get_or_create_management_actor()
-    context = workflow_context.get_workflow_step_context()
+    mgr = get_management_actor()
+    context = workflow_context.get_workflow_task_context()
 
     def _node_visitor(node: Any) -> Any:
         if isinstance(node, FunctionNode):
@@ -79,7 +101,7 @@ def workflow_state_from_dag(
             if num_returns is None:  # ray could use `None` as default value
                 num_returns = 1
             if num_returns > 1:
-                raise ValueError("Workflow steps can only have one return.")
+                raise ValueError("Workflow task can only have one return.")
 
             workflow_options = bound_options.pop("_metadata", {}).get(
                 WORKFLOW_OPTIONS, {}
@@ -87,7 +109,7 @@ def workflow_state_from_dag(
 
             # If checkpoint option is not specified, inherit checkpoint
             # options from context (i.e. checkpoint options of the outer
-            # step). If it is still not specified, it's True by default.
+            # task). If it is still not specified, it's True by default.
             checkpoint = workflow_options.get("checkpoint", None)
             if checkpoint is None:
                 checkpoint = context.checkpoint if context is not None else True
@@ -95,16 +117,6 @@ def workflow_state_from_dag(
             # should be passed recursively.
             catch_exceptions = workflow_options.get("catch_exceptions", None)
             if catch_exceptions is None:
-                # TODO(suquark): should we also handle exceptions from a "leaf node"
-                #   in the continuation? For example, we have a workflow
-                #   > @ray.remote
-                #   > def A(): pass
-                #   > @ray.remote
-                #   > def B(x): return x
-                #   > @ray.remote
-                #   > def C(x): return workflow.continuation(B.bind(A.bind()))
-                #   > dag = C.options(**workflow.options(catch_exceptions=True)).bind()
-                #   Should C catches exceptions of A?
                 if node.get_stable_uuid() == dag_node.get_stable_uuid():
                     # 'catch_exception' context should be passed down to
                     # its direct continuation task.
@@ -115,17 +127,16 @@ def workflow_state_from_dag(
                 else:
                     catch_exceptions = False
 
-            max_retries = workflow_options.get("max_retries", 3)
-            if not isinstance(max_retries, int) or max_retries < -1:
-                raise ValueError(
-                    "'max_retries' only accepts 0, -1 or a positive integer."
-                )
+            # We do not need to check the validness of bound options, because
+            # Ray option has already checked them for us.
+            max_retries = bound_options.get("max_retries", 3)
+            retry_exceptions = bound_options.get("retry_exceptions", False)
 
-            step_options = WorkflowStepRuntimeOptions(
-                step_type=StepType.FUNCTION,
+            task_options = WorkflowTaskRuntimeOptions(
+                task_type=TaskType.FUNCTION,
                 catch_exceptions=catch_exceptions,
+                retry_exceptions=retry_exceptions,
                 max_retries=max_retries,
-                allow_inplace=False,
                 checkpoint=checkpoint,
                 ray_options=bound_options,
             )
@@ -146,12 +157,23 @@ def workflow_state_from_dag(
                 # so it won't be mutated later. This guarantees correct
                 # semantics. See "tests/test_variable_mutable.py" as
                 # an example.
+                if client_mode_should_convert(auto_init=False):
+                    # Handle client mode. The Ray client would serialize and
+                    # then deserialize objects in the Ray client server. When
+                    # the object is being deserialized, the serialization context
+                    # will be missing, resulting in failures. Here we protect the
+                    # object from deserialization in client server, and we make sure
+                    # the 'real' deserialization happens under the serialization
+                    # context later.
+                    flattened_args = _SerializationContextPreservingWrapper(
+                        flattened_args
+                    )
                 input_placeholder: ray.ObjectRef = ray.put(flattened_args)
 
             name = workflow_options.get("name")
             if name is None:
                 name = f"{get_module(node._body)}.{slugify(get_qualname(node._body))}"
-            task_id = ray.get(mgr.gen_step_id.remote(workflow_id, name))
+            task_id = ray.get(mgr.gen_task_id.remote(workflow_id, name))
             state.add_dependencies(task_id, [s.task_id for s in workflow_refs])
             state.task_input_args[task_id] = input_placeholder
 
@@ -159,7 +181,7 @@ def workflow_state_from_dag(
             validate_user_metadata(user_metadata)
             state.tasks[task_id] = Task(
                 name=name,
-                options=step_options,
+                options=task_options,
                 user_metadata=user_metadata,
                 func_body=node._body,
             )

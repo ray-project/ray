@@ -51,10 +51,23 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
               task_finisher_->CompletePendingTask(
                   task_id, push_task_reply, reply.actor_address());
             } else {
-              RAY_LOG(INFO) << "Failed to create actor " << actor_id
-                            << " with status: " << status.ToString();
+              rpc::RayErrorInfo ray_error_info;
+              if (status.IsSchedulingCancelled()) {
+                RAY_LOG(DEBUG) << "Actor creation cancelled, actor id = " << actor_id;
+                task_finisher_->MarkTaskCanceled(task_id);
+                if (reply.has_death_cause()) {
+                  ray_error_info.mutable_actor_died_error()->CopyFrom(
+                      reply.death_cause());
+                }
+              } else {
+                RAY_LOG(INFO) << "Failed to create actor " << actor_id
+                              << " with status: " << status.ToString();
+              }
               RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-                  task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status));
+                  task_id,
+                  rpc::ErrorType::ACTOR_CREATION_FAILED,
+                  &status,
+                  ray_error_info.has_actor_died_error() ? &ray_error_info : nullptr));
             }
           }));
       return;
@@ -353,17 +366,22 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
       raylet_address = &best_node_address;
     }
 
-    auto lease_client = GetOrConnectLeaseClient(raylet_address);
-    const TaskID task_id = resource_spec.TaskId();
-    RAY_LOG(DEBUG) << "Requesting lease from raylet "
-                   << NodeID::FromBinary(raylet_address->raylet_id()) << " for task "
-                   << task_id;
+  auto lease_client = GetOrConnectLeaseClient(raylet_address);
+  const TaskID task_id = resource_spec.TaskId();
+  RAY_LOG(DEBUG) << "Requesting lease from raylet "
+                 << NodeID::FromBinary(raylet_address->raylet_id()) << " for task "
+                 << task_id;
 
-    lease_client->RequestWorkerLease(
-        resource_spec.GetMessage(),
-        /*grant_or_reject=*/is_spillback,
-        [this, scheduling_key, task_id, is_spillback, raylet_address = *raylet_address](
-            const Status &status, const rpc::RequestWorkerLeaseReply &reply) {
+  lease_client->RequestWorkerLease(
+      resource_spec.GetMessage(),
+      /*grant_or_reject=*/is_spillback,
+      [this, scheduling_key, task_id, is_spillback, raylet_address = *raylet_address](
+          const Status &status, const rpc::RequestWorkerLeaseReply &reply) {
+        std::deque<TaskSpecification> tasks_to_fail;
+        rpc::RayErrorInfo error_info;
+        ray::Status error_status;
+        rpc::ErrorType error_type = rpc::ErrorType::WORKER_DIED;
+        {
           absl::MutexLock lock(&mu_);
 
           auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -391,44 +409,23 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                 // placement group, but in the case of runtime env setup failed, This
                 // makes an implicit assumption that runtime_env failures are not
                 // transient -- we may consider adding some retries in the future.
-                auto &task_queue = scheduling_key_entry.task_queue;
-                while (!task_queue.empty()) {
-                  auto &task_spec = task_queue.front();
-                  if (reply.failure_type() ==
-                      rpc::RequestWorkerLeaseReply::
-                          SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED) {
-                    rpc::RayErrorInfo error_info;
-                    error_info.mutable_runtime_env_setup_failed_error()
-                        ->set_error_message(reply.scheduling_failure_message());
-                    RAY_UNUSED(task_finisher_->FailPendingTask(
-                        task_spec.TaskId(),
-                        rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED,
-                        /*status*/ nullptr,
-                        &error_info));
-                  } else if (reply.failure_type() ==
-                             rpc::RequestWorkerLeaseReply::
-                                 SCHEDULING_CANCELLED_UNSCHEDULABLE) {
-                    rpc::RayErrorInfo error_info;
-                    *(error_info.mutable_error_message()) =
-                        reply.scheduling_failure_message();
-                    RAY_UNUSED(task_finisher_->FailPendingTask(
-                        task_spec.TaskId(),
-                        rpc::ErrorType::TASK_UNSCHEDULABLE_ERROR,
-                        /*status*/ nullptr,
-                        &error_info));
-                  } else {
-                    if (task_spec.IsActorCreationTask()) {
-                      RAY_UNUSED(task_finisher_->FailPendingTask(
-                          task_spec.TaskId(),
-                          rpc::ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED));
-                    } else {
-                      RAY_UNUSED(task_finisher_->FailPendingTask(
-                          task_spec.TaskId(),
-                          rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED));
-                    }
-                  }
-                  task_queue.pop_front();
+                if (reply.failure_type() ==
+                    rpc::RequestWorkerLeaseReply::
+                        SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED) {
+                  error_type = rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
+                  error_info.mutable_runtime_env_setup_failed_error()->set_error_message(
+                      reply.scheduling_failure_message());
+                } else if (reply.failure_type() ==
+                           rpc::RequestWorkerLeaseReply::
+                               SCHEDULING_CANCELLED_UNSCHEDULABLE) {
+                  error_type = rpc::ErrorType::TASK_UNSCHEDULABLE_ERROR;
+                  *(error_info.mutable_error_message()) =
+                      reply.scheduling_failure_message();
+                } else {
+                  error_type = rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED;
                 }
+                tasks_to_fail = std::move(scheduling_key_entry.task_queue);
+                scheduling_key_entry.task_queue.clear();
                 if (scheduling_key_entry.CanDelete()) {
                   scheduling_key_entries_.erase(scheduling_key);
                 }
@@ -494,13 +491,10 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                 QuickExit();
               }
               RAY_CHECK(worker_type_ == WorkerType::DRIVER);
-              auto &task_queue = scheduling_key_entry.task_queue;
-              while (!task_queue.empty()) {
-                auto &task_spec = task_queue.front();
-                RAY_UNUSED(task_finisher_->FailPendingTask(
-                    task_spec.TaskId(), rpc::ErrorType::LOCAL_RAYLET_DIED, &status));
-                task_queue.pop_front();
-              }
+              error_type = rpc::ErrorType::LOCAL_RAYLET_DIED;
+              error_status = status;
+              tasks_to_fail = std::move(scheduling_key_entry.task_queue);
+              scheduling_key_entry.task_queue.clear();
               if (scheduling_key_entry.CanDelete()) {
                 scheduling_key_entries_.erase(scheduling_key);
               }
@@ -514,9 +508,26 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
               RequestNewWorkerIfNeeded(scheduling_key);
             }
           }
-        },
-        task_queue.size(),
-        is_selected_based_on_locality);
+        }
+
+        while (!tasks_to_fail.empty()) {
+          auto &task_spec = tasks_to_fail.front();
+          if (task_spec.IsActorCreationTask() &&
+              error_type == rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED) {
+            RAY_UNUSED(task_finisher_->FailPendingTask(
+                task_spec.TaskId(),
+                rpc::ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED,
+                &error_status,
+                &error_info));
+          } else {
+            RAY_UNUSED(task_finisher_->FailPendingTask(
+                task_spec.TaskId(), error_type, &error_status, &error_info));
+          }
+          tasks_to_fail.pop_front();
+        }
+      },
+      task_queue.size(),
+      is_selected_based_on_locality);
     scheduling_key_entry.pending_lease_requests.emplace(task_id, *raylet_address);
 
     if (is_spillback) {
@@ -597,8 +608,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
               is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
               &status));
         } else {
-          if (!task_spec.GetMessage().retry_exceptions() ||
-              !reply.is_application_level_error() ||
+          if (!task_spec.GetMessage().retry_exceptions() || !reply.is_retryable_error() ||
               !task_finisher_->RetryTaskIfPossible(task_id)) {
             task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
           }

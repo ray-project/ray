@@ -67,11 +67,14 @@ class SimpleBlockAccessor(BlockAccessor):
     def iter_rows(self) -> Iterator[T]:
         return iter(self._items)
 
-    def slice(self, start: int, end: int, copy: bool) -> "SimpleBlockAccessor[T]":
+    def slice(self, start: int, end: int, copy: bool) -> List[T]:
         view = self._items[start:end]
         if copy:
             view = view.copy()
         return view
+
+    def take(self, indices: List[int]) -> List[T]:
+        return [self._items[i] for i in indices]
 
     def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
         random = np.random.RandomState(random_seed)

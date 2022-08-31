@@ -30,8 +30,15 @@ class ObsPreprocessorConnector(AgentConnector):
     def __init__(self, ctx: ConnectorContext):
         super().__init__(ctx)
 
-        self._preprocessor = get_preprocessor(ctx.observation_space)(
-            ctx.observation_space, ctx.config.get("model", {})
+        if hasattr(ctx.observation_space, "original_space"):
+            # ctx.observation_space is the space this Policy deals with.
+            # We need to preprocess data from the original observation space here.
+            obs_space = ctx.observation_space.original_space
+        else:
+            obs_space = ctx.observation_space
+
+        self._preprocessor = get_preprocessor(obs_space)(
+            obs_space, ctx.config.get("model", {})
         )
 
     def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
@@ -49,11 +56,11 @@ class ObsPreprocessorConnector(AgentConnector):
 
         return ac_data
 
-    def to_config(self):
+    def to_state(self):
         return ObsPreprocessorConnector.__name__, {}
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: List[Any]):
         return ObsPreprocessorConnector(ctx, **params)
 
 

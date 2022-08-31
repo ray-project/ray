@@ -60,9 +60,15 @@ class ConfigInternal {
 
   std::vector<std::string> head_args = {};
 
+  boost::optional<RuntimeEnv> runtime_env;
+
+  int runtime_env_hash = 0;
+
   // The default actor lifetime type.
   rpc::JobConfig_ActorLifetime default_actor_lifetime =
       rpc::JobConfig_ActorLifetime_NON_DETACHED;
+
+  std::string ray_namespace = "";
 
   static ConfigInternal &Instance() {
     static ConfigInternal config;
@@ -72,6 +78,8 @@ class ConfigInternal {
   void Init(RayConfig &config, int argc, char **argv);
 
   void SetBootstrapAddress(std::string_view address);
+
+  void UpdateSessionDir(const std::string dir);
 
   ConfigInternal(ConfigInternal const &) = delete;
 

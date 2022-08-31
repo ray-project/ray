@@ -126,6 +126,8 @@ class AlgorithmConfig:
         self.observation_filter = "NoFilter"
         self.synchronize_filters = True
         self.compress_observations = False
+        self.enable_tf1_exec_eagerly = False
+        self.sampler_perf_stats_ema_coef = None
 
         # `self.training()`
         self.gamma = 0.99
@@ -163,7 +165,6 @@ class AlgorithmConfig:
         self.input_ = "sampler"
         self.input_config = {}
         self.actions_in_input_normalized = False
-        self.off_policy_estimation_methods = {}
         self.postprocess_inputs = False
         self.shuffle_buffer_size = 0
         self.output = None
@@ -175,11 +176,14 @@ class AlgorithmConfig:
         self.evaluation_interval = None
         self.evaluation_duration = 10
         self.evaluation_duration_unit = "episodes"
+        self.evaluation_sample_timeout_s = 180.0
         self.evaluation_parallel_to_training = False
         self.evaluation_config = {}
+        self.off_policy_estimation_methods = {}
         self.evaluation_num_workers = 0
         self.custom_evaluation_function = None
         self.always_attach_evaluation_results = False
+        self.enable_async_evaluation = False
         # TODO: Set this flag still in the config or - much better - in the
         #  RolloutWorker as a property.
         self.in_evaluation = False
@@ -187,7 +191,7 @@ class AlgorithmConfig:
 
         # `self.reporting()`
         self.keep_per_episode_custom_metrics = False
-        self.metrics_episode_collection_timeout_s = 180
+        self.metrics_episode_collection_timeout_s = 60.0
         self.metrics_num_episodes_for_smoothing = 100
         self.min_time_s_per_iteration = None
         self.min_train_timesteps_per_iteration = 0
@@ -549,6 +553,8 @@ class AlgorithmConfig:
         observation_filter: Optional[str] = None,
         synchronize_filter: Optional[bool] = None,
         compress_observations: Optional[bool] = None,
+        enable_tf1_exec_eagerly: Optional[bool] = None,
+        sampler_perf_stats_ema_coef: Optional[float] = None,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -659,6 +665,14 @@ class AlgorithmConfig:
             synchronize_filter: Whether to synchronize the statistics of remote filters.
             compress_observations: Whether to LZ4 compress individual observations
                 in the SampleBatches collected during rollouts.
+            enable_tf1_exec_eagerly: Explicitly tells the rollout worker to enable
+                TF eager execution. This is useful for example when framework is
+                "torch", but a TF2 policy needs to be restored for evaluation or
+                league-based purposes.
+            sampler_perf_stats_ema_coef: If specified, perf stats are in EMAs. This
+                is the coeff of how much new data points contribute to the averages.
+                Default is None, which uses simple global average instead.
+                The EMA update rule is: updated = (1 - ema_coef) * old + ema_coef * new
 
         Returns:
             This updated AlgorithmConfig object.
@@ -711,6 +725,10 @@ class AlgorithmConfig:
             self.synchronize_filters = synchronize_filter
         if compress_observations is not None:
             self.compress_observations = compress_observations
+        if enable_tf1_exec_eagerly is not None:
+            self.enable_tf1_exec_eagerly = enable_tf1_exec_eagerly
+        if sampler_perf_stats_ema_coef is not None:
+            self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
 
         return self
 
@@ -801,15 +819,18 @@ class AlgorithmConfig:
         self,
         *,
         evaluation_interval: Optional[int] = None,
-        evaluation_duration: Optional[int] = None,
+        evaluation_duration: Optional[Union[int, str]] = None,
         evaluation_duration_unit: Optional[str] = None,
+        evaluation_sample_timeout_s: Optional[float] = None,
         evaluation_parallel_to_training: Optional[bool] = None,
         evaluation_config: Optional[
             Union["AlgorithmConfig", PartialAlgorithmConfigDict]
         ] = None,
+        off_policy_estimation_methods: Optional[Dict] = None,
         evaluation_num_workers: Optional[int] = None,
         custom_evaluation_function: Optional[Callable] = None,
         always_attach_evaluation_results: Optional[bool] = None,
+        enable_async_evaluation: Optional[bool] = None,
     ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
 
@@ -831,6 +852,11 @@ class AlgorithmConfig:
                 - For `evaluation_parallel_to_training=False`: Error.
             evaluation_duration_unit: The unit, with which to count the evaluation
                 duration. Either "episodes" (default) or "timesteps".
+            evaluation_sample_timeout_s: The timeout (in seconds) for the ray.get call
+                to the remote evaluation worker(s) `sample()` method. After this time,
+                the user will receive a warning and instructions on how to fix the
+                issue. This could be either to make sure the episode ends, increasing
+                the timeout, or switching to `evaluation_duration_unit=timesteps`.
             evaluation_parallel_to_training: Whether to run evaluation in parallel to
                 a Algorithm.train() call using threading. Default=False.
                 E.g. evaluation_interval=2 -> For every other training iteration,
@@ -842,6 +868,18 @@ class AlgorithmConfig:
                 IMPORTANT NOTE: Policy gradient algorithms are able to find the optimal
                 policy, even if this is a stochastic one. Setting "explore=False" here
                 will result in the evaluation workers not using this optimal policy!
+            off_policy_estimation_methods: Specify how to evaluate the current policy,
+                along with any optional config parameters. This only has an effect when
+                reading offline experiences ("input" is not "sampler").
+                Available keys:
+                {ope_method_name: {"type": ope_type, ...}} where `ope_method_name`
+                is a user-defined string to save the OPE results under, and
+                `ope_type` can be any subclass of OffPolicyEstimator, e.g.
+                ray.rllib.offline.estimators.is::ImportanceSampling
+                or your own custom subclass, or the full class path to the subclass.
+                You can also add additional config arguments to be passed to the
+                OffPolicyEstimator in the dict, e.g.
+                {"qreg_dr": {"type": DoublyRobust, "q_model_type": "qreg", "k": 5}}
             evaluation_num_workers: Number of parallel workers to use for evaluation.
                 Note that this is set to zero by default, which means evaluation will
                 be run in the algorithm process (only if evaluation_interval is not
@@ -857,6 +895,10 @@ class AlgorithmConfig:
                 results are always attached to a step result dict. This may be useful
                 if Tune or some other meta controller needs access to evaluation metrics
                 all the time.
+            enable_async_evaluation: If True, use an AsyncRequestsManager for
+                the evaluation workers and use this manager to send `sample()` requests
+                to the evaluation workers. This way, the Algorithm becomes more robust
+                against long running episodes and/or failing (and restarting) workers.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -867,6 +909,8 @@ class AlgorithmConfig:
             self.evaluation_duration = evaluation_duration
         if evaluation_duration_unit is not None:
             self.evaluation_duration_unit = evaluation_duration_unit
+        if evaluation_sample_timeout_s is not None:
+            self.evaluation_sample_timeout_s = evaluation_sample_timeout_s
         if evaluation_parallel_to_training is not None:
             self.evaluation_parallel_to_training = evaluation_parallel_to_training
         if evaluation_config is not None:
@@ -875,12 +919,16 @@ class AlgorithmConfig:
                 self.evaluation_config = evaluation_config.to_dict()
             else:
                 self.evaluation_config = evaluation_config
+        if off_policy_estimation_methods is not None:
+            self.off_policy_estimation_methods = off_policy_estimation_methods
         if evaluation_num_workers is not None:
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not None:
             self.custom_evaluation_function = custom_evaluation_function
         if always_attach_evaluation_results:
             self.always_attach_evaluation_results = always_attach_evaluation_results
+        if enable_async_evaluation:
+            self.enable_async_evaluation = enable_async_evaluation
 
         return self
 
@@ -891,7 +939,6 @@ class AlgorithmConfig:
         input_config=None,
         actions_in_input_normalized=None,
         input_evaluation=None,
-        off_policy_estimation_methods=None,
         postprocess_inputs=None,
         shuffle_buffer_size=None,
         output=None,
@@ -936,23 +983,6 @@ class AlgorithmConfig:
                 are already normalized (between -1.0 and 1.0). This is usually the case
                 when the offline file has been generated by another RLlib algorithm
                 (e.g. PPO or SAC), while "normalize_actions" was set to True.
-            input_evaluation: DEPRECATED: Use `off_policy_estimation_methods` instead!
-            off_policy_estimation_methods: Specify how to evaluate the current policy,
-                along with any optional config parameters.
-                This only has an effect when reading offline experiences
-                ("input" is not "sampler").
-                Available keys:
-                - {ope_method_name: {"type": ope_type, ...}} where `ope_method_name`
-                is a user-defined string to save the OPE results under, and
-                `ope_type` can be:
-                    - "simulation": Run the environment in the background, but use
-                    this data for evaluation only and not for learning.
-                    - Any subclass of OffPolicyEstimator, e.g.
-                    ray.rllib.offline.estimators.is::ImportanceSampling
-                    or your own custom subclass.
-                You can also add additional config arguments to be passed to the
-                OffPolicyEstimator in the dict, e.g.
-                {"qreg_dr": {"type": DoublyRobust, "q_model_type": "qreg", "k": 5}}
             postprocess_inputs: Whether to run postprocess_trajectory() on the
                 trajectory fragments from offline inputs. Note that postprocessing will
                 be done using the *current* policy, not the *behavior* policy, which
@@ -985,30 +1015,12 @@ class AlgorithmConfig:
         if input_evaluation is not None:
             deprecation_warning(
                 old="offline_data(input_evaluation={})".format(input_evaluation),
-                new="offline_data(off_policy_estimation_methods={})".format(
+                new="evaluation(off_policy_estimation_methods={})".format(
                     input_evaluation
                 ),
                 error=True,
+                help="Running OPE during training is not recommended.",
             )
-        if isinstance(off_policy_estimation_methods, list) or isinstance(
-            off_policy_estimation_methods, tuple
-        ):
-            ope_dict = {
-                str(ope): {"type": ope} for ope in off_policy_estimation_methods
-            }
-            deprecation_warning(
-                old="offline_data(off_policy_estimation_methods={}".format(
-                    off_policy_estimation_methods
-                ),
-                new="offline_data(off_policy_estimation_methods={}".format(
-                    ope_dict,
-                ),
-                error=False,
-            )
-            off_policy_estimation_methods = ope_dict
-        if off_policy_estimation_methods is not None:
-            self.off_policy_estimation_methods = off_policy_estimation_methods
-
         if postprocess_inputs is not None:
             self.postprocess_inputs = postprocess_inputs
         if shuffle_buffer_size is not None:
@@ -1098,7 +1110,7 @@ class AlgorithmConfig:
         self,
         *,
         keep_per_episode_custom_metrics: Optional[bool] = None,
-        metrics_episode_collection_timeout_s: Optional[int] = None,
+        metrics_episode_collection_timeout_s: Optional[float] = None,
         metrics_num_episodes_for_smoothing: Optional[int] = None,
         min_time_s_per_iteration: Optional[int] = None,
         min_train_timesteps_per_iteration: Optional[int] = None,

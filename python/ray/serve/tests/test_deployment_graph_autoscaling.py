@@ -1,13 +1,13 @@
 import sys
 import pytest
 
-from python.ray.serve import constants as serve_constants
+from ray.serve._private import constants as serve_constants
 
 import ray
 from ray import serve
 from ray.serve.drivers import DAGDriver
 from ray.dag.input_node import InputNode
-from ray.serve.deployment_state import ReplicaState
+from ray.serve._private.deployment_state import ReplicaState
 from ray._private.test_utils import SignalActor, wait_for_condition
 
 # Magic number to use for speed up scale from 0 replica
@@ -33,7 +33,7 @@ def test_autoscaling_0_replica(serve_instance):
     }
 
     @serve.deployment(
-        _autoscaling_config=autoscaling_config,
+        autoscaling_config=autoscaling_config,
     )
     class Model:
         def __init__(self, weight):
@@ -47,7 +47,7 @@ def test_autoscaling_0_replica(serve_instance):
         output = model.forward.bind(user_input)
         serve_dag = DAGDriver.options(
             route_prefix="/my-dag",
-            _autoscaling_config=autoscaling_config,
+            autoscaling_config=autoscaling_config,
         ).bind(output)
     dag_handle = serve.run(serve_dag)
     assert 2 == ray.get(dag_handle.predict.remote(1))
@@ -68,8 +68,8 @@ def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
     }
 
     @serve.deployment(
-        _autoscaling_config=autoscaling_config,
-        _graceful_shutdown_timeout_s=1,
+        autoscaling_config=autoscaling_config,
+        graceful_shutdown_timeout_s=1,
     )
     class Model1:
         def __init__(self, weight):
@@ -80,8 +80,8 @@ def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
             return input + self.weight
 
     @serve.deployment(
-        _autoscaling_config=autoscaling_config,
-        _graceful_shutdown_timeout_s=1,
+        autoscaling_config=autoscaling_config,
+        graceful_shutdown_timeout_s=1,
     )
     class Model2:
         def __init__(self, weight):
@@ -97,8 +97,8 @@ def test_autoscaling_with_chain_nodes(min_replicas, serve_instance):
         output2 = model2.forward.bind(output)
         serve_dag = DAGDriver.options(
             route_prefix="/my-dag",
-            _autoscaling_config=autoscaling_config,
-            _graceful_shutdown_timeout_s=1,
+            autoscaling_config=autoscaling_config,
+            graceful_shutdown_timeout_s=1,
         ).bind(output2)
 
     dag_handle = serve.run(serve_dag)
@@ -152,8 +152,8 @@ def test_autoscaling_with_ensemble_nodes(serve_instance):
     }
 
     @serve.deployment(
-        _autoscaling_config=autoscaling_config,
-        _graceful_shutdown_timeout_s=1,
+        autoscaling_config=autoscaling_config,
+        graceful_shutdown_timeout_s=1,
     )
     class Model:
         def __init__(self, weight):
@@ -163,8 +163,8 @@ def test_autoscaling_with_ensemble_nodes(serve_instance):
             return input + self.weight
 
     @serve.deployment(
-        _autoscaling_config=autoscaling_config,
-        _graceful_shutdown_timeout_s=1,
+        autoscaling_config=autoscaling_config,
+        graceful_shutdown_timeout_s=1,
     )
     def combine(value_refs):
         ray.get(signal.wait.remote())
@@ -178,8 +178,8 @@ def test_autoscaling_with_ensemble_nodes(serve_instance):
         output = combine.bind([output1, output2])
         serve_dag = DAGDriver.options(
             route_prefix="/my-dag",
-            _autoscaling_config=autoscaling_config,
-            _graceful_shutdown_timeout_s=1,
+            autoscaling_config=autoscaling_config,
+            graceful_shutdown_timeout_s=1,
         ).bind(output)
 
     dag_handle = serve.run(serve_dag)

@@ -9,19 +9,68 @@ from ray.data.preprocessors.utils import simple_hash
 
 
 class FeatureHasher(Preprocessor):
-    """Hash the features of the specified columns.
+    """Apply the `hashing trick <https://en.wikipedia.org/wiki/Feature_hashing>`_ to a
+    table that describes token frequencies.
 
-    The created columns will have names in the format ``hash_{column_names}_{hash}``,
-    e.g. ``hash_column1_column2_0``, ``hash_column1_column2_1``, ...
+    :class:`FeatureHasher` creates ``num_features`` columns named ``hash_{index}``,
+    where ``index`` ranges from :math:`0` to ``num_features``:math:`- 1`. The column
+    ``hash_{index}`` describes the frequency of tokens that hash to ``index``.
 
-    Note: Currently sparse matrices are not supported.
-    Therefore, it is recommended to **not** use a large ``num_features``.
+    Distinct tokens can correspond to the same index. However, if ``num_features`` is
+    large enough, then columns probably correspond to a unique token.
+
+    This preprocessor is memory efficient and quick to pickle. However, given a
+    transformed column, you can't know which tokens correspond to it. This might make it
+    hard to determine which tokens are important to your model.
+
+    .. warning::
+        Sparse matrices aren't supported. If you use a large ``num_features``, this
+        preprocessor might behave poorly.
+
+    Examples:
+
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import FeatureHasher
+
+        The data below describes the frequencies of tokens in ``"I like Python"`` and
+        ``"I dislike Python"``.
+
+        >>> df = pd.DataFrame({
+        ...     "I": [1, 1],
+        ...     "like": [1, 0],
+        ...     "dislike": [0, 1],
+        ...     "Python": [1, 1]
+        ... })
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+
+        :class:`FeatureHasher` hashes each token to determine its index. For example,
+        the index of ``"I"`` is :math:`hash(\\texttt{"I"}) \pmod 8 = 5`.
+
+        >>> hasher = FeatureHasher(columns=["I", "like", "dislike", "Python"], num_features=8)
+        >>> hasher.fit_transform(ds).to_pandas().to_numpy()  # doctest: +SKIP
+        array([[0, 0, 0, 2, 0, 1, 0, 0],
+               [0, 0, 0, 1, 0, 1, 1, 0]])
+
+        Notice the hash collision: both ``"like"`` and ``"Python"`` correspond to index
+        :math:`3`. You can avoid hash collisions like these by increasing
+        ``num_features``.
 
     Args:
-        columns: The columns of features that should be projected
-                 onto a single hashed feature vector.
-        num_features: The size of the hashed feature vector.
-    """
+        columns: The columns to apply the hashing trick to. Each column should describe
+            the frequency of a token.
+        num_features: The number of features used to represent the vocabulary. You
+            should choose a value large enough to prevent hash collisions between
+            distinct tokens.
+
+    .. seealso::
+        :class:`~ray.data.preprocessors.CountVectorizer`
+            Use this preprocessor to generate inputs for :class:`FeatureHasher`.
+
+        :class:`ray.data.preprocessors.HashingVectorizer`
+            If your input data describes documents rather than token frequencies,
+            use :class:`~ray.data.preprocessors.HashingVectorizer`.
+    """  # noqa: E501
 
     _is_fittable = False
 
@@ -33,17 +82,12 @@ class FeatureHasher(Preprocessor):
 
     def _transform_pandas(self, df: pd.DataFrame):
         # TODO(matt): Use sparse matrix for efficiency.
-        joined_columns = "_".join(self.columns)
-
         def row_feature_hasher(row):
             hash_counts = collections.defaultdict(int)
             for column in self.columns:
-                hashed_value = simple_hash(row[column], self.num_features)
-                hash_counts[hashed_value] = hash_counts[hashed_value] + 1
-            return {
-                f"hash_{joined_columns}_{i}": hash_counts[i]
-                for i in range(self.num_features)
-            }
+                hashed_value = simple_hash(column, self.num_features)
+                hash_counts[hashed_value] += row[column]
+            return {f"hash_{i}": hash_counts[i] for i in range(self.num_features)}
 
         feature_columns = df.loc[:, self.columns].apply(
             row_feature_hasher, axis=1, result_type="expand"
@@ -56,5 +100,6 @@ class FeatureHasher(Preprocessor):
 
     def __repr__(self):
         return (
-            f"FeatureHasher(columns={self.columns}, num_features={self.num_features})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"num_features={self.num_features!r})"
         )

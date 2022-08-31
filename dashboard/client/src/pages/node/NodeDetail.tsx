@@ -128,8 +128,12 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
             </Grid>
             <Grid container spacing={2}>
               <Grid item xs>
-                <div className={classes.label}>CPU (Logic/Physic)</div>{" "}
-                {nodeDetail.cpus[0]}/ {nodeDetail.cpus[1]}
+                {nodeDetail.cpus && (
+                  <React.Fragment>
+                    <div className={classes.label}>CPU (Logic/Physic)</div>{" "}
+                    {nodeDetail.cpus[0]}/ {nodeDetail.cpus[1]}
+                  </React.Fragment>
+                )}
               </Grid>
               <Grid item xs>
                 <div className={classes.label}>Load (1/5/15min)</div>{" "}

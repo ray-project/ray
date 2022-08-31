@@ -380,6 +380,10 @@ def test_get_with_timeout(ray_start_regular_shared):
     with pytest.raises(GetTimeoutError):
         ray.get(result_id, timeout=0.1)
 
+    assert issubclass(GetTimeoutError, TimeoutError)
+    with pytest.raises(TimeoutError):
+        ray.get(result_id, timeout=0.1)
+
     # Check that a subsequent get() returns early.
     ray.get(signal.send.remote())
     start = time.time()
@@ -648,6 +652,31 @@ def test_duplicate_args(ray_start_regular_shared):
     arg1 = ray.put([1])
     arg2 = ray.put([2])
     ray.get(f.remote(arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
+
+    # Test by-reference arguments on an actor task.
+    @ray.remote
+    class Actor:
+        def f(
+            self,
+            arg1,
+            arg2,
+            arg1_duplicate,
+            kwarg1=None,
+            kwarg2=None,
+            kwarg1_duplicate=None,
+        ):
+            assert arg1 == kwarg1
+            assert arg1 != arg2
+            assert arg1 == arg1_duplicate
+            assert kwarg1 != kwarg2
+            assert kwarg1 == kwarg1_duplicate
+
+    actor = Actor.remote()
+    ray.get(
+        actor.f.remote(
+            arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1
+        )
+    )
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")

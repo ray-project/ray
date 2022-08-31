@@ -57,6 +57,14 @@ RAY_CONFIG(uint64_t, gcs_pull_resource_loads_period_milliseconds, 1000)
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
 RAY_CONFIG(int64_t, num_heartbeats_timeout, 30)
+
+/// If GCS restarts, before the first heatbeat is sent,
+/// gcs_failover_worker_reconnect_timeout is used for the threshold
+/// of the raylet. This is very useful given that raylet might need
+/// a while to reconnect to the GCS, for example, when GCS is available
+/// but not reachable to raylet.
+RAY_CONFIG(int64_t, gcs_failover_worker_reconnect_timeout, 120)
+
 /// For a raylet, if the last heartbeat was sent more than this many
 /// heartbeat periods ago, then a warning will be logged that the heartbeat
 /// handler is drifting.
@@ -68,10 +76,28 @@ RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 /// The duration between raylet check memory pressure and send gc request
 RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 
+/// Threshold when the node is beyond the memory capacity.
+/// Ranging from [0, 1]
+RAY_CONFIG(float, memory_usage_threshold_fraction, 0.9)
+
+/// The interval between runs of the memory usage monitor.
+/// Monitor is disabled when this value is 0.
+RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 0)
+
+/// If the raylet fails to get agent info, we will retry after this interval.
+RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
+
 /// For a raylet, if the last resource report was sent more than this many
 /// report periods ago, then a warning will be logged that the report
 /// handler is drifting.
 RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
+
+/// Whether to report placement or regular resource usage for an actor.
+/// Reporting placement may cause the autoscaler to overestimate the resources
+/// required of the cluster, but reporting regular resource may lead to no
+/// autoscaling when an actor can't be placed.
+/// https://github.com/ray-project/ray/issues/26806
+RAY_CONFIG(bool, report_actor_placement_resources, true)
 
 /// Whether to record the creation sites of object references. This adds more
 /// information to `ray memory`, but introduces a little extra overhead when
@@ -157,7 +183,7 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 // The max gRPC message size (the gRPC internal default is 4MB). We use a higher
 // limit in Ray to avoid crashing with many small inlined task arguments.
 // Keep in sync with GCS_STORAGE_MAX_SIZE in packaging.py.
-RAY_CONFIG(int64_t, max_grpc_message_size, 250 * 1024 * 1024)
+RAY_CONFIG(int64_t, max_grpc_message_size, 500 * 1024 * 1024)
 
 // Retry timeout for trying to create a gRPC server. Only applies if the number
 // of retries is non zero.
@@ -481,8 +507,9 @@ RAY_CONFIG(int64_t, max_fused_object_count, 2000)
 /// In unlimited allocation mode, this is the time delay prior to fallback allocating.
 RAY_CONFIG(int64_t, oom_grace_period_s, 2)
 
-/// Whether or not the external storage is file system.
-/// This is configured based on object_spilling_config.
+/// Whether or not the external storage is the local file system.
+/// Note that this value should be overridden based on the storage type
+/// specified by object_spilling_config.
 RAY_CONFIG(bool, is_external_storage_type_fs, true)
 
 /// Control the capacity threshold for ray local file system (for object store).
@@ -510,6 +537,10 @@ RAY_CONFIG(int64_t, log_rotation_backup_count, 5)
 /// notification, in this case we'll wait for a fixed timeout value and then mark it
 /// as failed.
 RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
+
+/// The core worker heartbeat interval. During heartbeat, it'll
+/// report the loads to raylet.
+RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000);
 
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)

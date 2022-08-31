@@ -1,4 +1,5 @@
-from typing import Any, List, Mapping, Optional, Union
+from dataclasses import dataclass
+from typing import Any, List, Mapping, Optional, Union, Tuple
 
 import click
 from datetime import datetime
@@ -10,6 +11,7 @@ import traceback
 import warnings
 
 import ray
+from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.exceptions import RayTaskError
 from ray.tune.error import _TuneStopTrialError
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
@@ -45,14 +47,13 @@ from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncode
 from ray.tune.web_server import TuneServer
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage
 
 MAX_DEBUG_TRIALS = 20
 
 logger = logging.getLogger(__name__)
 
 
-def find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
+def _find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
     """Returns path to most recently modified checkpoint."""
     full_paths = [
         os.path.join(ckpt_dir, fname)
@@ -64,7 +65,7 @@ def find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
     return max(full_paths)
 
 
-def load_trial_from_checkpoint(trial_cp: dict, stub: bool = False, **kwargs):
+def _load_trial_from_checkpoint(trial_cp: dict, stub: bool = False, **kwargs):
     new_trial = Trial(
         trial_cp["trainable_name"], stub=stub, _setup_default_resource=False, **kwargs
     )
@@ -72,7 +73,7 @@ def load_trial_from_checkpoint(trial_cp: dict, stub: bool = False, **kwargs):
     return new_trial
 
 
-def load_trials_from_experiment_checkpoint(
+def _load_trials_from_experiment_checkpoint(
     experiment_checkpoint: Mapping[str, Any], stub: bool = False
 ) -> List[Trial]:
     """Create trial objects from experiment checkpoint.
@@ -86,9 +87,16 @@ def load_trials_from_experiment_checkpoint(
 
     trials = []
     for trial_cp in checkpoints:
-        trials.append(load_trial_from_checkpoint(trial_cp, stub=stub))
+        trials.append(_load_trial_from_checkpoint(trial_cp, stub=stub))
 
     return trials
+
+
+@dataclass
+class _ResumeConfig:
+    resume_unfinished: bool = True
+    resume_errored: bool = False
+    restart_errored: bool = False
 
 
 class _ExperimentCheckpointManager:
@@ -356,6 +364,10 @@ class TrialRunner:
                     "fail_fast must be one of {bool, RAISE}. " f"Got {self._fail_fast}."
                 )
 
+        self._print_trial_errors = bool(
+            int(os.environ.get("TUNE_PRINT_ALL_TRIAL_ERRORS", "1"))
+        )
+
         self._server = None
         self._server_port = server_port
         if server_port is not None:
@@ -380,15 +392,18 @@ class TrialRunner:
         self._stopper = stopper or NoopStopper()
         self._resumed = False
 
-        if self._validate_resume(
+        should_resume, resume_config = self._validate_resume(
             resume_type=resume,
             driver_sync_trial_checkpoints=driver_sync_trial_checkpoints,
-        ):
-            errored_only = False
-            if isinstance(resume, str):
-                errored_only = resume.upper() == "ERRORED_ONLY"
+        )
+
+        if should_resume:
             try:
-                self.resume(run_errored_only=errored_only)
+                self.resume(
+                    resume_unfinished=resume_config.resume_unfinished,
+                    resume_errored=resume_config.resume_errored,
+                    restart_errored=resume_config.restart_errored,
+                )
                 self._resumed = True
             except Exception as e:
                 if has_verbosity(Verbosity.V3_TRIAL_DETAILS):
@@ -469,18 +484,53 @@ class TrialRunner:
     def scheduler_alg(self):
         return self._scheduler_alg
 
-    def _validate_resume(self, resume_type, driver_sync_trial_checkpoints=True):
+    def _validate_resume(
+        self, resume_type: Union[str, bool], driver_sync_trial_checkpoints=True
+    ) -> Tuple[bool, Optional[_ResumeConfig]]:
         """Checks whether to resume experiment.
 
         Args:
-            resume_type: One of True, "REMOTE", "LOCAL",
-                "PROMPT", "ERRORED_ONLY", "AUTO".
+            resume_type: One of ["REMOTE", "LOCAL", "PROMPT", "AUTO"]. Can
+                be suffixed with one or more of ["+ERRORED", "+ERRORED_ONLY",
+                "+RESTART_ERRORED", "+RESTART_ERRORED_ONLY"]
             driver_sync_trial_checkpoints: Boolean indicating if the driver
                 should sync trial checkpoints from the driver node to cloud.
+
+        Returns:
+            Tuple of (should_resume, _ResumeConfig).
         """
-        # TODO: Consider supporting ERRORED_ONLY+REMOTE?
         if not resume_type:
-            return False
+            return False, None
+
+        if resume_type is True:
+            resume_type = "LOCAL"
+        elif resume_type == "ERRORED_ONLY":
+            warnings.warn(
+                "Passing `resume='ERRORED_ONLY'` to tune.run() is deprecated and "
+                "will be removed in the future. Please pass e.g. "
+                "`resume='LOCAL+RESTART_ERRORED_ONLY'` instead."
+            )
+            resume_type = "LOCAL+RESTART_ERRORED_ONLY"
+
+        # Parse resume string, e.g. AUTO+ERRORED
+        resume_config = _ResumeConfig()
+        resume_settings = resume_type.split("+")
+        resume_type = resume_settings[0]
+
+        for setting in resume_settings:
+            if setting == "ERRORED":
+                resume_config.resume_errored = True
+            elif setting == "RESTART_ERRORED":
+                resume_config.restart_errored = True
+            elif setting == "ERRORED_ONLY":
+                resume_config.resume_unfinished = False
+                resume_config.restart_errored = False
+                resume_config.resume_errored = True
+            elif setting == "RESTART_ERRORED_ONLY":
+                resume_config.resume_unfinished = False
+                resume_config.restart_errored = True
+                resume_config.resume_errored = False
+
         assert (
             resume_type in self.VALID_RESUME_TYPES
         ), "resume_type {} is not one of {}".format(
@@ -521,7 +571,7 @@ class TrialRunner:
                         "details. "
                         "Ray Tune will now start a new experiment."
                     )
-                    return False
+                    return False, None
                 if not self.checkpoint_exists(self._local_checkpoint_dir):
                     logger.warning(
                         "A remote checkpoint was fetched, but no checkpoint "
@@ -529,25 +579,25 @@ class TrialRunner:
                         "bucket exists but does not contain any data. "
                         "Ray Tune will start a new, fresh run."
                     )
-                    return False
+                    return False, None
                 logger.info(
                     "A remote experiment checkpoint was found and will be "
                     "used to restore the previous experiment state."
                 )
-                return True
+                return True, resume_config
             elif not self.checkpoint_exists(self._local_checkpoint_dir):
                 logger.info(
                     "No local checkpoint was found. "
                     "Ray Tune will now start a new experiment."
                 )
-                return False
+                return False, None
             logger.info(
                 "A local experiment checkpoint was found and will be used "
                 "to restore the previous experiment state."
             )
-            return True
+            return True, resume_config
 
-        if resume_type in [True, "LOCAL", "PROMPT", "ERRORED_ONLY"]:
+        if resume_type in ["LOCAL", "PROMPT"]:
             if not self.checkpoint_exists(self._local_checkpoint_dir):
                 raise ValueError(
                     f"You called resume ({resume_type}) when no checkpoint "
@@ -556,26 +606,26 @@ class TrialRunner:
                     f'a new experiment, use `resume="AUTO"` or '
                     f"`resume=None`. If you expected an experiment to "
                     f"already exist, check if you supplied the correct "
-                    f"`local_dir` to `tune.run()`."
+                    f"`local_dir` to `air.RunConfig()`."
                 )
             elif resume_type == "PROMPT":
                 if click.confirm(
                     f"Resume from local directory? " f"({self._local_checkpoint_dir})"
                 ):
-                    return True
+                    return True, resume_config
 
         if resume_type in ["REMOTE", "PROMPT"]:
             if resume_type == "PROMPT" and not click.confirm(
                 f"Try downloading from remote directory? "
                 f"({self._remote_checkpoint_dir})"
             ):
-                return False
+                return False, None
             if not self._remote_checkpoint_dir or not self._syncer:
                 raise ValueError(
                     "Called resume from remote without remote directory or "
                     "without valid syncer. "
                     "Fix this by passing a `SyncConfig` object with "
-                    "`upload_dir` set to `tune.run(sync_config=...)`."
+                    "`upload_dir` set to `Tuner(sync_config=...)`."
                 )
 
             # Try syncing down the upload directory.
@@ -603,7 +653,7 @@ class TrialRunner:
                     "`resume=None`. If you expected an experiment to "
                     "already exist, check if you supplied the correct "
                     "`upload_dir` to the `tune.SyncConfig` passed to "
-                    "`tune.run()`."
+                    "`tune.Tuner()`."
                 ) from e
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
@@ -611,7 +661,7 @@ class TrialRunner:
                     "Called resume when no checkpoint exists "
                     "in remote or local directory."
                 )
-        return True
+        return True, resume_config
 
     @classmethod
     def checkpoint_exists(cls, directory):
@@ -656,13 +706,20 @@ class TrialRunner:
                 force=force,
             )
 
-    def resume(self, run_errored_only=False):
+    def resume(
+        self,
+        resume_unfinished: bool = True,
+        resume_errored: bool = False,
+        restart_errored: bool = False,
+    ):
         """Resumes all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops
         all ongoing trials.
         """
-        newest_ckpt_path = find_newest_experiment_checkpoint(self._local_checkpoint_dir)
+        newest_ckpt_path = _find_newest_experiment_checkpoint(
+            self._local_checkpoint_dir
+        )
 
         if not newest_ckpt_path:
             raise ValueError(
@@ -671,6 +728,7 @@ class TrialRunner:
                 f"experiment checkpoint data was found."
             )
 
+        logger.info(f"Using following checkpoint to resume: {newest_ckpt_path}")
         with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f, cls=TuneFunctionDecoder)
             self.checkpoint_file = newest_ckpt_path
@@ -690,13 +748,19 @@ class TrialRunner:
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
-        trials = load_trials_from_experiment_checkpoint(runner_state)
+        trials = _load_trials_from_experiment_checkpoint(runner_state)
         for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
-            if run_errored_only and trial.status == Trial.ERROR:
-                new_trial = trial.reset()
-                self.add_trial(new_trial)
-            else:
-                self.add_trial(trial)
+            trial_to_add = trial
+            if trial.status == Trial.ERROR:
+                if resume_errored:
+                    trial_to_add = trial.reset()
+                    trial_to_add.restore_path = trial.checkpoint.dir_or_data
+                elif restart_errored:
+                    trial_to_add = trial.reset()
+                    trial_to_add.restore_path = None
+            elif trial.status != Trial.TERMINATED and not resume_unfinished:
+                trial_to_add.status = Trial.TERMINATED
+            self.add_trial(trial_to_add)
 
     def update_pending_trial_resources(
         self, resources: Union[dict, PlacementGroupFactory]
@@ -914,10 +978,10 @@ class TrialRunner:
     def _on_executor_error(self, trial, e: Union[RayTaskError, TuneError]):
         error_msg = f"Trial {trial}: Error processing event."
         if self._fail_fast == TrialRunner.RAISE:
-            logger.error(error_msg, exc_info=e)
             raise e
         else:
-            logger.exception(error_msg, exc_info=e)
+            if self._print_trial_errors:
+                logger.error(error_msg, exc_info=e)
             self._process_trial_failure(trial, exc=e)
 
     def get_trial(self, tid):
@@ -953,14 +1017,14 @@ class TrialRunner:
         self.trial_executor.mark_trial_to_checkpoint(trial)
 
     def debug_string(self, delim="\n"):
-        from ray.tune.progress_reporter import trial_progress_str
+        from ray.tune.progress_reporter import _trial_progress_str
 
         result_keys = [list(t.last_result) for t in self.get_trials() if t.last_result]
         metrics = set().union(*result_keys)
         messages = [
             self._scheduler_alg.debug_string(),
             self.trial_executor.debug_string(),
-            trial_progress_str(self.get_trials(), metrics, force_table=True),
+            _trial_progress_str(self.get_trials(), metrics, force_table=True),
         ]
         return delim.join(messages)
 
@@ -1097,7 +1161,7 @@ class TrialRunner:
 
             if base_metric and base_metric not in result:
                 report_metric = base_metric
-                location = "tune.run()"
+                location = "tune.TuneConfig()"
             elif scheduler_metric and scheduler_metric not in result:
                 report_metric = scheduler_metric
                 location = type(self._scheduler_alg).__name__

@@ -14,7 +14,7 @@ class Stopper(abc.ABC):
     .. code-block:: python
 
         import time
-        from ray import tune
+        from ray import air, tune
         from ray.tune import Stopper
 
         class TimeStopper(Stopper):
@@ -28,7 +28,12 @@ class Stopper(abc.ABC):
             def stop_all(self):
                 return time.time() - self._start > self.deadline
 
-        tune.run(Trainable, num_samples=200, stop=TimeStopper())
+        tuner = Tuner(
+            Trainable,
+            tune_config=tune.TuneConfig(num_samples=200),
+            run_config=air.RunConfig(stop=TimeStopper())
+        )
+        tuner.fit()
 
     """
 
@@ -60,7 +65,11 @@ class CombinedStopper(Stopper):
             TrialPlateauStopper(metric="my_metric")
         )
 
-        tune.run(train, stop=stopper)
+        tuner = Tuner(
+            Trainable,
+            run_config=air.RunConfig(stop=stopper)
+        )
+        tuner.fit()
 
     """
 

@@ -19,7 +19,7 @@ class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
         self.connectors = connectors
 
     def is_training(self, is_training: bool):
-        self.is_training = is_training
+        self._is_training = is_training
         for c in self.connectors:
             c.is_training(is_training)
 
@@ -39,11 +39,11 @@ class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
             ret = c(ret)
         return ret
 
-    def to_config(self):
-        return AgentConnectorPipeline.__name__, [c.to_config() for c in self.connectors]
+    def to_state(self):
+        return AgentConnectorPipeline.__name__, [c.to_state() for c in self.connectors]
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: List[Any]):
         assert (
             type(params) == list
         ), "AgentConnectorPipeline takes a list of connector params."

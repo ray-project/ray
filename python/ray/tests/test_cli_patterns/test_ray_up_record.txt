@@ -11,7 +11,7 @@
 .+\.py.*EC2 Security groups \(all available node types\): sg-.+ \[default\]
 .+\.py.*EC2 AMI \(all available node types\): ami-dca37ea5 \[dlami\]
 .+\.py.*No head node found\. Launching a new cluster\. Confirm \[y/N\]: y \[automatic, due to --yes\]
-.+\.py.*Usage stats collection is enabled by default without user confirmation because this stdin is detected to be non-interactively\..+
+.+\.py.*Usage stats collection is enabled by default without user confirmation because this terminal is detected to be non-interactive\..+
 .+\.py.*Acquiring an up-to-date head node
 .+\.py.*Launched 1 nodes \[subnet_id=subnet-.+\]
 .+\.py.*Launched instance i-.+ \[state=pending, info=pending\]

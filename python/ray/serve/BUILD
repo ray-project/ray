@@ -12,6 +12,11 @@ py_library(
 
 serve_tests_srcs = glob(["tests/**/*.py"])
 
+filegroup(
+    name = "test_config_files",
+    data = glob(["tests/test_config_files/**/*"]),
+)
+
 py_test(
     name = "test_api",
     size = "medium",
@@ -182,6 +187,14 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_gcs_failure",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
 
 py_test(
     name = "test_handle",
@@ -313,6 +326,7 @@ py_test(
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
+    data = [":test_config_files"],
 )
 
 py_test(
@@ -336,6 +350,14 @@ py_test(
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_air_integrations_gpu",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve", "gpu"],
     deps = [":serve_lib"],
 )
 
@@ -365,14 +387,6 @@ py_test(
 
 py_test(
     name = "test_deployment_graph_autoscaling",
-    size = "medium",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_deployment_graph_classmethod",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -440,30 +454,6 @@ py_test(
 )
 
 py_test(
-    name = "tutorial_tensorflow",
-    size = "small",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve", "no_main"],
-    deps = [":serve_lib"]
-)
-
-py_test(
-    name = "tutorial_pytorch",
-    size = "small",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve", "no_main"],
-    deps = [":serve_lib"]
-)
-
-py_test(
-    name = "tutorial_sklearn",
-    size = "small",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive", "team:serve", "no_main"],
-    deps = [":serve_lib"]
-)
-
-py_test(
     name = "tutorial_rllib",
     size = "small",
     srcs = serve_tests_srcs,
@@ -518,5 +508,13 @@ py_test(
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_gradio",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve", "py37"],
     deps = [":serve_lib"],
 )

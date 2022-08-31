@@ -1,8 +1,10 @@
 """Manage, parse and validate options for Ray tasks, actors and actor methods."""
+import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import ray._private.ray_constants as ray_constants
+from ray._private.utils import get_ray_doc_version
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -102,6 +104,13 @@ _common_options = {
 }
 
 
+def issubclass_safe(obj: Any, cls_: type) -> bool:
+    try:
+        return issubclass(obj, cls_)
+    except TypeError:
+        return False
+
+
 _task_only_options = {
     "max_calls": _counting_option("max_calls", False, default_value=0),
     # Normal tasks may be retried on failure this many times.
@@ -117,7 +126,18 @@ _task_only_options = {
         lambda x: x is None,
         "Setting 'object_store_memory' is not implemented for tasks",
     ),
-    "retry_exceptions": Option(bool, default_value=False),
+    "retry_exceptions": Option(
+        (bool, list, tuple),
+        lambda x: (
+            isinstance(x, bool)
+            or (
+                isinstance(x, (list, tuple))
+                and all(issubclass_safe(x_, Exception) for x_ in x)
+            )
+        ),
+        "retry_exceptions must be either a boolean or a list of exceptions",
+        default_value=False,
+    ),
 }
 
 _actor_only_options = {
@@ -175,6 +195,41 @@ def _check_deprecate_placement_group(options: Dict[str, Any]):
         )
 
 
+def _warn_if_using_deprecated_placement_group(
+    options: Dict[str, Any], caller_stacklevel: int
+):
+    placement_group = options["placement_group"]
+    placement_group_bundle_index = options["placement_group_bundle_index"]
+    placement_group_capture_child_tasks = options["placement_group_capture_child_tasks"]
+    if placement_group != "default":
+        warnings.warn(
+            "placement_group parameter is deprecated. Use "
+            "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
+            "instead, see the usage at "
+            f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/package-ref.html#ray-remote.",  # noqa: E501
+            DeprecationWarning,
+            stacklevel=caller_stacklevel + 1,
+        )
+    if placement_group_bundle_index != -1:
+        warnings.warn(
+            "placement_group_bundle_index parameter is deprecated. Use "
+            "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
+            "instead, see the usage at "
+            f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/package-ref.html#ray-remote.",  # noqa: E501
+            DeprecationWarning,
+            stacklevel=caller_stacklevel + 1,
+        )
+    if placement_group_capture_child_tasks:
+        warnings.warn(
+            "placement_group_capture_child_tasks parameter is deprecated. Use "
+            "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
+            "instead, see the usage at "
+            f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/package-ref.html#ray-remote.",  # noqa: E501
+            DeprecationWarning,
+            stacklevel=caller_stacklevel + 1,
+        )
+
+
 def validate_task_options(options: Dict[str, Any], in_options: bool):
     """Options check for Ray tasks.
 
@@ -224,6 +279,18 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
 
     if options.get("get_if_exists") and not options.get("name"):
         raise ValueError("The actor name must be specified to use `get_if_exists`.")
+
+    if "object_store_memory" in options:
+        warnings.warn(
+            "Setting 'object_store_memory'"
+            " for actors is deprecated since it doesn't actually"
+            " reserve the required object store memory."
+            f" Use object spilling that's enabled by default (https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/objects/object-spilling.html) "  # noqa: E501
+            "instead to bypass the object store memory size limitation.",
+            DeprecationWarning,
+            stacklevel=1,
+        )
+
     _check_deprecate_placement_group(options)
 
 

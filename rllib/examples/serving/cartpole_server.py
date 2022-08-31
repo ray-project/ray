@@ -27,7 +27,7 @@ import gym
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.examples.custom_metrics_and_callbacks import MyCallbacks
@@ -180,7 +180,7 @@ if __name__ == "__main__":
         # Example of using DQN (supports off-policy actions).
         config.update(
             {
-                "replay_buffer_config": {"learning_starts": 100},
+                "num_steps_sampled_before_learning_starts": 100,
                 "min_sample_timesteps_per_iteration": 200,
                 "n_step": 3,
                 "rollout_fragment_length": 4,
@@ -247,10 +247,13 @@ if __name__ == "__main__":
 
     # Run with Tune for auto env and algo creation and TensorBoard.
     else:
+        print("Ignoring restore even if previous checkpoint is provided...")
         stop = {
             "training_iteration": args.stop_iters,
             "timesteps_total": args.stop_timesteps,
             "episode_reward_mean": args.stop_reward,
         }
 
-        tune.run(args.run, config=config, stop=stop, verbose=2, restore=checkpoint_path)
+        tune.Tuner(
+            args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
+        ).fit()

@@ -5,6 +5,7 @@ import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
+import io.ray.api.runtimeenv.RuntimeEnv;
 import io.ray.runtime.generated.Common.Address;
 import io.ray.runtime.generated.Common.TaskType;
 import java.nio.ByteBuffer;
@@ -48,6 +49,15 @@ public class NativeWorkerContext implements WorkerContext {
     }
   }
 
+  @Override
+  public RuntimeEnv getCurrentRuntimeEnv() {
+    String serialized_runtime_env = nativeGetSerializedRuntimeEnv();
+    if (serialized_runtime_env == null) {
+      return null;
+    }
+    return RuntimeEnv.deserialize(serialized_runtime_env);
+  }
+
   private static native int nativeGetCurrentTaskType();
 
   private static native ByteBuffer nativeGetCurrentTaskId();
@@ -59,4 +69,6 @@ public class NativeWorkerContext implements WorkerContext {
   private static native ByteBuffer nativeGetCurrentActorId();
 
   private static native byte[] nativeGetRpcAddress();
+
+  private static native String nativeGetSerializedRuntimeEnv();
 }

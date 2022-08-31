@@ -18,7 +18,7 @@ from aiohttp.web import Response
 
 import ray
 import ray.dashboard.consts as dashboard_consts
-from ray._private.ray_constants import env_bool
+from ray._private.ray_constants import RAY_INTERNAL_NAMESPACE_PREFIX, env_bool
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
@@ -34,7 +34,7 @@ except AttributeError:
 
 logger = logging.getLogger(__name__)
 
-RAY_INTERNAL_DASHBOARD_NAMESPACE = "_ray_internal_dashboard"
+RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
 
 
 class ClassMethodRouteTable:
@@ -250,7 +250,7 @@ def aiohttp_cache(
         return _wrapper
 
 
-def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
+def init_ray_and_catch_exceptions() -> Callable:
     """Decorator to be used on methods that require being connected to Ray."""
 
     def decorator_factory(f: Callable) -> Callable:
@@ -259,20 +259,22 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
             try:
                 if not ray.is_initialized():
                     try:
-                        address = self._dashboard_head.gcs_address
+                        address = self.get_gcs_address()
                         logger.info(f"Connecting to ray with address={address}")
+                        # Set the gcs rpc timeout to shorter
+                        os.environ["RAY_gcs_server_request_timeout_seconds"] = str(
+                            dashboard_consts.GCS_RPC_TIMEOUT_SECONDS
+                        )
+                        # Init ray without logging to driver
+                        # to avoid infinite logging issue.
                         ray.init(
                             address=address,
+                            log_to_driver=False,
                             namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
                         )
                     except Exception as e:
                         ray.shutdown()
                         raise e from None
-
-                if connect_to_serve:
-                    from ray import serve
-
-                    serve.start(detached=True, http_options={"host": "0.0.0.0"})
 
                 return await f(self, *args, **kwargs)
             except Exception as e:

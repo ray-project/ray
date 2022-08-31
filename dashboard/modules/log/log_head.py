@@ -59,8 +59,11 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         if not url:
             raise Exception("url is None.")
         body = await req.read()
+        # Special logic to handle hashtags only. The only character that
+        # is not getting properly encoded by aiohttp's static file server
+        encoded_url = url.replace("#", "%23")
         async with self._proxy_session.request(
-            req.method, url, data=body, headers=req.headers
+            req.method, encoded_url, data=body, headers=req.headers
         ) as r:
             sr = aiohttp.web.StreamResponse(
                 status=r.status, reason=r.reason, headers=req.headers

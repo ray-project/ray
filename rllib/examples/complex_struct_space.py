@@ -11,7 +11,7 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.models import ModelCatalog
 from ray.rllib.examples.env.simple_rpg import SimpleRPG
 from ray.rllib.examples.models.simple_rpg_model import (
@@ -53,4 +53,6 @@ if __name__ == "__main__":
         "timesteps_total": 1,
     }
 
-    tune.run("PG", config=config, stop=stop, verbose=1)
+    tuner = tune.Tuner(
+        "PG", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+    )

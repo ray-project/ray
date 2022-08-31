@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 import fnmatch
 import functools
 import io
@@ -34,6 +35,8 @@ from ray._raylet import GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
+
+logger = logging.getLogger(__name__)
 
 try:
     from prometheus_client.parser import text_string_to_metric_families
@@ -354,8 +357,8 @@ def wait_for_condition(
         try:
             if condition_predictor(**kwargs):
                 return
-        except Exception as ex:
-            last_ex = ex
+        except Exception:
+            last_ex = ray._private.utils.format_error_message(traceback.format_exc())
         time.sleep(retry_interval_ms / 1000.0)
     message = "The condition wasn't met before the timeout expired."
     if last_ex is not None:
@@ -474,7 +477,7 @@ def wait_until_succeeded_without_exception(
 
     Args:
         func: A function to run.
-        exceptions(tuple): Exceptions that are supposed to occur.
+        exceptions: Exceptions that are supposed to occur.
         args: arguments to pass for a given func
         timeout_ms: Maximum timeout in milliseconds.
         retry_interval_ms: Retry interval in milliseconds.
@@ -1366,3 +1369,104 @@ def job_hook(**kwargs):
     cmd = " ".join(kwargs["entrypoint"])
     print(f"hook intercepted: {cmd}")
     sys.exit(0)
+
+
+def find_free_port():
+    sock = socket.socket()
+    sock.bind(("", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
+def wandb_setup_api_key_hook():
+    """
+    Example external hook to set up W&B API key in
+    WandbIntegrationTest.testWandbLoggerConfig
+    """
+    return "abcd"
+
+
+# Global counter to test different return values
+# for external_ray_cluster_activity_hook1.
+ray_cluster_activity_hook_counter = 0
+ray_cluster_activity_hook_5_counter = 0
+
+
+def external_ray_cluster_activity_hook1():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns valid response and increments counter in `reason`
+    field on each call.
+    """
+    global ray_cluster_activity_hook_counter
+    ray_cluster_activity_hook_counter += 1
+
+    from pydantic import BaseModel, Extra
+
+    class TestRayActivityResponse(BaseModel, extra=Extra.allow):
+        """
+        Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
+        used in test_component_activities_hook to mimic typical
+        usage of redefining or extending response type.
+        """
+
+        is_active: str
+        reason: Optional[str] = None
+        timestamp: float
+
+    return {
+        "test_component1": TestRayActivityResponse(
+            is_active="ACTIVE",
+            reason=f"Counter: {ray_cluster_activity_hook_counter}",
+            timestamp=datetime.now().timestamp(),
+        )
+    }
+
+
+def external_ray_cluster_activity_hook2():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns invalid output because the value of `test_component2`
+    should be of type RayActivityResponse.
+    """
+    return {"test_component2": "bad_output"}
+
+
+def external_ray_cluster_activity_hook3():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns invalid output because return type is not
+    Dict[str, RayActivityResponse]
+    """
+    return "bad_output"
+
+
+def external_ray_cluster_activity_hook4():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Errors during execution.
+    """
+    raise Exception("Error in external cluster activity hook")
+
+
+def external_ray_cluster_activity_hook5():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns valid response and increments counter in `reason`
+    field on each call.
+    """
+    global ray_cluster_activity_hook_5_counter
+    ray_cluster_activity_hook_5_counter += 1
+    return {
+        "test_component5": {
+            "is_active": "ACTIVE",
+            "reason": f"Counter: {ray_cluster_activity_hook_5_counter}",
+            "timestamp": datetime.now().timestamp(),
+        }
+    }

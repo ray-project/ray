@@ -12,6 +12,8 @@ else
         PYTHON_VERSION=${PYTHON-3.8}
     elif [ "$1" = "3.9" ]; then
         PYTHON_VERSION=${PYTHON-3.9}
+    elif [ "$1" = "3.10" ]; then
+        PYTHON_VERSION=${PYTHON-3.10}
     else
         echo "Unsupported Python version."
         exit 1
@@ -33,7 +35,7 @@ eval "${WORKSPACE_DIR}/ci/ci.sh build"
 
 # Install test requirements
 python -m pip install -U \
-  pytest==5.4.3 \
+  pytest==7.0.1 \
   numpy
 
 # Train requirements.

@@ -88,15 +88,19 @@ struct hash<ray::rpc::SchedulingStrategy> {
         ray::rpc::SchedulingStrategy::kNodeAffinitySchedulingStrategy) {
       hash ^= std::hash<std::string>()(
           scheduling_strategy.node_affinity_scheduling_strategy().node_id());
-      hash ^= scheduling_strategy.node_affinity_scheduling_strategy().soft();
+      // soft returns a bool
+      hash ^= static_cast<size_t>(
+          scheduling_strategy.node_affinity_scheduling_strategy().soft());
     } else if (scheduling_strategy.scheduling_strategy_case() ==
                ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy) {
       hash ^= std::hash<std::string>()(
           scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
       hash ^= scheduling_strategy.placement_group_scheduling_strategy()
                   .placement_group_bundle_index();
-      hash ^= scheduling_strategy.placement_group_scheduling_strategy()
-                  .placement_group_capture_child_tasks();
+      // placement_group_capture_child_tasks returns a bool
+      hash ^=
+          static_cast<size_t>(scheduling_strategy.placement_group_scheduling_strategy()
+                                  .placement_group_capture_child_tasks());
     }
     return hash;
   }
@@ -301,6 +305,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   /// Whether this task is an actor task.
   bool IsActorTask() const;
+
+  // Returns the serialized exception allowlist for this task.
+  const std::string GetSerializedRetryExceptionAllowlist() const;
 
   // Methods specific to actor creation tasks.
 

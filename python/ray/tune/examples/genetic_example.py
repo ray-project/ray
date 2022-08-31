@@ -2,7 +2,7 @@
 
 It also checks that it is usable with a separate scheduler.
 """
-from ray import tune
+from ray import air, tune
 from ray.air import session
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.automl import GeneticSearch
@@ -49,14 +49,19 @@ if __name__ == "__main__":
         population_size=10 if args.smoke_test else 50,
     )
     scheduler = AsyncHyperBandScheduler()
-    analysis = tune.run(
+    tuner = tune.Tuner(
         michalewicz_function,
-        metric="neg_mean_loss",
-        mode="max",
-        name="my_exp",
-        search_alg=algo,
-        scheduler=scheduler,
-        stop={"training_iteration": 100},
+        tune_config=tune.TuneConfig(
+            metric="neg_mean_loss",
+            mode="max",
+            search_alg=algo,
+            scheduler=scheduler,
+        ),
+        run_config=air.RunConfig(
+            name="my_exp",
+            stop={"training_iteration": 100},
+        ),
     )
+    results = tuner.fit()
 
-    print("Best hyperparameters found were: ", analysis.best_config)
+    print("Best hyperparameters found were: ", results.get_best_result().config)

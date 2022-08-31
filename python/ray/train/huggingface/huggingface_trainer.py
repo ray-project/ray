@@ -11,13 +11,14 @@ import transformers
 import transformers.modeling_utils
 import transformers.trainer
 import transformers.training_args
+from transformers.trainer_utils import IntervalStrategy
 from torch.utils.data import Dataset as TorchDataset
 
-from ray import train
 from ray.air import session
 from ray.air._internal.checkpointing import (
     save_preprocessor_to_dir,
 )
+from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.constants import (
@@ -39,7 +40,6 @@ from ray.train.trainer import GenDataset
 from ray.tune.trainable import Trainable
 from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
 from ray.util import PublicAPI, get_node_ip_address
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -72,11 +72,16 @@ class _SyncedTrackedCheckpoint(_TrackedCheckpoint):
         target_ip = get_node_ip_address()
 
         if source_ip == target_ip:
-            # Move contents of source_path, but not source_path
-            # itself. shutil.move is already recursive.
-            for inner in Path(source_path).iterdir():
-                shutil.move(str(inner.absolute()), str(path))
-            shutil.rmtree(source_path, ignore_errors=True)
+            source_path = Path(source_path)
+            for inner in source_path.iterdir():
+                try:
+                    shutil.move(str(inner.absolute()), str(path.absolute()))
+                except OSError:
+                    # This file may have already been moved by another rank worker.
+                    # Disregard, as the files are identical across all ranks.
+                    pass
+            # No need to file lock here as each rank worker has its own folder.
+            shutil.rmtree(str(source_path.absolute()), ignore_errors=True)
         else:
             sync_dir_between_nodes(
                 source_ip=source_ip,
@@ -120,7 +125,7 @@ class HuggingFaceTrainer(TorchTrainer):
     The training function ran on every Actor will first run the
     specified ``trainer_init_per_worker`` function to obtain an instantiated
     ``transformers.Trainer`` object. The ``trainer_init_per_worker`` function
-    will have access to preprocessed train and evaluation datsets.
+    will have access to preprocessed train and evaluation datasets.
 
     If the ``datasets`` dict contains a training dataset (denoted by
     the "train" key), then it will be split into multiple dataset
@@ -154,6 +159,7 @@ class HuggingFaceTrainer(TorchTrainer):
 
             import ray
             from ray.train.huggingface import HuggingFaceTrainer
+            from ray.air.config import ScalingConfig
 
             model_checkpoint = "gpt2"
             tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
@@ -198,7 +204,7 @@ class HuggingFaceTrainer(TorchTrainer):
             )
             ray_train_ds = ray.data.from_huggingface(lm_datasets["train"])
             ray_evaluation_ds = ray.data.from_huggingface(
-                lm_datasets["evaluation"]
+                lm_datasets["validation"]
             )
 
             def trainer_init_per_worker(train_dataset, eval_dataset, **config):
@@ -207,6 +213,8 @@ class HuggingFaceTrainer(TorchTrainer):
                 args = transformers.TrainingArguments(
                     output_dir=f"{model_checkpoint}-wikitext2",
                     evaluation_strategy="epoch",
+                    save_strategy="epoch",
+                    logging_strategy="epoch",
                     learning_rate=2e-5,
                     weight_decay=0.01,
                 )
@@ -217,9 +225,9 @@ class HuggingFaceTrainer(TorchTrainer):
                     eval_dataset=eval_dataset,
                 )
 
-            scaling_config = {"num_workers": 3}
+            scaling_config = ScalingConfig(num_workers=3)
             # If using GPUs, use the below scaling config instead.
-            # scaling_config = {"num_workers": 3, "use_gpu": True}
+            # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
             trainer = HuggingFaceTrainer(
                 trainer_init_per_worker=trainer_init_per_worker,
                 scaling_config=scaling_config,
@@ -258,7 +266,11 @@ class HuggingFaceTrainer(TorchTrainer):
     _checkpoint_manager_cls = _DataParallelSyncingCheckpointManager
 
     _dataset_config = {
-        "train": DatasetConfig(fit=True, split=False, required=True),
+        # training dataset should be split by us
+        "train": DatasetConfig(fit=True, split=True, required=True),
+        # do not split eval dataset, as HF has a system to parallelize
+        # evaluation across workers, and it requires each worker
+        # to have the full eval dataset
         "evaluation": DatasetConfig(split=False),
     }
 
@@ -326,7 +338,7 @@ class HuggingFaceTrainer(TorchTrainer):
                 raise ValueError(
                     "HuggingFaceTrainer does not support `use_stream_api`."
                 )
-        gpus_per_worker = self.scaling_config.get("num_gpus_per_worker", 0)
+        gpus_per_worker = self.scaling_config.num_gpus_per_worker
         if gpus_per_worker > 1:
             raise ValueError(
                 f"You have assigned {gpus_per_worker} GPUs per worker. "
@@ -408,12 +420,12 @@ def _huggingface_train_loop_per_worker(config):
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
 
     # Env vars necessary for HF to setup DDP
-    os.environ["RANK"] = str(train.world_rank())
-    os.environ["WORLD_SIZE"] = str(train.world_size())
-    os.environ["LOCAL_RANK"] = str(train.local_rank())
+    os.environ["RANK"] = str(session.get_world_rank())
+    os.environ["WORLD_SIZE"] = str(session.get_world_size())
+    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
 
-    train_dataset = train.get_dataset_shard(TRAIN_DATASET_KEY)
-    eval_dataset = train.get_dataset_shard(EVALUATION_DATASET_KEY)
+    train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
+    eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)
 
     train_torch_dataset, eval_torch_dataset = process_datasets(
         train_dataset,
@@ -432,14 +444,51 @@ def _huggingface_train_loop_per_worker(config):
             "If that happens, specify `hub_token` in `TrainingArguments`."
         )
 
-    if (
-        trainer.args.evaluation_strategy == "steps"
-        or trainer.args.save_strategy == "steps"
-        or trainer.args.logging_strategy == "steps"
-    ):
+    if trainer.args.evaluation_strategy in ("steps", IntervalStrategy.STEPS):
         raise ValueError(
             "'steps' value for `evaluation_strategy`, `logging_strategy` "
-            "or `save_strategy` is not yet supported."
+            "or `save_strategy` is not yet supported.\n"
+            f"Got `evaluation_strategy={trainer.args.evaluation_strategy}`."
+        )
+
+    # For the two arguments below, HF defaults to STEPS. Unfortunately,
+    # there doesn't seem to be a way to differentiate between
+    # user-set and default values for those arguments, so we can only
+    # assume that they were set by default and print a warning.
+    # Alternatively, we can force users to set EPOCH themselves,
+    # but that wouldn't make for nice UX if the first thing they see
+    # with their code is an exception.
+
+    # HF defaults to steps, we need to override
+    if trainer.args.save_strategy in ("steps", IntervalStrategy.STEPS):
+        warnings.warn(
+            "'steps' value for `evaluation_strategy`, `logging_strategy` "
+            "or `save_strategy` is not yet supported.\n"
+            f"Got `save_strategy={trainer.args.save_strategy}`, setting "
+            "to 'epoch' automatically."
+        )
+        trainer.args.save_strategy = IntervalStrategy.EPOCH
+
+    # HF defaults to steps, we need to override
+    if trainer.args.logging_strategy in ("steps", IntervalStrategy.STEPS):
+        warnings.warn(
+            "'steps' value for `evaluation_strategy`, `logging_strategy` "
+            "or `save_strategy` is not yet supported.\n"
+            f"Got `logging_strategy={trainer.args.logging_strategy}`, setting "
+            "to 'epoch' automatically."
+        )
+        trainer.args.logging_strategy = IntervalStrategy.EPOCH
+
+    if trainer.args.load_best_model_at_end:
+        raise ValueError(
+            "As Ray AIR replaces Hugging Face checkpointing, "
+            "`load_best_model_at_end` must be set to False.\n"
+            "You can obtain the AIR Checkpoint with "
+            "`Result.checkpoint` returned by the `fit()` method "
+            "of this Trainer, and the model itself by calling "
+            "`Checkpoint.get_model()`.\n"
+            "You can configure the checkpointing by setting "
+            "`run_config.checkpoint_config`."
         )
 
     trainer = wrap_transformers_trainer(trainer)

@@ -9,6 +9,7 @@ from typing import (
     Tuple,
     Union,
 )
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 from ray.serve.context import get_global_client
 from ray.dag.class_node import ClassNode
@@ -17,10 +18,10 @@ from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
 )
-from ray.serve.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.utils import DEFAULT
-from ray.util.annotations import PublicAPI
+from ray.serve._private.utils import DEFAULT, guarded_deprecation_warning
+from ray.util.annotations import Deprecated, PublicAPI
 from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
@@ -164,7 +165,7 @@ class Deployment:
             "Use `deployment.deploy() instead.`"
         )
 
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="beta")
     def bind(self, *args, **kwargs) -> Union[ClassNode, FunctionNode]:
         """Bind the provided arguments and return a class or function node.
 
@@ -199,8 +200,22 @@ class Deployment:
                 },
             )
 
-    @PublicAPI
+    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
+    @Deprecated(message=MIGRATION_MESSAGE)
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
+        """Deploy or update this deployment.
+
+        Args:
+            init_args: args to pass to the class __init__
+                method. Not valid if this deployment wraps a function.
+            init_kwargs: kwargs to pass to the class __init__
+                method. Not valid if this deployment wraps a function.
+        """
+        record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+        self._deploy(*init_args, _blocking=_blocking, **init_kwargs)
+
+    # TODO(Sihan) Promote the _deploy to deploy after we fully deprecate the API
+    def _deploy(self, *init_args, _blocking=True, **init_kwargs):
         """Deploy or update this deployment.
 
         Args:
@@ -227,14 +242,39 @@ class Deployment:
             _blocking=_blocking,
         )
 
-    @PublicAPI
+    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
+    @Deprecated(message=MIGRATION_MESSAGE)
     def delete(self):
+        """Delete this deployment."""
+
+        return self._delete()
+
+    # TODO(Sihan) Promote the _delete to delete after we fully deprecate the API
+    def _delete(self):
         """Delete this deployment."""
 
         return get_global_client().delete_deployments([self._name])
 
-    @PublicAPI
+    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
+    @Deprecated(message=MIGRATION_MESSAGE)
     def get_handle(
+        self, sync: Optional[bool] = True
+    ) -> Union[RayServeHandle, RayServeSyncHandle]:
+        """Get a ServeHandle to this deployment to invoke it from Python.
+
+        Args:
+            sync: If true, then Serve will return a ServeHandle that
+                works everywhere. Otherwise, Serve will return an
+                asyncio-optimized ServeHandle that's only usable in an asyncio
+                loop.
+
+        Returns:
+            ServeHandle
+        """
+        return self._get_handle(sync)
+
+    # TODO(Sihan) Promote the _get_handle to get_handle after we fully deprecate the API
+    def _get_handle(
         self, sync: Optional[bool] = True
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Get a ServeHandle to this deployment to invoke it from Python.
@@ -264,11 +304,12 @@ class Deployment:
         ray_actor_options: Optional[Dict] = None,
         user_config: Optional[Any] = None,
         max_concurrent_queries: Optional[int] = None,
-        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-        _graceful_shutdown_wait_loop_s: Optional[float] = None,
-        _graceful_shutdown_timeout_s: Optional[float] = None,
-        _health_check_period_s: Optional[float] = None,
-        _health_check_timeout_s: Optional[float] = None,
+        autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+        graceful_shutdown_wait_loop_s: Optional[float] = None,
+        graceful_shutdown_timeout_s: Optional[float] = None,
+        health_check_period_s: Optional[float] = None,
+        health_check_timeout_s: Optional[float] = None,
+        _internal: bool = False,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -277,14 +318,21 @@ class Deployment:
         """
         new_config = self._config.copy()
 
-        if num_replicas is not None and _autoscaling_config is not None:
+        if num_replicas is not None and autoscaling_config is not None:
             raise ValueError(
                 "Manually setting num_replicas is not allowed when "
-                "_autoscaling_config is provided."
+                "autoscaling_config is provided."
             )
 
         if num_replicas == 0:
             raise ValueError("num_replicas is expected to larger than 0")
+
+        if not _internal and version is not None:
+            logger.warning(
+                "DeprecationWarning: `version` in `Deployment.options()` has been "
+                "deprecated. Explicitly specifying version will raise an error in the "
+                "future!"
+            )
 
         if num_replicas is not None:
             new_config.num_replicas = num_replicas
@@ -315,20 +363,20 @@ class Deployment:
         if ray_actor_options is None:
             ray_actor_options = self._ray_actor_options
 
-        if _autoscaling_config is not None:
-            new_config.autoscaling_config = _autoscaling_config
+        if autoscaling_config is not None:
+            new_config.autoscaling_config = autoscaling_config
 
-        if _graceful_shutdown_wait_loop_s is not None:
-            new_config.graceful_shutdown_wait_loop_s = _graceful_shutdown_wait_loop_s
+        if graceful_shutdown_wait_loop_s is not None:
+            new_config.graceful_shutdown_wait_loop_s = graceful_shutdown_wait_loop_s
 
-        if _graceful_shutdown_timeout_s is not None:
-            new_config.graceful_shutdown_timeout_s = _graceful_shutdown_timeout_s
+        if graceful_shutdown_timeout_s is not None:
+            new_config.graceful_shutdown_timeout_s = graceful_shutdown_timeout_s
 
-        if _health_check_period_s is not None:
-            new_config.health_check_period_s = _health_check_period_s
+        if health_check_period_s is not None:
+            new_config.health_check_period_s = health_check_period_s
 
-        if _health_check_timeout_s is not None:
-            new_config.health_check_timeout_s = _health_check_timeout_s
+        if health_check_timeout_s is not None:
+            new_config.health_check_timeout_s = health_check_timeout_s
 
         return Deployment(
             func_or_class,
@@ -355,11 +403,12 @@ class Deployment:
         ray_actor_options: Optional[Dict] = None,
         user_config: Optional[Any] = None,
         max_concurrent_queries: Optional[int] = None,
-        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-        _graceful_shutdown_wait_loop_s: Optional[float] = None,
-        _graceful_shutdown_timeout_s: Optional[float] = None,
-        _health_check_period_s: Optional[float] = None,
-        _health_check_timeout_s: Optional[float] = None,
+        autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+        graceful_shutdown_wait_loop_s: Optional[float] = None,
+        graceful_shutdown_timeout_s: Optional[float] = None,
+        health_check_period_s: Optional[float] = None,
+        health_check_timeout_s: Optional[float] = None,
+        _internal: bool = False,
     ) -> None:
         """Overwrite this deployment's options. Mutates the deployment.
 
@@ -378,11 +427,12 @@ class Deployment:
             ray_actor_options=ray_actor_options,
             user_config=user_config,
             max_concurrent_queries=max_concurrent_queries,
-            _autoscaling_config=_autoscaling_config,
-            _graceful_shutdown_wait_loop_s=_graceful_shutdown_wait_loop_s,
-            _graceful_shutdown_timeout_s=_graceful_shutdown_timeout_s,
-            _health_check_period_s=_health_check_period_s,
-            _health_check_timeout_s=_health_check_timeout_s,
+            autoscaling_config=autoscaling_config,
+            graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
+            graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
+            health_check_period_s=health_check_period_s,
+            health_check_timeout_s=health_check_timeout_s,
+            _internal=_internal,
         )
 
         self._func_or_class = validated._func_or_class

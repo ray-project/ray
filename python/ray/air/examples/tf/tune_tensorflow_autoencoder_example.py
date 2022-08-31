@@ -2,7 +2,7 @@ import argparse
 
 import ray
 from ray import tune
-from ray.air.train.integrations.tensorflow import TensorflowTrainer
+from ray.train.tensorflow import TensorflowTrainer
 
 from ray.air.examples.tf.tensorflow_mnist_example import train_func
 from ray.tune.tune_config import TuneConfig

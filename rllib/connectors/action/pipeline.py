@@ -19,7 +19,7 @@ class ActionConnectorPipeline(ConnectorPipeline, ActionConnector):
         self.connectors = connectors
 
     def is_training(self, is_training: bool):
-        self.is_training = is_training
+        self._is_training = is_training
         for c in self.connectors:
             c.is_training(is_training)
 
@@ -28,13 +28,11 @@ class ActionConnectorPipeline(ConnectorPipeline, ActionConnector):
             ac_data = c(ac_data)
         return ac_data
 
-    def to_config(self):
-        return ActionConnectorPipeline.__name__, [
-            c.to_config() for c in self.connectors
-        ]
+    def to_state(self):
+        return ActionConnectorPipeline.__name__, [c.to_state() for c in self.connectors]
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: List[Any]):
         assert (
             type(params) == list
         ), "ActionConnectorPipeline takes a list of connector params."
