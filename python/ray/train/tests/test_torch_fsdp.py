@@ -35,3 +35,11 @@ def test_torch_fsdp(ray_start_4_cpus_2_gpus):
     trainer.start()
     trainer.run(train_fn)
     trainer.shutdown()
+
+
+if __name__ == "__main__":
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main(["-v", "-x", "-s", __file__]))
