@@ -214,6 +214,7 @@ py_test_module_list(
     "test_coordinator_server.py",
     "test_k8s_operator_unit_tests.py",
     "test_monitor.py",
+    "test_node_provider_availability_tracker.py",
     "test_response_cache.py",
     "kuberay/test_autoscaling_config.py"
   ],
@@ -307,6 +308,7 @@ py_test_module_list(
   files = [
     "test_runtime_env.py",
     "test_runtime_env_2.py",
+    "test_runtime_env_failure.py",
     "test_runtime_env_working_dir.py",
     "test_runtime_env_working_dir_2.py",
     "test_runtime_env_working_dir_3.py",

@@ -11,6 +11,7 @@ import transformers
 import transformers.modeling_utils
 import transformers.trainer
 import transformers.training_args
+from transformers.trainer_utils import IntervalStrategy
 from torch.utils.data import Dataset as TorchDataset
 
 from ray.air import session
@@ -71,11 +72,16 @@ class _SyncedTrackedCheckpoint(_TrackedCheckpoint):
         target_ip = get_node_ip_address()
 
         if source_ip == target_ip:
-            # Move contents of source_path, but not source_path
-            # itself. shutil.move is already recursive.
-            for inner in Path(source_path).iterdir():
-                shutil.move(str(inner.absolute()), str(path))
-            shutil.rmtree(source_path, ignore_errors=True)
+            source_path = Path(source_path)
+            for inner in source_path.iterdir():
+                try:
+                    shutil.move(str(inner.absolute()), str(path.absolute()))
+                except OSError:
+                    # This file may have already been moved by another rank worker.
+                    # Disregard, as the files are identical across all ranks.
+                    pass
+            # No need to file lock here as each rank worker has its own folder.
+            shutil.rmtree(str(source_path.absolute()), ignore_errors=True)
         else:
             sync_dir_between_nodes(
                 source_ip=source_ip,
@@ -207,6 +213,8 @@ class HuggingFaceTrainer(TorchTrainer):
                 args = transformers.TrainingArguments(
                     output_dir=f"{model_checkpoint}-wikitext2",
                     evaluation_strategy="epoch",
+                    save_strategy="epoch",
+                    logging_strategy="epoch",
                     learning_rate=2e-5,
                     weight_decay=0.01,
                 )
@@ -258,7 +266,11 @@ class HuggingFaceTrainer(TorchTrainer):
     _checkpoint_manager_cls = _DataParallelSyncingCheckpointManager
 
     _dataset_config = {
-        "train": DatasetConfig(fit=True, split=False, required=True),
+        # training dataset should be split by us
+        "train": DatasetConfig(fit=True, split=True, required=True),
+        # do not split eval dataset, as HF has a system to parallelize
+        # evaluation across workers, and it requires each worker
+        # to have the full eval dataset
         "evaluation": DatasetConfig(split=False),
     }
 
@@ -432,14 +444,51 @@ def _huggingface_train_loop_per_worker(config):
             "If that happens, specify `hub_token` in `TrainingArguments`."
         )
 
-    if (
-        trainer.args.evaluation_strategy == "steps"
-        or trainer.args.save_strategy == "steps"
-        or trainer.args.logging_strategy == "steps"
-    ):
+    if trainer.args.evaluation_strategy in ("steps", IntervalStrategy.STEPS):
         raise ValueError(
             "'steps' value for `evaluation_strategy`, `logging_strategy` "
-            "or `save_strategy` is not yet supported."
+            "or `save_strategy` is not yet supported.\n"
+            f"Got `evaluation_strategy={trainer.args.evaluation_strategy}`."
+        )
+
+    # For the two arguments below, HF defaults to STEPS. Unfortunately,
+    # there doesn't seem to be a way to differentiate between
+    # user-set and default values for those arguments, so we can only
+    # assume that they were set by default and print a warning.
+    # Alternatively, we can force users to set EPOCH themselves,
+    # but that wouldn't make for nice UX if the first thing they see
+    # with their code is an exception.
+
+    # HF defaults to steps, we need to override
+    if trainer.args.save_strategy in ("steps", IntervalStrategy.STEPS):
+        warnings.warn(
+            "'steps' value for `evaluation_strategy`, `logging_strategy` "
+            "or `save_strategy` is not yet supported.\n"
+            f"Got `save_strategy={trainer.args.save_strategy}`, setting "
+            "to 'epoch' automatically."
+        )
+        trainer.args.save_strategy = IntervalStrategy.EPOCH
+
+    # HF defaults to steps, we need to override
+    if trainer.args.logging_strategy in ("steps", IntervalStrategy.STEPS):
+        warnings.warn(
+            "'steps' value for `evaluation_strategy`, `logging_strategy` "
+            "or `save_strategy` is not yet supported.\n"
+            f"Got `logging_strategy={trainer.args.logging_strategy}`, setting "
+            "to 'epoch' automatically."
+        )
+        trainer.args.logging_strategy = IntervalStrategy.EPOCH
+
+    if trainer.args.load_best_model_at_end:
+        raise ValueError(
+            "As Ray AIR replaces Hugging Face checkpointing, "
+            "`load_best_model_at_end` must be set to False.\n"
+            "You can obtain the AIR Checkpoint with "
+            "`Result.checkpoint` returned by the `fit()` method "
+            "of this Trainer, and the model itself by calling "
+            "`Checkpoint.get_model()`.\n"
+            "You can configure the checkpointing by setting "
+            "`run_config.checkpoint_config`."
         )
 
     trainer = wrap_transformers_trainer(trainer)

@@ -3,7 +3,6 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-import horovod.torch as hvd_torch
 import pytest
 import torch
 
@@ -11,13 +10,11 @@ import ray
 import ray.train as train
 from ray._private.test_utils import wait_for_condition
 from ray.air import CheckpointConfig
+from ray.air._internal.util import StartTraceback
 from ray.train import Trainer
 from ray.train.backend import BackendConfig, Backend
 from ray.train.constants import TRAIN_ENABLE_WORKER_SPREAD_ENV
-from ray.train.torch import TorchConfig
-from ray.train.tensorflow import TensorflowConfig
 
-from ray.train.horovod import HorovodConfig
 from ray.train.callbacks.callback import TrainingCallback
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train._internal.backend_executor import BackendExecutor
@@ -334,8 +331,9 @@ def test_run_iterator_error(ray_start_2_cpus):
     trainer.start()
     iterator = trainer.run_iterator(fail_train)
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(StartTraceback) as exc:
         next(iterator)
+    assert "NotImplementedError" in str(exc.value)
 
     assert iterator.get_final_results() is None
     assert iterator.is_finished()
@@ -699,6 +697,8 @@ def test_torch_amp_with_custom_get_state(ray_start_2_cpus):
 
 
 def test_horovod_simple(ray_start_2_cpus):
+    import horovod.torch as hvd_torch
+
     def simple_fn():
         hvd_torch.init()
         return hvd_torch.rank()
@@ -757,16 +757,18 @@ def test_user_error(ray_start_2_cpus):
     trainer = Trainer(config, num_workers=2)
     trainer.start()
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(StartTraceback) as exc:
         trainer.run(fail_train_1)
+    assert "NotImplementedError" in str(exc.value)
 
     def fail_train_2():
         for _ in range(2):
             train.report(loss=1)
         raise NotImplementedError
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(StartTraceback) as exc:
         trainer.run(fail_train_2)
+    assert "NotImplementedError" in str(exc.value)
 
 
 def test_worker_failure_1(ray_start_2_cpus):
@@ -892,10 +894,16 @@ def test_worker_kill(ray_start_2_cpus, backend):
     if backend == "test":
         test_config = TestConfig()
     elif backend == "torch":
+        from ray.train.torch import TorchConfig
+
         test_config = TorchConfig()
     elif backend == "tf":
+        from ray.train.tensorflow import TensorflowConfig
+
         test_config = TensorflowConfig()
     elif backend == "horovod":
+        from ray.train.horovod import HorovodConfig
+
         test_config = HorovodConfig()
 
     trainer = Trainer(test_config, num_workers=2)
@@ -1011,8 +1019,9 @@ def test_run_after_user_error(ray_start_2_cpus):
 
     trainer = Trainer(config, num_workers=2)
     trainer.start()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(StartTraceback) as exc:
         trainer.run(fail_train)
+    assert "NotImplementedError" in str(exc.value)
 
     def train_func():
         return 1

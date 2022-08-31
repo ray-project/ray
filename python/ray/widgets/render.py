@@ -24,6 +24,8 @@ class Template:
         """
         rendered = self.template
         for key, value in kwargs.items():
+            if isinstance(value, List):
+                value = "".join(value)
             rendered = rendered.replace("{{ " + key + " }}", value if value else "")
         return rendered
 
