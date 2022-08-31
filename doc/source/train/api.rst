@@ -7,6 +7,73 @@ This page covers advanced configurations for specific frameworks using Train.
 
 For different high level trainers and their usage, take a look at the :ref:`AIR Trainer package reference <air-trainer-ref>`.
 
+.. _train-api-torch-utils:
+
+PyTorch Training Function Utilities
+-----------------------------------
+
+.. _train-api-torch-prepare-model:
+
+train.torch.prepare_model
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.prepare_model
+    :noindex:
+
+.. _train-api-torch-prepare-data-loader:
+
+train.torch.prepare_data_loader
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.prepare_data_loader
+    :noindex:
+
+train.torch.prepare_optimizer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.prepare_optimizer
+    :noindex:
+
+
+train.torch.backward
+~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.backward
+    :noindex:
+
+.. _train-api-torch-get-device:
+
+train.torch.get_device
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.get_device
+    :noindex:
+
+train.torch.enable_reproducibility
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.enable_reproducibility
+    :noindex:
+
+.. _train-api-torch-worker-profiler:
+
+train.torch.accelerate
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.accelerate
+    :noindex:
+
+.. _train-api-tensorflow-utils:
+
+TensorFlow Training Function Utilities
+--------------------------------------
+
+train.tensorflow.prepare_dataset_shard
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.tensorflow.prepare_dataset_shard
+    :noindex:
+
 .. _train-api-backend-config:
 
 Backend Configurations
