@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Optional, Type, Union, Dict
+from typing import TYPE_CHECKING, Dict, Any, Optional, Type, Union
 
 from ray.air.checkpoint import Checkpoint
 from ray.util.annotations import PublicAPI
@@ -20,7 +20,7 @@ class LightningCheckpoint(Checkpoint):
     def from_model(
         cls,
         model: "LightningModule",
-        model_params: Dict,
+        model_params: Dict[str, Any],
         *,
         preprocessor: Optional["Preprocessor"] = None,
     ) -> "LightningCheckpoint":
@@ -40,6 +40,32 @@ class LightningCheckpoint(Checkpoint):
             >>>
             >>> model = LightningModule()
             >>> checkpoint = LightningCheckpoint.from_model(model)
+        """
+        pass
+
+    @classmethod
+    def from_path(
+        cls,
+        path: str,
+        model_cls: Type[LightningModule],
+        *,
+        preprocessor: Optional["Preprocessor"] = None,
+    ) -> "LightningCheckpoint":
+        """Create a ``ray.air.checkpoint.Checkpoint`` from a Lightning checkpoint.
+
+        Args:
+            path: The file path to the Lightning checkpoint.
+            model_cls: The LightningModule to use when loading the checkpoint.
+            preprocessor: A fitted preprocessor to be applied before inference.
+
+        Returns:
+            An :py:class:`LightningCheckpoint` containing the model.
+
+        Examples:
+            >>> from ray.train.lightning import LightningCheckpoint
+            >>> from pytorch_lightning import LightningModule
+            >>>
+            >>> checkpoint = LightningCheckpoint.from_path("/path/to/checkpoint.ckpt", LightningModule)
         """
         pass
 
