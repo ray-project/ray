@@ -41,8 +41,13 @@ class ActorManager:
 
         result = self._resolve(future)
 
+        self._futures_to_actors.pop(future)
+        self._actors_to_futures[actor_info].remove(future)
+
         if isinstance(result, ExecutionException):
-            action = self._controller.actor_failed(actor_info)
+            action = self._controller.actor_failed(
+                actor_info, exception=result.exception
+            )
             self._act_on_action(actor_info=actor_info, action=action)
         else:
             self._controller.actor_results(actor_infos=[actor_info], results=[result])
@@ -87,10 +92,11 @@ class ActorManager:
                 ready_resource = self._resource_manager.acquire_resources(
                     actor_request.resources
                 )
-                annotated_actor_cls = ready_resource.annotate_actor_classes(
-                    [actor_request.cls]
+                remote_actor_cls = ray.remote(actor_request.cls)
+                annotated_actor_cls = ready_resource.annotate_remote_objects(
+                    [remote_actor_cls]
                 )
-                actor = annotated_actor_cls.remote(actor_request.kwargs)
+                actor = annotated_actor_cls.remote(**actor_request.kwargs)
                 actor_info = ActorInfo(
                     request=actor_request, actor=actor, used_resource=ready_resource
                 )
@@ -102,6 +108,8 @@ class ActorManager:
         for actor_info in new_actors:
             action = self._controller.actor_started(actor_info)
             self._act_on_action(actor_info=actor_info, action=action)
+
+        self._actor_requests = new_actor_requests
 
     def _request_actions(self):
         actor_actions = self._controller.get_actions()
@@ -118,6 +126,7 @@ class ActorManager:
             # remove actor
             ray.kill(actor_info.actor)
             self._resource_manager.return_resources(actor_info.used_resource)
+            self._controller.actor_stopped(actor_info=actor_info)
         elif isinstance(action, Continue):
             for future in action.futures:
                 self._actors_to_futures[actor_info].add(future)

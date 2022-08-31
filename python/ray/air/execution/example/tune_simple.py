@@ -6,7 +6,7 @@ from ray.tune.trainable import wrap_function
 
 
 def train_fn(config):
-    return config["A"] - config["B"]
+    return {"metric": config["A"] - config["B"]}
 
 
 tune_controller = TuneController(
@@ -17,3 +17,4 @@ fixed_resource_manager = FixedResourceManager(total_resources={"CPU": 4})
 manager = ActorManager(
     controller=tune_controller, resource_manager=fixed_resource_manager
 )
+manager.step_until_finished()

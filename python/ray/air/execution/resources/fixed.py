@@ -19,11 +19,11 @@ def _sum_bundle_resources(bundles: List[Dict[str, float]]) -> Dict[str, float]:
 class FixedReadyResource(ReadyResource):
     bundles: List[Dict[str, float]]
 
-    def annotate_remote_object(self, obj):
+    def annotate_remote_objects(self, objects):
         all_resources = _sum_bundle_resources(self.bundles)
         num_cpus = all_resources.pop("CPU", 0)
         num_gpus = all_resources.pop("GPU", 0)
-        return obj.options(
+        return objects[0].options(
             num_cpus=num_cpus, num_gpus=num_gpus, resources=all_resources
         )
 
@@ -37,7 +37,8 @@ class FixedResourceManager(ResourceManager):
     def _available_resources(self) -> Dict[str, float]:
         available_resources = self._total_resources.copy()
         for used_resources in self._used_resources:
-            for k, v in used_resources.all_resources.items():
+            all_resources = _sum_bundle_resources(used_resources.bundles)
+            for k, v in all_resources.items():
                 available_resources[k] -= v
         return available_resources
 

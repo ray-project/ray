@@ -12,9 +12,15 @@ class ActorRequest:
     kwargs: Dict
     resources: ResourceRequest
 
+    def __hash__(self):
+        return hash(id(self))
+
 
 @dataclass
 class ActorInfo:
     request: ActorRequest
     actor: ray.actor.ActorHandle
     used_resource: ReadyResource
+
+    def __hash__(self):
+        return hash(id(self))
