@@ -124,7 +124,7 @@ class HuggingFaceTrainer(TorchTrainer):
     installed, you can also run FSDP training by specifying the ``fsdp`` argument
     in ``TrainingArguments``. For more information on configuring FSDP,
     refer to `Hugging Face documentation <https://huggingface.co/docs/transformers/\
-main/en/main_classes/trainer#transformers.TrainingArguments.fsdp>`__.
+main/en/main_classes/trainer#transformers.TrainingArguments>`__.
 
     The training function ran on every Actor will first run the
     specified ``trainer_init_per_worker`` function to obtain an instantiated
