@@ -5,9 +5,10 @@ import random
 import types
 import warnings
 import collections
+from distutils.version import LooseVersion
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Literal
 
 import ray
 from ray import train
@@ -23,7 +24,10 @@ import numpy as np
 import torch
 from torch.cuda.amp import autocast, GradScaler
 from torch.nn.parallel import DistributedDataParallel
-from torch.distributed.fsdp import FullyShardedDataParallel
+if LooseVersion(torch.__version__) < LooseVersion("1.11.0"):
+    FullyShardedDataParallel = None
+else:
+    from torch.distributed.fsdp import FullyShardedDataParallel
 from torch.utils.data import (
     DistributedSampler,
     DataLoader,
@@ -50,10 +54,8 @@ def get_device() -> torch.device:
 def prepare_model(
     model: torch.nn.Module,
     move_to_device: bool = True,
-    wrap_ddp: bool = True,
-    ddp_kwargs: Optional[Dict[str, Any]] = None,
-    wrap_fsdp: bool = False,
-    fsdp_kwargs: Optional[Dict[str, Any]] = None,
+    parallel_strategy: Literal["ddp", "fsdp", None] = "ddp",
+    parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.nn.Module:
     """Prepares the model for distributed execution.
 
@@ -65,24 +67,24 @@ def prepare_model(
         move_to_device: Whether to move the model to the correct
             device. If set to False, the model needs to manually be moved
             to the correct device.
-        wrap_ddp: Whether to wrap models in
-            ``DistributedDataParallel``.
-        ddp_kwargs (Dict[str, Any]): Args to pass into
-            ``DistributedDataParallel`` initialization if ``wrap_ddp`` is
-            set to True.
-        wrap_fsdp: Whether to wrap models in
-            ``FullyShardedDDataParallel``.
-        fsdp_kwargs (Dict[str, Any]): Arsg to pass into
-            ``FullyShardedDataParallel`` initialization if ``wrap_fsdp`` is
-            set to True.
+        parallel_strategy: Whether to wrap models in
+            ``DistributedDataParallel``, ``FullyShardedDataParallel``,
+            or neither.
+        parallel_strategy_kwargs (Dict[str, Any]): Args to pass into
+            ``DistributedDataParallel`` or ``FullyShardedDataParallel``
+            initialization if ``parallel_strategy`` is set to "ddp"
+            or "fsdp", respectively.
     """
+    if parallel_strategy == "fsdp" and FullyShardedDataParallel is None:
+        raise RuntimeError(
+            "FullyShardedDataParallel requires torch>=1.11.0. "
+            "Run `pip install 'torch>=1.11.0'` to use FullyShardedDataParallel."
+        )
     return get_accelerator(_TorchAccelerator).prepare_model(
         model,
         move_to_device=move_to_device,
-        wrap_ddp=wrap_ddp,
-        ddp_kwargs=ddp_kwargs,
-        wrap_fsdp=wrap_fsdp,
-        fsdp_kwargs=fsdp_kwargs,
+        parallel_strategy=parallel_strategy,
+        parallel_strategy_kwargs=parallel_strategy_kwargs,
     )
 
 
@@ -273,10 +275,8 @@ class _TorchAccelerator(Accelerator):
         self,
         model: torch.nn.Module,
         move_to_device: bool = True,
-        wrap_ddp: bool = True,
-        ddp_kwargs: Optional[Dict[str, Any]] = None,
-        wrap_fsdp: bool = False,
-        fsdp_kwargs: Optional[Dict[str, Any]] = None,
+        parallel_strategy: Literal["ddp", "fsdp", None] = "ddp",
+        parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.nn.Module:
         """Prepares the model for distributed execution.
 
@@ -288,19 +288,15 @@ class _TorchAccelerator(Accelerator):
             move_to_device: Whether to move the model to the correct
                 device. If set to False, the model needs to manually be moved
                 to the correct device.
-            wrap_ddp: Whether to wrap models in
-                ``DistributedDataParallel``.
-            ddp_kwargs (Dict[str, Any]): Args to pass into
-                ``DistributedDataParallel`` initialization if ``wrap_ddp`` is
-                set to True.
-            wrap_fsdp: Whether to wrap models in
-                ``FullyShardedDataParallel``.
-            fsdp_kwargs (Dict[str, Any]): Args to pass into
-                ``FullyShardedDataParallel`` initialization if ``wrap_fsdp`` is
-                set to True.
+            parallel_strategy: Whether to wrap models in
+                ``DistributedDataParallel``, ``FullyShardedDataParallel``,
+                or neither.
+            parallel_strategy_kwargs (Dict[str, Any]): Args to pass into
+                ``DistributedDataParallel`` or ``FullyShardedDataParallel``
+                initialization if ``parallel_strategy`` is set to "ddp"
+                or "fsdp", respectively.
         """
-        ddp_kwargs = ddp_kwargs or {}
-        fsdp_kwargs = fsdp_kwargs or {}
+        parallel_strategy_kwargs = parallel_strategy_kwargs or {}
 
         # Backwards compatibility
         try:
@@ -360,25 +356,18 @@ class _TorchAccelerator(Accelerator):
         except Exception:
             world_size = train.world_size()
 
-        if (wrap_ddp or wrap_fsdp) and world_size > 1:
-            if wrap_ddp and wrap_fsdp:
-                logger.warn("Both FSDP and DDP have been set, falling back to FSDP.")
-            if wrap_fsdp:
-                DataParallel = FullyShardedDataParallel
-                data_parallel_kwargs = fsdp_kwargs
-            else:
-                DataParallel = DistributedDataParallel
-                data_parallel_kwargs = ddp_kwargs
+        if parallel_strategy and world_size > 1:
+            DataParallel = DistributedDataParallel if parallel_strategy == "ddp" else FullyShardedDataParallel
             if rank == 0:
                 logger.info(f"Wrapping provided model in {DataParallel.__name__}.")
             else:
                 logger.debug(f"Wrapping provided model in {DataParallel.__name__}.")
             if torch.cuda.is_available():
                 model = DataParallel(
-                    model, device_ids=[rank], output_device=rank, **data_parallel_kwargs
+                    model, device_ids=[rank], output_device=rank, **parallel_strategy_kwargs
                 )
             else:
-                model = DataParallel(model, **data_parallel_kwargs)
+                model = DataParallel(model, **parallel_strategy_kwargs)
 
         return model
 

@@ -155,27 +155,17 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
 
 
 # TODO: Refactor as a backend test.
-@pytest.mark.parametrize(
-    "prepare_model_kwargs", (
-        {"wrap_ddp": True, "wrap_fsdp": False},
-        {"wrap_ddp": False, "wrap_fsdp": True},
-    )
-)
-def test_torch_prepare_model(ray_start_4_cpus_2_gpus, prepare_model_kwargs):
-    """Tests if ``prepare_model`` correctly wraps in DDP and FSDP."""
+def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
+    """Tests if ``prepare_model`` correctly wraps in DDP."""
 
     def train_fn():
         model = torch.nn.Linear(1, 1)
 
-        # Wrap in DDP or FSDP.
-        model = train.torch.prepare_model(model, **prepare_model_kwargs)
+        # Wrap in DDP.
+        model = train.torch.prepare_model(model)
 
-        # Make sure model is wrapped in DDP or FSDP.
-        if prepare_model_kwargs["wrap_ddp"]:
-            DataParallel = DistributedDataParallel
-        else:
-            DataParallel = FullyShardedDataParallel
-        assert isinstance(model, DataParallel)
+        # Make sure model is wrapped in DDP.
+        assert isinstance(model, DistributedDataParallel)
 
         # Make sure model is on cuda.
         assert next(model.parameters()).is_cuda
