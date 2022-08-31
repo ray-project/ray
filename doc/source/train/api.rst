@@ -2,121 +2,156 @@
 
 Ray Train API
 =============
+This page covers framework specific integrations with Ray Train and Ray Train Developer APIs.
 
-This page covers advanced configurations for specific frameworks using Train.
+For core Ray AIR APIs, take a look at the :ref:`AIR Trainer package reference <air-trainer-ref>`.
 
-For different high level trainers and their usage, take a look at the :ref:`AIR Trainer package reference <air-trainer-ref>`.
+Trainer and Predictor Integrations
+----------------------------------
 
-.. _train-api-torch-utils:
+XGBoost
+~~~~~~~
 
-PyTorch Training Function Utilities
------------------------------------
+.. autoclass:: ray.train.xgboost.XGBoostTrainer
+    :members:
+    :show-inheritance:
 
-.. _train-api-torch-prepare-model:
-
-train.torch.prepare_model
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.train.torch.prepare_model
-    :noindex:
-
-.. _train-api-torch-prepare-data-loader:
-
-train.torch.prepare_data_loader
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.train.torch.prepare_data_loader
-    :noindex:
-
-train.torch.prepare_optimizer
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.train.torch.prepare_optimizer
-    :noindex:
+    .. automethod:: __init__
 
 
-train.torch.backward
-~~~~~~~~~~~~~~~~~~~~
+.. automodule:: ray.train.xgboost
+    :members:
+    :exclude-members: XGBoostTrainer
+    :show-inheritance:
 
-.. autofunction:: ray.train.torch.backward
-    :noindex:
+LightGBM
+~~~~~~~~
 
-.. _train-api-torch-get-device:
+.. autoclass:: ray.train.lightgbm.LightGBMTrainer
+    :members:
+    :show-inheritance:
 
-train.torch.get_device
-~~~~~~~~~~~~~~~~~~~~~~
+    .. automethod:: __init__
 
-.. autofunction:: ray.train.torch.get_device
-    :noindex:
 
-train.torch.enable_reproducibility
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. automodule:: ray.train.lightgbm
+    :members:
+    :exclude-members: LightGBMTrainer
+    :show-inheritance:
 
-.. autofunction:: ray.train.torch.enable_reproducibility
-    :noindex:
+TensorFlow
+~~~~~~~~~~
 
-.. _train-api-torch-worker-profiler:
+.. autoclass:: ray.train.tensorflow.TensorflowTrainer
+    :members:
+    :show-inheritance:
 
-train.torch.accelerate
-~~~~~~~~~~~~~~~~~~~~~~
+    .. automethod:: __init__
 
-.. autofunction:: ray.train.torch.accelerate
-    :noindex:
 
-.. _train-api-tensorflow-utils:
+.. automodule:: ray.train.tensorflow
+    :members:
+    :exclude-members: TensorflowTrainer
+    :show-inheritance:
 
-TensorFlow Training Function Utilities
---------------------------------------
+PyTorch
+~~~~~~~
 
-train.tensorflow.prepare_dataset_shard
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. autoclass:: ray.train.torch.TorchTrainer
+    :members:
+    :show-inheritance:
 
-.. autofunction:: ray.train.tensorflow.prepare_dataset_shard
-    :noindex:
+    .. automethod:: __init__
 
-.. _train-api-backend-config:
 
-Backend Configurations
-----------------------
+.. automodule:: ray.train.torch
+    :members:
+    :exclude-members: TorchTrainer
+    :show-inheritance:
 
-.. _train-api-torch-config:
+Horovod
+~~~~~~~
 
-TorchConfig
+.. autoclass:: ray.train.horovod.HorovodTrainer
+    :members:
+    :show-inheritance:
+
+    .. automethod:: __init__
+
+
+.. automodule:: ray.train.horovod
+    :members:
+    :exclude-members: HorovodTrainer
+    :show-inheritance:
+
+HuggingFace
 ~~~~~~~~~~~
 
-.. autoclass:: ray.train.torch.TorchConfig
+.. autoclass:: ray.train.huggingface.HuggingFaceTrainer
+    :members:
+    :show-inheritance:
+
+    .. automethod:: __init__
+
+
+.. automodule:: ray.train.huggingface
+    :members:
+    :exclude-members: HuggingFaceTrainer
+    :show-inheritance:
+
+Scikit-Learn
+~~~~~~~~~~~~
+
+.. autoclass:: ray.train.sklearn.SklearnTrainer
+    :members:
+    :show-inheritance:
+
+    .. automethod:: __init__
+
+
+.. automodule:: ray.train.sklearn
+    :members:
+    :exclude-members: SklearnTrainer
+    :show-inheritance:
+
+
+Reinforcement Learning (RLlib)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ray.train.rl
+    :members:
+    :show-inheritance:
+
+
+Base Classes (Developer APIs)
+-----------------------------
+.. autoclass:: ray.train.trainer.BaseTrainer
+    :members:
     :noindex:
 
-.. _train-api-tensorflow-config:
+    .. automethod:: __init__
+        :noindex:
 
-TensorflowConfig
-~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.train.tensorflow.TensorflowConfig
+.. autoclass:: ray.train.data_parallel_trainer.DataParallelTrainer
+    :members:
+    :show-inheritance:
     :noindex:
 
-.. _train-api-horovod-config:
+    .. automethod:: __init__
+        :noindex:
 
-HorovodConfig
-~~~~~~~~~~~~~
-
-.. autoclass:: ray.train.horovod.HorovodConfig
+.. autoclass:: ray.train.gbdt_trainer.GBDTTrainer
+    :members:
+    :show-inheritance:
     :noindex:
 
-.. _train-api-backend-interfaces:
-
-Backend interfaces (for developers only)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Backend
-+++++++
+    .. automethod:: __init__
+        :noindex:
 
 .. autoclass:: ray.train.backend.Backend
+    :members:
 
-BackendConfig
-+++++++++++++
 
-.. autoclass:: ray.train.backend.BackendConfig
 
 
 Deprecated APIs
