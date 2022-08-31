@@ -6,7 +6,6 @@ import io.ray.api.function.PyActorClass;
 
 /** A helper to create python actor. */
 public class PyActorCreator extends BaseActorCreator<PyActorCreator> {
-
   private final PyActorClass pyActorClass;
   private final Object[] args;
 

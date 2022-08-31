@@ -187,7 +187,7 @@ public class CrossLanguageInvocationTest extends BaseTest {
     }
     {
       PyActorHandle actor =
-          Ray.actor(PyActorClass.of(PYTHON_MODULE, "NonAsyncCounter"), "1".getBytes())
+          Ray.actor(PyActorClass.of(PYTHON_MODULE, "SyncCounter"), "1".getBytes())
               .setAsync(false)
               .remote();
       actor.task(PyActorMethod.of("block_task", byte[].class)).remote();
@@ -195,15 +195,11 @@ public class CrossLanguageInvocationTest extends BaseTest {
           actor.task(PyActorMethod.of("increase", byte[].class), "1".getBytes()).remote();
       Supplier<Boolean> getValue =
           () -> {
-            try {
               if (equals(res.get() == "2".getBytes())) {
                 return true;
               } else {
                 return false;
               }
-            } catch (CrossLanguageException e) {
-              return false;
-            }
           };
       Assert.assertFalse(TestUtils.waitForCondition(getValue, 30000));
     }

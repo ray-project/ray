@@ -146,7 +146,7 @@ class AsyncCounter(object):
 
 
 @ray.remote
-class NonAsyncCounter(object):
+class SyncCounter(object):
     def __init__(self, value):
         self.value = int(value)
         self.event = asyncio.Event()
