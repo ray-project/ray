@@ -569,8 +569,8 @@ def read_csv(
         >>> convert_options = csv.ConvertOptions(
         ...     timestamp_parsers=["%m/%d/%Y"])
         >>> ray.data.read_csv( # doctest: +SKIP
-        >>>     "example://dow_jones_index.csv",
-        >>>     convert_options=convert_options)
+        ...     "example://dow_jones_index.csv",
+        ...     convert_options=convert_options)
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
