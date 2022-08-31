@@ -90,7 +90,7 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     result = trainer.fit()
 
     assert result.metrics["epoch"] == epochs
-    assert result.metrics["training_iteration"] == math.ceil(epochs * 2 / logging_steps)
+    assert result.metrics["training_iteration"] == math.ceil(epochs / logging_steps)
     assert result.checkpoint
     assert "eval_loss" in result.metrics
 
@@ -117,7 +117,7 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
             == math.ceil(1 * 2 / logging_steps) + 1
         )
     else:
-        assert result2.metrics["training_iteration"] == math.ceil(1 * 2 / logging_steps)
+        assert result2.metrics["training_iteration"] == math.ceil(1 / logging_steps)
     assert result2.checkpoint
     assert "eval_loss" in result2.metrics
 
