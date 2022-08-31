@@ -152,3 +152,5 @@ class ActorManager:
             for future in action.futures:
                 self._actors_to_futures[actor_info].add(future)
                 self._futures_to_actors[future] = actor_info
+        else:
+            raise RuntimeError(f"Unknown action: {type(action)}")

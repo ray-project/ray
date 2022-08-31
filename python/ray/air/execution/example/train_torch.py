@@ -4,8 +4,11 @@ import torch.nn as nn
 
 import ray.train as train
 from ray.air import session
-from ray.train.torch import TorchTrainer
-from ray.air.config import ScalingConfig
+from ray.air.execution.actor_manager import ActorManager
+from ray.air.execution.impl.train.train_controller import TrainController
+from ray.air.execution.resources.fixed import FixedResourceManager
+from ray.train._internal.utils import construct_train_func
+from ray.train.torch import TorchConfig
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -52,6 +55,7 @@ def validate_epoch(dataloader, model, loss_fn):
 
 
 def train_func(config):
+    print("START TRAINING")
     data_size = config.get("data_size", 1000)
     val_size = config.get("val_size", 400)
     batch_size = config.get("batch_size", 32)
@@ -89,14 +93,18 @@ def train_func(config):
 def train_linear(num_workers=2, use_gpu=False, epochs=3):
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
 
+    wrapped_train_func = construct_train_func(train_func, config)
 
-
-    trainer = TorchTrainer(
-        train_func,
-        train_loop_config=config,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+    train_controller = TrainController(
+        train_fn=wrapped_train_func,
+        backend_config=TorchConfig(),
     )
-    results = trainer.fit()
+    fixed_resource_manager = FixedResourceManager(total_resources={"CPU": 4})
+    manager = ActorManager(
+        controller=train_controller, resource_manager=fixed_resource_manager
+    )
+    manager.step_until_finished()
 
-    print(results.metrics)
-    return results
+
+if __name__ == "__main__":
+    train_linear(num_workers=2)
