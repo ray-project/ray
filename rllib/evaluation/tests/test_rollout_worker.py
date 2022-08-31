@@ -801,7 +801,7 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=MockPolicy,
             sample_async=True,
-            observation_filter="ConcurrentMeanStdFilter",
+            policy_config={"observation_filter": "ConcurrentMeanStdFilter"},
         )
         time.sleep(2)
         ev.sample()
@@ -816,7 +816,7 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=MockPolicy,
             sample_async=True,
-            observation_filter="ConcurrentMeanStdFilter",
+            policy_config={"observation_filter": "ConcurrentMeanStdFilter"},
         )
         self.sample_and_flush(ev)
         filters = ev.get_filters(flush_after=False)
@@ -833,7 +833,7 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=MockPolicy,
             sample_async=True,
-            observation_filter="ConcurrentMeanStdFilter",
+            policy_config={"observation_filter": "ConcurrentMeanStdFilter"},
         )
         obs_f = self.sample_and_flush(ev)
 

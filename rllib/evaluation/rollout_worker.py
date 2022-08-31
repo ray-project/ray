@@ -68,8 +68,7 @@ from ray.rllib.utils.typing import (
 from ray.util.annotations import PublicAPI
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
 from ray.util.iter import ParallelIteratorWorker
-from ray.rllib.connectors.util import get_synced_filter_connector
-from ray.rllib.connectors.connector import ConnectorContext
+from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa
@@ -226,7 +225,6 @@ class RolloutWorker(ParallelIteratorWorker):
         compress_observations: bool = False,
         num_envs: int = 1,
         observation_fn: Optional["ObservationFunction"] = None,
-        observation_filter: str = "NoFilter",
         clip_rewards: Optional[Union[bool, float]] = None,
         normalize_actions: bool = True,
         clip_actions: bool = False,
@@ -309,7 +307,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 and vectorize the computation of actions. This has no effect if
                 if the env already implements VectorEnv.
             observation_fn: Optional multi-agent observation function.
-            observation_filter: Name of observation filter to use.
             clip_rewards: True for clipping rewards to [-1.0, 1.0] prior
                 to experience postprocessing. None: Clip for Atari only.
                 float: Clip to [-clip_rewards; +clip_rewards].
@@ -459,7 +456,6 @@ class RolloutWorker(ParallelIteratorWorker):
         self.preprocessing_enabled: bool = not policy_config.get(
             "_disable_preprocessor_api"
         )
-        self.observation_filter = observation_filter
         self.last_batch: Optional[SampleBatchType] = None
         self.global_vars: Optional[dict] = None
         self.fake_sampler: bool = fake_sampler
@@ -642,19 +638,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # TODO(jungong) : clean up after non-connector env_runner is fully deprecated.
         self.filters: Dict[PolicyID, Filter] = {}
         for (policy_id, policy) in self.policy_map.items():
-            if policy_config.get("enable_connectors"):
-                ctx = ConnectorContext.from_policy(policy)
-                connector = get_synced_filter_connector(
-                    ctx,
-                    self.observation_filter,
-                )
-                # Configuration option "NoFilter" results in `connector==None`.
-                if connector:
-                    policy.agent_connectors.insert_after(
-                        "ObsPreprocessorConnector", connector
-                    )
-                    self.filters[policy_id] = connector.filter
-            else:
+            if not policy_config.get("enable_connectors"):
                 filter_shape = tree.map_structure(
                     lambda s: (
                         None
@@ -664,7 +648,8 @@ class RolloutWorker(ParallelIteratorWorker):
                     policy.observation_space_struct,
                 )
                 self.filters[policy_id] = get_filter(
-                    self.observation_filter, filter_shape
+                    self.policy_map[policy_id].config.get("observation_filter"),
+                    filter_shape,
                 )
 
         if self.worker_index == 0:
@@ -1239,6 +1224,8 @@ class RolloutWorker(ParallelIteratorWorker):
         """
         if policy_id in self.policy_map:
             raise KeyError(f"Policy ID '{policy_id}' already in policy map!")
+        connectors_enabled = self.policy_config.get("enable_connectors", False)
+
         policy_dict_to_add = _determine_spaces_for_multi_agent_dict(
             {
                 policy_id: PolicySpec(
@@ -1259,19 +1246,7 @@ class RolloutWorker(ParallelIteratorWorker):
             new_policy.set_state(policy_state)
 
         # Enabling connectors is not per policy, so we can use the general config here
-        if self.policy_config.get("enable_connectors"):
-            ctx = ConnectorContext.from_policy(new_policy)
-            connector = get_synced_filter_connector(
-                ctx,
-                self.observation_filter,
-            )
-            # Configuration option "NoFilter" results in `connector==None`.
-            if connector:
-                new_policy.agent_connectors.insert_after(
-                    "ObsPreprocessorConnector", connector
-                )
-                self.filters[policy_id] = connector.filter
-        else:
+        if not connectors_enabled:
             filter_shape = tree.map_structure(
                 lambda s: (
                     None
@@ -1283,8 +1258,15 @@ class RolloutWorker(ParallelIteratorWorker):
 
             self.filters[policy_id] = get_filter(self.observation_filter, filter_shape)
 
-        if self.policy_config.get("enable_connectors") and policy_id in self.policy_map:
+        if connectors_enabled and policy_id in self.policy_map:
             create_connectors_for_policy(self.policy_map[policy_id], self.policy_config)
+
+            # As long as the historic filter synchronization mechanism is in
+            # place, we need to put filters into self.filters so that they get
+            # synchronized
+            for connector in self.policy_map[policy_id].agent_connectors.connectors:
+                if isinstance(connector, SyncedFilterAgentConnector):
+                    self.filters[policy_id] = connector.filter
 
         self.set_policy_mapping_fn(policy_mapping_fn)
         if policies_to_train is not None:
@@ -1852,6 +1834,13 @@ class RolloutWorker(ParallelIteratorWorker):
 
             if connectors_enabled and name in self.policy_map:
                 create_connectors_for_policy(self.policy_map[name], policy_config)
+
+                # As long as the historic filter synchronization mechanism is in
+                # place, we need to put filters into self.filters so that they get
+                # synchronized
+                for connector in self.policy_map[name].agent_connectors.connectors:
+                    if isinstance(connector, SyncedFilterAgentConnector):
+                        self.filters[name] = connector.filter
 
             if name in self.policy_map:
                 self.callbacks.on_create_policy(

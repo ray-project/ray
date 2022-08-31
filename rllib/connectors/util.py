@@ -39,6 +39,13 @@ def get_agent_connectors_from_config(
             ClipRewardAgentConnector(ctx, limit=abs(config["clip_rewards"]))
         )
 
+    filter_connector = get_synced_filter_connector(
+        ctx,
+    )
+    # Configuration option "NoFilter" results in `connector==None`.
+    if filter_connector:
+        connectors.insert_after("ObsPreprocessorConnector", filter_connector)
+
     if not config["_disable_preprocessor_api"]:
         connectors.append(ObsPreprocessorConnector(ctx))
 
@@ -107,12 +114,13 @@ def restore_connectors_for_policy(
 
 # We need this filter selection mechanism temporarily to remain compatible to old API
 @DeveloperAPI
-def get_synced_filter_connector(ctx: ConnectorContext, filter_config):
-    if filter_config == "MeanStdFilter":
+def get_synced_filter_connector(ctx: ConnectorContext):
+    filter_specifier = ctx.config.get("observation_filter")
+    if filter_specifier == "MeanStdFilter":
         return MeanStdObservationFilterAgentConnector(ctx, clip=None)
-    elif filter_config == "ConcurrentMeanStdFilter":
+    elif filter_specifier == "ConcurrentMeanStdFilter":
         return ConcurrentMeanStdObservationFilterAgentConnector(ctx, clip=None)
-    elif filter_config == "NoFilter":
+    elif filter_specifier == "NoFilter":
         return None
     else:
-        raise Exception("Unknown observation_filter: " + str(filter_config))
+        raise Exception("Unknown observation_filter: " + str(filter_specifier))
