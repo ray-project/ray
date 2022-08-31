@@ -172,7 +172,7 @@ class GraphVisualizer:
                 args.append(input_values[loc])
             except ValueError:
                 args.append(None)
-        
+
         # Extract keyword args
         kwargs = {
             input_keys[i]: input_values[i]

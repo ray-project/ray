@@ -26,7 +26,7 @@ def graph1():
             return x
 
     with InputNode() as user_input:
-        input_nodes = (user_input[0], user_input['key'])
+        input_nodes = (user_input[0], user_input["key"])
         f_node = f.bind(input_nodes[0])
         m = Model.bind(f_node)
         dag = m.run.bind(input_nodes[1])
