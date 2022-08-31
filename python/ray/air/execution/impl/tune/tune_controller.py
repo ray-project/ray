@@ -7,7 +7,8 @@ from ray.air.execution.actor_request import ActorRequest, ActorInfo
 from ray.air.execution.controller import Controller
 
 # Legacy tune
-from ray.air.execution.impl.tune.tune_result import TuneTrainingResult, TuneSavingResult
+from ray.air.execution.future import TypedFuture
+from ray.air.execution.impl.tune.tune_result import TuneTrainingResult
 from ray.air.execution.resources.request import ResourceRequest
 from ray.air.execution.result import ExecutionResult
 from ray.tune.callback import CallbackList
@@ -104,7 +105,13 @@ class TuneController(Controller):
         self._callbacks.on_trial_start(
             iteration=0, trials=self._all_trials, trial=trial
         )
-        return action.Continue(futures=[actor_info.actor.train.remote()])
+        return action.Continue(
+            futures=[
+                TypedFuture(
+                    future=actor_info.actor.train.remote(), cls=TuneTrainingResult
+                )
+            ]
+        )
 
     def actor_failed(self, actor_info: ActorInfo, exception: Exception) -> None:
         """Register actor failure. Return immediate decision."""
@@ -141,16 +148,8 @@ class TuneController(Controller):
     ):
         """Handle result."""
         for actor_info, result in zip(actor_infos, results):
-            # Todo: instead of resolving the results here, the trainable
-            # should return the execution results in the first place
-            if isinstance(result, str):
-                # Does not work, yet
-                exec_result = TuneSavingResult(result)
-            else:
-                exec_result = TuneTrainingResult(metrics=result)
-
-            if isinstance(exec_result, TuneTrainingResult):
-                self._handle_training_result(actor_info, exec_result)
+            if isinstance(result, TuneTrainingResult):
+                self._handle_training_result(actor_info, result)
 
     def _handle_training_result(
         self, actor_info: ActorInfo, result: TuneTrainingResult
@@ -191,7 +190,13 @@ class TuneController(Controller):
         elif decision == TrialScheduler.NOOP:
             act = None
         else:
-            act = action.Continue(futures=[actor_info.actor.train.remote()])
+            act = action.Continue(
+                futures=[
+                    TypedFuture(
+                        future=actor_info.actor.train.remote(), cls=TuneTrainingResult
+                    )
+                ]
+            )
 
         if act:
             self._actions[actor_info].append(act)

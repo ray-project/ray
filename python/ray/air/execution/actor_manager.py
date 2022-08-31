@@ -6,8 +6,26 @@ import ray
 from ray.air.execution.action import Action, Continue, Stop
 from ray.air.execution.actor_request import ActorRequest, ActorInfo
 from ray.air.execution.controller import Controller
+from ray.air.execution.future import TypedFuture
 from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.air.execution.result import ExecutionResult, ExecutionException
+
+
+def _resolve(
+    future: Union[TypedFuture, List[TypedFuture]]
+) -> Union[ExecutionResult, List[ExecutionResult]]:
+    if isinstance(future, list):
+        return _resolve_multiple_futures(future)
+    else:
+        return _resolve_multiple_futures([future])[0]
+
+
+def _resolve_multiple_futures(futures: List[TypedFuture]) -> List[ExecutionResult]:
+    try:
+        results = ray.get([f.future for f in futures])
+    except Exception as e:
+        return [ExecutionException(e) for i in range(len(futures))]
+    return [f.convert_result(result) for f, result in zip(futures, results)]
 
 
 class ActorManager:
@@ -37,15 +55,15 @@ class ActorManager:
         self._start_new_actors()
 
     def _handle_next_future(self):
-        actor_info, future = self._get_next_future()
+        actor_info, typed_future = self._get_next_future()
 
         if not actor_info:
             return
 
-        result = self._resolve(future)
+        result = _resolve(typed_future)
 
-        self._futures_to_actors.pop(future)
-        self._actors_to_futures[actor_info].remove(future)
+        self._futures_to_actors.pop(typed_future)
+        self._actors_to_futures[actor_info].remove(typed_future)
 
         if isinstance(result, ExecutionException):
             self._clear_actor_futures(actor_info=actor_info)
@@ -54,32 +72,26 @@ class ActorManager:
         else:
             self._controller.actor_results(actor_infos=[actor_info], results=[result])
 
-    def _get_next_future(self) -> Tuple[Optional[ActorInfo], Optional[ray.ObjectRef]]:
-        actor_futures = list(self._futures_to_actors.keys())
+    def _get_next_future(self) -> Tuple[Optional[ActorInfo], Optional[TypedFuture]]:
+        futures_to_typed = {tf.future: tf for tf in self._futures_to_actors.keys()}
+        raw_actor_futures = list(futures_to_typed.keys())
         resource_futures = self._resource_manager.get_resource_futures()
 
-        random.shuffle(actor_futures)
+        random.shuffle(raw_actor_futures)
 
         # Prioritize resource futures
-        futures = resource_futures + actor_futures
+        futures = resource_futures + raw_actor_futures
 
         ready, not_ready = ray.wait(futures, timeout=0, num_returns=1)
         if not ready:
             return None, None
 
         next_future = ready[0]
+        next_typed_future = futures_to_typed[next_future]
+        actor_info = self._futures_to_actors.get(next_typed_future)
 
         # Todo: handle resource futures
-        return self._futures_to_actors.get(next_future), next_future
-
-    def _resolve(
-        self, future: Union[ray.ObjectRef, List[ray.ObjectRef]]
-    ) -> ExecutionResult:
-        try:
-            result = ray.get(future)
-        except Exception as e:
-            result = ExecutionException(e)
-        return result
+        return actor_info, next_typed_future
 
     def _get_new_actor_requests(self):
         for actor_request in self._controller.get_actor_requests():

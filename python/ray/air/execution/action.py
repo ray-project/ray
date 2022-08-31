@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from typing import List
 
-import ray
+from ray.air.execution.future import TypedFuture
 
 
 @dataclass
@@ -12,7 +12,7 @@ class Action:
 
 @dataclass
 class Continue(Action):
-    futures: List[ray.ObjectRef]
+    futures: List[TypedFuture]
 
 
 @dataclass
