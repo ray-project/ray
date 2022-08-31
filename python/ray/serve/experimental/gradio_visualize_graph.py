@@ -149,7 +149,7 @@ class GraphVisualizer:
 
         Args:
             trigger_value: The current value of the `trigger` Gradio block.
-            *args: The values in the input blocks.
+            *input_values: The user input values from Gradio input blocks.
 
         Returns:
             The current value of the `trigger` Gradio block incremented by 1. The
