@@ -22,7 +22,7 @@ class LightningTrainer(TorchTrainer):
     DDP. These actors already have the necessary torch process group already
     configured for distributed PyTorch training.
 
-    The training function ran on every Actor will first initialize an instance
+    The training function run on every Actor will first initialize an instance
     of the provided ``lightning_module`` class object, which is a subclass of
     ``pytorch_lightning.LightningModule`` using the arguments provided in
     ``lightning_module_init_config``. The training function will then convert the
