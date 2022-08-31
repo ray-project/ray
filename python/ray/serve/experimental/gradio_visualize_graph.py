@@ -133,7 +133,7 @@ class GraphVisualizer:
             if self.resolved_nodes == len(self.node_to_block):
                 self.finished_last_inference = True
             return result
-        except BaseException:
+        except Exception:
             self.resolved_nodes += 1
             if self.resolved_nodes == len(self.node_to_block):
                 self.finished_last_inference = True
