@@ -48,10 +48,9 @@ class ActorManager:
         self._actors_to_futures[actor_info].remove(future)
 
         if isinstance(result, ExecutionException):
-            action = self._controller.actor_failed(
-                actor_info, exception=result.exception
-            )
-            self._act_on_action(actor_info=actor_info, action=action)
+            self._clear_actor_futures(actor_info=actor_info)
+            self._resource_manager.return_resources(actor_info.used_resource)
+            self._controller.actor_failed(actor_info, exception=result.exception)
         else:
             self._controller.actor_results(actor_infos=[actor_info], results=[result])
 
@@ -120,15 +119,23 @@ class ActorManager:
             for action in actions:
                 self._act_on_action(actor_info=actor_info, action=action)
 
+    def _clear_actor_futures(self, actor_info: ActorInfo):
+        # remove futures
+        futures = self._actors_to_futures.pop(actor_info)
+        for future in futures:
+            self._futures_to_actors.pop(future)
+
     def _act_on_action(self, actor_info: ActorInfo, action: Action):
         if isinstance(action, Stop):
-            # remove futures
-            futures = self._actors_to_futures.pop(actor_info)
-            for future in futures:
-                self._futures_to_actors.pop(future)
+            self._clear_actor_futures(actor_info)
+
             # remove actor
             ray.kill(actor_info.actor)
+
+            # Return resources
             self._resource_manager.return_resources(actor_info.used_resource)
+
+            # Notify controller
             self._controller.actor_stopped(actor_info=actor_info)
         elif isinstance(action, Continue):
             for future in action.futures:

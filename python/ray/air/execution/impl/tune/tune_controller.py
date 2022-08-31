@@ -22,7 +22,12 @@ from ray.tune.utils.callback import _create_default_callbacks
 
 
 class TuneController(Controller):
-    def __init__(self, trainable_cls: Type[Trainable], param_space: dict):
+    def __init__(
+        self,
+        trainable_cls: Type[Trainable],
+        param_space: dict,
+        search_alg: Optional[SearchAlgorithm] = None,
+    ):
         self._param_space = param_space
 
         self._all_trials = []
@@ -32,7 +37,7 @@ class TuneController(Controller):
         self._actors_to_pause = set()
         self._actors_to_terminate = set()
 
-        self._searcher: SearchAlgorithm = BasicVariantGenerator(max_concurrent=4)
+        self._searcher: SearchAlgorithm = search_alg or BasicVariantGenerator()
         self._stopper: Stopper = NoopStopper()
         self._scheduler = FIFOScheduler()
         self._callbacks = CallbackList(
@@ -96,14 +101,12 @@ class TuneController(Controller):
         )
         return action.Continue(futures=[actor_info.actor.train.remote()])
 
-    def actor_failed(
-        self, actor_info: ActorInfo, exception: Exception
-    ) -> action.Action:
+    def actor_failed(self, actor_info: ActorInfo, exception: Exception) -> None:
         """Register actor failure. Return immediate decision."""
         trial = self._live_actors.pop(actor_info)
 
         self._actors_to_pause.discard(actor_info)
-        self._actors_to_pause.discard(actor_info)
+        self._actors_to_terminate.discard(actor_info)
 
         trial.set_status(Trial.ERROR)
         # Todo: Let's get rid of trial.runner completely
@@ -114,8 +117,6 @@ class TuneController(Controller):
         self._callbacks.on_trial_error(
             iteration=0, trials=self._all_trials, trial=trial
         )
-        print("Actor FAILED", trial, actor_info, exception)
-        return action.Stop()
 
     def actor_stopped(self, actor_info: ActorInfo):
         trial = self._live_actors.pop(actor_info)
@@ -147,6 +148,7 @@ class TuneController(Controller):
         done = result.metrics.get(DONE, False) or result.metrics.get(
             RESULT_DUPLICATE, False
         )
+        trial.last_result = result.metrics.copy()
 
         if done:
             self._scheduler.on_trial_complete(None, trial=trial, result=result.metrics)
@@ -167,7 +169,6 @@ class TuneController(Controller):
             self._callbacks.on_trial_result(
                 iteration=0, trials=self._all_trials, trial=trial, result=result.metrics
             )
-            trial.last_result = result.metrics.copy()
 
         if decision == TrialScheduler.STOP:
             self._actors_to_terminate.add(actor_info)
