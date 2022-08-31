@@ -881,16 +881,31 @@ CoreWorker::GetAllReferenceCounts() const {
 
 const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
 
-rpc::Address CoreWorker::GetOwnerAddress(const ObjectID &object_id) const {
+rpc::Address CoreWorker::GetOwnerAddressOrDie(const ObjectID &object_id) const {
   rpc::Address owner_address;
-  auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
-  RAY_CHECK(has_owner)
-      << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+  auto status = GetOwnerAddress(object_id, owner_address);
+  RAY_CHECK(status.ok())
+      << "An application is trying to access a Ray object whose owner is unknown ("
+      << object_id
+      << "). "
+         "Please make sure that all Ray objects you are trying to access are part of "
+         "the current Ray session. Note that "
+         "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
          "(ObjectID.from_binary(...)) cannot be passed as a task argument because Ray "
          "does not know which task created them. "
          "If this was not how your object ID was generated, please file an issue "
          "at https://github.com/ray-project/ray/issues/";
   return owner_address;
+}
+
+Status CoreWorker::GetOwnerAddress(const ObjectID &object_id,
+                                   rpc::Address &owner_address) const {
+  auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
+  if (!has_owner) {
+    return Status::ObjectNotFound(
+        "Unable to get ownership information for requested object");
+  }
+  return Status::OK();
 }
 
 std::vector<rpc::ObjectReference> CoreWorker::GetObjectRefs(
@@ -914,12 +929,16 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
                                   std::string *serialized_object_status) {
   auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
   RAY_CHECK(has_owner)
-      << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-         "(ObjectID.from_binary(...)) cannot be serialized because Ray does not know "
-         "which task will create them. "
+      << "An application is trying to access a Ray object whose owner is unknown ("
+      << object_id
+      << "). "
+         "Please make sure that all Ray objects you are trying to access are part of "
+         "the current Ray session. Note that "
+         "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+         "(ObjectID.from_binary(...)) cannot be passed as a task argument because Ray "
+         "does not know which task created them. "
          "If this was not how your object ID was generated, please file an issue "
-         "at https://github.com/ray-project/ray/issues/: "
-      << object_id;
+         "at https://github.com/ray-project/ray/issues/";
 
   rpc::GetObjectStatusReply object_status;
   // Optimization: if the object exists, serialize and inline its status. This also
@@ -1386,7 +1405,8 @@ Status CoreWorker::GetLocationFromOwner(
       std::make_shared<absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>>();
 
   for (const auto &object_id : object_ids) {
-    auto owner_address = GetOwnerAddress(object_id);
+    rpc::Address owner_address;
+    RAY_RETURN_NOT_OK(GetOwnerAddress(object_id, owner_address));
     auto client = core_worker_client_pool_->GetOrConnect(owner_address);
     rpc::GetObjectLocationsOwnerRequest request;
     auto object_location_request = request.mutable_object_location_request();
@@ -3461,7 +3481,8 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
   // Ask raylet to subscribe to object notification. Raylet will call this core worker
   // when the object is local (and it will fire the callback immediately if the object
   // exists). CoreWorker::HandlePlasmaObjectReady handles such request.
-  local_raylet_client_->SubscribeToPlasma(object_id, GetOwnerAddress(object_id));
+  auto owner_address = GetOwnerAddressOrDie(object_id);
+  local_raylet_client_->SubscribeToPlasma(object_id, owner_address);
 }
 
 void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,

@@ -56,6 +56,61 @@ def test_ray_shutdown(short_gcs_publish_timeout, shutdown_only):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
+def test_ray_shutdown_then_call(short_gcs_publish_timeout, shutdown_only):
+    """Make sure ray will not kill cpython when using unrecognized ObjectId"""
+    # Set include_dashboard=False to have faster startup.
+    ray.init(num_cpus=1, include_dashboard=False)
+
+    my_ref = ray.put("anystring")
+
+    @ray.remote
+    def f(s):
+        print(s)
+
+    ray.shutdown()
+
+    ray.init(num_cpus=1, include_dashboard=False)
+    exception_thrown = False
+    try:
+        f.remote(my_ref)  # This would cause full CPython death.
+    except ray.exceptions.RayError:
+        # Ignore exception
+        exception_thrown = True
+
+    ray.shutdown()
+    wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+    assert exception_thrown
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
+def test_ray_shutdown_then_get(short_gcs_publish_timeout, shutdown_only):
+    """Make sure ray will not hang when trying to Get an unrecognized Obj."""
+    # Set include_dashboard=False to have faster startup.
+    ray.init(include_dashboard=False)
+
+    my_ref = ray.put("anystring")
+
+    ray.shutdown()
+
+    ray.init(include_dashboard=False)
+    appropriate_exception_thrown = False
+    try:
+        ray.get(my_ref, timeout=30)  # This would cause ray to hang
+    except ray.exceptions.GetTimeoutError:
+        # Get timed out, which means it failed to recognize unknown object
+        appropriate_exception_thrown = False
+    except ray.exceptions.RayError:
+        # Ignore exception
+        appropriate_exception_thrown = True
+
+    ray.shutdown()
+    wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+    assert (
+        appropriate_exception_thrown
+    ), "ray.get is hanging on unknown object retrieval"
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
 def test_driver_dead(short_gcs_publish_timeout, shutdown_only):
     """Make sure all ray workers are shutdown when driver is killed."""
     driver = """

@@ -126,6 +126,7 @@ from ray.exceptions import (
     TaskCancelledError,
     AsyncioActorExit,
     PendingCallsLimitExceeded,
+    PlasmaObjectNotAvailable,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -421,6 +422,8 @@ cdef prepare_args_internal(
         c_vector[CObjectID] inlined_ids
         c_string put_arg_call_site
         c_vector[CObjectReference] inlined_refs
+        CAddress c_owner_address
+        CRayStatus op_status
 
     worker = ray._private.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -429,11 +432,15 @@ cdef prepare_args_internal(
     for arg in args:
         if isinstance(arg, ObjectRef):
             c_arg = (<ObjectRef>arg).native()
+            op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+                    c_arg, c_owner_address)
+            if not op_status.ok():
+                raise PlasmaObjectNotAvailable(
+                    'Object %r could not be found in this Ray session.' % arg)
             args_vector.push_back(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
-                    CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
-                        c_arg),
+                    c_owner_address,
                     arg.call_site())))
 
         else:
@@ -2322,8 +2329,10 @@ cdef class CoreWorker:
     def get_owner_address(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
-        return CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
-                c_object_id).SerializeAsString()
+            CAddress c_owner_address
+        CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+                c_object_id, c_owner_address)
+        return c_owner_address.SerializeAsString()
 
     def serialize_object_ref(self, ObjectRef object_ref):
         cdef:

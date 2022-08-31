@@ -278,6 +278,22 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
                  /*abort_if_any_object_is_exception=*/true);
 }
 
+Status CoreWorkerMemoryStore::ObjectHasOwner(const ObjectID &object_id,
+                                             bool abort_if_missing) {
+  if (!abort_if_missing) {
+    return Status::OK();
+  } else {
+    rpc::Address unused_owner_address;
+    auto has_owner = ref_counter_->GetOwner(object_id, &unused_owner_address);
+    if (!has_owner) {
+      return Status::ObjectNotFound(
+          "Unable to get ownership information for requested object");
+    } else {
+      return Status::OK();
+    }
+  }
+}
+
 Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
                                       int num_objects,
                                       int64_t timeout_ms,
@@ -285,6 +301,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
                                       bool remove_after_get,
                                       std::vector<std::shared_ptr<RayObject>> *results,
                                       bool abort_if_any_object_is_exception) {
+  // TODO(pabloem): This function never returns, even for objects that do not exist.
   (*results).resize(object_ids.size(), nullptr);
 
   std::shared_ptr<GetRequest> get_request;
@@ -310,6 +327,10 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
         count += 1;
       } else {
         remaining_ids.insert(object_id);
+        Status status = ObjectHasOwner(object_id, abort_if_any_object_is_exception);
+        if (!status.ok()) {
+          return status;
+        }
       }
     }
     RAY_CHECK(count <= num_objects);

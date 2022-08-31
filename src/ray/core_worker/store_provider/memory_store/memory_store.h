@@ -180,6 +180,11 @@ class CoreWorkerMemoryStore {
                  std::vector<std::shared_ptr<RayObject>> *results,
                  bool abort_if_any_object_is_exception);
 
+  // Checks whether the given object ID has a known owner. Returns Ok if
+  // it does, or if abort_if_missing = false, as that indiciates that a missing
+  // owner is no reason to abort.
+  Status ObjectHasOwner(const ObjectID &object_id, bool abort_if_missing);
+
   /// Called when an object is deleted from the store.
   void OnDelete(std::shared_ptr<RayObject> obj);
 
