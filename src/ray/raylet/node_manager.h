@@ -186,6 +186,21 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return string.
   std::string DebugString() const;
 
+  /// Returns workers sorted by the time of the last submitted task, in descending order.
+  ///
+  /// \return the list of sorted workers
+  const std::vector<std::shared_ptr<WorkerInterface>> WorkersWithLatestSubmittedTasks()
+      const;
+
+  /// Returns debug string of the workers.
+  ///
+  /// \param workers The workers to be printed.
+  /// \param num_workers The number of workers to print starting from the beginning of the
+  /// worker list. \return the debug string.
+  std::string WorkersDebugString(
+      const std::vector<std::shared_ptr<WorkerInterface>> workers,
+      int64_t num_workers) const;
+
   /// Record metrics.
   void RecordMetrics();
 
@@ -775,8 +790,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Target being evicted or null if no target
   std::shared_ptr<WorkerInterface> high_memory_eviction_target_;
-  /// Time when it started the eviction
-  std::chrono::high_resolution_clock::time_point high_memory_eviction_start_time_;
 
   /// Seconds to initialize a local gc
   const uint64_t local_gc_interval_ns_;

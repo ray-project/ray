@@ -41,8 +41,13 @@ MemoryMonitor::MemoryMonitor(float usage_threshold,
 #ifdef __linux__
     runner_.RunFnPeriodically(
         [this] {
-          bool is_usage_above_threshold = IsUsageAboveThreshold();
-          monitor_callback_(is_usage_above_threshold);
+          auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
+          MemorySnapshot system_memory;
+          system_memory.used_bytes = used_memory_bytes;
+          system_memory.total_bytes = total_memory_bytes;
+
+          bool is_usage_above_threshold = IsUsageAboveThreshold(system_memory);
+          monitor_callback_(is_usage_above_threshold, system_memory, usage_threshold_);
         },
         monitor_interval_ms,
         "MemoryMonitor.CheckIsMemoryUsageAboveThreshold");
@@ -57,16 +62,17 @@ MemoryMonitor::MemoryMonitor(float usage_threshold,
   }
 }
 
-bool MemoryMonitor::IsUsageAboveThreshold() {
-  auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
+bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory) {
+  int64_t used_memory_bytes = system_memory.used_bytes;
+  int64_t total_memory_bytes = system_memory.total_bytes;
   if (total_memory_bytes == kNull || used_memory_bytes == kNull) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
         << "Unable to capture node memory. Monitor will not be able "
         << "to detect memory usage above threshold.";
     return false;
   }
-  auto usage_fraction = static_cast<float>(used_memory_bytes) / total_memory_bytes;
-  bool is_usage_above_threshold = usage_fraction > usage_threshold_;
+  float usage_fraction = static_cast<float>(used_memory_bytes) / total_memory_bytes;
+  bool is_usage_above_threshold = usage_fraction >= usage_threshold_;
   if (is_usage_above_threshold) {
     RAY_LOG_EVERY_MS(INFO, kLogIntervalMs)
         << "Node memory usage above threshold, used: " << used_memory_bytes
@@ -185,6 +191,50 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
   return {used_bytes, mem_total_bytes};
 }
 
+int64_t MemoryMonitor::GetProcessMemoryBytes(int64_t process_id) {
+  std::stringstream smap_path;
+  smap_path << "/proc/" << std::to_string(process_id) << "/smaps_rollup";
+  return GetLinuxProcessMemoryBytesFromSmap(smap_path.str());
+}
+
+/// TODO:(clarng) align logic with psutil / Python-side memory calculations
+int64_t MemoryMonitor::GetLinuxProcessMemoryBytesFromSmap(const std::string smap_path) {
+  std::ifstream smap_ifs(smap_path, std::ios::in | std::ios::binary);
+  if (!smap_ifs.is_open()) {
+    RAY_LOG_EVERY_MS(ERROR, kLogIntervalMs) << " file not found: " << smap_path;
+    return kNull;
+  }
+
+  int64_t uss = 0;
+
+  std::string line;
+  std::string title;
+  uint64_t value;
+  std::string unit;
+
+  /// Read first line, which is the header
+  std::getline(smap_ifs, line);
+  while (std::getline(smap_ifs, line)) {
+    std::istringstream iss(line);
+    iss >> title >> value >> unit;
+
+    /// Linux reports them as kiB
+    RAY_CHECK(unit == "kB");
+    value = value * 1024;
+    if (title == "Private_Clean:" || title == "Private_Dirty:" ||
+        title == "Private_Hugetlb:") {
+      uss += value;
+    }
+  }
+
+  if (uss == 0) {
+    RAY_LOG_EVERY_MS(ERROR, kLogIntervalMs)
+        << "Got zero used memory for smap file " << smap_path;
+    return kNull;
+  }
+  return uss;
+}
+
 int64_t MemoryMonitor::NullableMin(int64_t left, int64_t right) {
   RAY_CHECK_GE(left, kNull);
   RAY_CHECK_GE(right, kNull);
@@ -203,6 +253,12 @@ MemoryMonitor::~MemoryMonitor() {
   if (monitor_thread_.joinable()) {
     monitor_thread_.join();
   }
+}
+
+std::ostream &operator<<(std::ostream &os, const MemorySnapshot &memory_snapshot) {
+  os << "Used bytes: " << memory_snapshot.used_bytes
+     << ", Total bytes: " << memory_snapshot.total_bytes;
+  return os;
 }
 
 }  // namespace ray
