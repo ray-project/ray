@@ -53,7 +53,7 @@ class GraphVisualizer:
         # maps DAGNode uuid to unique instance of a gradio block
         self.node_to_block: Dict[DAGNode, Any] = {}
         # maps InputAttributeNodes to unique instance of interactive gradio block
-        self.input_index_to_block: Dict[int, Any] = {}
+        self.input_key_to_blocks: Dict[int, Any] = {}
 
     def clear_cache(self):
         self.cache = {}
@@ -89,8 +89,8 @@ class GraphVisualizer:
 
                 if isinstance(node, InputAttributeNode):
                     key = node._key
-                    if key not in self.input_index_to_block:
-                        self.input_index_to_block[key] = gr.Number(label=name)
+                    if key not in self.input_key_to_blocks:
+                        self.input_key_to_blocks[key] = gr.Number(label=name)
                 else:
                     self.node_to_block[node] = gr.Number(label=name, interactive=False)
 
@@ -139,7 +139,7 @@ class GraphVisualizer:
                 self.finished_last_inference = True
             raise
 
-    async def _send_request(self, trigger_value: int, *args) -> int:
+    async def _send_request(self, trigger_value: int, *input_values) -> int:
         """Sends request to the graph and gets results.
 
         Sends a request to the root DAG node through self.handle and retrieves the
@@ -160,7 +160,27 @@ class GraphVisualizer:
             logger.warning("Last inference has not finished yet.")
             return trigger_value
 
-        self.handle.predict.remote(args, _ray_cache_refs=True)
+        # Assumes self.input_key_to_blocks is an ordered dictionary
+        input_keys = list(self.input_key_to_blocks.keys())
+
+        # Extract positional args
+        max_index = max([i for i in input_keys if isinstance(i, int)])
+        args = []
+        for i in range(max_index + 1):
+            try:
+                loc = input_keys.index(i)
+                args.append(input_values[loc])
+            except ValueError:
+                args.append(None)
+        
+        # Extract keyword args
+        kwargs = {
+            input_keys[i]: input_values[i]
+            for i in range(len(input_values))
+            if isinstance(input_keys[i], str)
+        }
+
+        self.handle.predict.remote(*args, _ray_cache_refs=True, **kwargs)
         self.cache = await self.handle.get_intermediate_object_refs.remote()
 
         # Set state to track the inference process
@@ -222,7 +242,7 @@ class GraphVisualizer:
             # Add event listener that sends the request to the deployment graph
             submit.click(
                 fn=self._send_request,
-                inputs=[trigger] + list(self.input_index_to_block.values()),
+                inputs=[trigger] + list(self.input_key_to_blocks.values()),
                 outputs=trigger,
             )
             # Add event listeners that resolve object refs for each of the nodes
@@ -233,7 +253,7 @@ class GraphVisualizer:
 
             # Resets all blocks if Clear button is clicked
             all_blocks = [*self.node_to_block.values()] + [
-                *self.input_index_to_block.values()
+                *self.input_key_to_blocks.values()
             ]
             clear.click(
                 lambda: self.clear_cache() or [None] * len(all_blocks), [], all_blocks

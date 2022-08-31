@@ -26,7 +26,7 @@ def graph1():
             return x
 
     with InputNode() as user_input:
-        input_nodes = (user_input[0], user_input[1])
+        input_nodes = (user_input[0], user_input['key'])
         f_node = f.bind(input_nodes[0])
         m = Model.bind(f_node)
         dag = m.run.bind(input_nodes[1])
@@ -91,7 +91,7 @@ async def test_execute_cached_object_ref(graph1):
     """
     (_, f_node, _, dag) = graph1
 
-    dag.execute([1, 2], _ray_cache_refs=True)
+    dag.execute(1, key=2, _ray_cache_refs=True)
     cache = await dag.get_object_refs_from_last_execute()
     assert await cache[f_node.get_stable_uuid()] == 1
     assert await cache[dag.get_stable_uuid()] == 2
