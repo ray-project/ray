@@ -7,7 +7,7 @@ from ray.air.execution.actor_request import ActorRequest, ActorInfo
 from ray.air.execution.controller import Controller
 
 # Legacy tune
-from ray.air.execution.impl.tune.tune_result import TuneTrainingResult
+from ray.air.execution.impl.tune.tune_result import TuneTrainingResult, TuneSavingResult
 from ray.air.execution.resources.request import ResourceRequest
 from ray.air.execution.result import ExecutionResult
 from ray.tune.callback import CallbackList
@@ -27,10 +27,12 @@ class TuneController(Controller):
         trainable_cls: Type[Trainable],
         param_space: dict,
         search_alg: Optional[SearchAlgorithm] = None,
+        scheduler: Optional[TrialScheduler] = None,
     ):
         self._param_space = param_space
 
         self._all_trials = []
+        self._buffered_actor_requests = []
         self._pending_actor_requests = {}
         self._live_actors = {}
         self._actions = defaultdict(list)
@@ -39,7 +41,7 @@ class TuneController(Controller):
 
         self._searcher: SearchAlgorithm = search_alg or BasicVariantGenerator()
         self._stopper: Stopper = NoopStopper()
-        self._scheduler = FIFOScheduler()
+        self._scheduler: TrialScheduler = scheduler or FIFOScheduler()
         self._callbacks = CallbackList(
             _create_default_callbacks([], sync_config=tune.SyncConfig())
         )
@@ -62,9 +64,12 @@ class TuneController(Controller):
         return self._searcher.next_trial()
 
     def get_actor_requests(self) -> List[ActorRequest]:
+        buffered_requests = self._buffered_actor_requests
+        self._buffered_actor_requests = []
+
         trial = self._create_trial()
         if not trial:
-            return []
+            return buffered_requests
 
         trial.set_status(Trial.PENDING)
         requests = []
@@ -85,7 +90,7 @@ class TuneController(Controller):
             self._all_trials.append(trial)
             trial = self._create_trial()
 
-        return requests
+        return requests + buffered_requests
 
     def actor_started(self, actor_info: ActorInfo) -> action.Action:
         """Register actor start. Return immediate decision."""
@@ -124,6 +129,8 @@ class TuneController(Controller):
 
         if actor_info in self._actors_to_pause:
             self._actors_to_pause.remove(actor_info)
+            self._pending_actor_requests[actor_info.request] = trial
+            self._buffered_actor_requests.append(actor_info.request)
             trial.set_status(Trial.PAUSED)
         elif actor_info in self._actors_to_terminate:
             self._actors_to_terminate.remove(actor_info)
@@ -134,11 +141,16 @@ class TuneController(Controller):
     ):
         """Handle result."""
         for actor_info, result in zip(actor_infos, results):
-            # Todo: hardcoded training result, adjust trainable
-            training_result = TuneTrainingResult(metrics=result)
+            # Todo: instead of resolving the results here, the trainable
+            # should return the execution results in the first place
+            if isinstance(result, str):
+                # Does not work, yet
+                exec_result = TuneSavingResult(result)
+            else:
+                exec_result = TuneTrainingResult(metrics=result)
 
-            if isinstance(training_result, TuneTrainingResult):
-                self._handle_training_result(actor_info, training_result)
+            if isinstance(exec_result, TuneTrainingResult):
+                self._handle_training_result(actor_info, exec_result)
 
     def _handle_training_result(
         self, actor_info: ActorInfo, result: TuneTrainingResult
@@ -175,7 +187,6 @@ class TuneController(Controller):
             act = action.Stop()
         elif decision == TrialScheduler.PAUSE:
             self._actors_to_pause.add(actor_info)
-            self._pending_actor_requests[actor_info.request] = trial
             act = action.Stop()
         elif decision == TrialScheduler.NOOP:
             act = None

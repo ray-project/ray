@@ -14,4 +14,3 @@ class TuneTrainingResult(ExecutionResult):
 @dataclass
 class TuneSavingResult(ExecutionResult):
     tracked_checkpoint: _TrackedCheckpoint
-    metrics: Dict
