@@ -3538,6 +3538,8 @@
   run:
     timeout: 3600
     script: python stress_tests/test_state_api_scale.py
+    wait_for_nodes:
+      num_nodes: 7
     type: sdk_command
     file_manager: sdk
 
