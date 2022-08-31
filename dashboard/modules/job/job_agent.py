@@ -12,7 +12,8 @@ from ray.dashboard.modules.job.common import (
     JobSubmitResponse,
 )
 from ray.dashboard.modules.job.job_manager import JobManager
-from ray.dashboard.modules.job.utils import parse_and_validate_request
+from ray.dashboard.modules.job.utils import parse_and_validate_request, find_job_by_ids
+from ray.core.generated import gcs_service_pb2_grpc
 
 
 routes = optional_utils.ClassMethodRouteTable
@@ -23,6 +24,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
         self._job_manager = None
+        self._gcs_job_info_stub = None
 
     @routes.post("/api/job_agent/jobs/")
     @optional_utils.init_ray_and_catch_exceptions()
@@ -36,7 +38,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
 
         request_submission_id = submit_request.submission_id or submit_request.job_id
         try:
-            submission_id = await self._job_manager.submit_job(
+            submission_id = await self.get_job_manager().submit_job(
                 entrypoint=submit_request.entrypoint,
                 submission_id=request_submission_id,
                 runtime_env=submit_request.runtime_env,
@@ -62,9 +64,39 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
             status=aiohttp.web.HTTPOk.status_code,
         )
 
-    async def run(self, server):
+    @routes.get("/api/job_agent/jobs/{job_or_submission_id}")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def get_job_info(self, req: Request) -> Response:
+        job_or_submission_id = req.match_info["job_or_submission_id"]
+
+        job = await find_job_by_ids(
+            self.get_gcs_job_info_stub(), self.get_job_manager(), job_or_submission_id
+        )
+        if not job:
+            return Response(
+                text=f"Job {job_or_submission_id} does not exist",
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
+
+        return Response(
+            text=json.dumps(job.dict()),
+            content_type="application/json",
+        )
+
+    def get_job_manager(self):
         if not self._job_manager:
             self._job_manager = JobManager(self._dashboard_agent.gcs_aio_client)
+        return self._job_manager
+
+    def get_gcs_job_info_stub(self):
+        if not self._gcs_job_info_stub:
+            self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
+                self._dashboard_agent.gcs_aio_client.channel.channel()
+            )
+        return self._gcs_job_info_stub
+
+    async def run(self, server):
+        pass
 
     @staticmethod
     def is_minimal_module():

@@ -1,4 +1,4 @@
-from ray._private.ray_constants import env_integer, env_bool
+from ray._private.ray_constants import env_integer
 
 DASHBOARD_LOG_FILENAME = "dashboard.log"
 DASHBOARD_AGENT_PORT_PREFIX = "DASHBOARD_AGENT_PORT_PREFIX:"
@@ -52,10 +52,3 @@ BAD_RUNTIME_ENV_CACHE_TTL_SECONDS = env_integer(
 # ray.dashboard.modules.snapshot.snapshot_head.RayActivityResponse.
 # Example: "your.module.ray_cluster_activity_hook".
 RAY_CLUSTER_ACTIVITY_HOOK = "RAY_CLUSTER_ACTIVITY_HOOK"
-
-# Whether head node deploy raylet process or not.
-RAY_RAYLETLESS_HEAD_NODE = env_bool("RAY_RAYLETLESS_HEAD_NODE", False)
-# The number of candidate agents
-CANDIDATE_AGENT_NUMBER = max(env_integer("CANDIDATE_AGENT_NUMBER", 1), 1)
-WAIT_RAYLET_START_TIMEOUT_SECONDS = 10
-WAIT_RAYLET_START_INTERVAL_SECONDS = 0.1

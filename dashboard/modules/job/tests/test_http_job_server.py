@@ -1,5 +1,3 @@
-import asyncio
-import collections
 import json
 import logging
 import os
@@ -16,8 +14,6 @@ from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 import yaml
 
 import ray
-import ray.dashboard.consts as dashboard_consts
-from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.test_utils import (
     chdir,
     format_web_url,
@@ -26,8 +22,6 @@ from ray._private.test_utils import (
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
 from ray.dashboard.modules.job.pydantic_models import JobDetails
-from ray.dashboard.datacenter import DataOrganizer
-from ray.dashboard.modules.job.job_head import JobHead, JobAgentSubmissionClient
 from ray.dashboard.modules.version import CURRENT_VERSION
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobStatus, JobSubmissionClient
@@ -55,11 +49,6 @@ def job_sdk_client(headers):
         yield JobSubmissionClient(format_web_url(address), headers=headers)
 
 
-@pytest.mark.skipif(
-    # TODO(Catch-Bull ): not implemented yet, we will delete those finally.
-    dashboard_consts.RAY_RAYLETLESS_HEAD_NODE,
-    reason="Not implemented yet.",
-)
 @pytest.mark.parametrize("use_sdk", [True, False])
 def test_list_jobs_empty(headers, use_sdk: bool):
     # Create a cluster using `ray start` instead of `ray.init` to avoid creating a job
@@ -84,11 +73,6 @@ def test_list_jobs_empty(headers, use_sdk: bool):
         subprocess.check_output(["ray", "stop", "--force"])
 
 
-@pytest.mark.skipif(
-    # TODO(Catch-Bull ): not implemented yet, we will delete those finally.
-    dashboard_consts.RAY_RAYLETLESS_HEAD_NODE,
-    reason="Not implemented yet.",
-)
 @pytest.mark.parametrize("use_sdk", [True, False])
 def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
     client = job_sdk_client
@@ -302,34 +286,6 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
 
     client = job_sdk_client
 
-    need_upload = False
-    working_dir = runtime_env_option["runtime_env"].get("working_dir", None)
-    py_modules = runtime_env_option["runtime_env"].get("py_modules", [])
-
-    def _need_upload(path):
-        try:
-            protocol, _ = parse_uri(path)
-            if protocol == Protocol.GCS:
-                return True
-        except ValueError:
-            # local file, need upload
-            return True
-        return False
-
-    if working_dir:
-        need_upload = need_upload or _need_upload(working_dir)
-    if py_modules:
-        need_upload = need_upload or any(
-            [_need_upload(str(py_module)) for py_module in py_modules]
-        )
-
-    # TODO(Catch-Bull): delete this after we implemented
-    # `upload package` and `get package`
-    if dashboard_consts.RAY_RAYLETLESS_HEAD_NODE and need_upload:
-        # not implemented `upload package` yet.
-        print("Skip test, because of need upload")
-        return
-
     job_id = client.submit_job(
         entrypoint=runtime_env_option["entrypoint"],
         runtime_env=runtime_env_option["runtime_env"],
@@ -337,21 +293,10 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=120)
 
-    # TODO(Catch-Bull): delete this after we implemented
-    # `get_job_logs`
-    if dashboard_consts.RAY_RAYLETLESS_HEAD_NODE:
-        # not implemented `get_job_logs` yet.
-        print("Skip test, because of need get job logs")
-        return
     logs = client.get_job_logs(job_id)
     assert runtime_env_option["expected_logs"] in logs
 
 
-@pytest.mark.skipif(
-    # TODO(Catch-Bull): not implemented yet, we will delete those finally.
-    dashboard_consts.RAY_RAYLETLESS_HEAD_NODE,
-    reason="Not implemented yet.",
-)
 def test_timeout(job_sdk_client):
     client = job_sdk_client
 
@@ -375,11 +320,6 @@ def test_timeout(job_sdk_client):
     assert "consider increasing `setup_timeout_seconds`" in data.message
 
 
-@pytest.mark.skipif(
-    # TODO(Catch-Bull ): not implemented yet, we will delete those finally.
-    dashboard_consts.RAY_RAYLETLESS_HEAD_NODE,
-    reason="Not implemented yet.",
-)
 def test_per_task_runtime_env(job_sdk_client: JobSubmissionClient):
     run_cmd = "python per_task_runtime_env.py"
     job_id = job_sdk_client.submit_job(
@@ -390,11 +330,6 @@ def test_per_task_runtime_env(job_sdk_client: JobSubmissionClient):
     wait_for_condition(_check_job_succeeded, client=job_sdk_client, job_id=job_id)
 
 
-@pytest.mark.skipif(
-    # TODO(Catch-Bull ): not implemented yet, we will delete those finally.
-    dashboard_consts.RAY_RAYLETLESS_HEAD_NODE,
-    reason="Not implemented yet.",
-)
 def test_ray_tune_basic(job_sdk_client: JobSubmissionClient):
     run_cmd = "python ray_tune_basic.py"
     job_id = job_sdk_client.submit_job(
@@ -443,11 +378,6 @@ def test_runtime_env_setup_failure(job_sdk_client):
     assert "Failed to set up runtime environment" in data.message
 
 
-@pytest.mark.skipif(
-    # TODO(Catch-Bull ): not implemented yet, we will delete those finally.
-    dashboard_consts.RAY_RAYLETLESS_HEAD_NODE,
-    reason="Not implemented yet.",
-)
 def test_submit_job_with_exception_in_driver(job_sdk_client):
     """
     Submit a job that's expected to throw exception while executing.
@@ -474,11 +404,6 @@ raise RuntimeError('Intentionally failed.')
         assert "RuntimeError: Intentionally failed." in logs
 
 
-@pytest.mark.skipif(
-    # TODO(Catch-Bull ): not implemented yet, we will delete those finally.
-    dashboard_consts.RAY_RAYLETLESS_HEAD_NODE,
-    reason="Not implemented yet.",
-)
 def test_stop_long_running_job(job_sdk_client):
     """
     Submit a job that runs for a while and stop it in the middle.
@@ -504,11 +429,6 @@ raise RuntimeError('Intentionally failed.')
         wait_for_condition(_check_job_stopped, client=client, job_id=job_id)
 
 
-@pytest.mark.skipif(
-    # TODO(Catch-Bull ): not implemented yet, we will delete those finally.
-    dashboard_consts.RAY_RAYLETLESS_HEAD_NODE,
-    reason="Not implemented yet.",
-)
 def test_job_metadata(job_sdk_client):
     client = job_sdk_client
 
@@ -597,11 +517,6 @@ def test_submit_still_accepts_job_id_or_submission_id(job_sdk_client):
     wait_for_condition(_check_job_succeeded, client=client, job_id="raysubmit_23456")
 
 
-@pytest.mark.skipif(
-    # TODO(Catch-Bull ): not implemented yet, we will delete those finally.
-    dashboard_consts.RAY_RAYLETLESS_HEAD_NODE,
-    reason="Not implemented yet.",
-)
 def test_missing_resources(job_sdk_client):
     """Check that 404s are raised for resources that don't exist."""
     client = job_sdk_client
@@ -668,11 +583,6 @@ def test_parse_cluster_info(scheme: str, host: str, port: Optional[int]):
             parse_cluster_info(address, False)
 
 
-@pytest.mark.skipif(
-    # TODO(Catch-Bull ): not implemented yet, we will delete those finally.
-    dashboard_consts.RAY_RAYLETLESS_HEAD_NODE,
-    reason="Not implemented yet.",
-)
 @pytest.mark.asyncio
 async def test_tail_job_logs(job_sdk_client):
     client = job_sdk_client
@@ -727,110 +637,6 @@ ray.init(address="auto")
 
     with open(path) as f:
         assert f.read().strip() == "Ray rocks!"
-
-
-class MockJobHead(JobHead):
-    def __init__(self):
-        self._agents = collections.OrderedDict()
-
-
-class MockDataOrganizer(DataOrganizer):
-
-    agents = {}
-
-    @classmethod
-    async def get_all_agent_infos(cls):
-        return cls.agents
-
-
-class MockJobAgentSubmissionClient(JobAgentSubmissionClient):
-    def __init__(self, address, *args, **kwargs):
-        self._address = address
-
-
-@pytest.mark.asyncio
-async def test_job_head_choose_job_agent():
-    with patch(
-        "ray.dashboard.modules.job.job_head.DataOrganizer", MockDataOrganizer
-    ), patch(
-        "ray.dashboard.modules.job.job_head.JobAgentSubmissionClient",
-        MockJobAgentSubmissionClient,
-    ), patch(
-        "ray.dashboard.modules.job.job_head.dashboard_consts.CANDIDATE_AGENT_NUMBER", 2
-    ):
-        agent_1 = (
-            "node1",
-            dict(
-                ipAddress="1.1.1.1",
-                httpPort=1,
-                grpcPort=1,
-                httpAddress="1.1.1.1:1",
-            ),
-        )
-        agent_2 = (
-            "node2",
-            dict(
-                ipAddress="2.2.2.2",
-                httpPort=2,
-                grpcPort=2,
-                httpAddress="2.2.2.2:2",
-            ),
-        )
-        agent_3 = (
-            "node3",
-            dict(
-                ipAddress="3.3.3.3",
-                httpPort=3,
-                grpcPort=3,
-                httpAddress="3.3.3.3:3",
-            ),
-        )
-
-        MockDataOrganizer.agents["node1"] = dict(
-            ipAddress="1.1.1.1",
-            httpPort=1,
-            grpcPort=1,
-            httpAddress="1.1.1.1:1",
-        )
-        job_head = MockJobHead()
-        job_agent_client = await job_head.choose_agent()
-        assert job_agent_client._address == "http://1.1.1.1:1"
-
-        del MockDataOrganizer.agents["node1"]
-        with pytest.raises(asyncio.TimeoutError):
-            await asyncio.wait_for(job_head.choose_agent(), timeout=3)
-
-        MockDataOrganizer.agents[agent_1[0]] = agent_1[1]
-        MockDataOrganizer.agents[agent_2[0]] = agent_2[1]
-        MockDataOrganizer.agents[agent_3[0]] = agent_3[1]
-
-        addresses = set()
-        for address in range(2):
-            job_agent_client = await job_head.choose_agent()
-            addresses.add(job_agent_client._address)
-        assert addresses == {"http://1.1.1.1:1", "http://2.2.2.2:2"}
-        addresses = set()
-        for address in range(2):
-            job_agent_client = await job_head.choose_agent()
-            addresses.add(job_agent_client._address)
-        assert addresses == {"http://1.1.1.1:1", "http://2.2.2.2:2"}
-
-        del MockDataOrganizer.agents[agent_1[0]]
-        addresses = set()
-        for address in range(2):
-            job_agent_client = await job_head.choose_agent()
-            addresses.add(job_agent_client._address)
-        assert addresses == {"http://3.3.3.3:3", "http://2.2.2.2:2"}
-        addresses = set()
-        for address in range(2):
-            job_agent_client = await job_head.choose_agent()
-            addresses.add(job_agent_client._address)
-        assert addresses == {"http://3.3.3.3:3", "http://2.2.2.2:2"}
-
-        del MockDataOrganizer.agents[agent_2[0]]
-        for _ in range(2):
-            job_agent_client = await job_head.choose_agent()
-            assert "http://3.3.3.3:3" == job_agent_client._address
 
 
 if __name__ == "__main__":

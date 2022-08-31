@@ -1,8 +1,6 @@
 from pathlib import Path
 import tempfile
 import time
-import os
-import requests
 import pytest
 import sys
 from typing import Dict, Optional, Tuple
@@ -18,31 +16,15 @@ from ray.dashboard.modules.dashboard_sdk import (
     DEFAULT_DASHBOARD_ADDRESS,
     parse_cluster_info,
 )
-from ray.dashboard.modules.job.sdk import JobSubmissionClient, JobStatus
-from ray.dashboard.tests.conftest import *  # noqa
+from ray.dashboard.modules.job.sdk import JobSubmissionClient
 from ray.tests.conftest import _ray_start
-import ray
-import ray.dashboard.consts as dashboard_consts
 import ray.experimental.internal_kv as kv
-
-
-def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
-    status = client.get_job_status(job_id)
-    if status == JobStatus.FAILED:
-        logs = client.get_job_logs(job_id)
-        raise RuntimeError(f"Job failed\nlogs:\n{logs}")
-    return status == JobStatus.SUCCEEDED
 
 
 def check_internal_kv_gced():
     return len(kv._internal_kv_list("gcs://")) == 0
 
 
-@pytest.mark.skipif(
-    # TODO(Catch-Bull ): not implemented yet, we will delete those finally.
-    dashboard_consts.RAY_RAYLETLESS_HEAD_NODE,
-    reason="Not implemented yet.",
-)
 @pytest.mark.parametrize(
     "address_param",
     [
@@ -109,11 +91,6 @@ def test_parse_cluster_info(
             )
 
 
-@pytest.mark.skipif(
-    # TODO(Catch-Bull ): not implemented yet, we will delete those finally.
-    dashboard_consts.RAY_RAYLETLESS_HEAD_NODE,
-    reason="Not implemented yet.",
-)
 def test_parse_cluster_info_default_address():
     assert (
         parse_cluster_info(
@@ -123,11 +100,6 @@ def test_parse_cluster_info_default_address():
     )
 
 
-@pytest.mark.skipif(
-    # TODO(Catch-Bull ): not implemented yet, we will delete those finally.
-    dashboard_consts.RAY_RAYLETLESS_HEAD_NODE,
-    reason="Not implemented yet.",
-)
 @pytest.mark.parametrize("expiration_s", [0, 10])
 def test_temporary_uri_reference(monkeypatch, expiration_s):
     """Test that temporary GCS URI references are deleted after expiration_s."""
@@ -168,94 +140,6 @@ def test_temporary_uri_reference(monkeypatch, expiration_s):
             else:
                 wait_for_condition(check_internal_kv_gced)
                 print("Internal KV was GC'ed at time ", time.time() - start)
-
-
-@pytest.fixture
-def mock_candidate_number():
-    os.environ["CANDIDATE_AGENT_NUMBER"] = "2"
-    yield
-    os.environ.pop("CANDIDATE_AGENT_NUMBER", None)
-
-
-@pytest.mark.skipif(
-    # Only running with RAY_RAYLETLESS_HEAD_NODE is True
-    not dashboard_consts.RAY_RAYLETLESS_HEAD_NODE,
-    reason="Not implemented yet.",
-)
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
-)
-def test_job_head_choose_job_agent_E2E(mock_candidate_number, ray_start_cluster_head):
-    cluster = ray_start_cluster_head
-    assert wait_until_server_available(cluster.webui_url) is True
-    webui_url = cluster.webui_url
-    webui_url = format_web_url(webui_url)
-    client = JobSubmissionClient(webui_url)
-
-    def get_register_agents_number():
-        response = requests.get(webui_url + "/internal/node_module")
-        response.raise_for_status()
-        result = response.json()
-        data = result["data"]
-        return data["registeredAgents"]
-
-    def submit_job_and_wait_finish():
-        submission_id = client.submit_job(entrypoint="echo hello")
-
-        wait_for_condition(_check_job_succeeded, client=client, job_id=submission_id)
-
-    # make sure list(cluster.worker_nodes)[0] will be the owner of a supervisor actor.
-    cluster.add_node(dashboard_agent_listen_port=52366)
-    wait_for_condition(lambda: get_register_agents_number() == 2, timeout=20)
-    assert len(cluster.worker_nodes) == 1
-    node_try_to_kill = list(cluster.worker_nodes)[0]
-    submit_job_and_wait_finish()
-
-    cluster.add_node(dashboard_agent_listen_port=52367)
-    wait_for_condition(lambda: get_register_agents_number() == 3, timeout=20)
-
-    submit_job_and_wait_finish()
-    submit_job_and_wait_finish()
-    submit_job_and_wait_finish()
-
-    def get_all_new_supervisor_actor_info(old_supervisor_actor):
-        all_actors = ray.state.state.actor_table(None)
-        res = dict()
-        for actor_id, actor_info in all_actors.items():
-            if actor_id in old_supervisor_actor:
-                continue
-            if not actor_info["Name"].startswith("_ray_internal_job_actor"):
-                continue
-            res[actor_id] = actor_info
-        return res
-
-    old_supervisor_actor = set()
-    new_supervisor_actor = get_all_new_supervisor_actor_info(old_supervisor_actor)
-    new_owner_port = set()
-    for actor_id, actor_info in new_supervisor_actor.items():
-        old_supervisor_actor.add(actor_id)
-        new_owner_port.add(actor_info["OwnerAddress"]["Port"])
-
-    assert len(new_owner_port) == 2
-    old_owner_port = new_owner_port
-
-    node_try_to_kill.kill_raylet()
-
-    # make sure the head updates the info of the dead node.
-    wait_for_condition(lambda: get_register_agents_number() == 2, timeout=20)
-
-    submit_job_and_wait_finish()
-    submit_job_and_wait_finish()
-    submit_job_and_wait_finish()
-
-    new_supervisor_actor = get_all_new_supervisor_actor_info(old_supervisor_actor)
-    new_owner_port = set()
-    for actor_id, actor_info in new_supervisor_actor.items():
-        old_supervisor_actor.add(actor_id)
-        new_owner_port.add(actor_info["OwnerAddress"]["Port"])
-    assert len(new_owner_port) == 2
-    assert len(old_owner_port - new_owner_port) == 1
-    assert len(new_owner_port - old_owner_port) == 1
 
 
 if __name__ == "__main__":
