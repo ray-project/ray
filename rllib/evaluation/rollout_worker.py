@@ -1264,9 +1264,12 @@ class RolloutWorker(ParallelIteratorWorker):
             # As long as the historic filter synchronization mechanism is in
             # place, we need to put filters into self.filters so that they get
             # synchronized
-            for connector in self.policy_map[policy_id].agent_connectors.connectors:
-                if isinstance(connector, SyncedFilterAgentConnector):
-                    self.filters[policy_id] = connector.filter
+            filter_connector = self.policy_map[policy_id].agent_connectors[
+                SyncedFilterAgentConnector
+            ][0]
+            # There can only be one filter at a time
+            if filter_connector:
+                self.filters[policy_id] = filter_connector.filter
 
         self.set_policy_mapping_fn(policy_mapping_fn)
         if policies_to_train is not None:
@@ -1838,9 +1841,12 @@ class RolloutWorker(ParallelIteratorWorker):
                 # As long as the historic filter synchronization mechanism is in
                 # place, we need to put filters into self.filters so that they get
                 # synchronized
-                for connector in self.policy_map[name].agent_connectors.connectors:
-                    if isinstance(connector, SyncedFilterAgentConnector):
-                        self.filters[name] = connector.filter
+                filter_connector = self.policy_map[name].agent_connectors[
+                    SyncedFilterAgentConnector
+                ][0]
+                # There can only be one filter at a time
+                if filter_connector:
+                    self.filters[name] = filter_connector.filter
 
             if name in self.policy_map:
                 self.callbacks.on_create_policy(
