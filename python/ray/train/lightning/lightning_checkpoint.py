@@ -74,10 +74,10 @@ class LightningCheckpoint(Checkpoint):
     ) -> "LightningModule":
         """Retrieve the model stored in this checkpoint.
 
-        If the checkpoint was created using
-        ``LightningCheckpoint.from_checkpoint(ckpt)`` then ``model`` can be ``None``.
-        If the checkpoint was created from the result of ``trainer.fit()`` then you
-        should pass a reference to your LightningModule subclass.
+        If the checkpoint was created with a ``"model_cls"`` key then the ``model``
+        argument can be ``None``. If the checkpoint was created from the result of
+        ``trainer.fit()`` then you should pass a reference to your LightningModule
+        subclass.
 
         Args:
             model: The class to which the state dict will be loaded.
