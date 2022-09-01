@@ -105,7 +105,7 @@ class WorkerInterface {
   virtual rpc::CoreWorkerClientInterface *rpc_client() = 0;
 
   /// Return True if the worker is available for scheduling a task or actor.
-  virtual bool IsAvailableForScheduling() const = 0;
+  virtual bool WontCauseResourceDeadlock() const = 0;
 
   /// Time when the last task was assigned to this worker.
   virtual const std::chrono::steady_clock::time_point GetAssignedTaskTime() const = 0;
@@ -218,9 +218,9 @@ class Worker : public WorkerInterface {
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
-  bool IsAvailableForScheduling() const {
+  bool WontCauseResourceDeadlock() const {
     return !IsDead()                        // Not dead
-           && !GetAssignedTaskId().IsNil()  // No assigned task
+           && !GetAssignedTaskId().IsNil()  // Task won't cause dead lock, since progress is being made.
            && !IsBlocked()                  // Not blocked
            && GetActorId().IsNil();         // No assigned actor
   }

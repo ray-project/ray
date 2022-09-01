@@ -894,7 +894,7 @@ void NodeManager::WarnResourceDeadlock() {
 
   // Check if any progress is being made on this raylet.
   for (const auto &worker : worker_pool_.GetAllRegisteredWorkers()) {
-    if (worker->IsAvailableForScheduling()) {
+    if (worker->WontCauseResourceDeadlock()) {
       // Progress is being made in a task, don't warn.
       resource_deadlock_warned_ = 0;
       return;
