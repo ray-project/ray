@@ -1,5 +1,6 @@
 import inspect
 from tkinter import W
+import os
 import composer.trainer
 from torch.utils.data import Dataset as TorchDataset
 
@@ -123,6 +124,9 @@ def _mosaic_train_loop_per_worker(config):
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
 
     # TODO : set env variables for composer DDP
+    os.environ["RANK"] = str(session.get_world_rank())
+    os.environ["WORLD_SIZE"] = str(session.get_world_size())
+    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
 
     # get dataset shard
     train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
