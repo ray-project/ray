@@ -14,7 +14,7 @@ from ray.serve.drivers import DAGDriver
 @pytest.fixture
 def graph1():
     @serve.deployment
-    def f(x):
+    def f(x) -> int:
         return x
 
     @serve.deployment
@@ -22,10 +22,10 @@ def graph1():
         def __init__(self, _):
             pass
 
-        def run(self, x):
+        def run(self, x) -> int:
             return x
 
-    with InputNode() as user_input:
+    with InputNode(input_types={0: int, "key": int}) as user_input:
         input_nodes = (user_input[0], user_input["key"])
         f_node = f.bind(input_nodes[0])
         m = Model.bind(f_node)
@@ -37,7 +37,7 @@ def graph1():
 @pytest.fixture
 def graph2():
     @serve.deployment
-    def f(_, x=0):
+    def f(_, x=0) -> int:
         return x
 
     with InputNode() as user_input:
@@ -67,7 +67,7 @@ def graph3():
             return input * self.weight
 
     @serve.deployment
-    def combine(x, y, z):
+    def combine(x, y, z) -> int:
         return x + y + z
 
     with InputNode() as user_input:
