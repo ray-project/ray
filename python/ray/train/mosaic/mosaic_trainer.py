@@ -1,5 +1,6 @@
 import inspect
-import composer
+from tkinter import W
+import composer.trainer
 from torch.utils.data import Dataset as TorchDataset
 
 from ray.air import session
@@ -70,7 +71,7 @@ class MosaicTrainer(TorchTrainer):
     def __init__(
         self,
         trainer_init_per_worker: Callable[
-            [TorchDataset, Optional[TorchDataset], Any], composer.Trainer
+            [TorchDataset, Optional[TorchDataset], Any], composer.trainer.Trainer
         ],
         *,
         datasets: Dict[str, GenDataset],
@@ -134,7 +135,10 @@ def _mosaic_train_loop_per_worker(config):
         eval_dataset,
     )
 
-    trainer: composer.Trainer = trainer_init_per_worker(
+    print("\n\n**processed the dataset..")
+    print(type(train_torch_dataset))
+
+    trainer: composer.trainer.Trainer = trainer_init_per_worker(
         train_torch_dataset, eval_torch_dataset, **config
     )
 
