@@ -44,7 +44,6 @@ parser.add_argument(
     help=("how many batches to wait before logging training " "status"),
 )
 parser.add_argument("--num-workers", type=int, default=16)
-parser.add_argument("--mock-train-step-time", type=float, default=1.0)
 parser.add_argument("--num-files", type=int, default=30)
 parser.add_argument("--num-windows", type=int, default=1)
 parser.add_argument("--manual-windows", type=bool, default=False)
@@ -137,7 +136,6 @@ def train_main(args, splits):
                     f"Processing batch {batch_idx} in epoch {epoch} on worker "
                     f"{rank}."
                 )
-            time.sleep(args.mock_train_step_time)
             loss = loss_function(batch_pred, target, delta=60)
             loss.mean().backward()
             for opt in optimizers:
