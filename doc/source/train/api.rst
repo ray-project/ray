@@ -6,6 +6,8 @@ This page covers framework specific integrations with Ray Train and Ray Train De
 
 For core Ray AIR APIs, take a look at the :ref:`AIR Trainer package reference <air-trainer-ref>`.
 
+.. _train-integration-api:
+
 Trainer and Predictor Integrations
 ----------------------------------
 
@@ -151,7 +153,8 @@ Base Classes (Developer APIs)
 .. autoclass:: ray.train.backend.Backend
     :members:
 
-
+.. autoclass:: ray.train.backend.BackendConfig
+    :members:
 
 
 Deprecated APIs

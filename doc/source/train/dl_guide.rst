@@ -218,7 +218,7 @@ with one of the following:
             scaling_config=ScalingConfig(use_gpu=use_gpu, num_workers=2)
         )
 
-To customize the backend setup, you can use a :ref:`train-api-backend-config` object.
+To customize the backend setup, you can use the :ref:`framework-specific config objects <train-integration-api>`.
 
 .. tabbed:: PyTorch
 
