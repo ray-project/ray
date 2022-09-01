@@ -43,7 +43,7 @@ Client arguments
 Ray Client is used when the address passed into ``ray.init`` is prefixed with ``ray://``. Besides the address, Client mode currently accepts two other arguments:
 
 - ``namespace`` (optional): Sets the namespace for the session.
-- ``runtime_env`` (optional): Sets the `runtime environment <runtime-environments>`_ for the session, allowing you to dynamically specify environment variables, packages, local files, and more.
+- ``runtime_env`` (optional): Sets the `runtime environment <../../../ray-core/handling-dependencies.html#runtime-environments>`_ for the session, allowing you to dynamically specify environment variables, packages, local files, and more.
 
 .. code-block:: python
 
@@ -216,10 +216,10 @@ When using Ray multi-client, there are some different behaviors to pay attention
 Things to know
 --------------
 
+.. _client-disconnections:
+
 Client disconnections
 ~~~~~~~~~~~~~~~~~~~~~
-
-.. _client-disconnections:
 
 When the client disconnects, any object or actor references held by the server on behalf of the client are dropped, as if directly disconnecting from the cluster.
 
