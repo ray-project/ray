@@ -1,9 +1,8 @@
+"""oom task test
 
-"""Job submission test
+Saturates the cluster with tasks trying to OOM the node.
 
-This test runs a basic Tune job on a remote cluster.
-
-Test owner: architkulkarni
+Test owner: clarng
 
 Acceptance criteria: Should run through and print "PASSED"
 """
@@ -22,8 +21,8 @@ def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> None:
     return bytes_needed
 
 
-@ray.remote(max_retries=-1)
-def inf_retry(
+@ray.remote(max_retries=100)
+def try_to_oom(
     allocate_bytes: int, num_chunks: int = 10, allocate_interval_s: float = 0
 ):
     start = time.time()
@@ -39,5 +38,9 @@ def inf_retry(
 
 if __name__ == "__main__":
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
-    ray.get(inf_retry.remote(bytes_to_alloc))
-    
+    task_refs = [
+        try_to_oom.remote(allocate_bytes=bytes_to_alloc, allocate_interval_s=1)
+        for _ in range(16)
+    ]
+    ray.get(task_refs)
+    print("PASSED: Tasks trying to OOM did not crash the cluster")

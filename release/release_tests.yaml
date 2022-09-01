@@ -4636,7 +4636,7 @@
   frequency: nightly
   team: core
   cluster:
-    cluster_env: app_config_cpu_nightly.yaml
+    cluster_env: app_cpu_nightly.yaml
     cluster_compute: compute_cpu_2.yaml
 
   run:
