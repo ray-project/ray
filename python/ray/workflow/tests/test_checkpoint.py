@@ -24,20 +24,20 @@ def checkpoint_dag(checkpoint):
         return np.mean(x)
 
     x = large_input.options(
-        **workflow.options(name="large_input", checkpoint=checkpoint)
+        **workflow.options(task_id="large_input", checkpoint=checkpoint)
     ).bind()
     y = identity.options(
-        **workflow.options(name="identity", checkpoint=checkpoint)
+        **workflow.options(task_id="identity", checkpoint=checkpoint)
     ).bind(x)
     return workflow.continuation(
-        average.options(**workflow.options(name="average")).bind(y)
+        average.options(**workflow.options(task_id="average")).bind(y)
     )
 
 
 def test_checkpoint_dag_skip_all(workflow_start_regular_shared):
     outputs = workflow.run(
         checkpoint_dag.options(
-            **workflow.options(name="checkpoint_dag", checkpoint=False)
+            **workflow.options(task_id="checkpoint_dag", checkpoint=False)
         ).bind(False),
         workflow_id="checkpoint_skip",
     )
@@ -58,7 +58,9 @@ def test_checkpoint_dag_skip_all(workflow_start_regular_shared):
 
 def test_checkpoint_dag_skip_partial(workflow_start_regular_shared):
     outputs = workflow.run(
-        checkpoint_dag.options(**workflow.options(name="checkpoint_dag")).bind(False),
+        checkpoint_dag.options(**workflow.options(task_id="checkpoint_dag")).bind(
+            False
+        ),
         workflow_id="checkpoint_partial",
     )
     assert np.isclose(outputs, 8388607.5)
@@ -78,7 +80,7 @@ def test_checkpoint_dag_skip_partial(workflow_start_regular_shared):
 
 def test_checkpoint_dag_full(workflow_start_regular_shared):
     outputs = workflow.run(
-        checkpoint_dag.options(**workflow.options(name="checkpoint_dag")).bind(True),
+        checkpoint_dag.options(**workflow.options(task_id="checkpoint_dag")).bind(True),
         workflow_id="checkpoint_whole",
     )
     assert np.isclose(outputs, 8388607.5)
