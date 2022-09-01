@@ -411,7 +411,9 @@ class TestParseUri:
     )
     def test_parse_private_git_https_uris(self, parsing_tuple):
         raw_uri, parsed_uri = parsing_tuple
-        assert parse_uri(raw_uri) == parsed_uri
+        parsed_protocol, parsed_package_name = parse_uri(raw_uri)
+        assert parsed_protocol == Protocol.HTTPS
+        assert parsed_package_name == parsed_uri
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
