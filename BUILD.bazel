@@ -919,18 +919,16 @@ cc_test(
     ],
 )
 
-# Disable this test for now.
-# (iycheng) Re-enable it or just use the new heartbeat manager.
-# cc_test(
-#     name = "gcs_heartbeat_manager_test",
-#     srcs = ["src/ray/gcs/gcs_server/test/gcs_heartbeat_manager_test.cc"],
-#     copts = COPTS,
-#     tags = ["team:core"],
-#     deps = [
-#         ":gcs_server_lib",
-#         "@com_google_googletest//:gtest_main",
-#     ],
-# )
+cc_test(
+    name = "gcs_heartbeat_manager_test",
+    srcs = ["src/ray/gcs/gcs_server/test/gcs_heartbeat_manager_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
 
 cc_test(
     name = "dependency_resolver_test",
