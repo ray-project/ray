@@ -159,7 +159,7 @@ class SearchSpaceTest(unittest.TestCase):
                 elif k == "qrandint":
                     for i in range(-21, 13, 3):
                         self.assertIn(i, v, msg=f"qrandint failed for i={i}")
-                
+
                 elif k == "qrandint_q3":
                     for i in range(1, 11, 3):
                         self.assertIn(i, v, msg=f"qrandint_q3 failed for i={i}")
