@@ -5,7 +5,7 @@ import aiohttp
 import random
 
 from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
-
+from ray.dag.utils import _DAGNodeNameGenerator
 from ray import serve
 from ray.dag import InputNode
 from ray.serve.drivers import DAGDriver
@@ -82,6 +82,31 @@ def graph3():
         dag = combine.bind(m1_output, m2_output, l_output)
 
     yield input_nodes, b, m1, m2, l_output, m1_output, m2_output, dag
+
+
+@pytest.fixture
+def graph4():
+    @serve.deployment
+    def f(x, y) -> int:
+        return x + y
+
+    @serve.deployment
+    def g(x) -> str:
+        return str(x)
+
+    @serve.deployment
+    class Model:
+        def h(x) -> list:
+            return [x]
+
+    with InputNode(input_types={0: int, 1: int}) as user_input:
+        input_nodes = (user_input[0], user_input[1])
+        f_node = f.bind(input_nodes[0])
+        g_node = g.bind(f_node)
+        m = Model.bind()
+        dag = m.h.bind(g_node)
+
+    yield input_nodes, f_node, g_node, m, dag
 
 
 @pytest.mark.asyncio
@@ -207,6 +232,26 @@ async def test_gradio_visualization_e2e(graph1):
 
     assert [1] in values and [2] in values
 
+
+@pytest.mark.asyncio
+async def test_gradio_visualization_types(graph4):
+    """Tests that the return type annotations for function and method nodes are
+    correctly extracted after deploying the DAG.
+    """
+    (_, _, _, _, dag) = graph4
+
+    handle = serve.run(DAGDriver.bind(dag))
+    visualizer = GraphVisualizer()
+    visualizer.visualize_with_gradio(handle, _launch=False)
+
+    for node in visualizer.node_to_block:
+        name = _DAGNodeNameGenerator().get_node_name(node)
+        if name == "f":
+            assert node.get_result_type() == "int"
+        elif name == "g":
+            assert node.get_result_type() == "str"
+        elif name == "h":
+            assert node.get_result_type() == "list"
 
 if __name__ == "__main__":
     import sys
