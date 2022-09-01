@@ -35,7 +35,7 @@ Ray Client should be used when you want to connect a script or an interactive sh
 * Use ``ray.init("localhost:<port>")`` (non-client connection, local address) if you're developing locally or on the head node of your cluster and you have already started the cluster (i.e. ``ray start --head`` has already been run)
 * Use ``ray.init()`` (non-client connection, no address specified) if you're developing locally and want to automatically create a local cluster and attach directly to it OR if you are using Ray Job submission.
 
-Ray Client is useful developing interactively in a local Python shell. However, it requires a stable connection to the remote cluster, and will terminate the workload if the connection is lost for :ref:`more than 30 seconds <client-disconnections>`. If you have a long running workload that you want to run on your cluster, we recommend using :ref:`Ray Jobs <jobs-overview>` instead.
+Ray Client is useful for developing interactively in a local Python shell. However, it requires a stable connection to the remote cluster and will terminate the workload if the connection is lost for :ref:`more than 30 seconds <client-disconnections>`. If you have a long running workload that you want to run on your cluster, we recommend using :ref:`Ray Jobs <jobs-overview>` instead.
 
 Client arguments
 ----------------
@@ -72,7 +72,7 @@ If you have a running Ray cluster (version >= 1.5), Ray Client server is likely 
 
    ray start --head
 
-To start a Ray cluster remotely, you can follow the directions in :ref:`ref-cluster-quick-start`.
+To start a Ray cluster remotely, you can follow the directions in :ref:`vm-cluster-quick-start`.
 
 If necessary, you can modify the Ray Client server port to be other than ``10001``, by specifying ``--ray-client-server-port=...`` to the ``ray start`` :ref:`command <ray-start-doc>`.
 
