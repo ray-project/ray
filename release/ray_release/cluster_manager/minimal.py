@@ -20,8 +20,8 @@ class MinimalClusterManager(ClusterManager):
     Builds app config and compute template but does not start or stop session.
     """
 
-    @retry((ClusterEnvCreateError), delay=10, tries=2)
-    def create_cluster_env(self, _repeat: bool = True):
+    @retry((ClusterEnvCreateError), delay=10, jitter=5, tries=2)
+    def create_cluster_env(self):
         assert self.cluster_env_id is None
 
         if self.cluster_env:
@@ -70,8 +70,8 @@ class MinimalClusterManager(ClusterManager):
                 except Exception as e:
                     logger.warning(
                         f"Got exception when trying to create cluster "
-                        f"env: {e}. Sleeping for 10 seconds and then "
-                        f"try again once..."
+                        f"env: {e}. Sleeping for 10 seconds with jitter and then "
+                        f"try again..."
                     )
                     raise ClusterEnvCreateError("Could not create cluster env.") from e
 
