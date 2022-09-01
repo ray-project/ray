@@ -222,7 +222,7 @@ Client disconnections
 
 When the client disconnects, any object or actor references held by the server on behalf of the client are dropped, as if directly disconnecting from the cluster.
 
-If the client disconnects unexpectedly, i.e. due to a network failure, the client will attempt to reconnect to the server for 30 seconds before all of the references are dropped. You can increase this time by setting the environment variable `RAY_CLIENT_RECONNECT_GRACE_PERIOD=N`, where `N` is the number of seconds that the client should spend trying to reconnect before giving up.
+If the client disconnects unexpectedly, i.e. due to a network failure, the client will attempt to reconnect to the server for 30 seconds before all of the references are dropped. You can increase this time by setting the environment variable ``RAY_CLIENT_RECONNECT_GRACE_PERIOD=N``, where ``N`` is the number of seconds that the client should spend trying to reconnect before giving up.
 
 
 Versioning requirements
