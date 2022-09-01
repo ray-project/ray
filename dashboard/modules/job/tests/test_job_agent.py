@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 import pytest
-from ray.runtime_env.runtime_env import RuntimeEnv
+from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 import yaml
 
 from ray._private.runtime_env.packaging import Protocol, parse_uri
@@ -43,13 +43,12 @@ def job_sdk_client():
         yield JobAgentSubmissionClient(format_web_url(agent_address))
 
 
-async def _check_job_succeeded(
-    client: JobAgentSubmissionClient, job_id: str, timeout: int = 10
+async def _check_job(
+    client: JobAgentSubmissionClient, job_id: str, status: JobStatus, timeout: int = 10
 ) -> bool:
     async def _check():
         result = await client.get_job_info(job_id)
-        status = result.status
-        return status == JobStatus.SUCCEEDED
+        return result.status == status
 
     st = time.time()
     while time.time() <= timeout + st:
@@ -248,7 +247,9 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     submit_result = await client.submit_job_internal(request)
     job_id = submit_result.submission_id
 
-    check_result = await _check_job_succeeded(client=client, job_id=job_id, timeout=120)
+    check_result = await _check_job(
+        client=client, job_id=job_id, status=JobStatus.SUCCEEDED, timeout=120
+    )
     assert check_result
 
     # TODO(Catch-Bull): delete this after we implemented
@@ -258,6 +259,59 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     return
     logs = client.get_job_logs(job_id)
     assert runtime_env_option["expected_logs"] in logs
+
+
+@pytest.mark.asyncio
+async def test_timeout(job_sdk_client):
+    client = job_sdk_client
+
+    runtime_env = RuntimeEnv(
+        pip={
+            "packages": ["tensorflow", "requests", "botocore", "torch"],
+            "pip_check": False,
+            "pip_version": "==22.0.2;python_version=='3.8.11'",
+        },
+        config=RuntimeEnvConfig(setup_timeout_seconds=1),
+    ).to_dict()
+    request = validate_request_type(
+        {"runtime_env": runtime_env, "entrypoint": "echo hello"},
+        JobSubmitRequest,
+    )
+
+    submit_result = await client.submit_job_internal(request)
+    job_id = submit_result.submission_id
+
+    check_result = await _check_job(
+        client=client, job_id=job_id, status=JobStatus.FAILED, timeout=10
+    )
+    assert check_result
+
+    data = await client.get_job_info(job_id)
+    assert "Failed to set up runtime environment" in data.message
+    assert "Timeout" in data.message
+    assert "consider increasing `setup_timeout_seconds`" in data.message
+
+
+@pytest.mark.asyncio
+async def test_runtime_env_setup_failure(job_sdk_client):
+    client = job_sdk_client
+
+    runtime_env = RuntimeEnv(working_dir="s3://does_not_exist.zip").to_dict()
+    request = validate_request_type(
+        {"runtime_env": runtime_env, "entrypoint": "echo hello"},
+        JobSubmitRequest,
+    )
+
+    submit_result = await client.submit_job_internal(request)
+    job_id = submit_result.submission_id
+
+    check_result = await _check_job(
+        client=client, job_id=job_id, status=JobStatus.FAILED, timeout=10
+    )
+    assert check_result
+
+    data = await client.get_job_info(job_id)
+    assert "Failed to set up runtime environment" in data.message
 
 
 if __name__ == "__main__":

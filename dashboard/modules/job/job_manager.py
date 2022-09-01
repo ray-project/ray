@@ -26,6 +26,7 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.utils import file_tail_iterator
 from ray.exceptions import RuntimeEnvSetupError
 from ray.job_submission import JobStatus
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -520,18 +521,19 @@ class JobManager:
         # returns immediately and we can catch errors with the actor starting
         # up.
         try:
-            resources = None
+            scheduling_strategy = "DEFAULT"
             if _driver_on_current_node:
-                resources = {
-                    self._get_current_node_resource_key(): 0.001,
-                }
+                # If JobManager is created by dashboard server
+                # running on headnode, same for job supervisor actors scheduled
+                scheduling_strategy = NodeAffinitySchedulingStrategy(
+                    node_id=ray.get_runtime_context().node_id,
+                    soft=False,
+                )
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=0,
-                # Currently we assume JobManager is created by dashboard server
-                # running on headnode, same for job supervisor actors scheduled
-                resources=resources,
+                scheduling_strategy=scheduling_strategy,
                 runtime_env=self._get_supervisor_runtime_env(runtime_env),
             ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)
             supervisor.run.remote(_start_signal_actor=_start_signal_actor)
