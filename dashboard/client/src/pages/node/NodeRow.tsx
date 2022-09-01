@@ -65,6 +65,9 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
           )}
         </IconButton>
       </TableCell>
+      <TableCell align="center">
+        <Box minWidth={TEXT_COL_MIN_WIDTH}>{hostname}</Box>
+      </TableCell>
       <TableCell>
         <StatusChip type="node" status={raylet.state} />
       </TableCell>
@@ -74,9 +77,6 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
             {raylet.nodeId}
           </Link>
         </Tooltip>
-      </TableCell>
-      <TableCell align="center">
-        <Box minWidth={TEXT_COL_MIN_WIDTH}>{hostname}</Box>
       </TableCell>
       <TableCell align="center">
         <Box minWidth={TEXT_COL_MIN_WIDTH}>{ip}</Box>
@@ -165,6 +165,7 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       <TableCell>
         {/* Empty because workers do not have an expand / unexpand button. */}
       </TableCell>
+      <TableCell align="center">{cmdline[0]}</TableCell>
       <TableCell>
         <StatusChip type="worker" status="ALIVE" />
       </TableCell>
@@ -175,7 +176,6 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
           </Tooltip>
         )}
       </TableCell>
-      <TableCell align="center">{cmdline[0]}</TableCell>
       <TableCell align="center">{pid}</TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
