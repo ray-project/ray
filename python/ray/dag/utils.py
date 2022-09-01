@@ -20,11 +20,16 @@ class _DAGNodeNameGenerator(object):
         self.name_to_suffix: Dict[str, int] = dict()
 
     def get_node_name(self, node: DAGNode):
+        # InputNode should be unique.
         if isinstance(node, InputNode):
-            node_name = "INPUT_NODE"
+            return "INPUT_NODE"
+        # InputAttributeNode suffixes should match the user-defined key.
         elif isinstance(node, InputAttributeNode):
-            node_name = "INPUT_ATTRIBUTE_NODE"
-        elif isinstance(node, ClassMethodNode):
+            return f"INPUT_ATTRIBUTE_NODE_{node._key}"
+
+        # As class, method, and function nodes may have duplicated names,
+        # generate unique suffixes for such nodes.
+        if isinstance(node, ClassMethodNode):
             node_name = node.get_options().get("name", None) or node._method_name
         elif isinstance(node, (ClassNode, FunctionNode)):
             node_name = node.get_options().get("name", None) or node._body.__name__
@@ -34,6 +39,12 @@ class _DAGNodeNameGenerator(object):
             node_name = node.get_deployment_name()
         elif type(node).__name__ == "DeploymentMethodNode":
             node_name = node.get_deployment_method_name()
+        elif type(node).__name__ == "DeploymentExecutorNode":
+            node_name = node._deployment_handle.deployment_name
+        elif type(node).__name__ == "DeploymentMethodExecutorNode":
+            node_name = node._deployment_method_name
+        elif type(node).__name__ == "DeploymentFunctionExecutorNode":
+            node_name = node._deployment_function_handle.deployment_name
         else:
             raise ValueError(
                 "get_node_name() should only be called on DAGNode instances."

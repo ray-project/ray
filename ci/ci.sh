@@ -174,6 +174,7 @@ test_python() {
       -python/ray/serve:test_gcs_failure # Fork not supported in windows
       -python/ray/serve:test_standalone2 # Multinode not supported on Windows
       -python/ray/serve:test_gradio
+      -python/ray/serve:test_gradio_visualization
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
