@@ -54,6 +54,8 @@ class SearchSpaceTest(unittest.TestCase):
             "randint": tune.randint(-9, 15),
             "lograndint": tune.lograndint(1, 10),
             "qrandint": tune.qrandint(-21, 12, 3),
+            "qrandint_q3": tune.qrandint(1, 10, 3),
+            "qrandint_q1": tune.qrandint(1, 5, 1),
             "qlograndint": tune.qlograndint(2, 20, 2),
             "randn": tune.randn(10, 2),
             "qrandn": tune.qrandn(10, 2, 0.2),
@@ -115,6 +117,18 @@ class SearchSpaceTest(unittest.TestCase):
                 self.assertEqual(out["qrandint"] % 3, 0)
                 self.assertTrue(isinstance(out["qrandint"], int))
 
+            if "qrandint_q3" not in ignore:
+                self.assertGreaterEqual(out["qrandint_q3"], 1)
+                self.assertLessEqual(out["qrandint_q3"], 10)
+                self.assertEqual(out["qrandint_q3"] % 3, 0)
+                self.assertTrue(isinstance(out["qrandint_q3"], int))
+
+            if "qrandint_q1" not in ignore:
+                self.assertGreaterEqual(out["qrandint_q1"], 1)
+                self.assertLess(out["qrandint_q1"], 5)
+                self.assertEqual(out["qrandint_q1"] % 1, 0)
+                self.assertTrue(isinstance(out["qrandint_q1"], int))
+
             if "qlograndint" not in ignore:
                 self.assertGreaterEqual(out["qlograndint"], 2)
                 self.assertLessEqual(out["qlograndint"], 20)
@@ -145,6 +159,14 @@ class SearchSpaceTest(unittest.TestCase):
                 elif k == "qrandint":
                     for i in range(-21, 13, 3):
                         self.assertIn(i, v, msg=f"qrandint failed for i={i}")
+                
+                elif k == "qrandint_q3":
+                    for i in range(1, 11, 3):
+                        self.assertIn(i, v, msg=f"qrandint_q3 failed for i={i}")
+
+                elif k == "qrandint_q1":
+                    for i in range(1, 5, 1):
+                        self.assertIn(i, v, msg=f"qrandint_q1 failed for i={i}")
 
                 elif k == "lograndint":
                     for i in range(1, 10):
