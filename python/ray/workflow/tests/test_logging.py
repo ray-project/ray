@@ -9,7 +9,7 @@ from ray import workflow
 
 ray.init(address='auto')
 
-@ray.remote(**workflow.options(name="f"))
+@ray.remote(**workflow.options(task_id="f"))
 def f():
     return 10
 
@@ -34,11 +34,11 @@ from ray import workflow
 
 ray.init(address='auto')
 
-@ray.remote(**workflow.options(name="f1"))
+@ray.remote(**workflow.options(task_id="f1"))
 def f1():
     return 10
 
-@ray.remote(**workflow.options(name="f2"))
+@ray.remote(**workflow.options(task_id="f2"))
 def f2(x):
     return x+1
 
@@ -65,11 +65,11 @@ from ray import workflow
 
 ray.init(address='auto')
 
-@ray.remote(**workflow.options(name="f3"))
+@ray.remote(**workflow.options(task_id="f3"))
 def f3(x):
     return x+1
 
-@ray.remote(**workflow.options(name="f4"))
+@ray.remote(**workflow.options(task_id="f4"))
 def f4(x):
     return f3.bind(x*2)
 

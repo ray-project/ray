@@ -518,3 +518,11 @@ py_test(
     tags = ["exclusive", "team:serve", "py37"],
     deps = [":serve_lib"],
 )
+
+py_test(
+    name = "test_gradio_visualization",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve", "py37"],
+    deps = [":serve_lib"],
+)
