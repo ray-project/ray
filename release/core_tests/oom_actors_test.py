@@ -24,17 +24,18 @@ def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> None:
 
 @ray.remote(num_cpus=0.5)
 def eat_memory():
-    some_str = ' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    
+    some_str = " " * 512000000
+    some_str = some_str + " " * 512000000
+    some_str = some_str + " " * 512000000
+    some_str = some_str + " " * 512000000
+    some_str = some_str + " " * 512000000
+    some_str = some_str + " " * 512000000
+    some_str = some_str + " " * 512000000
+    some_str = some_str + " " * 512000000
+    some_str = some_str + " " * 512000000
+    some_str = some_str + " " * 512000000
+
+
 @ray.remote(num_cpus=0.2, max_restarts=1000)
 class Leaker:
     def __init__(self):
@@ -58,14 +59,13 @@ if __name__ == "__main__":
     ray.init(address="auto")
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
-    actor_refs = [
-        Leaker.remote()
-        for _ in range(80)
-    ]
+    actor_refs = [Leaker.remote() for _ in range(80)]
     for ref in actor_refs:
-      try:
-        ray.get(ref.allocate.remote(allocate_bytes=bytes_to_alloc))
-      except ray.exceptions.RayActorError:
-        print("actor may fail to finish as expected due to requesting too much memory")
-      
+        try:
+            ray.get(ref.allocate.remote(allocate_bytes=bytes_to_alloc))
+        except ray.exceptions.RayActorError:
+            print(
+                "actor may fail to finish as expected due to requesting too much memory"
+            )
+
     print("PASSED: Actors trying to OOM did not crash the cluster")

@@ -39,17 +39,17 @@ import pytest
 
 @ray.remote(num_cpus=0.5, max_retries=1000)
 def eat_memory():
-    some_str = ' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    some_str = some_str+' ' * 512000000
-    
+    some_str = " " * 512000000
+    some_str = some_str + " " * 512000000
+    some_str = some_str + " " * 512000000
+    some_str = some_str + " " * 512000000
+    some_str = some_str + " " * 512000000
+    some_str = some_str + " " * 512000000
+    some_str = some_str + " " * 512000000
+    some_str = some_str + " " * 512000000
+    some_str = some_str + " " * 512000000
+    some_str = some_str + " " * 512000000
+
 
 if __name__ == "__main__":
     # bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
@@ -60,8 +60,10 @@ if __name__ == "__main__":
     ]
 
     for ref in task_refs:
-      try:
-        ray.get(task_refs)
-      except ray.exceptions.WorkerCrashedError:
-        print("task may fail to finish as expected due to requesting too much memory")
+        try:
+            ray.get(task_refs)
+        except ray.exceptions.WorkerCrashedError:
+            print(
+                "task may fail to finish as expected due to requesting too much memory"
+            )
     print("PASSED: Tasks trying to OOM did not crash the cluster")
