@@ -181,12 +181,13 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     /**
-     * Mark the creating actor as async.
+     * Mark the creating actor as async. If the Python actor is/is not async but it's marked
+     * async/not async in Java, it will result in RayValueError errors
      *
      * @return self
      */
-    public Builder setAsync(boolean enabled) {
-      this.isAsync = enabled;
+    public Builder setAsync(boolean isAsync) {
+      this.isAsync = isAsync;
       return this;
     }
 

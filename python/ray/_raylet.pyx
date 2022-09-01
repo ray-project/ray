@@ -635,9 +635,10 @@ cdef execute_task(
             function = execution_info.function
 
             if core_worker.current_actor_is_asyncio():
-                assert len(inspect.getmembers(
+                if len(inspect.getmembers(
                         actor.__class__,
-                        predicate=inspect.iscoroutinefunction))
+                        predicate=inspect.iscoroutinefunction)) == 0:
+                    raise RayActorError(core_worker.get_actor_id())
                 # Increase recursion limit if necessary. In asyncio mode,
                 # we have many parallel callstacks (represented in fibers)
                 # that's suspended for execution. Python interpreter will
