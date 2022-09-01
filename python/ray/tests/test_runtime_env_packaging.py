@@ -373,6 +373,47 @@ class TestUnzipPackage:
         )
 
 
+class TestParseUri:
+    @pytest.mark.parametrize(
+        "parsing_tuple",
+        [
+            ("gcs://file.zip", Protocol.GCS, "file.zip"),
+            ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
+            ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
+            ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
+        ],
+    )
+    def test_parsing_basic(self, parsing_tuple):
+        uri, protocol, package_name = parsing_tuple
+        parsed_protocol, parsed_package_name = parse_uri(uri)
+
+        assert protocol == parsed_protocol
+        assert package_name == parsed_package_name
+
+    @pytest.mark.parametrize(
+        "parsing_tuple",
+        [
+            (
+                "https://username:PAT@github.com/repo/archive/commit_hash.zip",
+                "https_username_PAT_github_com_repo_archive_commit_hash.zip",
+            ),
+            (
+                (
+                    "https://un:pwd@gitlab.com/user/repo/-/"
+                    "archive/commit_hash/repo-commit_hash.zip"
+                ),
+                (
+                    "https_un_pwd_gitlab_com_user_repo_-_"
+                    "archive_commit_hash_repo-commit_hash.zip"
+                ),
+            ),
+        ],
+    )
+    def test_parse_private_git_https_uris(self, parsing_tuple):
+        raw_uri, parsed_uri = parsing_tuple
+        assert parse_uri(raw_uri) == parsed_uri
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_travel(tmp_path):
     dir_paths = set()
@@ -431,23 +472,6 @@ def test_travel(tmp_path):
     _dir_travel(root, [exclude_spec], handler)
     assert file_paths == visited_file_paths
     assert dir_paths == visited_dir_paths
-
-
-@pytest.mark.parametrize(
-    "parsing_tuple",
-    [
-        ("gcs://file.zip", Protocol.GCS, "file.zip"),
-        ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
-        ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
-        ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
-    ],
-)
-def test_parsing(parsing_tuple):
-    uri, protocol, package_name = parsing_tuple
-    parsed_protocol, parsed_package_name = parse_uri(uri)
-
-    assert protocol == parsed_protocol
-    assert package_name == parsed_package_name
 
 
 def test_is_whl_uri():
