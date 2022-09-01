@@ -11,12 +11,14 @@ from ray.serve._private.deployment_method_executor_node import (
 )
 from ray.serve._private.json_serde import dagnode_from_json
 from ray.dag.utils import _DAGNodeNameGenerator
+from ray.dag.vis_utils import _dag_to_dot
 from ray.serve.handle import RayServeHandle
 
 from typing import Any, Dict, Optional
 from collections import defaultdict
 import json
 import logging
+from io import BytesIO
 
 
 logger = logging.getLogger(__name__)
@@ -232,6 +234,20 @@ class GraphVisualizer:
         }
 
         with gr.Blocks() as demo:
+            from PIL import Image
+
+            try:
+                graph = _dag_to_dot(self.dag)
+                gr.Image(
+                    label="Direct Acyclic Graph",
+                    value=Image.open(BytesIO(graph.create(graph.prog, format="png"))),
+                )
+            except ModuleNotFoundError:
+                logger.warning(
+                    "Module `pydot` is not installed. Unable to show pydot "
+                    "illustration of graph."
+                )
+
             self._make_blocks(node_to_depths)
 
             with gr.Row():

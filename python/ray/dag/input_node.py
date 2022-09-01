@@ -70,6 +70,7 @@ class InputNode(DAGNode):
         if len(args) != 0 or len(kwargs) != 0:
             raise ValueError("InputNode should not take any args or kwargs.")
 
+        self.input_nodes = {}
         super().__init__([], {}, {}, other_args_to_resolve=_other_args_to_resolve)
 
     def _copy_impl(
@@ -118,14 +119,18 @@ class InputNode(DAGNode):
         assert isinstance(
             key, str
         ), "Please only access dag input attributes with str key."
-        return InputAttributeNode(self, key, "__getattr__")
+        if key not in self.input_nodes:
+            self.input_nodes[key] = InputAttributeNode(self, key, "__getattr__")
+        return self.input_nodes[key]
 
     def __getitem__(self, key: Union[int, str]) -> Any:
         assert isinstance(key, (str, int)), (
             "Please only use int index or str as first-level key to "
             "access fields of dag input."
         )
-        return InputAttributeNode(self, key, "__getitem__")
+        if key not in self.input_nodes:
+            self.input_nodes[key] = InputAttributeNode(self, key, "__getitem__")
+        return self.input_nodes[key]
 
     def __enter__(self):
         self.set_context(IN_CONTEXT_MANAGER, True)
