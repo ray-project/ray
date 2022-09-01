@@ -11,6 +11,7 @@ from math import ceil
 import time
 import ray
 import psutil
+import pytest
 
 
 def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> None:
@@ -42,5 +43,6 @@ if __name__ == "__main__":
         try_to_oom.remote(allocate_bytes=bytes_to_alloc, allocate_interval_s=1)
         for _ in range(16)
     ]
-    ray.get(task_refs)
+    with pytest.raises(ray.exceptions.WorkerCrashedError) as _:
+      ray.get(task_refs)
     print("PASSED: Tasks trying to OOM did not crash the cluster")

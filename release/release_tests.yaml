@@ -4629,7 +4629,7 @@
     type: sdk_command
     file_manager: sdk
 
-- name: oom_actor_tests
+- name: oom_actors_tests
   group: core-daily-test
   working_dir: core_tests
 
@@ -4641,7 +4641,25 @@
 
   run:
     timeout: 600
-    script: python oom_actor_test.py
+    script: python oom_actors_test.py
+    wait_for_nodes:
+      num_nodes: 2
+    type: sdk_command
+    file_manager: sdk
+
+- name: oom_tasks_tests
+  group: core-daily-test
+  working_dir: core_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_cpu_nightly.yaml
+    cluster_compute: compute_cpu_2.yaml
+
+  run:
+    timeout: 600
+    script: python oom_tasks_test.py
     wait_for_nodes:
       num_nodes: 2
     type: sdk_command
