@@ -211,8 +211,7 @@ class SigOptSearch(Searcher):
             ), """SigOpt must be installed!
                 You can install SigOpt with the command:
                 `pip install -U sigopt`."""
-            if "SIGOPT_KEY" not in os.environ:
-                load_sigopt_key()
+            load_sigopt_key()
             assert (
                 "SIGOPT_KEY" in os.environ
             ), "SigOpt API key must be stored as environ variable at SIGOPT_KEY"
