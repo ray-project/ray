@@ -253,6 +253,7 @@ async def test_gradio_visualization_types(graph4):
         elif name == "h":
             assert node.get_result_type() == "list"
 
+
 if __name__ == "__main__":
     import sys
 
