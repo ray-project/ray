@@ -564,7 +564,7 @@ def read_csv(
 
         >>> # Convert a date column with a custom format from a CSV file.
         >>> # For more uses of ConvertOptions see
-        >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html
+        >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html  # noqa: #501
         >>> from pyarrow import csv
         >>> convert_options = csv.ConvertOptions(
         ...     timestamp_parsers=["%m/%d/%Y"])
