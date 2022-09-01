@@ -495,7 +495,7 @@ class WorkflowStorage:
         """
         status = self.load_workflow_status()
         if status == WorkflowStatus.NONE:
-            raise ValueError(f"No such workflow {self._workflow_id}")
+            raise ValueError(f"No such workflow '{self._workflow_id}'")
         if status == WorkflowStatus.CANCELED:
             raise ValueError(f"Workflow {self._workflow_id} is canceled")
         # For resumable workflow, the workflow result is not ready.
@@ -622,10 +622,12 @@ class WorkflowStorage:
         def _load_task_metadata():
             if not self._scan(self._key_task_prefix(task_id), ignore_errors=True):
                 if not self._scan("", ignore_errors=True):
-                    raise ValueError("No such workflow_id {}".format(self._workflow_id))
+                    raise ValueError(
+                        "No such workflow_id '{}'".format(self._workflow_id)
+                    )
                 else:
                     raise ValueError(
-                        "No such task_id {} in workflow {}".format(
+                        "No such task_id '{}' in workflow '{}'".format(
                             task_id, self._workflow_id
                         )
                     )
@@ -662,7 +664,7 @@ class WorkflowStorage:
 
         def _load_workflow_metadata():
             if not self._scan("", ignore_errors=True):
-                raise ValueError("No such workflow_id {}".format(self._workflow_id))
+                raise ValueError("No such workflow_id '{}'".format(self._workflow_id))
 
             tasks = [
                 self._get(self._key_workflow_metadata(), True, True),
@@ -842,8 +844,8 @@ class WorkflowStorage:
     def _key_workflow_postrun_metadata(self):
         return os.path.join(WORKFLOW_POSTRUN_METADATA)
 
-    def _key_num_tasks_with_name(self, name):
-        return os.path.join(DUPLICATE_NAME_COUNTER, name)
+    def _key_num_tasks_with_name(self, task_name):
+        return os.path.join(DUPLICATE_NAME_COUNTER, task_name)
 
 
 def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:

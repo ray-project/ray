@@ -11,10 +11,10 @@ def test_user_metadata(workflow_start_regular):
 
     user_task_metadata = {"k1": "v1"}
     user_run_metadata = {"k2": "v2"}
-    task_name = "simple_task"
+    task_id = "simple_task"
     workflow_id = "simple"
 
-    @workflow.options(name=task_name, metadata=user_task_metadata)
+    @workflow.options(task_id=task_id, metadata=user_task_metadata)
     @ray.remote
     def simple():
         return 0
@@ -30,10 +30,10 @@ def test_user_metadata(workflow_start_regular):
 
 def test_user_metadata_empty(workflow_start_regular):
 
-    task_name = "simple_task"
+    task_id = "simple_task"
     workflow_id = "simple"
 
-    @workflow.options(name=task_name)
+    @workflow.options(task_id=task_id)
     @ray.remote
     def simple():
         return 0
@@ -75,10 +75,10 @@ def test_user_metadata_not_json_serializable(workflow_start_regular):
 
 def test_runtime_metadata(workflow_start_regular):
 
-    task_name = "simple_task"
+    task_id = "simple_task"
     workflow_id = "simple"
 
-    @workflow.options(name=task_name)
+    @workflow.options(task_id=task_id)
     @ray.remote
     def simple():
         time.sleep(2)
@@ -106,10 +106,10 @@ def test_successful_workflow(workflow_start_regular):
 
     user_task_metadata = {"k1": "v1"}
     user_run_metadata = {"k2": "v2"}
-    task_name = "simple_task"
+    task_id = "simple_task"
     workflow_id = "simple"
 
-    @workflow.options(name=task_name, metadata=user_task_metadata)
+    @workflow.options(task_id=task_id, metadata=user_task_metadata)
     @ray.remote
     def simple():
         time.sleep(2)
@@ -202,13 +202,13 @@ def test_failed_and_resumed_workflow(workflow_start_regular, tmp_path):
 
 
 def test_nested_workflow(workflow_start_regular):
-    @workflow.options(name="inner", metadata={"inner_k": "inner_v"})
+    @workflow.options(task_id="inner", metadata={"inner_k": "inner_v"})
     @ray.remote
     def inner():
         time.sleep(2)
         return 10
 
-    @workflow.options(name="outer", metadata={"outer_k": "outer_v"})
+    @workflow.options(task_id="outer", metadata={"outer_k": "outer_v"})
     @ray.remote
     def outer():
         time.sleep(2)
@@ -246,24 +246,24 @@ def test_nested_workflow(workflow_start_regular):
 
 def test_no_workflow_found(workflow_start_regular):
 
-    task_name = "simple_task"
+    task_id = "simple_task"
     workflow_id = "simple"
 
-    @workflow.options(name=task_name)
+    @workflow.options(task_id=task_id)
     @ray.remote
     def simple():
         return 0
 
     workflow.run(simple.bind(), workflow_id=workflow_id)
 
-    with pytest.raises(ValueError, match="No such workflow_id simple1"):
+    with pytest.raises(ValueError, match="No such workflow_id 'simple1'"):
         workflow.get_metadata("simple1")
 
-    with pytest.raises(ValueError, match="No such workflow_id simple1"):
+    with pytest.raises(ValueError, match="No such workflow_id 'simple1'"):
         workflow.get_metadata("simple1", "simple_task")
 
     with pytest.raises(
-        ValueError, match="No such task_id simple_task1 in workflow simple"
+        ValueError, match="No such task_id 'simple_task1' in workflow 'simple'"
     ):
         workflow.get_metadata("simple", "simple_task1")
 

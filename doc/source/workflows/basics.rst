@@ -128,16 +128,15 @@ workflow ids, call ``ray.workflow.list_all()``.
 Sub-Task Results
 ~~~~~~~~~~~~~~~~
 
-We can retrieve the results for individual workflow tasks too with *named tasks*. A task can be named in two ways:
+We can retrieve the results for individual workflow tasks too with *task id*. Task ID can be given with ``task_id``:
 
- 1) via ``.options(**workflow.options(name="task_name"))``
- 2) via decorator ``@workflow.options(name="task_name")``
+ 1) via ``.options(**workflow.options(task_id="task_name"))``
+ 2) via decorator ``@workflow.options(task_id="task_name")``
 
-If tasks are not given ``task_name``, the function name of the steps is set as the ``task_name``.
-The ID of the task would be the same as the name. If there are multiple tasks with the same name,
-a suffix with a counter ``_n`` will be added.
+If tasks are not given ``task_id``, the function name of the steps is set as the ``task_id``.
+If there are multiple tasks with the same id, a suffix with a counter ``_n`` will be added.
 
-Once a task is given a name, the result of the task will be retrievable via ``workflow.get_output(workflow_id, task_id="task_name")``.
+Once a task id is given, the result of the task will be retrievable via ``workflow.get_output(workflow_id, task_id="task_id")``.
 If the task with the given ``task_id`` hasn't been executed before the workflow completes, an exception will be thrown. Here are some examples:
 
 .. code-block:: python
@@ -156,8 +155,8 @@ If the task with the given ``task_id`` hasn't been executed before the workflow 
     def double(v):
         return 2 * v
 
-    inner_task = double.options(**workflow.options(name="inner")).bind(1)
-    outer_task = double.options(**workflow.options(name="outer")).bind(inner_task)
+    inner_task = double.options(**workflow.options(task_id="inner")).bind(1)
+    outer_task = double.options(**workflow.options(task_id="outer")).bind(inner_task)
     result_ref = workflow.run_async(outer_task, workflow_id="double")
 
     inner = workflow.get_output_async(workflow_id, task_id="inner")

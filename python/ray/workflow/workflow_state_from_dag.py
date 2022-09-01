@@ -103,7 +103,7 @@ def workflow_state_from_dag(
             if num_returns > 1:
                 raise ValueError("Workflow task can only have one return.")
 
-            workflow_options = bound_options.pop("_metadata", {}).get(
+            workflow_options = bound_options.get("_metadata", {}).get(
                 WORKFLOW_OPTIONS, {}
             )
 
@@ -170,17 +170,21 @@ def workflow_state_from_dag(
                     )
                 input_placeholder: ray.ObjectRef = ray.put(flattened_args)
 
-            name = workflow_options.get("name")
-            if name is None:
-                name = f"{get_module(node._body)}.{slugify(get_qualname(node._body))}"
-            task_id = ray.get(mgr.gen_task_id.remote(workflow_id, name))
+            orig_task_id = workflow_options.get("task_id", None)
+            if orig_task_id is None:
+                orig_task_id = (
+                    f"{get_module(node._body)}.{slugify(get_qualname(node._body))}"
+                )
+
+            task_id = ray.get(mgr.gen_task_id.remote(workflow_id, orig_task_id))
             state.add_dependencies(task_id, [s.task_id for s in workflow_refs])
             state.task_input_args[task_id] = input_placeholder
 
-            user_metadata = workflow_options.pop("metadata", {})
+            user_metadata = workflow_options.get("metadata", {})
+
             validate_user_metadata(user_metadata)
             state.tasks[task_id] = Task(
-                name=name,
+                task_id=task_id,
                 options=task_options,
                 user_metadata=user_metadata,
                 func_body=node._body,
