@@ -38,6 +38,28 @@ py_test_run_all_notebooks(
 )
 
 
+py_test_run_all_notebooks(
+    size = "large",
+    include = ["*.ipynb"],
+    exclude = [
+        "huggingface_text_classification.ipynb",
+        "feast_example.ipynb",  # REGRESSION
+        "upload_to_comet_ml.ipynb",  # Needs credentials
+        "upload_to_wandb.ipynb",  # Needs credentials
+    ],
+    data = ["//doc/source/ray-air/examples:air_examples"],
+    tags = ["exclusive", "team:ml", "ray_air"],
+)
+
+py_test_run_all_notebooks(
+    size = "large",
+    include = ["upload_to_*.ipynb"],
+    exclude = [],
+    data = ["//doc/source/ray-air/examples:air_examples"],
+    tags = ["exclusive", "team:ml", "ray_air", "needs_credentials"],
+)
+
+
 # GPU Tests
 
 py_test_run_all_notebooks(

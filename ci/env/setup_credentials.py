@@ -49,4 +49,7 @@ if __name__ == "__main__":
 
     client = boto3.client("secretsmanager", region_name="us-west-2")
     for service in services:
-        SERVICES[service](client)
+        try:
+            SERVICES[service](client)
+        except Exception as e:
+            print(f"Could not setup service credentials for {service}: {e}")
