@@ -27,6 +27,7 @@ from ray.data.datasource import (
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
+    ImageFolderDatasource,
     JSONDatasource,
     NumpyDatasource,
     ParquetBaseDatasource,
@@ -375,6 +376,75 @@ def read_parquet(
         meta_provider=meta_provider,
         **arrow_parquet_args,
     )
+
+
+@PublicAPI(stability="alpha")
+def read_images(
+    root: str, size: Optional[Tuple[int, int]] = None, mode: Optional[str] = None
+):
+    """Read datasets like `ImageNet <https://www.image-net.org/>`_.
+
+    This function works with any directory where images are arranged in this way:
+
+    .. code-block::
+
+        root/dog/xxx.png
+        root/dog/xxy.png
+        root/dog/[...]/xxz.png
+
+        root/cat/123.png
+        root/cat/nsdf3.png
+        root/cat/[...]/asd932_.png
+
+    Datasets read with this function contain two columns: ``'image'`` and ``'label'``.
+
+    * The ``'image'`` column is of type
+      :py:class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`. The shape of the
+      tensors are :math:`(H, W)` if the images are grayscale and :math:`(H, W, C)`
+      otherwise.
+    * The ``'label'`` column contains strings representing class names (e.g., 'cat').
+
+    .. warning::
+        If your dataset contains images of varying sizes and you don't specify
+        ``size``, this function will error. To prevent errors, specify ``size``
+        or :ref:`disable tensor extension casting <disable_tensor_extension_casting>`.
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.read_images("/data/imagenet/train", size=(224, 224))
+        >>> sample = ds.take(1)[0]  # doctest: +SKIP
+        >>> sample["image"].to_numpy().shape  # doctest: +SKIP
+        (224, 224, 3)
+        >>> sample["label"]  # doctest: +SKIP
+        'n01443537'
+
+        To convert class labels to integer-valued targets, use
+        :class:`~ray.data.preprocessors.OrdinalEncoder`.
+
+        >>> from ray.data.preprocessors import OrdinalEncoder
+        >>> oe = OrdinalEncoder(columns=["label"])  # doctest: +SKIP
+        >>> ds = oe.fit_transform(ds)  # doctest: +SKIP
+        >>> sample = ds.take(1)[0]  # doctest: +SKIP
+        >>> sample["label"]  # doctest: +SKIP
+        71
+
+    Args:
+        root: Path to the dataset root.
+        size: The desired height and width of loaded images. If unspecified, images
+            retain their original shape.
+        mode: A `Pillow mode <https://pillow.readthedocs.io/en/stable/handbook/concepts.html#modes>`_
+            describing the desired type and depth of pixels. If unspecified, image
+            modes are inferred by
+            `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
+
+    Returns:
+        A :class:`~ray.data.Dataset` containing image and label columns.
+
+    Raises:
+        ValueError: if ``size`` contains non-positive numbers.
+        ValueError: if ``mode`` is unsupported.
+    """  # noqa: E501
+    return read_datasource(ImageFolderDatasource(), root=root, size=size, mode=mode)
 
 
 @PublicAPI

@@ -48,6 +48,11 @@ Text
 
 .. autofunction:: ray.data.read_text
 
+Images
+------
+
+.. autofunction:: ray.data.read_images
+
 Binary
 ------
 

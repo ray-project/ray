@@ -89,7 +89,7 @@ This section shows how to create single and multi-column Tensor datasets.
 
 .. tabbed:: Images (experimental)
 
-  Load image data stored as individual files using :py:class:`~ray.data.datasource.ImageFolderDatasource`:
+  Load image data stored as individual files using :func:`~ray.data.read_images`:
 
   **Image and label columns**:
 

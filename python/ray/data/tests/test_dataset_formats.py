@@ -2873,16 +2873,16 @@ def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
         )
 
 
-def test_image_folder_datasource(
+def test_read_images_simple(
     ray_start_regular_shared, enable_automatic_tensor_extension_cast
 ):
-    """Test basic `ImageFolderDatasource` functionality.
+    """Test basic `read_images` functionality.
 
     The folder "simple" contains two cat images and one dog images, all of which are
     are 32x32 RGB images.
     """
     root = "example://image-folders/simple"
-    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root)
+    ds = ray.data.read_images(root=root)
 
     _, types = ds.schema()
     image_type, label_type = types
@@ -2899,41 +2899,41 @@ def test_image_folder_datasource(
     assert all(tensor.shape == (32, 32, 3) for tensor in tensors)
 
 
-def test_image_folder_datasource_filtering(
+def test_read_images_filtering(
     ray_start_regular_shared, enable_automatic_tensor_extension_cast
 ):
-    """Test `ImageFolderDatasource` correctly filters non-image files.
+    """Test `read_images` correctly filters non-image files.
 
     The folder "different-extensions" contains two cat images, one dog image, and two
     non-images. All images are 32x32 RGB images.
     """
     root = "example://image-folders/different-extensions"
-    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root)
+    ds = ray.data.read_images(root=root)
 
     assert ds.count() == 3
     assert sorted(ds.to_pandas()["label"]) == ["cat", "cat", "dog"]
 
 
-def test_image_folder_datasource_size_parameter(
+def test_read_images_size_parameter(
     ray_start_regular_shared, enable_automatic_tensor_extension_cast
 ):
-    """Test `ImageFolderDatasource` size parameter works with differently-sized images.
+    """Test `read_images` size parameter works with differently-sized images.
 
     The folder "different-sizes" contains two cat images and one dog image. Each image
     has a different size, with the size described in file names (e.g., 32x32.png). All
     images are RGB images.
     """
     root = "example://image-folders/different-sizes"
-    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, size=(32, 32))
+    ds = ray.data.read_images(root=root, size=(32, 32))
 
     tensors = ds.to_pandas()["image"]
     assert all(tensor.shape == (32, 32, 3) for tensor in tensors)
 
 
-def test_image_folder_datasource_retains_shape_without_cast(
+def test_read_images_retains_shape_without_cast(
     ray_start_regular_shared, enable_automatic_tensor_extension_cast
 ):
-    """Test `ImageFolderDatasource` retains image shapes if casting is disabled.
+    """Test `read_images` retains image shapes if casting is disabled.
 
     The folder "different-sizes" contains two cat images and one dog image. The image
     sizes are 16x16, 32x32, and 64x32. All images are RGB images.
@@ -2942,7 +2942,7 @@ def test_image_folder_datasource_retains_shape_without_cast(
         return
 
     root = "example://image-folders/different-sizes"
-    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root)
+    ds = ray.data.read_images(root=root)
     arrays = ds.to_pandas()["image"]
     shapes = sorted(array.shape for array in arrays)
     assert shapes == [(16, 16, 3), (32, 32, 3), (64, 64, 3)]
@@ -2951,32 +2951,32 @@ def test_image_folder_datasource_retains_shape_without_cast(
 @pytest.mark.parametrize(
     "mode, expected_shape", [("L", (32, 32)), ("RGB", (32, 32, 3))]
 )
-def test_image_folder_datasource_mode_parameter(
+def test_read_images_mode_parameter(
     mode,
     expected_shape,
     ray_start_regular_shared,
     enable_automatic_tensor_extension_cast,
 ):
-    """Test `ImageFolderDatasource` works with images from different colorspaces.
+    """Test `read_images` works with images from different colorspaces.
 
     The folder "different-modes" contains two cat images and one dog image. Their modes
     are "CMYK", "L", and "RGB". All images are 32x32.
     """
     root = "example://image-folders/different-modes"
-    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, mode=mode)
+    ds = ray.data.read_images(root=root, mode=mode)
 
     tensors = ds.to_pandas()["image"]
     assert all([tensor.shape == expected_shape for tensor in tensors])
 
 
 @pytest.mark.parametrize("size", [(-32, 32), (32, -32), (-32, -32)])
-def test_image_folder_datasource_value_error(ray_start_regular_shared, size):
+def test_read_images_value_error(ray_start_regular_shared, size):
     root = "example://image-folders/simple"
     with pytest.raises(ValueError):
-        ray.data.read_datasource(ImageFolderDatasource(), root=root, size=size)
+        ray.data.read_images(root=root, size=size)
 
 
-def test_image_folder_datasource_e2e(ray_start_regular_shared):
+def test_read_images_e2e(ray_start_regular_shared):
     from ray.train.torch import TorchCheckpoint, TorchPredictor
     from ray.train.batch_predictor import BatchPredictor
 
@@ -2984,9 +2984,7 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
     from torchvision.models import resnet18
 
     root = "example://image-folders/simple"
-    dataset = ray.data.read_datasource(
-        ImageFolderDatasource(), root=root, size=(32, 32)
-    )
+    dataset = ray.data.read_images(root=root, size=(32, 32))
 
     def preprocess(df):
         preprocess = transforms.Compose([transforms.ToTensor()])
@@ -3010,8 +3008,7 @@ def test_image_folder_reader_estimate_data_size(
     ray_start_regular_shared, image_size, image_mode, expected_size, expected_ratio
 ):
     root = "example://image-folders/different-sizes"
-    ds = ray.data.read_datasource(
-        ImageFolderDatasource(),
+    ds = ray.data.read_images(
         root=root,
         size=(image_size, image_size),
         mode=image_mode,

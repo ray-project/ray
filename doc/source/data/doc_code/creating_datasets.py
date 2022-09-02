@@ -150,6 +150,33 @@ ds.show(2)
 # fmt: on
 
 # fmt: off
+# __read_images_begin__
+ds = ray.data.read_images(root="example://image-folders/simple", size=(128, 128))
+# -> Dataset(num_blocks=3, num_rows=3,
+#            schema={image: TensorDtype(shape=(128, 128, 3), dtype=uint8),
+#                    label: object})
+
+ds.take(1)
+# -> [{'image':
+#         array([[[ 92,  71,  57],
+#                 [107,  87,  72],
+#                 ...,
+#                 [141, 161, 185],
+#                 [139, 158, 184]],
+#
+#                ...,
+#
+#                [[135, 135, 109],
+#                 [135, 135, 108],
+#                 ...,
+#                 [167, 150,  89],
+#                 [165, 146,  90]]], dtype=uint8),
+#      'label': 'cat',
+#     }]
+# __read_images_end__
+# fmt: on
+
+# fmt: off
 # __from_numpy_mult_begin__
 import numpy as np
 

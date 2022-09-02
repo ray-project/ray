@@ -162,6 +162,30 @@ Supported File Formats
 
   See the API docs for :func:`read_text() <ray.data.read_text>`.
 
+.. tabbed:: Images
+
+  If  your directory structure is:
+
+  .. code-block::
+
+    root/dog/xxx.png
+    root/dog/xxy.png
+    root/dog/[...]/xxz.png
+
+    root/cat/123.png
+    root/cat/nsdf3.png
+    root/cat/[...]/asd932_.png
+
+  Then call :func:`~ray.data.read_images` to load your images into a ``Dataset``.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __read_images_begin__
+    :end-before: __read_images_end__
+
+  For more information on working with tensors, see our
+  :ref:`tensor data guide <datasets_tensor_support>`
+
 .. tabbed:: Binary
 
   Read binary files into a ``Dataset``. Each binary file will be treated as a single row
@@ -517,19 +541,6 @@ converts it into a Ray Dataset directly.
     ray_datasets = ray.data.from_huggingface(hf_datasets)
     ray_datasets["train"].take(2)
     # [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
-
-.. _datasets_from_images:
-
--------------------------------
-From Image Files (experimental)
--------------------------------
-
-Load image data stored as individual files using :py:class:`~ray.data.datasource.ImageFolderDatasource`:
-
-.. literalinclude:: ./doc_code/tensor.py
-    :language: python
-    :start-after: __create_images_begin__
-    :end-before: __create_images_end__
 
 .. _datasets_custom_datasource:
 

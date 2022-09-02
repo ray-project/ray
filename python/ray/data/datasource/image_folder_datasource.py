@@ -40,58 +40,7 @@ IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 
 @DeveloperAPI
 class ImageFolderDatasource(BinaryDatasource):
-    """A datasource that lets you read datasets like `ImageNet <https://www.image-net.org/>`_.
-
-    This datasource works with any dataset where images are arranged in this way:
-
-    .. code-block::
-
-        root/dog/xxx.png
-        root/dog/xxy.png
-        root/dog/[...]/xxz.png
-
-        root/cat/123.png
-        root/cat/nsdf3.png
-        root/cat/[...]/asd932_.png
-
-    Datasets read with this datasource contain two columns: ``'image'`` and ``'label'``.
-
-    * The ``'image'`` column is of type
-      :py:class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`. The shape of the
-      tensors are :math:`(H, W)` if the images are grayscale and :math:`(H, W, C)`
-      otherwise.
-    * The ``'label'`` column contains strings representing class names (e.g., 'cat').
-
-    Examples:
-        >>> import ray
-        >>> from ray.data.datasource import ImageFolderDatasource
-        >>> ds = ray.data.read_datasource(  # doctest: +SKIP
-        ...     ImageFolderDatasource(),
-        ...     root="/data/imagenet/train",
-        ...     size=(224, 224)
-        ... )
-        >>> sample = ds.take(1)[0]  # doctest: +SKIP
-        >>> sample["image"].to_numpy().shape  # doctest: +SKIP
-        (224, 224, 3)
-        >>> sample["label"]  # doctest: +SKIP
-        'n01443537'
-
-        To convert class labels to integer-valued targets, use
-        :py:class:`~ray.data.preprocessors.OrdinalEncoder`.
-
-        >>> import ray
-        >>> from ray.data.preprocessors import OrdinalEncoder
-        >>> ds = ray.data.read_datasource(  # doctest: +SKIP
-        ...     ImageFolderDatasource(),
-        ...     root="/data/imagenet/train",
-        ...     size=(224, 224)
-        ... )
-        >>> oe = OrdinalEncoder(columns=["label"])  # doctest: +SKIP
-        >>> ds = oe.fit_transform(ds)  # doctest: +SKIP
-        >>> sample = ds.take(1)[0]  # doctest: +SKIP
-        >>> sample["label"]  # doctest: +SKIP
-        71
-    """  # noqa: E501
+    """A datasource that lets you read datasets like ImageNet."""
 
     def create_reader(
         self,
@@ -99,26 +48,7 @@ class ImageFolderDatasource(BinaryDatasource):
         size: Optional[Tuple[int, int]] = None,
         mode: Optional[str] = None,
     ) -> "Reader[T]":
-        """Return a :py:class:`~ray.data.datasource.Reader` that reads images.
-
-        .. warning::
-            If your dataset contains images of varying sizes and you don't specify
-            ``size``, this datasource will error. To prevent errors, specify ``size``
-            or :ref:`disable tensor extension casting <disable_tensor_extension_casting>`.
-
-        Args:
-            root: Path to the dataset root.
-            size: The desired height and width of loaded images. If unspecified, images
-                retain their original shape.
-            mode: A `Pillow mode <https://pillow.readthedocs.io/en/stable/handbook/concepts.html#modes>`_
-                describing the desired type and depth of pixels. If unspecified, image
-                modes are inferred by
-                `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
-
-        Raises:
-            ValueError: if ``size`` contains non-positive numbers.
-            ValueError: if ``mode`` is unsupported.
-        """  # noqa: E501
+        """Return a :py:class:`~ray.data.datasource.Reader` that reads images."""
         if size is not None and len(size) != 2:
             raise ValueError(
                 "Expected `size` to contain 2 integers for height and width, "

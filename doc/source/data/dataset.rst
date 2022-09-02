@@ -110,7 +110,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-
         :text: Start Using Ray Datasets
         :classes: btn-outline-info btn-block
     ---
-    
+
     **Examples**
     ^^^
 
@@ -200,6 +200,9 @@ Supported Input Formats
    * - Text Files
      - :func:`ray.data.read_text()`
      - ✅
+   * - Image Files
+     - :func:`ray.data.read_images()`
+     - 🚧
    * - Binary Files
      - :func:`ray.data.read_binary_files()`
      - ✅
