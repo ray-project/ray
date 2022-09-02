@@ -143,8 +143,8 @@ class DataParallelTrainer(BaseTrainer):
       - **Use Case 1:** You want to do data parallel training, but want to have
         a predefined ``training_loop_per_worker``.
 
-      - **Use Case 2:** You want to implement a custom :ref:`Training backend
-        <train-api-backend-interfaces>` that automatically handles
+      - **Use Case 2:** You want to implement a custom
+        :py:class:`~ray.train.backend.Backend` that automatically handles
         additional setup or teardown logic on each actor, so that the users of this
         new trainer do not have to implement this logic. For example, a
         ``TensorflowTrainer`` can be built on top of ``DataParallelTrainer``
