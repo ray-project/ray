@@ -15,8 +15,8 @@ except Exception:
     Response = None
 
 from ray._private import ray_constants
+from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.modules.job.common import validate_request_type
-from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 
 try:
     # package `pydantic` is not in ray's minimal dependencies
@@ -117,7 +117,7 @@ async def parse_and_validate_request(req: Request, request_type: dataclass) -> A
 
 
 async def get_driver_jobs(
-    gcs_job_info_stub: gcs_service_pb2_grpc.JobInfoGcsServiceStub,
+    gcs_aio_client: GcsAioClient,
 ) -> Tuple[Dict[str, JobDetails], Dict[str, DriverInfo]]:
     """Returns a tuple of dictionaries related to drivers.
 
@@ -126,8 +126,7 @@ async def get_driver_jobs(
     It's keyed by the submission job's submission id.
     Only the last driver of a submission job is returned.
     """
-    request = gcs_service_pb2.GetAllJobInfoRequest()
-    reply = await gcs_job_info_stub.GetAllJobInfo(request, timeout=5)
+    reply = await gcs_aio_client.get_all_job_info()
 
     jobs = {}
     submission_job_drivers = {}
@@ -174,7 +173,7 @@ async def get_driver_jobs(
 
 
 async def find_job_by_ids(
-    gcs_job_info_stub: gcs_service_pb2_grpc.JobInfoGcsServiceStub,
+    gcs_aio_client: GcsAioClient,
     job_manager: "JobManager",  # noqa: F821
     job_or_submission_id: str,
 ) -> Optional[JobDetails]:
@@ -182,7 +181,7 @@ async def find_job_by_ids(
     Attempts to find the job with a given submission_id or job id.
     """
     # First try to find by job_id
-    driver_jobs, submission_job_drivers = await get_driver_jobs(gcs_job_info_stub)
+    driver_jobs, submission_job_drivers = await get_driver_jobs(gcs_aio_client)
     job = driver_jobs.get(job_or_submission_id)
     if job:
         return job

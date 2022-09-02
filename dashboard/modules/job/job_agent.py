@@ -13,7 +13,6 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.job.job_manager import JobManager
 from ray.dashboard.modules.job.utils import parse_and_validate_request, find_job_by_ids
-from ray.core.generated import gcs_service_pb2_grpc
 
 
 routes = optional_utils.ClassMethodRouteTable
@@ -70,7 +69,9 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         job_or_submission_id = req.match_info["job_or_submission_id"]
 
         job = await find_job_by_ids(
-            self.get_gcs_job_info_stub(), self.get_job_manager(), job_or_submission_id
+            self._dashboard_agent.gcs_aio_client,
+            self.get_job_manager(),
+            job_or_submission_id,
         )
         if not job:
             return Response(
@@ -87,13 +88,6 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         if not self._job_manager:
             self._job_manager = JobManager(self._dashboard_agent.gcs_aio_client)
         return self._job_manager
-
-    def get_gcs_job_info_stub(self):
-        if not self._gcs_job_info_stub:
-            self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
-                self._dashboard_agent.gcs_aio_client.channel.channel()
-            )
-        return self._gcs_job_info_stub
 
     async def run(self, server):
         pass

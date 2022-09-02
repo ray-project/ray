@@ -15,7 +15,6 @@ from ray._private.runtime_env.packaging import (
     pin_runtime_env_uri,
     upload_package_to_gcs,
 )
-from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.modules.job.common import (
     http_uri_components_to_uri,
     JobSubmitRequest,
@@ -99,7 +98,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         super().__init__(dashboard_head)
         self._dashboard_head = dashboard_head
         self._job_manager = None
-        self._gcs_job_info_stub = None
 
     @routes.get("/api/version")
     async def get_version(self, req: Request) -> Response:
@@ -202,7 +200,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def stop_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._gcs_job_info_stub, self._job_manager, job_or_submission_id
+            self._dashboard_head.gcs_aio_client, self._job_manager, job_or_submission_id
         )
         if not job:
             return Response(
@@ -233,7 +231,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def get_job_info(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._gcs_job_info_stub, self._job_manager, job_or_submission_id
+            self._dashboard_head.gcs_aio_client, self._job_manager, job_or_submission_id
         )
         if not job:
             return Response(
@@ -250,7 +248,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions()
     async def list_jobs(self, req: Request) -> Response:
         driver_jobs, submission_job_drivers = await get_driver_jobs(
-            self._gcs_job_info_stub
+            self._dashboard_head.gcs_aio_client
         )
 
         submission_jobs = await self._job_manager.list_jobs()
@@ -281,7 +279,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def get_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._gcs_job_info_stub, self._job_manager, job_or_submission_id
+            self._dashboard_head.gcs_aio_client, self._job_manager, job_or_submission_id
         )
         if not job:
             return Response(
@@ -305,7 +303,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def tail_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._gcs_job_info_stub, self._job_manager, job_or_submission_id
+            self._dashboard_head.gcs_aio_client, self._job_manager, job_or_submission_id
         )
         if not job:
             return Response(
@@ -328,10 +326,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def run(self, server):
         if not self._job_manager:
             self._job_manager = JobManager(self._dashboard_head.gcs_aio_client)
-
-        self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
-            self._dashboard_head.aiogrpc_gcs_channel
-        )
 
     @staticmethod
     def is_minimal_module():
