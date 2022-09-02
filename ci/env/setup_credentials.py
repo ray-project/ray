@@ -37,7 +37,7 @@ def get_and_write_sigopt_api_key(client):
     api_key = client.get_secret_value(SecretId=AWS_SIGOPT_SECRET_ARN)["SecretString"]
 
     sigopt_config_file = Path("~/.sigopt/client/config.json").expanduser()
-    sigopt_config_file.parent.mkdir(exist_ok=True)
+    sigopt_config_file.parent.mkdir(parents=True, exist_ok=True)
     with open(sigopt_config_file, "wt") as f:
         json.dump(
             {
