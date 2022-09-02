@@ -360,21 +360,19 @@ class _TorchAccelerator(Accelerator):
         if parallel_strategy and world_size > 1:
             if parallel_strategy == "ddp":
                 DataParallel = DistributedDataParallel
+                if torch.cuda.is_available():
+                    parallel_strategy_kwargs = {
+                        "device_ids": [rank],
+                        "output_device": rank,
+                        **parallel_strategy_kwargs,
+                    }
             else:
                 DataParallel = FullyShardedDataParallel
             if rank == 0:
                 logger.info(f"Wrapping provided model in {DataParallel.__name__}.")
             else:
                 logger.debug(f"Wrapping provided model in {DataParallel.__name__}.")
-            if torch.cuda.is_available():
-                model = DataParallel(
-                    model,
-                    device_ids=[rank],
-                    output_device=rank,
-                    **parallel_strategy_kwargs,
-                )
-            else:
-                model = DataParallel(model, **parallel_strategy_kwargs)
+            model = DataParallel(model, **parallel_strategy_kwargs)
 
         return model
 
