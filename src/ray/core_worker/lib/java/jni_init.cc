@@ -417,7 +417,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
   java_native_task_executor_class =
       LoadClass(env, "io/ray/runtime/task/NativeTaskExecutor");
-    
+
   java_object_ref_impl_class = LoadClass(env, "io/ray/runtime/object/ObjectRefImpl");
   java_object_ref_impl_class_on_memory_store_object_allocated = env->GetStaticMethodID(
       java_object_ref_impl_class, "onMemoryStoreObjectAllocated", "([B[B)V");
