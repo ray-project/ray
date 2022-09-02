@@ -62,10 +62,6 @@ PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO = 0.01
 PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES = 2
 PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
 
-# The number of rows to read from each file for sampling. Try to keep it low to avoid
-# reading too much data into memory.
-PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 5
-
 
 # TODO(ekl) this is a workaround for a pyarrow serialization bug, where serializing a
 # raw pyarrow file fragment causes S3 network calls.
@@ -423,7 +419,10 @@ def _fetch_metadata(
 
 
 def _sample_piece(
-    reader_args, columns, schema, file_piece: _SerializedPiece,
+    reader_args,
+    columns,
+    schema,
+    file_piece: _SerializedPiece,
 ) -> float:
     # Sample the first rows batch from file piece `serialized_piece`.
     # Return the encoding ratio calculated from the sampled rows.
