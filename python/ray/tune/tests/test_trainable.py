@@ -199,7 +199,9 @@ def test_sync_timeout(tmpdir, hanging):
         orig_upload_fn(*args, **kwargs)
 
     trainable = SavingTrainable(
-        "object", remote_checkpoint_dir="memory:///test/location", sync_timeout=0.5
+        "object",
+        remote_checkpoint_dir=f"memory:///test/location_hanging_{hanging}",
+        sync_timeout=0.5,
     )
 
     with patch("ray.air.checkpoint.upload_to_uri", _hanging_upload):
@@ -208,7 +210,9 @@ def test_sync_timeout(tmpdir, hanging):
     check_dir = tmpdir / "check_save_obj"
 
     try:
-        download_from_uri(uri="memory:///test/location", local_path=str(check_dir))
+        download_from_uri(
+            uri=f"memory:///test/location_hanging_{hanging}", local_path=str(check_dir)
+        )
     except FileNotFoundError:
         hung = True
     else:
