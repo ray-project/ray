@@ -371,4 +371,9 @@ bool IsRayletFailed(const std::string &raylet_pid);
 /// Teriminate the process without cleaning up the resources.
 void QuickExit();
 
+/// \param value the value to be formatted to string
+/// \param precision the precision to format the value to
+/// \return the foramtted value
+std::string FormatFloat(float value, int32_t precision);
+
 }  // namespace ray
