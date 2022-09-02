@@ -39,6 +39,16 @@ logger = logging.getLogger(__name__)
 # Syncing period for syncing checkpoints between nodes or to cloud.
 DEFAULT_SYNC_PERIOD = 300
 
+# Default sync timeout after which syncing processes are aborted
+DEFAULT_SYNC_TIMEOUT = 1800
+
+_EXCLUDE_FROM_SYNC = [
+    "./checkpoint_-00001",
+    "./checkpoint_tmp*",
+    "./save_to_object*",
+    "./rank_*",
+]
+
 
 def _validate_upload_dir(sync_config: "SyncConfig") -> bool:
     if not sync_config.upload_dir:
@@ -77,6 +87,8 @@ class SyncConfig:
             is asynchronous and best-effort. This does not affect persistent
             storage syncing. Defaults to True.
         sync_period: Syncing period for syncing between nodes.
+        sync_timeout: Timeout after which running sync processes are aborted.
+            Currently only affects trial-to-cloud syncing.
 
     """
 
@@ -85,6 +97,7 @@ class SyncConfig:
 
     sync_on_checkpoint: bool = True
     sync_period: int = DEFAULT_SYNC_PERIOD
+    sync_timeout: int = DEFAULT_SYNC_TIMEOUT
 
 
 class _BackgroundProcess:
