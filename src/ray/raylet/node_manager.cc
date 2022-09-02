@@ -2970,7 +2970,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           /// TODO: (clarng) right now destroy is called after the messages are created
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
-          DestroyWorker(this->high_memory_eviction_target_,
+          DestroyWorker(high_memory_eviction_target_,
                         rpc::WorkerExitType::USER_ERROR,
                         worker_exit_message,
                         true /* force */);
