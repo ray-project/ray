@@ -17,13 +17,29 @@
 #include <sys/sysinfo.h>
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/util/process.h"
 
 namespace ray {
-class MemoryMonitorTest : public ::testing::Test {};
+class MemoryMonitorTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    thread_ = std::make_unique<std::thread>([this]() {
+      boost::asio::io_context::work work(io_context_);
+      io_context_.run();
+    });
+  }
+  void TearDown() override {
+    io_context_.stop();
+    thread_->join();
+  }
+  std::unique_ptr<std::thread> thread_;
+  instrumented_io_context io_context_;
+};
 
 TEST_F(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold) {
   MemoryMonitor monitor(
+      MemoryMonitorTest::io_context_,
       0 /*usage_threshold*/,
       0 /*refresh_interval_ms*/,
       [](bool is_usage_above_threshold,
@@ -34,6 +50,7 @@ TEST_F(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold) {
 
 TEST_F(MemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold) {
   MemoryMonitor monitor(
+      MemoryMonitorTest::io_context_,
       1 /*usage_threshold*/,
       0 /*refresh_interval_ms*/,
       [](bool is_usage_above_threshold,
@@ -44,6 +61,7 @@ TEST_F(MemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold) {
 
 TEST_F(MemoryMonitorTest, TestUsageAtThresholdReportsTrue) {
   MemoryMonitor monitor(
+      MemoryMonitorTest::io_context_,
       0.5 /*usage_threshold*/,
       0 /*refresh_interval_ms*/,
       [](bool is_usage_above_threshold,
@@ -57,6 +75,7 @@ TEST_F(MemoryMonitorTest, TestUsageAtThresholdReportsTrue) {
 TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive) {
   {
     MemoryMonitor monitor(
+        MemoryMonitorTest::io_context_,
         0 /*usage_threshold*/,
         0 /*refresh_interval_ms*/,
         [](bool is_usage_above_threshold,
@@ -71,6 +90,7 @@ TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive) {
 TEST_F(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
   {
     MemoryMonitor monitor(
+        MemoryMonitorTest::io_context_,
         0 /*usage_threshold*/,
         0 /*refresh_interval_ms*/,
         [](bool is_usage_above_threshold,
@@ -103,7 +123,8 @@ TEST_F(MemoryMonitorTest, TestMonitorPeriodSetCallbackExecuted) {
   std::condition_variable callback_ran;
   std::mutex callback_ran_mutex;
 
-  MemoryMonitor monitor(1 /*usage_threshold*/,
+  MemoryMonitor monitor(MemoryMonitorTest::io_context_,
+                        1 /*usage_threshold*/,
                         1 /*refresh_interval_ms*/,
                         [&callback_ran](bool is_usage_above_threshold,
                                         MemorySnapshot system_memory,
