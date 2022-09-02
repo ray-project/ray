@@ -239,13 +239,15 @@ class GraphVisualizer:
             try:
                 graph = _dag_to_dot(self.dag)
                 gr.Image(
-                    label="Direct Acyclic Graph",
+                    label="Ray Serve Deployment Graph",
                     value=Image.open(BytesIO(graph.create(graph.prog, format="png"))),
                 )
-            except ModuleNotFoundError:
+            except ImportError:
                 logger.warning(
-                    "Module `pydot` is not installed. Unable to show pydot "
-                    "illustration of graph."
+                    "Python module `pydot` and package `graphviz` is needed to show "
+                    "illustration of graph. Install pydot with `pip install pydot` "
+                    "and graphviz with either `brew install pydot` or `sudo apt "
+                    "install graphviz`"
                 )
 
             self._make_blocks(node_to_depths)
