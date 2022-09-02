@@ -334,6 +334,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       ray_syncer_(io_service_, self_node_id_.Binary()),
       ray_syncer_service_(ray_syncer_),
       memory_monitor_(std::make_unique<MemoryMonitor>(
+          io_service,
           RayConfig::instance().memory_usage_threshold_fraction(),
           RayConfig::instance().memory_monitor_interval_ms(),
           CreateMemoryUsageRefreshCallback())) {
@@ -2969,14 +2970,10 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           /// TODO: (clarng) right now destroy is called after the messages are created
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
-          this->io_service_.post(
-              [this, worker_exit_message]() {
-                DestroyWorker(this->high_memory_eviction_target_,
-                              rpc::WorkerExitType::USER_ERROR,
-                              worker_exit_message,
-                              true /* force */);
-              },
-              "NodeManager.HighMemoryUsage.DestroyWorker");
+          DestroyWorker(this->high_memory_eviction_target_,
+                        rpc::WorkerExitType::USER_ERROR,
+                        worker_exit_message,
+                        true /* force */);
 
           if (latest_worker->GetActorId().IsNil()) {
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
