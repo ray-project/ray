@@ -324,6 +324,7 @@ $ python arithmetic.py
 9
 ```
 
+(pydot-visualize-dag)=
 ### Visualizing the Graph
 
 You can render an illustration of your deployment graph to see its nodes and their connection.
