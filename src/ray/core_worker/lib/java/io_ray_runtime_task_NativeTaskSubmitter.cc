@@ -196,6 +196,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     }
     max_concurrency = static_cast<uint64_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_concurrency));
+
     auto group =
         env->GetObjectField(actorCreationOptions, java_actor_creation_options_group);
     if (group) {
