@@ -90,12 +90,12 @@ class DoublyRobust(OffPolicyEstimator):
             - v_target: The estimated discounted return for `self.policy`,
             averaged over episodes in the batch
             - v_target_std: The standard deviation corresponding to v_target
-            - v_gain: v_target / max(v_behavior, 1e-8), averaged over episodes
-            - v_gain_std: The standard deviation corresponding to v_gain
+            - v_gain: v_target / max(v_behavior, 1e-8)'
+            - v_delta: The difference between v_target and v_behavior.
         """
         batch = self.convert_ma_batch_to_sample_batch(batch)
         self.check_action_prob_in_batch(batch)
-        estimates = {"v_behavior": [], "v_target": [], "v_gain": []}
+        estimates_per_epsiode = {"v_behavior": [], "v_target": []}
         # Calculate doubly robust OPE estimates
         for episode in batch.split_by_episode():
             rewards, old_prob = episode["rewards"], episode["action_prob"]
@@ -119,15 +119,18 @@ class DoublyRobust(OffPolicyEstimator):
                 )
             v_target = v_target.item()
 
-            estimates["v_behavior"].append(v_behavior)
-            estimates["v_target"].append(v_target)
-            estimates["v_gain"].append(v_target / max(v_behavior, 1e-8))
-        estimates["v_behavior_std"] = np.std(estimates["v_behavior"])
-        estimates["v_behavior"] = np.mean(estimates["v_behavior"])
-        estimates["v_target_std"] = np.std(estimates["v_target"])
-        estimates["v_target"] = np.mean(estimates["v_target"])
-        estimates["v_gain_std"] = np.std(estimates["v_gain"])
-        estimates["v_gain"] = np.mean(estimates["v_gain"])
+            estimates_per_epsiode["v_behavior"].append(v_behavior)
+            estimates_per_epsiode["v_target"].append(v_target)
+
+        estimates = {
+            "v_behavior": np.mean(estimates_per_epsiode["v_behavior"]),
+            "v_behavior_std": np.std(estimates_per_epsiode["v_behavior"]),
+            "v_target": np.mean(estimates_per_epsiode["v_target"]),
+            "v_target_std": np.std(estimates_per_epsiode["v_target"]),
+        }
+        estimates["v_gain"] = estimates["v_target"] / max(estimates["v_behavior"], 1e-8)
+        estimates["v_delta"] = estimates["v_target"] - estimates["v_behavior"]
+
         return estimates
 
     @override(OffPolicyEstimator)
