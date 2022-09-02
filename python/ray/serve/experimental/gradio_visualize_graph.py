@@ -1,6 +1,7 @@
 import ray
 from ray.dag import (
     DAGNode,
+    InputNode,
     InputAttributeNode,
 )
 from ray.serve._private.deployment_function_executor_node import (
@@ -125,10 +126,15 @@ class GraphVisualizer:
         self.resolved_nodes = 0
         self.finished_last_inference = True
 
-        # maps DAGNode uuid to unique instance of a gradio block
+        # Whether user created InputAttributeNodes when building the graph. It is
+        # assumed that input is either given through the single InputNode, or
+        # exclusively through InputAttributeNodes.
+        self.take_input_through_attribute_nodes = False
+
+        # maps DAGNode to unique instance of a gradio block
         self.node_to_block: Dict[DAGNode, Any] = {}
-        # maps InputAttributeNodes to unique instance of interactive gradio block
-        self.input_key_to_blocks: Dict[int, Any] = {}
+        # maps input nodes to unique instance of interactive gradio block
+        self.input_node_to_block: Dict[int, Any] = {}
 
     def clear_cache(self):
         self.cache = {}
@@ -136,20 +142,24 @@ class GraphVisualizer:
     def _make_blocks(self, depths: Dict[str, int]) -> None:
         """Instantiates Gradio blocks for each graph node stored in depths.
 
-        Nodes of depth 1 will be rendered in the top row, depth 2 in the second row,
-        and so forth. Note that the InputNode has depth 0 and will not be rendered.
+        Nodes of depth 0 will be rendered in the top row, depth 1 in the next row,
+        and so forth. Note that this will render either the single InputNode, or all
+        of the InputAttributeNodes; it will not render a mix of the two.
 
         Args:
             depths: maps uuids of nodes in the DAG to their depth
         """
         gr = lazy_import_gradio()
+        input_node_type_to_render = (
+            InputAttributeNode if self.take_input_through_attribute_nodes else InputNode
+        )
 
         levels = {}
         for node in depths:
             if isinstance(
                 node,
                 (
-                    InputAttributeNode,
+                    input_node_type_to_render,
                     DeploymentMethodExecutorNode,
                     DeploymentFunctionExecutorNode,
                 ),
@@ -162,10 +172,8 @@ class GraphVisualizer:
             for node in levels[level]:
                 name = node_names.get_node_name(node)
 
-                if isinstance(node, InputAttributeNode):
-                    key = node._key
-                    if key not in self.input_key_to_blocks:
-                        self.input_key_to_blocks[key] = get_block(node, label=name)
+                if isinstance(node, input_node_type_to_render):
+                    self.input_node_to_block[node] = get_block(node, label=name)
                 else:
                     self.node_to_block[node] = get_block(
                         node, label=name, interactive=False
@@ -179,19 +187,22 @@ class GraphVisualizer:
         """Gets the node's depth.
 
         Calculates graph node's depth, which is determined by the longest distance
-        between that node and any InputAttributeNode. The single InputNode in the graph
-        will have depth 0, and all InputAttributeNodes will have depth 1. The node's
-        depth is cached in the passed-in depths dictionary.
+        between that node and the InputNode. The single InputNode in the graph will have
+        depth 0, and any InputAttributeNodes, if they exist, will have depth 1. The
+        node's depth is cached in the passed-in depths dictionary.
 
         Args:
             node: the graph node to process
             depths: map between DAGNode uuid to the current longest found distance
-                between the DAGNode and any InputAttributeNode
+                between the DAGNode and any input nodes
 
         Returns:
             The original node. After apply_recursive is done, the cache will store
             an uuid -> node map, which will be used in make_blocks.
         """
+        if isinstance(node, InputAttributeNode):
+            self.take_input_through_attribute_nodes = True
+
         uuid = node.get_stable_uuid()
         for child_node in node._get_all_child_nodes():
             depths[uuid] = max(depths[uuid], depths[child_node.get_stable_uuid()] + 1)
@@ -237,27 +248,30 @@ class GraphVisualizer:
             logger.warning("Last inference has not finished yet.")
             return trigger_value
 
-        # Assumes self.input_key_to_blocks is an ordered dictionary
-        input_keys = list(self.input_key_to_blocks.keys())
-
         # Extract positional args
-        indices = [i for i in input_keys if isinstance(i, int)]
-        args = []
-        if len(indices):
-            max_index = max(indices)
-            for i in range(max_index + 1):
-                try:
-                    loc = input_keys.index(i)
-                    args.append(input_values[loc])
-                except ValueError:
-                    args.append(None)
+        args, kwargs = [], {}
+        if self.take_input_through_attribute_nodes:
+            # Assumes self.input_node_to_block is an ordered dictionary
+            input_keys = [node._key for node in self.input_node_to_block]
 
-        # Extract keyword args
-        kwargs = {
-            input_keys[i]: input_values[i]
-            for i in range(len(input_values))
-            if isinstance(input_keys[i], str)
-        }
+            indices = [i for i in input_keys if isinstance(i, int)]
+            if len(indices):
+                max_index = max(indices)
+                for i in range(max_index + 1):
+                    try:
+                        loc = input_keys.index(i)
+                        args.append(input_values[loc])
+                    except ValueError:
+                        args.append(None)
+
+            # Extract keyword args
+            kwargs = {
+                input_keys[i]: input_values[i]
+                for i in range(len(input_values))
+                if isinstance(input_keys[i], str)
+            }
+        else:
+            args = input_values
 
         self.handle.predict.remote(*args, _ray_cache_refs=True, **kwargs)
         self.cache = await self.handle.get_intermediate_object_refs.remote()
@@ -321,7 +335,7 @@ class GraphVisualizer:
             # Add event listener that sends the request to the deployment graph
             submit.click(
                 fn=self._send_request,
-                inputs=[trigger] + list(self.input_key_to_blocks.values()),
+                inputs=[trigger] + list(self.input_node_to_block.values()),
                 outputs=trigger,
             )
             # Add event listeners that resolve object refs for each of the nodes
@@ -332,7 +346,7 @@ class GraphVisualizer:
 
             # Resets all blocks if Clear button is clicked
             all_blocks = [*self.node_to_block.values()] + [
-                *self.input_key_to_blocks.values()
+                *self.input_node_to_block.values()
             ]
             clear.click(
                 lambda: self.clear_cache() or [None] * len(all_blocks), [], all_blocks
