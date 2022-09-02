@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Union, Optional
 
 from ray.dag import DAGNode
 from ray.dag.format_utils import get_dag_node_str
@@ -61,7 +61,7 @@ class InputNode(DAGNode):
     def __init__(
         self,
         *args,
-        input_types: Dict[Union[int, str], type] = None,
+        input_types: Optional[Dict[Union[int, str], type]] = None,
         _other_args_to_resolve=None,
         **kwargs,
     ):

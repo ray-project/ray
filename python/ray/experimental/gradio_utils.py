@@ -5,7 +5,7 @@ def type_to_string(_type: type) -> str:
     pydoc.locate().
     """
     if _type.__module__ == "typing":
-        return str(_type)
+        return f"{_type.__module__}.{_type._name}"
     elif _type.__module__ == "builtins":
         return _type.__name__
     else:
