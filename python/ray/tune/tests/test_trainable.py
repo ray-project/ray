@@ -1,14 +1,16 @@
 import json
 import os
 import tempfile
+import time
 from typing import Dict, Union
+from unittest.mock import patch
 
 import pytest
 
 import ray
 from ray import tune
 from ray.air import session, Checkpoint
-from ray.air._internal.remote_storage import download_from_uri
+from ray.air._internal.remote_storage import download_from_uri, upload_to_uri
 from ray.tune.trainable import wrap_function
 
 
@@ -186,6 +188,42 @@ def test_checkpoint_object_no_sync(tmpdir):
 
     # Restore from object
     trainable.restore_from_object(obj)
+
+
+@pytest.mark.parametrize("hanging", [True, False])
+def test_sync_timeout(tmpdir, hanging):
+    orig_upload_fn = upload_to_uri
+
+    def _hanging_upload(*args, **kwargs):
+        time.sleep(200 if hanging else 0)
+        orig_upload_fn(*args, **kwargs)
+
+    trainable = SavingTrainable(
+        "object",
+        remote_checkpoint_dir=f"memory:///test/location_hanging_{hanging}",
+        sync_timeout=0.5,
+    )
+
+    with patch("ray.air.checkpoint.upload_to_uri", _hanging_upload):
+        trainable.save()
+
+    check_dir = tmpdir / "check_save_obj"
+
+    try:
+        download_from_uri(
+            uri=f"memory:///test/location_hanging_{hanging}", local_path=str(check_dir)
+        )
+    except FileNotFoundError:
+        hung = True
+    else:
+        hung = False
+
+    assert hung == hanging
+
+    if hanging:
+        assert not check_dir.exists()
+    else:
+        assert check_dir.listdir()
 
 
 if __name__ == "__main__":

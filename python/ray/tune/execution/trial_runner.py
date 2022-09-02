@@ -198,6 +198,8 @@ class _ExperimentCheckpointManager:
             exclude = ["*/checkpoint_*"]
 
         if self._syncer:
+            # Todo: Implement sync_timeout for experiment-level syncing
+            # (it is currently only used for trainable-to-cloud syncing)
             if force:
                 # Wait until previous sync command finished
                 self._syncer.wait()
@@ -341,7 +343,13 @@ class TrialRunner:
         else:
             # Manual override
             self._max_pending_trials = int(max_pending_trials)
-        self.trial_executor.set_max_pending_trials(self._max_pending_trials)
+
+        sync_config = sync_config or SyncConfig()
+
+        self.trial_executor.setup(
+            max_pending_trials=self._max_pending_trials,
+            trainable_kwargs={"sync_timeout": sync_config.sync_timeout},
+        )
 
         self._metric = metric
 
@@ -385,7 +393,6 @@ class TrialRunner:
         if self._local_checkpoint_dir:
             os.makedirs(self._local_checkpoint_dir, exist_ok=True)
 
-        sync_config = sync_config or SyncConfig()
         self._remote_checkpoint_dir = remote_checkpoint_dir
 
         self._syncer = get_node_to_storage_syncer(sync_config)

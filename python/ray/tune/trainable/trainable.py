@@ -101,8 +101,9 @@ class Trainable:
         logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,
         remote_checkpoint_dir: Optional[str] = None,
         custom_syncer: Optional[Syncer] = None,
+        sync_timeout: Optional[int] = None,
     ):
-        """Initialize an Trainable.
+        """Initialize a Trainable.
 
         Sets up logging and points ``self.logdir`` to a directory in which
         training outputs should be placed.
@@ -120,6 +121,7 @@ class Trainable:
                 which is different from **per checkpoint** directory.
             custom_syncer: Syncer used for synchronizing data from Ray nodes
                 to external storage.
+            sync_timeout: Timeout after which sync processes are aborted.
         """
 
         self._experiment_id = uuid.uuid4().hex
@@ -171,6 +173,7 @@ class Trainable:
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
         self.custom_syncer = custom_syncer
+        self.sync_timeout = sync_timeout
 
     @property
     def uses_cloud_checkpointing(self):
@@ -512,12 +515,22 @@ class Trainable:
             return True
 
         checkpoint = Checkpoint.from_directory(checkpoint_dir)
-        retry_fn(
-            lambda: checkpoint.to_uri(self._storage_path(checkpoint_dir)),
+        checkpoint_uri = self._storage_path(checkpoint_dir)
+        if not retry_fn(
+            lambda: checkpoint.to_uri(checkpoint_uri),
             subprocess.CalledProcessError,
             num_retries=3,
             sleep_time=1,
-        )
+            timeout=self.sync_timeout,
+        ):
+            logger.error(
+                f"Could not upload checkpoint even after 3 retries."
+                f"Please check if the credentials expired and that the remote "
+                f"filesystem is supported.. For large checkpoints, consider "
+                f"increasing `SyncConfig(sync_timeout)` "
+                f"(current value: {self.sync_timeout} seconds). Checkpoint URI: "
+                f"{checkpoint_uri}"
+            )
         return True
 
     def _maybe_load_from_cloud(self, checkpoint_path: str) -> bool:
@@ -546,12 +559,17 @@ class Trainable:
             return True
 
         checkpoint = Checkpoint.from_uri(external_uri)
-        retry_fn(
+        if not retry_fn(
             lambda: checkpoint.to_directory(local_dir),
             subprocess.CalledProcessError,
             num_retries=3,
             sleep_time=1,
-        )
+            timeout=self.sync_timeout,
+        ):
+            logger.error(
+                f"Could not download checkpoint even after 3 retries: "
+                f"{external_uri}"
+            )
 
         return True
 
@@ -719,12 +737,17 @@ class Trainable:
                     self.custom_syncer.wait_or_retry()
                 else:
                     checkpoint_uri = self._storage_path(checkpoint_dir)
-                    retry_fn(
+                    if not retry_fn(
                         lambda: _delete_external_checkpoint(checkpoint_uri),
                         subprocess.CalledProcessError,
                         num_retries=3,
                         sleep_time=1,
-                    )
+                        timeout=self.sync_timeout,
+                    ):
+                        logger.error(
+                            f"Could not delete checkpoint even after 3 retries: "
+                            f"{checkpoint_uri}"
+                        )
 
         if os.path.exists(checkpoint_dir):
             shutil.rmtree(checkpoint_dir)
