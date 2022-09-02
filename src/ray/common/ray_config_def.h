@@ -423,8 +423,8 @@ RAY_CONFIG(bool, enable_metrics_collection, true)
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
-/// Maximum number of pending lease requests per scheduling category
-RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 10)
+/// Maximum number of ongoing lease requests per scheduling category
+RAY_CONFIG(uint64_t, max_inflight_lease_requests_per_scheduling_category, 10)
 
 /// Wait timeout for dashboard agent register.
 #ifdef _WIN32

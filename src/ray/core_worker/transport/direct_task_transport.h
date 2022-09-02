@@ -70,8 +70,8 @@ class CoreWorkerDirectTaskSubmitter {
       std::shared_ptr<ActorCreatorInterface> actor_creator,
       const JobID &job_id,
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt,
-      uint64_t max_pending_lease_requests_per_scheduling_category =
-          ::RayConfig::instance().max_pending_lease_requests_per_scheduling_category())
+      uint64_t max_inflight_lease_requests_per_scheduling_category =
+          ::RayConfig::instance().max_inflight_lease_requests_per_scheduling_category())
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
         lease_client_factory_(lease_client_factory),
@@ -84,8 +84,8 @@ class CoreWorkerDirectTaskSubmitter {
         actor_creator_(actor_creator),
         client_cache_(core_worker_client_pool),
         job_id_(job_id),
-        max_pending_lease_requests_per_scheduling_category_(
-            max_pending_lease_requests_per_scheduling_category),
+        max_inflight_lease_requests_per_scheduling_category_(
+            max_inflight_lease_requests_per_scheduling_category),
         cancel_retry_timer_(std::move(cancel_timer)) {}
 
   /// Schedule a task for direct submission to a worker.
@@ -245,7 +245,7 @@ class CoreWorkerDirectTaskSubmitter {
   const JobID job_id_;
 
   // Max number of pending lease requests per SchedulingKey.
-  const uint64_t max_pending_lease_requests_per_scheduling_category_;
+  const uint64_t max_inflight_lease_requests_per_scheduling_category_;
 
   /// A LeaseEntry struct is used to condense the metadata about a single executor:
   /// (1) The lease client through which the worker should be returned
@@ -279,7 +279,8 @@ class CoreWorkerDirectTaskSubmitter {
 
   struct SchedulingKeyEntry {
     // Keep track of pending worker lease requests to the raylet.
-    absl::flat_hash_map<TaskID, rpc::Address> pending_lease_requests;
+    absl::flat_hash_map<TaskID, rpc::Address> inflight_lease_requests;
+    absl::flat_hash_map<std::string, size_t> raylet_ongoing_lease_loads;
     TaskSpecification resource_spec = TaskSpecification();
     // Tasks that are queued for execution. We keep an individual queue per
     // scheduling class to ensure fairness.
@@ -295,7 +296,7 @@ class CoreWorkerDirectTaskSubmitter {
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.
     inline bool CanDelete() const {
-      if (pending_lease_requests.empty() && task_queue.empty() &&
+      if (inflight_lease_requests.empty() && task_queue.empty() &&
           active_workers.size() == 0 && num_busy_workers == 0) {
         return true;
       }
@@ -311,13 +312,13 @@ class CoreWorkerDirectTaskSubmitter {
 
     // Get the current backlog size for this scheduling key
     [[nodiscard]] inline int64_t BacklogSize() const {
-      if (task_queue.size() < pending_lease_requests.size()) {
+      if (task_queue.size() < inflight_lease_requests.size()) {
         // This can happen if worker is reused.
         return 0;
       }
 
       // Subtract tasks with pending lease requests so we don't double count them.
-      return task_queue.size() - pending_lease_requests.size();
+      return task_queue.size() - inflight_lease_requests.size();
     }
   };
 

@@ -209,6 +209,7 @@ void GcsServer::Stop() {
     if (RayConfig::instance().use_ray_syncer()) {
       ray_syncer_io_context_.stop();
       ray_syncer_thread_->join();
+      ray_syncer_.reset();
     } else {
       gcs_ray_syncer_->Stop();
     }
@@ -475,6 +476,8 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
                                                       local_node_id_.Binary());
     ray_syncer_->Register(
         syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
+    ray_syncer_->Register(
+        syncer::MessageType::COMMANDS, nullptr, gcs_resource_manager_.get());
     ray_syncer_thread_ = std::make_unique<std::thread>([this]() {
       boost::asio::io_service::work work(ray_syncer_io_context_);
       ray_syncer_io_context_.run();

@@ -1042,3 +1042,21 @@ def set_runtime_env_plugin_schemas(request):
         yield runtime_env_plugin_schemas
     finally:
         del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]
+
+
+@pytest.fixture
+def enable_syncer_test(with_syncer, monkeypatch):
+    assert with_syncer in ("ray_syncer", "no_ray_syncer")
+
+    monkeypatch.setenv(
+        "RAY_use_ray_syncer", "true" if with_syncer == "ray_syncer" else "false"
+    )
+
+    yield
+
+
+def pytest_generate_tests(metafunc):
+    if "with_syncer" in metafunc.fixturenames:
+        metafunc.parametrize(
+            "with_syncer", ["ray_syncer", "no_ray_syncer"], scope="function"
+        )

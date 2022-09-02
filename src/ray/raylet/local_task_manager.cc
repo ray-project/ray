@@ -126,6 +126,8 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       const auto &task = work->task;
       const auto spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
+      RAY_LOG(DEBUG) << "Task " << task_id
+                     << ", status: " << static_cast<int>(work->GetState());
       if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
         work_it++;
         continue;
@@ -135,8 +137,12 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       if (sched_cls_cap_enabled_ &&
           sched_cls_info.running_tasks.size() >= sched_cls_info.capacity &&
           work->GetState() == internal::WorkStatus::WAITING) {
-        RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_ms_()
-                       << " next update time=" << sched_cls_info.next_update_time;
+        RAY_LOG(DEBUG) << "Skip running " << task_id << " because: "
+                       << "Hit cap! time=" << get_time_ms_()
+                       << " next update time=" << sched_cls_info.next_update_time
+                       << " running: " << sched_cls_info.running_tasks.size()
+                       << " cap: " << sched_cls_info.capacity;
+
         if (get_time_ms_() < sched_cls_info.next_update_time) {
           // We're over capacity and it's not time to admit a new task yet.
           // Calculate the next time we should admit a new task.

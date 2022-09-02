@@ -388,7 +388,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       actor_creator_,
       worker_context_.GetCurrentJobID(),
       boost::asio::steady_timer(io_service_),
-      RayConfig::instance().max_pending_lease_requests_per_scheduling_category());
+      RayConfig::instance().max_inflight_lease_requests_per_scheduling_category());
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,
                                            const absl::flat_hash_set<NodeID> &locations,

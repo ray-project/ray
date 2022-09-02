@@ -304,6 +304,8 @@ std::string ClusterTaskManager::DebugStr() const {
 void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
                                         const std::shared_ptr<internal::Work> &work) {
   if (spillback_to == self_node_id_ && local_task_manager_) {
+    RAY_LOG(DEBUG) << "Schedule task: " << work->task.GetTaskSpecification().TaskId()
+                   << " to local node";
     local_task_manager_->QueueAndScheduleTask(work);
     return;
   }

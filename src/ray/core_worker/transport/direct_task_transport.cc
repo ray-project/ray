@@ -226,7 +226,7 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
 
   RAY_LOG(DEBUG) << "Task queue is empty; canceling lease request";
 
-  for (auto &pending_lease_request : scheduling_key_entry.pending_lease_requests) {
+  for (auto &pending_lease_request : scheduling_key_entry.inflight_lease_requests) {
     // There is an in-flight lease request. Cancel it.
     auto lease_client = GetOrConnectLeaseClient(&pending_lease_request.second);
     auto &task_id = pending_lease_request.first;
@@ -322,17 +322,21 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     const SchedulingKey &scheduling_key, const rpc::Address *raylet_address) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
-  if (scheduling_key_entry.pending_lease_requests.size() ==
-      max_pending_lease_requests_per_scheduling_category_) {
+  if (scheduling_key_entry.inflight_lease_requests.size() ==
+      max_inflight_lease_requests_per_scheduling_category_) {
     RAY_LOG(DEBUG) << "Exceeding the pending request limit "
-                   << max_pending_lease_requests_per_scheduling_category_;
+                   << max_inflight_lease_requests_per_scheduling_category_;
     return;
   }
-  RAY_CHECK(scheduling_key_entry.pending_lease_requests.size() <
-            max_pending_lease_requests_per_scheduling_category_);
+  RAY_CHECK(scheduling_key_entry.inflight_lease_requests.size() <
+            max_inflight_lease_requests_per_scheduling_category_);
 
   if (!scheduling_key_entry.AllWorkersBusy()) {
     // There are idle workers, so we don't need more.
+    RAY_LOG(DEBUG) << "Skip leasing from "
+                   << (raylet_address ? NodeID::FromBinary(raylet_address->raylet_id())
+                                      : NodeID::Nil())
+                   << " since there are idle workers";
     return;
   }
 
@@ -343,10 +347,37 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
       // scheduling_key_entries_ hashmap.
       scheduling_key_entries_.erase(scheduling_key);
     }
+    RAY_LOG(DEBUG) << "Skip leasing from "
+                   << (raylet_address ? NodeID::FromBinary(raylet_address->raylet_id())
+                                      : NodeID::Nil())
+                   << " since task queue is empty.";
     return;
-  } else if (scheduling_key_entry.task_queue.size() <=
-             scheduling_key_entry.pending_lease_requests.size()) {
+  } else if ((scheduling_key_entry.task_queue.size() <=
+              scheduling_key_entry.inflight_lease_requests.size()) &&
+             // When raylet_address == nullptr it means it's a redirect request
+             // from the original raylet. If there is no ongoing leasing requests
+             // running on that node, we should just run this, otherwise, there might
+             // be a deadlock: the original raylet has deducted the resources because
+             // of the redirection, and if the destination raylet is full of resource
+             // it won't do the redirection anymore. So it could happen that:
+             //    - The original raylet has leasing requests but it can't find a node
+             //      having resources.
+             //    - The core worker will fail to do the leasing because the leasing
+             //      requests is bigger than the task queue.
+             // And this will make the scheduler hanging. With resource broadcasting,
+             // it's kind of mitigating the problem, but it has uncessary cost (
+             // no progress until resource is refreshed).
+             (raylet_address == nullptr ||
+              scheduling_key_entry.raylet_ongoing_lease_loads.count(
+                  raylet_address->raylet_id()) != 0)) {
     // All tasks have corresponding pending leases, no need to request more
+    RAY_LOG(DEBUG) << "Skip leasing from "
+                   << (raylet_address ? NodeID::FromBinary(raylet_address->raylet_id())
+                                      : NodeID::Nil())
+                   << " since task queue size is "
+                   << scheduling_key_entry.task_queue.size()
+                   << " which is bigger than the pending leasing requests size "
+                   << scheduling_key_entry.inflight_lease_requests.size();
     return;
   }
 
@@ -377,6 +408,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
       /*grant_or_reject=*/is_spillback,
       [this, scheduling_key, task_id, is_spillback, raylet_address = *raylet_address](
           const Status &status, const rpc::RequestWorkerLeaseReply &reply) {
+        RAY_LOG(DEBUG) << "Release returned for task: " << task_id << ", "
+                       << status.ToString();
         std::deque<TaskSpecification> tasks_to_fail;
         rpc::RayErrorInfo error_info;
         ray::Status error_status;
@@ -386,7 +419,14 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
           auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
           auto lease_client = GetOrConnectLeaseClient(&raylet_address);
-          scheduling_key_entry.pending_lease_requests.erase(task_id);
+          scheduling_key_entry.inflight_lease_requests.erase(task_id);
+          auto iter = scheduling_key_entry.raylet_ongoing_lease_loads.find(
+              raylet_address.raylet_id());
+          RAY_CHECK(iter != scheduling_key_entry.raylet_ongoing_lease_loads.end());
+          --iter->second;
+          if (iter->second == 0) {
+            scheduling_key_entry.raylet_ongoing_lease_loads.erase(iter);
+          }
 
           if (status.ok()) {
             if (reply.canceled()) {
@@ -472,10 +512,9 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             // A lease request to a remote raylet failed. Retry locally if the lease is
             // still needed.
             // TODO(swang): Fail after some number of retries?
-            RAY_LOG(INFO)
-                << "Retrying attempt to schedule task at remote node. Try again "
-                   "on a local node. Error: "
-                << status.ToString();
+            RAY_LOG(INFO) << "Retrying attempt to schedule task " << task_id
+                          << " at remote node. Try again on a local node. Error: "
+                          << status.ToString();
 
             RequestNewWorkerIfNeeded(scheduling_key);
 
@@ -528,7 +567,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
       },
       task_queue.size(),
       is_selected_based_on_locality);
-  scheduling_key_entry.pending_lease_requests.emplace(task_id, *raylet_address);
+  scheduling_key_entry.inflight_lease_requests.emplace(task_id, *raylet_address);
+  scheduling_key_entry.raylet_ongoing_lease_loads[raylet_address->raylet_id()]++;
   ReportWorkerBacklogIfNeeded(scheduling_key);
 }
 

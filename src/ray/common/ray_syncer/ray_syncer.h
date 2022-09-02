@@ -182,6 +182,15 @@ class RaySyncer {
 
   std::shared_ptr<bool> stopped_;
 
+  struct StartSyncCall {
+    StartSyncRequest request;
+    StartSyncResponse response;
+    grpc::ClientContext context;
+    std::promise<void> promise;
+  };
+
+  absl::flat_hash_set<std::unique_ptr<StartSyncCall>> inflight_requests_;
+
   friend class RaySyncerService;
   /// Test purpose
   friend struct SyncerServerTest;

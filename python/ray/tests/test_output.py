@@ -127,7 +127,7 @@ time.sleep(15)
     assert "Error: No available node types can fulfill" in out_str
 
 
-def test_autoscaler_warn_deadlock():
+def test_autoscaler_warn_deadlock(enable_syncer_test):
     script = """
 import ray
 import time

@@ -250,7 +250,7 @@ def test_fair_queueing(shutdown_only):
             # the more parallism we have,
             # the more workers we need to start to execute f and g tasks
             # before we can execute the first h task.
-            "max_pending_lease_requests_per_scheduling_category": 1,
+            "max_inflight_lease_requests_per_scheduling_category": 1,
             "worker_cap_enabled": True,
         },
     )
