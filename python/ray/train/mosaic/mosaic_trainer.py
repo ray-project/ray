@@ -141,6 +141,8 @@ def _mosaic_train_loop_per_worker(config):
 
     print("\n\n**processed the dataset..")
     print(type(train_torch_dataset))
+    print(type(eval_torch_dataset))
+
 
     trainer: composer.trainer.Trainer = trainer_init_per_worker(
         train_torch_dataset, eval_torch_dataset, **config
