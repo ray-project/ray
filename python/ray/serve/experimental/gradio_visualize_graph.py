@@ -236,14 +236,16 @@ class GraphVisualizer:
         input_keys = list(self.input_key_to_blocks.keys())
 
         # Extract positional args
-        max_index = max([i for i in input_keys if isinstance(i, int)])
+        indices = [i for i in input_keys if isinstance(i, int)]
         args = []
-        for i in range(max_index + 1):
-            try:
-                loc = input_keys.index(i)
-                args.append(input_values[loc])
-            except ValueError:
-                args.append(None)
+        if len(indices):
+            max_index = max(indices)
+            for i in range(max_index + 1):
+                try:
+                    loc = input_keys.index(i)
+                    args.append(input_values[loc])
+                except ValueError:
+                    args.append(None)
 
         # Extract keyword args
         kwargs = {
