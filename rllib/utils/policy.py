@@ -6,6 +6,7 @@ from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
@@ -138,9 +139,13 @@ def load_policies_from_checkpoint(
             continue
 
         merged_config = merge_dicts(policy_config, policy_spec.config or {})
+        policy_class = get_tf_eager_cls_if_necessary(
+            policy_spec.policy_class, merged_config
+        )
+
         policy = create_policy_for_framework(
             id,
-            policy_spec.policy_class,
+            policy_class,
             merged_config,
             policy_spec.observation_space,
             policy_spec.action_space,
@@ -183,6 +188,11 @@ def local_policy_inference(
     assert (
         policy.agent_connectors
     ), "policy_inference only works with connector enabled policies."
+
+    # Put policy in inference mode, so we don't spend time on training
+    # only transformations.
+    policy.agent_connectors.is_training(False)
+    policy.action_connectors.is_training(False)
 
     # TODO(jungong) : support multiple env, multiple agent inference.
     input_dict = {SampleBatch.NEXT_OBS: obs}
