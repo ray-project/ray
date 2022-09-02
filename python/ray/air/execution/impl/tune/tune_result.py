@@ -1,8 +1,7 @@
-from typing import Dict
+from typing import Dict, Union
 
 from dataclasses import dataclass
 
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.air.execution.result import ExecutionResult
 
 
@@ -12,5 +11,10 @@ class TuneTrainingResult(ExecutionResult):
 
 
 @dataclass
+class TuneRestoringResult(ExecutionResult):
+    pass
+
+
+@dataclass
 class TuneSavingResult(ExecutionResult):
-    tracked_checkpoint: _TrackedCheckpoint
+    dir_or_data: Union[str, Dict]

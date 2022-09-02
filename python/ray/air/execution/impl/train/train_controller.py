@@ -274,14 +274,12 @@ class TrainController(Controller):
                                     use_detailed_autofilled_metrics=False,
                                 ),
                                 cls=TrainInitResult,
-                                n_args=0,
                             ),
                             TypedFuture(
                                 future=actor_info.actor._RayTrainWorker__execute.remote(
                                     _start_training
                                 ),
                                 cls=TrainStartResult,
-                                n_args=0,
                             ),
                         ]
                     )

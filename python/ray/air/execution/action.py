@@ -16,5 +16,10 @@ class Continue(Action):
 
 
 @dataclass
+class Wait(Action):
+    pass
+
+
+@dataclass
 class Stop(Action):
     pass

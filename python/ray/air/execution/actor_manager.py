@@ -3,7 +3,7 @@ from collections import defaultdict
 from typing import List, Tuple, Optional, Union
 
 import ray
-from ray.air.execution.action import Action, Continue, Stop
+from ray.air.execution.action import Action, Continue, Stop, Wait
 from ray.air.execution.actor_request import ActorRequest, ActorInfo
 from ray.air.execution.controller import Controller
 from ray.air.execution.future import TypedFuture
@@ -37,6 +37,9 @@ class ActorManager:
         self._active_actors = set()
         self._actors_to_futures = defaultdict(set)
         self._futures_to_actors = {}
+
+        self._cached_actions = defaultdict(list)
+        self._waiting_actors = set()
 
     def is_finished(self) -> bool:
         return self._controller.is_finished()
@@ -125,10 +128,24 @@ class ActorManager:
         self._actor_requests = new_actor_requests
 
     def _request_actions(self):
-        actor_actions = self._controller.get_actions()
-        for actor_info, actions in actor_actions.items():
-            for action in actions:
-                self._act_on_action(actor_info=actor_info, action=action)
+        all_actor_actions = defaultdict(list)
+        for actor_info, actions in list(self._cached_actions.items()):
+            if not self._actors_to_futures[actor_info]:
+                # All previous futures are processed. Wait is over
+                self._waiting_actors.discard(actor_info)
+                all_actor_actions[actor_info].extend(actions)
+                self._cached_actions[actor_info] = []
+
+        new_actor_actions = self._controller.get_actions()
+        for actor_info, new_actions in new_actor_actions.items():
+            all_actor_actions[actor_info].extend(new_actions)
+
+        for actor_info, new_actions in all_actor_actions.items():
+            for action in all_actor_actions[actor_info]:
+                if actor_info in self._waiting_actors:
+                    self._cached_actions[actor_info].append(action)
+                else:
+                    self._act_on_action(actor_info=actor_info, action=action)
 
     def _clear_actor_futures(self, actor_info: ActorInfo):
         # remove futures
@@ -137,7 +154,9 @@ class ActorManager:
             self._futures_to_actors.pop(future)
 
     def _act_on_action(self, actor_info: ActorInfo, action: Action):
-        if isinstance(action, Stop):
+        if isinstance(action, Wait):
+            self._waiting_actors.add(actor_info)
+        elif isinstance(action, Stop):
             self._clear_actor_futures(actor_info)
 
             # remove actor

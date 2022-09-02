@@ -20,13 +20,13 @@ class FrequentPausesScheduler(FIFOScheduler):
 def train_fn(config):
     checkpoint = session.get_checkpoint()
     if checkpoint:
-        start = checkpoint.to_dict()["start"]
+        start = checkpoint.to_dict()["start"] + 1
     else:
         start = 0
 
     for i in range(start, 10):
         session.report(
-            {"metric": config["A"] - config["B"], "step": i},
+            {"metric": config["A"] - config["B"], "step": i, "done": i > 5},
             checkpoint=Checkpoint.from_dict({"start": i}),
         )
 

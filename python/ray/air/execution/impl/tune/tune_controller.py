@@ -2,17 +2,22 @@ from collections import defaultdict
 from typing import List, Type, Optional, Dict
 
 from ray import tune
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.execution import action
 from ray.air.execution.actor_request import ActorRequest, ActorInfo
 from ray.air.execution.controller import Controller
 
 # Legacy tune
 from ray.air.execution.future import TypedFuture
-from ray.air.execution.impl.tune.tune_result import TuneTrainingResult
+from ray.air.execution.impl.tune.tune_result import (
+    TuneTrainingResult,
+    TuneSavingResult,
+    TuneRestoringResult,
+)
 from ray.air.execution.resources.request import ResourceRequest
 from ray.air.execution.result import ExecutionResult
 from ray.tune.callback import CallbackList
-from ray.tune.result import RESULT_DUPLICATE, DONE
+from ray.tune.result import RESULT_DUPLICATE, DONE, SHOULD_CHECKPOINT
 from ray.tune.trainable import Trainable
 from ray.tune.stopper import Stopper
 from ray.tune.experiment import Experiment, Trial
@@ -105,6 +110,21 @@ class TuneController(Controller):
         self._callbacks.on_trial_start(
             iteration=0, trials=self._all_trials, trial=trial
         )
+
+        if trial.checkpoint and trial.checkpoint.dir_or_data:
+            self._actions[actor_info].append(
+                action.Continue(
+                    futures=[
+                        TypedFuture(
+                            future=actor_info.actor.restore.remote(
+                                trial.checkpoint.dir_or_data, trial.checkpoint.node_ip
+                            ),
+                            cls=TuneRestoringResult,
+                        )
+                    ]
+                )
+            )
+
         self._actions[actor_info].append(
             action.Continue(
                 futures=[
@@ -152,6 +172,8 @@ class TuneController(Controller):
         for actor_info, result in zip(actor_infos, results):
             if isinstance(result, TuneTrainingResult):
                 self._handle_training_result(actor_info, result)
+            elif isinstance(result, TuneSavingResult):
+                self._handle_saving_result(actor_info, result)
 
     def _handle_training_result(
         self, actor_info: ActorInfo, result: TuneTrainingResult
@@ -162,6 +184,20 @@ class TuneController(Controller):
             RESULT_DUPLICATE, False
         )
         trial.last_result = result.metrics.copy()
+
+        if result.metrics.get(SHOULD_CHECKPOINT, False):
+            future = actor_info.actor.save.remote()
+            trial.saving_to = _TrackedCheckpoint(
+                dir_or_data=future,
+                storage_mode=CheckpointStorage.PERSISTENT,
+                metrics=trial.last_result,
+            )
+            self._actions[actor_info].append(
+                action.Continue(
+                    futures=[TypedFuture(future=future, cls=TuneSavingResult)]
+                )
+            )
+            self._actions[actor_info].append(action.Wait())
 
         if done:
             self._scheduler.on_trial_complete(None, trial=trial, result=result.metrics)
@@ -202,6 +238,11 @@ class TuneController(Controller):
 
         if act:
             self._actions[actor_info].append(act)
+
+    def _handle_saving_result(self, actor_info: ActorInfo, result: TuneSavingResult):
+        trial = self._live_actors[actor_info]
+        trial.saving_to.dir_or_data = result.dir_or_data
+        trial.on_checkpoint(trial.saving_to)
 
     def get_actions(self) -> Dict[ActorInfo, List[action.Action]]:
         actions = self._actions
