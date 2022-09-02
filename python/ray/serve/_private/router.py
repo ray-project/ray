@@ -11,6 +11,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError, RayTaskError
+from ray.serve.handle import ServeFuture
 from ray.util import metrics
 
 from ray.serve._private.common import RunningReplicaInfo
@@ -47,13 +48,13 @@ class Query:
     metadata: RequestMetadata
     return_num: int = 2
 
-    async def resolve_async_tasks(self):
+    async def resolve_async_tasks(self):  # TODO: change naming
         """Find all unresolved asyncio.Task and gather them all at once."""
-        scanner = _PyObjScanner(source_type=asyncio.Task)
+        scanner = _PyObjScanner(source_type=ServeFuture)
         tasks = scanner.find_nodes((self.args, self.kwargs))
 
         if len(tasks) > 0:
-            resolved = await asyncio.gather(*tasks)
+            resolved: List[ray.ObjectRef] = await asyncio.gather(*[t.submission_task for t in tasks])
             replacement_table = dict(zip(tasks, resolved))
             self.args, self.kwargs = scanner.replace_nodes(replacement_table)
 

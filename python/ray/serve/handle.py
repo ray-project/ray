@@ -316,6 +316,41 @@ class RayServeSyncHandle(RayServeHandle):
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
 
+def _chain_future(src_future: asyncio.Future, dst_future: asyncio.Future):
+    """TODO"""
+
+    assert src_future.done()
+    if src_future.cancelled():
+        dst_future.cancel()
+    elif src_future.exception() is not None:
+        dst_future.set_exception(src_future.exception())
+    else:
+        dst_future.set_result(src_future.result())
+
+
+class ServeFuture:
+    """TODO"""
+
+    def __init__(self, submission_task: "asyncio.Task[ray.ObjectRef]") -> None:
+        self.object_ref: Optional[ray.ObjectRef] = None
+
+        self.submission_task = submission_task
+
+        self.result_future = asyncio.get_event_loop().create_future()
+        self.submission_task.add_done_callback(self._resolve_future)
+
+    def _resolve_future(self, submission_future: "asyncio.Future[ray.ObjectRef]"):
+        self.object_ref = submission_future.result()
+        object_ref_result_async_future = asyncio.wrap_future(self.object_ref.future())
+        object_ref_result_async_future.add_done_callback(
+            lambda fut: _chain_future(fut, self.result_future)
+        )
+
+    def __await__(self):
+        # User facing API, resolve to the final Python Object
+        return self.result_future
+
+
 @DeveloperAPI
 class RayServeDeploymentHandle:
     """Send requests to a deployment. This class should not be manually created."""
@@ -337,13 +372,13 @@ class RayServeDeploymentHandle:
             self.deployment_name, HandleOptions(method_name=method_name)
         )
 
-    def remote(self, *args, **kwargs) -> asyncio.Task:
+    def remote(self, *args, **kwargs) -> ServeFuture:
         if not self.handle:
             handle = serve._private.api.get_deployment(
                 self.deployment_name
             )._get_handle(sync=FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC)
             self.handle = handle.options(method_name=self.handle_options.method_name)
-        return self.handle.remote(*args, **kwargs)
+        return ServeFuture(self.handle.remote(*args, **kwargs))
 
     @classmethod
     def _deserialize(cls, kwargs):
