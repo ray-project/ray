@@ -99,6 +99,7 @@ if __name__ == "__main__":
     do_link("experimental", force=args.yes, skip_list=args.skip)
     do_link("util", force=args.yes, skip_list=args.skip)
     do_link("workflow", force=args.yes, skip_list=args.skip)
+    do_link("widgets", force=args.yes, skip_list=args.skip)
     do_link("cluster_utils.py", force=args.yes, skip_list=args.skip)
     do_link("_private", force=args.yes, skip_list=args.skip)
     # Link package's `dashboard` directly to local (repo's) dashboard.
