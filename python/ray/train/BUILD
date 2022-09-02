@@ -173,7 +173,7 @@ py_test(
     name = "test_torch_fsdp",
     size = "large",
     srcs = ["tests/test_torch_fsdp.py"],
-    tags = ["team:ml", "exclusive", "torch_1_11"],
+    tags = ["team:ml", "exclusive", "torch_1_11", "gpu_only"],
     deps = [":train_lib"]
 )
 

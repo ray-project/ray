@@ -51,12 +51,16 @@ def get_device() -> torch.device:
     return get_accelerator(_TorchAccelerator).get_device()
 
 
+# TODO: Deprecation: Hard-deprecate args in Ray 2.2.
 @PublicAPI(stability="beta")
 def prepare_model(
     model: torch.nn.Module,
     move_to_device: bool = True,
     parallel_strategy: Optional[str] = "ddp",
     parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
+    # Deprecated args.
+    wrap_ddp: bool = True,
+    ddp_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.nn.Module:
     """Prepares the model for distributed execution.
 
@@ -76,11 +80,48 @@ def prepare_model(
             initialization if ``parallel_strategy`` is set to "ddp"
             or "fsdp", respectively.
     """
+    if not wrap_ddp and parallel_strategy != "ddp":
+        raise ValueError(
+            "`parallel_strategy` and `wrap_ddp` cannot both be set. "
+            "`wrap_ddp` argument is deprecated as of Ray 2.1. To "
+            "disable DDP wrapping, set `parallel_strategy=None`."
+        )
+
+    if parallel_strategy_kwargs and ddp_kwargs:
+        raise ValueError(
+            "`parallel_strategy_kwargs` and `ddp_kwargs` cannot both be "
+            "set. The `ddp_kwargs` argument is deprecated as of Ray 2.1. "
+            "To provide DDP kwargs, use the "
+            "`parallel_strategy_kwargs` argument."
+        )
+
+    if not wrap_ddp:
+        warnings.warn(
+            "The `wrap_ddp` argument is deprecated as of Ray 2.1. Use the "
+            "`parallel_strategy` argument instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        # If wrap_ddp is False, then set parallel_strategy to None.
+        parallel_strategy = None if parallel_strategy == "ddp" else parallel_strategy
+
+    if ddp_kwargs:
+        warnings.warn(
+            "The `ddp_kwargs` argument is deprecated as of Ray 2.1. Use the "
+            "`parallel_strategy_kwargs` arg instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        parallel_strategy_kwargs = (
+            ddp_kwargs if not parallel_strategy_kwargs else parallel_strategy_kwargs
+        )
+
     if parallel_strategy == "fsdp" and FullyShardedDataParallel is None:
-        raise RuntimeError(
+        raise ImportError(
             "FullyShardedDataParallel requires torch>=1.11.0. "
             "Run `pip install 'torch>=1.11.0'` to use FullyShardedDataParallel."
         )
+
     return get_accelerator(_TorchAccelerator).prepare_model(
         model,
         move_to_device=move_to_device,
@@ -290,8 +331,8 @@ class _TorchAccelerator(Accelerator):
                 device. If set to False, the model needs to manually be moved
                 to the correct device.
             parallel_strategy ("ddp", "fsdp", or None): Whether to wrap models
-                in ``DistributedDataParallel``, ``FullyShardedDataParallel``,
-                or neither.
+                in ``DistributedDataParallel``, ``FullyShardedDataParallel`` (
+                Experimental), or neither.
             parallel_strategy_kwargs (Dict[str, Any]): Args to pass into
                 ``DistributedDataParallel`` or ``FullyShardedDataParallel``
                 initialization if ``parallel_strategy`` is set to "ddp"
@@ -367,6 +408,13 @@ class _TorchAccelerator(Accelerator):
                         **parallel_strategy_kwargs,
                     }
             else:
+                if not torch.cuda.is_available():
+                    raise RuntimeError(
+                        "FSDP is only available with GPU-enabled "
+                        "training. Set "
+                        "`use_gpu=True` in your Trainer to train with "
+                        "GPUs."
+                    )
                 DataParallel = FullyShardedDataParallel
             if rank == 0:
                 logger.info(f"Wrapping provided model in {DataParallel.__name__}.")
