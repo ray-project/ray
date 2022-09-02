@@ -637,7 +637,10 @@ cdef execute_task(
                 if len(inspect.getmembers(
                         actor.__class__,
                         predicate=inspect.iscoroutinefunction)) == 0:
-                    raise RayActorError(core_worker.get_actor_id())
+                    raise RayActorError(
+                        f"Failed to create the actor {core_worker.get_actor_id()}. "
+                        "The failure reason is that you set the async flag, "
+                        "but the actor has no any coroutine function.")
                 # Increase recursion limit if necessary. In asyncio mode,
                 # we have many parallel callstacks (represented in fibers)
                 # that's suspended for execution. Python interpreter will
