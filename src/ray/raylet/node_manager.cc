@@ -2970,8 +2970,8 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
           this->io_service_.post(
-              [this]() {
-                DestroyWorker(high_memory_eviction_target_,
+              [this, worker_exit_message]() {
+                DestroyWorker(this->high_memory_eviction_target_,
                               rpc::WorkerExitType::USER_ERROR,
                               worker_exit_message,
                               true /* force */);
