@@ -19,6 +19,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
+#include "ray/common/executor/executor.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
@@ -258,7 +259,79 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   void HandleKillActorViaGcs(const rpc::KillActorViaGcsRequest &request,
                              rpc::KillActorViaGcsReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a node death. This will restart all actors associated with the
+  /// specified node id, including actors which are scheduled or have been
+  /// created on this node. Actors whose owners have died (possibly due to this
+  /// node being removed) will not be restarted. If any workers on this node
+  /// owned an actor, those actors will be destroyed.
+  ///
+  /// \param node_id The specified node id.
+  /// \param node_ip_address The ip address of the dead node.
+  void OnNodeDead(const NodeID &node_id, const std::string node_ip_address);
 
+  /// Initialize with the gcs tables data synchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param gcs_init_data.
+  void Initialize(const GcsInitData &gcs_init_data);
+
+  /// Delete non-detached actor information from durable storage once the associated job
+  /// finishes.
+  ///
+  /// \param job_id The id of finished job.
+  void OnJobFinished(const JobID &job_id);
+
+  /// Handle a worker failure. This will restart the associated actor, if any,
+  /// which may be pending or already created. If the worker owned other
+  /// actors, those actors will be destroyed.
+  ///
+  /// \param node_id ID of the node where the dead worker was located.
+  /// \param worker_id ID of the dead worker.
+  /// \param exit_type exit reason of the dead worker.
+  /// \param creation_task_exception if this arg is set, this worker is died because of an
+  /// exception thrown in actor's creation task.
+  void OnWorkerDead(const NodeID &node_id,
+                    const WorkerID &worker_id,
+                    const std::string &worker_ip,
+                    const rpc::WorkerExitType disconnect_type,
+                    const std::string &disconnect_detail,
+                    const rpc::RayException *creation_task_exception = nullptr);
+
+  /// Testing only.
+  void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id);
+
+  /// Schedule actors in the `pending_actors_` queue.
+  /// This method should be called when new nodes are registered or resources
+  /// change.
+  void SchedulePendingActors();
+
+
+  /// Handle actor creation task success. This should be called when the actor
+  /// creation task has been scheduled successfully.
+  ///
+  /// \param actor The actor that has been created.
+  void OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
+                              const rpc::PushTaskReply &reply);
+
+  /// Handle actor creation task failure. This should be called
+  /// - when scheduling an actor creation task is infeasible.
+  /// - when actor cannot be created to the cluster (e.g., runtime environment ops
+  /// failed).
+  ///
+  /// \param actor The actor whose creation task is infeasible.
+  /// \param failure_type Scheduling failure type.
+  /// \param scheduling_failure_message The scheduling failure error message.
+  void OnActorSchedulingFailed(
+      std::shared_ptr<GcsActor> actor,
+      const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+      const std::string &scheduling_failure_message);
+
+  std::string DebugString() const;
+
+  /// Collect stats from gcs actor manager in-memory data structures.
+  void RecordMetrics() const;
+
+ private:
   /// Register actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.
@@ -302,72 +375,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::vector<std::pair<std::string, std::string>> ListNamedActors(
       bool all_namespaces, const std::string &ray_namespace) const;
 
-  /// Schedule actors in the `pending_actors_` queue.
-  /// This method should be called when new nodes are registered or resources
-  /// change.
-  void SchedulePendingActors();
-
-  /// Handle a node death. This will restart all actors associated with the
-  /// specified node id, including actors which are scheduled or have been
-  /// created on this node. Actors whose owners have died (possibly due to this
-  /// node being removed) will not be restarted. If any workers on this node
-  /// owned an actor, those actors will be destroyed.
-  ///
-  /// \param node_id The specified node id.
-  /// \param node_ip_address The ip address of the dead node.
-  void OnNodeDead(const NodeID &node_id, const std::string node_ip_address);
-
-  /// Handle a worker failure. This will restart the associated actor, if any,
-  /// which may be pending or already created. If the worker owned other
-  /// actors, those actors will be destroyed.
-  ///
-  /// \param node_id ID of the node where the dead worker was located.
-  /// \param worker_id ID of the dead worker.
-  /// \param exit_type exit reason of the dead worker.
-  /// \param creation_task_exception if this arg is set, this worker is died because of an
-  /// exception thrown in actor's creation task.
-  void OnWorkerDead(const NodeID &node_id,
-                    const WorkerID &worker_id,
-                    const std::string &worker_ip,
-                    const rpc::WorkerExitType disconnect_type,
-                    const std::string &disconnect_detail,
-                    const rpc::RayException *creation_task_exception = nullptr);
-
-  /// Testing only.
-  void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id);
-
-  /// Handle actor creation task failure. This should be called
-  /// - when scheduling an actor creation task is infeasible.
-  /// - when actor cannot be created to the cluster (e.g., runtime environment ops
-  /// failed).
-  ///
-  /// \param actor The actor whose creation task is infeasible.
-  /// \param failure_type Scheduling failure type.
-  /// \param scheduling_failure_message The scheduling failure error message.
-  void OnActorSchedulingFailed(
-      std::shared_ptr<GcsActor> actor,
-      const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-      const std::string &scheduling_failure_message);
-
-  /// Handle actor creation task success. This should be called when the actor
-  /// creation task has been scheduled successfully.
-  ///
-  /// \param actor The actor that has been created.
-  void OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
-                              const rpc::PushTaskReply &reply);
-
-  /// Initialize with the gcs tables data synchronously.
-  /// This should be called when GCS server restarts after a failure.
-  ///
-  /// \param gcs_init_data.
-  void Initialize(const GcsInitData &gcs_init_data);
-
-  /// Delete non-detached actor information from durable storage once the associated job
-  /// finishes.
-  ///
-  /// \param job_id The id of finished job.
-  void OnJobFinished(const JobID &job_id);
-
   /// Get the created actors.
   ///
   /// \return The created actors.
@@ -380,12 +387,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       &GetActorRegisterCallbacks() const;
 
-  std::string DebugString() const;
-
-  /// Collect stats from gcs actor manager in-memory data structures.
-  void RecordMetrics() const;
-
- private:
   /// A data structure representing an actor's owner.
   struct Owner {
     Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
@@ -588,8 +589,162 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
-
   FRIEND_TEST(GcsActorManagerTest, TestKillActorWhenActorIsCreating);
+};
+
+class GcsActorManagerPool : public rpc::ActorInfoHandler {
+ public:
+  GcsActorManagerPool(std::vector<std::unique_ptr<GcsActorManager>> instances)
+      : executors_(instances.size()), instances_(std::move(instances)) {
+  }
+
+  void HandleRegisterActor(const rpc::RegisterActorRequest &request,
+                           rpc::RegisterActorReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override {
+    auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
+    auto& instance = instances_[shard].get();
+    auto& executor = executors_[shard];
+    executor.submit([&]() {
+      instance->HandleRegisterActor(request, reply, send_reply_callback);
+    });
+  }
+
+  void HandleCreateActor(const rpc::CreateActorRequest &request,
+                         rpc::CreateActorReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override {
+    auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
+    auto& instance = instances_[shard].get();
+    auto& executor = executors_[shard];
+    executor.submit([&]() {
+      instance->HandleCreateActor(request, reply, send_reply_callback);
+    });
+    
+  }
+  
+
+  void HandleGetActorInfo(const rpc::GetActorInfoRequest &request,
+                          rpc::GetActorInfoReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override {
+    auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
+    auto& instance = instances_[shard].get();
+    auto& executor = executors_[shard];
+    executor.submit([&]() {
+      instance->HandleGetActorInfo(request, reply, send_reply_callback);
+    });
+  }
+
+  void HandleGetNamedActorInfo(const rpc::GetNamedActorInfoRequest &request,
+                               rpc::GetNamedActorInfoReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override {
+    auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
+    auto& instance = instances_[shard].get();
+    auto& executor = executors_[shard];
+    executor.submit([&]() {
+      instance->HandleGetNamedActorInfo(request, reply, send_reply_callback);
+    });
+    
+  }
+
+  void HandleListNamedActors(const rpc::ListNamedActorsRequest &request,
+                             rpc::ListNamedActorsReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override {
+    auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
+    auto& instance = instances_[shard].get();
+    auto& executor = executors_[shard];
+    executor.submit([&]() {
+      instance->HandleListNamedActors(request, reply, send_reply_callback);
+    });
+  }
+
+  void HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
+                             rpc::GetAllActorInfoReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override {
+    auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
+    auto& instance = instances_[shard].get();
+    auto& executor = executors_[shard];
+    executor.submit([&]() {
+      instance->HandleGetAllActorInfo(request, reply, send_reply_callback);
+    });
+  }
+
+  void HandleKillActorViaGcs(const rpc::KillActorViaGcsRequest &request,
+                             rpc::KillActorViaGcsReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override {
+    auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
+    auto& instance = instances_[shard].get();
+    auto& executor = executors_[shard];
+    executor.submit([&]() {
+      instance->HandleKillActorViaGcs(request, reply, send_reply_callback);
+    });
+  }
+
+  void OnNodeDead(const NodeID &node_id, const std::string node_ip_address) {
+
+  }
+
+  void Initialize(const GcsInitData &gcs_init_data) {
+
+  }
+
+  void OnJobFinished(const JobID &job_id) {
+  }
+
+  void OnWorkerDead(const NodeID &node_id,
+                    const WorkerID &worker_id,
+                    const std::string &worker_ip,
+                    const rpc::WorkerExitType disconnect_type,
+                    const std::string &disconnect_detail,
+                    const rpc::RayException *creation_task_exception = nullptr) {
+  }
+
+  void SchedulePendingActors() {
+
+  }
+
+
+  void OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
+                              const rpc::PushTaskReply &reply) {
+  }
+  void OnActorSchedulingFailed(
+      std::shared_ptr<GcsActor> actor,
+      const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+      const std::string &scheduling_failure_message) {
+    auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
+    auto& instance = instances_[shard].get();
+    auto& executor = executors_[shard];
+    executor.submit([&]() {
+      instance->HandleRegisterActor(request, reply, send_reply_callback);
+    });
+  }
+
+  std::string DebugString() const {
+    auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
+    auto& instance = instances_[shard].get();
+    auto& executor = executors_[shard];
+    executor.submit([&]() {
+      instance->HandleRegisterActor(request, reply, send_reply_callback);
+    });
+  }
+
+  void RecordMetrics() const {
+    auto shard = find_shard(request.task_spec().actor_creation_task_spec().actor_id());
+    auto& instance = instances_[shard].get();
+    auto& executor = executors_[shard];
+    executor.submit([&]() {
+      instance->HandleRegisterActor(request, reply, send_reply_callback);
+    });
+  }
+
+ private:
+  template<typename F>
+  std::invoke_result_t<F> execute(const std::string& key, F&& f) const {
+    std::hash<std::string> hasher;
+    auto shard = hasher(val) & executor_.size();
+    
+  }
+  
+  mutable std::vector<executor::Executor> executors_;
+  mutable std::vector<std::unique_ptr<GcsActorManager>> instances_;
 };
 
 }  // namespace gcs
