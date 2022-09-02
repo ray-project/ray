@@ -23,8 +23,8 @@ prompts = pd.DataFrame(
 
 # We are only testing Casual Language Modeling here
 
-model_checkpoint = "sshleifer/tiny-gpt2"
-tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
+model_checkpoint = "hf-internal-testing/tiny-random-gpt2"
+tokenizer_checkpoint = "hf-internal-testing/tiny-random-gpt2"
 
 
 @pytest.fixture

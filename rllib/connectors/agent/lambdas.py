@@ -39,11 +39,11 @@ def register_lambda_agent_connector(
                 ac_data.env_id, ac_data.agent_id, fn(ac_data.data)
             )
 
-        def to_config(self):
+        def to_state(self):
             return name, None
 
         @staticmethod
-        def from_config(ctx: ConnectorContext, params: List[Any]):
+        def from_state(ctx: ConnectorContext, params: List[Any]):
             return LambdaAgentConnector(ctx)
 
     LambdaAgentConnector.__name__ = name

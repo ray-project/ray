@@ -58,7 +58,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. note::
 
-  Python 3.10 support is currently experimental.
+  Python 3.9/3.10 support is currently experimental.
 
 .. note::
 

@@ -35,6 +35,8 @@ to 5 GPU workers.
 .. code-block:: yaml
 
    groupName: gpu-group
+   rayStartParams:
+       num-gpus: "1" # Advertise GPUs to Ray.
    replicas: 0
    minReplicas: 0
    maxReplicas: 5
@@ -47,16 +49,29 @@ to 5 GPU workers.
            image: rayproject/ray-ml:2.0.0-gpu
            ...
            resources:
-            cpu: 3
-            memory: 50Gi
             nvidia.com/gpu: 1 # Optional, included just for documentation.
-           limits:
             cpu: 3
             memory: 50Gi
+           limits:
             nvidia.com/gpu: 1 # Required to use GPU.
+            cpu: 3
+            memory: 50Gi
             ...
 
 Each of the Ray pods in the group can be scheduled on an AWS `p2.xlarge` instance (1 GPU, 4vCPU, 61Gi RAM).
+
+.. warning::
+
+    Not the following piece of required configuration:
+
+    .. code-block:: yaml
+
+        rayStartParams:
+            num-gpus: "1"
+
+    This extra configuration is required due to a `bug`_ in KubeRay 0.3.0.
+    KubeRay master does not require this piece of configuration, nor will future KubeRay releases;
+    the GPU Ray start parameters will be auto-detected from container resource limits.
 
 .. tip::
 
@@ -215,3 +230,4 @@ and about Nvidia's GPU plugin for Kubernetes `here <https://github.com/NVIDIA/k8
 .. _`admission controller`: https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/
 .. _`ExtendedResourceToleration`: https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#extendedresourcetoleration
 .. _`Kubernetes docs`: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/
+.. _`bug`: https://github.com/ray-project/kuberay/pull/497/
