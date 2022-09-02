@@ -103,7 +103,7 @@ def prepare_model(
             stacklevel=2,
         )
         # If wrap_ddp is False, then set parallel_strategy to None.
-        parallel_strategy = None if parallel_strategy == "ddp" else parallel_strategy
+        parallel_strategy = None
 
     if ddp_kwargs:
         warnings.warn(
@@ -112,9 +112,7 @@ def prepare_model(
             DeprecationWarning,
             stacklevel=2,
         )
-        parallel_strategy_kwargs = (
-            ddp_kwargs if not parallel_strategy_kwargs else parallel_strategy_kwargs
-        )
+        parallel_strategy_kwargs = ddp_kwargs
 
     if parallel_strategy == "fsdp" and FullyShardedDataParallel is None:
         raise ImportError(
