@@ -71,9 +71,8 @@ class InputNode(DAGNode):
 
         Args:
             input_types: Map of key -> type. Describes the type of each
-                InputAttributeNode. Used to determine through what type of Gradio block
-                the InputAttributeNode should be displayed in the deployment graph
-                visualization.
+                InputAttributeNode. Used when deciding what Gradio block to represent
+                the InputAttributeNode with.
             _other_args_to_resolve: Internal only to keep InputNode's execution
                 context throughput pickling, replacement and serialization.
                 User should not use or pass this field.
@@ -81,13 +80,7 @@ class InputNode(DAGNode):
         if len(args) != 0 or len(kwargs) != 0:
             raise ValueError("InputNode should not take any args or kwargs.")
 
-        if input_types:
-            self.gradio_visualization_enabled = True
-            self.input_types = {
-                key: type_to_string(type) for key, type in input_types.items()
-            }
-        else:
-            self.gradio_visualization_enabled = False
+        self.input_types = input_types
         super().__init__([], {}, {}, other_args_to_resolve=_other_args_to_resolve)
 
     def _copy_impl(
@@ -144,8 +137,8 @@ class InputNode(DAGNode):
             "access fields of dag input."
         )
         input_type = None
-        if self.gradio_visualization_enabled and key in self.input_types:
-            input_type = self.input_types[key]
+        if self.input_types is not None and key in self.input_types:
+            input_type = type_to_string(self.input_types[key])
         return InputAttributeNode(self, key, "__getitem__", input_type)
 
     def __enter__(self):
@@ -216,6 +209,9 @@ class InputAttributeNode(DAGNode):
                 "dag_input_node": dag_input_node,
                 "key": key,
                 "accessor_method": accessor_method,
+                # Type of the input tied to this node. Used by
+                # gradio_visualize_graph.GraphVisualizer to determine which Gradio
+                # component should be used for this node.
                 "result_type_annotation": input_type,
             },
         )
