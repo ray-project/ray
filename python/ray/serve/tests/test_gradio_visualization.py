@@ -9,6 +9,9 @@ from ray.dag.utils import _DAGNodeNameGenerator
 from ray import serve
 from ray.dag import InputNode
 from ray.serve.drivers import DAGDriver
+from ray.experimental.gradio_utils import type_to_string
+
+import gradio as gr
 
 
 @pytest.fixture
@@ -107,6 +110,19 @@ def graph4():
         dag = m.h.bind(g_node)
 
     yield input_nodes, f_node, g_node, m, dag
+
+
+@pytest.fixture
+def graph5():
+    @serve.deployment
+    def f(*args) -> int:
+        return 0
+
+    with InputNode(input_types={0: int, 1: int, "id": str}) as user_input:
+        input_nodes = [user_input[0], user_input[1], user_input["id"]]
+        dag = f.bind(input_nodes[0], input_nodes[1], input_nodes[2])
+
+    yield input_nodes, dag
 
 
 @pytest.mark.asyncio
@@ -234,7 +250,7 @@ async def test_gradio_visualization_e2e(graph1):
 
 
 @pytest.mark.asyncio
-async def test_gradio_visualization_types(graph4):
+async def test_gradio_visualization_output_types(graph4):
     """Tests that the return type annotations for function and method nodes are
     correctly extracted after deploying the DAG.
     """
@@ -252,6 +268,30 @@ async def test_gradio_visualization_types(graph4):
             assert node.get_result_type() == "str"
         elif name == "h":
             assert node.get_result_type() == "list"
+
+
+@pytest.mark.asyncio
+async def test_gradio_visualization_input_types(graph5):
+    """Tests that the input types are ___________________
+    """
+    (input_nodes, dag) = graph5
+
+    handle = serve.run(DAGDriver.bind(dag))
+    visualizer = GraphVisualizer()
+    visualizer.visualize_with_gradio(handle, _launch=False)
+
+    # Since instances of InputAttributeNodes are not unique wrt key, original node is
+    # available in the dict. Checking against gradio components instead of type string
+    # for now.
+    for key, block in visualizer.input_key_to_blocks.items():
+        if key == 0:
+            assert isinstance(block, gr.Number)
+        elif key == 1:
+            assert isinstance(block, gr.Number)
+        elif key == "id":
+            assert isinstance(block, gr.Textbox)
+        else:
+            assert False
 
 
 if __name__ == "__main__":
