@@ -676,7 +676,7 @@ def start(
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
             ray_params.env_vars = {
-                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
+                "RAY_RAYLET_NODE_ID": FAKE_HEAD_NODE_ID
             }
 
         num_redis_shards = None
