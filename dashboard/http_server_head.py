@@ -2,9 +2,11 @@ import asyncio
 import errno
 import ipaddress
 import logging
+from math import floor
 import os
 import sys
 from distutils.version import LooseVersion
+import time
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
@@ -13,6 +15,7 @@ import ray.dashboard.utils as dashboard_utils
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import aiohttp, hdrs
+from ray.util.metrics import Counter, Histogram
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -95,6 +98,23 @@ class HttpServerDashboardHead:
         assert self.http_host and self.http_port
         return self.http_host, self.http_port
 
+    async def metrics_middleware(self, app, handler):
+        async def middleware_handler(request):
+            try:
+                start_time = time.monotonic()
+                response = await handler(request)
+                resp_time = time.monotonic() - start_time
+                print("THIS HAPPENED!")
+                logger.warning("HELLO!!")
+                status_tag = f"{floor(response.status / 100)}xx"
+                request.app['metrics_request_latency'].observe(resp_time, {"endpoint": request.path, "http_status": status_tag})
+                request.app['metrics_request_count'].inc(tags={"method": request.method, "endpoint": request.path, "http_status": status_tag})
+                return response
+            except Exception as ex:
+                logger.exception("error with metrics")
+                raise
+        return middleware_handler
+
     async def run(self, modules):
         # Bind http routes of each module.
         for c in modules:
@@ -103,6 +123,7 @@ class HttpServerDashboardHead:
         # working_dir uploads for job submission can be up to 100MiB.
         app = aiohttp.web.Application(client_max_size=100 * 1024 ** 2)
         app.add_routes(routes=routes.bound_routes())
+        self.setup_metrics(app)
 
         self.runner = aiohttp.web.AppRunner(
             app,
@@ -140,6 +161,12 @@ class HttpServerDashboardHead:
         for r in dump_routes:
             logger.info(r)
         logger.info("Registered %s routes.", len(dump_routes))
+
+    def setup_metrics(self, app):
+        app['metrics_request_count'] = Counter("dashboard_api_requests_count", description="Total requests count per endpoint", tag_keys=("method", "endpoint", "http_status"))
+        app['metrics_request_latency'] = Histogram("dashboard_api_requests_latency_seconds", description="Total latency in seconds per endpoint", boundaries=[0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10], tag_keys=("endpoint", "http_status"))
+        app.middlewares.insert(0, self.metrics_middleware)
+
 
     async def cleanup(self):
         # Wait for finish signal.
