@@ -274,14 +274,15 @@ class ArrowTensorArray(pa.ExtensionArray):
 
 
 @PublicAPI(stability="beta")
-class ArrowRaggedTensorType(pa.PyExtensionType):
+class ArrowVariableShapedTensorType(pa.PyExtensionType):
     """
     Arrow ExtensionType for an array of heterogeneous-shaped, homogeneous-typed
     tensors.
 
     This is the Arrow side of TensorDtype for tensor elements with different shapes.
     Note that this extension only supports non-ragged tensor elements; i.e., when
-    considering each tensor element in isolation, they must have a well-defined shape.
+    considering each tensor element in isolation, they must have a well-defined,
+    non-ragged shape.
 
     See Arrow extension type docs:
     https://arrow.apache.org/docs/python/extending_types.html#defining-extension-types-user-defined-types
@@ -312,7 +313,10 @@ class ArrowRaggedTensorType(pa.PyExtensionType):
         )
 
     def __reduce__(self):
-        return ArrowRaggedTensorType, (self.storage_type["data"].type.value_type,)
+        return (
+            ArrowVariableShapedTensorType,
+            (self.storage_type["data"].type.value_type,),
+        )
 
     def __arrow_ext_class__(self):
         """
@@ -322,18 +326,18 @@ class ArrowRaggedTensorType(pa.PyExtensionType):
         Returns:
             A subclass of pd.api.extensions.ExtensionArray.
         """
-        return ArrowRaggedTensorArray
+        return ArrowVariableShapedTensorArray
 
     def __str__(self) -> str:
         dtype = self.storage_type["data"].type.value_type
-        return f"ArrowRaggedTensorType(dtype={dtype})"
+        return f"ArrowVariableShapedTensorType(dtype={dtype})"
 
     def __repr__(self) -> str:
         return str(self)
 
 
 @PublicAPI(stability="beta")
-class ArrowRaggedTensorArray(pa.ExtensionArray):
+class ArrowVariableShapedTensorArray(pa.ExtensionArray):
     """
     An array of heterogeneous-shaped, homogeneous-typed tensors.
 
@@ -386,7 +390,7 @@ class ArrowRaggedTensorArray(pa.ExtensionArray):
     @classmethod
     def from_numpy(
         cls, arr: Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]]
-    ) -> "ArrowRaggedTensorArray":
+    ) -> "ArrowVariableShapedTensorArray":
         """
         Convert an ndarray or an iterable of heterogeneous-shaped ndarrays to an array
         of heterogeneous-shaped, homogeneous-typed tensors.
@@ -395,8 +399,8 @@ class ArrowRaggedTensorArray(pa.ExtensionArray):
             arr: An ndarray or an iterable of heterogeneous-shaped ndarrays.
 
         Returns:
-            An ArrowRaggedTensorArray containing len(arr) tensors of heterogeneous
-            shape.
+            An ArrowVariableShapedTensorArray containing len(arr) tensors of
+            heterogeneous shape.
         """
         # Implementation note - Arrow representation of ragged tensors:
         #
@@ -410,15 +414,15 @@ class ArrowRaggedTensorArray(pa.ExtensionArray):
         if isinstance(arr, Iterable):
             if isinstance(arr, np.ndarray) and arr.dtype.type is not np.object_:
                 raise ValueError(
-                    "ArrowRaggedTensorArray should only be used for "
+                    "ArrowVariableShapedTensorArray should only be used for "
                     "heterogeneous-shaped tensor elements, i.e. of object dtype, but "
                     f"got dtype: {arr.dtype}"
                 )
             arr = list(arr)
         elif not isinstance(arr, (list, tuple)):
             raise ValueError(
-                "ArrowRaggedTensorArray can only be constructed from an ndarray or a "
-                f"list/tuple of ndarrays, but got: {type(arr)}"
+                "ArrowVariableShapedTensorArray can only be constructed from an "
+                f"ndarray or a list/tuple of ndarrays, but got: {type(arr)}"
             )
         if len(arr) == 0:
             # Empty ragged tensor arrays are not supported.
@@ -454,7 +458,7 @@ class ArrowRaggedTensorArray(pa.ExtensionArray):
             # roundtrip through our Arrow representation.
             np_data_buffer = raveled[-1].base
         else:
-            np_data_buffer = np.concatenate(raveled, dtype=dtype)
+            np_data_buffer = np.concatenate(raveled).astype(dtype)
         if dtype.type is np.bool_:
             # NumPy doesn't represent boolean arrays as bit-packed, so we manually
             # bit-pack the booleans before handing the buffer off to Arrow.
@@ -477,7 +481,7 @@ class ArrowRaggedTensorArray(pa.ExtensionArray):
             [data_array, shape_array],
             ["data", "shape"],
         )
-        type_ = ArrowRaggedTensorType(pa_dtype)
+        type_ = ArrowVariableShapedTensorType(pa_dtype)
         return pa.ExtensionArray.from_storage(type_, storage)
 
     def _to_numpy(self, index: Optional[int] = None, zero_copy_only: bool = False):

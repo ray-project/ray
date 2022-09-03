@@ -27,6 +27,7 @@
 # - Added different (more vectorized) TensorArray.take() operation.
 # - Added support for more reducers (agg funcs) to TensorArray.
 # - Added support for logical operators to TensorArray(Element).
+# - Added support for heterogeneously-shaped tensors.
 # - Miscellaneous small bug fixes and optimizations.
 
 import numbers
@@ -182,9 +183,9 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
     """
     Pandas extension type for a column of homogeneous-typed tensors.
 
-    This extension supports ragged tensors, i.e. where the tensor elements have
-    different shapes. However, each tensor element must be non-ragged, i.e. each tensor
-    element must have a well-defined shape.
+    This extension supports tensors in which the elements have different shapes.
+    However, each tensor element must be non-ragged, i.e. each tensor element must have
+    a well-defined, non-ragged shape.
 
     See:
     https://github.com/pandas-dev/pandas/blob/master/pandas/core/dtypes/base.py
@@ -588,9 +589,9 @@ class TensorArray(
     Pandas `ExtensionArray` representing a tensor column, i.e. a column
     consisting of ndarrays as elements.
 
-    This extension supports ragged tensors, i.e. where the tensor elements have
-    different shapes. However, each tensor element must be non-ragged, i.e. each tensor
-    element must have a well-defined shape.
+    This extension supports tensors in which the elements have different shapes.
+    However, each tensor element must be non-ragged, i.e. each tensor element must have
+    a well-defined, non-ragged shape.
 
     Examples:
         >>> # Create a DataFrame with a list of ndarrays as a column.
@@ -699,44 +700,43 @@ class TensorArray(
             values: A NumPy ndarray or sequence of NumPy ndarrays of equal
                 shape.
         """
+        # Try to convert some well-known objects to ndarrays before handing off to
+        # ndarray handling logic.
         if isinstance(values, ABCSeries):
-            # Convert series to ndarray and passthrough to ndarray handling
-            # logic.
             values = values.to_numpy()
         elif isinstance(values, Sequence):
-            values = np.array([np.asarray(v) for v in values])
+            values = np.array([np.asarray(v) for v in values], copy=False)
+        elif isinstance(values, TensorArrayElement):
+            values = np.array([np.asarray(values)], copy=False)
+        elif np.isscalar(values):
+            # `values` is a single scalar element.
+            values = np.array([values], copy=False)
 
         if isinstance(values, np.ndarray):
             if values.dtype.type is np.object_:
                 if len(values) == 0:
                     # Tensor is empty, pass through to create empty TensorArray.
                     pass
-                elif isinstance(values[0], str):
+                elif all(isinstance(v, str) for v in values):
                     # Tensor of strings, these don't need a TensorArray representation.
                     raise TypeError(
                         "Got a tensor of strings when constructing a TensorArray, but "
                         "a tensor of strings doesn't need to be represented using a "
                         "TensorArray."
                     )
-                elif isinstance(values[0], (np.ndarray, TensorArrayElement, Sequence)):
+                elif all(
+                    isinstance(v, (np.ndarray, TensorArrayElement, Sequence))
+                    for v in values
+                ):
                     # Try to convert ndarrays of ndarrays/TensorArrayElements with an
                     # opaque object type to a properly typed ndarray of ndarrays.
-                    # TODO (Clark): Maybe don't even try this conversion?
-                    self._tensor = np.array([np.asarray(v) for v in values])
+                    values = np.array([np.asarray(v) for v in values], copy=False)
                 else:
                     raise TypeError(
                         "Expected a well-typed ndarray or an object-typed ndarray of "
                         "ndarray pointers, but got an object-typed ndarray whose "
                         f"subndarrays are of type {type(values[0])}."
                     )
-            else:
-                # ndarray is well-typed, use it directly as the backing tensor.
-                self._tensor = values
-        elif isinstance(values, TensorArrayElement):
-            self._tensor = np.array([np.asarray(values)])
-        elif np.isscalar(values):
-            # `values` is a single element:
-            self._tensor = np.array([values])
         elif isinstance(values, TensorArray):
             raise TypeError("Use the copy() method to create a copy of a TensorArray.")
         else:
@@ -744,6 +744,9 @@ class TensorArray(
                 "Expected a numpy.ndarray or sequence of numpy.ndarray, "
                 f"but received {values} of type {type(values).__name__} instead."
             )
+        assert isinstance(values, np.ndarray)
+        self._tensor = values
+        self._is_variable_shaped = _is_ndarray_variable_shaped_tensor(values)
 
     @classmethod
     def _from_sequence(
@@ -862,8 +865,10 @@ class TensorArray(
         """
         An instance of 'ExtensionDtype'.
         """
-        if self._is_ragged_tensor():
-            dtype = self._tensor[0].dtype if len(self._tensor) > 0 else self.numpy_dtype
+        if self._is_variable_shaped:
+            # A tensor is only considered variable-shaped if it's non-empty, so no
+            # non-empty check is needed here.
+            dtype = self._tensor[0].dtype
             shape = None
         else:
             dtype = self.numpy_dtype
@@ -1043,7 +1048,19 @@ class TensorArray(
         -------
         ExtensionArray
         """
-        return TensorArray(np.concatenate([a._tensor for a in to_concat]))
+        should_flatten = False
+        shape = None
+        for a in to_concat:
+            if shape is None:
+                shape = a.numpy_shape
+            if a._is_variable_shaped or a.numpy_shape != shape:
+                should_flatten = True
+                break
+        if should_flatten:
+            concated = TensorArray(np.array([e for a in to_concat for e in a._tensor]))
+        else:
+            concated = TensorArray(np.concatenate([a._tensor for a in to_concat]))
+        return concated
 
     def __setitem__(self, key: Union[int, np.ndarray], value: Any) -> None:
         """
@@ -1322,10 +1339,6 @@ class TensorArray(
         result = self._tensor.all(axis=axis, out=out, keepdims=keepdims)
         return result if axis is None else TensorArray(result)
 
-    def _is_ragged_tensor(self) -> bool:
-        """Return whether this TensorArray is representing a ragged tensor."""
-        return _is_ndarray_ragged_tensor(self._tensor)
-
     def __arrow_array__(self, type=None):
         """
         Convert this TensorArray to an ArrowTensorArray extension array.
@@ -1338,11 +1351,11 @@ class TensorArray(
         """
         from ray.air.util.tensor_extensions.arrow import (
             ArrowTensorArray,
-            ArrowRaggedTensorArray,
+            ArrowVariableShapedTensorArray,
         )
 
-        if self._is_ragged_tensor():
-            return ArrowRaggedTensorArray.from_numpy(self._tensor)
+        if self._is_variable_shaped:
+            return ArrowVariableShapedTensorArray.from_numpy(self._tensor)
         else:
             return ArrowTensorArray.from_numpy(self._tensor)
 
@@ -1376,8 +1389,20 @@ TensorArray._add_comparison_ops()
 TensorArray._add_logical_ops()
 
 
-def _is_ndarray_ragged_tensor(arr: np.ndarray) -> bool:
-    """Return whether the provided NumPy ndarray is representing a ragged tensor."""
-    return (
-        arr.dtype.type is np.object_ and len(arr) > 0 and isinstance(arr[0], np.ndarray)
-    )
+def _is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
+    """Return whether the provided NumPy ndarray is representing a variable-shaped
+    tensor.
+    """
+    if arr.dtype.type is not np.object_:
+        return False
+    if len(arr) == 0:
+        return False
+    if not isinstance(arr[0], np.ndarray):
+        return False
+    shape = arr[0].shape
+    for a in arr[1:]:
+        if not isinstance(a, np.ndarray):
+            return False
+        if a.shape != shape:
+            return True
+    return True

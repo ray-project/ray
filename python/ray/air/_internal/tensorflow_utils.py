@@ -65,8 +65,20 @@ def convert_pandas_to_tf_tensor(
     def tensorize(series):
         try:
             return tf.convert_to_tensor(series, dtype=dtype)
-        except ValueError:
-            return tf.stack([tensorize(element) for element in series])
+        except ValueError as outer_e:
+            # This exception will be raised if series is of object dtype or otherwise
+            # cannot be made into a tensor directly. We assume it's a sequence in that
+            # case. This is more robust than checking for dtype.
+            tensors = [tensorize(element) for element in series]
+            try:
+                return tf.stack(tensors)
+            except Exception:
+                # Try to coerce the tensor to a ragged tensor, if possible.
+                try:
+                    return tf.ragged.stack(tensors)
+                except Exception:
+                    # Otherwise, raise the original error.
+                    raise outer_e from None
 
     tensors = []
     for column in df.columns:
@@ -79,7 +91,7 @@ def convert_pandas_to_tf_tensor(
 
     concatenated_tensor = tf.concat(tensors, axis=1)
 
-    if concatenated_tensor.ndim == 1:
+    if concatenated_tensor.shape.ndims == 1:
         return tf.expand_dims(concatenated_tensor, axis=1)
 
     return concatenated_tensor

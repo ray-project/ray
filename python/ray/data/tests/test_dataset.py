@@ -26,8 +26,8 @@ from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
     ArrowTensorType,
-    ArrowRaggedTensorArray,
-    ArrowRaggedTensorType,
+    ArrowVariableShapedTensorArray,
+    ArrowVariableShapedTensorType,
     TensorArray,
     TensorDtype,
 )
@@ -515,16 +515,6 @@ def test_tensor_array_validation():
     with pytest.raises(TypeError):
         TensorArray(object())
 
-    # Test ragged tensor raises TypeError.
-    with pytest.raises(TypeError):
-        TensorArray(np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object))
-
-    with pytest.raises(TypeError):
-        TensorArray([np.ones((2, 2)), np.ones((3, 3))])
-
-    with pytest.raises(TypeError):
-        TensorArray(pd.Series([np.ones((2, 2)), np.ones((3, 3))]))
-
     # Test non-primitive element raises TypeError.
     with pytest.raises(TypeError):
         TensorArray(np.array([object(), object()]))
@@ -533,7 +523,7 @@ def test_tensor_array_validation():
         TensorArray([object(), object()])
 
 
-def test_arrow_ragged_tensor_array_roundtrip():
+def test_arrow_variable_shaped_tensor_array_roundtrip():
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -541,35 +531,35 @@ def test_arrow_ragged_tensor_array_roundtrip():
         for offset, shape in zip(cumsum_sizes, shapes)
     ]
     arr = np.array(arrs, dtype=object)
-    ata = ArrowRaggedTensorArray.from_numpy(arr)
-    assert isinstance(ata.type, ArrowRaggedTensorType)
+    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowVariableShapedTensorType)
     assert len(ata) == len(arr)
     out = ata.to_numpy()
     for o, a in zip(out, arr):
         np.testing.assert_array_equal(o, a)
 
 
-def test_arrow_ragged_tensor_array_roundtrip_boolean():
+def test_arrow_variable_shaped_tensor_array_roundtrip_boolean():
     arr = np.array(
         [[True, False], [False, False, True], [False], [True, True, False, True]],
         dtype=object,
     )
-    ata = ArrowRaggedTensorArray.from_numpy(arr)
-    assert isinstance(ata.type, ArrowRaggedTensorType)
+    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowVariableShapedTensorType)
     assert len(ata) == len(arr)
     out = ata.to_numpy()
     for o, a in zip(out, arr):
         np.testing.assert_array_equal(o, a)
 
 
-def test_arrow_ragged_tensor_array_roundtrip_contiguous_optimization():
+def test_arrow_variable_shaped_tensor_array_roundtrip_contiguous_optimization():
     # Test that a roundtrip on slices of an already-contiguous 1D base array does not
     # create any unnecessary copies.
     base = np.arange(6)
     base_address = base.__array_interface__["data"][0]
     arr = np.array([base[:2], base[2:]], dtype=object)
-    ata = ArrowRaggedTensorArray.from_numpy(arr)
-    assert isinstance(ata.type, ArrowRaggedTensorType)
+    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowVariableShapedTensorType)
     assert len(ata) == len(arr)
     assert ata.storage.field("data").buffers()[3].address == base_address
     out = ata.to_numpy()
@@ -578,7 +568,7 @@ def test_arrow_ragged_tensor_array_roundtrip_contiguous_optimization():
         np.testing.assert_array_equal(o, a)
 
 
-def test_arrow_ragged_tensor_array_slice():
+def test_arrow_variable_shaped_tensor_array_slice():
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -586,8 +576,8 @@ def test_arrow_ragged_tensor_array_slice():
         for offset, shape in zip(cumsum_sizes, shapes)
     ]
     arr = np.array(arrs, dtype=object)
-    ata = ArrowRaggedTensorArray.from_numpy(arr)
-    assert isinstance(ata.type, ArrowRaggedTensorType)
+    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowVariableShapedTensorType)
     assert len(ata) == len(arr)
     indices = [0, 1, 2]
     for i in indices:
@@ -605,7 +595,7 @@ def test_arrow_ragged_tensor_array_slice():
             np.testing.assert_array_equal(o, e)
 
 
-def test_ragged_tensor_array_roundtrip():
+def test_variable_shaped_tensor_array_roundtrip():
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -622,14 +612,14 @@ def test_ragged_tensor_array_roundtrip():
 
     # Check Arrow conversion.
     ata = ta.__arrow_array__()
-    assert isinstance(ata.type, ArrowRaggedTensorType)
+    assert isinstance(ata.type, ArrowVariableShapedTensorType)
     assert len(ata) == len(arr)
     out = ata.to_numpy()
     for o, a in zip(out, arr):
         np.testing.assert_array_equal(o, a)
 
 
-def test_ragged_tensor_array_slice():
+def test_variable_shaped_tensor_array_slice():
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -753,7 +743,7 @@ def test_tensor_array_block_slice():
             9,
             12,
         ),
-        # Ragged tensors.
+        # Variable-shaped tensors.
         (
             [[False, True], [True, False, True], [False], [False, False, True, True]],
             1,
@@ -763,15 +753,15 @@ def test_tensor_array_block_slice():
 )
 @pytest.mark.parametrize("init_with_pandas", [True, False])
 def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data, a, b):
-    is_ragged = len({len(elem) for elem in test_data}) > 1
+    is_variable_shaped = len({len(elem) for elem in test_data}) > 1
     n = len(test_data)
     test_arr = np.array(test_data)
     df = pd.DataFrame({"one": TensorArray(test_arr), "two": ["a"] * n})
     if init_with_pandas:
         table = pa.Table.from_pandas(df)
     else:
-        if is_ragged:
-            col = ArrowRaggedTensorArray.from_numpy(test_arr)
+        if is_variable_shaped:
+            col = ArrowVariableShapedTensorArray.from_numpy(test_arr)
         else:
             col = ArrowTensorArray.from_numpy(test_arr)
         table = pa.table({"one": col, "two": ["a"] * n})
@@ -781,7 +771,7 @@ def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data
     table2 = block_accessor.slice(a, b, False)
     out = table2["one"].chunk(0).to_numpy()
     expected = test_arr[a:b]
-    if is_ragged:
+    if is_variable_shaped:
         for o, e in zip(out, expected):
             np.testing.assert_array_equal(o, e)
     else:
@@ -794,7 +784,7 @@ def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data
     table2 = block_accessor.slice(a, b, True)
     out = table2["one"].chunk(0).to_numpy()
     expected = test_arr[a:b]
-    if is_ragged:
+    if is_variable_shaped:
         for o, e in zip(out, expected):
             np.testing.assert_array_equal(o, e)
     else:
@@ -1057,7 +1047,7 @@ def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
         np.testing.assert_equal(v, e)
 
 
-def test_tensors_in_tables_from_pandas_ragged(ray_start_regular_shared):
+def test_tensors_in_tables_from_pandas_variable_shaped(ray_start_regular_shared):
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -1093,7 +1083,7 @@ def test_tensors_in_tables_pandas_roundtrip(
     pd.testing.assert_frame_equal(ds_df, expected_df)
 
 
-def test_tensors_in_tables_pandas_roundtrip_ragged(
+def test_tensors_in_tables_pandas_roundtrip_variable_shaped(
     ray_start_regular_shared,
     enable_automatic_tensor_extension_cast,
 ):
@@ -1129,7 +1119,9 @@ def test_tensors_in_tables_parquet_roundtrip(ray_start_regular_shared, tmp_path)
         np.testing.assert_equal(v, e)
 
 
-def test_tensors_in_tables_parquet_roundtrip_ragged(ray_start_regular_shared, tmp_path):
+def test_tensors_in_tables_parquet_roundtrip_variable_shaped(
+    ray_start_regular_shared, tmp_path
+):
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -1483,6 +1475,59 @@ def test_tensors_in_tables_to_torch_mix(ray_start_regular_shared, pipelined):
         np.testing.assert_array_equal(labels, np.sort(df["label"].to_numpy()))
 
 
+@pytest.mark.skip(
+    reason=(
+        "Waiting for Torch to support unsqueezing and concatenating nested tensors."
+    )
+)
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_tensors_in_tables_to_torch_variable_shaped(
+    ray_start_regular_shared, pipelined
+):
+    shapes = [(2, 2), (3, 3), (4, 4)]
+    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
+    arrs1 = [
+        np.arange(offset, offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    df1 = pd.DataFrame(
+        {
+            "one": TensorArray(arrs1),
+            "two": TensorArray([a + 1 for a in arrs1]),
+            "label": [1.0, 2.0, 3.0],
+        }
+    )
+    base = cumsum_sizes[-1]
+    arrs2 = [
+        np.arange(base + offset, base + offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    df2 = pd.DataFrame(
+        {
+            "one": TensorArray(arrs2),
+            "two": TensorArray([a + 1 for a in arrs2]),
+            "label": [4.0, 5.0, 6.0],
+        }
+    )
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([df1, df2])
+    ds = maybe_pipeline(ds, pipelined)
+    torchd = ds.to_torch(
+        label_column="label", batch_size=2, unsqueeze_label_tensor=False
+    )
+
+    num_epochs = 1 if pipelined else 2
+    for _ in range(num_epochs):
+        features, labels = [], []
+        for batch in iter(torchd):
+            features.append(batch[0].numpy())
+            labels.append(batch[1].numpy())
+        features, labels = np.concatenate(features), np.concatenate(labels)
+        values = np.stack([df["one"].to_numpy(), df["two"].to_numpy()], axis=1)
+        np.testing.assert_array_equal(values, features)
+        np.testing.assert_array_equal(df["label"].to_numpy(), labels)
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_tensors_in_tables_to_tf(ray_start_regular_shared, pipelined):
     import tensorflow as tf
@@ -1578,6 +1623,66 @@ def test_tensors_in_tables_to_tf_mix(ray_start_regular_shared, pipelined):
     np.testing.assert_array_equal(col1, np.sort(df["one"].to_numpy()))
     np.testing.assert_array_equal(col2, np.sort(df["two"].to_numpy()))
     np.testing.assert_array_equal(labels, np.sort(df["label"].to_numpy()))
+
+
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_tensors_in_tables_to_tf_variable_shaped(ray_start_regular_shared, pipelined):
+    import tensorflow as tf
+
+    shapes = [(2, 2), (3, 3), (4, 4)]
+    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
+    arrs1 = [
+        np.arange(offset, offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    df1 = pd.DataFrame(
+        {
+            "one": TensorArray(arrs1),
+            "two": TensorArray([a + 1 for a in arrs1]),
+            "label": [1.0, 2.0, 3.0],
+        }
+    )
+    base = cumsum_sizes[-1]
+    arrs2 = [
+        np.arange(base + offset, base + offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    df2 = pd.DataFrame(
+        {
+            "one": TensorArray(arrs2),
+            "two": TensorArray([a + 1 for a in arrs2]),
+            "label": [4.0, 5.0, 6.0],
+        }
+    )
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([df1, df2])
+    ds = maybe_pipeline(ds, pipelined)
+    tfd = ds.to_tf(
+        label_column="label",
+        output_signature=(
+            tf.RaggedTensorSpec(shape=(None, 2, None, None), dtype=tf.int64),
+            tf.TensorSpec(shape=(None,), dtype=tf.float64),
+        ),
+        batch_size=2,
+    )
+    features, labels = [], []
+    # TODO(Clark): Use tf.data.Dataset.as_numpy_iterator() once it supports
+    # RaggedTensors: https://github.com/tensorflow/tensorflow/issues/53149
+    for features_, labels_ in tfd:
+        features.append(features_.numpy())
+        labels.append(labels_.numpy())
+    features, labels = np.concatenate(features), np.concatenate(labels)
+    values = np.stack([df["one"].to_numpy(), df["two"].to_numpy()], axis=1)
+
+    def recursive_to_list(a):
+        if not isinstance(a, (list, np.ndarray)):
+            return a
+        return [recursive_to_list(e) for e in a]
+
+    # Convert to a nested Python list in order to circumvent failed comparisons on
+    # ndarray raggedness.
+    np.testing.assert_equal(recursive_to_list(values), recursive_to_list(features))
+    np.testing.assert_array_equal(df["label"].to_numpy(), labels)
 
 
 def test_empty_shuffle(ray_start_regular_shared):
