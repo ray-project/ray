@@ -3527,7 +3527,6 @@
   legacy:
     test_name: stress_test_state_api_scale
     test_suite: nightly_tests
-  stable: false
 
   frequency: nightly
   team: core
@@ -3560,7 +3559,6 @@
   legacy:
     test_name: shuffle_20gb_with_state_api
     test_suite: nightly_tests
-  stable: false
 
   frequency: nightly
   team: core
