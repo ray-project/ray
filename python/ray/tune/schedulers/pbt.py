@@ -616,9 +616,12 @@ class PopulationBasedTraining(FIFOScheduler):
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
         logger.info(
-            "[exploit] transferring weights from trial "
-            "{} (score {}) -> {} (score {})".format(
-                trial_to_clone, new_state.last_score, trial, trial_state.last_score
+            "\n\n[PBT] [Exploit] Cloning trial "
+            "{} (score = {:4f}) into trial {} (score = {:4f})\n".format(
+                trial_to_clone.trial_id,
+                new_state.last_score,
+                trial.trial_id,
+                trial_state.last_score,
             )
         )
 
@@ -633,9 +636,19 @@ class PopulationBasedTraining(FIFOScheduler):
         new_hparams = {
             k: v for k, v in new_config.items() if k in self._hyperparam_mutations
         }
-        logger.info(
-            "[explore] perturbed config from {} -> {}".format(old_hparams, new_hparams)
+        explore_info_str = (
+            "\n\n[PBT] [Explore] Perturbed the hyperparameter config of trial"
+            f"{trial.trial_id}:\n"
         )
+        longest_name = max([len(param_name) for param_name in old_hparams.keys()])
+        for param_name in old_hparams:
+            old_val = old_hparams[param_name]
+            new_val = new_hparams[param_name]
+            explore_info_str += (
+                f"{param_name.ljust(longest_name)} : {old_val:.4f} {'-' * 8}> "
+                f"{new_val:.4f}\n"
+            )
+        logger.info(explore_info_str)
 
         if self._log_config:
             self._log_config_on_step(
