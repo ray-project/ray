@@ -100,11 +100,17 @@ class _CheckpointManager(CommonCheckpointManager):
     @property
     def newest_checkpoint(self):
         """Returns the newest checkpoint (based on training iteration)."""
-        newest_checkpoint = max(
-            [self.newest_persistent_checkpoint, self.newest_memory_checkpoint],
-            key=lambda c: c.id,
-        )
-        return newest_checkpoint
+        # NOTE: For PBT Debugging purposes only.
+        # TODO(justinvyu): Remove this.
+        # print("[DEBUGGING] newest_memory_checkpoint.id = ", self.newest_memory_checkpoint.id)
+        # print("[DEBUGGING] newest_persistent_checkpoint.id = ", self.newest_persistent_checkpoint.id)
+
+        # newest_checkpoint = max(
+        #     [self.newest_memory_checkpoint, self.newest_persistent_checkpoint],
+        #     key=lambda c: c.id,
+        # )
+        # return newest_checkpoint
+        return self.newest_memory_checkpoint
 
     @property
     def newest_memory_checkpoint(self):
