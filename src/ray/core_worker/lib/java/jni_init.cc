@@ -114,6 +114,7 @@ jfieldID java_actor_creation_options_concurrency_groups;
 jfieldID java_actor_creation_options_serialized_runtime_env;
 jfieldID java_actor_creation_options_namespace;
 jfieldID java_actor_creation_options_max_pending_calls;
+jfieldID java_actor_creation_options_is_async;
 
 jclass java_actor_lifetime_class;
 int DETACHED_LIFETIME_ORDINAL_VALUE;
@@ -364,9 +365,11 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_actor_creation_options_serialized_runtime_env = env->GetFieldID(
       java_actor_creation_options_class, "serializedRuntimeEnv", "Ljava/lang/String;");
   java_actor_creation_options_namespace = env->GetFieldID(
-      java_actor_creation_options_class, "namespace", "Ljava/lang/String;"); 
+      java_actor_creation_options_class, "namespace", "Ljava/lang/String;");
   java_actor_creation_options_max_pending_calls =
       env->GetFieldID(java_actor_creation_options_class, "maxPendingCalls", "I");
+  java_actor_creation_options_is_async =
+      env->GetFieldID(java_actor_creation_options_class, "isAsync", "Z");
 
   java_actor_lifetime_class = LoadClass(env, "io/ray/api/options/ActorLifetime");
   java_actor_lifetime_ordinal =
@@ -414,7 +417,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
   java_native_task_executor_class =
       LoadClass(env, "io/ray/runtime/task/NativeTaskExecutor");
-  
+
   java_object_ref_impl_class = LoadClass(env, "io/ray/runtime/object/ObjectRefImpl");
   java_object_ref_impl_class_on_memory_store_object_allocated = env->GetStaticMethodID(
       java_object_ref_impl_class, "onMemoryStoreObjectAllocated", "([B[B)V");
