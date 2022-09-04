@@ -9,6 +9,7 @@ from ray._private.gcs_utils import ErrorType
 from ray._raylet import (
     MessagePackSerializedObject,
     MessagePackSerializer,
+    ObjectRefGenerator,
     Pickle5SerializedObject,
     Pickle5Writer,
     RawSerializedObject,
@@ -121,6 +122,14 @@ class SerializationContext:
             )
 
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
+
+        def object_ref_generator_reducer(obj):
+            return ObjectRefGenerator, (obj.refs,)
+
+        self._register_cloudpickle_reducer(
+            ObjectRefGenerator, object_ref_generator_reducer
+        )
+
         serialization_addons.apply(self)
 
     def _register_cloudpickle_reducer(self, cls, reducer):

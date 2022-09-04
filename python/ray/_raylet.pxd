@@ -11,10 +11,18 @@ from libc.stdint cimport (
 from libcpp cimport bool as c_bool
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
+from libcpp.unordered_map cimport unordered_map
 from libcpp.memory cimport (
     shared_ptr,
     unique_ptr
 )
+from libcpp.utility cimport pair
+from ray.includes.optional cimport (
+    optional,
+    nullopt,
+    make_optional,
+)
+
 from ray.includes.common cimport (
     CBuffer,
     CRayObject,
@@ -128,7 +136,11 @@ cdef class CoreWorker:
             &contained_id, int64_t *task_output_inlined_bytes,
             shared_ptr[CRayObject] *return_ptr)
     cdef store_task_outputs(
-            self, worker, outputs, const c_vector[CObjectID] return_ids,
+            self,
+            const CAddress &caller_address,
+            worker, outputs,
+            const c_vector[CObjectID] *static_return_ids,
+            c_vector[CObjectID] *dynamic_return_ids,
             c_vector[shared_ptr[CRayObject]] *returns)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle)

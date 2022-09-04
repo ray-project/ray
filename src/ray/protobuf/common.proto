@@ -330,6 +330,10 @@ message TaskSpec {
   // A count of the number of times this task has been attempted so far. 0
   // means this is the first execution.
   uint64 attempt_number = 29;
+  // A list of ObjectIDs that were created by this task but that should be
+  // owned by the task's caller. The task should return the corresponding
+  // ObjectRefs in its actual return value.
+  repeated bytes dynamic_return_ids = 30;
 }
 
 message TaskInfoEntry {

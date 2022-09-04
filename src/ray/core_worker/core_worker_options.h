@@ -33,6 +33,7 @@ struct CoreWorkerOptions {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
   using TaskExecutionCallback = std::function<Status(
+      const rpc::Address &caller_address,
       TaskType task_type,
       const std::string task_name,
       const RayFunction &ray_function,
@@ -43,6 +44,7 @@ struct CoreWorkerOptions {
       const std::string &debugger_breakpoint,
       const std::string &serialized_retry_exception_allowlist,
       std::vector<std::shared_ptr<RayObject>> *results,
+      std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *dynamic_returns,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
       bool *is_retryable_error,
       // The following 2 parameters `defined_concurrency_groups` and

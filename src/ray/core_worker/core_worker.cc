@@ -98,7 +98,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                   std::placeholders::_2,
                                   std::placeholders::_3,
                                   std::placeholders::_4,
-                                  std::placeholders::_5);
+                                  std::placeholders::_5,
+                                  std::placeholders::_6);
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task, [this] {
           return local_raylet_client_->TaskDone();
@@ -2178,11 +2179,13 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
-                               const std::shared_ptr<ResourceMappingType> &resource_ids,
-                               std::vector<std::shared_ptr<RayObject>> *return_objects,
-                               ReferenceCounter::ReferenceTableProto *borrowed_refs,
-                               bool *is_retryable_error) {
+Status CoreWorker::ExecuteTask(
+    const TaskSpecification &task_spec,
+    const std::shared_ptr<ResourceMappingType> &resource_ids,
+    std::vector<std::shared_ptr<RayObject>> *return_objects,
+    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *dynamic_return_objects,
+    ReferenceCounter::ReferenceTableProto *borrowed_refs,
+    bool *is_retryable_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
@@ -2258,6 +2261,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   }
 
   status = options_.task_execution_callback(
+      task_spec.CallerAddress(),
       task_type,
       task_spec.GetName(),
       func,
@@ -2268,6 +2272,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       task_spec.GetDebuggerBreakpoint(),
       task_spec.GetSerializedRetryExceptionAllowlist(),
       return_objects,
+      dynamic_return_objects,
       creation_task_exception_pb_bytes,
       is_retryable_error,
       defined_concurrency_groups,
@@ -2412,6 +2417,16 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   }
 }
 
+ObjectID CoreWorker::AllocateDynamicReturnId() {
+  const auto &task_spec = worker_context_.GetCurrentTask();
+  const auto return_id =
+      ObjectID::FromIndex(task_spec->TaskId(), worker_context_.GetNextPutIndex());
+  AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
+  reference_counter_->AddBorrowedObject(
+      return_id, ObjectID::Nil(), worker_context_.GetCurrentTask()->CallerAddress());
+  return return_id;
+}
+
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
     const TaskSpecification &task_spec, const ActorID &actor_id) {
   auto resource_ids = std::make_shared<ResourceMappingType>();
@@ -2441,8 +2456,14 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   auto old_id = GetActorId();
   SetActorId(actor_id);
   bool is_retryable_error;
-  RAY_UNUSED(ExecuteTask(
-      task_spec, resource_ids, &return_objects, &borrowed_refs, &is_retryable_error));
+  // TODO(swang): Support ObjectRefGenerators in local mode?
+  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> dynamic_return_objects;
+  RAY_UNUSED(ExecuteTask(task_spec,
+                         resource_ids,
+                         &return_objects,
+                         &dynamic_return_objects,
+                         &borrowed_refs,
+                         &is_retryable_error));
   SetActorId(old_id);
   return returned_refs;
 }

@@ -152,6 +152,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CObjectID& return_id,
             shared_ptr[CRayObject] *return_object
         )
+        CObjectID AllocateDynamicReturnId()
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
@@ -280,6 +281,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string stdout_file
         c_string stderr_file
         (CRayStatus(
+            const CAddress &caller_address,
             CTaskType task_type,
             const c_string name,
             const CRayFunction &ray_function,
@@ -290,6 +292,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_string debugger_breakpoint,
             const c_string serialized_retry_exception_allowlist,
             c_vector[shared_ptr[CRayObject]] *returns,
+            unordered_map[CObjectID, shared_ptr[CRayObject]] *dynamic_returns,
             shared_ptr[LocalMemoryBuffer]
             &creation_task_exception_pb_bytes,
             c_bool *is_retryable_error,

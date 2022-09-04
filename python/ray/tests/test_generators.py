@@ -80,18 +80,25 @@ def test_generator_returns(ray_start_regular, use_actors):
     except ray.exceptions.RayTaskError as e:
         assert isinstance(e.as_instanceof_cause(), ValueError)
 
-    # Check num_returns=1 case, should receive TypeError because generator
-    # cannot be pickled.
-    try:
-        ray.get(remote_generator_fn.remote(num_returns))
-        assert False
-    except ray.exceptions.RayTaskError as e:
-        assert isinstance(e.as_instanceof_cause(), TypeError)
-
     # Check return values.
     ray.get(
         remote_generator_fn.options(num_returns=num_returns).remote(num_returns)
     ) == list(range(num_returns))
+
+
+def test_dynamic_generator(ray_start_regular):
+    @ray.remote
+    def dynamic_generator(num_returns):
+        for i in range(num_returns):
+            print("YIELD", i)
+            yield np.random.randint(
+                np.iinfo(np.int8).max, size=(100_000_000, 1), dtype=np.int8
+            )
+
+    gen = ray.get(dynamic_generator.remote(10))
+    print(gen, gen.refs)
+    for i, ref in enumerate(gen):
+        print(ref, ray.get(ref))
 
 
 if __name__ == "__main__":

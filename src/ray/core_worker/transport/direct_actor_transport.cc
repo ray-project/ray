@@ -92,10 +92,12 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
+    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> dynamic_return_objects;
     bool is_retryable_error = false;
     auto status = task_handler_(task_spec,
                                 resource_ids,
                                 &return_objects,
+                                &dynamic_return_objects,
                                 reply->mutable_borrowed_refs(),
                                 &is_retryable_error);
     reply->set_is_retryable_error(is_retryable_error);
