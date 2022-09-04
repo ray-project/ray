@@ -182,7 +182,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     /**
      * Mark the creating actor as async. If the Python actor is/is not async but it's marked
-     * async/not async in Java, it will result in RayValueError errors
+     * async/not async in Java, it will result in RayActorError errors
      *
      * @return self
      */
