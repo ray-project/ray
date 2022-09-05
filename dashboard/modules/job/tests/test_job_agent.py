@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import requests
 import shutil
 import sys
 import tempfile
@@ -11,19 +12,25 @@ import pytest
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 import yaml
 
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.test_utils import (
     chdir,
     format_web_url,
     wait_until_server_available,
+    wait_for_condition,
 )
 from ray.dashboard.modules.job.common import JobSubmitRequest
-from ray.dashboard.modules.job.utils import validate_request_type
+from ray.dashboard.modules.job.utils import (
+    validate_request_type,
+    get_supervisor_actor_into,
+)
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobStatus
 from ray.tests.conftest import _ray_start
 from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
+
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -252,12 +259,8 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     )
     assert check_result
 
-    # TODO(Catch-Bull): delete this after we implemented
-    # `get_job_logs`
-    # not implemented `get_job_logs` yet.
-    print("Skip test, because of need get job logs")
-    return
-    logs = client.get_job_logs(job_id)
+    # There is only one node, so there is no need to replace the client of the JobAgent
+    logs = await client.get_job_logs(job_id)
     assert runtime_env_option["expected_logs"] in logs
 
 
@@ -312,6 +315,138 @@ async def test_runtime_env_setup_failure(job_sdk_client):
 
     data = await client.get_job_info(job_id)
     assert "Failed to set up runtime environment" in data.message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ray_start_cluster_head",
+    [
+        {
+            "include_dashboard": True,
+            "dashboard_agent_listen_port": DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
+        }
+    ],
+    indirect=True,
+)
+async def test_job_log_in_multiple_node(
+    enable_test_module, disable_aiohttp_cache, ray_start_cluster_head
+):
+    cluster = ray_start_cluster_head
+    assert wait_until_server_available(cluster.webui_url) is True
+    webui_url = cluster.webui_url
+    webui_url = format_web_url(webui_url)
+    cluster.add_node(
+        dashboard_agent_listen_port=DEFAULT_DASHBOARD_AGENT_LISTEN_PORT + 1
+    )
+    cluster.add_node(
+        dashboard_agent_listen_port=DEFAULT_DASHBOARD_AGENT_LISTEN_PORT + 2
+    )
+
+    ip, port = cluster.webui_url.split(":")
+    agent_address = f"{ip}:{DEFAULT_DASHBOARD_AGENT_LISTEN_PORT}"
+    assert wait_until_server_available(agent_address)
+    client = JobAgentSubmissionClient(format_web_url(agent_address))
+
+    def _check_nodes():
+        try:
+            response = requests.get(webui_url + "/nodes?view=summary")
+            response.raise_for_status()
+            summary = response.json()
+            assert summary["result"] is True, summary["msg"]
+            summary = summary["data"]["summary"]
+            assert len(summary) == 3
+            for node_info in summary:
+                node_id = node_info["raylet"]["nodeId"]
+                response = requests.get(webui_url + f"/nodes/{node_id}")
+                response.raise_for_status()
+                detail = response.json()
+                assert detail["result"] is True, detail["msg"]
+                detail = detail["data"]["detail"]
+                assert detail["raylet"]["state"] == "ALIVE"
+            response = requests.get(webui_url + "/test/dump?key=agents")
+            response.raise_for_status()
+            agents = response.json()
+            assert len(agents["data"]["agents"]) == 3
+            return True
+        except Exception as ex:
+            logger.info(ex)
+            return False
+
+    wait_for_condition(_check_nodes, timeout=15)
+
+    job_ids = []
+    job_check_status = []
+    JOB_NUM = 10
+    job_agent_ports = [
+        DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
+        DEFAULT_DASHBOARD_AGENT_LISTEN_PORT + 1,
+        DEFAULT_DASHBOARD_AGENT_LISTEN_PORT + 2,
+    ]
+    for index in range(JOB_NUM):
+        runtime_env = RuntimeEnv().to_dict()
+        request = validate_request_type(
+            {
+                "runtime_env": runtime_env,
+                "entrypoint": f"while true; do echo hello index-{index}"
+                " && sleep 3600; done",
+            },
+            JobSubmitRequest,
+        )
+
+        submit_result = await client.submit_job_internal(request)
+        job_ids.append(submit_result.submission_id)
+        job_check_status.append(False)
+
+    async def _check_all_jobs_log():
+        response = requests.get(webui_url + "/nodes?view=summary")
+        response.raise_for_status()
+        summary = response.json()
+        assert summary["result"] is True, summary["msg"]
+        summary = summary["data"]["summary"]
+
+        for index, job_id in enumerate(job_ids):
+            if job_check_status[index]:
+                continue
+            result_log = f"hello index-{index}"
+            gcs_aio_client = GcsAioClient(
+                address=cluster.address, nums_reconnect_retry=0
+            )
+            supervisor_actor_info = await get_supervisor_actor_into(
+                gcs_aio_client, job_id
+            )
+
+            node_id = supervisor_actor_info.actor_table_data.address.raylet_id.hex()
+            for node_info in summary:
+                if node_info["raylet"]["nodeId"] == node_id:
+                    break
+            assert node_info["raylet"]["nodeId"] == node_id, f"node id: {node_id}"
+
+            for agent_port in job_agent_ports:
+                if f"--listen-port={agent_port}" in " ".join(node_info["cmdline"]):
+                    break
+            assert f"--listen-port={agent_port}" in " ".join(
+                node_info["cmdline"]
+            ), f"port: {agent_port}"
+
+            ip = supervisor_actor_info.actor_table_data.address.ip_address
+            agent_address = f"{ip}:{agent_port}"
+            assert wait_until_server_available(agent_address)
+            client = JobAgentSubmissionClient(format_web_url(agent_address))
+            logs = await client.get_job_logs(job_id)
+            assert result_log in logs, logs
+
+            job_check_status[index] = True
+        return True
+
+    st = time.time()
+    while time.time() - st <= 15:
+        try:
+            await _check_all_jobs_log()
+            break
+        except Exception as ex:
+            print("error:", ex)
+            time.sleep(1)
+    assert all(job_check_status), job_check_status
 
 
 if __name__ == "__main__":

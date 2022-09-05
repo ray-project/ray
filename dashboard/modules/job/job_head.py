@@ -56,9 +56,9 @@ class JobAgentSubmissionClient:
         self._address = dashboard_agent_address
         self._session = aiohttp.ClientSession()
 
-    async def _raise_error(self, r: ClientResponse):
-        status = r.status
-        error_text = await r.text()
+    async def _raise_error(self, resp: ClientResponse):
+        status = resp.status
+        error_text = await resp.text()
         raise RuntimeError(f"Request failed with status code {status}: {error_text}.")
 
     async def submit_job_internal(self, req: JobSubmitRequest) -> JobSubmitResponse:
@@ -84,6 +84,16 @@ class JobAgentSubmissionClient:
                 return JobDetails(**result_json)
             else:
                 await self._raise_error(resp)
+
+    async def get_job_logs(self, job_id: str) -> str:
+        async with self._session.get(
+            self._address + f"/api/job_agent/jobs/{job_id}/logs"
+        ) as resp:
+            if resp.status == 200:
+                result_json = await resp.json()
+                return JobLogsResponse(**result_json).logs
+            else:
+                self._raise_error(resp)
 
     async def close(self, ignore_error=True):
         try:

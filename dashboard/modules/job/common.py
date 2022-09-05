@@ -17,6 +17,10 @@ from ray.experimental.internal_kv import (
 # they're exposed in the snapshot API.
 JOB_ID_METADATA_KEY = "job_submission_id"
 JOB_NAME_METADATA_KEY = "job_name"
+JOB_ACTOR_NAME_TEMPLATE = (
+    f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_id}"
+)
+SUPERVISOR_ACTOR_RAY_NAMESPACE = "SUPERVISOR_ACTOR_RAY_NAMESPACE"
 
 
 class JobStatus(str, Enum):

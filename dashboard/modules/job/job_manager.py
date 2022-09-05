@@ -20,6 +20,8 @@ from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
+    JOB_ACTOR_NAME_TEMPLATE,
+    SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfo,
     JobInfoStorageClient,
 )
@@ -325,9 +327,6 @@ class JobManager:
     goes down.
     """
 
-    JOB_ACTOR_NAME_TEMPLATE = (
-        f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_id}"
-    )
     # Time that we will sleep while tailing logs if no new log line is
     # available.
     LOG_TAIL_SLEEP_S = 1
@@ -355,7 +354,10 @@ class JobManager:
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
-            return ray.get_actor(self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id))
+            return ray.get_actor(
+                JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id),
+                namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
+            )
         except ValueError:  # Ray returns ValueError for nonexistent actor.
             return None
 
@@ -531,10 +533,11 @@ class JobManager:
                 )
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
-                name=self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
+                name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=0,
                 scheduling_strategy=scheduling_strategy,
                 runtime_env=self._get_supervisor_runtime_env(runtime_env),
+                namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
             ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)
             supervisor.run.remote(_start_signal_actor=_start_signal_actor)
 
