@@ -47,8 +47,17 @@ void ClusterTaskManager::QueueAndScheduleTask(
     bool is_selected_based_on_locality,
     rpc::RequestWorkerLeaseReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Queuing and scheduling task "
-                 << task.GetTaskSpecification().TaskId();
+  QueueTask(
+      task, grant_or_reject, is_selected_based_on_locality, reply, send_reply_callback);
+  ScheduleAndDispatchTasks();
+}
+
+void ClusterTaskManager::QueueTask(const RayTask &task,
+                                   bool grant_or_reject,
+                                   bool is_selected_based_on_locality,
+                                   rpc::RequestWorkerLeaseReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Queuing task " << task.GetTaskSpecification().TaskId();
   auto work = std::make_shared<internal::Work>(
       task, grant_or_reject, is_selected_based_on_locality, reply, [send_reply_callback] {
         send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -61,7 +70,6 @@ void ClusterTaskManager::QueueAndScheduleTask(
   } else {
     tasks_to_schedule_[scheduling_class].push_back(work);
   }
-  ScheduleAndDispatchTasks();
 }
 
 namespace {

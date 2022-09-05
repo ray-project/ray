@@ -689,6 +689,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Creates the callback used in the memory monitor.
   MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
 
+  void AsyncScheduleAndDispatchTasks();
+
   /// ID of this node.
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.
@@ -851,6 +853,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
+
+  int schedule_and_dispatch_times_ = 0;
 };
 
 }  // namespace raylet

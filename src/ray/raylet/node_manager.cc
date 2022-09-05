@@ -198,7 +198,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           config.worker_commands,
           config.native_library_path,
           /*starting_worker_timeout_callback=*/
-          [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+          [this] { AsyncScheduleAndDispatchTasks(); },
           config.ray_debugger_external,
           /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       client_call_manager_(io_service),
@@ -412,7 +412,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_));
 
   periodical_runner_.RunFnPeriodically(
-      [this]() { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+      [this]() { AsyncScheduleAndDispatchTasks(); },
       RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
@@ -613,7 +613,7 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
   // reschedule these tasks.
-  cluster_task_manager_->ScheduleAndDispatchTasks();
+  AsyncScheduleAndDispatchTasks();
 }
 
 void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
@@ -956,7 +956,7 @@ void NodeManager::WarnResourceDeadlock() {
   }
   // Try scheduling tasks. Without this, if there's no more tasks coming in, deadlocked
   // tasks are never be scheduled.
-  cluster_task_manager_->ScheduleAndDispatchTasks();
+  AsyncScheduleAndDispatchTasks();
 }
 
 void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
@@ -1093,7 +1093,7 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
   // Updating local node could result in a inconsistence view in cluster resource
   // scheduler which could make task hang.
   if (node_id == self_node_id_) {
-    cluster_task_manager_->ScheduleAndDispatchTasks();
+    AsyncScheduleAndDispatchTasks();
     return;
   }
 
@@ -1104,7 +1104,7 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
         createUpdatedResources.Get(resource_id).Double());
   }
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
-  cluster_task_manager_->ScheduleAndDispatchTasks();
+  AsyncScheduleAndDispatchTasks();
 }
 
 void NodeManager::ResourceDeleted(const NodeID &node_id,
@@ -1171,7 +1171,7 @@ void NodeManager::UpdateResourceUsage(const NodeID &node_id,
 
   // If light resource usage report enabled, we update remote resources only when related
   // resources map in heartbeat is not empty.
-  cluster_task_manager_->ScheduleAndDispatchTasks();
+  AsyncScheduleAndDispatchTasks();
 }
 
 void NodeManager::ResourceUsageBatchReceived(
@@ -1344,7 +1344,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       // If the worker failed to register to Raylet, trigger task dispatching here to
       // allow new worker processes to be started (if capped by
       // maximum_startup_concurrency).
-      cluster_task_manager_->ScheduleAndDispatchTasks();
+      AsyncScheduleAndDispatchTasks();
     }
   } else {
     // Register the new driver.
@@ -1429,7 +1429,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
     worker_pool_.PushWorker(worker);
   }
 
-  cluster_task_manager_->ScheduleAndDispatchTasks();
+  AsyncScheduleAndDispatchTasks();
 }
 
 void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
@@ -1535,7 +1535,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
 
     // Since some resources may have been released, we can try to dispatch more tasks.
-    cluster_task_manager_->ScheduleAndDispatchTasks();
+    AsyncScheduleAndDispatchTasks();
   } else if (is_driver) {
     // The client is a driver.
     const auto job_id = worker->GetAssignedJobId();
@@ -1875,11 +1875,12 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
         send_reply_callback(status, success, failure);
       };
 
-  cluster_task_manager_->QueueAndScheduleTask(task,
-                                              request.grant_or_reject(),
-                                              request.is_selected_based_on_locality(),
-                                              reply,
-                                              send_reply_callback_wrapper);
+  cluster_task_manager_->QueueTask(task,
+                                   request.grant_or_reject(),
+                                   request.is_selected_based_on_locality(),
+                                   reply,
+                                   send_reply_callback_wrapper);
+  AsyncScheduleAndDispatchTasks();
 }
 
 void NodeManager::HandlePrepareBundleResources(
@@ -1916,7 +1917,7 @@ void NodeManager::HandleCommitBundleResources(
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
-  cluster_task_manager_->ScheduleAndDispatchTasks();
+  AsyncScheduleAndDispatchTasks();
 }
 
 void NodeManager::HandleCancelResourceReserve(
@@ -1958,7 +1959,7 @@ void NodeManager::HandleCancelResourceReserve(
     // To reduce the lag, we trigger a broadcasting immediately.
     RAY_CHECK(ray_syncer_.OnDemandBroadcasting(syncer::MessageType::RESOURCE_VIEW));
   }
-  cluster_task_manager_->ScheduleAndDispatchTasks();
+  AsyncScheduleAndDispatchTasks();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2121,7 +2122,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
     return;  // The worker may have died or is no longer processing the task.
   }
   local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker);
-  cluster_task_manager_->ScheduleAndDispatchTasks();
+  AsyncScheduleAndDispatchTasks();
 }
 
 void NodeManager::HandleDirectCallTaskUnblocked(
@@ -2136,7 +2137,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(
 
   if (worker->IsBlocked()) {
     local_task_manager_->ReturnCpuResourcesToBlockedWorker(worker);
-    cluster_task_manager_->ScheduleAndDispatchTasks();
+    AsyncScheduleAndDispatchTasks();
   }
 }
 
@@ -2997,6 +2998,22 @@ NodeManager::WorkersWithLatestSubmittedTasks() const {
               return left->GetAssignedTaskTime() > right->GetAssignedTaskTime();
             });
   return workers;
+}
+
+void NodeManager::AsyncScheduleAndDispatchTasks() {
+  if (schedule_and_dispatch_times_++ == 0) {
+    io_service_.post(
+        [this] {
+          cluster_task_manager_->ScheduleAndDispatchTasks();
+          int optimize_times = schedule_and_dispatch_times_ - 1;
+          if (optimize_times > 0) {
+            RAY_LOG(INFO) << "Optimize " << optimize_times
+                          << " calls of ScheduleAndDispatchTasks";
+          }
+          schedule_and_dispatch_times_ = 0;
+        },
+        "AsyncScheduleAndDispatchTasks");
+  }
 }
 
 }  // namespace raylet

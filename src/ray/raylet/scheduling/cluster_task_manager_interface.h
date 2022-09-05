@@ -67,6 +67,19 @@ class ClusterTaskManagerInterface {
                                     rpc::RequestWorkerLeaseReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) = 0;
 
+  /// Queue task and schedule. This hanppens when processing the worker lease request.
+  ///
+  /// \param task: The incoming task to be queued and scheduled.
+  /// \param grant_or_reject: True if we we should either grant or reject the request
+  ///                         but no spillback.
+  /// \param reply: The reply of the lease request.
+  /// \param send_reply_callback: The function used during dispatching.
+  virtual void QueueTask(const RayTask &task,
+                         bool grant_or_reject,
+                         bool is_selected_based_on_locality,
+                         rpc::RequestWorkerLeaseReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) = 0;
+
   /// Return if any tasks are pending resource acquisition.
   ///
   /// \param[in] exemplar An example task that is deadlocking.

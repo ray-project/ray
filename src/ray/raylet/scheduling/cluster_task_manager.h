@@ -72,6 +72,20 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                             rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Queue task and schedule. This hanppens when processing the worker lease request.
+  ///
+  /// \param task: The incoming task to be queued and scheduled.
+  /// \param grant_or_reject: True if we we should either grant or reject the request
+  ///                         but no spillback.
+  /// \param is_selected_based_on_locality : should schedule on local node if possible.
+  /// \param reply: The reply of the lease request.
+  /// \param send_reply_callback: The function used during dispatching.
+  void QueueTask(const RayTask &task,
+                 bool grant_or_reject,
+                 bool is_selected_based_on_locality,
+                 rpc::RequestWorkerLeaseReply *reply,
+                 rpc::SendReplyCallback send_reply_callback) override;
+
   /// Attempt to cancel an already queued task.
   ///
   /// \param task_id: The id of the task to remove.
