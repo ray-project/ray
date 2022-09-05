@@ -41,6 +41,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param gcs_publisher GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
+  /// \param raylet_client_pool The pool of raylet clients for RPC communication.
+  /// \param cluster_task_manager The gcs server's `ClusterTaskManager`. Note, this
+  /// parameter is only configured when gcs actor scheduler is enabled.
   explicit GcsNodeManager(
       std::shared_ptr<GcsPublisher> gcs_publisher,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,

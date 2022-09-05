@@ -140,12 +140,12 @@ void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &requ
                                           rpc::GetAllNodeInfoReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   if (cluster_task_manager_) {
-    // Fill pending queue info of gcs.
+    // Fill pending queue info of gcs when gcs actor scheduler is enabled.
     rpc::GetNodeStatsReply node_stats;
     cluster_task_manager_->FillPendingActorInfo(&node_stats);
-    reply->mutable_gcs_stats()->mutable_infeasible_tasks()->CopyFrom(
+    reply->mutable_gcs_info()->mutable_infeasible_tasks()->CopyFrom(
         node_stats.infeasible_tasks());
-    reply->mutable_gcs_stats()->mutable_ready_tasks()->CopyFrom(node_stats.ready_tasks());
+    reply->mutable_gcs_info()->mutable_ready_tasks()->CopyFrom(node_stats.ready_tasks());
   }
   // Here the unsafe allocate is safe here, because entry.second's life cycle is longer
   // then reply.

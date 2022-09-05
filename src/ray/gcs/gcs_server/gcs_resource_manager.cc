@@ -112,21 +112,24 @@ void GcsResourceManager::HandleGetAllAvailableResources(
 
 void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data) {
   NodeID node_id = NodeID::FromBinary(data.node_id());
-  // Only need to update worker nodes' resource usage.
-  if (node_id != local_node_id_) {
-    if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-      UpdateNodeNormalTaskResources(node_id, data);
-    } else {
-      if (!cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
-              scheduling::NodeID(node_id.Binary()), data)) {
-        RAY_LOG(INFO)
-            << "[UpdateFromResourceReport]: received resource usage from unknown node id "
-            << node_id;
-      }
-    }
-
-    UpdateNodeResourceUsage(node_id, data);
+  // We only need to update worker nodes' resource usage. Gcs node ifself does not
+  // execute any tasks so its report can be ignored.
+  if (node_id == local_node_id_) {
+    return;
   }
+
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    UpdateNodeNormalTaskResources(node_id, data);
+  } else {
+    if (!cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
+            scheduling::NodeID(node_id.Binary()), data)) {
+      RAY_LOG(INFO)
+          << "[UpdateFromResourceReport]: received resource usage from unknown node id "
+          << node_id;
+    }
+  }
+
+  UpdateNodeResourceUsage(node_id, data);
 }
 
 void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
@@ -152,9 +155,10 @@ void GcsResourceManager::HandleReportResourceUsage(
   ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
 }
 
-void FillAggregateLoad(const rpc::ResourcesData &resources_data,
-                       std::unordered_map<google::protobuf::Map<std::string, double>,
-                                          rpc::ResourceDemand> *aggregate_load) {
+void GcsResourceManager::FillAggregateLoad(
+    const rpc::ResourcesData &resources_data,
+    std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+        *aggregate_load) {
   auto load = resources_data.resource_load_by_shape();
   for (const auto &demand : load.resource_demands()) {
     auto &aggregate_demand = (*aggregate_load)[demand.shape()];
@@ -187,7 +191,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     if (cluster_task_manager_) {
       rpc::ResourcesData gcs_resources_data;
       cluster_task_manager_->FillPendingActorInfo(gcs_resources_data);
-      // Aggregate the load (pending info) of gcs.
+      // Aggregate the load (pending actor info) of gcs.
       FillAggregateLoad(gcs_resources_data, &aggregate_load);
       // We only export gcs's pending info without adding the corresponding
       // `ResourcesData` to the `batch` list. So if gcs has detected cluster full of

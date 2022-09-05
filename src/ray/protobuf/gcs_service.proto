@@ -175,10 +175,10 @@ message GetAllNodeInfoRequest {}
 message GetAllNodeInfoReply {
   GcsStatus status = 1;
   repeated GcsNodeInfo node_info_list = 2;
-  GcsStats gcs_stats = 3;
+  GcsInfo gcs_info = 3;
 }
 
-message GcsStats {
+message GcsInfo {
   repeated TaskSpec infeasible_tasks = 1;
   repeated TaskSpec ready_tasks = 2;
 }
@@ -589,6 +589,9 @@ message GetAllResourceUsageRequest {}
 message GetAllResourceUsageReply {
   GcsStatus status = 1;
   ResourceUsageBatchData resource_usage_data = 2;
+  /// True if gcs finds infeasible or pending actor creation tasks
+  /// locally (when gcs actor scheduler is enabled). This field is
+  /// expected to help triggering auto-scaling.
   bool cluster_full_of_actors_detected_by_gcs = 3;
 }
 

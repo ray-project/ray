@@ -134,6 +134,14 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   void UpdateResourceLoads(const rpc::ResourcesData &data);
 
  private:
+  /// Aggregate nodes' pending task info.
+  ///
+  /// \param resources_data A node's pending task info (by shape).
+  /// \param aggregate_load[out] The aggregate pending task info (across the cluster).
+  void FillAggregateLoad(const rpc::ResourcesData &resources_data,
+                         std::unordered_map<google::protobuf::Map<std::string, double>,
+                                            rpc::ResourceDemand> *aggregate_load);
+
   /// io context. This is to ensure thread safety. Ideally, all public
   /// funciton needs to post job to this io_context.
   instrumented_io_context &io_context_;
