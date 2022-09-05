@@ -38,26 +38,26 @@ def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
 def test_submit_simple_cpp_job(job_sdk_client):
     client = job_sdk_client
 
-    simple_driver_so_path = os.environ["SIMPLE_DRIVER_SO_PATH"]
-    simple_driver_so_filename = os.path.basename(simple_driver_so_path)
-    simple_driver_main_path = os.environ["SIMPLE_DRIVER_MAIN_PATH"]
-    simple_driver_main_filename = os.path.basename(simple_driver_main_path)
+    simple_job_so_path = os.environ["SIMPLE_DRIVER_SO_PATH"]
+    simple_job_so_filename = os.path.basename(simple_job_so_path)
+    simple_job_main_path = os.environ["SIMPLE_DRIVER_MAIN_PATH"]
+    simple_job_main_filename = os.path.basename(simple_job_main_path)
     with tempfile.TemporaryDirectory() as tmp_dir:
         working_dir = os.path.join(tmp_dir, "cpp_worker")
         os.makedirs(working_dir)
         shutil.copy2(
-            simple_driver_so_path, os.path.join(working_dir, simple_driver_so_filename)
+            simple_job_so_path, os.path.join(working_dir, simple_job_so_filename)
         )
         shutil.copy2(
-            simple_driver_main_path,
-            os.path.join(working_dir, simple_driver_main_filename),
+            simple_job_main_path,
+            os.path.join(working_dir, simple_job_main_filename),
         )
         shutil.copymode(
-            simple_driver_main_path,
-            os.path.join(working_dir, simple_driver_main_filename),
+            simple_job_main_path,
+            os.path.join(working_dir, simple_job_main_filename),
         )
         entrypoint = (
-            f"chmod +x {simple_driver_main_filename} && ./{simple_driver_main_filename}"
+            f"chmod +x {simple_job_main_filename} && ./{simple_job_main_filename}"
         )
         runtime_env = dict(
             working_dir=working_dir,

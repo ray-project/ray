@@ -317,13 +317,13 @@ cc_binary(
 )
 
 cc_test(
-    name = "simple_driver",
+    name = "simple_job",
     srcs = glob([
-        "src/ray/test/examples/simple_driver.cc",
+        "src/ray/test/examples/simple_job.cc",
     ]),
     copts = COPTS,
     data = [
-        "simple_driver.so",
+        "simple_job.so",
     ],
     linkstatic = True,
     tags = ["team:core"],
@@ -333,10 +333,10 @@ cc_test(
 )
 
 cc_binary(
-    name = "simple_driver.so",
+    name = "simple_job.so",
     testonly = True,
     srcs = glob([
-        "src/ray/test/examples/simple_driver.cc",
+        "src/ray/test/examples/simple_job.cc",
     ]),
     copts = COPTS,
     linkopts = ["-shared"],
@@ -372,8 +372,8 @@ py_test(
     srcs = ["test_submit_cpp_job.py"],
     tags = ["team:core"],
     env = {
-        "SIMPLE_DRIVER_SO_PATH": "$(location simple_driver.so)",
-        "SIMPLE_DRIVER_MAIN_PATH": "$(location simple_driver)",
+        "SIMPLE_DRIVER_SO_PATH": "$(location simple_job.so)",
+        "SIMPLE_DRIVER_MAIN_PATH": "$(location simple_job)",
     },
-    data = ["simple_driver", "simple_driver.so"],
+    data = ["simple_job", "simple_job.so"],
 )

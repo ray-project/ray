@@ -1,4 +1,4 @@
-/// This is a simple driver for test submit cpp job. Please visit
+/// This is a simple job for test submit cpp job.
 
 #include <ray/api.h>
 
