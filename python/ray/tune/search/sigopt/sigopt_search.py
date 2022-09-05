@@ -1,7 +1,9 @@
 import copy
+import json
 import os
 import logging
 import pickle
+from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 try:
@@ -18,6 +20,31 @@ from ray.tune.search import Searcher
 logger = logging.getLogger(__name__)
 
 
+def load_sigopt_key(overwrite: bool = False) -> bool:
+    """Load SigOpt key from config file and save in environment.
+
+    Args:
+        overwrite: If True, will overwrite an existing SIGOPT_KEY env variable.
+
+    Returns:
+        True if a key was loaded into the environment.
+    """
+    if "SIGOPT_KEY" in os.environ and not overwrite:
+        return False
+
+    sigopt_key_file = Path("~/.sigopt/client/config.json").expanduser()
+    if not sigopt_key_file.exists():
+        return False
+
+    try:
+        with open(sigopt_key_file, "rt") as f:
+            config = json.load(f)
+        os.environ["SIGOPT_KEY"] = config["api_token"]
+        return True
+    except Exception:
+        return False
+
+
 class SigOptSearch(Searcher):
     """A wrapper around SigOpt to provide trial suggestions.
 
@@ -30,7 +57,7 @@ class SigOptSearch(Searcher):
         export SIGOPT_KEY= ...
 
     You will need to use the `SigOpt experiment and space specification
-    <https://app.sigopt.com/docs/overview/create>`_.
+    <https://docs.sigopt.com/ai-module-api-references/experiments>`_.
 
     This searcher manages its own concurrency.
     If this Searcher is used in a ``ConcurrencyLimiter``, the
@@ -184,6 +211,7 @@ class SigOptSearch(Searcher):
             ), """SigOpt must be installed!
                 You can install SigOpt with the command:
                 `pip install -U sigopt`."""
+            load_sigopt_key()
             assert (
                 "SIGOPT_KEY" in os.environ
             ), "SigOpt API key must be stored as environ variable at SIGOPT_KEY"

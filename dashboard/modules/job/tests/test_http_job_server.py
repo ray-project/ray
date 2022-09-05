@@ -10,6 +10,7 @@ from typing import Optional
 from unittest.mock import patch
 
 import pytest
+from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 import yaml
 
 import ray
@@ -296,6 +297,29 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     assert runtime_env_option["expected_logs"] in logs
 
 
+def test_timeout(job_sdk_client):
+    client = job_sdk_client
+
+    job_id = client.submit_job(
+        entrypoint="echo hello",
+        # Assume pip packages take > 1s to download, or this test will spuriously fail.
+        runtime_env=RuntimeEnv(
+            pip={
+                "packages": ["tensorflow", "requests", "botocore", "torch"],
+                "pip_check": False,
+                "pip_version": "==22.0.2;python_version=='3.8.11'",
+            },
+            config=RuntimeEnvConfig(setup_timeout_seconds=1),
+        ),
+    )
+
+    wait_for_condition(_check_job_failed, client=client, job_id=job_id, timeout=10)
+    data = client.get_job_info(job_id)
+    assert "Failed to set up runtime environment" in data.message
+    assert "Timeout" in data.message
+    assert "consider increasing `setup_timeout_seconds`" in data.message
+
+
 def test_per_task_runtime_env(job_sdk_client: JobSubmissionClient):
     run_cmd = "python per_task_runtime_env.py"
     job_id = job_sdk_client.submit_job(
@@ -351,7 +375,7 @@ def test_runtime_env_setup_failure(job_sdk_client):
 
     wait_for_condition(_check_job_failed, client=client, job_id=job_id)
     data = client.get_job_info(job_id)
-    assert "Failed to setup runtime environment" in data.message
+    assert "Failed to set up runtime environment" in data.message
 
 
 def test_submit_job_with_exception_in_driver(job_sdk_client):
@@ -470,6 +494,27 @@ def test_submit_optional_args(job_sdk_client):
     wait_for_condition(
         _check_job_succeeded, client=client, job_id=r.json()["submission_id"]
     )
+
+
+def test_submit_still_accepts_job_id_or_submission_id(job_sdk_client):
+    """Check that job_id, runtime_env, and metadata are optional."""
+    client = job_sdk_client
+
+    client._do_request(
+        "POST",
+        "/api/jobs/",
+        json_data={"entrypoint": "ls", "job_id": "raysubmit_12345"},
+    )
+
+    wait_for_condition(_check_job_succeeded, client=client, job_id="raysubmit_12345")
+
+    client._do_request(
+        "POST",
+        "/api/jobs/",
+        json_data={"entrypoint": "ls", "submission_id": "raysubmit_23456"},
+    )
+
+    wait_for_condition(_check_job_succeeded, client=client, job_id="raysubmit_23456")
 
 
 def test_missing_resources(job_sdk_client):

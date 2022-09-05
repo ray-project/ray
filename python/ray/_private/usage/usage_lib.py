@@ -244,9 +244,23 @@ def _put_library_usage(library_usage: str):
 class TagKey(Enum):
     _TEST1 = auto()
     _TEST2 = auto()
+
+    # RLlib
+    # The deep learning framework ("tf", "torch", etc.).
     RLLIB_FRAMEWORK = auto()
+    # The algorithm name (only built-in algorithms).
     RLLIB_ALGORITHM = auto()
+    # The number of workers as a string.
     RLLIB_NUM_WORKERS = auto()
+
+    # Serve
+    # The public Python API version ("v1", "v2").
+    SERVE_API_VERSION = auto()
+    # The total number of running serve deployments as a string.
+    SERVE_NUM_DEPLOYMENTS = auto()
+
+    # The GCS storage type, which could be memory or redis
+    GCS_STORAGE = auto()
 
 
 def record_extra_usage_tag(key: TagKey, value: str):
@@ -841,7 +855,7 @@ def generate_write_data(
 
     Params:
         usage_stats: The usage stats that were reported.
-        error(str): The error message of failed reports.
+        error: The error message of failed reports.
 
     Returns:
         UsageStatsToWrite

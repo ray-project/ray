@@ -44,12 +44,12 @@ def test_basic_workflows(workflow_start_regular_shared):
         return workflow.continuation(append2.bind(x))
 
     @ray.remote
-    def nested_step(x):
+    def nested_task(x):
         return workflow.continuation(append2.bind(append1.bind(x + "~[nested]~")))
 
     @ray.remote
     def nested(x):
-        return workflow.continuation(nested_step.bind(x))
+        return workflow.continuation(nested_task.bind(x))
 
     @ray.remote
     def join(x, y):
@@ -114,7 +114,7 @@ def test_partial(workflow_start_regular_shared):
 
     from functools import partial
 
-    f1 = workflow.step(partial(add, 10)).step(10)
+    f1 = workflow.task(partial(add, 10)).task(10)
 
     assert "__anonymous_func__" in f1._name
     assert f1.run() == 20
@@ -124,13 +124,13 @@ def test_partial(workflow_start_regular_shared):
     @ray.remote
     def chain_func(*args, **kw_argv):
         # Get the first function as a start
-        wf_step = workflow.step(fs[0]).step(*args, **kw_argv)
+        wf_task = workflow.task(fs[0]).task(*args, **kw_argv)
         for i in range(1, len(fs)):
-            # Convert each function inside steps into workflow step
+            # Convert each function inside tasks into workflow task
             # function and then use the previous output as the input
             # for them.
-            wf_step = workflow.step(fs[i]).step(wf_step)
-        return wf_step
+            wf_task = workflow.task(fs[i]).task(wf_task)
+        return wf_task
 
     assert workflow.run(chain_func.bind(1)) == 7
 
@@ -173,17 +173,17 @@ def test_dynamic_output(workflow_start_regular_shared):
             if n < 3:
                 raise Exception("Failed intentionally")
             return workflow.continuation(
-                exponential_fail.options(**workflow.options(name=f"step_{n}")).bind(
+                exponential_fail.options(**workflow.options(task_id=f"task_{n}")).bind(
                     k * 2, n - 1
                 )
             )
         return k
 
     # When workflow fails, the dynamic output should points to the
-    # latest successful step.
+    # latest successful task.
     try:
         workflow.run(
-            exponential_fail.options(**workflow.options(name="step_0")).bind(3, 10),
+            exponential_fail.options(**workflow.options(task_id="task_0")).bind(3, 10),
             workflow_id="dynamic_output",
         )
     except Exception:
@@ -195,10 +195,10 @@ def test_dynamic_output(workflow_start_regular_shared):
     @client_mode_wrap
     def _check_storage():
         wf_storage = get_workflow_storage(workflow_id="dynamic_output")
-        result = wf_storage.inspect_step("step_0")
-        return result.output_step_id
+        result = wf_storage.inspect_task("task_0")
+        return result.output_task_id
 
-    assert _check_storage() == "step_3"
+    assert _check_storage() == "task_3"
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+import re
+
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -6,7 +8,7 @@ import ray
 import torch
 
 from ray.air.checkpoint import Checkpoint
-from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.air.constants import MAX_REPR_LENGTH, MODEL_KEY, PREPROCESSOR_KEY
 from ray.air.util.data_batch_conversion import (
     convert_pandas_to_batch_type,
     convert_batch_type_to_pandas,
@@ -60,6 +62,16 @@ def model():
 @pytest.fixture
 def preprocessor():
     return DummyPreprocessor()
+
+
+def test_repr(model):
+    predictor = TorchPredictor(model=model)
+
+    representation = repr(predictor)
+
+    assert len(representation) < MAX_REPR_LENGTH
+    pattern = re.compile("^TorchPredictor\\((.*)\\)$")
+    assert pattern.match(representation)
 
 
 def test_init(model, preprocessor):

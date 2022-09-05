@@ -6,9 +6,6 @@ Environment variables
 Some of Ray Tune's behavior can be configured using environment variables.
 These are the environment variables Ray Tune currently considers:
 
-* **TUNE_CLUSTER_SSH_KEY**: SSH key used by the Tune driver process to connect
-  to remote cluster machines for checkpoint syncing. If this is not set,
-  ``~/ray_bootstrap_key.pem`` will be used.
 * **TUNE_DISABLE_AUTO_CALLBACK_LOGGERS**: Ray Tune automatically adds a CSV and
   JSON logger callback if they haven't been passed. Setting this variable to
   `1` disables this automatic creation. Please note that this will most likely
@@ -60,6 +57,8 @@ These are the environment variables Ray Tune currently considers:
   In normal circumstances these shouldn't differ anyway, but reconcilation makes sure to capture cases when
   placement groups are manually destroyed. Reconcilation doesn't take much time, but it can add up when
   running a large number of short trials. Defaults to every ``5`` (seconds).
+* **TUNE_PRINT_ALL_TRIAL_ERRORS**: If ``1``, will print all trial errors as they come up. Otherwise, errors
+  will only be saved as text files to the trial directory and not printed. Defaults to ``1``.
 * **TUNE_RESULT_DIR**: Directory where Ray Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
 * **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed

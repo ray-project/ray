@@ -330,11 +330,11 @@ class StateAPIManager:
             num_filtered=num_filtered,
         )
 
-    def list_jobs(self, *, option: ListApiOptions) -> ListApiResponse:
+    async def list_jobs(self, *, option: ListApiOptions) -> ListApiResponse:
         # TODO(sang): Support limit & timeout & async calls.
         try:
             result = []
-            job_info = self._client.get_job_info()
+            job_info = await self._client.get_job_info()
             for job_id, data in job_info.items():
                 data = asdict(data)
                 data["job_id"] = job_id
@@ -613,6 +613,9 @@ class StateAPIManager:
             partial_failure_warning=result.partial_failure_warning,
             warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
+            # Currently, there's no filtering support for summary,
+            # so we don't calculate this separately.
+            num_filtered=len(result.result),
         )
 
     async def summarize_actors(self, option: SummaryApiOptions) -> SummaryApiResponse:
@@ -633,6 +636,9 @@ class StateAPIManager:
             partial_failure_warning=result.partial_failure_warning,
             warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
+            # Currently, there's no filtering support for summary,
+            # so we don't calculate this separately.
+            num_filtered=len(result.result),
         )
 
     async def summarize_objects(self, option: SummaryApiOptions) -> SummaryApiResponse:
@@ -653,6 +659,9 @@ class StateAPIManager:
             partial_failure_warning=result.partial_failure_warning,
             warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
+            # Currently, there's no filtering support for summary,
+            # so we don't calculate this separately.
+            num_filtered=len(result.result),
         )
 
     def _message_to_dict(

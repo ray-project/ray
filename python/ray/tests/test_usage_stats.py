@@ -94,6 +94,12 @@ def print_dashboard_log():
 
 
 @pytest.fixture
+def gcs_storage_type():
+    storage = "redis" if os.environ.get("RAY_REDIS_ADDRESS") else "memory"
+    yield storage
+
+
+@pytest.fixture
 def reset_usage_stats():
     yield
     # Remove the lib usage so that it will be reset for each test.
@@ -116,7 +122,7 @@ def reset_ray_version_commit():
 
 @pytest.mark.parametrize("ray_client", [True, False])
 def test_get_extra_usage_tags_to_report(
-    monkeypatch, call_ray_start, reset_usage_stats, ray_client
+    monkeypatch, call_ray_start, reset_usage_stats, ray_client, gcs_storage_type
 ):
     with monkeypatch.context() as m:
         # Test a normal case.
@@ -172,13 +178,23 @@ ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
         result = ray_usage_lib.get_extra_usage_tags_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
-        assert result == {"key": "val", "_test1": "val1", "_test2": "val2"}
+        assert result == {
+            "key": "val",
+            "_test1": "val1",
+            "_test2": "val2",
+            "gcs_storage": gcs_storage_type,
+        }
         # Make sure the value is overwritten.
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val3")
         result = ray_usage_lib.get_extra_usage_tags_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
-        assert result == {"key": "val", "_test1": "val1", "_test2": "val3"}
+        assert result == {
+            "key": "val",
+            "_test1": "val1",
+            "_test2": "val3",
+            "gcs_storage": gcs_storage_type,
+        }
 
 
 def test_usage_stats_enabledness(monkeypatch, tmp_path, reset_usage_stats):
@@ -843,7 +859,9 @@ provider:
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
 )
-def test_usage_report_e2e(monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats):
+def test_usage_report_e2e(
+    monkeypatch, ray_start_cluster, tmp_path, reset_usage_stats, gcs_storage_type
+):
     """
     Test usage report works e2e with env vars.
     """
@@ -955,6 +973,9 @@ provider:
             "extra_k1": "extra_v1",
             "_test1": "extra_v2",
             "_test2": "extra_v3",
+            "serve_num_deployments": "1",
+            "serve_api_version": "v1",
+            "gcs_storage": gcs_storage_type,
         }
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
@@ -1246,7 +1267,9 @@ ray.init()
         wait_for_condition(verify)
 
 
-def test_usage_stats_tags(monkeypatch, ray_start_cluster, reset_usage_stats):
+def test_usage_stats_tags(
+    monkeypatch, ray_start_cluster, reset_usage_stats, gcs_storage_type
+):
     """
     Test usage tags are correctly reported.
     """
@@ -1270,7 +1293,11 @@ def test_usage_stats_tags(monkeypatch, ray_start_cluster, reset_usage_stats):
         def verify():
             tags = read_file(temp_dir, "usage_stats")["extra_usage_tags"]
             num_nodes = read_file(temp_dir, "usage_stats")["total_num_nodes"]
-            assert tags == {"key": "val", "key2": "val2"}
+            assert tags == {
+                "key": "val",
+                "key2": "val2",
+                "gcs_storage": gcs_storage_type,
+            }
             assert num_nodes == 2
             return True
 
@@ -1296,6 +1323,33 @@ def test_usage_stats_gcs_query_failure(
             )
             is None
         )
+
+
+def test_usages_stats_available_when_dashboard_not_included(
+    monkeypatch, ray_start_cluster, reset_usage_stats
+):
+    """
+    Test library usage is correctly reported when they are imported from
+    workers.
+    """
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=1, include_dashboard=False)
+        ray.init(address=cluster.address)
+
+        """
+        Verify the usage_stats.json contains the lib usage.
+        """
+        temp_dir = pathlib.Path(cluster.head_node.get_session_dir_path())
+        wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
+
+        def verify():
+            return read_file(temp_dir, "usage_stats")["seq_number"] > 2
+
+        wait_for_condition(verify)
 
 
 if __name__ == "__main__":

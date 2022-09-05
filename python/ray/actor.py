@@ -1093,12 +1093,18 @@ class ActorHandle:
                 setattr(self, method_name, method)
 
     def __del__(self):
-        # Mark that this actor handle has gone out of scope. Once all actor
-        # handles are out of scope, the actor will exit.
-        if ray._private.worker:
-            worker = ray._private.worker.global_worker
-            if worker.connected and hasattr(worker, "core_worker"):
-                worker.core_worker.remove_actor_handle_reference(self._ray_actor_id)
+        try:
+            # Mark that this actor handle has gone out of scope. Once all actor
+            # handles are out of scope, the actor will exit.
+            if ray._private.worker:
+                worker = ray._private.worker.global_worker
+                if worker.connected and hasattr(worker, "core_worker"):
+                    worker.core_worker.remove_actor_handle_reference(self._ray_actor_id)
+        except AttributeError:
+            # Suppress the attribtue error which is caused by
+            # python destruction ordering issue.
+            # It only happen when python exits.
+            pass
 
     def _actor_method_call(
         self,
@@ -1286,8 +1292,10 @@ class ActorHandle:
 
     def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
-        state = self._serialization_helper()
-        return ActorHandle._deserialization_helper, state
+        (serialized, _) = self._serialization_helper()
+        # There is no outer object ref when the actor handle is
+        # deserialized out-of-band using pickle.
+        return ActorHandle._deserialization_helper, (serialized, None)
 
 
 def _modify_class(cls):

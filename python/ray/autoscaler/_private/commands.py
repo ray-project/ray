@@ -43,6 +43,9 @@ from ray.autoscaler._private.constants import (
 )
 from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
 from ray.autoscaler._private.log_timer import LogTimer
+from ray.autoscaler._private.node_provider_availability_tracker import (
+    NodeAvailabilitySummary,
+)
 from ray.autoscaler._private.providers import (
     _NODE_PROVIDERS,
     _PROVIDER_PRETTY_NAMES,
@@ -132,7 +135,16 @@ def debug_status(status, error) -> str:
         timestamp = status_dict.get("time")
         if lm_summary_dict and autoscaler_summary_dict and timestamp:
             lm_summary = LoadMetricsSummary(**lm_summary_dict)
-            autoscaler_summary = AutoscalerSummary(**autoscaler_summary_dict)
+            node_availability_summary_dict = autoscaler_summary_dict.pop(
+                "node_availability_summary", {}
+            )
+            node_availability_summary = NodeAvailabilitySummary.from_fields(
+                **node_availability_summary_dict
+            )
+            autoscaler_summary = AutoscalerSummary(
+                node_availability_summary=node_availability_summary,
+                **autoscaler_summary_dict,
+            )
             report_time = datetime.datetime.fromtimestamp(timestamp)
             status = format_info_string(
                 lm_summary, autoscaler_summary, time=report_time
@@ -922,6 +934,13 @@ def _set_up_config_for_head_node(
     # drop proxy options if they exist, otherwise
     # head node won't be able to connect to workers
     remote_config["auth"].pop("ssh_proxy_command", None)
+
+    # Drop the head_node field if it was introduced. It is technically not a
+    # valid field in the config, but it may have been introduced after
+    # validation (see _bootstrap_config() call to
+    # provider_cls.bootstrap_config(config)). The head node will never try to
+    # launch a head node so it doesn't need these defaults.
+    remote_config.pop("head_node", None)
 
     if "ssh_private_key" in config["auth"]:
         remote_key_path = "~/ray_bootstrap_key.pem"

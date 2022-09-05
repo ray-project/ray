@@ -767,9 +767,9 @@ class Policy(metaclass=ABCMeta):
             # Checkpoint connectors state as well if enabled.
             connector_configs = {}
             if self.agent_connectors:
-                connector_configs["agent"] = self.agent_connectors.to_config()
+                connector_configs["agent"] = self.agent_connectors.to_state()
             if self.action_connectors:
-                connector_configs["action"] = self.action_connectors.to_config()
+                connector_configs["action"] = self.action_connectors.to_state()
             state["connector_configs"] = connector_configs
         return state
 
@@ -986,7 +986,10 @@ class Policy(metaclass=ABCMeta):
         return {
             SampleBatch.OBS: ViewRequirement(space=self.observation_space),
             SampleBatch.NEXT_OBS: ViewRequirement(
-                data_col=SampleBatch.OBS, shift=1, space=self.observation_space
+                data_col=SampleBatch.OBS,
+                shift=1,
+                space=self.observation_space,
+                used_for_compute_actions=False,
             ),
             SampleBatch.ACTIONS: ViewRequirement(
                 space=self.action_space, used_for_compute_actions=False
@@ -1003,7 +1006,7 @@ class Policy(metaclass=ABCMeta):
                 data_col=SampleBatch.REWARDS, shift=-1
             ),
             SampleBatch.DONES: ViewRequirement(),
-            SampleBatch.INFOS: ViewRequirement(),
+            SampleBatch.INFOS: ViewRequirement(used_for_compute_actions=False),
             SampleBatch.T: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),

@@ -7,6 +7,7 @@ import inspect
 import logging
 import multiprocessing
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -1049,8 +1050,13 @@ def get_call_location(back: int = 1):
 
 def get_ray_doc_version():
     """Get the docs.ray.io version corresponding to the ray.__version__."""
-    if "dev" in ray.__version__:
+    # The ray.__version__ can be official Ray release (such as 1.12.0), or
+    # dev (3.0.0dev0) or release candidate (2.0.0rc0). For the later we map
+    # to the master doc version at docs.ray.io.
+    if re.match(r"^\d+\.\d+\.\d+$", ray.__version__) is None:
         return "master"
+    # For the former (official Ray release), we have corresponding doc version
+    # released as well.
     return f"releases-{ray.__version__}"
 
 
@@ -1445,12 +1451,10 @@ def get_runtime_env_info(
 
     proto_runtime_env_info = ProtoRuntimeEnvInfo()
 
-    if runtime_env.get_working_dir_uri():
-        proto_runtime_env_info.uris.working_dir_uri = runtime_env.get_working_dir_uri()
-    if len(runtime_env.get_py_modules_uris()) > 0:
-        proto_runtime_env_info.uris.py_modules_uris[
-            :
-        ] = runtime_env.get_py_modules_uris()
+    if runtime_env.working_dir_uri():
+        proto_runtime_env_info.uris.working_dir_uri = runtime_env.working_dir_uri()
+    if len(runtime_env.py_modules_uris()) > 0:
+        proto_runtime_env_info.uris.py_modules_uris[:] = runtime_env.py_modules_uris()
 
     # TODO(Catch-Bull): overload `__setitem__` for `RuntimeEnv`, change the
     # runtime_env of all internal code from dict to RuntimeEnv.

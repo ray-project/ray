@@ -1,3 +1,4 @@
+import re
 import tempfile
 from typing import Optional
 
@@ -9,6 +10,7 @@ import pytest
 import ray
 
 from ray.air.checkpoint import Checkpoint
+from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import (
     convert_pandas_to_batch_type,
     convert_batch_type_to_pandas,
@@ -87,6 +89,17 @@ def create_checkpoint(
         checkpoint_data = Checkpoint.from_directory(checkpoint_path).to_dict()
 
     return Checkpoint.from_dict(checkpoint_data)
+
+
+def test_repr():
+    checkpoint = create_checkpoint()
+    predictor = RLPredictor.from_checkpoint(checkpoint)
+
+    representation = repr(predictor)
+
+    assert len(representation) < MAX_REPR_LENGTH
+    pattern = re.compile("^RLPredictor\\((.*)\\)$")
+    assert pattern.match(representation)
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])

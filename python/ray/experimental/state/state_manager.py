@@ -10,6 +10,7 @@ from grpc.aio._call import UnaryStreamCall
 import ray
 import ray.dashboard.modules.log.log_consts as log_consts
 from ray._private import ray_constants
+from ray._private.gcs_utils import GcsAioClient
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoReply,
@@ -73,7 +74,6 @@ def handle_grpc_network_errors(func):
                 or there's a slow network issue causing timeout.
             Otherwise, the raw network exceptions (e.g., gRPC) will be raised.
         """
-        # TODO(sang): Add a retry policy.
         try:
             return await func(*args, **kwargs)
         except grpc.aio.AioRpcError as e:
@@ -139,12 +139,12 @@ class StateDataSourceClient:
     - throw a ValueError if it cannot find the source.
     """
 
-    def __init__(self, gcs_channel: grpc.aio.Channel):
+    def __init__(self, gcs_channel: grpc.aio.Channel, gcs_aio_client: GcsAioClient):
         self.register_gcs_client(gcs_channel)
         self._raylet_stubs = {}
         self._runtime_env_agent_stub = {}
         self._log_agent_stub = {}
-        self._job_client = JobInfoStorageClient()
+        self._job_client = JobInfoStorageClient(gcs_aio_client)
         self._id_id_map = IdToIpMap()
 
     def register_gcs_client(self, gcs_channel: grpc.aio.Channel):
@@ -257,11 +257,11 @@ class StateDataSourceClient:
         )
         return reply
 
-    def get_job_info(self) -> Optional[Dict[str, JobInfo]]:
+    async def get_job_info(self) -> Optional[Dict[str, JobInfo]]:
         # Cannot use @handle_grpc_network_errors because async def is not supported yet.
         # TODO(sang): Support timeout & make it async
         try:
-            return self._job_client.get_all_jobs()
+            return await self._job_client.get_all_jobs()
         except grpc.aio.AioRpcError as e:
             if (
                 e.code == grpc.StatusCode.DEADLINE_EXCEEDED

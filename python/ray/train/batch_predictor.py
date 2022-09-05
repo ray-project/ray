@@ -1,4 +1,5 @@
 import inspect
+import logging
 from typing import Any, Dict, Optional, List, Type, Union, Callable
 import pandas as pd
 
@@ -6,12 +7,15 @@ import ray
 from ray.air import Checkpoint
 from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
 from ray.data import Preprocessor
+from ray.data.context import DatasetContext
 from ray.data.preprocessors import BatchMapper
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
+logger = logging.getLogger(__name__)
 
-@PublicAPI(stability="alpha")
+
+@PublicAPI(stability="beta")
 class BatchPredictor:
     """Batch predictor class.
 
@@ -31,6 +35,12 @@ class BatchPredictor:
         self._predictor_cls = predictor_cls
         self._predictor_kwargs = predictor_kwargs
         self._override_preprocessor: Optional[Preprocessor] = None
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(checkpoint={self._checkpoint}, "
+            f"predictor_cls={self._predictor_cls.__name__})"
+        )
 
     @classmethod
     def from_checkpoint(
@@ -159,9 +169,18 @@ class BatchPredictor:
         # explicit GPU resources
         if (
             "use_gpu" in inspect.signature(predictor_cls.from_checkpoint).parameters
+            and "use_gpu" not in predictor_kwargs
             and num_gpus_per_worker > 0
         ):
+            logger.info(
+                "`num_gpus_per_worker` is set for `BatchPreditor`."
+                "Automatically enabling GPU prediction for this predictor. To "
+                "disable set `use_gpu` to `False` in `BatchPredictor.predict`."
+            )
             predictor_kwargs["use_gpu"] = True
+
+        ctx = DatasetContext.get_current()
+        cast_tensor_columns = ctx.enable_tensor_extension_casting
 
         class ScoringWrapper:
             def __init__(self):
@@ -169,6 +188,9 @@ class BatchPredictor:
                 self._predictor = predictor_cls.from_checkpoint(
                     checkpoint, **predictor_kwargs
                 )
+                if cast_tensor_columns:
+                    # Enable automatic tensor column casting at UDF boundaries.
+                    self._predictor._set_cast_tensor_columns()
                 if override_prep:
                     self._predictor.set_preprocessor(override_prep)
 
@@ -182,7 +204,9 @@ class BatchPredictor:
                 )
                 if keep_columns:
                     prediction_output[keep_columns] = batch[keep_columns]
-                return convert_batch_type_to_pandas(prediction_output)
+                return convert_batch_type_to_pandas(
+                    prediction_output, cast_tensor_columns
+                )
 
         compute = ray.data.ActorPoolStrategy(
             min_size=min_scoring_workers, max_size=max_scoring_workers
@@ -198,7 +222,8 @@ class BatchPredictor:
                 # Set the in-predictor preprocessing to a no-op when using a separate
                 # GPU stage. Otherwise, the preprocessing will be applied twice.
                 override_prep = BatchMapper(lambda x: x)
-                data = preprocessor.transform(data)
+                batch_fn = preprocessor._transform_batch
+                data = data.map_batches(batch_fn, batch_format="pandas")
 
         prediction_results = data.map_batches(
             ScoringWrapper,

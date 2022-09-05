@@ -14,6 +14,21 @@ from ray._private.test_utils import (
 )
 
 
+def test_logger_config():
+    script = """
+import ray
+
+ray.init(num_cpus=1)
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "INFO worker.py:" in err_str, err_str
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_spill_logs():
     script = """
@@ -162,6 +177,7 @@ ray.get([f.remote() for _ in range(15)])
     assert "Tip:" not in err_str
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_actor(ray_start_regular, error_pubsub):
     script = """
 import os

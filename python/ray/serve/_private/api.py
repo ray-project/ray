@@ -6,15 +6,16 @@ from ray._private.usage import usage_lib
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import HTTPOptions
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     HTTP_PROXY_TIMEOUT,
     SERVE_CONTROLLER_NAME,
     SERVE_NAMESPACE,
+    RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
 )
-from ray.serve.client import ServeControllerClient
+from ray.serve._private.client import ServeControllerClient
 
-from ray.serve.utils import (
+from ray.serve._private.utils import (
     format_actor_name,
     get_random_letters,
 )
@@ -22,7 +23,7 @@ from ray.serve.controller import ServeController
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.serve.context import (
     get_global_client,
-    set_global_client,
+    _set_global_client,
 )
 
 
@@ -33,7 +34,7 @@ def get_deployment(name: str):
     """Dynamically fetch a handle to a Deployment object.
 
     Args:
-        name(str): name of the deployment. This must have already been
+        name: name of the deployment. This must have already been
         deployed.
 
     Returns:
@@ -201,7 +202,9 @@ def serve_start(
         # Schedule the controller on the head node with a soft constraint. This
         # prefers it to run on the head node in most cases, but allows it to be
         # restarted on other nodes in an HA cluster.
-        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=True),
+        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=True)
+        if RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE
+        else None,
         namespace=SERVE_NAMESPACE,
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
     ).remote(
@@ -228,7 +231,7 @@ def serve_start(
         controller_name,
         detached=detached,
     )
-    set_global_client(client)
+    _set_global_client(client)
     logger.info(
         f"Started{' detached ' if detached else ' '}Serve instance in "
         f'namespace "{SERVE_NAMESPACE}".'

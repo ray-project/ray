@@ -43,7 +43,7 @@ def test_dedupe_indirect(workflow_start_regular_shared, tmp_path):
     def join(*a):
         return counter.read_text()
 
-    # Here a is passed to two steps and we need to ensure
+    # Here a is passed to two tasks and we need to ensure
     # it's only executed once
     a = incr.bind()
     i1 = identity.bind(a)
@@ -81,10 +81,10 @@ def test_task_id_generation(workflow_start_regular_shared, request):
     def simple(x):
         return x + 1
 
-    x = simple.options(**workflow.options(name="simple")).bind(-1)
+    x = simple.options(**workflow.options(task_id="simple")).bind(-1)
     n = 20
     for i in range(1, n):
-        x = simple.options(**workflow.options(name="simple")).bind(x)
+        x = simple.options(**workflow.options(task_id="simple")).bind(x)
 
     workflow_id = "test_task_id_generation"
     ret = workflow.run_async(x, workflow_id=workflow_id)
