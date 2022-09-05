@@ -548,7 +548,7 @@ def read_csv(
     ] = CSVDatasource.file_extension_filter(),
     **arrow_csv_args,
 ) -> Dataset[ArrowRow]:
-    """Create an Arrow dataset from csv files.
+    r"""Create an Arrow dataset from csv files.
 
     Examples:
         >>> import ray
@@ -565,7 +565,7 @@ def read_csv(
         >>> # Read files that use a different delimiter. The partition_filter=None is needed here
         >>> # because by default read_csv only reads .csv files.
         >>> from pyarrow import csv
-        >>> parse_options = csv.ParseOptions(delimiter="\\t")
+        >>> parse_options = csv.ParseOptions(delimiter="\t")
         >>> ray.data.read_csv( # doctest: +SKIP
         ...     "example://iris.tsv",
         ...     parse_options=parse_options,
