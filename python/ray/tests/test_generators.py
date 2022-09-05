@@ -101,6 +101,55 @@ def test_dynamic_generator(ray_start_regular):
         print(ref, ray.get(ref))
 
 
+def test_dynamic_generator_reconstruction(ray_start_cluster):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "max_direct_call_object_size": 100,
+        "task_retry_delay_ms": 100,
+        "object_timeout_milliseconds": 200,
+        "fetch_warn_timeout_milliseconds": 1000,
+    }
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0, _system_config=config, enable_object_reconstruction=True
+    )
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def dynamic_generator(num_returns):
+        for _ in range(num_returns):
+            yield np.random.randint(
+                np.iinfo(np.int8).max, size=(1_000_000, 1), dtype=np.int8
+            )
+
+    @ray.remote
+    def fetch(x):
+        return
+
+    # Test recovery of all dynamic objects through re-execution.
+    gen = ray.get(dynamic_generator.remote(10))
+    print(gen)
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    refs = list(gen)
+    for ref in refs:
+        ray.get(fetch.remote(ref))
+
+    cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10 ** 8)
+
+    # Fetch one of the ObjectRefs to another node. We should try to reuse this
+    # copy during recovery.
+    ray.get(fetch.options(resources={"node2": 1}).remote(refs[-1]))
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    for ref in refs:
+        ray.get(ref)
+
+
 if __name__ == "__main__":
     import os
 
