@@ -207,6 +207,18 @@ ObjectID TaskSpecification::ReturnId(size_t return_index) const {
   return ObjectID::FromIndex(TaskId(), return_index + 1);
 }
 
+std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
+  std::vector<ObjectID> dynamic_return_ids;
+  for (const auto &dynamic_return_id : message_->dynamic_return_ids()) {
+    dynamic_return_ids.push_back(ObjectID::FromBinary(dynamic_return_id));
+  }
+  return dynamic_return_ids;
+}
+
+void TaskSpecification::AddDynamicReturnId(const ObjectID &dynamic_return_id) {
+  message_->add_dynamic_return_ids(dynamic_return_id.Binary());
+}
+
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
   return message_->args(arg_index).has_object_ref();
 }

@@ -225,6 +225,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID ReturnId(size_t return_index) const;
 
+  std::vector<ObjectID> DynamicReturnIds() const;
+
+  void AddDynamicReturnId(const ObjectID &dynamic_return_id);
+
   const uint8_t *ArgData(size_t arg_index) const;
 
   size_t ArgDataSize(size_t arg_index) const;
