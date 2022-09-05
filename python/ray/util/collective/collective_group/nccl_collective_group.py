@@ -781,7 +781,7 @@ def _get_comm_key_from_devices(devices):
     then the key would be "0,1,2,3".
 
     Args:
-        devices(list): a list of GPU device indices
+        devices: a list of GPU device indices
 
     Returns:
         str: a string represents the key to query the communicator cache.

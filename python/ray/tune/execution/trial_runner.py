@@ -53,7 +53,7 @@ MAX_DEBUG_TRIALS = 20
 logger = logging.getLogger(__name__)
 
 
-def find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
+def _find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
     """Returns path to most recently modified checkpoint."""
     full_paths = [
         os.path.join(ckpt_dir, fname)
@@ -65,7 +65,7 @@ def find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
     return max(full_paths)
 
 
-def load_trial_from_checkpoint(trial_cp: dict, stub: bool = False, **kwargs):
+def _load_trial_from_checkpoint(trial_cp: dict, stub: bool = False, **kwargs):
     new_trial = Trial(
         trial_cp["trainable_name"], stub=stub, _setup_default_resource=False, **kwargs
     )
@@ -73,7 +73,7 @@ def load_trial_from_checkpoint(trial_cp: dict, stub: bool = False, **kwargs):
     return new_trial
 
 
-def load_trials_from_experiment_checkpoint(
+def _load_trials_from_experiment_checkpoint(
     experiment_checkpoint: Mapping[str, Any], stub: bool = False
 ) -> List[Trial]:
     """Create trial objects from experiment checkpoint.
@@ -87,7 +87,7 @@ def load_trials_from_experiment_checkpoint(
 
     trials = []
     for trial_cp in checkpoints:
-        trials.append(load_trial_from_checkpoint(trial_cp, stub=stub))
+        trials.append(_load_trial_from_checkpoint(trial_cp, stub=stub))
 
     return trials
 
@@ -198,6 +198,8 @@ class _ExperimentCheckpointManager:
             exclude = ["*/checkpoint_*"]
 
         if self._syncer:
+            # Todo: Implement sync_timeout for experiment-level syncing
+            # (it is currently only used for trainable-to-cloud syncing)
             if force:
                 # Wait until previous sync command finished
                 self._syncer.wait()
@@ -341,7 +343,13 @@ class TrialRunner:
         else:
             # Manual override
             self._max_pending_trials = int(max_pending_trials)
-        self.trial_executor.set_max_pending_trials(self._max_pending_trials)
+
+        sync_config = sync_config or SyncConfig()
+
+        self.trial_executor.setup(
+            max_pending_trials=self._max_pending_trials,
+            trainable_kwargs={"sync_timeout": sync_config.sync_timeout},
+        )
 
         self._metric = metric
 
@@ -364,6 +372,10 @@ class TrialRunner:
                     "fail_fast must be one of {bool, RAISE}. " f"Got {self._fail_fast}."
                 )
 
+        self._print_trial_errors = bool(
+            int(os.environ.get("TUNE_PRINT_ALL_TRIAL_ERRORS", "1"))
+        )
+
         self._server = None
         self._server_port = server_port
         if server_port is not None:
@@ -381,7 +393,6 @@ class TrialRunner:
         if self._local_checkpoint_dir:
             os.makedirs(self._local_checkpoint_dir, exist_ok=True)
 
-        sync_config = sync_config or SyncConfig()
         self._remote_checkpoint_dir = remote_checkpoint_dir
 
         self._syncer = get_node_to_storage_syncer(sync_config)
@@ -713,7 +724,9 @@ class TrialRunner:
         Requires user to manually re-register their objects. Also stops
         all ongoing trials.
         """
-        newest_ckpt_path = find_newest_experiment_checkpoint(self._local_checkpoint_dir)
+        newest_ckpt_path = _find_newest_experiment_checkpoint(
+            self._local_checkpoint_dir
+        )
 
         if not newest_ckpt_path:
             raise ValueError(
@@ -742,7 +755,7 @@ class TrialRunner:
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
-        trials = load_trials_from_experiment_checkpoint(runner_state)
+        trials = _load_trials_from_experiment_checkpoint(runner_state)
         for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
             trial_to_add = trial
             if trial.status == Trial.ERROR:
@@ -972,10 +985,10 @@ class TrialRunner:
     def _on_executor_error(self, trial, e: Union[RayTaskError, TuneError]):
         error_msg = f"Trial {trial}: Error processing event."
         if self._fail_fast == TrialRunner.RAISE:
-            logger.error(error_msg, exc_info=e)
             raise e
         else:
-            logger.exception(error_msg, exc_info=e)
+            if self._print_trial_errors:
+                logger.error(error_msg, exc_info=e)
             self._process_trial_failure(trial, exc=e)
 
     def get_trial(self, tid):
@@ -1011,14 +1024,14 @@ class TrialRunner:
         self.trial_executor.mark_trial_to_checkpoint(trial)
 
     def debug_string(self, delim="\n"):
-        from ray.tune.progress_reporter import trial_progress_str
+        from ray.tune.progress_reporter import _trial_progress_str
 
         result_keys = [list(t.last_result) for t in self.get_trials() if t.last_result]
         metrics = set().union(*result_keys)
         messages = [
             self._scheduler_alg.debug_string(),
             self.trial_executor.debug_string(),
-            trial_progress_str(self.get_trials(), metrics, force_table=True),
+            _trial_progress_str(self.get_trials(), metrics, force_table=True),
         ]
         return delim.join(messages)
 

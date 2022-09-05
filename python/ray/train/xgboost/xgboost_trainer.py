@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 from ray.air.checkpoint import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
@@ -13,12 +13,19 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class XGBoostTrainer(GBDTTrainer):
     """A Trainer for data parallel XGBoost training.
 
     This Trainer runs the XGBoost training loop in a distributed manner
     using multiple Ray Actors.
+
+    .. note::
+        ``XGBoostTrainer`` does not modify or otherwise alter the working
+        of the XGBoost distributed training algorithm.
+        Ray only provides orchestration, data ingest and fault tolerance.
+        For more information on XGBoost distributed training, refer to
+        `XGBoost documentation <https://xgboost.readthedocs.io>`__.
 
     Example:
         .. code-block:: python
@@ -66,6 +73,11 @@ class XGBoostTrainer(GBDTTrainer):
     _ray_params_cls: type = xgboost_ray.RayParams
     _tune_callback_report_cls: type = TuneReportCallback
     _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
+    _default_ray_params: Dict[str, Any] = {
+        "num_actors": 1,
+        "cpus_per_actor": 1,
+        "gpus_per_actor": 0,
+    }
     _init_model_arg_name: str = "xgb_model"
 
     def _train(self, **kwargs):

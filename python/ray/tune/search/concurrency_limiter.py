@@ -3,7 +3,7 @@ import logging
 from typing import Dict, Optional, List
 
 from ray.tune.search.searcher import Searcher
-from ray.tune.search.util import set_search_properties_backwards_compatible
+from ray.tune.search.util import _set_search_properties_backwards_compatible
 from ray.util.annotations import PublicAPI
 
 
@@ -85,7 +85,7 @@ class ConcurrencyLimiter(Searcher):
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
     ) -> bool:
         self._set_searcher_max_concurrency()
-        return set_search_properties_backwards_compatible(
+        return _set_search_properties_backwards_compatible(
             self.searcher.set_search_properties, metric, mode, config, **spec
         )
 

@@ -24,7 +24,7 @@ from ray.tune.callback import warnings
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune import Callback
-from ray.tune.utils.callback import create_default_callbacks
+from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.experiment import Experiment
 
 
@@ -276,17 +276,17 @@ class TrialRunnerCallbacks(unittest.TestCase):
             return first_logger_pos, last_logger_pos, syncer_pos
 
         # Auto creation of loggers, no callbacks, no syncer
-        callbacks = create_default_callbacks(None, SyncConfig(), None)
+        callbacks = _create_default_callbacks(None, SyncConfig(), None)
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
 
         # Auto creation of loggers with callbacks
-        callbacks = create_default_callbacks([Callback()], SyncConfig(), None)
+        callbacks = _create_default_callbacks([Callback()], SyncConfig(), None)
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
 
         # Auto creation of loggers with existing logger (but no CSV/JSON)
-        callbacks = create_default_callbacks([LoggerCallback()], SyncConfig(), None)
+        callbacks = _create_default_callbacks([LoggerCallback()], SyncConfig(), None)
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
 
@@ -294,7 +294,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         [mc1, mc2, mc3] = [Callback(), Callback(), Callback()]
         # Has to be legacy logger to avoid logger callback creation
         lc = LegacyLoggerCallback(logger_classes=DEFAULT_LOGGERS)
-        callbacks = create_default_callbacks([mc1, mc2, lc, mc3], SyncConfig(), None)
+        callbacks = _create_default_callbacks([mc1, mc2, lc, mc3], SyncConfig(), None)
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
         self.assertLess(callbacks.index(mc1), callbacks.index(mc2))

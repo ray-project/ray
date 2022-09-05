@@ -8,9 +8,9 @@ from ray.tune.utils.util import (
     validate_save_restore,
     warn_if_slow,
     diagnose_serialization,
-    detect_checkpoint_function,
-    detect_reporter,
-    detect_config_single,
+    _detect_checkpoint_function,
+    _detect_reporter,
+    _detect_config_single,
     wait_for_gpu,
 )
 
@@ -24,8 +24,8 @@ __all__ = [
     "validate_save_restore",
     "warn_if_slow",
     "diagnose_serialization",
-    "detect_checkpoint_function",
-    "detect_reporter",
-    "detect_config_single",
+    "_detect_checkpoint_function",
+    "_detect_reporter",
+    "_detect_config_single",
     "wait_for_gpu",
 ]

@@ -6,6 +6,7 @@ import xgboost
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
@@ -13,7 +14,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class XGBoostPredictor(Predictor):
     """A predictor for XGBoost models.
 
@@ -28,6 +29,12 @@ class XGBoostPredictor(Predictor):
     ):
         self.model = model
         super().__init__(preprocessor)
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(model={self.model!r}, "
+            f"preprocessor={self._preprocessor!r})"
+        )
 
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "XGBoostPredictor":
@@ -117,6 +124,7 @@ class XGBoostPredictor(Predictor):
         feature_names = None
         if TENSOR_COLUMN_NAME in data:
             data = data[TENSOR_COLUMN_NAME].to_numpy()
+            data = _unwrap_ndarray_object_type_if_needed(data)
             if feature_columns:
                 # In this case feature_columns is a list of integers
                 data = data[:, feature_columns]

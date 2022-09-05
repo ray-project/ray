@@ -298,7 +298,9 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
 
     def serve_http(self):
         """serve_http serves the Prometheus endpoint."""
-        start_http_server(port=self.options.port, addr=str(self.options.address))
+        address = str(self.options.address)
+        kwargs = {"addr": address} if address else {}
+        start_http_server(port=self.options.port, **kwargs)
 
 
 def new_stats_exporter(option):

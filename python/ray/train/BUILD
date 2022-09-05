@@ -115,7 +115,7 @@ py_test(
 
 py_test(
     name = "test_batch_predictor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_batch_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu"],
     deps = [":train_lib"]
@@ -133,6 +133,14 @@ py_test(
     name = "test_callbacks",
     size = "medium",
     srcs = ["tests/test_callbacks.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_checkpoints",
+    size = "small",
+    srcs = ["tests/test_checkpoints.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )
@@ -293,6 +301,14 @@ py_test(
     name = "test_tensorflow_utils",
     size = "small",
     srcs = ["tests/test_tensorflow_utils.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_torch_checkpoint",
+    size = "small",
+    srcs = ["tests/test_torch_checkpoint.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )

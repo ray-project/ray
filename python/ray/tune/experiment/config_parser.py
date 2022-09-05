@@ -14,7 +14,7 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.utils.util import SafeFallbackEncoder
 
 
-def make_parser(parser_creator=None, **kwargs):
+def _make_parser(parser_creator=None, **kwargs):
     """Returns a base argument parser for the ray.tune tool.
 
     Args:
@@ -145,7 +145,7 @@ def make_parser(parser_creator=None, **kwargs):
     return parser
 
 
-def to_argv(config):
+def _to_argv(config):
     """Converts configuration to a command line argument format."""
     argv = []
     for k, v in config.items():
@@ -169,7 +169,7 @@ def to_argv(config):
 _cached_pgf = {}
 
 
-def create_trial_from_spec(
+def _create_trial_from_spec(
     spec: dict, output_path: str, parser: argparse.ArgumentParser, **trial_kwargs
 ):
     """Creates a Trial object from parsing the spec.
@@ -193,7 +193,7 @@ def create_trial_from_spec(
     resources = spec.pop("resources_per_trial", None)
 
     try:
-        args, _ = parser.parse_known_args(to_argv(spec))
+        args, _ = parser.parse_known_args(_to_argv(spec))
     except SystemExit:
         raise TuneError("Error parsing args, see above message", spec)
 

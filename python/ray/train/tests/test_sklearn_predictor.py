@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 
 import numpy as np
@@ -12,7 +13,7 @@ from sklearn.ensemble import RandomForestClassifier
 import ray
 import ray.cloudpickle as cpickle
 from ray.air.checkpoint import Checkpoint
-from ray.air.constants import MODEL_KEY
+from ray.air.constants import MAX_REPR_LENGTH, MODEL_KEY
 from ray.data.preprocessor import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.sklearn import SklearnCheckpoint, SklearnPredictor
@@ -38,6 +39,16 @@ dummy_target = np.array([0, 1, 0])
 model = RandomForestClassifier(n_estimators=10, random_state=0).fit(
     dummy_data, dummy_target
 )
+
+
+def test_repr():
+    predictor = SklearnPredictor(estimator=model)
+
+    representation = repr(predictor)
+
+    assert len(representation) < MAX_REPR_LENGTH
+    pattern = re.compile("^SklearnPredictor\\((.*)\\)$")
+    assert pattern.match(representation)
 
 
 def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:

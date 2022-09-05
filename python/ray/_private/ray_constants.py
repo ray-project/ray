@@ -124,6 +124,13 @@ MEMORY_RESOURCE_UNIT_BYTES = 1
 # Number of units 1 resource can be subdivided into.
 MIN_RESOURCE_GRANULARITY = 0.0001
 
+# Set this environment variable to populate the dashboard URL with
+# an external hosted Ray dashboard URL (e.g. because the
+# dashboard is behind a proxy or load balancer). This only overrides
+# the dashboard URL when returning or printing to a user through a public
+# API, but not in the internal KV store.
+RAY_OVERRIDE_DASHBOARD_URL = "RAY_OVERRIDE_DASHBOARD_URL"
+
 
 def round_to_memory_units(memory_bytes, round_up):
     """Round bytes to the nearest memory unit."""

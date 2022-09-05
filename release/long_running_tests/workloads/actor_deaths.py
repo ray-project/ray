@@ -8,6 +8,7 @@ import time
 
 import ray
 from ray.cluster_utils import Cluster
+from ray._private.test_utils import monitor_memory_usage
 
 
 def update_progress(result):
@@ -48,6 +49,7 @@ for i in range(num_nodes):
         dashboard_host="0.0.0.0",
     )
 ray.init(address=cluster.address)
+monitor_actor = monitor_memory_usage()
 
 # Run the workload.
 
