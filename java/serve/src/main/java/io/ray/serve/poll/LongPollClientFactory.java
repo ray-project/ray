@@ -116,7 +116,7 @@ public class LongPollClientFactory {
                 return thread;
               }
             });
-    scheduledExecutorService.scheduleAtFixedRate(
+    scheduledExecutorService.scheduleWithFixedDelay(
         () -> {
           try {
             pollNext();
@@ -217,7 +217,7 @@ public class LongPollClientFactory {
       return;
     }
     if (scheduledExecutorService != null) {
-      scheduledExecutorService.shutdown();
+      scheduledExecutorService.shutdownNow();
     }
     inited = false;
     LOGGER.info("LongPollClient was stopped.");
