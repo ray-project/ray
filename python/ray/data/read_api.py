@@ -563,7 +563,8 @@ def read_csv(
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
         >>> # Read files that use a different delimiter. The partition_filter=None is needed here
-        >>> # because by default read_csv only reads .csv files.
+        >>> # because by default read_csv only reads .csv files. For more uses of ParseOptions see
+        >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html  # noqa: #501
         >>> from pyarrow import csv
         >>> parse_options = csv.ParseOptions(delimiter="\t")
         >>> ray.data.read_csv( # doctest: +SKIP
