@@ -20,7 +20,7 @@ opencensus
 prometheus_client >= 0.7.1, < 0.14.0
 protobuf >= 3.15.3, < 4.0.0
 py-spy >= 0.2.0
-pydantic >= 1.8
+pydantic >= 1.8, < 1.10.0
 pyyaml
 requests
 smart_open
@@ -64,7 +64,7 @@ google-cloud-storage
 gym-minigrid==1.0.3
 kubernetes
 lxml
-moto[s3,server]
+moto[s3,server] >= 4.0.0
 mypy
 networkx
 numba

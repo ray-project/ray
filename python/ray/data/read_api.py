@@ -571,6 +571,16 @@ def read_csv(
         ...     parse_options=parse_options,
         ...     partition_filter=None)
 
+        >>> # Convert a date column with a custom format from a CSV file.
+        >>> # For more uses of ConvertOptions see
+        >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html  # noqa: #501
+        >>> from pyarrow import csv
+        >>> convert_options = csv.ConvertOptions(
+        ...     timestamp_parsers=["%m/%d/%Y"])
+        >>> ray.data.read_csv( # doctest: +SKIP
+        ...     "example://dow_jones_index.csv",
+        ...     convert_options=convert_options)
+
     Args:
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
