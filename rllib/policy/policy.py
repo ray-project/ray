@@ -803,9 +803,9 @@ class Policy(metaclass=ABCMeta):
             # Checkpoint connectors state as well if enabled.
             connector_configs = {}
             if self.agent_connectors:
-                connector_configs["agent"] = self.agent_connectors.to_config()
+                connector_configs["agent"] = self.agent_connectors.to_state()
             if self.action_connectors:
-                connector_configs["action"] = self.action_connectors.to_config()
+                connector_configs["action"] = self.action_connectors.to_state()
             state["connector_configs"] = connector_configs
         return state
 

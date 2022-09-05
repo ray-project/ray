@@ -32,11 +32,11 @@ class NormalizeActionsConnector(ActionConnector):
             (unsquash_action(actions, self._action_space_struct), states, fetches),
         )
 
-    def to_config(self):
+    def to_state(self):
         return NormalizeActionsConnector.__name__, None
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: List[Any]):
         return NormalizeActionsConnector(ctx)
 
 
