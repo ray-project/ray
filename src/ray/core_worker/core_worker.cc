@@ -923,6 +923,7 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
       local_raylet_client_->PinObjectIDs(
           rpc_address_,
           {object_id},
+          /*generator_id=*/ObjectID::Nil(),
           [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
             // Only release the object once the raylet has responded to avoid the race
             // condition that the object could be evicted before the raylet pins it.
@@ -1056,7 +1057,8 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
 Status CoreWorker::SealOwned(const ObjectID &object_id,
                              bool pin_object,
                              const std::unique_ptr<rpc::Address> &owner_address) {
-  auto status = SealExisting(object_id, pin_object, std::move(owner_address));
+  auto status =
+      SealExisting(object_id, pin_object, ObjectID::Nil(), std::move(owner_address));
   if (status.ok()) return status;
   RemoveLocalReference(object_id);
   if (reference_counter_->HasReference(object_id)) {
@@ -1069,6 +1071,7 @@ Status CoreWorker::SealOwned(const ObjectID &object_id,
 
 Status CoreWorker::SealExisting(const ObjectID &object_id,
                                 bool pin_object,
+                                const ObjectID &generator_id,
                                 const std::unique_ptr<rpc::Address> &owner_address) {
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
@@ -1077,6 +1080,7 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
     local_raylet_client_->PinObjectIDs(
         owner_address != nullptr ? *owner_address : rpc_address_,
         {object_id},
+        generator_id,
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
           // Only release the object once the raylet has responded to avoid the race
           // condition that the object could be evicted before the raylet pins it.
@@ -2221,6 +2225,8 @@ Status CoreWorker::ExecuteTask(
   std::vector<ObjectID> borrowed_ids;
   RAY_CHECK_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
 
+  // TODO(swang): For generator objects, pass the return IDs that were
+  // dynamically generated on the first execution.
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
     return_ids.push_back(task_spec.ReturnId(i));
@@ -2349,7 +2355,8 @@ Status CoreWorker::ExecuteTask(
 }
 
 Status CoreWorker::SealReturnObject(const ObjectID &return_id,
-                                    std::shared_ptr<RayObject> return_object) {
+                                    std::shared_ptr<RayObject> return_object,
+                                    const ObjectID &generator_id) {
   RAY_LOG(DEBUG) << "Sealing return object " << return_id;
   Status status = Status::OK();
   RAY_CHECK(return_object);
@@ -2357,7 +2364,8 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
   std::unique_ptr<rpc::Address> caller_address =
       std::make_unique<rpc::Address>(worker_context_.GetCurrentTask()->CallerAddress());
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
-    status = SealExisting(return_id, /*pin_object=*/true, std::move(caller_address));
+    status = SealExisting(
+        return_id, /*pin_object=*/true, generator_id, std::move(caller_address));
     if (!status.ok()) {
       RAY_LOG(FATAL) << "Failed to seal object " << return_id
                      << " in store: " << status.message();
@@ -2367,7 +2375,8 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
 }
 
 bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
-                                         std::shared_ptr<RayObject> *return_object) {
+                                         std::shared_ptr<RayObject> *return_object,
+                                         const ObjectID &generator_id) {
   // TODO(swang): If there is already an existing copy of this object, then it
   // might not have the same value as the new copy. It would be better to evict
   // the existing copy here.
@@ -2398,6 +2407,7 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
     local_raylet_client_->PinObjectIDs(
         owner_address,
         {return_id},
+        generator_id,
         [return_id, pinned_return_object](const Status &status,
                                           const rpc::PinObjectIDsReply &reply) {
           if (!status.ok() || !reply.successes(0)) {
@@ -2769,6 +2779,17 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
                   << worker_context_.GetWorkerID() << ". The RPC will be no-op.";
     unpin_object(object_id);
     return;
+  }
+
+  if (message.has_generator_id()) {
+    // For dynamically generated return values, the raylet may subscribe to
+    // eviction events before we know about the object. This can happen when we
+    // receive the subscription request before the reply from the task that
+    // created the object. Add the dynamically created object to our ref
+    // counter so that we know that it exists.
+    const auto generator_id = ObjectID::FromBinary(message.generator_id());
+    RAY_CHECK(!generator_id.IsNil());
+    reference_counter_->AddDynamicReturn(object_id, generator_id);
   }
 
   // Returns true if the object was present and the callback was added. It might have

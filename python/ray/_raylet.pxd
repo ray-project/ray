@@ -131,8 +131,10 @@ cdef class CoreWorker:
                             c_bool inline_small_object=*)
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef store_task_output(
-            self, serialized_object, const CObjectID &return_id, size_t
-            data_size, shared_ptr[CBuffer] &metadata, const c_vector[CObjectID]
+            self, serialized_object,
+            const CObjectID &return_id,
+            const CObjectID &generator_id,
+            size_t data_size, shared_ptr[CBuffer] &metadata, const c_vector[CObjectID]
             &contained_id, int64_t *task_output_inlined_bytes,
             shared_ptr[CRayObject] *return_ptr)
     cdef store_task_outputs(
@@ -140,6 +142,7 @@ cdef class CoreWorker:
             const CAddress &caller_address,
             worker, outputs,
             const c_vector[CObjectID] *static_return_ids,
+            const CObjectID &generator_id,
             c_vector[CObjectID] *dynamic_return_ids,
             c_vector[shared_ptr[CRayObject]] *returns)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)

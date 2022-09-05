@@ -25,6 +25,36 @@ using namespace ray::gcs;
 namespace ray {
 namespace core {
 
+void SerializeReturnObject(const ObjectID &object_id,
+                           const std::shared_ptr<RayObject> &return_object,
+                           rpc::ReturnObject *return_object_proto) {
+  return_object_proto->set_object_id(object_id.Binary());
+
+  if (!return_object) {
+    // This should only happen if the local raylet died. Caller should
+    // retry the task.
+    RAY_LOG(WARNING) << "Failed to create task return object " << object_id
+                     << " in the object store, exiting.";
+    QuickExit();
+  }
+  return_object_proto->set_size(return_object->GetSize());
+  if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
+    return_object_proto->set_in_plasma(true);
+  } else {
+    if (return_object->GetData() != nullptr) {
+      return_object_proto->set_data(return_object->GetData()->Data(),
+                                    return_object->GetData()->Size());
+    }
+    if (return_object->GetMetadata() != nullptr) {
+      return_object_proto->set_metadata(return_object->GetMetadata()->Data(),
+                                        return_object->GetMetadata()->Size());
+    }
+  }
+  for (const auto &nested_ref : return_object->GetNestedRefs()) {
+    return_object_proto->add_nested_inlined_refs()->CopyFrom(nested_ref);
+  }
+}
+
 void CoreWorkerDirectTaskReceiver::Init(
     std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
     rpc::Address rpc_address,
@@ -104,34 +134,16 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
+      for (const auto &dynamic_return : dynamic_return_objects) {
+        auto return_object_proto = reply->add_dynamic_return_objects();
+        SerializeReturnObject(
+            dynamic_return.first, dynamic_return.second, return_object_proto);
+      }
       for (size_t i = 0; i < return_objects.size(); i++) {
-        auto return_object = reply->add_return_objects();
+        const auto &return_object = return_objects[i];
         ObjectID id = ObjectID::FromIndex(task_spec.TaskId(), /*index=*/i + 1);
-        return_object->set_object_id(id.Binary());
-
-        if (!return_objects[i]) {
-          // This should only happen if the local raylet died. Caller should
-          // retry the task.
-          RAY_LOG(WARNING) << "Failed to create task return object " << id
-                           << " in the object store, exiting.";
-          QuickExit();
-        }
-        const auto &result = return_objects[i];
-        return_object->set_size(result->GetSize());
-        if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
-          return_object->set_in_plasma(true);
-        } else {
-          if (result->GetData() != nullptr) {
-            return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
-          }
-          if (result->GetMetadata() != nullptr) {
-            return_object->set_metadata(result->GetMetadata()->Data(),
-                                        result->GetMetadata()->Size());
-          }
-        }
-        for (const auto &nested_ref : result->GetNestedRefs()) {
-          return_object->add_nested_inlined_refs()->CopyFrom(nested_ref);
-        }
+        auto return_object_proto = reply->add_return_objects();
+        SerializeReturnObject(id, return_object, return_object_proto);
       }
 
       if (task_spec.IsActorCreationTask()) {

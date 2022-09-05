@@ -343,6 +343,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status SealExisting(const ObjectID &object_id,
                       bool pin_object,
+                      const ObjectID &generator_id = ObjectID::Nil(),
                       const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
@@ -633,7 +634,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] return_object RayObject containing the buffer written info.
   /// \return Status.
   Status SealReturnObject(const ObjectID &return_id,
-                          std::shared_ptr<RayObject> return_object);
+                          std::shared_ptr<RayObject> return_object,
+                          const ObjectID &generator_id);
 
   /// Pin the local copy of the return object, if one exists.
   ///
@@ -642,7 +644,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return success if the object still existed and was pinned. Note that
   /// pinning is done asynchronously.
   bool PinExistingReturnObject(const ObjectID &return_id,
-                               std::shared_ptr<RayObject> *return_object);
+                               std::shared_ptr<RayObject> *return_object,
+                               const ObjectID &generator_id);
 
   ObjectID AllocateDynamicReturnId();
 

@@ -2447,7 +2447,6 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
                                      rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> object_ids;
   object_ids.reserve(request.object_ids_size());
-  const auto &owner_address = request.owner_address();
   for (const auto &object_id_binary : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
@@ -2475,8 +2474,11 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
       }
     }
     // Wait for the object to be freed by the owner, which keeps the ref count.
+    ObjectID generator_id = request.has_generator_id()
+                                ? ObjectID::FromBinary(request.generator_id())
+                                : ObjectID::Nil();
     local_object_manager_.PinObjectsAndWaitForFree(
-        object_ids, std::move(results), owner_address);
+        object_ids, std::move(results), request.owner_address(), generator_id);
   }
   RAY_CHECK_EQ(request.object_ids_size(), reply->successes_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);

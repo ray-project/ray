@@ -146,11 +146,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             shared_ptr[CRayObject] *return_object)
         CRayStatus SealReturnObject(
             const CObjectID& return_id,
-            shared_ptr[CRayObject] return_object
+            shared_ptr[CRayObject] return_object,
+            const CObjectID& generator_id
         )
         c_bool PinExistingReturnObject(
             const CObjectID& return_id,
-            shared_ptr[CRayObject] *return_object
+            shared_ptr[CRayObject] *return_object,
+            const CObjectID& generator_id
         )
         CObjectID AllocateDynamicReturnId()
 
@@ -218,6 +220,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
                              const unique_ptr[CAddress] &owner_address)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
+                                const CObjectID &generator_id,
                                 const unique_ptr[CAddress] &owner_address)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)

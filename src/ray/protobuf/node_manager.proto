@@ -173,7 +173,7 @@ message PinObjectIDsRequest {
   // dynamically generated ObjectRef is stored inside. We need this information
   // so that we can notify the owner about the nested ObjectRefs, in case the
   // owner does not know about them yet.
-  bytes generator_id = 3;
+  optional bytes generator_id = 3;
 }
 
 message PinObjectIDsReply {

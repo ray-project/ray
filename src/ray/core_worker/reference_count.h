@@ -190,6 +190,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
                       const absl::optional<NodeID> &pinned_at_raylet_id =
                           absl::optional<NodeID>()) LOCKS_EXCLUDED(mutex_);
 
+  void AddDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id)
+      LOCKS_EXCLUDED(mutex_);
+
   /// Update the size of the object.
   ///
   /// \param[in] object_id The ID of the object.
@@ -734,6 +737,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
   using ReferenceProtoTable = absl::flat_hash_map<ObjectID, rpc::ObjectReferenceCount>;
+
+  bool AddOwnedObjectInternal(const ObjectID &object_id,
+                              const std::vector<ObjectID> &contained_ids,
+                              const rpc::Address &owner_address,
+                              const std::string &call_site,
+                              const int64_t object_size,
+                              bool is_reconstructable,
+                              bool add_local_ref,
+                              const absl::optional<NodeID> &pinned_at_raylet_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);

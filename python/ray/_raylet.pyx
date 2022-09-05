@@ -811,6 +811,7 @@ cdef execute_task(
                     # generator. We will assign their ObjectIDs dynamically.
                     core_worker.store_task_outputs(
                         caller_address, worker, outputs, NULL,
+                        c_return_ids[0],
                         &dynamic_return_ids, &dynamic_returns)
                     dynamic_refs = []
                     for idx in range(dynamic_return_ids.size()):
@@ -828,7 +829,9 @@ cdef execute_task(
                     dynamic_return_ids.clear()
 
                 core_worker.store_task_outputs(
-                    caller_address, worker, outputs, &c_return_ids, NULL, returns)
+                    caller_address, worker, outputs, &c_return_ids,
+                    CObjectID.Nil(),
+                    NULL, returns)
         except Exception as error:
             # If the debugger is enabled, drop into the remote pdb here.
             if "RAY_PDB" in os.environ:
@@ -853,7 +856,9 @@ cdef execute_task(
             for _ in range(c_return_ids.size()):
                 errors.append(failure_object)
             core_worker.store_task_outputs(
-                caller_address, worker, errors, &c_return_ids, NULL, returns)
+                caller_address, worker, errors, &c_return_ids,
+                CObjectID.Nil(),
+                NULL, returns)
             ray._private.utils.push_error_to_driver(
                 worker,
                 ray_constants.TASK_PUSH_ERROR,
@@ -1446,6 +1451,7 @@ cdef class CoreWorker:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().SealExisting(
                             c_object_id, pin_object=False,
+                            generator_id=CObjectID.Nil(),
                             owner_address=c_owner_address))
 
     def put_serialized_object_and_increment_local_ref(self, serialized_object,
@@ -1504,6 +1510,7 @@ cdef class CoreWorker:
                         check_status(
                             CCoreWorkerProcess.GetCoreWorker().SealExisting(
                                         c_object_id, pin_object=False,
+                                        generator_id=CObjectID.Nil(),
                                         owner_address=move(c_owner_address)))
 
         return c_object_id.Binary()
@@ -2105,6 +2112,7 @@ cdef class CoreWorker:
                 serialized_object_status))
 
     cdef store_task_output(self, serialized_object, const CObjectID &return_id,
+                           const CObjectID &generator_id,
                            size_t data_size, shared_ptr[CBuffer] &metadata,
                            const c_vector[CObjectID] &contained_id,
                            int64_t *task_output_inlined_bytes,
@@ -2131,12 +2139,13 @@ cdef class CoreWorker:
                 with nogil:
                     check_status(
                         CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
-                            return_id, return_ptr[0]))
+                            return_id, return_ptr[0], generator_id))
             return True
         else:
             with nogil:
                 success = (CCoreWorkerProcess.GetCoreWorker()
-                           .PinExistingReturnObject(return_id, return_ptr))
+                           .PinExistingReturnObject(
+                                   return_id, return_ptr, generator_id))
             return success
 
     cdef store_task_outputs(
@@ -2144,6 +2153,7 @@ cdef class CoreWorker:
             const CAddress &caller_address,
             worker, outputs,
             const c_vector[CObjectID] *static_return_ids,
+            const CObjectID &generator_id,
             c_vector[CObjectID] *dynamic_return_ids,
             c_vector[shared_ptr[CRayObject]] *returns):
         cdef:
@@ -2194,13 +2204,16 @@ cdef class CoreWorker:
 
             if not self.store_task_output(
                     serialized_object, return_id,
+                    generator_id,
                     data_size, metadata, contained_id,
                     &task_output_inlined_bytes, &returns[0][i]):
                 # If the object already exists, but we fail to pin the copy, it
                 # means the existing copy might've gotten evicted. Try to
                 # create another copy.
                 self.store_task_output(
-                        serialized_object, return_id, data_size, metadata,
+                        serialized_object, return_id,
+                        generator_id,
+                        data_size, metadata,
                         contained_id, &task_output_inlined_bytes,
                         &returns[0][i])
 
