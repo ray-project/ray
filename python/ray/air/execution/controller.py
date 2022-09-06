@@ -36,7 +36,7 @@ class Controller:
                     exception=event.exception,
                 )
             else:
-                self.actor_started(actor=event.actor, actor_info=event.actor_info)
+                self.actor_stopped(actor=event.actor, actor_info=event.actor_info)
         elif isinstance(event, FutureResult):
             self.future_result(result=event)
 

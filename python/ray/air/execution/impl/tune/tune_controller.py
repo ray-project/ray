@@ -82,7 +82,9 @@ class TuneController(Controller):
         pass
 
     def _create_new_trials(self) -> None:
-        requests = self._buffered_actor_requests
+        for actor_request in self._buffered_actor_requests:
+            self._actor_manager.add_actor(actor_request)
+
         self._buffered_actor_requests = []
 
         trial = self._searcher.next_trial()
@@ -100,10 +102,10 @@ class TuneController(Controller):
                     bundles=trial.placement_group_factory.bundles
                 ),
             )
-            requests.append(actor_request)
             self._pending_actor_requests[actor_request] = trial
             self._all_trials.append(trial)
             self._actor_manager.add_actor(actor_request)
+
             trial = self._searcher.next_trial()
 
     def actor_started(

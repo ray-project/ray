@@ -37,11 +37,13 @@ def _resolve_multiple_futures(futures: List[TypedFuture]) -> List[ExecutionEvent
 def _convert_result(cls: FutureResult, actor: ray.actor.ActorHandle, result: Any):
     n_args = len(getattr(cls, "__dataclass_fields__", 1))
     if n_args == 0:
-        return cls(actor=actor)
+        return cls()
     elif n_args == 1:
-        return cls(result, actor=actor)
+        return cls(actor)
+    elif n_args == 2:
+        return cls(actor, result)
     else:
-        return cls(*result, actor=actor)
+        return cls(actor, *result)
 
 
 class ActorManager:
@@ -89,7 +91,7 @@ class ActorManager:
             return self._next_events.popleft()
 
         if not self._ready_future:
-            self._wait_for_next_future(block=block)
+            self._ready_future = self._wait_for_next_future(block=block)
 
         if not self._ready_future:
             # If we didn't block, this could be None
@@ -98,7 +100,7 @@ class ActorManager:
         result = self._resolve_ready_future()
 
         if isinstance(result, _ResourceReady):
-            return self.next_event(block=block)
+            raise NotImplementedError("Todo: Ready resource handling")
 
         return result
 
@@ -175,7 +177,7 @@ class ActorManager:
     ):
         self._actors_to_futures[actor].add(future)
         self._futures_to_actors[future] = actor
-        self._futures_to_classes = cls
+        self._futures_to_classes[future] = cls
 
     def track_sync_futures(
         self,
