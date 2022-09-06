@@ -229,7 +229,7 @@ def transform_ray_dag_to_serve_dag(
         parent_class = parent_deployment_node._deployment._func_or_class
         method = getattr(parent_class, dag_node._method_name)
         if "return" in method.__annotations__:
-            other_args_to_resolve["result_type_annotation"] = type_to_string(
+            other_args_to_resolve["result_type_string"] = type_to_string(
                 method.__annotations__["return"]
             )
 
@@ -251,7 +251,7 @@ def transform_ray_dag_to_serve_dag(
 
         other_args_to_resolve = dag_node.get_other_args_to_resolve()
         if "return" in dag_node._body.__annotations__:
-            other_args_to_resolve["result_type_annotation"] = type_to_string(
+            other_args_to_resolve["result_type_string"] = type_to_string(
                 dag_node._body.__annotations__["return"]
             )
 

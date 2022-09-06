@@ -10,8 +10,6 @@ from ray import serve
 from ray.dag import InputNode
 from ray.serve.drivers import DAGDriver
 
-import gradio as gr
-
 
 @pytest.fixture
 def graph1():
@@ -122,6 +120,18 @@ def graph5():
         dag = f.bind(input_nodes[0], input_nodes[1], input_nodes[2])
 
     yield input_nodes, dag
+
+
+@pytest.fixture
+def graph6():
+    @serve.deployment
+    def f(*args) -> int:
+        return 0
+
+    with InputNode(input_type=int) as user_input:
+        dag = f.bind(user_input)
+
+        yield user_input, dag
 
 
 @pytest.mark.asyncio
@@ -270,7 +280,7 @@ async def test_gradio_visualization_output_types(graph4):
 
 
 @pytest.mark.asyncio
-async def test_gradio_visualization_input_type(graph5):
+async def test_gradio_visualization_input_type1(graph5):
     """Tests that input types passed through InputNode() are correctly extracted after
     deploying the DAG.
     """
@@ -289,6 +299,23 @@ async def test_gradio_visualization_input_type(graph5):
             assert node.get_result_type() == "str"
         else:
             assert False
+
+
+@pytest.mark.asyncio
+async def test_gradio_visualization_input_type2(graph6):
+    """Tests that input types passed through InputNode() are correctly extracted after
+    deploying the DAG.
+    """
+    (_, dag) = graph6
+
+    handle = serve.run(DAGDriver.bind(dag))
+    visualizer = GraphVisualizer()
+    visualizer.visualize_with_gradio(handle, _launch=False)
+
+    assert len(visualizer.input_node_to_block) == 1
+
+    input_node = next(iter(visualizer.input_node_to_block))
+    assert input_node.get_result_type() == "int"
 
 
 if __name__ == "__main__":
