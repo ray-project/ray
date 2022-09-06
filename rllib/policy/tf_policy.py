@@ -507,21 +507,6 @@ class TFPolicy(Policy):
             config=self.config,
         )
 
-        # Save the tf.keras.Model (architecture and weights, so it can be retrieved
-        # w/o access to the original (custom) Model or Policy code).
-        if (
-            hasattr(self, "model")
-            and hasattr(self.model, "base_model")
-            and isinstance(self.model.base_model, tf.keras.Model)
-        ):
-            tmpdir = tempfile.mkdtemp()
-            with self.get_session().graph.as_default():
-                try:
-                    self.model.base_model.save(filepath=tmpdir, save_format="tf")
-                    state["model"] = dir_contents_to_dict(tmpdir)
-                except Exception:
-                    logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
-
         if len(self._optimizer_variables.variables) > 0:
             state["_optimizer_variables"] = self.get_session().run(
                 self._optimizer_variables.variables
@@ -602,8 +587,8 @@ class TFPolicy(Policy):
             with self.get_session().graph.as_default():
                 try:
                     self.model.base_model.save(filepath=export_dir, save_format="tf")
-                except Exception as e:
-                    raise ValueError(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
+                except Exception:
+                    logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
         else:
             raise ValueError(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 
