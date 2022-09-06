@@ -104,14 +104,14 @@ def train_func(config: dict):
         tf_dataset = tf.data.Dataset.from_generator(
             to_tensor_iterator, output_signature=output_signature
         )
-        return prepare_dataset_shard(tf_dataset)
+        return prepare_dataset_shard(tf_dataset).prefetch(tf.data.AUTOTUNE)
 
     results = []
     for epoch in range(epochs):
         tf_dataset = to_tf_dataset(
             dataset=dataset_shard,
             batch_size=per_worker_batch_size,
-        ).prefetch(tf.data.AUTOTUNE)
+        )
         history = multi_worker_model.fit(
             tf_dataset, callbacks=[TrainCheckpointReportCallback()]
         )

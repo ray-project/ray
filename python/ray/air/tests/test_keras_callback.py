@@ -60,12 +60,10 @@ def train_func(config: dict):
         tf_dataset = tf.data.Dataset.from_generator(
             to_tensor_iterator, output_signature=output_signature
         )
-        return prepare_dataset_shard(tf_dataset)
+        return prepare_dataset_shard(tf_dataset).prefetch(tf.data.AUTOTUNE)
 
     for _ in range(config.get("epoch", 3)):
-        tf_dataset = to_tf_dataset(dataset=dataset, batch_size=32).prefetch(
-            tf.data.AUTOTUNE
-        )
+        tf_dataset = to_tf_dataset(dataset=dataset, batch_size=32)
         multi_worker_model.fit(tf_dataset, callbacks=[Callback()])
 
 

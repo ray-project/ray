@@ -71,7 +71,7 @@ def to_tf_dataset(dataset, batch_size):
     tf_dataset = tf.data.Dataset.from_generator(
         to_tensor_iterator, output_signature=output_signature
     )
-    return prepare_dataset_shard(tf_dataset)
+    return prepare_dataset_shard(tf_dataset).prefetch(tf.data.AUTOTUNE)
 
 
 def train_loop_per_worker(config):
@@ -100,9 +100,7 @@ def train_loop_per_worker(config):
 
     results = []
     for _ in range(epochs):
-        tf_dataset = to_tf_dataset(dataset=train_data, batch_size=batch_size).prefetch(
-            tf.data.AUTOTUNE
-        )
+        tf_dataset = to_tf_dataset(dataset=train_data, batch_size=batch_size)
         history = multi_worker_model.fit(
             tf_dataset,
             callbacks=[KerasCallback()],
