@@ -253,20 +253,20 @@ def deployment(func_or_class: Callable) -> Deployment:
 
 @overload
 def deployment(
-    name: Optional[str] = None,
-    version: Optional[str] = None,
-    num_replicas: Optional[int] = None,
-    init_args: Optional[Tuple[Any]] = None,
-    init_kwargs: Optional[Dict[Any, Any]] = None,
+    name: Optional[str] = DEFAULT.VALUE,
+    version: Optional[str] = DEFAULT.VALUE,
+    num_replicas: Optional[int] = DEFAULT.VALUE,
+    init_args: Optional[Tuple[Any]] = DEFAULT.VALUE,
+    init_kwargs: Optional[Dict[Any, Any]] = DEFAULT.VALUE,
     route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-    ray_actor_options: Optional[Dict] = None,
-    user_config: Optional[Any] = None,
-    max_concurrent_queries: Optional[int] = None,
-    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-    graceful_shutdown_wait_loop_s: Optional[float] = None,
-    graceful_shutdown_timeout_s: Optional[float] = None,
-    health_check_period_s: Optional[float] = None,
-    health_check_timeout_s: Optional[float] = None,
+    ray_actor_options: Optional[Dict] = DEFAULT.VALUE,
+    user_config: Optional[Any] = DEFAULT.VALUE,
+    max_concurrent_queries: Optional[int] = DEFAULT.VALUE,
+    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = DEFAULT.VALUE,
+    graceful_shutdown_wait_loop_s: Optional[float] = DEFAULT.VALUE,
+    graceful_shutdown_timeout_s: Optional[float] = DEFAULT.VALUE,
+    health_check_period_s: Optional[float] = DEFAULT.VALUE,
+    health_check_timeout_s: Optional[float] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     pass
 
@@ -274,20 +274,20 @@ def deployment(
 @PublicAPI(stability="beta")
 def deployment(
     _func_or_class: Optional[Callable] = None,
-    name: Optional[str] = None,
-    version: Optional[str] = None,
-    num_replicas: Optional[int] = None,
-    init_args: Optional[Tuple[Any]] = None,
-    init_kwargs: Optional[Dict[Any, Any]] = None,
+    name: Optional[str] = DEFAULT.VALUE,
+    version: Optional[str] = DEFAULT.VALUE,
+    num_replicas: Optional[int] = DEFAULT.VALUE,
+    init_args: Optional[Tuple[Any]] = DEFAULT.VALUE,
+    init_kwargs: Optional[Dict[Any, Any]] = DEFAULT.VALUE,
     route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-    ray_actor_options: Optional[Dict] = None,
-    user_config: Optional[Any] = None,
-    max_concurrent_queries: Optional[int] = None,
-    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-    graceful_shutdown_wait_loop_s: Optional[float] = None,
-    graceful_shutdown_timeout_s: Optional[float] = None,
-    health_check_period_s: Optional[float] = None,
-    health_check_timeout_s: Optional[float] = None,
+    ray_actor_options: Optional[Dict] = DEFAULT.VALUE,
+    user_config: Optional[Any] = DEFAULT.VALUE,
+    max_concurrent_queries: Optional[int] = DEFAULT.VALUE,
+    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = DEFAULT.VALUE,
+    graceful_shutdown_wait_loop_s: Optional[float] = DEFAULT.VALUE,
+    graceful_shutdown_timeout_s: Optional[float] = DEFAULT.VALUE,
+    health_check_period_s: Optional[float] = DEFAULT.VALUE,
+    health_check_timeout_s: Optional[float] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
