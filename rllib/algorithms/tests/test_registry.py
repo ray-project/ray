@@ -1,6 +1,10 @@
 import unittest
 
-from ray.rllib.algorithms.registry import POLICIES, get_policy_class, get_policy_class_name
+from ray.rllib.algorithms.registry import (
+    POLICIES,
+    get_policy_class,
+    get_policy_class_name,
+)
 
 
 class TestPolicies(unittest.TestCase):
@@ -10,6 +14,7 @@ class TestPolicies(unittest.TestCase):
 
     def test_get_eager_traced_class_name(self):
         from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
+
         traced = PPOTF2Policy.with_tracing()
         self.assertEqual(get_policy_class_name(traced), "PPOTF2Policy")
 
