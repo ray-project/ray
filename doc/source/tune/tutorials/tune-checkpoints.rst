@@ -1,17 +1,41 @@
 A Guide To Using Checkpoints
 ============================
 
+.. _tune-two-types-of-ckpt:
+
+Two different types of Tune checkpoints
+---------------------------------------
+
+There are mainly two types of checkpoints that Tune maintains: Experiment checkpoint and Trial
+checkpoint.
+Experiment checkpoint saves experiment state - this includes Searcher/Scheduler state,
+the trials that belong to each trial state category (PENDING, RUNNING, TERMINATED, ERROR) and the
+metadata that is pertained to each trial (hyperparameter configuration, trial logdir etc).
+
+Experiment checkpoint is done by the driver. The frequency at which it is conducted is automatically
+adjusted so that at least 95% of the time is used for handling training results and scheduling.
+It can also be configured. Please see TUNE_GLOBAL_CHECKPOINT_S at
+:ref:`Ray Tune env var <tune-env-vars>`.
+
+The purpose of Experiment checkpoint is to maintain a global state from which the whole Tune experiment
+can be resumed from once it is interrupted or failed.
+It is also useful after a Tune experiment is done and one wants to load the Experiment checkpoint for
+post-analysis.
+
+Trial checkpoint is the per trial state that is directly saved by the trainable itself. Model and model
+state is the most common form of Trial checkpoint. This is useful mostly for two reasons:
+
+- Some HPO algorithms such as HyperBand and PBT requires this capability in order to constantly pause
+  and restart certain trials.
+- This allows for training progress to be saved periodically so that a particular trial can be restarted
+  from its latest checkpoint if the machine it is trained on dies.
+
 .. _tune-checkpoint-syncing:
 
 Checkpointing and synchronization
 ---------------------------------
 
-When running a hyperparameter search, Tune can automatically and periodically save/checkpoint your model.
-This allows you to:
-
-* save intermediate models throughout training
-* use pre-emptible machines (by automatically restoring from last checkpoint)
-* Pausing trials when using Trial Schedulers such as HyperBand and PBT.
+This topic is mostly relevant to Trial checkpoint.
 
 Tune stores checkpoints on the node where the trials are executed. If you are training on more than one node,
 this means that some trial checkpoints may be on the head node and others are not.
