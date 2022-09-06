@@ -276,6 +276,8 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._apply_agg(lambda col: col.count(), on)
 
     def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        from ray.data.extensions import TensorArrayElement
+
         pd = lazy_import_pandas()
         if on is not None and not isinstance(on, str):
             raise ValueError(
@@ -287,13 +289,18 @@ class PandasBlockAccessor(TableBlockAccessor):
             return None
 
         col = self._table[on]
-        if col.isnull().all():
+        all_nan = col.isnull().all()
+        if isinstance(all_nan, TensorArrayElement):
+            all_nan = np.all(all_nan)
+        if all_nan:
             # Short-circuit on an all-null column, returning None. This is required for
             # sum() since it will otherwise return 0 when summing on an all-null column,
             # which is not what we want.
             return None
         val = col.sum(skipna=ignore_nulls)
-        if pd.isnull(val):
+        if isinstance(val, TensorArrayElement):
+            val = np.asarray(val)
+        elif pd.isnull(val):
             return None
         return val
 
