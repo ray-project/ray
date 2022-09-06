@@ -170,7 +170,7 @@ message PinObjectIDsRequest {
   // For object IDs that were generated dynamically during task execution. The
   // owner learns of these ObjectRefs at task execution time instead of at
   // ray.put() or f.remote() time. This is the outer ObjectID that the
-  // dynamically generated ObjectRef is stored inside. We need this information
+  // dynamically generated ObjectRefs are stored inside. We need this information
   // so that we can notify the owner about the nested ObjectRefs, in case the
   // owner does not know about them yet.
   optional bytes generator_id = 3;
