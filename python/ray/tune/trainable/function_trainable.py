@@ -11,7 +11,7 @@ from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional, Type, Union
 
-from ray.air._internal.util import StartTraceback, skip_exceptions
+from ray.air._internal.util import StartTraceback, skip_exceptions, RunnerThread
 from ray.tune.resources import Resources
 from six.moves import queue
 
@@ -40,7 +40,6 @@ logger = logging.getLogger(__name__)
 # new results after signaling the reporter to continue
 RESULT_FETCH_TIMEOUT = 0.2
 
-ERROR_REPORT_TIMEOUT = 10
 ERROR_FETCH_TIMEOUT = 1
 
 NULL_MARKER = ".null_marker"
@@ -276,42 +275,6 @@ class _StatusReporter:
         return self._trial_resources
 
 
-class _RunnerThread(threading.Thread):
-    """Supervisor thread that runs your script."""
-
-    def __init__(self, entrypoint, error_queue):
-        threading.Thread.__init__(self)
-        self._entrypoint = entrypoint
-        self._error_queue = error_queue
-        self.daemon = True
-
-    def run(self):
-        try:
-            self._entrypoint()
-        except StopIteration:
-            logger.debug(
-                (
-                    "Thread runner raised StopIteration. Interpreting it as a "
-                    "signal to terminate the thread without error."
-                )
-            )
-        except Exception as e:
-            logger.error("Runner Thread raised error")
-            try:
-                # report the error but avoid indefinite blocking which would
-                # prevent the exception from being propagated in the unlikely
-                # case that something went terribly wrong
-                self._error_queue.put(e, block=True, timeout=ERROR_REPORT_TIMEOUT)
-            except queue.Full:
-                logger.critical(
-                    (
-                        "Runner Thread was unable to report error to main "
-                        "function runner thread. This means a previous error "
-                        "was not processed. This should never happen."
-                    )
-                )
-
-
 @DeveloperAPI
 class FunctionTrainable(Trainable):
     """Trainable that runs a user function reporting results.
@@ -370,7 +333,9 @@ class FunctionTrainable(Trainable):
                 raise StartTraceback from e
 
         # the runner thread is not started until the first call to _train
-        self._runner = _RunnerThread(entrypoint, self._error_queue)
+        self._runner = RunnerThread(
+            target=entrypoint, error_queue=self._error_queue, daemon=True
+        )
         # if not alive, try to start
         self._status_reporter._start()
         try:

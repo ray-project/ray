@@ -22,3 +22,6 @@ TENSOR_COLUMN_NAME = "__value__"
 # The maximum length of strings returned by `__repr__` for AIR objects constructed with
 # default values.
 MAX_REPR_LENGTH = int(80 * 1.5)
+
+# Timeout used when putting exceptions raised by runner thread into the queue.
+_ERROR_REPORT_TIMEOUT = 10

@@ -1,4 +1,5 @@
 import os
+import logging
 import platform
 import queue
 import threading
@@ -9,10 +10,10 @@ from enum import Enum, auto
 from typing import Callable, Dict, Optional, Type, Union
 
 import ray
+from ray.air._internal.util import StartTraceback, skip_exceptions, RunnerThread
 from ray.air.checkpoint import Checkpoint
 from ray.data import Dataset, DatasetPipeline
 from ray.train._internal.accelerator import Accelerator
-from ray.train._internal.utils import PropagatingThread
 from ray.train.constants import (
     DATE,
     DETAILED_AUTOFILLED_KEYS,
@@ -20,6 +21,7 @@ from ray.train.constants import (
     NODE_IP,
     PID,
     RESULT_FETCH_TIMEOUT,
+    ERROR_FETCH_TIMEOUT,
     TIME_THIS_ITER_S,
     TIME_TOTAL_S,
     TIMESTAMP,
@@ -32,6 +34,9 @@ from ray.train.session import _TrainSessionImpl
 class TrainingResultType(Enum):
     REPORT = auto()
     CHECKPOINT = auto()
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -71,8 +76,6 @@ class _TrainSession:
 
         self.dataset_shard = dataset_shard
 
-        # The Thread object that is running the training function.
-        self.training_thread = PropagatingThread(target=training_func, daemon=True)
         self.world_rank = world_rank
         self.local_rank = local_rank
         self.world_size = world_size
@@ -101,6 +104,16 @@ class _TrainSession:
 
         # Queue for sending results across threads.
         self.result_queue = queue.Queue(1)
+
+        # Queue for raising exceptions from runner thread to main thread.
+        # The error queue has a max size of one to prevent stacking error and force
+        # error reporting to block until finished.
+        self.error_queue = queue.Queue(1)
+
+        # The Thread object that is running the training function.
+        self.training_thread = RunnerThread(
+            target=training_func, daemon=True, error_queue=self.error_queue
+        )
 
         # Autofilled metrics attributes.
         self.detailed_autofilled_metrics = detailed_autofilled_metrics
@@ -168,6 +181,19 @@ class _TrainSession:
             except queue.Empty:
                 pass
 
+        # check if error occurred inside the thread runner.
+        if result is None:
+            # only raise an error from the runner if all results are consumed
+            self._report_thread_runner_error(block=True)
+        else:
+            if not self.error_queue.empty():
+                logger.debug(
+                    (
+                        "Runner error waiting to be raised in main thread. "
+                        "Logging all available results first."
+                    )
+                )
+
         # Release the lock to trigger training to continue.
         self.continue_lock.release()
 
@@ -234,6 +260,13 @@ class _TrainSession:
         result = result.copy()
         result.update(auto_filled_metrics)
         return result
+
+    def _report_thread_runner_error(self, block=False):
+        try:
+            e = self.error_queue.get(block=block, timeout=ERROR_FETCH_TIMEOUT)
+            raise StartTraceback from skip_exceptions(e)
+        except queue.Empty:
+            pass
 
     def checkpoint(self, **kwargs):
         """Adds kwargs to the queue to be consumed by main thread.
