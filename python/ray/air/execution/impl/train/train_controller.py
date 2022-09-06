@@ -8,13 +8,13 @@ from ray.air.execution.controller import Controller
 
 from ray.air.execution.future import TypedFuture
 from ray.air.execution.impl.train.train_result import (
-    TrainTrainingResult,
-    TrainInitResult,
-    TrainStartResult,
-    TrainSetupIPResult,
+    TrainTrainingEvent,
+    TrainInitEvent,
+    TrainStartEvent,
+    TrainSetupIPEvent,
 )
 from ray.air.execution.resources.request import ResourceRequest
-from ray.air.execution.result import ExecutionResult
+from ray.air.execution.event import ExecutionEvent
 from ray.train import BackendConfig
 from ray.train._internal.backend_executor import TrainBackendError
 from ray.train._internal.dataset_spec import RayDatasetSpec
@@ -170,7 +170,7 @@ class TrainController(Controller):
                         future=actor_info.actor._RayTrainWorker__execute.remote(
                             _get_ip
                         ),
-                        cls=TrainSetupIPResult,
+                        cls=TrainSetupIPEvent,
                     )
                 ]
             )
@@ -188,26 +188,26 @@ class TrainController(Controller):
         self._live_actors.remove(actor_info)
 
     def actor_results(
-        self, actor_infos: List[ActorInfo], results: List[ExecutionResult]
+        self, actor_infos: List[ActorInfo], results: List[ExecutionEvent]
     ):
         """Handle result."""
         # main_result = results[0]
         #
-        # if isinstance(main_result, TrainTrainingResult):
+        # if isinstance(main_result, TrainTrainingEvent):
         #     self._handle_training_result(main_result)
         #     return
 
         for actor_info, result in zip(actor_infos, results):
-            if isinstance(result, TrainSetupIPResult):
+            if isinstance(result, TrainSetupIPEvent):
                 self._handle_ip_result(actor_info=actor_info, result=result)
-            elif isinstance(result, TrainTrainingResult):
+            elif isinstance(result, TrainTrainingEvent):
                 self._handle_training_result(actor_info=actor_info, result=result)
 
-    def _handle_ip_result(self, actor_info: ActorInfo, result: TrainSetupIPResult):
+    def _handle_ip_result(self, actor_info: ActorInfo, result: TrainSetupIPEvent):
         self._actors_to_ip[actor_info] = result.ip
 
     def _handle_training_result(
-        self, actor_info: ActorInfo, result: TrainTrainingResult
+        self, actor_info: ActorInfo, result: TrainTrainingEvent
     ):
         done = result.result is None
 
@@ -215,7 +215,7 @@ class TrainController(Controller):
             self._actions = {ai: [action.Stop()] for ai in self._live_actors}
         else:
             result_data = self._backend.decode_data(result.result.data)
-            print("Result data", result_data)
+            print("Event data", result_data)
             self._actions[actor_info].append(
                 action.Continue(
                     futures=[
@@ -223,7 +223,7 @@ class TrainController(Controller):
                             future=actor_info.actor._RayTrainWorker__execute.remote(
                                 _get_next_result
                             ),
-                            cls=TrainTrainingResult,
+                            cls=TrainTrainingEvent,
                         )
                     ]
                 )
@@ -273,13 +273,13 @@ class TrainController(Controller):
                                     encode_data_fn=self._backend.encode_data,
                                     use_detailed_autofilled_metrics=False,
                                 ),
-                                cls=TrainInitResult,
+                                cls=TrainInitEvent,
                             ),
                             TypedFuture(
                                 future=actor_info.actor._RayTrainWorker__execute.remote(
                                     _start_training
                                 ),
-                                cls=TrainStartResult,
+                                cls=TrainStartEvent,
                             ),
                         ]
                     )
@@ -293,7 +293,7 @@ class TrainController(Controller):
                                 future=actor_info.actor._RayTrainWorker__execute.remote(
                                     _get_next_result
                                 ),
-                                cls=TrainTrainingResult,
+                                cls=TrainTrainingEvent,
                             )
                         ]
                     )

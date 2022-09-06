@@ -2,19 +2,19 @@ from typing import Dict, Union
 
 from dataclasses import dataclass
 
-from ray.air.execution.result import ExecutionResult
+from ray.air.execution.event import FutureResult
 
 
 @dataclass
-class TuneTrainingResult(ExecutionResult):
+class TuneTrainingEvent(FutureResult):
     metrics: Dict
 
 
 @dataclass
-class TuneRestoringResult(ExecutionResult):
+class TuneRestoringEvent(FutureResult):
     pass
 
 
 @dataclass
-class TuneSavingResult(ExecutionResult):
+class TuneSavingEvent(FutureResult):
     dir_or_data: Union[str, Dict]

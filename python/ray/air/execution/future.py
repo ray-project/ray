@@ -2,13 +2,13 @@ import ray
 from typing import Type
 
 from dataclasses import dataclass
-from ray.air.execution.result import ExecutionResult
+from ray.air.execution.event import ExecutionEvent
 
 
 @dataclass
 class TypedFuture:
     future: ray.ObjectRef
-    cls: Type[ExecutionResult]
+    cls: Type[ExecutionEvent]
 
     def __hash__(self):
         return self.future.__hash__()

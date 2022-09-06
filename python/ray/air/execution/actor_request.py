@@ -2,7 +2,6 @@ from dataclasses import dataclass
 
 from typing import Dict, Type
 
-import ray
 from ray.air.execution.resources.request import ResourceRequest, ReadyResource
 
 
@@ -18,8 +17,7 @@ class ActorRequest:
 
 @dataclass
 class ActorInfo:
-    request: ActorRequest
-    actor: ray.actor.ActorHandle
+    actor_request: ActorRequest
     used_resource: ReadyResource
 
     def __hash__(self):

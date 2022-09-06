@@ -21,7 +21,7 @@ def _report_progress(
         reporter.report(trials, done, sched_debug_str, "")
 
 
-def tune_run(manager: ActorManager, tune_controller: TuneController):
+def tune_run(tune_controller: TuneController):
     progress_reporter = _detect_reporter()
     progress_reporter.setup(
         start_time=time.time(),
@@ -29,10 +29,8 @@ def tune_run(manager: ActorManager, tune_controller: TuneController):
         metric=None,
         mode=None,
     )
-    while not manager.is_finished():
-        manager.step()
+    while not tune_controller.is_finished():
+        tune_controller.step()
         _report_progress(tune_controller, progress_reporter)
 
     _report_progress(tune_controller, progress_reporter, done=True)
-
-    manager.step_until_finished()

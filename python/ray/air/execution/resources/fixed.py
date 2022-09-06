@@ -45,6 +45,9 @@ class FixedResourceManager(ResourceManager):
     def request_resources(self, resources: ResourceRequest):
         pass
 
+    def cancel_resource_request(self, resources: ResourceRequest):
+        pass
+
     def has_resources_ready(self, resources: ResourceRequest) -> bool:
         available_resources = self._available_resources
         all_resources = _sum_bundle_resources(resources.bundles)

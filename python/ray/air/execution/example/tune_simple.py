@@ -23,8 +23,4 @@ tune_controller = TuneController(
     search_alg=BasicVariantGenerator(max_concurrent=4),
 )
 fixed_resource_manager = FixedResourceManager(total_resources={"CPU": 4})
-manager = ActorManager(
-    controller=tune_controller, resource_manager=fixed_resource_manager
-)
-
-tune_run(manager=manager, tune_controller=tune_controller)
+tune_run(tune_controller=tune_controller)

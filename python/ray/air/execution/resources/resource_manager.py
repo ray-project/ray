@@ -15,6 +15,10 @@ class ResourceManager(abc.ABC):
         """Request resources, e.g. schedule placement group."""
         raise NotImplementedError
 
+    def cancel_resource_request(self, resources: ResourceRequest):
+        """Request resources, e.g. schedule placement group."""
+        raise NotImplementedError
+
     def has_resources_ready(self, resources: ResourceRequest) -> bool:
         """Returns True if resources for the given request are available"""
         raise NotImplementedError

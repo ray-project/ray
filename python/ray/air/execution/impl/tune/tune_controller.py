@@ -1,21 +1,22 @@
 from collections import defaultdict
-from typing import List, Type, Optional, Dict
+from typing import Optional, Type
 
+import ray.actor
 from ray import tune
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
-from ray.air.execution import action
+from ray.air.execution.actor_manager import ActorManager
 from ray.air.execution.actor_request import ActorRequest, ActorInfo
 from ray.air.execution.controller import Controller
 
 # Legacy tune
-from ray.air.execution.future import TypedFuture
 from ray.air.execution.impl.tune.tune_result import (
-    TuneTrainingResult,
-    TuneSavingResult,
-    TuneRestoringResult,
+    TuneTrainingEvent,
+    TuneSavingEvent,
+    TuneRestoringEvent,
 )
+from ray.air.execution.resources.fixed import FixedResourceManager
 from ray.air.execution.resources.request import ResourceRequest
-from ray.air.execution.result import ExecutionResult
+from ray.air.execution.event import FutureResult, FutureFailed, ExecutionEvent
 from ray.tune.callback import CallbackList
 from ray.tune.result import RESULT_DUPLICATE, DONE, SHOULD_CHECKPOINT
 from ray.tune.trainable import Trainable
@@ -35,6 +36,10 @@ class TuneController(Controller):
         search_alg: Optional[SearchAlgorithm] = None,
         scheduler: Optional[TrialScheduler] = None,
     ):
+        self._actor_manager = ActorManager(
+            resource_manager=FixedResourceManager({"CPU": 8})
+        )
+
         self._param_space = param_space
 
         self._all_trials = []
@@ -66,21 +71,25 @@ class TuneController(Controller):
             self._searcher.is_finished() and not self._live_actors
         ) or self._stopper.stop_all()
 
-    def _create_trial(self) -> Optional[Trial]:
-        return self._searcher.next_trial()
+    def next_event(self) -> ExecutionEvent:
+        return self._actor_manager.next_event()
 
-    def get_actor_requests(self) -> List[ActorRequest]:
-        buffered_requests = self._buffered_actor_requests
+    def on_step_begin(self) -> None:
+        self._create_new_trials()
+
+    def on_step_end(self) -> None:
+        # Todo: checkpoint etc
+        pass
+
+    def _create_new_trials(self) -> None:
+        requests = self._buffered_actor_requests
         self._buffered_actor_requests = []
 
-        trial = self._create_trial()
-        if not trial:
-            return buffered_requests
-
-        trial.set_status(Trial.PENDING)
-        requests = []
+        trial = self._searcher.next_trial()
         while trial:
+            trial.set_status(Trial.PENDING)
             trial.init_logdir()
+
             actor_request = ActorRequest(
                 cls=trial.get_trainable_cls(),
                 kwargs={
@@ -94,53 +103,45 @@ class TuneController(Controller):
             requests.append(actor_request)
             self._pending_actor_requests[actor_request] = trial
             self._all_trials.append(trial)
-            trial = self._create_trial()
+            self._actor_manager.add_actor(actor_request)
+            trial = self._searcher.next_trial()
 
-        return requests + buffered_requests
-
-    def actor_started(self, actor_info: ActorInfo) -> None:
+    def actor_started(
+        self, actor: ray.actor.ActorHandle, actor_info: ActorInfo
+    ) -> None:
         """Register actor start. Return immediate decision."""
-        trial = self._pending_actor_requests.pop(actor_info.request)
-        self._live_actors[actor_info] = trial
+        trial = self._pending_actor_requests.pop(actor_info.actor_request)
+        self._live_actors[actor] = trial
 
         trial.set_status(Trial.RUNNING)
         # Todo: Let's get rid of trial.runner completely
-        trial.set_runner(actor_info.actor)
+        trial.set_runner(actor)
 
         self._callbacks.on_trial_start(
             iteration=0, trials=self._all_trials, trial=trial
         )
 
         if trial.checkpoint and trial.checkpoint.dir_or_data:
-            self._actions[actor_info].append(
-                action.Continue(
-                    futures=[
-                        TypedFuture(
-                            future=actor_info.actor.restore.remote(
-                                trial.checkpoint.dir_or_data, trial.checkpoint.node_ip
-                            ),
-                            cls=TuneRestoringResult,
-                        )
-                    ]
-                )
+            self._actor_manager.track_future(
+                actor=actor,
+                future=actor.restore.remote(
+                    trial.checkpoint.dir_or_data, trial.checkpoint.node_ip
+                ),
+                cls=TuneRestoringEvent,
             )
 
-        self._actions[actor_info].append(
-            action.Continue(
-                futures=[
-                    TypedFuture(
-                        future=actor_info.actor.train.remote(), cls=TuneTrainingResult
-                    )
-                ]
-            )
+        self._actor_manager.track_future(
+            actor=actor, future=actor.train.remote(), cls=TuneTrainingEvent
         )
 
-    def actor_failed(self, actor_info: ActorInfo, exception: Exception) -> None:
+    def actor_failed(
+        self, actor: ray.actor.ActorHandle, actor_info: ActorInfo, exception: Exception
+    ) -> None:
         """Register actor failure. Return immediate decision."""
-        trial = self._live_actors.pop(actor_info)
+        trial = self._live_actors.pop(actor)
 
-        self._actors_to_pause.discard(actor_info)
-        self._actors_to_terminate.discard(actor_info)
+        self._actors_to_pause.discard(actor)
+        self._actors_to_terminate.discard(actor)
 
         trial.set_status(Trial.ERROR)
         # Todo: Let's get rid of trial.runner completely
@@ -152,33 +153,34 @@ class TuneController(Controller):
             iteration=0, trials=self._all_trials, trial=trial
         )
 
-    def actor_stopped(self, actor_info: ActorInfo):
-        trial = self._live_actors.pop(actor_info)
+    def actor_stopped(self, actor: ray.actor.ActorHandle, actor_info: ActorInfo):
+        trial = self._live_actors.pop(actor)
         trial.set_runner(None)
 
-        if actor_info in self._actors_to_pause:
-            self._actors_to_pause.remove(actor_info)
-            self._pending_actor_requests[actor_info.request] = trial
-            self._buffered_actor_requests.append(actor_info.request)
+        if actor in self._actors_to_pause:
+            self._actors_to_pause.remove(actor)
+            self._pending_actor_requests[actor_info.actor_request] = trial
+            self._buffered_actor_requests.append(actor_info.actor_request)
             trial.set_status(Trial.PAUSED)
-        elif actor_info in self._actors_to_terminate:
-            self._actors_to_terminate.remove(actor_info)
+        elif actor in self._actors_to_terminate:
+            self._actors_to_terminate.remove(actor)
             trial.set_status(Trial.TERMINATED)
 
-    def actor_results(
-        self, actor_infos: List[ActorInfo], results: List[ExecutionResult]
-    ):
-        """Handle result."""
-        for actor_info, result in zip(actor_infos, results):
-            if isinstance(result, TuneTrainingResult):
-                self._handle_training_result(actor_info, result)
-            elif isinstance(result, TuneSavingResult):
-                self._handle_saving_result(actor_info, result)
+    def future_result(self, result: FutureResult):
+        if isinstance(result, FutureFailed):
+            self._actor_manager.remove_actor(
+                actor=result.actor, resolve_futures=False, exception=result.exception
+            )
+            return
 
-    def _handle_training_result(
-        self, actor_info: ActorInfo, result: TuneTrainingResult
-    ):
-        trial = self._live_actors[actor_info]
+        if isinstance(result, TuneTrainingEvent):
+            self._handle_training_result(result=result)
+        elif isinstance(result, TuneSavingEvent):
+            self._handle_saving_result(result=result)
+
+    def _handle_training_result(self, result: TuneTrainingEvent):
+        actor = result.actor
+        trial = self._live_actors[actor]
 
         done = result.metrics.get(DONE, False) or result.metrics.get(
             RESULT_DUPLICATE, False
@@ -186,18 +188,15 @@ class TuneController(Controller):
         trial.last_result = result.metrics.copy()
 
         if result.metrics.get(SHOULD_CHECKPOINT, False):
-            future = actor_info.actor.save.remote()
+            future = actor.save.remote()
             trial.saving_to = _TrackedCheckpoint(
                 dir_or_data=future,
                 storage_mode=CheckpointStorage.PERSISTENT,
                 metrics=trial.last_result,
             )
-            self._actions[actor_info].append(
-                action.Continue(
-                    futures=[TypedFuture(future=future, cls=TuneSavingResult)]
-                )
+            self._actor_manager.track_future(
+                actor=actor, future=future, cls=TuneSavingEvent
             )
-            self._actions[actor_info].append(action.Wait())
 
         if done:
             self._scheduler.on_trial_complete(None, trial=trial, result=result.metrics)
@@ -220,31 +219,20 @@ class TuneController(Controller):
             )
 
         if decision == TrialScheduler.STOP:
-            self._actors_to_terminate.add(actor_info)
-            act = action.Stop()
+            self._actors_to_terminate.add(actor)
+            self._actor_manager.remove_actor(actor=actor, resolve_futures=True)
         elif decision == TrialScheduler.PAUSE:
-            self._actors_to_pause.add(actor_info)
-            act = action.Stop()
+            self._actors_to_pause.add(actor)
+            self._actor_manager.remove_actor(actor=actor, resolve_futures=True)
         elif decision == TrialScheduler.NOOP:
-            act = None
+            pass
         else:
-            act = action.Continue(
-                futures=[
-                    TypedFuture(
-                        future=actor_info.actor.train.remote(), cls=TuneTrainingResult
-                    )
-                ]
+            self._actor_manager.track_future(
+                actor=actor, future=actor.train.remote(), cls=TuneTrainingEvent
             )
 
-        if act:
-            self._actions[actor_info].append(act)
-
-    def _handle_saving_result(self, actor_info: ActorInfo, result: TuneSavingResult):
-        trial = self._live_actors[actor_info]
+    def _handle_saving_result(self, result: TuneSavingEvent):
+        actor = result.actor
+        trial = self._live_actors[actor]
         trial.saving_to.dir_or_data = result.dir_or_data
         trial.on_checkpoint(trial.saving_to)
-
-    def get_actions(self) -> Dict[ActorInfo, List[action.Action]]:
-        actions = self._actions
-        self._actions = defaultdict(list)
-        return actions
