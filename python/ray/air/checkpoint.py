@@ -2,7 +2,6 @@ import contextlib
 import io
 import logging
 import os
-import platform
 import shutil
 import tarfile
 import tempfile
@@ -10,7 +9,6 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict, Iterator, Optional, Tuple, Union, TYPE_CHECKING
 
-import ray
 from ray import cloudpickle as pickle
 from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.air._internal.filelock import TempFileLock
