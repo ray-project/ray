@@ -28,7 +28,4 @@ Instead, we should first schedule all remote calls, which are then processed in 
 
 Other ``ray.get()`` related anti-patterns are:
 
-.. toctree::
-    :maxdepth: 1
-
-    unnecessary-ray-get
+- :doc:`unnecessary-ray-get`

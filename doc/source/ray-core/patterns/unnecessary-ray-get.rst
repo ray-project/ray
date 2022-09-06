@@ -37,7 +37,4 @@ The ``reduce`` worker will implicitly call ``ray.get()`` to fetch the actual rol
 
 Other ``ray.get()`` related anti-patterns are:
 
-.. toctree::
-    :maxdepth: 1
-
-    ray-get-loop
+- :doc:`ray-get-loop`
