@@ -155,10 +155,8 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   }
   if (ConfigInternal::Instance().job_config_metadata.size()) {
     auto metadata_ptr = job_config.mutable_metadata();
-    for (const auto &[key, _] : ConfigInternal::Instance().job_config_metadata.items()) {
-      RAY_CHECK(ConfigInternal::Instance().job_config_metadata.at(key).is_string());
-      (*metadata_ptr)[key] =
-          ConfigInternal::Instance().job_config_metadata.at(key).get<std::string>();
+    for (const auto &it : ConfigInternal::Instance().job_config_metadata) {
+      (*metadata_ptr)[it.first] = it.second;
     }
   }
   std::string serialized_job_config;

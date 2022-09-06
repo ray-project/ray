@@ -18,6 +18,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 #include "nlohmann/json.hpp"
 #include "ray/core_worker/common.h"
@@ -71,7 +72,7 @@ class ConfigInternal {
   rpc::JobConfig_ActorLifetime default_actor_lifetime =
       rpc::JobConfig_ActorLifetime_NON_DETACHED;
 
-  json job_config_metadata;
+  std::unordered_map<std::string, std::string> job_config_metadata;
 
   std::string ray_namespace = "";
 

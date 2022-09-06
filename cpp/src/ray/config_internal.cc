@@ -210,7 +210,8 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   if (job_config_json_string) {
     json job_config_json = json::parse(job_config_json_string);
     runtime_env = RuntimeEnv::Deserialize(job_config_json.at("runtime_env").dump());
-    job_config_metadata = job_config_json.at("metadata");
+    job_config_metadata = job_config_json.at("metadata")
+                              .get<std::unordered_map<std::string, std::string>>();
     RAY_CHECK(job_config_json.size() == 2);
   }
 };
