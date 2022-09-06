@@ -20,10 +20,7 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "nlohmann/json.hpp"
 #include "ray/core_worker/common.h"
-
-using json = nlohmann::json;
 
 namespace ray {
 namespace internal {

@@ -21,6 +21,7 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/strings/str_split.h"
+#include "nlohmann/json.hpp"
 
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
 
@@ -82,6 +83,8 @@ ABSL_FLAG(int,
           ray_runtime_env_hash,
           -1,
           "The computed hash of the runtime env for this worker.");
+
+using json = nlohmann::json;
 
 namespace ray {
 namespace internal {
