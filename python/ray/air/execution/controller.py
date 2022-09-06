@@ -1,3 +1,5 @@
+import abc
+
 import ray.actor
 from ray.air.execution.actor_request import ActorInfo
 from ray.air.execution.event import (
@@ -8,7 +10,10 @@ from ray.air.execution.event import (
 )
 
 
-class Controller:
+class Controller(abc.ABC):
+    """Convenience interface for actor/future managing libraries."""
+
+    @abc.abstractmethod
     def is_finished(self) -> bool:
         raise NotImplementedError
 
@@ -18,7 +23,34 @@ class Controller:
     def on_step_end(self) -> None:
         pass
 
+    @abc.abstractmethod
     def next_event(self) -> ExecutionEvent:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def actor_started(
+        self, actor: ray.actor.ActorHandle, actor_info: ActorInfo
+    ) -> None:
+        """Register actor start."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def actor_failed(
+        self, actor: ray.actor.ActorHandle, actor_info: ActorInfo, exception: Exception
+    ) -> None:
+        """Register actor failure."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def actor_stopped(
+        self, actor: ray.actor.ActorHandle, actor_info: ActorInfo
+    ) -> None:
+        """Register graceful actor stop (requested by contorller)."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def future_result(self, result: FutureResult):
+        """Handle result."""
         raise NotImplementedError
 
     def step(self):
@@ -39,25 +71,3 @@ class Controller:
                 self.actor_stopped(actor=event.actor, actor_info=event.actor_info)
         elif isinstance(event, FutureResult):
             self.future_result(result=event)
-
-    def actor_started(
-        self, actor: ray.actor.ActorHandle, actor_info: ActorInfo
-    ) -> None:
-        """Register actor start."""
-        raise NotImplementedError
-
-    def actor_failed(
-        self, actor: ray.actor.ActorHandle, actor_info: ActorInfo, exception: Exception
-    ) -> None:
-        """Register actor failure."""
-        raise NotImplementedError
-
-    def actor_stopped(
-        self, actor: ray.actor.ActorHandle, actor_info: ActorInfo
-    ) -> None:
-        """Register graceful actor stop (requested by contorller)."""
-        raise NotImplementedError
-
-    def future_result(self, result: FutureResult):
-        """Handle result."""
-        raise NotImplementedError

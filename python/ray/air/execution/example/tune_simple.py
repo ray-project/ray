@@ -1,5 +1,4 @@
 from ray import tune
-from ray.air.execution.actor_manager import ActorManager
 from ray.air.execution.impl.tune.progress_loop import tune_run
 from ray.air.execution.impl.tune.tune_controller import TuneController
 from ray.air.execution.resources.fixed import FixedResourceManager
@@ -21,6 +20,6 @@ tune_controller = TuneController(
         "fail": tune.grid_search([True, False]),
     },
     search_alg=BasicVariantGenerator(max_concurrent=4),
+    resource_manager=FixedResourceManager(total_resources={"CPU": 4}),
 )
-fixed_resource_manager = FixedResourceManager(total_resources={"CPU": 4})
 tune_run(tune_controller=tune_controller)

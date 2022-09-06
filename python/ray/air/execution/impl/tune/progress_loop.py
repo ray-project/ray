@@ -1,6 +1,5 @@
 import time
 
-from ray.air.execution.actor_manager import ActorManager
 from ray.air.execution.impl.tune.tune_controller import TuneController
 from ray.tune.progress_reporter import _detect_reporter, ProgressReporter
 

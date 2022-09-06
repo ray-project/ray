@@ -17,6 +17,7 @@ from ray.air.execution.impl.tune.tune_result import (
 from ray.air.execution.resources.fixed import FixedResourceManager
 from ray.air.execution.resources.request import ResourceRequest
 from ray.air.execution.event import FutureResult, FutureFailed, ExecutionEvent
+from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.tune.callback import CallbackList
 from ray.tune.result import RESULT_DUPLICATE, DONE, SHOULD_CHECKPOINT
 from ray.tune.trainable import Trainable
@@ -35,9 +36,10 @@ class TuneController(Controller):
         param_space: dict,
         search_alg: Optional[SearchAlgorithm] = None,
         scheduler: Optional[TrialScheduler] = None,
+        resource_manager: Optional[ResourceManager] = None,
     ):
         self._actor_manager = ActorManager(
-            resource_manager=FixedResourceManager({"CPU": 8})
+            resource_manager=resource_manager or FixedResourceManager({"CPU": 8})
         )
 
         self._param_space = param_space

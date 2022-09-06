@@ -1,15 +1,11 @@
 from ray import tune
 from ray.air import session, Checkpoint
-from ray.air.execution.actor_manager import ActorManager
 from ray.air.execution.impl.tune.progress_loop import tune_run
 from ray.air.execution.impl.tune.tune_controller import TuneController
 from ray.air.execution.resources.fixed import FixedResourceManager
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.trainable import wrap_function
-
-# THIS EXAMPLE DOES NOT WORK YET
-# Checkpointing is not fully implemented.
 
 
 class FrequentPausesScheduler(FIFOScheduler):
@@ -26,7 +22,7 @@ def train_fn(config):
 
     for i in range(start, 10):
         session.report(
-            {"metric": config["A"] - config["B"], "step": i, "done": i > 5},
+            {"metric": config["A"] - config["B"], "step": i, "done": i >= 5},
             checkpoint=Checkpoint.from_dict({"start": i}),
         )
 
@@ -39,10 +35,6 @@ tune_controller = TuneController(
     },
     search_alg=BasicVariantGenerator(max_concurrent=4),
     scheduler=FrequentPausesScheduler(),
+    resource_manager=FixedResourceManager(total_resources={"CPU": 4}),
 )
-fixed_resource_manager = FixedResourceManager(total_resources={"CPU": 4})
-manager = ActorManager(
-    controller=tune_controller, resource_manager=fixed_resource_manager
-)
-
-tune_run(manager=manager, tune_controller=tune_controller)
+tune_run(tune_controller=tune_controller)
