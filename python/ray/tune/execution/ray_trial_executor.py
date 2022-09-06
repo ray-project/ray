@@ -217,7 +217,7 @@ class RayTrialExecutor:
 
         self._has_cleaned_up_pgs = False
         self._reuse_actors = reuse_actors
-        # The maxlen will be updated when `set_max_pending_trials()` is called
+        # The maxlen will be updated when `setup(max_pending_trials)` is called
         self._cached_actor_pg = deque(maxlen=1)
         self._pg_manager = _PlacementGroupManager(prefix=_get_tune_pg_prefix())
         self._staged_trials = set()
@@ -235,16 +235,20 @@ class RayTrialExecutor:
         self._buffer_max_time_s = float(
             os.getenv("TUNE_RESULT_BUFFER_MAX_TIME_S", 100.0)
         )
+        self._trainable_kwargs = {}
 
-    def set_max_pending_trials(self, max_pending: int) -> None:
+    def setup(
+        self, max_pending_trials: int, trainable_kwargs: Optional[Dict] = None
+    ) -> None:
         if len(self._cached_actor_pg) > 0:
             logger.warning(
                 "Cannot update maximum number of queued actors for reuse "
                 "during a run."
             )
         else:
-            self._cached_actor_pg = deque(maxlen=max_pending)
-        self._pg_manager.set_max_staging(max_pending)
+            self._cached_actor_pg = deque(maxlen=max_pending_trials)
+        self._pg_manager.set_max_staging(max_pending_trials)
+        self._trainable_kwargs = trainable_kwargs or {}
 
     def set_status(self, trial: Trial, status: str) -> None:
         """Sets status and checkpoints metadata if needed.
@@ -376,6 +380,9 @@ class RayTrialExecutor:
             # with trainables that don't provide these keyword arguments
             kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
             kwargs["custom_syncer"] = trial.custom_syncer
+
+            if self._trainable_kwargs:
+                kwargs.update(self._trainable_kwargs)
 
             # Throw a meaningful error if trainable does not use the
             # new API
