@@ -74,14 +74,11 @@ def _explore(
                 or config[key] not in distribution
             ):
                 new_config[key] = random.choice(distribution)
-            elif random.random() > 0.5:
-                new_config[key] = distribution[
-                    max(0, distribution.index(config[key]) - 1)
-                ]
             else:
-                new_config[key] = distribution[
-                    min(len(distribution) - 1, distribution.index(config[key]) + 1)
-                ]
+                shift = random.choice([-1, 1])
+                new_idx = distribution.index(config[key]) + shift
+                new_idx = min(max(new_idx, 0), len(distribution) - 1)
+                new_config[key] = distribution[new_idx]
         else:
             if random.random() < resample_probability:
                 new_config[key] = (
@@ -89,10 +86,9 @@ def _explore(
                     if isinstance(distribution, Domain)
                     else distribution()
                 )
-            elif random.random() > 0.5:
-                new_config[key] = config[key] * 1.2
             else:
-                new_config[key] = config[key] * 0.8
+                perturbation_factors = [1.2, 0.8]
+                new_config[key] = config[key] * random.choice(perturbation_factors)
             if isinstance(config[key], int):
                 new_config[key] = int(new_config[key])
     if custom_explore_fn:
