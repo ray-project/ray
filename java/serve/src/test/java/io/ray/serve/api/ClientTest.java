@@ -7,6 +7,7 @@ import io.ray.serve.common.Constants;
 import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.handle.RayServeHandle;
+import io.ray.serve.poll.LongPollClientFactory;
 import io.ray.serve.util.CommonUtil;
 import java.util.HashMap;
 import java.util.Map;
@@ -51,6 +52,8 @@ public class ClientTest {
       RayServeHandle rayServeHandle = client.getHandle(endpointName, false);
       Assert.assertNotNull(rayServeHandle);
     } finally {
+      LongPollClientFactory.stop();
+      LongPollClientFactory.clearAllCache();
       if (!inited) {
         Ray.shutdown();
       }

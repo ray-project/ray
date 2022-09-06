@@ -100,6 +100,9 @@ public class LongPollClientTest {
       LongPollClientFactory.stop();
       Assert.assertFalse(LongPollClientFactory.isInitialized());
     } finally {
+      Serve.setInternalReplicaContext(null);
+      LongPollClientFactory.stop();
+      LongPollClientFactory.clearAllCache();
       if (!inited) {
         Ray.shutdown();
       }
@@ -108,9 +111,6 @@ public class LongPollClientTest {
       } else {
         System.setProperty("ray.job.namespace", previous_namespace);
       }
-      Serve.setInternalReplicaContext(null);
-      LongPollClientFactory.stop();
-      LongPollClientFactory.clearAllCache();
     }
   }
 }
