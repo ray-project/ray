@@ -114,6 +114,33 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
             text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
         )
 
+    @routes.get("/api/job_agent/jobs/{job_or_submission_id}/logs/tail")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def tail_job_logs(self, req: Request) -> Response:
+        job_or_submission_id = req.match_info["job_or_submission_id"]
+        job = await find_job_by_ids(
+            self._dashboard_agent.gcs_aio_client,
+            self.get_job_manager(),
+            job_or_submission_id,
+        )
+        if not job:
+            return Response(
+                text=f"Job {job_or_submission_id} does not exist",
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
+
+        if job.type is not JobType.SUBMISSION:
+            return Response(
+                text="Can only get logs of submission type jobs",
+                status=aiohttp.web.HTTPBadRequest.status_code,
+            )
+
+        ws = aiohttp.web.WebSocketResponse()
+        await ws.prepare(req)
+
+        async for lines in self._job_manager.tail_job_logs(job.submission_id):
+            await ws.send_str(lines)
+
     def get_job_manager(self):
         if not self._job_manager:
             self._job_manager = JobManager(self._dashboard_agent.gcs_aio_client)

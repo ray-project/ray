@@ -318,6 +318,35 @@ async def test_runtime_env_setup_failure(job_sdk_client):
 
 
 @pytest.mark.asyncio
+async def test_tail_job_logs_with_echo(job_sdk_client):
+    client = job_sdk_client
+
+    runtime_env = RuntimeEnv().to_dict()
+    request = validate_request_type(
+        {
+            "runtime_env": runtime_env,
+            "entrypoint": "for i in {0..99}; do echo Hello $i && sleep 0.1; done",
+        },
+        JobSubmitRequest,
+    )
+
+    submit_result = await client.submit_job_internal(request)
+    job_id = submit_result.submission_id
+
+    i = 0
+    async for lines in client.tail_job_logs(job_id):
+        print(lines, end="")
+        for line in lines.strip().split("\n"):
+            assert line.split(" ") == ["Hello", str(i)]
+            i += 1
+
+    check_result = await _check_job(
+        client=client, job_id=job_id, status=JobStatus.SUCCEEDED, timeout=120
+    )
+    assert check_result
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "ray_start_cluster_head",
     [

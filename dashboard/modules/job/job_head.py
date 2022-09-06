@@ -2,6 +2,7 @@ import dataclasses
 import json
 import logging
 import traceback
+from typing import Iterator
 
 import aiohttp.web
 from aiohttp.web import Request, Response
@@ -53,7 +54,7 @@ class JobAgentSubmissionClient:
         self,
         dashboard_agent_address: str,
     ):
-        self._address = dashboard_agent_address
+        self._agent_address = dashboard_agent_address
         self._session = aiohttp.ClientSession()
 
     async def _raise_error(self, resp: ClientResponse):
@@ -66,7 +67,7 @@ class JobAgentSubmissionClient:
         logger.debug(f"Submitting job with submission_id={req.submission_id}.")
 
         async with self._session.post(
-            self._address + "/api/job_agent/jobs/", json=dataclasses.asdict(req)
+            f"{self._agent_address}/api/job_agent/jobs/", json=dataclasses.asdict(req)
         ) as resp:
 
             if resp.status == 200:
@@ -77,7 +78,7 @@ class JobAgentSubmissionClient:
 
     async def get_job_info(self, job_id: str) -> JobDetails:
         async with self._session.get(
-            self._address + f"/api/job_agent/jobs/{job_id}"
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}"
         ) as resp:
             if resp.status == 200:
                 result_json = await resp.json()
@@ -87,13 +88,29 @@ class JobAgentSubmissionClient:
 
     async def get_job_logs(self, job_id: str) -> str:
         async with self._session.get(
-            self._address + f"/api/job_agent/jobs/{job_id}/logs"
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs"
         ) as resp:
             if resp.status == 200:
                 result_json = await resp.json()
                 return JobLogsResponse(**result_json).logs
             else:
                 self._raise_error(resp)
+
+    async def tail_job_logs(self, job_id: str) -> Iterator[str]:
+        """Get an iterator that follows the logs of a job."""
+        ws = await self._session.ws_connect(
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs/tail"
+        )
+
+        while True:
+            msg = await ws.receive()
+
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                yield msg.data
+            elif msg.type == aiohttp.WSMsgType.CLOSED:
+                break
+            elif msg.type == aiohttp.WSMsgType.ERROR:
+                pass
 
     async def close(self, ignore_error=True):
         try:
