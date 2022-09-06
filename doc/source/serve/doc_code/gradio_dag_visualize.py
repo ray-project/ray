@@ -25,7 +25,9 @@ def downloader(image_url: str) -> ImageFile.ImageFile:
 @serve.deployment
 class ImageClassifier:
     def __init__(self):
-        self.model = pipeline("image-classification", model="google/vit-base-patch16-224")
+        self.model = pipeline(
+            "image-classification", model="google/vit-base-patch16-224"
+        )
 
     def classify(self, image: ImageFile.ImageFile) -> Dict[str, float]:
         results = self.model(image)
