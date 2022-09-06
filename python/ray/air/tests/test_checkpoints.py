@@ -125,11 +125,11 @@ class CheckpointsConversionTest(unittest.TestCase):
         checkpoint = self._prepare_dict_checkpoint()
 
         # Convert into dict checkpoint
-        obj_ref = checkpoint.to_object_ref()
+        obj_ref = ray.put(checkpoint)
         self.assertIsInstance(obj_ref, ray.ObjectRef)
 
         # Create from dict
-        checkpoint = Checkpoint.from_object_ref(obj_ref)
+        checkpoint = ray.get(obj_ref)
         self.assertTrue(checkpoint._obj_ref)
 
         self._assert_dict_checkpoint(checkpoint)
@@ -264,10 +264,10 @@ class CheckpointsConversionTest(unittest.TestCase):
         checkpoint = self._prepare_fs_checkpoint()
 
         # Convert into obj ref checkpoint
-        obj_ref = checkpoint.to_object_ref()
+        obj_ref = ray.put(checkpoint)
 
         # Create from object ref
-        checkpoint = Checkpoint.from_object_ref(obj_ref)
+        checkpoint = ray.get(obj_ref)
         self.assertIsInstance(checkpoint._obj_ref, ray.ObjectRef)
 
         self._assert_fs_checkpoint(checkpoint)
@@ -338,10 +338,10 @@ class CheckpointsConversionTest(unittest.TestCase):
         checkpoint = self._prepare_dict_checkpoint()
 
         # Convert into obj ref checkpoint
-        obj_ref = checkpoint.to_object_ref()
+        obj_ref = ray.put(checkpoint)
 
         # Create from object ref
-        checkpoint = Checkpoint.from_object_ref(obj_ref)
+        checkpoint = ray.get(checkpoint)
 
         with checkpoint.as_directory() as checkpoint_dir:
             assert os.path.exists(checkpoint_dir)
@@ -485,8 +485,8 @@ class CheckpointsSerdeTest(unittest.TestCase):
         # store, but they have their own data representation (the obj ref).
         # We thus compare with the actual obj ref checkpoint.
         source_checkpoint = Checkpoint.from_dict({"checkpoint_data": 5})
-        obj_ref = source_checkpoint.to_object_ref()
-        checkpoint = Checkpoint.from_object_ref(obj_ref)
+        obj_ref = ray.put(source_checkpoint)
+        checkpoint = ray.get(obj_ref)
 
         self._testCheckpointSerde(checkpoint, *checkpoint.get_internal_representation())
 

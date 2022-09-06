@@ -94,9 +94,8 @@ class Checkpoint:
     *Other implementation notes:*
     When converting between different checkpoint formats, it is guaranteed
     that a full round trip of conversions (e.g. directory --> dict -->
-    obj ref --> directory) will recover the original checkpoint data.
-    There are no guarantees made about compatibility of intermediate
-    representations.
+    directory) will recover the original checkpoint data. There are no guarantees made
+    about compatibility of intermediate representations.
 
     New data can be added to a Checkpoint
     during conversion. Consider the following conversion:
@@ -119,13 +118,6 @@ class Checkpoint:
     this will only work if the "remote" task is scheduled on the
     same node or a node that also has access to the local data path (e.g.
     on a shared file system like NFS).
-
-    Checkpoints pointing to object store references will keep the
-    object reference in tact - this means that these checkpoints cannot
-    be properly deserialized on other Ray clusters or outside a Ray
-    cluster. If you need persistence across clusters, use the ``to_uri()``
-    or ``to_directory()`` methods to persist your checkpoints to disk.
-
     """
 
     @DeveloperAPI
@@ -134,7 +126,6 @@ class Checkpoint:
         local_path: Optional[str] = None,
         data_dict: Optional[dict] = None,
         uri: Optional[str] = None,
-        obj_ref: Optional[ray.ObjectRef] = None,
     ):
         # First, resolve file:// URIs to local paths
         if uri:
@@ -144,7 +135,7 @@ class Checkpoint:
 
         # Only one data type can be set at any time
         if local_path:
-            assert not data_dict and not uri and not obj_ref
+            assert not data_dict and not uri
             if not isinstance(local_path, (str, os.PathLike)) or not os.path.exists(
                 local_path
             ):
@@ -160,21 +151,14 @@ class Checkpoint:
                     f"instead."
                 )
         elif data_dict:
-            assert not local_path and not uri and not obj_ref
+            assert not local_path and not uri
             if not isinstance(data_dict, dict):
                 raise RuntimeError(
                     f"Cannot create checkpoint from dict as no "
                     f"dict was passed: {data_dict}"
                 )
-        elif obj_ref:
-            assert not local_path and not data_dict and not uri
-            if not isinstance(obj_ref, ray.ObjectRef):
-                raise RuntimeError(
-                    f"Cannot create checkpoint from object ref as no "
-                    f"object ref was passed: {obj_ref}"
-                )
         elif uri:
-            assert not local_path and not data_dict and not obj_ref
+            assert not local_path and not data_dict
             resolved = _get_external_path(uri)
             if not resolved:
                 raise RuntimeError(
@@ -188,7 +172,6 @@ class Checkpoint:
         self._local_path: Optional[str] = local_path
         self._data_dict: Optional[Dict[str, Any]] = data_dict
         self._uri: Optional[str] = uri
-        self._obj_ref: Optional[ray.ObjectRef] = obj_ref
 
     def __repr__(self):
         parameter, argument = self.get_internal_representation()
@@ -244,9 +227,6 @@ class Checkpoint:
         if self._data_dict:
             # If the checkpoint data is already a dict, return
             return self._data_dict
-        elif self._obj_ref:
-            # If the checkpoint data is an object reference, resolve
-            return ray.get(self._obj_ref)
         elif self._local_path or self._uri:
             # Else, checkpoint is either on FS or external storage
             with self.as_directory() as local_path:
@@ -300,29 +280,6 @@ class Checkpoint:
             raise RuntimeError(f"Empty data for checkpoint {self}")
 
     @classmethod
-    def from_object_ref(cls, obj_ref: ray.ObjectRef) -> "Checkpoint":
-        """Create checkpoint object from object reference.
-
-        Args:
-            obj_ref: ObjectRef pointing to checkpoint data.
-
-        Returns:
-            Checkpoint: checkpoint object.
-        """
-        return cls(obj_ref=obj_ref)
-
-    def to_object_ref(self) -> ray.ObjectRef:
-        """Return checkpoint data as object reference.
-
-        Returns:
-            ray.ObjectRef: ObjectRef pointing to checkpoint data.
-        """
-        if self._obj_ref:
-            return self._obj_ref
-        else:
-            return ray.put(self.to_dict())
-
-    @classmethod
     def from_directory(cls, path: str) -> "Checkpoint":
         """Create checkpoint object from directory.
 
@@ -353,38 +310,10 @@ class Checkpoint:
             local_path=other._local_path,
             data_dict=other._data_dict,
             uri=other._uri,
-            obj_ref=other._obj_ref,
         )
 
-    def _get_temporary_checkpoint_dir(self) -> str:
-        """Return the name for the temporary checkpoint dir."""
-        if self._obj_ref:
-            tmp_dir_path = tempfile.gettempdir()
-            checkpoint_dir_name = _CHECKPOINT_DIR_PREFIX + self._obj_ref.hex()
-            if platform.system() == "Windows":
-                # Max path on Windows is 260 chars, -1 for joining \
-                # Also leave a little for the del lock
-                del_lock_name = _get_del_lock_path("")
-                checkpoint_dir_name = (
-                    _CHECKPOINT_DIR_PREFIX
-                    + self._obj_ref.hex()[
-                        -259
-                        + len(_CHECKPOINT_DIR_PREFIX)
-                        + len(tmp_dir_path)
-                        + len(del_lock_name) :
-                    ]
-                )
-                if not checkpoint_dir_name.startswith(_CHECKPOINT_DIR_PREFIX):
-                    raise RuntimeError(
-                        "Couldn't create checkpoint directory due to length "
-                        "constraints. Try specifing a shorter checkpoint path."
-                    )
-            return os.path.join(tmp_dir_path, checkpoint_dir_name)
-        return _temporary_checkpoint_dir()
-
     def _to_directory(self, path: str) -> None:
-        if self._data_dict or self._obj_ref:
-            # This is a object ref or dict
+        if self._data_dict:
             data_dict = self.to_dict()
             if _FS_CHECKPOINT_KEY in data_dict:
                 for key in data_dict.keys():
@@ -439,7 +368,7 @@ class Checkpoint:
             str: Directory containing checkpoint data.
         """
         user_provided_path = path is not None
-        path = path if user_provided_path else self._get_temporary_checkpoint_dir()
+        path = path if user_provided_path else _temporary_checkpoint_dir()
         path = os.path.normpath(path)
 
         _make_dir(path, acquire_del_lock=not user_provided_path)
@@ -474,14 +403,6 @@ class Checkpoint:
         If the checkpoint is already a directory checkpoint, it will return
         the existing path. If it is not, it will create a temporary directory,
         which will be deleted after the context is exited.
-
-        If the checkpoint has been created from an object reference, the directory name
-        will be constant and equal to the object reference ID. This allows for multiple
-        processes to use the same files for improved performance. The directory
-        will be deleted after exiting the context only if no other processes are using
-        it.
-        In any other case, a new temporary directory will be created with each call
-        to ``as_directory``.
 
         Users should treat the returned checkpoint directory as read-only and avoid
         changing any data within it, as it might get deleted when exiting the context.
@@ -573,14 +494,14 @@ class Checkpoint:
     @DeveloperAPI
     def get_internal_representation(
         self,
-    ) -> Tuple[str, Union[dict, str, ray.ObjectRef]]:
+    ) -> Tuple[str, Union[dict, str]]:
         """Return tuple of (type, data) for the internal representation.
 
         The internal representation can be used e.g. to compare checkpoint
         objects for equality or to access the underlying data storage.
 
         The returned type is a string and one of
-        ``["local_path", "data_dict", "uri", "object_ref"]``.
+        ``["local_path", "data_dict", "uri"]``.
 
         The data is the respective data value.
 
@@ -596,8 +517,6 @@ class Checkpoint:
             return "data_dict", self._data_dict
         elif self._uri:
             return "uri", self._uri
-        elif self._obj_ref:
-            return "object_ref", self._obj_ref
         else:
             raise RuntimeError(
                 "Cannot get internal representation of empty checkpoint."

@@ -31,7 +31,7 @@ class BatchPredictor:
     ):
         self._checkpoint = checkpoint
         # Store as object ref so we only serialize it once for all map workers
-        self._checkpoint_ref = checkpoint.to_object_ref()
+        self._checkpoint_ref = ray.put(checkpoint)
         self._predictor_cls = predictor_cls
         self._predictor_kwargs = predictor_kwargs
         self._override_preprocessor: Optional[Preprocessor] = None
@@ -184,7 +184,7 @@ class BatchPredictor:
 
         class ScoringWrapper:
             def __init__(self):
-                checkpoint = Checkpoint.from_object_ref(checkpoint_ref)
+                checkpoint = ray.get(checkpoint_ref)
                 self._predictor = predictor_cls.from_checkpoint(
                     checkpoint, **predictor_kwargs
                 )
