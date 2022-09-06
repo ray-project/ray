@@ -2,7 +2,6 @@ from math import ceil
 import sys
 import time
 
-import psutil
 import pytest
 
 import ray
@@ -21,7 +20,6 @@ def ray_with_memory_monitor(shutdown_only):
 
     with ray.init(
         num_cpus=1,
-        object_store_memory=100 * 1024 * 1024,
         _system_config={
             "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
             "memory_monitor_interval_ms": memory_monitor_interval_ms,
@@ -85,9 +83,9 @@ class Leaker:
 
 
 def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> None:
-    node_mem = psutil.virtual_memory()
-    used = node_mem.total - node_mem.available
-    bytes_needed = node_mem.total * pct - used
+    max, available = ray._private.utils.get_memory_info()
+    used = max - available
+    bytes_needed = max * pct - used
     assert bytes_needed > 0, "node has less memory than what is requested"
     return bytes_needed
 
@@ -105,6 +103,26 @@ def has_metric_tagged_with_value(tag, value) -> bool:
                     if measure.double_value == value:
                         return True
     return False
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_memory_use_close_to_limit():
+    # makes sure the system can utilize the memory it claims to have available.
+
+    with ray.init(
+        num_cpus=1,
+        _system_config={
+            "memory_usage_threshold_fraction": 1,
+            "memory_monitor_interval_ms": 100,
+        },
+    ):
+        leaker = Leaker.remote()
+
+        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.95)
+        ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
 
 
 @pytest.mark.skipif(

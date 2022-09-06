@@ -450,6 +450,14 @@ def open_log(path, unbuffered=False, **kwargs):
         return stream
 
 
+def is_using_cgroup_limit(memory_limit: int) -> bool:
+    """
+    Returns:
+        true if the memory limit is set by cgroup
+    """
+    return memory_limit != psutil.virtual_memory().total
+
+
 def get_system_memory(
     # For cgroups v1:
     memory_limit_filename="/sys/fs/cgroup/memory/memory.limit_in_bytes",
@@ -461,31 +469,32 @@ def get_system_memory(
     Returns:
         The total amount of system memory in bytes.
     """
-    # Try to accurately figure out the memory limit if we are in a docker
-    # container. Note that this file is not specific to Docker and its value is
-    # often much larger than the actual amount of memory.
+    # Determine if cgroup (container) memory limit is set. Otherwise fall back to
+    # psutil.
+    psutil_memory_in_bytes = psutil.virtual_memory().total
+
     docker_limit = None
     if os.path.exists(memory_limit_filename):
         with open(memory_limit_filename, "r") as f:
             docker_limit = int(f.read().strip())
+            # In cgroup v1 if the value is equal to PAGE_COUNTER_MAX it means
+            # limit is not set. PAGE_COUNTER_MAX is typically very large
+            # and is different depending on OS page size.
+            if docker_limit > psutil_memory_in_bytes:
+                docker_limit = None
     elif os.path.exists(memory_limit_filename_v2):
         with open(memory_limit_filename_v2, "r") as f:
             # Don't forget to strip() the newline:
             max_file = f.read().strip()
             if max_file.isnumeric():
                 docker_limit = int(max_file)
+                assert docker_limit <= psutil_memory_in_bytes
             else:
                 # max_file is "max", i.e. is unset.
+                assert "max" == max_file
                 docker_limit = None
-
-    # Use psutil if it is available.
-    psutil_memory_in_bytes = psutil.virtual_memory().total
-
     if docker_limit is not None:
-        # We take the min because the cgroup limit is very large if we aren't
-        # in Docker.
-        return min(docker_limit, psutil_memory_in_bytes)
-
+        return docker_limit
     return psutil_memory_in_bytes
 
 
@@ -620,11 +629,39 @@ def get_num_cpus(
     return cpu_count
 
 
-def get_used_memory():
-    """Return the currently used system memory in bytes
+def get_memory_info(
+    # For cgroups v1:
+    memory_limit_filename="/sys/fs/cgroup/memory/memory.limit_in_bytes",
+    # For cgroups v2:
+    memory_limit_filename_v2="/sys/fs/cgroup/memory.max",
+):
+    """Return the current system memory information.
 
     Returns:
-        The total amount of used memory
+        Tuple of total system memory and available memory in bytes.
+    """
+    # TODO(clarng): compute the total system memory once since its not expected to
+    # change.
+    # TODO(clarng): use the same logic across python and c++ memory monitor
+    # implementation.
+    total = get_system_memory(memory_limit_filename, memory_limit_filename_v2)
+
+    is_cgroup_limit = is_using_cgroup_limit(total)
+    if is_cgroup_limit:
+        used = get_cgroup_used_memory()
+        assert used
+    else:
+        used = psutil.virtual_memory().used
+    available = total - used
+    return (total, available)
+
+
+def get_cgroup_used_memory():
+    """Gets the current memory usage if the system
+    is running inside a cgroup or container.
+
+    Returns:
+        Memory usage in bytes or None if the system is not running inside container
     """
     # Try to accurately figure out the memory usage if we are in a docker
     # container.
@@ -639,27 +676,7 @@ def get_used_memory():
     elif os.path.exists(memory_usage_filename_v2):
         with open(memory_usage_filename_v2, "r") as f:
             docker_usage = int(f.read())
-
-    # Use psutil if it is available.
-    psutil_memory_in_bytes = psutil.virtual_memory().used
-
-    if docker_usage is not None:
-        # We take the min because the cgroup limit is very large if we aren't
-        # in Docker.
-        return min(docker_usage, psutil_memory_in_bytes)
-
-    return psutil_memory_in_bytes
-
-
-def estimate_available_memory():
-    """Return the currently available amount of system memory in bytes.
-
-    Returns:
-        The total amount of available memory in bytes. Based on the used
-        and total memory.
-
-    """
-    return get_system_memory() - get_used_memory()
+    return docker_usage
 
 
 def get_shared_memory_bytes():

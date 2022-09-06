@@ -285,50 +285,67 @@ def test_get_system_memory():
     with tempfile.NamedTemporaryFile("w") as memory_limit_file:
         memory_limit_file.write("100")
         memory_limit_file.flush()
-        assert (
-            ray._private.utils.get_system_memory(
-                memory_limit_filename=memory_limit_file.name,
-                memory_limit_filename_v2="__does_not_exist__",
-            )
-            == 100
+        sys = ray._private.utils.get_system_memory(
+            memory_limit_filename=memory_limit_file.name,
+            memory_limit_filename_v2="__does_not_exist__",
         )
+        total, _ = ray._private.utils.get_memory_info(
+            memory_limit_filename=memory_limit_file.name,
+            memory_limit_filename_v2="__does_not_exist__",
+        )
+        assert sys == 100
+        assert ray._private.utils.is_using_cgroup_limit(sys)
+        assert sys == total
 
     # cgroups v1, high
     with tempfile.NamedTemporaryFile("w") as memory_limit_file:
         memory_limit_file.write(str(2 ** 64))
         memory_limit_file.flush()
         psutil_memory_in_bytes = psutil.virtual_memory().total
-        assert (
-            ray._private.utils.get_system_memory(
-                memory_limit_filename=memory_limit_file.name,
-                memory_limit_filename_v2="__does_not_exist__",
-            )
-            == psutil_memory_in_bytes
+        sys = ray._private.utils.get_system_memory(
+            memory_limit_filename=memory_limit_file.name,
+            memory_limit_filename_v2="__does_not_exist__",
         )
+        total, _ = ray._private.utils.get_memory_info(
+            memory_limit_filename=memory_limit_file.name,
+            memory_limit_filename_v2="__does_not_exist__",
+        )
+        assert sys == psutil_memory_in_bytes
+        assert not ray._private.utils.is_using_cgroup_limit(sys)
+        assert sys == total
+
     # cgroups v2, set
     with tempfile.NamedTemporaryFile("w") as memory_max_file:
         memory_max_file.write("100\n")
         memory_max_file.flush()
-        assert (
-            ray._private.utils.get_system_memory(
-                memory_limit_filename="__does_not_exist__",
-                memory_limit_filename_v2=memory_max_file.name,
-            )
-            == 100
+        sys = ray._private.utils.get_system_memory(
+            memory_limit_filename="__does_not_exist__",
+            memory_limit_filename_v2=memory_max_file.name,
         )
+        total, _ = ray._private.utils.get_memory_info(
+            memory_limit_filename="__does_not_exist__",
+            memory_limit_filename_v2=memory_max_file.name,
+        )
+        assert sys == 100
+        assert ray._private.utils.is_using_cgroup_limit(sys)
+        assert sys == total
 
     # cgroups v2, not set
     with tempfile.NamedTemporaryFile("w") as memory_max_file:
         memory_max_file.write("max")
         memory_max_file.flush()
         psutil_memory_in_bytes = psutil.virtual_memory().total
-        assert (
-            ray._private.utils.get_system_memory(
-                memory_limit_filename="__does_not_exist__",
-                memory_limit_filename_v2=memory_max_file.name,
-            )
-            == psutil_memory_in_bytes
+        sys = ray._private.utils.get_system_memory(
+            memory_limit_filename="__does_not_exist__",
+            memory_limit_filename_v2=memory_max_file.name,
         )
+        total, _ = ray._private.utils.get_memory_info(
+            memory_limit_filename="__does_not_exist__",
+            memory_limit_filename_v2=memory_max_file.name,
+        )
+        assert sys == psutil_memory_in_bytes
+        assert not ray._private.utils.is_using_cgroup_limit(sys)
+        assert sys == total
 
 
 @pytest.mark.parametrize("in_k8s", [True, False])

@@ -340,9 +340,8 @@ class ReporterAgent(
 
     @staticmethod
     def _get_mem_usage():
-        total = ray._private.utils.get_system_memory()
-        used = ray._private.utils.get_used_memory()
-        available = total - used
+        total, available = ray._private.utils.get_memory_info()
+        used = total - available
         percent = round(used / total, 3) * 100
         return total, available, percent, used
 

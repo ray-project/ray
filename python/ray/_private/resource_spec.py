@@ -193,8 +193,7 @@ class ResourceSpec(
             logger.exception("Could not parse gpu information.")
 
         # Choose a default object store size.
-        system_memory = ray._private.utils.get_system_memory()
-        avail_memory = ray._private.utils.estimate_available_memory()
+        system_memory, avail_memory = ray._private.utils.get_memory_info()
         object_store_memory = self.object_store_memory
         if object_store_memory is None:
             object_store_memory = int(
