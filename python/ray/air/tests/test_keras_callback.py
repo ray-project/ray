@@ -63,7 +63,9 @@ def train_func(config: dict):
         return prepare_dataset_shard(tf_dataset)
 
     for _ in range(config.get("epoch", 3)):
-        tf_dataset = to_tf_dataset(dataset=dataset, batch_size=32)
+        tf_dataset = to_tf_dataset(dataset=dataset, batch_size=32).prefetch(
+            tf.data.AUTOTUNE
+        )
         multi_worker_model.fit(tf_dataset, callbacks=[Callback()])
 
 

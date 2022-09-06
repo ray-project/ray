@@ -70,7 +70,9 @@ def train_func(config: dict):
 
     results = []
     for _ in range(epochs):
-        tf_dataset = to_tf_dataset(dataset=dataset, batch_size=batch_size)
+        tf_dataset = to_tf_dataset(dataset=dataset, batch_size=batch_size).prefetch(
+            tf.data.AUTOTUNE
+        )
         history = multi_worker_model.fit(tf_dataset, callbacks=[Callback()])
         results.append(history.history)
     return results

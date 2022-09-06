@@ -111,7 +111,7 @@ def train_func(config: dict):
         tf_dataset = to_tf_dataset(
             dataset=dataset_shard,
             batch_size=per_worker_batch_size,
-        )
+        ).prefetch(tf.data.AUTOTUNE)
         history = multi_worker_model.fit(
             tf_dataset, callbacks=[TrainCheckpointReportCallback()]
         )
