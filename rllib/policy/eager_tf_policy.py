@@ -711,12 +711,6 @@ def _build_eager_tf_policy(
                 action_space=self.action_space,
                 config=self.config,
             )
-            # Save the tf.keras.Model (architecture and weights, so it can be retrieved
-            # w/o access to the original (custom) Model or Policy code).
-            if hasattr(self, "model") and hasattr(self.model, "base_model"):
-                tmpdir = tempfile.mkdtemp()
-                self.model.base_model.save(filepath=tmpdir, save_format="tf")
-                state["model"] = dir_contents_to_dict(tmpdir)
 
             state["global_timestep"] = state["global_timestep"].numpy()
             if self._optimizer and len(self._optimizer.variables()) > 0:
