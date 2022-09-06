@@ -243,11 +243,12 @@ class GraphVisualizer:
                     value=Image.open(BytesIO(graph.create(graph.prog, format="png"))),
                 )
             except ImportError:
-                logger.warning(
+                gr.Markdown(
+                    "## Warning: cannot show graph illustration.\n"
                     "Python module `pydot` and package `graphviz` is needed to show "
-                    "illustration of graph. Install pydot with `pip install pydot` "
-                    "and graphviz with either `brew install pydot` or `sudo apt "
-                    "install graphviz`"
+                    "graph illustration. Install pydot with `pip install pydot` and "
+                    "graphviz with either `brew install pydot` or `sudo apt install "
+                    "graphviz`."
                 )
 
             self._make_blocks(node_to_depths)
