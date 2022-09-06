@@ -499,7 +499,7 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
 
         executor = RayTrialExecutor(reuse_actors=True)
         executor._pg_manager = pgm
-        executor.set_max_pending_trials(1)
+        executor.setup(max_pending_trials=1)
 
         def train(config):
             yield 1
