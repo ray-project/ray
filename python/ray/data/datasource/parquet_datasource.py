@@ -428,22 +428,28 @@ def _sample_piece(
     # Return the encoding ratio calculated from the sampled rows.
     piece = _deserialize_pieces_with_retry([file_piece])[0]
 
+    # Only sample the first row group.
+    piece = piece.subset(row_group_ids=[0])
+    batch_size = min(piece.metadata.num_rows, PARQUET_READER_ROW_BATCH_SIZE)
     batches = piece.to_batches(
         columns=columns,
         schema=schema,
-        batch_size=PARQUET_READER_ROW_BATCH_SIZE,
+        batch_size=batch_size,
         **reader_args,
     )
-    ratio = PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
-    for batch in batches:
-        # Use first batch in-memory size as ratio estimation.
-        batch_size = batch.nbytes / batch.num_rows
+    # Use first batch in-memory size as ratio estimation.
+    try:
+        batch = next(batches)
+        in_memory_size = batch.nbytes / batch.num_rows
         metadata = piece.metadata
         total_size = 0
         for idx in range(metadata.num_row_groups):
             total_size += metadata.row_group(idx).total_byte_size
         file_size = total_size / metadata.num_rows
-        ratio = batch_size / file_size
-        break
-    logger.debug(f"Estimated Parquet encoding ratio is {ratio} for piece {piece}.")
+        ratio = in_memory_size / file_size
+    except StopIteration:
+        ratio = PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
+    logger.debug(
+        f"Estimated Parquet encoding ratio is {ratio} for piece {piece} "
+        f"with batch size {batch_size}.")
     return ratio
