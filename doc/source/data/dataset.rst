@@ -200,7 +200,7 @@ Supported Input Formats
    * - Text Files
      - :func:`ray.data.read_text()`
      - ✅
-   * - Image Files
+   * - Image Files (experimental)
      - :func:`ray.data.read_images()`
      - 🚧
    * - Binary Files

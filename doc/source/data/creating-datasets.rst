@@ -162,7 +162,7 @@ Supported File Formats
 
   See the API docs for :func:`read_text() <ray.data.read_text>`.
 
-.. tabbed:: Images
+.. tabbed:: Images (experimental)
 
   If  your directory structure is:
 
