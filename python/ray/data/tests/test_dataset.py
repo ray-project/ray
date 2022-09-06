@@ -3190,6 +3190,9 @@ def test_groupby_tabular_sum(
     )
 
 
+@pytest.mark.skip(
+    reason=("Waiting for Arrow compute kernels and Polars to support extension types.")
+)
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 @pytest.mark.parametrize("use_polars", [True, False])
@@ -3258,6 +3261,78 @@ def test_groupby_tabular_sum_tensor_extension(
     )
     if ds_format == "pandas":
         ds = _to_pandas(ds)
+    nan_agg_ds = ds.groupby("A").sum("B")
+    assert nan_agg_ds.count() == 3
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.sort("A").to_pandas(),
+        pd.DataFrame(
+            {
+                "A": [0, 1, 2],
+                "sum(B)": [None, None, None],
+            }
+        ),
+        check_dtype=False,
+    )
+
+
+@pytest.mark.parametrize("num_parts", [1, 30])
+def test_groupby_tabular_sum_tensor_extension_pandas(
+    ray_start_regular_shared, num_parts
+):
+    # Test built-in sum aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_tabular_sum_tensor_extension with: {seed}")
+    random.seed(seed)
+    num_rows = 100
+    shape = (2, 2)
+    xs = list(range(num_rows * np.prod(shape)))
+    random.shuffle(xs)
+    xs = np.array(xs).reshape((num_rows,) + shape)
+    keys = [x % 3 for x in range(num_rows)]
+
+    t = pa.table({"A": keys, "B": ArrowTensorArray.from_numpy(xs)})
+    ds = ray.data.from_arrow(t).repartition(num_parts)
+    ds = ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+
+    agg_ds = ds.groupby("A").sum("B")
+    assert agg_ds.count() == 3
+    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "sum(B)": 1683},
+        {"A": 1, "sum(B)": 1617},
+        {"A": 2, "sum(B)": 1650},
+    ]
+
+    # Test built-in sum aggregation with nans
+    ds = ray.data.from_items(
+        [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
+    ).repartition(num_parts)
+    ds = ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+    nan_grouped_ds = ds.groupby("A")
+    nan_agg_ds = nan_grouped_ds.sum("B")
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "sum(B)": 1683},
+        {"A": 1, "sum(B)": 1617},
+        {"A": 2, "sum(B)": 1650},
+    ]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.sum("B", ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.sort("A").to_pandas(),
+        pd.DataFrame(
+            {
+                "A": [0, 1, 2],
+                "sum(B)": [None, 1617, 1650],
+            }
+        ),
+        check_dtype=False,
+    )
+    # Test all nans
+    ds = ray.data.from_items([{"A": (x % 3), "B": None} for x in xs]).repartition(
+        num_parts
+    )
+    ds = ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
     nan_agg_ds = ds.groupby("A").sum("B")
     assert nan_agg_ds.count() == 3
     pd.testing.assert_frame_equal(

@@ -174,6 +174,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
         # Getting an item in a tensor column automatically does a NumPy conversion.
         return row[VALUE_COL_NAME][0]
 
+    def _has_extension_column(self) -> bool:
+        """Whether this table has any extension-typed columns."""
+        # NOTE: This is an O(# of columns) check.
+        return any(
+            isinstance(type_, pa.ExtensionType) for type_ in self._table.schema.types
+        )
+
     def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
         if copy:
@@ -448,11 +455,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
             If key is None then the k column is omitted.
         """
         # Only use Polars if enabled in config AND all aggregations support Polars.
-        # TODO (Clark): Support Polars aggregations for push-based shuffle.
+        # TODO(Clark): Support Polars aggregations for push-based shuffle.
+        # TODO(Clark): Support Polars aggregations for extension types (e.g. tensor
+        # columns).
         if (
             ctx.use_polars
             and not ctx.use_push_based_shuffle
             and all(isinstance(agg, (PolarsAggregation, WithPolars)) for agg in aggs)
+            and not self._has_extension_column()
         ):
             aggs = [
                 agg.as_polars() if isinstance(agg, WithPolars) else agg for agg in aggs
@@ -600,10 +610,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
         """
         # Only use Polars if enabled in config AND all aggregations support Polars.
         # TODO (Clark): Support Polars aggregations for push-based shuffle.
+        # TODO(Clark): Support Polars aggregations for extension types (e.g. tensor
+        # columns).
         if (
             ctx.use_polars
             and not ctx.use_push_based_shuffle
             and all(isinstance(agg, (PolarsAggregation, WithPolars)) for agg in aggs)
+            and all(not block._has_extension_column() for block in blocks)
             and finalize
         ):
             aggs = [
