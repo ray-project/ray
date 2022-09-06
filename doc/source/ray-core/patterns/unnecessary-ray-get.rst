@@ -1,3 +1,5 @@
+.. _unnecessary-ray-get:
+
 Anti-pattern: Calling ray.get unnecessarily harms performance
 =============================================================
 
@@ -5,7 +7,7 @@ Anti-pattern: Calling ray.get unnecessarily harms performance
 
 When ``ray.get()`` is called, objects must be transferred to the worker/node that calls ``ray.get()``. If you don't need to manipulate the object, you probably don't need to call ``ray.get()`` on it!
 
-Typically, it’s a best practice to wait as long as possible before calling ``ray.get()``, or even design your program to avoid having to call ``ray.get()`` at all.
+Typically, it’s best practice to wait as long as possible before calling ``ray.get()``, or even design your program to avoid having to call ``ray.get()`` at all.
 
 Code example
 ------------
@@ -28,7 +30,14 @@ Code example
 
 .. figure:: ../images/unnecessary-ray-get-better.svg
 
-Notice in the anti-pattern example, we call ``ray.get()`` which forces us to transfer the large rollout to the driver, then to *reducer* after that.
+Notice in the anti-pattern example, we call ``ray.get()`` which forces us to transfer the large rollout to the driver, then again to the *reduce* worker.
 
-In the fixed version, we only pass the reference to the object to the *reducer*.
-The ``reducer`` implicitly calls ``ray.get()`` once to fetch the actual rollout data and pass it to ``reduce()``, which means the data is passed directly from ``generate_rollout()`` to ``reduce()``, avoiding the driver.
+In the fixed version, we only pass the reference to the object to the *reduce* task.
+The ``reduce`` worker will implicitly call ``ray.get()`` to fetch the actual rollout data directly from the ``generate_rollout`` worker, avoiding the extra copy to the driver.
+
+Other ``ray.get()`` related anti-patterns are:
+
+.. toctree::
+    :maxdepth: 1
+
+    ray-get-loop
