@@ -16,9 +16,6 @@ from ray.air.constants import WILDCARD_KEY
 from ray.util.annotations import PublicAPI
 from ray.widgets import Template, make_table_html_repr
 
-
-# Move here later when ml_utils is deprecated. Doing it now causes a circular import.
-
 if TYPE_CHECKING:
     from ray.data import Dataset
     from ray.tune.callback import Callback
