@@ -75,6 +75,7 @@ class TaskExecutor {
       absl::Mutex &actor_contexts_mutex);
 
   static Status ExecuteTask(
+      const rpc::Address &caller_address,
       ray::TaskType task_type,
       const std::string task_name,
       const RayFunction &ray_function,
@@ -85,6 +86,7 @@ class TaskExecutor {
       const std::string &debugger_breakpoint,
       const std::string &serialized_retry_exception_allowlist,
       std::vector<std::shared_ptr<ray::RayObject>> *results,
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
       std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
       bool *is_retryable_error,
       const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
