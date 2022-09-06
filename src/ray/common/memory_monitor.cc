@@ -23,17 +23,13 @@
 
 namespace ray {
 
-MemoryMonitor::MemoryMonitor(float usage_threshold,
+MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
+                             float usage_threshold,
                              uint64_t monitor_interval_ms,
                              MemoryUsageRefreshCallback monitor_callback)
     : usage_threshold_(usage_threshold),
       monitor_callback_(monitor_callback),
-      io_context_(),
-      monitor_thread_([this] {
-        boost::asio::io_service::work io_service_work_(io_context_);
-        io_context_.run();
-      }),
-      runner_(io_context_) {
+      runner_(io_service) {
   RAY_CHECK(monitor_callback_ != nullptr);
   RAY_CHECK_GE(usage_threshold_, 0);
   RAY_CHECK_LE(usage_threshold_, 1);
@@ -245,13 +241,6 @@ int64_t MemoryMonitor::NullableMin(int64_t left, int64_t right) {
     return left;
   } else {
     return std::min(left, right);
-  }
-}
-
-MemoryMonitor::~MemoryMonitor() {
-  io_context_.stop();
-  if (monitor_thread_.joinable()) {
-    monitor_thread_.join();
   }
 }
 

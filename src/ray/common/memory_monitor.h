@@ -49,16 +49,16 @@ class MemoryMonitor {
  public:
   /// Constructor.
   ///
+  /// \param io_service the event loop.
   /// \param usage_threshold a value in [0-1] to indicate the max usage.
   /// \param monitor_interval_ms the frequency to update the usage. 0 disables the
   /// the monitor and callbacks won't fire.
   /// \param monitor_callback function to execute on a dedicated thread owned by this
   /// monitor when the usage is refreshed.
-  MemoryMonitor(float usage_threshold,
+  MemoryMonitor(instrumented_io_context &io_service,
+                float usage_threshold,
                 uint64_t monitor_interval_ms,
                 MemoryUsageRefreshCallback monitor_callback);
-
-  ~MemoryMonitor();
 
  public:
   /// \param process_id the process id
@@ -110,8 +110,6 @@ class MemoryMonitor {
   /// Callback function that executes at each monitoring interval,
   /// on a dedicated thread managed by this class.
   const MemoryUsageRefreshCallback monitor_callback_;
-  instrumented_io_context io_context_;
-  std::thread monitor_thread_;
   PeriodicalRunner runner_;
 };
 
