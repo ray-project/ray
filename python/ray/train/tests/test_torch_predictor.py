@@ -110,11 +110,21 @@ def test_predict(batch_type):
 
 
 @pytest.mark.parametrize("batch_type", [pd.DataFrame, pa.Table])
-def test_predict_batch(ray_start_4_cpus, batch_type):
-    checkpoint = TorchCheckpoint.from_dict({MODEL_KEY: {}})
-    predictor = BatchPredictor.from_checkpoint(
-        checkpoint, TorchPredictor, model=DummyModelMultiInput()
-    )
+@pytest.mark.parametrize("use_state_dict", [True, False])
+def test_predict_batch(ray_start_4_cpus, batch_type, use_state_dict):
+    if use_state_dict:
+        checkpoint = TorchCheckpoint.from_dict({MODEL_KEY: {}})
+        # Notice here that predictor needs to take in additional information
+        # of "model".
+        predictor = BatchPredictor.from_checkpoint(
+            checkpoint, TorchPredictor, model=DummyModelMultiInput()
+        )
+    else:  # directly using model
+        checkpoint = TorchCheckpoint.from_model(DummyModelMultiInput())
+        predictor = BatchPredictor.from_checkpoint(
+            checkpoint,
+            TorchPredictor,
+        )
 
     dummy_data = pd.DataFrame(
         [[0.0, 1.0], [0.0, 2.0], [0.0, 3.0]], columns=["X0", "X1"]
