@@ -1,10 +1,9 @@
 import random
 from collections import defaultdict, deque
-from typing import List, Optional, Union, Type, Dict, Set, Deque, Any
+from typing import List, Optional, Type, Dict, Set, Deque, Any, Tuple, Union, Iterable
 
 import ray
 from ray.air.execution.actor_request import ActorRequest, ActorInfo
-from ray.air.execution.future import TypedFuture
 from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.air.execution.event import (
     ExecutionEvent,
@@ -12,29 +11,42 @@ from ray.air.execution.event import (
     ActorStopped,
     ActorStarted,
     _ResourceReady,
-    NativeResult,
     FutureResult,
+    MultiFutureResult,
 )
 
 
-def _resolve(
-    future: Union[TypedFuture, List[TypedFuture]]
-) -> Union[ExecutionEvent, List[ExecutionEvent]]:
-    if isinstance(future, list):
-        return _resolve_multiple_futures(future)
-    else:
-        return _resolve_multiple_futures([future])[0]
+def _resolve_future(
+    actor: ray.actor.ActorHandle,
+    future: ray.ObjectRef,
+    cls: Optional[Type[FutureResult]] = None,
+) -> Any:
+    return _resolve_many_futures(actors=[actor], futures=[future], cls=cls)[0]
 
 
-def _resolve_multiple_futures(futures: List[TypedFuture]) -> List[ExecutionEvent]:
+def _resolve_many_futures(
+    actors: List[ray.actor.ActorHandle],
+    futures: List[ray.ObjectRef],
+    cls: Optional[Type[FutureResult]] = None,
+) -> List[Any]:
     try:
-        results = ray.get([f.future for f in futures])
+        raw_results = ray.get(futures)
+        return [
+            _convert_result(actor=actor, result=raw_result, cls=cls)
+            for actor, raw_result in zip(actors, raw_results)
+        ]
     except Exception as e:
-        return [FutureFailed(e) for i in range(len(futures))]
-    return [f.convert_result(result) for f, result in zip(futures, results)]
+        return [FutureFailed(actor=actor, exception=e) for actor in actors]
 
 
-def _convert_result(cls: FutureResult, actor: ray.actor.ActorHandle, result: Any):
+def _convert_result(
+    actor: ray.actor.ActorHandle,
+    result: Any,
+    cls: Optional[Type[FutureResult]] = None,
+):
+    if not cls:
+        return result
+
     n_args = len(getattr(cls, "__dataclass_fields__", 1))
     if n_args == 0:
         return cls()
@@ -46,6 +58,95 @@ def _convert_result(cls: FutureResult, actor: ray.actor.ActorHandle, result: Any
         return cls(actor, *result)
 
 
+class _FutureCollection:
+    def __init__(self):
+        self._actors_to_futures: Dict[
+            ray.actor.ActorHandle, Set[ray.ObjectRef]
+        ] = defaultdict(set)
+        self._futures_to_actors: Dict[ray.ObjectRef, ray.actor.ActorHandle] = {}
+
+    def has_actor(self, actor: ray.actor.ActorHandle) -> bool:
+        return bool(self._actors_to_futures[actor])
+
+    def get_actors_for_futures(self) -> List[ray.actor.ActorHandle]:
+        futures = self._futures_to_actors.keys()
+        return [self._futures_to_actors[future] for future in futures]
+
+    def has_future(self, future: ray.ObjectRef) -> bool:
+        return future in self._futures_to_actors
+
+    def get_futures(self) -> List[ray.ObjectRef]:
+        return list(self._futures_to_actors.keys())
+
+    def pop_future(
+        self, future: ray.ObjectRef
+    ) -> Tuple[ray.actor.ActorHandle, Optional[Type[FutureResult]]]:
+        actor = self._futures_to_actors.pop(future)
+        cls = self.future_cls(future)
+        self._actors_to_futures[actor].remove(future)
+
+        return actor, cls
+
+    def clear_future(self, future: ray.ObjectRef) -> None:
+        actor = self._futures_to_actors.pop(future)
+        self._actors_to_futures[actor].discard(future)
+
+    def clear_actor(self, actor: ray.actor.ActorHandle) -> None:
+        futures = self._actors_to_futures.pop(actor)
+        for future in futures:
+            self.clear_future(future)
+
+    def track_future(
+        self,
+        actor: ray.actor.ActorHandle,
+        future: ray.ObjectRef,
+        cls: Optional[Type[FutureResult]] = None,
+    ):
+        self._actors_to_futures[actor].add(future)
+        self._futures_to_actors[future] = actor
+
+    def future_cls(self, future: ray.ObjectRef) -> Optional[FutureResult]:
+        return None
+
+
+class _AsyncFutureCollection(_FutureCollection):
+    def __init__(self):
+        super().__init__()
+        self._futures_to_classes: Dict[ray.ObjectRef, Type[FutureResult]] = {}
+
+    def pop_future(
+        self, future: ray.ObjectRef
+    ) -> Tuple[ray.actor.ActorHandle, Optional[Type[FutureResult]]]:
+        actor, cls = super().pop_future(future)
+        self._futures_to_classes.pop(future)
+        return actor, cls
+
+    def clear_future(self, future: ray.ObjectRef) -> None:
+        super().clear_future(future)
+        self._futures_to_classes.pop(future)
+
+    def future_cls(self, future: ray.ObjectRef) -> Optional[FutureResult]:
+        return self._futures_to_classes.get(future)
+
+    def track_future(
+        self,
+        actor: ray.actor.ActorHandle,
+        future: ray.ObjectRef,
+        cls: Optional[Type[FutureResult]] = None,
+    ):
+        super().track_future(actor=actor, future=future, cls=cls)
+        self._futures_to_classes[future] = cls
+
+
+class _SyncFutureCollection(_FutureCollection):
+    def __init__(self, future_cls: Optional[Type[FutureResult]]):
+        super().__init__()
+        self._future_cls = future_cls
+
+    def future_cls(self, future: ray.ObjectRef) -> Optional[FutureResult]:
+        return self._future_cls
+
+
 class ActorManager:
     def __init__(self, resource_manager: ResourceManager):
         self._resource_manager: ResourceManager = resource_manager
@@ -54,11 +155,8 @@ class ActorManager:
         self._active_actors: Set[ray.actor.ActorHandle] = set()
         self._actor_to_info: Dict[ray.actor.ActorHandle, ActorInfo] = {}
 
-        self._actors_to_futures: Dict[
-            ray.actor.ActorHandle, Set[ray.ObjectRef]
-        ] = defaultdict(set)
-        self._futures_to_actors: Dict[ray.ObjectRef, ray.actor.ActorHandle] = {}
-        self._futures_to_classes: Dict[ray.ObjectRef, Type[TypedFuture]] = {}
+        self._async_futures = _AsyncFutureCollection()
+        self._sync_futures: List[_SyncFutureCollection] = []
 
         self._actors_to_remove: Dict[ray.actor.ActorHandle, Optional[Exception]] = {}
 
@@ -106,7 +204,10 @@ class ActorManager:
 
     def _get_futures_to_await(self, shuffle: bool = True) -> List[ray.ObjectRef]:
         resource_futures = self._resource_manager.get_resource_futures()
-        tracked_futures = list(self._futures_to_actors.keys())
+        tracked_futures = self._async_futures.get_futures()
+
+        for sync_futures in self._sync_futures:
+            tracked_futures += sync_futures.get_futures()
 
         if shuffle:
             random.shuffle(tracked_futures)
@@ -143,7 +244,10 @@ class ActorManager:
         resolve_futures: bool = True,
         exception: Optional[Exception] = None,
     ):
-        if resolve_futures and self._actors_to_futures[actor]:
+        if resolve_futures and (
+            self._async_futures.has_actor(actor)
+            or any(sync_futures.has_actor(actor) for sync_futures in self._sync_futures)
+        ):
             self._actors_to_remove[actor] = exception
             return
 
@@ -163,11 +267,9 @@ class ActorManager:
         )
 
     def _clear_actor_futures(self, actor: ray.actor.ActorHandle):
-        # remove futures
-        futures = self._actors_to_futures.pop(actor)
-        for future in futures:
-            self._futures_to_actors.pop(future)
-            self._futures_to_classes.pop(future)
+        self._async_futures.clear_actor(actor)
+        for sync_futures in self._sync_futures:
+            sync_futures.clear_actor(actor)
 
     def track_future(
         self,
@@ -175,16 +277,24 @@ class ActorManager:
         future: ray.ObjectRef,
         cls: Optional[Type] = None,
     ):
-        self._actors_to_futures[actor].add(future)
-        self._futures_to_actors[future] = actor
-        self._futures_to_classes[future] = cls
+        self._async_futures.track_future(actor=actor, future=future, cls=cls)
 
     def track_sync_futures(
         self,
-        actors_to_futures: Dict[ActorInfo, ray.ObjectRef],
+        actors_to_futures: Dict[
+            ray.actor.ActorHandle, Union[ray.ObjectRef, Iterable[ray.ObjectRef]]
+        ],
         cls: Optional[Type] = None,
     ):
-        raise NotImplementedError
+        sync_futures = _SyncFutureCollection(future_cls=cls)
+        for actor, futures in actors_to_futures.items():
+            if isinstance(futures, ray.ObjectRef):
+                futures = [futures]
+
+            for future in futures:
+                sync_futures.track_future(actor=actor, future=future)
+
+        self._sync_futures.append(sync_futures)
 
     def _resolve_ready_future(self) -> ExecutionEvent:
         ready_future = self._ready_future
@@ -192,17 +302,29 @@ class ActorManager:
 
         # Todo: Handle resource ready futures here
 
-        actor = self._futures_to_actors.pop(ready_future)
-        cls = self._futures_to_classes.pop(ready_future) or NativeResult
-        self._actors_to_futures[actor].remove(ready_future)
+        if self._async_futures.has_future(ready_future):
+            actor, cls = self._async_futures.pop_future(ready_future)
+            return _resolve_future(actor=actor, future=ready_future, cls=cls)
 
-        try:
-            raw_result = ray.get(ready_future)
-            result = _convert_result(cls=cls, actor=actor, result=raw_result)
-        except Exception as e:
-            result = FutureFailed(actor=actor, exception=e)
+        # Else, this is a sync future
+        new_sync_futures = []
+        multi_result = None
+        for sync_futures in self._sync_futures:
+            # If this is not the collection with the future, keep
+            if not sync_futures.has_future(ready_future):
+                new_sync_futures.append(sync_futures)
+                continue
 
-        return result
+            # Otherwise, fetch all actors and futures and resolve all at once
+            actors = sync_futures.get_actors_for_futures()
+            futures = sync_futures.get_futures()
+            cls = sync_futures.future_cls(ready_future)
+
+            results = _resolve_many_futures(actors=actors, futures=futures, cls=cls)
+            multi_result = MultiFutureResult(results=results)
+
+        self._sync_futures = new_sync_futures
+        return multi_result
 
     def _start_new_actors(self):
         new_actor_requests = []

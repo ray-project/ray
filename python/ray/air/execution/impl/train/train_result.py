@@ -1,30 +1,30 @@
 from dataclasses import dataclass
 
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
-from ray.air.execution.event import ExecutionEvent
-from ray.train._internal.session import TrainingEvent
+from ray.air.execution.event import FutureResult
+from ray.train._internal.session import TrainingResult
 
 
 @dataclass
-class TrainSetupIPEvent(ExecutionEvent):
+class TrainSetupIPEvent(FutureResult):
     ip: str
 
 
 @dataclass
-class TrainInitEvent(ExecutionEvent):
+class TrainInitEvent(FutureResult):
     pass
 
 
 @dataclass
-class TrainStartEvent(ExecutionEvent):
+class TrainStartEvent(FutureResult):
     pass
 
 
 @dataclass
-class TrainTrainingEvent(ExecutionEvent):
-    result: TrainingEvent
+class TrainTrainingEvent(FutureResult):
+    result: TrainingResult
 
 
 @dataclass
-class TrainSavingEvent(ExecutionEvent):
+class TrainSavingEvent(FutureResult):
     tracked_checkpoint: _TrackedCheckpoint

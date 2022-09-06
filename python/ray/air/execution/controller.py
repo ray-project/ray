@@ -7,6 +7,7 @@ from ray.air.execution.event import (
     ActorStarted,
     ActorStopped,
     FutureResult,
+    MultiFutureResult,
 )
 
 
@@ -53,6 +54,11 @@ class Controller(abc.ABC):
         """Handle result."""
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def multi_future_result(self, result: MultiFutureResult):
+        """Handle multiple result."""
+        raise NotImplementedError
+
     def step(self):
         self.on_step_begin()
 
@@ -71,3 +77,5 @@ class Controller(abc.ABC):
                 self.actor_stopped(actor=event.actor, actor_info=event.actor_info)
         elif isinstance(event, FutureResult):
             self.future_result(result=event)
+        elif isinstance(event, MultiFutureResult):
+            self.multi_future_result(result=event)

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Optional, List
 
 import ray.actor
 from ray.air.execution.actor_request import ActorInfo
@@ -22,8 +22,8 @@ class FutureResult(ExecutionEvent):
 
 
 @dataclass
-class NativeResult(ExecutionEvent):
-    data: Any
+class MultiFutureResult(ExecutionEvent):
+    results: List[FutureResult]
 
 
 @dataclass

@@ -1,20 +1,23 @@
 from collections import defaultdict
 from typing import List, Optional, Dict, Callable
 
+from dataclasses import dataclass
+
 import ray.actor
-from ray.air.execution import action
+from ray.air.execution.actor_manager import ActorManager
 from ray.air.execution.actor_request import ActorRequest, ActorInfo
 from ray.air.execution.controller import Controller
 
-from ray.air.execution.future import TypedFuture
 from ray.air.execution.impl.train.train_result import (
     TrainTrainingEvent,
     TrainInitEvent,
     TrainStartEvent,
     TrainSetupIPEvent,
 )
+from ray.air.execution.resources.fixed import FixedResourceManager
 from ray.air.execution.resources.request import ResourceRequest
-from ray.air.execution.event import ExecutionEvent
+from ray.air.execution.event import FutureResult, MultiFutureResult, ExecutionEvent
+from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.train import BackendConfig
 from ray.train._internal.backend_executor import TrainBackendError
 from ray.train._internal.dataset_spec import RayDatasetSpec
@@ -22,9 +25,14 @@ from ray.train._internal.session import get_session, init_session
 from ray.train._internal.worker_group import WorkerGroup, RayTrainWorker
 
 
-class StaticWorkerGroup(WorkerGroup):
+@dataclass
+class _StaticWorker:
+    actor: ray.actor.ActorHandle
+
+
+class _StaticWorkerGroup(WorkerGroup):
     def __init__(self, actors: List[ray.actor.ActorHandle], resources_per_worker: Dict):
-        self.workers = actors
+        self.workers = [_StaticWorker(actor) for actor in actors]
         self.num_workers = len(self.workers)
         self.resources_per_worker = resources_per_worker
 
@@ -123,7 +131,12 @@ class TrainController(Controller):
         dataset_spec: Optional[RayDatasetSpec] = None,
         num_workers: int = 2,
         resources_per_worker: Optional[Dict] = None,
+        resource_manager: Optional[ResourceManager] = None,
     ):
+        self._actor_manager = ActorManager(
+            resource_manager=resource_manager or FixedResourceManager({"CPU": 8})
+        )
+
         self._backend_config = backend_config
         self._backend = backend_config.backend_cls()
 
@@ -131,12 +144,10 @@ class TrainController(Controller):
         self._num_workers = num_workers
         self._resources_per_worker = resources_per_worker or {"CPU": 1}
 
-        self._live_actors = []
-        self._actors_to_ip = {}
-        self._actors_requested = False
-        self._training_started = False
-
-        self._actions = defaultdict(list)
+        self._live_actors: List[ray.actor.ActorHandle] = []
+        self._actors_to_ip: Dict[ray.actor.ActorHandle, str] = {}
+        self._actors_requested: bool = False
+        self._training_started: bool = False
 
         self._dataset_shards = None
         self._dataset_spec = dataset_spec or RayDatasetSpec(None)
@@ -144,161 +155,156 @@ class TrainController(Controller):
     def is_finished(self) -> bool:
         return self._training_started and not self._live_actors
 
-    def get_actor_requests(self) -> List[ActorRequest]:
-        if self._training_started or self._actors_requested:
-            return []
+    def next_event(self) -> ExecutionEvent:
+        return self._actor_manager.next_event()
 
-        requests = [
-            ActorRequest(
-                cls=RayTrainWorker,
-                kwargs={},
-                resources=ResourceRequest(bundles=[self._resources_per_worker]),
+    def on_step_begin(self) -> None:
+        self._create_training_actors()
+
+    def _create_training_actors(self):
+        if self._actors_requested:
+            return None
+
+        for _ in range(self._num_workers):
+            self._actor_manager.add_actor(
+                ActorRequest(
+                    cls=RayTrainWorker,
+                    kwargs={},
+                    resources=ResourceRequest(bundles=[self._resources_per_worker]),
+                )
             )
-            for _ in range(self._num_workers)
-        ]
 
         self._actors_requested = True
-        return requests
 
-    def actor_started(self, actor_info: ActorInfo) -> None:
+    def actor_started(
+        self, actor: ray.actor.ActorHandle, actor_info: ActorInfo
+    ) -> None:
         """Register actor start. Return immediate decision."""
-        self._live_actors.append(actor_info)
-        self._actions[actor_info].append(
-            action.Continue(
-                futures=[
-                    TypedFuture(
-                        future=actor_info.actor._RayTrainWorker__execute.remote(
-                            _get_ip
-                        ),
-                        cls=TrainSetupIPEvent,
-                    )
-                ]
-            )
+        self._live_actors.append(actor)
+
+        self._actor_manager.track_future(
+            actor=actor,
+            future=actor._RayTrainWorker__execute.remote(_get_ip),
+            cls=TrainSetupIPEvent,
         )
 
-    def actor_failed(self, actor_info: ActorInfo, exception: Exception) -> None:
+    def actor_failed(
+        self, actor: ray.actor.ActorHandle, actor_info: ActorInfo, exception: Exception
+    ) -> None:
         """Register actor failure."""
-        self._live_actors.remove(actor_info)
+        self._live_actors.remove(actor)
         print("Actor failed:", exception)
-        self._actions = {
-            ai: [action.Stop()] for ai in self._live_actors if ai is not actor_info
-        }
+        for other_actor in self._live_actors:
+            if other_actor is actor:
+                continue
 
-    def actor_stopped(self, actor_info: ActorInfo):
-        self._live_actors.remove(actor_info)
+            self._actor_manager.remove_actor(other_actor)
 
-    def actor_results(
-        self, actor_infos: List[ActorInfo], results: List[ExecutionEvent]
+    def actor_stopped(self, actor: ray.actor.ActorHandle, actor_info: ActorInfo):
+        self._live_actors.remove(actor)
+
+    def future_result(self, result: FutureResult):
+        if isinstance(result, TrainSetupIPEvent):
+            self._handle_ip_result(actor=result.actor, result=result)
+        else:
+            raise ValueError(
+                f"Result type not allowed for async result: {type(result)}"
+            )
+
+    def multi_future_result(self, result: MultiFutureResult):
+        first_result = result.results[0]
+
+        if isinstance(first_result, TrainInitEvent):
+            self._stage_start_thread()
+        elif isinstance(first_result, TrainStartEvent):
+            self._stage_training()
+        elif isinstance(first_result, TrainTrainingEvent):
+            self._handle_training_results(results=result.results)
+        else:
+            raise ValueError(
+                f"Result type not allowed for sync result: {type(first_result)}"
+            )
+
+    def _handle_ip_result(
+        self, actor: ray.actor.ActorHandle, result: TrainSetupIPEvent
     ):
-        """Handle result."""
-        # main_result = results[0]
-        #
-        # if isinstance(main_result, TrainTrainingEvent):
-        #     self._handle_training_result(main_result)
-        #     return
+        self._actors_to_ip[actor] = result.ip
 
-        for actor_info, result in zip(actor_infos, results):
-            if isinstance(result, TrainSetupIPEvent):
-                self._handle_ip_result(actor_info=actor_info, result=result)
-            elif isinstance(result, TrainTrainingEvent):
-                self._handle_training_result(actor_info=actor_info, result=result)
+        if len(self._actors_to_ip) == self._num_workers:
+            self._stage_init_session()
 
-    def _handle_ip_result(self, actor_info: ActorInfo, result: TrainSetupIPEvent):
-        self._actors_to_ip[actor_info] = result.ip
+    def _stage_init_session(self):
+        worker_group = _StaticWorkerGroup(
+            self._live_actors,
+            resources_per_worker=self._resources_per_worker,
+        )
+        self._backend.on_start(
+            worker_group=worker_group, backend_config=self._backend_config
+        )
 
-    def _handle_training_result(
-        self, actor_info: ActorInfo, result: TrainTrainingEvent
-    ):
-        done = result.result is None
+        # create_local_rank_map
+        local_rank_map = {}
+        ip_dict = defaultdict(int)
+        for world_rank in range(self._num_workers):
+            actor_info = self._live_actors[world_rank]
+            node_ip = self._actors_to_ip[actor_info]
+            local_rank_map[world_rank] = ip_dict[node_ip]
+            ip_dict[node_ip] += 1
+
+        if self._dataset_shards is None:
+            self.dataset_shards = self._dataset_spec.get_dataset_shards(
+                self._live_actors
+            )
+
+        self._actor_manager.track_sync_futures(
+            {
+                actor: actor._RayTrainWorker__execute.remote(
+                    _initialize_session,
+                    world_rank=index,
+                    local_rank=local_rank_map[index],
+                    world_size=self._num_workers,
+                    trial_info=None,
+                    train_func=self._train_fn,
+                    dataset_shard=self.dataset_shards[index],
+                    checkpoint=None,
+                    encode_data_fn=self._backend.encode_data,
+                    use_detailed_autofilled_metrics=False,
+                )
+                for index, actor in enumerate(self._live_actors)
+            },
+            cls=TrainInitEvent,
+        )
+
+        self._training_started = True
+
+    def _stage_start_thread(self):
+        self._actor_manager.track_sync_futures(
+            {
+                actor: actor._RayTrainWorker__execute.remote(_start_training)
+                for actor in self._live_actors
+            },
+            cls=TrainStartEvent,
+        )
+
+    def _stage_training(self):
+        self._actor_manager.track_sync_futures(
+            {
+                actor: actor._RayTrainWorker__execute.remote(_get_next_result)
+                for actor in self._live_actors
+            },
+            cls=TrainTrainingEvent,
+        )
+
+    def _handle_training_results(self, results: List[TrainTrainingEvent]):
+        first_results = results[0]
+        done = first_results.result is None
 
         if done:
-            self._actions = {ai: [action.Stop()] for ai in self._live_actors}
+            print("I am done.")
+            for live_actor in self._live_actors:
+                self._actor_manager.remove_actor(live_actor)
         else:
-            result_data = self._backend.decode_data(result.result.data)
+            result_data = self._backend.decode_data(first_results.result.data)
             print("Event data", result_data)
-            self._actions[actor_info].append(
-                action.Continue(
-                    futures=[
-                        TypedFuture(
-                            future=actor_info.actor._RayTrainWorker__execute.remote(
-                                _get_next_result
-                            ),
-                            cls=TrainTrainingEvent,
-                        )
-                    ]
-                )
-            )
 
-    def get_actions(self) -> Dict[ActorInfo, List[action.Action]]:
-        actions = self._actions
-        self._actions = defaultdict(list)
-
-        if len(self._actors_to_ip) == self._num_workers and not self._training_started:
-            worker_group = StaticWorkerGroup(
-                self._live_actors,
-                resources_per_worker=self._resources_per_worker,
-            )
-            self._backend.on_start(
-                worker_group=worker_group, backend_config=self._backend_config
-            )
-
-            # create_local_rank_map
-            local_rank_map = {}
-            ip_dict = defaultdict(int)
-            for world_rank in range(self._num_workers):
-                actor_info = self._live_actors[world_rank]
-                node_ip = self._actors_to_ip[actor_info]
-                local_rank_map[world_rank] = ip_dict[node_ip]
-                ip_dict[node_ip] += 1
-
-            if self._dataset_shards is None:
-                actors = [actor_info.actor for actor_info in self._live_actors]
-                self.dataset_shards = self._dataset_spec.get_dataset_shards(actors)
-
-            # Create init futures
-            for index, actor_info in enumerate(self._live_actors):
-                actions[actor_info].append(
-                    action.Continue(
-                        futures=[
-                            TypedFuture(
-                                future=actor_info.actor._RayTrainWorker__execute.remote(
-                                    _initialize_session,
-                                    world_rank=index,
-                                    local_rank=local_rank_map[index],
-                                    world_size=self._num_workers,
-                                    trial_info=None,
-                                    train_func=self._train_fn,
-                                    dataset_shard=self.dataset_shards[index],
-                                    checkpoint=None,
-                                    encode_data_fn=self._backend.encode_data,
-                                    use_detailed_autofilled_metrics=False,
-                                ),
-                                cls=TrainInitEvent,
-                            ),
-                            TypedFuture(
-                                future=actor_info.actor._RayTrainWorker__execute.remote(
-                                    _start_training
-                                ),
-                                cls=TrainStartEvent,
-                            ),
-                        ]
-                    )
-                )
-
-            for actor_info in self._live_actors:
-                actions[actor_info].append(
-                    action.Continue(
-                        futures=[
-                            TypedFuture(
-                                future=actor_info.actor._RayTrainWorker__execute.remote(
-                                    _get_next_result
-                                ),
-                                cls=TrainTrainingEvent,
-                            )
-                        ]
-                    )
-                )
-
-            self._training_started = True
-
-        return actions
+            self._stage_training()
