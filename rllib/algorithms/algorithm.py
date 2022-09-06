@@ -1776,7 +1776,8 @@ class Algorithm(Trainable):
             A dict that will be automatically serialized by Tune and
             passed to ``Trainable.load_checkpoint()``.
         """
-        return self.get_state()
+        state = self.get_state()
+        return state
 
     @override(Trainable)
     def load_checkpoint(self, checkpoint: Union[Dict, str]) -> None:
@@ -1979,8 +1980,8 @@ class Algorithm(Trainable):
         assert worker_set is not None
         # Broadcast the new policy weights to all evaluation workers.
         logger.info("Synchronizing weights to workers.")
-        weights = ray.put(self.workers.local_worker().save())
-        worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
+        weights = ray.put(self.workers.local_worker().get_state())
+        worker_set.foreach_worker(lambda w: w.set_state(ray.get(weights)))
 
     @classmethod
     @override(Trainable)
@@ -2529,7 +2530,7 @@ class Algorithm(Trainable):
         })
 
         if hasattr(self, "workers"):
-            state["worker"] = self.workers.local_worker().save()
+            state["worker"] = self.workers.local_worker().get_state()
         # TODO: Experimental functionality: Store contents of replay buffer
         #  to checkpoint, only if user has configured this.
         if self.local_replay_buffer is not None and self.config.get(
@@ -2555,15 +2556,15 @@ class Algorithm(Trainable):
         #  For example, the model architectures may differ.
 
         if hasattr(self, "workers") and "worker" in state:
-            self.workers.local_worker().restore(state["worker"])
+            self.workers.local_worker().set_state(state["worker"])
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
-                r.restore.remote(remote_state)
+                r.set_state.remote(remote_state)
             if self.evaluation_workers:
                 # If evaluation workers are used, also restore the policies
                 # there in case they are used for evaluation purpose.
                 for r in self.evaluation_workers.remote_workers():
-                    r.restore.remote(remote_state)
+                    r.set_state.remote(remote_state)
         # If necessary, restore replay data as well.
         if self.local_replay_buffer is not None:
             # TODO: Experimental functionality: Restore contents of replay

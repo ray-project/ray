@@ -1473,22 +1473,12 @@ class RolloutWorker(ParallelIteratorWorker):
         """
         filters = self.get_filters(flush_after=True)
         state = {}
-        # TODO: Move PolicySpec into Policy's state.
-        policy_specs = {}
-        connector_enabled = self.policy_config.get("enable_connectors", False)
         for pid in self.policy_map:
             state[pid] = self.policy_map[pid].get_state()
-            policy_spec = self.policy_map.policy_specs[pid]
-            # If connectors are enabled, try serializing the policy spec
-            # instead of picking the spec object.
-            policy_specs[pid] = (
-                policy_spec.serialize() if connector_enabled else policy_spec
-            )
         return pickle.dumps(
             {
                 "filters": filters,
                 "state": state,
-                "policy_specs": policy_specs,
                 "policy_config": self.policy_config,
             }
         )
@@ -1513,8 +1503,8 @@ class RolloutWorker(ParallelIteratorWorker):
         connector_enabled = self.policy_config.get("enable_connectors", False)
         for pid, state in objs["state"].items():
             if pid not in self.policy_map:
-                spec = objs.get("policy_specs", {}).get(pid)
-                if not spec:
+                spec = state.get("policy_spec", None)
+                if spec is None:
                     logger.warning(
                         f"PolicyID '{pid}' was probably added on-the-fly (not"
                         " part of the static `multagent.policies` config) and"

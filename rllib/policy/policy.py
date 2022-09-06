@@ -3,6 +3,7 @@ import gym
 from gym.spaces import Box
 import logging
 import numpy as np
+import os
 import platform
 import tree  # pip install dm_tree
 from typing import (
@@ -20,6 +21,7 @@ from typing import (
 import ray
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
+import ray.cloudpickle as pickle
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -799,7 +801,15 @@ class Policy(metaclass=ABCMeta):
             # The current global timestep.
             "global_timestep": self.global_timestep,
         }
+        policy_spec = PolicySpec(
+            policy_class=type(self),
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            config=self.config,
+        )
+
         if self.config.get("enable_connectors", False):
+            state["policy_spec"] = policy_spec.serialize()
             # Checkpoint connectors state as well if enabled.
             connector_configs = {}
             if self.agent_connectors:
@@ -807,6 +817,9 @@ class Policy(metaclass=ABCMeta):
             if self.action_connectors:
                 connector_configs["action"] = self.action_connectors.to_state()
             state["connector_configs"] = connector_configs
+        else:
+            state["policy_spec"] = policy_spec
+
         return state
 
     @PublicAPI(stability="alpha")
@@ -911,8 +924,10 @@ class Policy(metaclass=ABCMeta):
             "The arg `filename_prefix` for `Policy.export_checkpoint()` is " \
             "deprecated and should not be set!"
         state = self.get_state()
-        checkpoint = Checkpoint.from_dict(state)
-        checkpoint.to_directory(export_dir)
+        os.makedirs(export_dir, exist_ok=True)
+        pickle.dump(state, open(os.path.join(export_dir, "state.pkl"), "w+b"))
+        self.export_model(export_dir)
+        checkpoint = Checkpoint.from_directory(export_dir)
         return checkpoint
 
     @DeveloperAPI

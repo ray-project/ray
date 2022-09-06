@@ -8,6 +8,7 @@ import unittest
 import ray
 from ray.air.checkpoint import Checkpoint
 from ray.rllib.algorithms.registry import get_algorithm_class
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.files import dict_contents_to_dir
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -64,22 +65,41 @@ CONFIGS = {
 }
 
 
-def export_test(alg_name, framework="tf"):
+def export_test(alg_name, framework="tf", multi_agent=False):
     cls, config = get_algorithm_class(alg_name, return_config=True)
     config["framework"] = framework
     if "DDPG" in alg_name or "SAC" in alg_name:
         algo = cls(config=config, env="Pendulum-v1")
         test_obs = np.array([[0.1, 0.2, 0.3]])
     else:
-        algo = cls(config=config, env="CartPole-v0")
+        if multi_agent:
+            config["multiagent"] = {
+                "policies": {"pol1", "pol2"},
+                "policy_mapping_fn": (
+                    lambda agent_id, episode, worker, **kwargs:
+                    "pol1" if agent_id == "agent1" else "pol2"
+                )
+            }
+            config["env"] = MultiAgentCartPole
+            config["env_config"] = {
+                "num_agents": 2,
+            }
+        else:
+            config["env"] = "CartPole-v0"
+        algo = cls(config=config)
         test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
 
     export_dir = os.path.join(
         ray._private.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
     )
 
-    print("Exporting policy (`default_policy`) checkpoint", alg_name, export_dir)
-    algo.export_policy_checkpoint(export_dir, policy_id=DEFAULT_POLICY_ID)
+    print("Exporting policy checkpoint", alg_name, export_dir)
+    if multi_agent:
+        algo.export_policy_checkpoint(export_dir, policy_id="pol1")
+        algo.export_policy_checkpoint(export_dir + "_2", policy_id="pol2")
+
+    else:
+        algo.export_policy_checkpoint(export_dir, policy_id=DEFAULT_POLICY_ID)
     checkpoint = Checkpoint.from_directory(export_dir)
 
     checkpoint_dict = checkpoint.to_dict()
@@ -114,6 +134,8 @@ def export_test(alg_name, framework="tf"):
             assert results[1].shape == (1, 1)  # dummy state-out
 
     shutil.rmtree(export_dir)
+    if multi_agent:
+        shutil.rmtree(export_dir + "_2")
 
     print("Exporting policy (`default_policy`) model ", alg_name, export_dir)
     # Expect an error due to not being able to identify, which exact keras
@@ -121,7 +143,11 @@ def export_test(alg_name, framework="tf"):
     # self.q_net.base_model and self.action_model.base_model).
     error = False
     try:
-        algo.export_policy_model(export_dir, policy_id=DEFAULT_POLICY_ID)
+        if multi_agent:
+            algo.export_policy_model(export_dir, policy_id="pol1")
+            algo.export_policy_model(export_dir + "_2", policy_id="pol2")
+        else:
+            algo.export_policy_model(export_dir, policy_id=DEFAULT_POLICY_ID)
     except ValueError:
         error = True
 
@@ -155,6 +181,8 @@ def export_test(alg_name, framework="tf"):
 
     if not error:
         shutil.rmtree(export_dir)
+        if multi_agent:
+            shutil.rmtree(export_dir + "_2")
 
     algo.stop()
 
@@ -188,6 +216,10 @@ class TestExportModel(unittest.TestCase):
     def test_export_ppo(self):
         for fw in framework_iterator():
             export_test("PPO", fw)
+
+    def test_export_ppo_multi_agent(self):
+        for fw in framework_iterator():
+            export_test("PPO", fw, multi_agent=True)
 
     def test_export_sac(self):
         for fw in framework_iterator():
