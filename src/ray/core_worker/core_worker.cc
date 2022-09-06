@@ -2187,7 +2187,7 @@ Status CoreWorker::ExecuteTask(
     const TaskSpecification &task_spec,
     const std::shared_ptr<ResourceMappingType> &resource_ids,
     std::vector<std::shared_ptr<RayObject>> *return_objects,
-    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *dynamic_return_objects,
+    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
@@ -2230,6 +2230,16 @@ Status CoreWorker::ExecuteTask(
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
     return_ids.push_back(task_spec.ReturnId(i));
+  }
+  for (const auto &return_id : return_ids) {
+    RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " will return object "
+                   << return_id;
+  }
+  for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
+    dynamic_return_objects->push_back(
+        std::make_pair<>(dynamic_return_id, std::shared_ptr<RayObject>()));
+    RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " will return dynamic object "
+                   << dynamic_return_id;
   }
 
   Status status;
@@ -2467,7 +2477,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   SetActorId(actor_id);
   bool is_retryable_error;
   // TODO(swang): Support ObjectRefGenerators in local mode?
-  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> dynamic_return_objects;
+  std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
   RAY_UNUSED(ExecuteTask(task_spec,
                          resource_ids,
                          &return_objects,

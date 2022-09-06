@@ -122,7 +122,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
-    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> dynamic_return_objects;
+    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
     bool is_retryable_error = false;
     auto status = task_handler_(task_spec,
                                 resource_ids,
@@ -134,6 +134,12 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
+      size_t num_dynamic_returns_expected = task_spec.DynamicReturnIds().size();
+      if (num_dynamic_returns_expected > 0) {
+        RAY_CHECK(dynamic_return_objects.size() == num_dynamic_returns_expected)
+            << "Expected " << num_dynamic_returns_expected
+            << " dynamic returns, but task generated " << dynamic_return_objects.size();
+      }
       for (const auto &dynamic_return : dynamic_return_objects) {
         auto return_object_proto = reply->add_dynamic_return_objects();
         SerializeReturnObject(

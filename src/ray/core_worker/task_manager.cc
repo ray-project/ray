@@ -304,12 +304,14 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   // reference holders that are already scheduled at the raylet can retrieve
   // these objects through plasma.
   absl::flat_hash_set<ObjectID> store_in_plasma_ids = {};
+  bool first_execution = false;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
-    if (it->second.num_successful_executions > 0) {
+    first_execution = it->second.num_successful_executions == 0;
+    if (!first_execution) {
       store_in_plasma_ids = it->second.reconstructable_return_ids;
     }
   }
@@ -323,13 +325,17 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
     for (const auto &return_object : reply.dynamic_return_objects()) {
       const auto object_id = ObjectID::FromBinary(return_object.object_id());
-      reference_counter_->AddDynamicReturn(object_id, generator_id);
-      dynamic_return_ids.push_back(object_id);
+      if (first_execution) {
+        reference_counter_->AddDynamicReturn(object_id, generator_id);
+        dynamic_return_ids.push_back(object_id);
+      }
       if (!HandleTaskReturn(object_id,
                             return_object,
                             NodeID::FromBinary(worker_addr.raylet_id()),
                             store_in_plasma_ids.count(object_id))) {
-        dynamic_returns_in_plasma.push_back(object_id);
+        if (first_execution) {
+          dynamic_returns_in_plasma.push_back(object_id);
+        }
       }
     }
   }
@@ -357,11 +363,15 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // Record any dynamically returned objects. We need to store these with the
     // task spec so that the worker will recreate them if the task gets
     // re-executed.
-    for (const auto &dynamic_return_id : dynamic_return_ids) {
-      spec.AddDynamicReturnId(dynamic_return_id);
-    }
-    for (const auto &dynamic_return_id : dynamic_returns_in_plasma) {
-      it->second.reconstructable_return_ids.insert(dynamic_return_id);
+    if (first_execution) {
+      for (const auto &dynamic_return_id : dynamic_return_ids) {
+        RAY_LOG(DEBUG) << "Task " << task_id << " produced dynamic return object "
+                       << dynamic_return_id;
+        spec.AddDynamicReturnId(dynamic_return_id);
+      }
+      for (const auto &dynamic_return_id : dynamic_returns_in_plasma) {
+        it->second.reconstructable_return_ids.insert(dynamic_return_id);
+      }
     }
 
     // Release the lineage for any non-plasma return objects.

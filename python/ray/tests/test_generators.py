@@ -90,15 +90,11 @@ def test_dynamic_generator(ray_start_regular):
     @ray.remote
     def dynamic_generator(num_returns):
         for i in range(num_returns):
-            print("YIELD", i)
-            yield np.random.randint(
-                np.iinfo(np.int8).max, size=(100_000_000, 1), dtype=np.int8
-            )
+            yield np.ones(100_000_000, dtype=np.int8) * i
 
     gen = ray.get(dynamic_generator.remote(10))
-    print(gen, gen.refs)
     for i, ref in enumerate(gen):
-        print(ref, ray.get(ref))
+        assert ray.get(ref)[0] == i
 
 
 def test_dynamic_generator_reconstruction(ray_start_cluster):
@@ -122,23 +118,20 @@ def test_dynamic_generator_reconstruction(ray_start_cluster):
 
     @ray.remote
     def dynamic_generator(num_returns):
-        for _ in range(num_returns):
-            yield np.random.randint(
-                np.iinfo(np.int8).max, size=(1_000_000, 1), dtype=np.int8
-            )
+        for i in range(num_returns):
+            yield np.ones(1_000_000, dtype=np.int8) * i
 
     @ray.remote
     def fetch(x):
-        return
+        return x[0]
 
     # Test recovery of all dynamic objects through re-execution.
     gen = ray.get(dynamic_generator.remote(10))
-    print(gen)
     cluster.remove_node(node_to_kill, allow_graceful=False)
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
     refs = list(gen)
-    for ref in refs:
-        ray.get(fetch.remote(ref))
+    for i, ref in enumerate(refs):
+        assert ray.get(fetch.remote(ref)) == i
 
     cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10 ** 8)
 
@@ -146,8 +139,76 @@ def test_dynamic_generator_reconstruction(ray_start_cluster):
     # copy during recovery.
     ray.get(fetch.options(resources={"node2": 1}).remote(refs[-1]))
     cluster.remove_node(node_to_kill, allow_graceful=False)
-    for ref in refs:
-        ray.get(ref)
+    for i, ref in enumerate(refs):
+        assert ray.get(fetch.remote(ref)) == i
+
+
+@pytest.mark.parametrize("too_many_returns", [False, True])
+def test_dynamic_generator_reconstruction_nondeterministic(
+    ray_start_cluster, too_many_returns
+):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "max_direct_call_object_size": 100,
+        "task_retry_delay_ms": 100,
+        "object_timeout_milliseconds": 200,
+        "fetch_warn_timeout_milliseconds": 1000,
+    }
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config=config,
+        enable_object_reconstruction=True,
+        resources={"head": 1},
+    )
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=0, resources={"head": 1})
+    class ExecutionCounter:
+        def __init__(self):
+            self.count = 0
+
+        def inc(self):
+            self.count += 1
+            return self.count
+
+    @ray.remote
+    def dynamic_generator(exec_counter):
+        num_returns = 10
+        if ray.get(exec_counter.inc.remote()) > 1:
+            if too_many_returns:
+                num_returns += 1
+            else:
+                num_returns -= 1
+        for i in range(num_returns):
+            yield np.ones(1_000_000, dtype=np.int8) * i
+
+    @ray.remote
+    def fetch(x):
+        return
+
+    exec_counter = ExecutionCounter.remote()
+    gen = ray.get(dynamic_generator.remote(exec_counter))
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    refs = list(gen)
+    if too_many_returns:
+        with pytest.raises(ray.exceptions.RayTaskError):
+            for ref in refs:
+                ray.get(ref)
+    else:
+        for ref in refs:
+            ray.get(ref)
+    # TODO(swang): If the re-executed task returns a different number of
+    # objects, we should throw an error for every return value.
+    # for ref in refs:
+    #     with pytest.raises(ray.exceptions.RayTaskError):
+    #         ray.get(ref)
 
 
 if __name__ == "__main__":

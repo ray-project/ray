@@ -939,13 +939,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///                     arguments and recursively, any object IDs that were
   ///                     contained in those objects.
   /// \return Status.
-  Status ExecuteTask(
-      const TaskSpecification &task_spec,
-      const std::shared_ptr<ResourceMappingType> &resource_ids,
-      std::vector<std::shared_ptr<RayObject>> *return_objects,
-      std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *dynamic_return_objects,
-      ReferenceCounter::ReferenceTableProto *borrowed_refs,
-      bool *is_retryable_error);
+  Status ExecuteTask(const TaskSpecification &task_spec,
+                     const std::shared_ptr<ResourceMappingType> &resource_ids,
+                     std::vector<std::shared_ptr<RayObject>> *return_objects,
+                     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
+                         *dynamic_return_objects,
+                     ReferenceCounter::ReferenceTableProto *borrowed_refs,
+                     bool *is_retryable_error);
 
   /// Put an object in the local plasma store.
   Status PutInLocalPlasmaStore(const RayObject &object,

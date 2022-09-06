@@ -16,6 +16,7 @@ from libcpp.memory cimport (
     shared_ptr,
     unique_ptr
 )
+from libcpp.pair cimport pair as c_pair
 from libcpp.utility cimport pair
 from ray.includes.optional cimport (
     optional,
@@ -142,9 +143,9 @@ cdef class CoreWorker:
             const CAddress &caller_address,
             worker, outputs,
             const c_vector[CObjectID] *static_return_ids,
+            c_vector[shared_ptr[CRayObject]] *returns,
             const CObjectID &generator_id,
-            c_vector[CObjectID] *dynamic_return_ids,
-            c_vector[shared_ptr[CRayObject]] *returns)
+            c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle)
     cdef c_function_descriptors_to_python(

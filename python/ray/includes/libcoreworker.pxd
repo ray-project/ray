@@ -295,7 +295,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_string debugger_breakpoint,
             const c_string serialized_retry_exception_allowlist,
             c_vector[shared_ptr[CRayObject]] *returns,
-            unordered_map[CObjectID, shared_ptr[CRayObject]] *dynamic_returns,
+            c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
             shared_ptr[LocalMemoryBuffer]
             &creation_task_exception_pb_bytes,
             c_bool *is_retryable_error,
