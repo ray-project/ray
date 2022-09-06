@@ -940,8 +940,8 @@ class TorchPolicyV2(Policy):
 
         os.makedirs(export_dir, exist_ok=True)
 
-        seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
         if onnx:
+            seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
             self._lazy_tensor_dict(self._dummy_batch)
             # Provide dummy state inputs if not an RNN (torch cannot jit with
             # returned empty internal states list).
@@ -981,7 +981,7 @@ class TorchPolicyV2(Policy):
         # Save the torch.Model (architecture and weights, so it can be retrieved
         # w/o access to the original (custom) Model or Policy code).
         else:
-            filename = os.path.join(export_dir, "model.pickle")
+            filename = os.path.join(export_dir, "model.pt")
             torch.save(self.model, f=filename)
 
     @override(Policy)
