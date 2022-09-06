@@ -190,6 +190,14 @@ class ReferenceCounter : public ReferenceCounterInterface,
                       const absl::optional<NodeID> &pinned_at_raylet_id =
                           absl::optional<NodeID>()) LOCKS_EXCLUDED(mutex_);
 
+  /// Add an owned object that was dynamically created. These are objects that
+  /// were created by a task that we called, but that we own.
+  ///
+  /// \param[in] object_id The ID of the object that we now own.
+  /// \param[in] generator_id The ID of the object that wraps the dynamically
+  /// created object ref. This should be an object that we own, and we will
+  /// update its ref count info to show that it contains the dynamically
+  /// created ObjectID.
   void AddDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id)
       LOCKS_EXCLUDED(mutex_);
 

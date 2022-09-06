@@ -2231,10 +2231,6 @@ Status CoreWorker::ExecuteTask(
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
     return_ids.push_back(task_spec.ReturnId(i));
   }
-  for (const auto &return_id : return_ids) {
-    RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " will return object "
-                   << return_id;
-  }
   for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
     dynamic_return_objects->push_back(
         std::make_pair<>(dynamic_return_id, std::shared_ptr<RayObject>()));
