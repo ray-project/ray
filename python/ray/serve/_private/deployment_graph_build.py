@@ -29,6 +29,7 @@ from ray.dag import (
 from ray.dag.function_node import FunctionNode
 from ray.dag.input_node import InputNode
 from ray.dag.utils import _DAGNodeNameGenerator
+from ray.experimental.gradio_utils import type_to_string
 
 
 def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
@@ -225,13 +226,20 @@ def transform_ray_dag_to_serve_dag(
         # TODO: (jiaodong) Need to capture DAGNodes in the parent node
         parent_deployment_node = other_args_to_resolve[PARENT_CLASS_NODE_KEY]
 
+        parent_class = parent_deployment_node._deployment._func_or_class
+        method = getattr(parent_class, dag_node._method_name)
+        if "return" in method.__annotations__:
+            other_args_to_resolve["result_type_string"] = type_to_string(
+                method.__annotations__["return"]
+            )
+
         return DeploymentMethodNode(
             parent_deployment_node._deployment,
             dag_node._method_name,
             dag_node.get_args(),
             dag_node.get_kwargs(),
             dag_node.get_options(),
-            other_args_to_resolve=dag_node.get_other_args_to_resolve(),
+            other_args_to_resolve=other_args_to_resolve,
         )
     elif isinstance(
         dag_node,
@@ -240,13 +248,20 @@ def transform_ray_dag_to_serve_dag(
         # yet, revisit this later
     ) and dag_node.get_other_args_to_resolve().get("is_from_serve_deployment"):
         deployment_name = node_name_generator.get_node_name(dag_node)
+
+        other_args_to_resolve = dag_node.get_other_args_to_resolve()
+        if "return" in dag_node._body.__annotations__:
+            other_args_to_resolve["result_type_string"] = type_to_string(
+                dag_node._body.__annotations__["return"]
+            )
+
         return DeploymentFunctionNode(
             dag_node._body,
             deployment_name,
             dag_node.get_args(),
             dag_node.get_kwargs(),
             dag_node.get_options(),
-            other_args_to_resolve=dag_node.get_other_args_to_resolve(),
+            other_args_to_resolve=other_args_to_resolve,
         )
     else:
         # TODO: (jiaodong) Support FunctionNode or leave it as ray task
@@ -304,6 +319,7 @@ def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
             serve_dag_root_node._deployment_handle,
             serve_dag_root_node.get_args(),
             serve_dag_root_node.get_kwargs(),
+            other_args_to_resolve=serve_dag_root_node.get_other_args_to_resolve(),
         )
     else:
         return serve_dag_root_node
