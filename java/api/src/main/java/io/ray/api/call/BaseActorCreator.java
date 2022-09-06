@@ -86,6 +86,11 @@ public class BaseActorCreator<T extends BaseActorCreator> {
     return self();
   }
 
+  public T setMaxTaskRetries(int maxTaskRetries) {
+    builder.setMaxTaskRetries(maxTaskRetries);
+    return self();
+  }
+
   /**
    * Set the max number of concurrent calls to allow for this actor.
    *
