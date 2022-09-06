@@ -351,8 +351,11 @@ POLICIES = {
 
 
 def get_policy_class_name(policy_class: type):
-    if policy_class.__name__ in POLICIES:
-        return policy_class.__name__
+    name = policy_class.__name__
+    if name.endswith("_traced"):
+        name = name[:-7]
+    if name in POLICIES:
+        return name
     return None
 
 
