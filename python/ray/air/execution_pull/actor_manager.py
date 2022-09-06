@@ -1,0 +1,175 @@
+import random
+from collections import defaultdict
+from typing import List, Tuple, Optional, Union
+
+import ray
+from ray.air.execution.action import Action, Continue, Stop, Wait
+from ray.air.execution.actor_request import ActorRequest, ActorInfo
+from ray.air.execution.controller import Controller
+from ray.air.execution.future import TypedFuture
+from ray.air.execution.resources.resource_manager import ResourceManager
+from ray.air.execution.result import ExecutionResult, ExecutionException
+
+
+def _resolve(
+    future: Union[TypedFuture, List[TypedFuture]]
+) -> Union[ExecutionResult, List[ExecutionResult]]:
+    if isinstance(future, list):
+        return _resolve_multiple_futures(future)
+    else:
+        return _resolve_multiple_futures([future])[0]
+
+
+def _resolve_multiple_futures(futures: List[TypedFuture]) -> List[ExecutionResult]:
+    try:
+        results = ray.get([f.future for f in futures])
+    except Exception as e:
+        return [ExecutionException(e) for i in range(len(futures))]
+    return [f.convert_result(result) for f, result in zip(futures, results)]
+
+
+class ActorManager:
+    def __init__(self, controller: Controller, resource_manager: ResourceManager):
+        self._controller = controller
+        self._resource_manager = resource_manager
+
+        self._actor_requests: List[ActorRequest] = []
+        self._active_actors = set()
+        self._actors_to_futures = defaultdict(set)
+        self._futures_to_actors = {}
+
+        self._cached_actions = defaultdict(list)
+        self._waiting_actors = set()
+
+    def is_finished(self) -> bool:
+        return self._controller.is_finished()
+
+    def step_until_finished(self):
+        while not self.is_finished():
+            self.step()
+
+    def step(self):
+        self._handle_next_future()
+
+        self._request_actions()
+
+        self._get_new_actor_requests()
+
+        self._start_new_actors()
+
+        self._request_actions()
+
+    def _handle_next_future(self):
+        actor_info, typed_future = self._get_next_future()
+
+        if not actor_info:
+            return
+
+        result = _resolve(typed_future)
+
+        self._futures_to_actors.pop(typed_future)
+        self._actors_to_futures[actor_info].remove(typed_future)
+
+        if isinstance(result, ExecutionException):
+            self._clear_actor_futures(actor_info=actor_info)
+            self._resource_manager.return_resources(actor_info.used_resource)
+            self._controller.actor_failed(actor_info, exception=result.exception)
+        else:
+            self._controller.actor_results(actor_infos=[actor_info], results=[result])
+
+    def _get_next_future(self) -> Tuple[Optional[ActorInfo], Optional[TypedFuture]]:
+        futures_to_typed = {tf.future: tf for tf in self._futures_to_actors.keys()}
+        raw_actor_futures = list(futures_to_typed.keys())
+        resource_futures = self._resource_manager.get_resource_futures()
+
+        random.shuffle(raw_actor_futures)
+
+        # Prioritize resource futures
+        futures = resource_futures + raw_actor_futures
+
+        ready, not_ready = ray.wait(futures, timeout=0, num_returns=1)
+        if not ready:
+            return None, None
+
+        next_future = ready[0]
+        next_typed_future = futures_to_typed[next_future]
+        actor_info = self._futures_to_actors.get(next_typed_future)
+
+        # Todo: handle resource futures
+        return actor_info, next_typed_future
+
+    def _get_new_actor_requests(self):
+        for actor_request in self._controller.get_actor_requests():
+            self._actor_requests.append(actor_request)
+            self._resource_manager.request_resources(actor_request.resources)
+
+    def _start_new_actors(self):
+        new_actor_requests = []
+        new_actors = []
+        for actor_request in self._actor_requests:
+            if self._resource_manager.has_resources_ready(actor_request.resources):
+                ready_resource = self._resource_manager.acquire_resources(
+                    actor_request.resources
+                )
+                remote_actor_cls = ray.remote(actor_request.cls)
+                annotated_actor_cls = ready_resource.annotate_remote_objects(
+                    [remote_actor_cls]
+                )
+                actor = annotated_actor_cls.remote(**actor_request.kwargs)
+                actor_info = ActorInfo(
+                    request=actor_request, actor=actor, used_resource=ready_resource
+                )
+                self._active_actors.add(actor_info)
+                self._controller.actor_started(actor_info)
+                new_actors.append(actor_info)
+            else:
+                new_actor_requests.append(actor_request)
+
+        self._actor_requests = new_actor_requests
+
+    def _request_actions(self):
+        all_actor_actions = defaultdict(list)
+        for actor_info, actions in list(self._cached_actions.items()):
+            if not self._actors_to_futures[actor_info]:
+                # All previous futures are processed. Wait is over
+                self._waiting_actors.discard(actor_info)
+                all_actor_actions[actor_info].extend(actions)
+                self._cached_actions[actor_info] = []
+
+        new_actor_actions = self._controller.get_actions()
+        for actor_info, new_actions in new_actor_actions.items():
+            all_actor_actions[actor_info].extend(new_actions)
+
+        for actor_info, new_actions in all_actor_actions.items():
+            for action in all_actor_actions[actor_info]:
+                if actor_info in self._waiting_actors:
+                    self._cached_actions[actor_info].append(action)
+                else:
+                    self._act_on_action(actor_info=actor_info, action=action)
+
+    def _clear_actor_futures(self, actor_info: ActorInfo):
+        # remove futures
+        futures = self._actors_to_futures.pop(actor_info)
+        for future in futures:
+            self._futures_to_actors.pop(future)
+
+    def _act_on_action(self, actor_info: ActorInfo, action: Action):
+        if isinstance(action, Wait):
+            self._waiting_actors.add(actor_info)
+        elif isinstance(action, Stop):
+            self._clear_actor_futures(actor_info)
+
+            # remove actor
+            ray.kill(actor_info.actor)
+
+            # Return resources
+            self._resource_manager.return_resources(actor_info.used_resource)
+
+            # Notify controller
+            self._controller.actor_stopped(actor_info=actor_info)
+        elif isinstance(action, Continue):
+            for future in action.futures:
+                self._actors_to_futures[actor_info].add(future)
+                self._futures_to_actors[future] = actor_info
+        else:
+            raise RuntimeError(f"Unknown action: {type(action)}")

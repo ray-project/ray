@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any
 
 from ray.air.execution.resources.request import ResourceRequest
 
@@ -6,6 +7,11 @@ from ray.air.execution.resources.request import ResourceRequest
 @dataclass
 class ExecutionResult:
     pass
+
+
+@dataclass
+class NativeResult:
+    data: Any
 
 
 @dataclass
