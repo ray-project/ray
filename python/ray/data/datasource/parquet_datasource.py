@@ -451,5 +451,6 @@ def _sample_piece(
         ratio = PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
     logger.debug(
         f"Estimated Parquet encoding ratio is {ratio} for piece {piece} "
-        f"with batch size {batch_size}.")
+        f"with batch size {batch_size}."
+    )
     return ratio
