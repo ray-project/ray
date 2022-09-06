@@ -61,6 +61,7 @@ class GcsHeartbeatManagerTest : public ::testing::Test {
   ;
 };
 
+#ifndef __APPLE__
 TEST_F(GcsHeartbeatManagerTest, TestBasicTimeout) {
   auto node_1 = NodeID::FromRandom();
   auto start = absl::Now();
@@ -81,6 +82,7 @@ TEST_F(GcsHeartbeatManagerTest, TestBasicTimeout) {
     ASSERT_EQ(std::vector<NodeID>{node_1}, dead_nodes);
   }
 }
+#endif
 
 TEST_F(GcsHeartbeatManagerTest, TestBasicReport) {
   auto node_1 = NodeID::FromRandom();
