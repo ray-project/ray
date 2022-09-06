@@ -1241,6 +1241,39 @@ run as much in parallel as possible. For example, if your ``evaluation_duration=
 ``evaluation_duration_unit=episodes``, and ``evaluation_num_workers=10``, each RolloutWorker
 only has to run 1 episode in each evaluation step.
 
+In case you observe occasional failures in your RolloutWorkers during evaluation (e.g. you have an environment that sometimes crashes),
+you can use an (experimental) new setting: ``enable_async_evaluation=True``.
+This will run the parallel sampling of all evaluation RolloutWorkers via a fault tolerant, asynchronous manager, such that if one of the workers
+takes too long to run through an episode and return data or fails entirely, the other RolloutWorkers will pick up its task and complete the job.
+
+Note that with or without asynch evaluation, all fault tolerance settings, such as ``ignore_worker_failures`` or ``recreate_failed_workers``
+will be respected and applied to failed evaluation workers.
+
+Example:
+
+.. code-block:: python
+
+    # Having an environment that occasionally blocks completely for e.g. 10min would
+    # also affect (and block) training:
+    {
+        "evaluation_interval": 1,
+        "evaluation_parallel_to_training": True,
+        "evaluation_num_workers": 10,  # each worker runs a single episode
+        "evaluation_duration": 10,
+        "evaluation_duration_unit": "episodes",
+    }
+
+    # Switch on asynchronous evaluation, meaning, we don't wait for individual
+    # evaluation RolloutWorkers to complete their one episode, but instead:
+    # any evaluation RolloutWorker can cover the load of another one that failed
+    # or is stuck in a very long lasting environment step.
+    {
+        # ...
+        # same settings as above, plus:
+        "enable_async_evaluation": True,  # evaluate asynchronously
+    }
+
+
 In case you would like to entirely customize the evaluation step, set ``custom_eval_function`` in your
 config to a callable, which takes the Algorithm object and a WorkerSet object (the Algorithm's ``self.evaluation_workers`` WorkerSet instance)
 and returns a metrics dict. See `algorithm.py <https://github.com/ray-project/ray/blob/master/rllib/algorithms/algorithm.py>`__
