@@ -38,3 +38,4 @@ The ``reduce`` worker will implicitly call ``ray.get()`` to fetch the actual rol
 Other ``ray.get()`` related anti-patterns are:
 
 - :doc:`ray-get-loop`
+- :doc:`ray-get-submission-order`
