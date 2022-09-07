@@ -127,9 +127,9 @@ class ParametricRecSys(gym.Env):
         # Action is the suggested slate (indices of the docs in the
         # suggested ones).
 
-        scores = softmax([
-            np.dot(self.current_user, doc) for doc in self.currently_suggested_docs
-        ])
+        scores = softmax(
+            [np.dot(self.current_user, doc) for doc in self.currently_suggested_docs]
+        )
         best_reward = np.max(scores)
 
         # User choice model: User picks a doc stochastically,
