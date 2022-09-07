@@ -65,6 +65,8 @@ NodeIP = str
 # Number of nodes to launch
 NodeCount = int
 
+Usage = Dict[str, Tuple[Number, Number]]
+
 logger = logging.getLogger(__name__)
 
 
@@ -81,7 +83,7 @@ def is_placement_group_resource(resource_name: str) -> bool:
 @dataclass
 class LoadMetricsSummary:
     # Map of resource name (e.g. "memory") to pair of (Used, Available) numbers
-    usage: Dict[str, Tuple[Number, Number]]
+    usage: Usage
     # Counts of demand bundles from task/actor demand.
     # e.g. [({"CPU": 1}, 5), ({"GPU":1}, 2)]
     resource_demand: List[DictCount]
@@ -90,8 +92,12 @@ class LoadMetricsSummary:
     # Counts of demand bundles requested by autoscaler.sdk.request_resources
     request_demand: List[DictCount]
     node_types: List[DictCount]
-    # Optionally included for backwards compatibility: IP of the head node.
+    # Optionally included for backwards compatibility: IP of the head node. See
+    # https://github.com/ray-project/ray/pull/20623 for details.
     head_ip: Optional[NodeIP] = None
+    # Optionally included for backwards compatibility: Resource breakdown by
+    # node. Mapping from node id to resource usage.
+    usage_by_node: Optional[Dict[str, Usage]] = None
 
 
 class ConcurrentCounter:
@@ -521,12 +527,11 @@ def parse_placement_group_resource_str(
         return (result.group(1), result.group(2), True)
     return (placement_group_resource_str, None, True)
 
-
-def get_usage_report(lm_summary: LoadMetricsSummary) -> str:
+def parse_usage(usage: Usage) -> List[str]:
     # first collect resources used in placement groups
     placement_group_resource_usage = {}
     placement_group_resource_total = collections.defaultdict(float)
-    for resource, (used, total) in lm_summary.usage.items():
+    for resource, (used, total) in usage.items():
         (pg_resource_name, pg_name, is_countable) = parse_placement_group_resource_str(
             resource
         )
@@ -537,9 +542,8 @@ def get_usage_report(lm_summary: LoadMetricsSummary) -> str:
                 placement_group_resource_usage[pg_resource_name] += used
                 placement_group_resource_total[pg_resource_name] += total
             continue
-
     usage_lines = []
-    for resource, (used, total) in sorted(lm_summary.usage.items()):
+    for resource, (used, total) in sorted(usage.items()):
         if "node:" in resource:
             continue  # Skip the auto-added per-node "node:<ip>" resource.
 
@@ -561,7 +565,7 @@ def get_usage_report(lm_summary: LoadMetricsSummary) -> str:
 
         if resource in ["memory", "object_store_memory"]:
             to_GiB = 1 / 2 ** 30
-            line = f" {(used * to_GiB):.2f}/" f"{(total * to_GiB):.3f} GiB {resource}"
+            line = f"{(used * to_GiB):.2f}/" f"{(total * to_GiB):.3f} GiB {resource}"
             if used_in_pg:
                 line = line + (
                     f" ({(pg_used * to_GiB):.2f} used of "
@@ -575,7 +579,13 @@ def get_usage_report(lm_summary: LoadMetricsSummary) -> str:
                     f" ({pg_used} used of " f"{pg_total} reserved in placement groups)"
                 )
             usage_lines.append(line)
-    usage_report = "\n".join(usage_lines)
+    return usage_lines
+
+
+def get_usage_report(lm_summary: LoadMetricsSummary, verbose : bool = False) -> str:
+
+    usage_lines = parse_usage(lm_summary.usage)
+    usage_report = " " + "\n ".join(usage_lines)
     return usage_report
 
 
@@ -647,7 +657,7 @@ def get_demand_report(lm_summary: LoadMetricsSummary):
     return demand_report
 
 
-def format_info_string(lm_summary, autoscaler_summary, time=None):
+def format_info_string(lm_summary, autoscaler_summary, time=None, verbose: bool=False):
     if time is None:
         time = datetime.now()
     header = "=" * 8 + f" Autoscaler status: {time} " + "=" * 8

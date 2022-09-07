@@ -323,12 +323,20 @@ class LoadMetrics:
         )
         nodes_summary = freq_of_dicts(self.static_resources_by_ip.values())
 
+        usage_by_node = {}
+        for ip, totals in self.static_resources_by_ip.items():
+            available = self.dynamic_resources_by_ip.get(ip, {})
+            usage_by_node[ip] = {}
+            for resource, total in totals.items():
+                usage_by_node[ip][resource] = (available.get(resource, 0), total)
+
         return LoadMetricsSummary(
             usage=usage_dict,
             resource_demand=summarized_demand_vector,
             pg_demand=summarized_placement_groups,
             request_demand=summarized_resource_requests,
             node_types=nodes_summary,
+            usage_by_node=usage_by_node,
         )
 
     def set_resource_requests(self, requested_resources):
