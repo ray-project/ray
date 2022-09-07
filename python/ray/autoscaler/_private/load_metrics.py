@@ -328,7 +328,10 @@ class LoadMetrics:
             available = self.dynamic_resources_by_ip.get(ip, {})
             usage_by_node[ip] = {}
             for resource, total in totals.items():
-                usage_by_node[ip][resource] = (total - available.get(resource, 0), total)
+                usage_by_node[ip][resource] = (
+                    total - available.get(resource, 0),
+                    total,
+                )
 
         return LoadMetricsSummary(
             usage=usage_dict,

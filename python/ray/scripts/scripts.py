@@ -1869,7 +1869,7 @@ def memory(
     help="Display additional debuggging information.",
 )
 @PublicAPI
-def status(address : str, redis_password : str, verbose : bool):
+def status(address: str, redis_password: str, verbose: bool):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address_or_die(address)
     if not ray._private.gcs_utils.check_health(address):

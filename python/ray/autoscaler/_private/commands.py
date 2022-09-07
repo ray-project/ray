@@ -148,9 +148,14 @@ def debug_status(status, error, verbose: bool = False) -> str:
                 **autoscaler_summary_dict,
             )
             report_time = datetime.datetime.fromtimestamp(timestamp)
-            status = format_info_string( lm_summary, autoscaler_summary,
-                                         time=report_time, gcs_request_time=gcs_request_time, non_terminated_nodes_time=non_terminated_nodes_time,
-                                         verbose=verbose, )
+            status = format_info_string(
+                lm_summary,
+                autoscaler_summary,
+                time=report_time,
+                gcs_request_time=gcs_request_time,
+                non_terminated_nodes_time=non_terminated_nodes_time,
+                verbose=verbose,
+            )
         else:
             status = "No cluster status."
     else:

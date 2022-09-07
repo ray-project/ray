@@ -363,7 +363,11 @@ class Monitor:
                     autoscaler_summary = self.autoscaler.summary()
                     if autoscaler_summary:
                         status["autoscaler_report"] = asdict(autoscaler_summary)
-                        status["non_terminated_nodes_time"] = self.autoscaler.non_terminated_nodes.non_terminated_nodes_time
+                        status[
+                            "non_terminated_nodes_time"
+                        ] = (
+                            self.autoscaler.non_terminated_nodes.non_terminated_nodes_time
+                        )
 
                     for msg in self.event_summarizer.summary():
                         # Need to prefix each line of the message for the lines to

@@ -8,9 +8,9 @@ import re
 import threading
 from dataclasses import dataclass
 from datetime import datetime
+from io import StringIO
 from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
-from io import StringIO
 
 import ray
 import ray._private.ray_constants
@@ -675,7 +675,14 @@ def get_per_node_breakdown(lm_summary: LoadMetricsSummary):
     return sio.getvalue()
 
 
-def format_info_string(lm_summary, autoscaler_summary, time=None, gcs_request_time: Optional[float] = None, non_terminated_nodes_time : Optional[float] = None, verbose: bool=False):
+def format_info_string(
+    lm_summary,
+    autoscaler_summary,
+    time=None,
+    gcs_request_time: Optional[float] = None,
+    non_terminated_nodes_time: Optional[float] = None,
+    verbose: bool = False,
+):
     if time is None:
         time = datetime.now()
     header = "=" * 8 + f" Autoscaler status: {time} " + "=" * 8
