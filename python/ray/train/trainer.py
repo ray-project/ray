@@ -755,18 +755,19 @@ class TrainingIterator:
     def __next__(self):
         if self.is_finished():
             raise StopIteration
-        next_results = self._run_with_error_handling(self._fetch_next_result)
-        if next_results is None:
-            try:
+        try:
+            next_results = self._run_with_error_handling(self._fetch_next_result)
+            if next_results is None:
                 self._final_results = self._run_with_error_handling(
                     self._finish_training
                 )
-            finally:
                 self._finished_training = True
-            raise StopIteration
-        else:
-
-            return next_results
+                raise StopIteration
+            else:
+                return next_results
+        except Exception:
+            self._finished_training = True
+            raise
 
     def _fetch_next_result(self) -> Optional[List[Dict]]:
         """Fetch next results produced by ``train.report()`` from each worker.
