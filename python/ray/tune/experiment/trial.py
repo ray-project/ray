@@ -683,13 +683,13 @@ class Trial:
         self.restoring_from = None
         self.invalidate_json_state()
 
-    def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
+    def on_checkpoint(self, checkpoint: _TrackedCheckpoint, force: bool = False):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
             checkpoint: Checkpoint taken.
         """
-        self.checkpoint_manager.on_checkpoint(checkpoint)
+        self.checkpoint_manager.on_checkpoint(checkpoint, force=force)
         self.invalidate_json_state()
 
     def on_restore(self):
