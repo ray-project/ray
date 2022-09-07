@@ -28,6 +28,8 @@ logger.setLevel(logging.INFO)
 
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
+SNAPSHOT_API_TIMEOUT_SECONDS = 30
+
 
 class RayActivityStatus(str, enum.Enum):
     ACTIVE = "ACTIVE"
@@ -104,7 +106,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         request.actor_id = bytes.fromhex(actor_id)
         request.force_kill = force_kill
         request.no_restart = no_restart
-        await self._gcs_actor_info_stub.KillActorViaGcs(request, timeout=5)
+        await self._gcs_actor_info_stub.KillActorViaGcs(request, timeout=SNAPSHOT_API_TIMEOUT_SECONDS)
 
         message = (
             f"Force killed actor with id {actor_id}"
@@ -150,7 +152,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         if timeout and timeout.isdigit():
             timeout = int(timeout)
         else:
-            timeout = 5
+            timeout = SNAPSHOT_API_TIMEOUT_SECONDS
 
         # Get activity information for driver
         driver_activity_info = await self._get_job_activity_info(timeout=timeout)
@@ -274,7 +276,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
     async def get_job_info(self):
         """Return info for each job.  Here a job is a Ray driver."""
         request = gcs_service_pb2.GetAllJobInfoRequest()
-        reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=5)
+        reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=SNAPSHOT_API_TIMEOUT_SECONDS)
 
         jobs = {}
         for job_table_entry in reply.job_info_list:
@@ -329,7 +331,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         request = gcs_service_pb2.GetAllActorInfoRequest()
         request.show_dead_jobs = True
         request.limit = limit
-        reply = await self._gcs_actor_info_stub.GetAllActorInfo(request, timeout=5)
+        reply = await self._gcs_actor_info_stub.GetAllActorInfo(request, timeout=SNAPSHOT_API_TIMEOUT_SECONDS)
         actors = {}
         for actor_table_entry in reply.actor_table_data:
             actor_id = actor_table_entry.actor_id.hex()
@@ -381,14 +383,14 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         serve_keys = await self._gcs_aio_client.internal_kv_keys(
             SERVE_CONTROLLER_NAME.encode(),
             namespace=ray_constants.KV_NAMESPACE_SERVE,
-            timeout=GCS_RPC_TIMEOUT_SECONDS,
+            timeout=SNAPSHOT_API_TIMEOUT_SECONDS,
         )
 
         tasks = [
             self._gcs_aio_client.internal_kv_get(
                 key,
                 namespace=ray_constants.KV_NAMESPACE_SERVE,
-                timeout=GCS_RPC_TIMEOUT_SECONDS,
+                timeout=SNAPSHOT_API_TIMEOUT_SECONDS,
             )
             for key in serve_keys
             if SERVE_SNAPSHOT_KEY in key.decode()
@@ -416,7 +418,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         session_name = await self._gcs_aio_client.internal_kv_get(
             b"session_name",
             namespace=ray_constants.KV_NAMESPACE_SESSION,
-            timeout=GCS_RPC_TIMEOUT_SECONDS,
+            timeout=SNAPSHOT_API_TIMEOUT_SECONDS,
         )
         return session_name.decode()
 
