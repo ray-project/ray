@@ -349,13 +349,13 @@ def deployment(
     if num_replicas == 0:
         raise ValueError("num_replicas is expected to larger than 0")
 
-    if num_replicas is not None and autoscaling_config is not None:
+    if num_replicas is not DEFAULT.VALUE and autoscaling_config is not DEFAULT.VALUE:
         raise ValueError(
             "Manually setting num_replicas is not allowed when "
             "autoscaling_config is provided."
         )
 
-    if version is not None:
+    if version is not DEFAULT.VALUE:
         logger.warning(
             "DeprecationWarning: `version` in `@serve.deployment` has been deprecated. "
             "Explicitly specifying version will raise an error in the future!"
