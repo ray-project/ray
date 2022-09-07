@@ -62,23 +62,28 @@ def _explore(
         custom_explore_fn: Custom explore fn applied after built-in
             config perturbations are.
     """
+    operations = {}
     new_config = copy.deepcopy(config)
     for key, distribution in mutations.items():
         if isinstance(distribution, dict):
-            new_config.update(
-                {key: _explore(config[key], mutations[key], resample_probability, None)}
+            nested_new_config, nested_ops = _explore(
+                config[key], mutations[key], resample_probability, None
             )
+            new_config.update({key: nested_new_config})
+            operations.update({key: nested_ops})
         elif isinstance(distribution, list):
             if (
                 random.random() < resample_probability
                 or config[key] not in distribution
             ):
                 new_config[key] = random.choice(distribution)
+                operations[key] = "resample"
             else:
                 shift = random.choice([-1, 1])
                 new_idx = distribution.index(config[key]) + shift
                 new_idx = min(max(new_idx, 0), len(distribution) - 1)
                 new_config[key] = distribution[new_idx]
+                operations[key] = f"shift {'left' if shift == -1 else 'right'}"
         else:
             if random.random() < resample_probability:
                 new_config[key] = (
@@ -86,15 +91,18 @@ def _explore(
                     if isinstance(distribution, Domain)
                     else distribution()
                 )
+                operations[key] = "resample"
             else:
                 perturbation_factors = [1.2, 0.8]
-                new_config[key] = config[key] * random.choice(perturbation_factors)
+                perturbation_factor = random.choice(perturbation_factors)
+                new_config[key] = config[key] * perturbation_factor
+                operations[key] = f"* {perturbation_factor}"
             if isinstance(config[key], int):
                 new_config[key] = int(new_config[key])
     if custom_explore_fn:
         new_config = custom_explore_fn(new_config)
         assert new_config is not None, "Custom explore fn failed to return new config"
-    return new_config
+    return new_config, operations
 
 
 def _make_experiment_tag(orig_tag: str, config: Dict, mutations: Dict) -> str:
@@ -599,6 +607,27 @@ class PopulationBasedTraining(FIFOScheduler):
             self._custom_explore_fn,
         )
 
+    def _summarize_hyperparam_changes(
+        self, old_params, new_params, operations, prefix=""
+    ):
+        summary_str = ""
+        longest_name = max([len(param_name) for param_name in old_params.keys()])
+        longest_op = max([len(op) for op in operations.values() if isinstance(op, str)])
+        for param_name in old_params:
+            old_val = old_params[param_name]
+            new_val = new_params[param_name]
+            summary_str += f"{prefix}{param_name.ljust(longest_name)} : "
+            if isinstance(old_val, Dict):
+                summary_str += "\n"
+                summary_str += self._summarize_hyperparam_changes(
+                    old_val, new_val, operations[param_name], prefix=prefix + "\t"
+                )
+            else:
+                op = operations[param_name]
+                arrow = "---- " + f"({op})".center(longest_op + 2) + " --->"
+                summary_str += f"{old_val:.4f} {arrow} {new_val:.4f}\n"
+        return summary_str
+
     def _exploit(
         self,
         trial_executor: "trial_runner.RayTrialExecutor",
@@ -621,29 +650,24 @@ class PopulationBasedTraining(FIFOScheduler):
             )
         )
 
-        new_config = self._get_new_config(trial, trial_to_clone)
+        new_config, operations = self._get_new_config(trial, trial_to_clone)
 
         # Only log mutated hyperparameters and not entire config.
-        old_hparams = {
+        old_params = {
             k: v
             for k, v in trial_to_clone.config.items()
             if k in self._hyperparam_mutations
         }
-        new_hparams = {
+        new_params = {
             k: v for k, v in new_config.items() if k in self._hyperparam_mutations
         }
         explore_info_str = (
             "\n\n[PBT] [Explore] Perturbed the hyperparameter config of trial"
             f"{trial.trial_id}:\n"
         )
-        longest_name = max([len(param_name) for param_name in old_hparams.keys()])
-        for param_name in old_hparams:
-            old_val = old_hparams[param_name]
-            new_val = new_hparams[param_name]
-            explore_info_str += (
-                f"{param_name.ljust(longest_name)} : {old_val:.4f} {'-' * 8}> "
-                f"{new_val:.4f}\n"
-            )
+        explore_info_str += self._summarize_hyperparam_changes(
+            old_params, new_params, operations
+        )
         logger.info(explore_info_str)
 
         if self._log_config:
