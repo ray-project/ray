@@ -121,7 +121,8 @@ specified under `headGroupSpec`, while configuration for worker pods is
 specified under `workerGroupSpecs`. There may be multiple worker groups,
 each group with its own configuration. The `replicas` field
 of a `workerGroupSpec` specifies the number of worker pods of that group to
-keep in the cluster.
+keep in the cluster. Each `workerGroupSpec` also has optional `minReplicas` and
+`maxReplicas` fields; these fields are important if you wish to enable {ref}`autoscaling <kuberay-autoscaling-config>`.
 
 ### Pod templates
 The bulk of the configuration for a `headGroupSpec` or
@@ -129,6 +130,14 @@ The bulk of the configuration for a `headGroupSpec` or
 template which determines the configuration for the pods in the group.
 Here are some of the subfields of the pod `template` to pay attention to:
 
+#### containers
+A Ray pod template specifies at minimum one container, namely the container
+that runs the Ray processes. A Ray pod template may also specify additional sidecar
+containers, for purposes such as {ref}`log processing <kuberay-logging>`. However, the KubeRay operator assumes that
+the first container in the containers list is the main Ray container.
+Therefore, make sure to specify any sidecar containers
+**after** the main Ray container. In other words, the Ray container should be the **first**
+in the `containers` list.
 
 #### resources
 It’s important to specify container CPU and memory requests and limits for
@@ -153,8 +162,20 @@ Note that CPU quantities will be rounded up to the nearest integer
 before being relayed to Ray.
 The resource capacities advertised to Ray may be overridden in the {ref}`rayStartParams`.
 
+:::{warning}
+Due to a  [bug](https://github.com/ray-project/kuberay/pull/497) in KubeRay 0.3.0,
+the following piece of configuration is required to advertise the presence of GPUs
+to Ray.
+```yaml
+rayStartParams:
+    num-gpus: "1"
+```
+Future releases of KubeRay will not require this. (GPU quantities will be correctly auto-detected
+from container limits.)
+:::
+
 On the other hand CPU, GPU, and memory **requests** will be ignored by Ray.
-For this reason, it is best when possible to set resource requests equal to resource limits.
+For this reason, it is best when possible to **set resource requests equal to resource limits**.
 
 #### nodeSelector and tolerations
 You can control the scheduling of worker groups' Ray pods by setting the `nodeSelector` and
@@ -209,9 +230,8 @@ Note that the values of all Ray start parameters, including `num-cpus`,
 must be supplied as **strings**.
 
 ### num-gpus
-This optional field specifies the number of GPUs available to the Ray container.
-In KubeRay versions since 0.3.0, the number of GPUs can be auto-detected from Ray container resource limits.
-For certain advanced use-cases, you may wish to use `num-gpus` to set an {ref}`override <kuberay-gpu-override>`.
+This field specifies the number of GPUs available to the Ray container.
+In future KubeRay versions, the number of GPUs will be auto-detected from Ray container resource limits.
 Note that the values of all Ray start parameters, including `num-gpus`,
 must be supplied as **strings**.
 

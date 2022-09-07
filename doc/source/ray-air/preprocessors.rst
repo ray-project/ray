@@ -7,6 +7,11 @@ Data preprocessing is a common technique for transforming raw data into features
 In general, you may want to apply the same preprocessing logic to your offline training data and online inference data.
 Ray AIR provides several common preprocessors out of the box and interfaces to define your own custom logic.
 
+.. https://docs.google.com/drawings/d/1ZIbsXv5vvwTVIEr2aooKxuYJ_VL7-8VMNlRinAiPaTI/edit
+
+.. image:: images/preprocessors.svg
+
+
 Overview
 --------
 

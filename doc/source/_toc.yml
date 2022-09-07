@@ -207,6 +207,7 @@ parts:
               - file: rllib/rllib-sample-collection
               - file: rllib/rllib-replay-buffers
               - file: rllib/rllib-offline
+              - file: rllib/rllib-connector
               - file: rllib/rllib-dev
           - file: rllib/rllib-examples
           - file: rllib/package_ref/index

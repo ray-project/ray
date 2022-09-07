@@ -6,6 +6,7 @@ import pytest
 
 import ray
 import ray.train as train
+from ray.air._internal.util import StartTraceback
 from ray.cluster_utils import Cluster
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
@@ -171,19 +172,23 @@ def test_train_failure(ray_start_2_cpus):
     e = BackendExecutor(config, num_workers=2)
     e.start()
 
-    with pytest.raises(TrainBackendError):
+    with pytest.raises(StartTraceback) as exc:
         e.get_next_results()
+    assert isinstance(exc.value.__cause__, TrainBackendError)
 
-    with pytest.raises(TrainBackendError):
+    with pytest.raises(StartTraceback) as exc:
         e.pause_reporting()
+    assert isinstance(exc.value.__cause__, TrainBackendError)
 
-    with pytest.raises(TrainBackendError):
+    with pytest.raises(StartTraceback) as exc:
         e.finish_training()
+    assert isinstance(exc.value.__cause__, TrainBackendError)
 
     e.start_training(lambda: 1, dataset_spec=EMPTY_RAY_DATASET_SPEC)
 
-    with pytest.raises(TrainBackendError):
+    with pytest.raises(StartTraceback) as exc:
         e.start_training(lambda: 2, dataset_spec=EMPTY_RAY_DATASET_SPEC)
+    assert isinstance(exc.value.__cause__, TrainBackendError)
 
     assert e.finish_training() == [1, 1]
 
