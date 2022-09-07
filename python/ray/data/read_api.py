@@ -548,7 +548,7 @@ def read_csv(
     ] = CSVDatasource.file_extension_filter(),
     **arrow_csv_args,
 ) -> Dataset[ArrowRow]:
-    """Create an Arrow dataset from csv files.
+    r"""Create an Arrow dataset from csv files.
 
     Examples:
         >>> import ray
@@ -561,6 +561,16 @@ def read_csv(
         >>> # Read multiple directories.
         >>> ray.data.read_csv( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
+
+        >>> # Read files that use a different delimiter. The partition_filter=None is needed here
+        >>> # because by default read_csv only reads .csv files. For more uses of ParseOptions see
+        >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html  # noqa: #501
+        >>> from pyarrow import csv
+        >>> parse_options = csv.ParseOptions(delimiter="\t")
+        >>> ray.data.read_csv( # doctest: +SKIP
+        ...     "example://iris.tsv",
+        ...     parse_options=parse_options,
+        ...     partition_filter=None)
 
         >>> # Convert a date column with a custom format from a CSV file.
         >>> # For more uses of ConvertOptions see
