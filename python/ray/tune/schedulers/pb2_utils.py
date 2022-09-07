@@ -98,7 +98,7 @@ def UCB(m, m1, x, fixed, kappa=0.5):
 
     c1 = 0.2
     c2 = 0.4
-    beta_t = c1 * np.log(c2 * m.X.shape[0])
+    beta_t = c1 + max(0, np.log(c2 * m.X.shape[0]))
     kappa = np.sqrt(beta_t)
 
     xtest = np.concatenate((fixed.reshape(-1, 1), np.array(x).reshape(-1, 1))).T
