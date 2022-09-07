@@ -170,6 +170,14 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_fsdp",
+    size = "large",
+    srcs = ["tests/test_torch_fsdp.py"],
+    tags = ["team:ml", "exclusive", "torch_1_11", "gpu_only"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_horovod_trainer",
     size = "large",
     srcs = ["tests/test_horovod_trainer.py"],
