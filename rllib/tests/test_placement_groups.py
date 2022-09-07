@@ -95,7 +95,7 @@ class TestPlacementGroups(unittest.TestCase):
         config["placement_strategy"] = "SPREAD"
 
         tune.Tuner(
-            "PG",
+            PG,
             param_space=config,
             run_config=air.RunConfig(
                 stop={"training_iteration": 2},
@@ -113,10 +113,9 @@ class TestPlacementGroups(unittest.TestCase):
 
         try:
             tune.Tuner(
-                "PG",
+                tune.with_resources(PG, PlacementGroupFactory([{"CPU": 1}])),
                 param_space=config,
                 run_config=air.RunConfig(stop={"training_iteration": 2}, verbose=2),
-                resources_per_trial=PlacementGroupFactory([{"CPU": 1}]),
             ).fit()
         except ValueError as e:
             assert "have been automatically set to" in e.args[0]

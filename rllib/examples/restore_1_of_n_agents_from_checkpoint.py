@@ -102,7 +102,7 @@ if __name__ == "__main__":
     ).fit()
     print("Pre-training done.")
 
-    best_checkpoint = results.get_best_checkpoint(results.trials[0], mode="max")
+    best_checkpoint = results.get_best_result().checkpoint
     print(f".. best checkpoint was: {best_checkpoint}")
 
     # Create a new dummy Algorithm to "fix" our checkpoint.
@@ -141,10 +141,11 @@ if __name__ == "__main__":
 
     results = tune.run(
         "PPO",
-        run_config=air.RunConfig(stop=stop, verbose=1),
-        param_space=config,
+        stop=stop,
+        config=config,
         restore=new_checkpoint,
-    ).fit()
+        verbose=1,
+    )
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
