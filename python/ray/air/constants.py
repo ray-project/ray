@@ -25,3 +25,9 @@ MAX_REPR_LENGTH = int(80 * 1.5)
 
 # Timeout used when putting exceptions raised by runner thread into the queue.
 _ERROR_REPORT_TIMEOUT = 10
+
+# Timeout when fetching new results after signaling the training function to continue.
+_RESULT_FETCH_TIMEOUT = 0.2
+
+# Timeout for fetching exceptions raised by the training function.
+_ERROR_FETCH_TIMEOUT = 1

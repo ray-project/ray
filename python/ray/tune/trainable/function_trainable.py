@@ -16,6 +16,7 @@ from ray.tune.resources import Resources
 from six.moves import queue
 
 from ray.air.checkpoint import Checkpoint
+from ray.air.constants import _ERROR_FETCH_TIMEOUT, _RESULT_FETCH_TIMEOUT
 from ray.tune import TuneError
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import session
@@ -38,9 +39,6 @@ logger = logging.getLogger(__name__)
 
 # Time between FunctionTrainable checks when fetching
 # new results after signaling the reporter to continue
-RESULT_FETCH_TIMEOUT = 0.2
-
-ERROR_FETCH_TIMEOUT = 1
 
 NULL_MARKER = ".null_marker"
 TEMP_MARKER = ".temp_marker"
@@ -365,7 +363,7 @@ class FunctionTrainable(Trainable):
             # fetch the next produced result
             try:
                 result = self._results_queue.get(
-                    block=True, timeout=RESULT_FETCH_TIMEOUT
+                    block=True, timeout=_RESULT_FETCH_TIMEOUT
                 )
             except queue.Empty:
                 pass
@@ -554,7 +552,7 @@ class FunctionTrainable(Trainable):
 
     def _report_thread_runner_error(self, block=False):
         try:
-            e = self._error_queue.get(block=block, timeout=ERROR_FETCH_TIMEOUT)
+            e = self._error_queue.get(block=block, timeout=_ERROR_FETCH_TIMEOUT)
             raise StartTraceback from e
         except queue.Empty:
             pass

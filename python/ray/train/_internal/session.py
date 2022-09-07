@@ -10,8 +10,9 @@ from enum import Enum, auto
 from typing import Callable, Dict, Optional, Type, Union
 
 import ray
-from ray.air._internal.util import StartTraceback, skip_exceptions, RunnerThread
+from ray.air._internal.util import StartTraceback, RunnerThread
 from ray.air.checkpoint import Checkpoint
+from ray.air.constants import _RESULT_FETCH_TIMEOUT, _ERROR_FETCH_TIMEOUT
 from ray.data import Dataset, DatasetPipeline
 from ray.train._internal.accelerator import Accelerator
 from ray.train.constants import (
@@ -20,8 +21,6 @@ from ray.train.constants import (
     HOSTNAME,
     NODE_IP,
     PID,
-    RESULT_FETCH_TIMEOUT,
-    ERROR_FETCH_TIMEOUT,
     TIME_THIS_ITER_S,
     TIME_TOTAL_S,
     TIMESTAMP,
@@ -165,7 +164,9 @@ class _TrainSession:
         # While training is still ongoing, attempt to get the result.
         while result is None and self.training_thread.is_alive():
             try:
-                result = self.result_queue.get(block=True, timeout=RESULT_FETCH_TIMEOUT)
+                result = self.result_queue.get(
+                    block=True, timeout=_RESULT_FETCH_TIMEOUT
+                )
             except queue.Empty:
                 pass
 
@@ -176,7 +177,7 @@ class _TrainSession:
             # termination of the thread runner.
             try:
                 result = self.result_queue.get(
-                    block=False, timeout=RESULT_FETCH_TIMEOUT
+                    block=False, timeout=_RESULT_FETCH_TIMEOUT
                 )
             except queue.Empty:
                 pass
@@ -263,8 +264,8 @@ class _TrainSession:
 
     def _report_thread_runner_error(self, block=False):
         try:
-            e = self.error_queue.get(block=block, timeout=ERROR_FETCH_TIMEOUT)
-            raise StartTraceback from skip_exceptions(e)
+            e = self.error_queue.get(block=block, timeout=_ERROR_FETCH_TIMEOUT)
+            raise StartTraceback from e
         except queue.Empty:
             pass
 

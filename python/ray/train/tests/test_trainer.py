@@ -472,8 +472,8 @@ def test_load_checkpoint(ray_start_2_cpus):
 @pytest.mark.parametrize(
     "logdir",
     [
-        # None,
-        # "/tmp/test/trainer/test_persisted_checkpoint",
+        None,
+        "/tmp/test/trainer/test_persisted_checkpoint",
         "~/tmp/test/trainer/test_persisted_checkpoint",
     ],
 )
