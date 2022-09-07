@@ -72,8 +72,10 @@ class _CheckpointManager(CommonCheckpointManager):
             )
             self._process_persistent_checkpoint(checkpoint)
 
-    def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
+    def on_checkpoint(self, checkpoint: _TrackedCheckpoint, force: bool = False):
         """Ray Tune's entrypoint"""
+        if force:
+            checkpoint.set_forced_bit(True)
         # Todo (krfricke): Replace with handle_checkpoint.
         self.handle_checkpoint(checkpoint)
 
@@ -100,17 +102,13 @@ class _CheckpointManager(CommonCheckpointManager):
     @property
     def newest_checkpoint(self):
         """Returns the newest checkpoint (based on training iteration)."""
-        # NOTE: For PBT Debugging purposes only.
-        # TODO(justinvyu): Remove this.
-        # print("[DEBUGGING] newest_memory_checkpoint.id = ", self.newest_memory_checkpoint.id)
-        # print("[DEBUGGING] newest_persistent_checkpoint.id = ", self.newest_persistent_checkpoint.id)
-
-        # newest_checkpoint = max(
-        #     [self.newest_memory_checkpoint, self.newest_persistent_checkpoint],
-        #     key=lambda c: c.id,
-        # )
-        # return newest_checkpoint
-        return self.newest_memory_checkpoint
+        checkpoints = [self.newest_memory_checkpoint, self.newest_persistent_checkpoint]
+        # Always prefer forced checkpoints
+        # If multiple are forced, take the one with the highest checkpoint id
+        checkpoints.sort(key=lambda c: c.id)
+        checkpoints.sort(key=lambda c: c.forced)
+        newest_checkpoint = checkpoints[-1]
+        return newest_checkpoint
 
     @property
     def newest_memory_checkpoint(self):
