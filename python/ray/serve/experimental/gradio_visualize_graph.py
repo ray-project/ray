@@ -12,6 +12,7 @@ from ray.serve._private.deployment_method_executor_node import (
 )
 from ray.serve._private.json_serde import dagnode_from_json
 from ray.dag.utils import _DAGNodeNameGenerator
+from ray.dag.vis_utils import _dag_to_dot
 from ray.serve.handle import RayServeHandle
 from ray.experimental.gradio_utils import type_to_string
 
@@ -19,6 +20,7 @@ from typing import Any, Dict, Optional
 from collections import defaultdict
 import json
 import logging
+from io import BytesIO
 from pydoc import locate
 
 
@@ -325,6 +327,23 @@ class GraphVisualizer:
         }
 
         with gr.Blocks() as demo:
+            from PIL import Image
+
+            try:
+                graph = _dag_to_dot(self.dag)
+                gr.Image(
+                    label="Ray Serve Deployment Graph",
+                    value=Image.open(BytesIO(graph.create(graph.prog, format="png"))),
+                )
+            except ImportError:
+                gr.Markdown(
+                    "## Warning: cannot show graph illustration.\n"
+                    "Python module `pydot` and package `graphviz` is needed to show "
+                    "graph illustration. Install pydot with `pip install pydot` and "
+                    "graphviz with either `brew install pydot` or `sudo apt install "
+                    "graphviz`."
+                )
+
             self._make_blocks(node_to_depths)
 
             with gr.Row():
