@@ -641,7 +641,7 @@ def start(
 
     redirect_output = None if not no_redirect_output else True
 
-    if head:
+    if head and ray_client_server_port is None:
         ray_client_server_port = 10001
 
     ray_params = ray._private.parameter.RayParams(
@@ -689,7 +689,7 @@ def start(
             cli_logger.abort("`--api-server` should not be used with `--head`")
         if raylet is not True:
             cli_logger.abort("`--api-server` can only be used when `--raylet` is used")
-            
+
         start_services.add(ray_constants.PROCESS_TYPE_DASHBOARD)
 
     if raylet is True:
