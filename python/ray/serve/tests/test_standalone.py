@@ -647,35 +647,6 @@ def test_serve_start_different_http_checkpoint_options_warning(caplog):
     ray.shutdown()
 
 
-def test_recovering_controller_no_redeploy():
-    """Ensure controller doesn't redeploy running deployments when recovering."""
-    ray.init(namespace="x")
-    client = serve.start(detached=True)
-
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind())
-
-    num_actors = len(ray.util.list_named_actors(all_namespaces=True))
-    pid = ray.get(client._controller.get_pid.remote())
-
-    ray.kill(client._controller, no_restart=False)
-
-    wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != pid)
-
-    # Confirm that no new deployment is deployed over the next 10 seconds
-    with pytest.raises(RuntimeError):
-        wait_for_condition(
-            lambda: len(ray.util.list_named_actors(all_namespaces=True)) > num_actors,
-            timeout=5,
-        )
-
-    serve.shutdown()
-    ray.shutdown()
-
-
 def test_updating_status_message(lower_slow_startup_threshold_and_reset):
     """Check if status message says if a serve deployment has taken a long time"""
 

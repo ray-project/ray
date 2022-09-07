@@ -92,6 +92,32 @@ def test_memory_omitted_option(ray_shutdown):
     assert ray.get(hello.get_handle().remote()) == "world"
 
 
+def test_recovering_controller_no_redeploy(ray_shutdown):
+    """Ensure controller doesn't redeploy running deployments when recovering."""
+    ray.init(namespace="x")
+    client = serve.start(detached=True)
+
+    @serve.deployment
+    def f():
+        pass
+
+    serve.run(f.bind())
+
+    num_actors = len(ray.util.list_named_actors(all_namespaces=True))
+    pid = ray.get(client._controller.get_pid.remote())
+
+    ray.kill(client._controller, no_restart=False)
+
+    wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != pid)
+
+    # Confirm that no new deployment is deployed over the next 10 seconds
+    with pytest.raises(RuntimeError):
+        wait_for_condition(
+            lambda: len(ray.util.list_named_actors(all_namespaces=True)) > num_actors,
+            timeout=10,
+        )
+
+
 @pytest.mark.parametrize("detached", [True, False])
 @pytest.mark.parametrize("ray_namespace", ["arbitrary", SERVE_NAMESPACE, None])
 def test_serve_namespace(shutdown_ray, detached, ray_namespace):
