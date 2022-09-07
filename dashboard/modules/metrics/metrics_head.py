@@ -5,13 +5,10 @@ import shutil
 from ray.dashboard.modules.metrics.grafana_datasource_template import (
     GRAFANA_DATASOURCE_TEMPLATE,
 )
-import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-routes = dashboard_optional_utils.ClassMethodRouteTable
 
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
@@ -30,7 +27,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
     @staticmethod
     def is_minimal_module():
-        return True
+        return False
 
     async def run(self, server):
         # Copy default grafana configurations
@@ -42,15 +39,14 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
+        data_sources_path = os.path.join(GRAFANA_CONFIG_OUTPUT_PATH, "provisioning", "datasources")
         os.makedirs(
-            os.path.join(GRAFANA_CONFIG_OUTPUT_PATH, "provisioning", "datasources"),
+            data_sources_path,
             exist_ok=True,
         )
         with open(
             os.path.join(
-                GRAFANA_CONFIG_OUTPUT_PATH,
-                "provisioning",
-                "datasources",
+                data_sources_path,
                 "default.yaml",
             ),
             "w",
@@ -62,3 +58,5 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             os.remove(PROMETHEUS_CONFIG_OUTPUT_PATH)
         os.makedirs(os.path.dirname(PROMETHEUS_CONFIG_OUTPUT_PATH), exist_ok=True)
         shutil.copy(PROMETHEUS_CONFIG_INPUT_PATH, PROMETHEUS_CONFIG_OUTPUT_PATH)
+
+        logger.info(f"Generated prometheus and grafana configurations in: {METRICS_PATH}")
