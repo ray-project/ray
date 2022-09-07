@@ -517,7 +517,6 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
 
     config = DeploymentConfig.from_default(
-        ignore_none=True,
         num_replicas=s.num_replicas,
         user_config=s.user_config,
         max_concurrent_queries=s.max_concurrent_queries,

@@ -362,7 +362,6 @@ def deployment(
         )
 
     config = DeploymentConfig.from_default(
-        ignore_none=True,
         num_replicas=num_replicas,
         user_config=user_config,
         max_concurrent_queries=max_concurrent_queries,
