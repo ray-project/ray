@@ -132,17 +132,18 @@ def _mosaic_train_loop_per_worker(config):
     train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
     eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)
 
+    print("traind dataset key : ", TRAIN_DATASET_KEY)
+    print("eval dataset key : ", EVALUATION_DATASET_KEY)
+
+    print("datasets in loop worker", type(train_dataset), type(eval_dataset))
+
     # TODO : process dataset to convert ray dataset into torch dataset
     # TODO : implement process datasets in _mosaic_utils
     train_torch_dataset, eval_torch_dataset = process_datasets(
         train_dataset,
         eval_dataset,
+        config['batch_size'],config['labels']
     )
-
-    print("\n\n**processed the dataset..")
-    print(type(train_torch_dataset))
-    print(type(eval_torch_dataset))
-
 
     trainer: composer.trainer.Trainer = trainer_init_per_worker(
         train_torch_dataset, eval_torch_dataset, **config
@@ -158,3 +159,4 @@ def _mosaic_train_loop_per_worker(config):
 
     # call the trainer
     trainer.fit()
+
