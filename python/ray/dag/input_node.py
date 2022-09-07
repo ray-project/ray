@@ -81,8 +81,9 @@ class InputNode(DAGNode):
         if len(args) != 0 or len(kwargs) != 0:
             raise ValueError("InputNode should not take any args or kwargs.")
 
-        self.input_type = input_type
+        self.input_attribute_nodes = {}
 
+        self.input_type = input_type
         if input_type is not None and isinstance(input_type, type):
             if _other_args_to_resolve is None:
                 _other_args_to_resolve = {}
@@ -136,17 +137,27 @@ class InputNode(DAGNode):
         assert isinstance(
             key, str
         ), "Please only access dag input attributes with str key."
-        return InputAttributeNode(self, key, "__getattr__")
+        if key not in self.input_attribute_nodes:
+            self.input_attribute_nodes[key] = InputAttributeNode(
+                self, key, "__getattr__"
+            )
+        return self.input_attribute_nodes[key]
 
     def __getitem__(self, key: Union[int, str]) -> Any:
         assert isinstance(key, (str, int)), (
             "Please only use int index or str as first-level key to "
             "access fields of dag input."
         )
+
         input_type = None
         if self.input_type is not None and key in self.input_type:
             input_type = type_to_string(self.input_type[key])
-        return InputAttributeNode(self, key, "__getitem__", input_type)
+
+        if key not in self.input_attribute_nodes:
+            self.input_attribute_nodes[key] = InputAttributeNode(
+                self, key, "__getitem__", input_type
+            )
+        return self.input_attribute_nodes[key]
 
     def __enter__(self):
         self.set_context(IN_CONTEXT_MANAGER, True)
