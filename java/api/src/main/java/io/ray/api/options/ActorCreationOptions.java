@@ -140,7 +140,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
      * The minimum valid value is 0 (default), which indicates that the actor task can't
      * be resubmited. A value of -1 indicates that an actor task can be resubmited indefinitely.
      *
-     * @param maxRestarts max number of actor task restarts
+     * @param maxTaskRetries max number of actor task restries.
      * @return self
      */
     public Builder setMaxTaskRetries(int maxTaskRetries) {
