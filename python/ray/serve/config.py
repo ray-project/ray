@@ -23,6 +23,7 @@ from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
+from ray.serve._private.utils import DEFAULT
 from ray.serve.generated.serve_pb2 import (
     DeploymentConfig as DeploymentConfigProto,
     DeploymentLanguage,
@@ -233,16 +234,15 @@ class DeploymentConfig(BaseModel):
         return cls.from_proto(proto)
 
     @classmethod
-    def from_default(cls, ignore_none: bool = False, **kwargs):
+    def from_default(cls, **kwargs):
         """Creates a default DeploymentConfig and overrides it with kwargs.
 
-        Only accepts the same keywords as the class. Passing in any other
-        keyword raises a ValueError.
+        Ignores any kwargs set to DEFAULT.VALUE.
 
         Args:
-            ignore_none: When True, any valid keywords with value None
-                are ignored, and their values stay default. Invalid keywords
-                still raise a TypeError.
+            ignore_default: When True, any valid keywords with value
+                DEFAULT.VALUE are ignored, and their values stay default.
+                Invalid keywords still raise a TypeError.
 
         Raises:
             TypeError: when a keyword that's not an argument to the class is
@@ -262,8 +262,7 @@ class DeploymentConfig(BaseModel):
                     f"{list(valid_config_options)}."
                 )
 
-        if ignore_none:
-            kwargs = {key: val for key, val in kwargs.items() if val is not None}
+        kwargs = {key: val for key, val in kwargs.items() if val != DEFAULT.VALUE}
 
         for key, val in kwargs.items():
             config.__setattr__(key, val)
