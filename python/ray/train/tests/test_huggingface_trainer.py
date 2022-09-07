@@ -223,6 +223,29 @@ def test_tune(ray_start_8_cpus):
     assert not tune_results.errors
 
 
+# Tests for https://github.com/ray-project/ray/issues/28084
+def test_datasets_modules_import(ray_start_4_cpus):
+    ray_train = ray.data.from_pandas(train_df)
+    ray_validation = ray.data.from_pandas(validation_df)
+    scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
+
+    from datasets import load_metric
+
+    metric = load_metric("glue", "cola")
+
+    def train_function_with_metric(train_dataset, eval_dataset=None, **config):
+        print(metric)
+        return train_function(train_dataset, eval_dataset=eval_dataset, **config)
+
+    trainer = HuggingFaceTrainer(
+        trainer_init_per_worker=train_function_with_metric,
+        trainer_init_config={"epochs": 1},
+        scaling_config=scaling_config,
+        datasets={"train": ray_train, "evaluation": ray_validation},
+    )
+    trainer.fit()
+
+
 if __name__ == "__main__":
     import sys
 
