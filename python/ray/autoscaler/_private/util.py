@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
+from io import StringIO
 
 import ray
 import ray._private.ray_constants
@@ -527,6 +528,7 @@ def parse_placement_group_resource_str(
         return (result.group(1), result.group(2), True)
     return (placement_group_resource_str, None, True)
 
+
 def parse_usage(usage: Usage) -> List[str]:
     # first collect resources used in placement groups
     placement_group_resource_usage = {}
@@ -573,7 +575,7 @@ def parse_usage(usage: Usage) -> List[str]:
                 )
             usage_lines.append(line)
         else:
-            line = f" {used}/{total} {resource}"
+            line = f"{used}/{total} {resource}"
             if used_in_pg:
                 line += (
                     f" ({pg_used} used of " f"{pg_total} reserved in placement groups)"
@@ -582,11 +584,13 @@ def parse_usage(usage: Usage) -> List[str]:
     return usage_lines
 
 
-def get_usage_report(lm_summary: LoadMetricsSummary, verbose : bool = False) -> str:
-
+def get_usage_report(lm_summary: LoadMetricsSummary) -> str:
     usage_lines = parse_usage(lm_summary.usage)
-    usage_report = " " + "\n ".join(usage_lines)
-    return usage_report
+
+    sio = StringIO()
+    for line in usage_lines:
+        print(f" {line}", file=sio)
+    return sio.getvalue()
 
 
 def format_resource_demand_summary(
@@ -657,11 +661,36 @@ def get_demand_report(lm_summary: LoadMetricsSummary):
     return demand_report
 
 
-def format_info_string(lm_summary, autoscaler_summary, time=None, verbose: bool=False):
+def get_per_node_breakdown(lm_summary: LoadMetricsSummary):
+    sio = StringIO()
+
+    print(file=sio)
+    for node_ip, usage in lm_summary.usage_by_node.items():
+        print(file=sio)
+        print(f"Node: {node_ip}", file=sio)
+        print(f" Usage:", file=sio)
+        for line in parse_usage(usage):
+            print(f"  {line}", file=sio)
+
+    return sio.getvalue()
+
+
+def format_info_string(lm_summary, autoscaler_summary, time=None, gcs_request_time: Optional[float] = None, non_terminated_nodes_time : Optional[float] = None, verbose: bool=False):
     if time is None:
         time = datetime.now()
     header = "=" * 8 + f" Autoscaler status: {time} " + "=" * 8
     separator = "-" * len(header)
+    if verbose:
+        staleness = datetime.timestamp(datetime.now()) - datetime.timestamp(time)
+        header += f"""
+Time since last update: {staleness:3f}s
+"""
+
+        if gcs_request_time:
+            header += f"GCS request time: {gcs_request_time:3f}s\n"
+        if non_terminated_nodes_time:
+            header += f"Node Provider non_terminated_nodes time: {non_terminated_nodes_time:3f}s\n"
+
     available_node_report_lines = []
     for node_type, count in autoscaler_summary.active_nodes.items():
         line = f" {count} {node_type}"
@@ -727,13 +756,15 @@ Pending:
 
 Resources
 {separator}
-Usage:
+{"Total " if verbose else ""}Usage:
 {usage_report}
-
-Demands:
+{"Total " if verbose else ""}Demands:
 {demand_report}"""
 
-    return formatted_output
+    if verbose:
+        formatted_output += get_per_node_breakdown(lm_summary)
+
+    return formatted_output.strip()
 
 
 def format_readonly_node_type(node_id: str):
