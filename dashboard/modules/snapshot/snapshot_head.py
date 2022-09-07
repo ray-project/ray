@@ -12,7 +12,7 @@ import aiohttp.web
 from pydantic import BaseModel, Extra, Field, validator
 
 import ray
-from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK, GCS_RPC_TIMEOUT_SECONDS
+from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
@@ -106,7 +106,9 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         request.actor_id = bytes.fromhex(actor_id)
         request.force_kill = force_kill
         request.no_restart = no_restart
-        await self._gcs_actor_info_stub.KillActorViaGcs(request, timeout=SNAPSHOT_API_TIMEOUT_SECONDS)
+        await self._gcs_actor_info_stub.KillActorViaGcs(
+            request, timeout=SNAPSHOT_API_TIMEOUT_SECONDS
+        )
 
         message = (
             f"Force killed actor with id {actor_id}"
@@ -276,7 +278,9 @@ class APIHead(dashboard_utils.DashboardHeadModule):
     async def get_job_info(self):
         """Return info for each job.  Here a job is a Ray driver."""
         request = gcs_service_pb2.GetAllJobInfoRequest()
-        reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=SNAPSHOT_API_TIMEOUT_SECONDS)
+        reply = await self._gcs_job_info_stub.GetAllJobInfo(
+            request, timeout=SNAPSHOT_API_TIMEOUT_SECONDS
+        )
 
         jobs = {}
         for job_table_entry in reply.job_info_list:
@@ -331,7 +335,9 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         request = gcs_service_pb2.GetAllActorInfoRequest()
         request.show_dead_jobs = True
         request.limit = limit
-        reply = await self._gcs_actor_info_stub.GetAllActorInfo(request, timeout=SNAPSHOT_API_TIMEOUT_SECONDS)
+        reply = await self._gcs_actor_info_stub.GetAllActorInfo(
+            request, timeout=SNAPSHOT_API_TIMEOUT_SECONDS
+        )
         actors = {}
         for actor_table_entry in reply.actor_table_data:
             actor_id = actor_table_entry.actor_id.hex()
