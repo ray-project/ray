@@ -14,14 +14,14 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 @PublicAPI(stability="beta")
 class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
     runtime_env: dict = Field(
-        default={},
+        default=DEFAULT.VALUE,
         description=(
             "This deployment's runtime_env. working_dir and "
             "py_modules may contain only remote URIs."
         ),
     )
     num_cpus: float = Field(
-        default=None,
+        default=DEFAULT.VALUE,
         description=(
             "The number of CPUs required by the deployment's "
             "application per replica. This is the same as a ray "
@@ -30,7 +30,7 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
         ge=0,
     )
     num_gpus: float = Field(
-        default=None,
+        default=DEFAULT.VALUE,
         description=(
             "The number of GPUs required by the deployment's "
             "application per replica. This is the same as a ray "
@@ -39,14 +39,14 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
         ge=0,
     )
     memory: float = Field(
-        default=None,
+        default=DEFAULT.VALUE,
         description=(
             "Restrict the heap memory usage of each replica. Uses a default if null."
         ),
         ge=0,
     )
     object_store_memory: float = Field(
-        default=None,
+        default=DEFAULT.VALUE,
         description=(
             "Restrict the object store memory used per replica when "
             "creating objects. Uses a default if null."
@@ -54,10 +54,11 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
         ge=0,
     )
     resources: Dict = Field(
-        default={}, description=("The custom resources required by each replica.")
+        default=DEFAULT.VALUE,
+        description=("The custom resources required by each replica."),
     )
     accelerator_type: str = Field(
-        default=None,
+        default=DEFAULT.VALUE,
         description=(
             "Forces replicas to run on nodes with the specified accelerator type."
         ),
@@ -67,7 +68,7 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
     def runtime_env_contains_remote_uris(cls, v):
         # Ensure that all uris in py_modules and working_dir are remote
 
-        if v is None:
+        if v is DEFAULT.VALUE:
             return
 
         uris = v.get("py_modules", [])
@@ -89,14 +90,14 @@ class DeploymentSchema(
         ..., description=("Globally-unique name identifying this deployment.")
     )
     num_replicas: int = Field(
-        default=None,
+        default=DEFAULT.VALUE,
         description=(
             "The number of processes that handle requests to this "
             "deployment. Uses a default if null."
         ),
         gt=0,
     )
-    route_prefix: Union[str, None, DEFAULT] = Field(
+    route_prefix: Union[str, None] = Field(
         default=DEFAULT.VALUE,
         description=(
             "Requests to paths under this HTTP path "
@@ -112,7 +113,7 @@ class DeploymentSchema(
         ),
     )
     max_concurrent_queries: int = Field(
-        default=None,
+        default=DEFAULT.VALUE,
         description=(
             "The max number of pending queries in a single replica. "
             "Uses a default if null."
@@ -120,7 +121,7 @@ class DeploymentSchema(
         gt=0,
     )
     user_config: Dict = Field(
-        default=None,
+        default=DEFAULT.VALUE,
         description=(
             "Config to pass into this deployment's "
             "reconfigure method. This can be updated dynamically "
@@ -128,7 +129,7 @@ class DeploymentSchema(
         ),
     )
     autoscaling_config: Dict = Field(
-        default=None,
+        default=DEFAULT.VALUE,
         description=(
             "Config specifying autoscaling "
             "parameters for the deployment's number of replicas. "
@@ -138,7 +139,7 @@ class DeploymentSchema(
         ),
     )
     graceful_shutdown_wait_loop_s: float = Field(
-        default=None,
+        default=DEFAULT.VALUE,
         description=(
             "Duration that deployment replicas will wait until there "
             "is no more work to be done before shutting down. Uses a "
@@ -147,7 +148,7 @@ class DeploymentSchema(
         ge=0,
     )
     graceful_shutdown_timeout_s: float = Field(
-        default=None,
+        default=DEFAULT.VALUE,
         description=(
             "Serve controller waits for this duration before "
             "forcefully killing the replica for shutdown. Uses a "
@@ -156,7 +157,7 @@ class DeploymentSchema(
         ge=0,
     )
     health_check_period_s: float = Field(
-        default=None,
+        default=DEFAULT.VALUE,
         description=(
             "Frequency at which the controller will health check "
             "replicas. Uses a default if null."
@@ -164,7 +165,7 @@ class DeploymentSchema(
         gt=0,
     )
     health_check_timeout_s: float = Field(
-        default=None,
+        default=DEFAULT.VALUE,
         description=(
             "Timeout that the controller will wait for a response "
             "from the replica's health check before marking it "
@@ -173,7 +174,7 @@ class DeploymentSchema(
         gt=0,
     )
     ray_actor_options: RayActorOptionsSchema = Field(
-        default=None, description="Options set for each replica actor."
+        default=DEFAULT.VALUE, description="Options set for each replica actor."
     )
 
     @root_validator
