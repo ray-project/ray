@@ -11,7 +11,7 @@ Actor Pool
 
     .. literalinclude:: ../doc_code/actor-pool.py
 
-    See the `package reference <package-ref.html#ray.util.ActorPool>`_ for more information.
+    See the :ref:`package reference <ray-actor-pool-ref>` for more information.
 
 .. tabbed:: Java
 

@@ -128,6 +128,9 @@ HuggingFace
 
 .. autofunction:: ray.data.from_huggingface
 
+
+.. _data_source_api:
+
 Datasource API
 --------------
 
