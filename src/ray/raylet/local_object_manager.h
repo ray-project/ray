@@ -162,6 +162,16 @@ class LocalObjectManager {
   std::string DebugString() const;
 
  private:
+  struct LocalObjectInfo {
+    LocalObjectInfo(const rpc::Address &owner_address, const ObjectID &generator_id)
+        : owner_address(owner_address),
+          generator_id(generator_id.IsNil() ? std::nullopt
+                                            : std::optional<ObjectID>(generator_id)) {}
+    rpc::Address owner_address;
+    bool is_freed = false;
+    const std::optional<ObjectID> generator_id;
+  };
+
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSizeZero);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxFuseCount);
   FRIEND_TEST(LocalObjectManagerTest,
@@ -227,7 +237,7 @@ class LocalObjectManager {
   /// - pinned_objects_: objects pinned in shared memory
   /// - objects_pending_spill_: objects pinned and waiting for spill to complete
   /// - spilled_objects_url_: objects already spilled
-  absl::flat_hash_map<ObjectID, std::pair<rpc::Address, bool>> local_objects_;
+  absl::flat_hash_map<ObjectID, LocalObjectInfo> local_objects_;
 
   // Objects that are pinned on this node.
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;

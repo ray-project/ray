@@ -2887,7 +2887,11 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
           object_location_update.spilled_location_update().spilled_url(),
           object_location_update.spilled_location_update().spilled_to_local_storage()
               ? node_id
-              : NodeID::Nil());
+              : NodeID::Nil(),
+          object_location_update.has_generator_id()
+              ? std::optional<ObjectID>(
+                    ObjectID::FromBinary(object_location_update.generator_id()))
+              : std::nullopt);
     }
 
     if (object_location_update.has_plasma_location_update()) {
@@ -2910,12 +2914,30 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
                       /*failure_callback_on_reply*/ nullptr);
 }
 
-void CoreWorker::AddSpilledObjectLocationOwner(const ObjectID &object_id,
-                                               const std::string &spilled_url,
-                                               const NodeID &spilled_node_id) {
+void CoreWorker::AddSpilledObjectLocationOwner(
+    const ObjectID &object_id,
+    const std::string &spilled_url,
+    const NodeID &spilled_node_id,
+    const std::optional<ObjectID> &generator_id) {
   RAY_LOG(DEBUG) << "Received object spilled location update for object " << object_id
                  << ", which has been spilled to " << spilled_url << " on node "
                  << spilled_node_id;
+  if (generator_id.has_value()) {
+    // For dynamically generated return values, the raylet may spill the
+    // primary copy before we know about the object. This can happen when the
+    // object is spilled before the reply from the task that created the
+    // object. Add the dynamically created object to our ref counter so that we
+    // know that it exists.
+    // NOTE(swang): We don't need to do this for in-plasma object locations because:
+    // 1) We will add the primary copy as a location when processing the task
+    // reply.
+    // 2) It is not possible to copy the object to a second location until
+    // after the owner has added the object to the ref count table (since no
+    // raylet can get the current location of the object until this happens).
+    RAY_CHECK(!generator_id->IsNil());
+    reference_counter_->AddDynamicReturn(object_id, *generator_id);
+  }
+
   auto reference_exists =
       reference_counter_->HandleObjectSpilled(object_id, spilled_url, spilled_node_id);
   if (!reference_exists) {

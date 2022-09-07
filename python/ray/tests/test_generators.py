@@ -198,12 +198,12 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
     refs = list(gen)
     if too_many_returns:
+        for ref in refs:
+            ray.get(ref)
+    else:
         with pytest.raises(ray.exceptions.RayTaskError):
             for ref in refs:
                 ray.get(ref)
-    else:
-        for ref in refs:
-            ray.get(ref)
     # TODO(swang): If the re-executed task returns a different number of
     # objects, we should throw an error for every return value.
     # for ref in refs:
