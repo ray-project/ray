@@ -168,7 +168,9 @@ class PipProcessor:
         """
 
         async def _get_ray_version_and_path() -> Tuple[str, str]:
-            with tempfile.TemporaryDirectory() as tmp_dir:
+            with tempfile.TemporaryDirectory(
+                prefix="check_ray_version_tempfile"
+            ) as tmp_dir:
                 ray_version_path = os.path.join(tmp_dir, "ray_version.txt")
                 check_ray_cmd = [
                     python,
@@ -190,9 +192,12 @@ with open("{ray_version_path}", "wt") as f:
                 output = await check_output_cmd(
                     check_ray_cmd, logger=logger, cwd=cwd, env=env
                 )
-                # print after import ray may have [0m endings, so we strip them by *_
+                logger.info(
+                    f"try to write ray version information in: {ray_version_path}"
+                )
                 with open(ray_version_path, "rt") as f:
                     output = f.read()
+                # print after import ray may have [0m endings, so we strip them by *_
                 ray_version, ray_path, *_ = [s.strip() for s in output.split()]
             return ray_version, ray_path
 
