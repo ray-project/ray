@@ -687,6 +687,9 @@ def start(
     if api_server is True:
         if head is not False:
             cli_logger.abort("`--api-server` should not be used with `--head`")
+        if raylet is not True:
+            cli_logger.abort("`--api-server` can only be used when `--raylet` is used")
+            
         start_services.add(ray_constants.PROCESS_TYPE_DASHBOARD)
 
     if raylet is True:

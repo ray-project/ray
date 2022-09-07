@@ -831,6 +831,9 @@ def test_ray_start_gcs_and_dashboard(call_ray_stop_only, shutdown_only):
     result = runner.invoke(scripts.start, ["--head", "--api-server"])
     assert result.exit_code == 1, result.output
 
+    result = runner.invoke(scripts.start, ["--api-server"])
+    assert result.exit_code == 1, result.output
+
     result = runner.invoke(scripts.start, ["--gcs", "--port", "9007"])
     assert result.exit_code == 0, result.output
 
@@ -842,6 +845,7 @@ def test_ray_start_gcs_and_dashboard(call_ray_stop_only, shutdown_only):
             "localhost:9007",
             "--dashboard-port",
             "9008",
+            "--raylet",
         ],
     )
     assert result.exit_code == 0, result.output
