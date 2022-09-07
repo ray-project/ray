@@ -1,6 +1,8 @@
+import importlib.util
 import inspect
 import os
 import shutil
+import sys
 import tempfile
 import warnings
 from distutils.version import LooseVersion
@@ -12,6 +14,7 @@ import transformers.modeling_utils
 import transformers.trainer
 import transformers.training_args
 from transformers.trainer_utils import IntervalStrategy
+from transformers.utils import is_datasets_available
 from torch.utils.data import Dataset as TorchDataset
 
 from ray.air import session
@@ -43,6 +46,30 @@ from ray.util import PublicAPI, get_node_ip_address
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+
+# Due to HF Dataset's dynamic module system, we need to dynamically import the
+# datasets_modules module on every actor when training.
+# We accomplish this by simply running the following bit of code directly
+# in module you are currently viewing. This ensures that when we
+# unpickle the HuggingFaceTrainer, it will be ran before pickle tries to
+# import datasets_modules and prevents an exception from being thrown.
+# Same logic is present inside HF Transformers Ray integration:
+# https://github.com/huggingface/transformers/blob/\
+# 7d5fde991d598370d961be8cb7add6541e2b59ce/src/transformers/integrations.py#L271
+# Also see https://github.com/ray-project/ray/issues/28084
+if "datasets_modules" not in sys.modules and is_datasets_available():
+    import datasets.load
+
+    dynamic_modules_path = os.path.join(
+        datasets.load.init_dynamic_modules(), "__init__.py"
+    )
+    # load dynamic_modules from path
+    spec = importlib.util.spec_from_file_location(
+        "datasets_modules", dynamic_modules_path
+    )
+    datasets_modules = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = datasets_modules
+    spec.loader.exec_module(datasets_modules)
 
 # This trainer uses a special checkpoint syncing logic.
 # Because HF checkpoints are very large dirs (at least several GBs),
@@ -120,7 +147,11 @@ class HuggingFaceTrainer(TorchTrainer):
     This Trainer runs the ``transformers.Trainer.train()`` method on multiple
     Ray Actors. The training is carried out in a distributed fashion through PyTorch
     DDP. These actors already have the necessary torch process group already
-    configured for distributed PyTorch training.
+    configured for distributed PyTorch training. If you have PyTorch >= 1.12.0
+    installed, you can also run FSDP training by specifying the ``fsdp`` argument
+    in ``TrainingArguments``. For more information on configuring FSDP,
+    refer to `Hugging Face documentation <https://huggingface.co/docs/transformers/\
+main/en/main_classes/trainer#transformers.TrainingArguments>`__.
 
     The training function ran on every Actor will first run the
     specified ``trainer_init_per_worker`` function to obtain an instantiated
