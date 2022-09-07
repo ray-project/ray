@@ -1,7 +1,6 @@
-import logging
-from typing import Dict, List, Union
-
 import gym
+import logging
+from typing import Dict
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy, PolicyState

@@ -44,11 +44,10 @@ c) Make sure you provide a fully qualified classpath, e.g.:
    `ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv`
 """
 
-ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL = \
-    """Could not save keras model under self[TfPolicy].model.base_model!
+ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL = """Could not save keras model under self[TfPolicy].model.base_model!
     This is either due to ..
     a) .. this Policy's ModelV2 not having any `base_model` property, which is a
-       tf.keras.Model 
+       tf.keras.Model
     b) .. the ModelV2's `base_model` not being used by the Algorithm and thus its
        variables not being properly initialized.
 """

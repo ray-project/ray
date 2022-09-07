@@ -2,7 +2,6 @@ from collections import OrderedDict
 import gym
 import logging
 import re
-import tempfile
 import tree  # pip install dm_tree
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
 
@@ -10,7 +9,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.dynamic_tf_policy import TFMultiGPUTowerStack
-from ray.rllib.policy.policy import Policy, PolicySpec
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement

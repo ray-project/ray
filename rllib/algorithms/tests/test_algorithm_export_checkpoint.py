@@ -25,9 +25,10 @@ def export_test(alg_name, framework="tf", multi_agent=False):
             config["multiagent"] = {
                 "policies": {"pol1", "pol2"},
                 "policy_mapping_fn": (
-                    lambda agent_id, episode, worker, **kwargs:
-                    "pol1" if agent_id == "agent1" else "pol2"
-                )
+                    lambda agent_id, episode, worker, **kwargs: "pol1"
+                    if agent_id == "agent1"
+                    else "pol2"
+                ),
             }
             config["env"] = MultiAgentCartPole
             config["env_config"] = {
@@ -47,7 +48,7 @@ def export_test(alg_name, framework="tf", multi_agent=False):
     model_dir = os.path.join(
         export_dir,
         "models",
-        DEFAULT_POLICY_ID if multi_agent else "pol1",
+        "pol1" if multi_agent else DEFAULT_POLICY_ID,
     )
 
     # Test loading exported model and perform forward pass.
@@ -91,7 +92,6 @@ class TestAlgorithmSave(unittest.TestCase):
     def test_export_ppo(self):
         for fw in framework_iterator():
             export_test("PPO", fw)
-
 
 
 if __name__ == "__main__":

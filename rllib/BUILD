@@ -765,6 +765,13 @@ py_test(
 )
 
 py_test(
+    name = "test_algorithm_export_checkpoint",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "small",
+    srcs = ["algorithms/tests/test_algorithm_export_checkpoint.py"],
+)
+
+py_test(
     name = "test_callbacks",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "medium",

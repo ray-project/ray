@@ -1,6 +1,5 @@
 import logging
 import math
-import tempfile
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import gym
@@ -10,7 +9,7 @@ import tree  # pip install dm_tree
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.policy import Policy, PolicySpec, PolicyState
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list

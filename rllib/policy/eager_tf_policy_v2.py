@@ -6,7 +6,6 @@ It supports both traced and non-traced eager execution modes.
 import gym
 import logging
 import os
-import tempfile
 import threading
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
@@ -21,7 +20,7 @@ from ray.rllib.policy.eager_tf_policy import (
     _OptimizerWrapper,
     _traced_eager_policy,
 )
-from ray.rllib.policy.policy import Policy, PolicySpec, PolicyState
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list

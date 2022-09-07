@@ -923,9 +923,10 @@ class Policy(metaclass=ABCMeta):
             The AIR Checkpoint instance created (in addition to writing the given
             directory).
         """
-        assert filename_prefix == "model", \
-            "The arg `filename_prefix` for `Policy.export_checkpoint()` is " \
+        assert filename_prefix == "model", (
+            "The arg `filename_prefix` for `Policy.export_checkpoint()` is "
             "deprecated and should not be set!"
+        )
         state = self.get_state()
         os.makedirs(export_dir, exist_ok=True)
         pickle.dump(state, open(os.path.join(export_dir, "state.pkl"), "w+b"))

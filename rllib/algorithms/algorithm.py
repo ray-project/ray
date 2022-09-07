@@ -4,7 +4,6 @@ import functools
 import logging
 import math
 import os
-import pickle
 import tempfile
 import time
 import importlib
@@ -29,6 +28,7 @@ import pkg_resources
 from packaging import version
 
 import ray
+import ray.cloudpickle as pickle
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError, RayError
@@ -235,7 +235,6 @@ class Algorithm(Trainable):
         new_algo.set_state(state)
         # Return the new algo.
         return new_algo
-
 
     @PublicAPI
     def __init__(
