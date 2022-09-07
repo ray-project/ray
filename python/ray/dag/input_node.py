@@ -148,7 +148,7 @@ class InputNode(DAGNode):
             "Please only use int index or str as first-level key to "
             "access fields of dag input."
         )
-        
+
         input_type = None
         if self.input_type is not None and key in self.input_type:
             input_type = type_to_string(self.input_type[key])
