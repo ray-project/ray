@@ -39,7 +39,9 @@ class CSVDatasource(FileBasedDatasource):
         # Re-init invalid row handler: https://issues.apache.org/jira/browse/ARROW-17641
         parse_options.invalid_row_handler = parse_options.invalid_row_handler
 
-        reader = csv.open_csv(f, read_options=read_options, **reader_args)
+        reader = csv.open_csv(
+            f, read_options=read_options, parse_options=parse_options, **reader_args
+        )
         schema = None
         while True:
             try:

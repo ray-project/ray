@@ -3080,7 +3080,7 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
             ),
         )
 
-    # Parsing scientific notation in double shoud work.
+    # Parsing scientific notation in double should work.
     ds = ray.data.read_csv(
         file_path,
         convert_options=csv.ConvertOptions(
@@ -3100,6 +3100,22 @@ def test_csv_read_filter_no_file(shutdown_only, tmp_path):
     error_message = "No input files found to read"
     with pytest.raises(ValueError, match=error_message):
         ray.data.read_csv(path)
+
+
+def test_csv_invalid_file_handler(shutdown_only, tmp_path):
+    from pyarrow import csv
+
+    invalid_txt = "f1,f2\n2,3\nx\n4,5"
+    invalid_file = os.path.join(tmp_path, "invalid.csv")
+    with open(invalid_file, "wt") as f:
+        f.write(invalid_txt)
+
+    ray.data.read_csv(
+        invalid_file,
+        parse_options=csv.ParseOptions(
+            delimiter=",", invalid_row_handler=lambda i: "skip"
+        ),
+    )
 
 
 class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
