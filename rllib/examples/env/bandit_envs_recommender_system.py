@@ -127,9 +127,9 @@ class ParametricRecSys(gym.Env):
         # Action is the suggested slate (indices of the docs in the
         # suggested ones).
 
-        scores = [
+        scores = softmax([
             np.dot(self.current_user, doc) for doc in self.currently_suggested_docs
-        ]
+        ])
         best_reward = np.max(scores)
 
         # User choice model: User picks a doc stochastically,
@@ -143,9 +143,8 @@ class ParametricRecSys(gym.Env):
 
         reward = 0.0
         if which_clicked < self.slate_size:
-            # Reward is 1.0 - regret if clicked. 0.0 if not clicked.
             regret = best_reward - user_doc_overlaps[which_clicked]
-            reward = 1 - regret
+            reward = (1 - regret) * 100
             # If anything clicked, deduct from the current user's time budget.
             self.current_user_budget -= 1.0
         done = self.current_user_budget <= 0.0
