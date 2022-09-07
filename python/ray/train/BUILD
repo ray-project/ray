@@ -170,6 +170,14 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_fsdp",
+    size = "large",
+    srcs = ["tests/test_torch_fsdp.py"],
+    tags = ["team:ml", "exclusive", "torch_1_11", "gpu_only"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_horovod_trainer",
     size = "large",
     srcs = ["tests/test_horovod_trainer.py"],
@@ -301,6 +309,14 @@ py_test(
     name = "test_tensorflow_utils",
     size = "small",
     srcs = ["tests/test_tensorflow_utils.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_torch_checkpoint",
+    size = "small",
+    srcs = ["tests/test_torch_checkpoint.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )
