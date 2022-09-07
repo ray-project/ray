@@ -104,7 +104,7 @@ def train_func(config: dict):
         tf_dataset = tf.data.Dataset.from_generator(
             to_tensor_iterator, output_signature=output_signature
         )
-        return prepare_dataset_shard(tf_dataset).prefetch(tf.data.AUTOTUNE)
+        return prepare_dataset_shard(tf_dataset)
 
     results = []
     for epoch in range(epochs):

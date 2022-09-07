@@ -71,7 +71,7 @@ def to_tf_dataset(dataset, batch_size):
     tf_dataset = tf.data.Dataset.from_generator(
         to_tensor_iterator, output_signature=output_signature
     )
-    return prepare_dataset_shard(tf_dataset).prefetch(tf.data.AUTOTUNE)
+    return prepare_dataset_shard(tf_dataset)
 
 
 def train_loop_per_worker(config):
