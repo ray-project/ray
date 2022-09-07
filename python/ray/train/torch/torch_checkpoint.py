@@ -47,7 +47,7 @@ class TorchCheckpoint(Checkpoint):
             >>> import torch
             >>>
             >>> model = torch.nn.Linear(1, 1)
-            >>> checkpoint = TorchCheckpoint.from_model(model.state_dict())
+            >>> checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
 
             To load the state dictionary, call
             :meth:`~ray.train.torch.TorchCheckpoint.get_model`.
