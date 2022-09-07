@@ -39,6 +39,7 @@ from ray.serve._private.http_util import ASGIHTTPSender, make_fastapi_class_base
 from ray.serve._private.logging_utils import LoggingContext
 from ray.serve._private.utils import (
     DEFAULT,
+    Default,
     ensure_serialization_context,
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
@@ -253,20 +254,20 @@ def deployment(func_or_class: Callable) -> Deployment:
 
 @overload
 def deployment(
-    name: Optional[str] = DEFAULT.VALUE,
-    version: Optional[str] = DEFAULT.VALUE,
-    num_replicas: Optional[int] = DEFAULT.VALUE,
-    init_args: Optional[Tuple[Any]] = DEFAULT.VALUE,
-    init_kwargs: Optional[Dict[Any, Any]] = DEFAULT.VALUE,
-    route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-    ray_actor_options: Optional[Dict] = DEFAULT.VALUE,
-    user_config: Optional[Any] = DEFAULT.VALUE,
-    max_concurrent_queries: Optional[int] = DEFAULT.VALUE,
-    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = DEFAULT.VALUE,
-    graceful_shutdown_wait_loop_s: Optional[float] = DEFAULT.VALUE,
-    graceful_shutdown_timeout_s: Optional[float] = DEFAULT.VALUE,
-    health_check_period_s: Optional[float] = DEFAULT.VALUE,
-    health_check_timeout_s: Optional[float] = DEFAULT.VALUE,
+    name: Default[str] = DEFAULT.VALUE,
+    version: Default[str] = DEFAULT.VALUE,
+    num_replicas: Default[int] = DEFAULT.VALUE,
+    init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
+    init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
+    route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
+    ray_actor_options: Default[Dict] = DEFAULT.VALUE,
+    user_config: Default[Any] = DEFAULT.VALUE,
+    max_concurrent_queries: Default[int] = DEFAULT.VALUE,
+    autoscaling_config: Default[Union[Dict, AutoscalingConfig]] = DEFAULT.VALUE,
+    graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
+    graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
+    health_check_period_s: Default[float] = DEFAULT.VALUE,
+    health_check_timeout_s: Default[float] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     pass
 
@@ -274,57 +275,58 @@ def deployment(
 @PublicAPI(stability="beta")
 def deployment(
     _func_or_class: Optional[Callable] = None,
-    name: Optional[str] = DEFAULT.VALUE,
-    version: Optional[str] = DEFAULT.VALUE,
-    num_replicas: Optional[int] = DEFAULT.VALUE,
-    init_args: Optional[Tuple[Any]] = DEFAULT.VALUE,
-    init_kwargs: Optional[Dict[Any, Any]] = DEFAULT.VALUE,
-    route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-    ray_actor_options: Optional[Dict] = DEFAULT.VALUE,
-    user_config: Optional[Any] = DEFAULT.VALUE,
-    max_concurrent_queries: Optional[int] = DEFAULT.VALUE,
-    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = DEFAULT.VALUE,
-    graceful_shutdown_wait_loop_s: Optional[float] = DEFAULT.VALUE,
-    graceful_shutdown_timeout_s: Optional[float] = DEFAULT.VALUE,
-    health_check_period_s: Optional[float] = DEFAULT.VALUE,
-    health_check_timeout_s: Optional[float] = DEFAULT.VALUE,
+    name: Default[str] = DEFAULT.VALUE,
+    version: Default[str] = DEFAULT.VALUE,
+    num_replicas: Default[int] = DEFAULT.VALUE,
+    init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
+    init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
+    route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
+    ray_actor_options: Default[Dict] = DEFAULT.VALUE,
+    user_config: Default[Any] = DEFAULT.VALUE,
+    max_concurrent_queries: Default[int] = DEFAULT.VALUE,
+    autoscaling_config: Default[Union[Dict, AutoscalingConfig]] = DEFAULT.VALUE,
+    graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
+    graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
+    health_check_period_s: Default[float] = DEFAULT.VALUE,
+    health_check_timeout_s: Default[float] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
     Args:
-        name (Optional[str]): Globally-unique name identifying this deployment.
-            If not provided, the name of the class or function will be used.
-        version [DEPRECATED] (Optional[str]): Version of the deployment. This is used to
-            indicate a code change for the deployment; when it is re-deployed
-            with a version change, a rolling update of the replicas will be
-            performed. If not provided, every deployment will be treated as a
-            new version.
-        num_replicas (Optional[int]): The number of processes to start up that
+        name (Default[str]): Globally-unique name identifying this
+            deployment. If not provided, the name of the class or function will
+            be used.
+        version [DEPRECATED] (Default[str]): Version of the deployment.
+            This is used to indicate a code change for the deployment; when it
+            is re-deployed with a version change, a rolling update of the
+            replicas will be performed. If not provided, every deployment will
+            be treated as a new version.
+        num_replicas (Default[int]): The number of processes to start up that
             will handle requests to this deployment. Defaults to 1.
-        init_args (Optional[Tuple]): Positional args to be passed to the class
-            constructor when starting up deployment replicas. These can also be
-            passed when you call `.deploy()` on the returned Deployment.
-        init_kwargs (Optional[Dict]): Keyword args to be passed to the class
-            constructor when starting up deployment replicas. These can also be
-            passed when you call `.deploy()` on the returned Deployment.
-        route_prefix (Optional[str]): Requests to paths under this HTTP path
-            prefix will be routed to this deployment. Defaults to '/{name}'.
-            When set to 'None', no HTTP endpoint will be created.
+        init_args (Default[Tuple[Any]]): Positional args to be passed to the
+            class constructor when starting up deployment replicas. These can
+            also be passed when you call `.deploy()` on the returned Deployment.
+        init_kwargs (Default[Dict[Any, Any]]): Keyword args to be passed to the
+            class constructor when starting up deployment replicas. These can
+            also be passed when you call `.deploy()` on the returned Deployment.
+        route_prefix (Default[Union[str, None]]): Requests to paths under this
+            HTTP path prefix will be routed to this deployment. Defaults to
+            '/{name}'. When set to 'None', no HTTP endpoint will be created.
             Routing is done based on longest-prefix match, so if you have
             deployment A with a prefix of '/a' and deployment B with a prefix
             of '/a/b', requests to '/a', '/a/', and '/a/c' go to A and requests
             to '/a/b', '/a/b/', and '/a/b/c' go to B. Routes must not end with
             a '/' unless they're the root (just '/'), which acts as a
             catch-all.
-        ray_actor_options: Options to be passed to the Ray actor
-            constructor such as resource requirements.
-        user_config (Optional[Any]): Config to pass to the
+        ray_actor_options (Default[Dict]): Options to be passed to each
+            replica Ray actor's constructor, such as resource requirements.
+        user_config (Default[Any]): Config to pass to the
             reconfigure method of the deployment. This can be updated
             dynamically without changing the version of the deployment and
             restarting its replicas. The user_config must be json-serializable
             to keep track of updates, so it must only contain json-serializable
             types, or json-serializable types nested in lists and dictionaries.
-        max_concurrent_queries (Optional[int]): The maximum number of queries
+        max_concurrent_queries (Default[int]): The maximum number of queries
             that will be sent to a replica of this deployment without receiving
             a response. Defaults to 100.
 

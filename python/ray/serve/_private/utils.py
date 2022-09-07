@@ -9,7 +9,7 @@ import time
 import traceback
 from enum import Enum
 from functools import wraps
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Tuple, TypeVar, Union
 
 import fastapi.encoders
 import numpy as np
@@ -39,6 +39,11 @@ ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 # for those option because None is a valid new value.
 class DEFAULT(Enum):
     VALUE = 1
+
+
+# Type alias: objects that can be DEFAULT.VALUE have type Default[T]
+T = TypeVar("T")
+Default = Union[DEFAULT, T]
 
 
 def parse_request_item(request_item):
