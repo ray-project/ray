@@ -33,7 +33,6 @@ from ray.rllib.utils.annotations import (
     override,
 )
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
-from ray.rllib.utils.files import dir_contents_to_dict
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -674,15 +673,6 @@ class EagerTFPolicyV2(Policy):
     def get_state(self) -> PolicyState:
         # Legacy Policy state (w/o keras model and w/o PolicySpec).
         state = super().get_state()
-
-        # Add this Policy's spec so it can be retreived w/o access to the original
-        # code.
-        state["policy_spec"] = PolicySpec(
-            policy_class=type(self),
-            observation_space=self.observation_space,
-            action_space=self.action_space,
-            config=self.config,
-        )
 
         state["global_timestep"] = state["global_timestep"].numpy()
         if self._optimizer and len(self._optimizer.variables()) > 0:

@@ -18,7 +18,6 @@ from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
-from ray.rllib.utils.files import dir_contents_to_dict
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -497,15 +496,6 @@ class TFPolicy(Policy):
     def get_state(self) -> PolicyState:
         # For tf Policies, return Policy weights and optimizer var values.
         state = super().get_state()
-
-        # Add this Policy's spec so it can be retreived w/o access to the original
-        # code.
-        state["policy_spec"] = PolicySpec(
-            policy_class=type(self),
-            observation_space=self.observation_space,
-            action_space=self.action_space,
-            config=self.config,
-        )
 
         if len(self._optimizer_variables.variables) > 0:
             state["_optimizer_variables"] = self.get_session().run(

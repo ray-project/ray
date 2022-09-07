@@ -33,7 +33,6 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import NullContextManager, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
-from ray.rllib.utils.files import dir_contents_to_dict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -735,16 +734,6 @@ class TorchPolicy(Policy):
     def get_state(self) -> PolicyState:
         # Legacy Policy state (w/o torch.nn.Module and w/o PolicySpec).
         state = super().get_state()
-
-        # Add this Policy's spec so it can be retreived w/o access to the original
-        # code.
-        state["policy_spec"] = PolicySpec(
-            policy_class=type(self),
-            observation_space=self.observation_space,
-            action_space=self.action_space,
-            config=self.config,
-        )
-
 
         state["_optimizer_variables"] = []
         for i, o in enumerate(self._optimizers):

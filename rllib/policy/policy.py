@@ -801,6 +801,9 @@ class Policy(metaclass=ABCMeta):
             # The current global timestep.
             "global_timestep": self.global_timestep,
         }
+
+        # Add this Policy's spec so it can be retreived w/o access to the original
+        # code.
         policy_spec = PolicySpec(
             policy_class=type(self),
             observation_space=self.observation_space,

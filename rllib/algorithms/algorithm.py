@@ -1776,8 +1776,16 @@ class Algorithm(Trainable):
             A dict that will be automatically serialized by Tune and
             passed to ``Trainable.load_checkpoint()``.
         """
-        state = self.get_state()
-        return state
+        state = self.__getstate__()
+        # Write state to disk.
+        state_file = os.path.join(checkpoint_dir, "state.pkl")
+        pickle.dump(state, open(state_file, "wb"))
+        # Write all native models to disk.
+        for pid, policy in self.workers.local_worker().policy_map.items():
+            policy_dir = os.path.join(checkpoint_dir, "models", pid)
+            os.makedirs(policy_dir, exist_ok=True)
+            policy.export_model(export_dir=policy_dir)
+        return checkpoint_dir
 
     @override(Trainable)
     def load_checkpoint(self, checkpoint: Union[Dict, str]) -> None:
@@ -2512,22 +2520,18 @@ class Algorithm(Trainable):
             return self.import_policy_model_from_h5(import_file)
 
     @PublicAPI
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    @override(Trainable)
-    def get_state(self) -> Dict:
+    def __getstate__(self) -> Dict:
         """Returns current state of Algorithm, sufficient to restore it from scratch.
 
         Returns:
             The current state dict of this Algorithm, which can be used to sufficiently
             restore the algorithm from scratch without any other information.
         """
-        state = super().get_state()
-
         # Add config to state so complete Algorithm can be reproduced w/o.
-        state.update({
+        state = {
             "algorithm_class": type(self),
             "config": self.config,
-        })
+        }
 
         if hasattr(self, "workers"):
             state["worker"] = self.workers.local_worker().get_state()
@@ -2544,7 +2548,7 @@ class Algorithm(Trainable):
         return state
 
     @PublicAPI
-    def set_state(self, state: Dict) -> None:
+    def __setstate__(self, state) -> None:
         """Sets the algorithm to the provided state.
 
         Args:
@@ -2896,14 +2900,6 @@ class Algorithm(Trainable):
     @Deprecated(new="Trainer.compute_single_action()", error=False)
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
-
-    @Deprecated(new="Algorithm.get_state()", error=False)
-    def __getstate__(self):
-        return self.get_state()
-
-    @Deprecated(new="Algorithm.set_state()", error=False)
-    def __setstate__(self, state):
-        return self.set_state(state)
 
     @Deprecated(new="logic moved into `self.step()`", error=True)
     def step_attempt(self):
