@@ -1,5 +1,6 @@
 import os
 import shutil
+from distutils.version import LooseVersion
 from functools import partial
 from io import BytesIO
 from typing import Any, Dict, List, Union
@@ -3102,6 +3103,10 @@ def test_csv_read_filter_no_file(shutdown_only, tmp_path):
         ray.data.read_csv(path)
 
 
+@pytest.mark.skipif(
+    LooseVersion(pa.__version__) < LooseVersion("7.0.0"),
+    reason="invalid_row_handler was added in pyarrow 7.0.0",
+)
 def test_csv_invalid_file_handler(shutdown_only, tmp_path):
     from pyarrow import csv
 

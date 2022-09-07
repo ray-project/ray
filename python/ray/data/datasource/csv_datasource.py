@@ -37,7 +37,8 @@ class CSVDatasource(FileBasedDatasource):
         )
         parse_options = reader_args.pop("parse_options", csv.ParseOptions())
         # Re-init invalid row handler: https://issues.apache.org/jira/browse/ARROW-17641
-        parse_options.invalid_row_handler = parse_options.invalid_row_handler
+        if hasattr(parse_options, "invalid_row_handler"):
+            parse_options.invalid_row_handler = parse_options.invalid_row_handler
 
         reader = csv.open_csv(
             f, read_options=read_options, parse_options=parse_options, **reader_args
