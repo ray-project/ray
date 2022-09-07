@@ -180,8 +180,8 @@ class DeploymentSchema(
     @root_validator
     def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
         if (
-            values.get("num_replicas", None) is not None
-            and values.get("autoscaling_config", None) is not None
+            values.get("num_replicas", DEFAULT.VALUE) is not DEFAULT.VALUE
+            and values.get("autoscaling_config", DEFAULT.VALUE) is not DEFAULT.VALUE
         ):
             raise ValueError(
                 "Manually setting num_replicas is not allowed "
