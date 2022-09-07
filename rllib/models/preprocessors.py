@@ -185,7 +185,7 @@ class OneHotPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
         self.check_shape(observation)
-        return gym.spaces.utils.flatten(self._obs_space, observation)
+        return gym.spaces.utils.flatten(self._obs_space, observation).astype(np.float32)
 
     @override(Preprocessor)
     def write(self, observation: TensorType, array: np.ndarray, offset: int) -> None:
