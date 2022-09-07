@@ -38,7 +38,7 @@ def gcs_node_info_to_dict(message):
     )
 
 
-def gcs_info_to_dict(message):
+def gcs_stats_to_dict(message):
     decode_keys = {
         "actorId",
         "jobId",
@@ -86,6 +86,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         self._stubs = {}
         # NodeInfoGcsService
         self._gcs_node_info_stub = None
+        # NodeResourceInfoGcsService
+        self._gcs_node_resource_info_sub = None
         self._collect_memory_info = False
         DataSource.nodes.signal.append(self._update_stubs)
         # Total number of node updates happened.
@@ -132,10 +134,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         request = gcs_service_pb2.GetAllNodeInfoRequest()
         reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=2)
         if reply.status.code == 0:
-            # Update (infeasible and pending actor creation tasks) info of gcs.
-            DataSource.gcs_info = gcs_info_to_dict(reply.gcs_info)
-
-            # Prepare info of worker nodes.
             result = {}
             for node_info in reply.node_info_list:
                 node_info_dict = gcs_node_info_to_dict(node_info)
@@ -327,6 +325,17 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             except Exception:
                 logger.exception(f"Error updating node stats of {node_id}.")
 
+        # Update stats (e.g., pending actor creation tasks) of gcs.
+        try:
+            reply = await self._gcs_node_resource_info_stub.GetGcsStats(
+                gcs_service_pb2.GetGcsStatsRequest(),
+                timeout=2,
+            )
+            if reply.status.code == 0:
+                DataSource.gcs_stats = gcs_stats_to_dict(reply)
+        except Exception:
+            logger.exception("Error updating gcs stats.")
+
     async def _update_log_info(self):
         if ray_constants.DISABLE_DASHBOARD_LOG_INFO:
             return
@@ -397,6 +406,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             gcs_channel
+        )
+        self._gcs_node_resource_info_stub = (
+            gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
         )
 
         await asyncio.gather(

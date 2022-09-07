@@ -54,11 +54,9 @@ class DataSource:
     # {node ip (str): error entries by pid
     # (dict from pid to list of latest err entries)}
     ip_and_pid_to_errors = Dict()
-    # The (infeasible and pending actor creation tasks) info of gcs.
+    # The current stats (e.g., pending actor creation tasks) of gcs.
     # {task type(str): task list}
-    # Note, this field is only updated with gcs actor scheduler
-    # is enabled.
-    gcs_info = Dict()
+    gcs_stats = Dict()
 
 
 class DataOrganizer:
@@ -289,7 +287,7 @@ class DataOrganizer:
             [],
         )
         # Collect infeasible actor creation tasks in gcs.
-        infeasible_tasks.extend(list(DataSource.gcs_info.get("infeasibleTasks", [])))
+        infeasible_tasks.extend(list(DataSource.gcs_stats.get("infeasibleTasks", [])))
         new_infeasible_tasks = []
         for task in infeasible_tasks:
             task = dict(task)
@@ -306,7 +304,7 @@ class DataOrganizer:
             [],
         )
         # Collect pending actor creation tasks in gcs.
-        resource_pending_tasks.extend(list(DataSource.gcs_info.get("readyTasks", [])))
+        resource_pending_tasks.extend(list(DataSource.gcs_stats.get("readyTasks", [])))
         new_resource_pending_tasks = []
         for task in resource_pending_tasks:
             task = dict(task)

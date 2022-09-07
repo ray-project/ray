@@ -175,12 +175,6 @@ message GetAllNodeInfoRequest {}
 message GetAllNodeInfoReply {
   GcsStatus status = 1;
   repeated GcsNodeInfo node_info_list = 2;
-  GcsInfo gcs_info = 3;
-}
-
-message GcsInfo {
-  repeated TaskSpec infeasible_tasks = 1;
-  repeated TaskSpec ready_tasks = 2;
 }
 
 message ReportHeartbeatRequest {
@@ -234,6 +228,14 @@ message ReportResourceUsageRequest {
 
 message ReportResourceUsageReply {
   GcsStatus status = 1;
+}
+
+message GetGcsStatsRequest {}
+
+message GetGcsStatsReply {
+  GcsStatus status = 1;
+  repeated TaskSpec infeasible_tasks = 2;
+  repeated TaskSpec ready_tasks = 3;
 }
 
 // Service for heartbeat info access.
@@ -606,6 +608,8 @@ service NodeResourceInfoGcsService {
   rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
+  // Get current stats (e.g., pending tasks) of gcs server.
+  rpc GetGcsStats(GetGcsStatsRequest) returns (GetGcsStatsReply);
 }
 
 message GcsStatus {

@@ -21,7 +21,6 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
@@ -29,7 +28,6 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-using raylet::ClusterTaskManager;
 namespace gcs {
 
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
@@ -41,14 +39,10 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param gcs_publisher GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  /// \param raylet_client_pool The pool of raylet clients for RPC communication.
-  /// \param cluster_task_manager The gcs server's `ClusterTaskManager`. Note, this
-  /// parameter is only configured when gcs actor scheduler is enabled.
-  explicit GcsNodeManager(
-      std::shared_ptr<GcsPublisher> gcs_publisher,
-      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-      std::shared_ptr<ClusterTaskManager> cluster_task_manager = nullptr);
+  /// we get pending task info if needed.
+  explicit GcsNodeManager(std::shared_ptr<GcsPublisher> gcs_publisher,
+                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                          std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
   /// Handle register rpc request come from raylet.
   void HandleRegisterNode(const rpc::RegisterNodeRequest &request,

@@ -226,13 +226,8 @@ void GcsServer::Stop() {
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    gcs_node_manager_ = std::make_shared<GcsNodeManager>(
-        gcs_publisher_, gcs_table_storage_, raylet_client_pool_, cluster_task_manager_);
-  } else {
-    gcs_node_manager_ = std::make_shared<GcsNodeManager>(
-        gcs_publisher_, gcs_table_storage_, raylet_client_pool_);
-  }
+  gcs_node_manager_ = std::make_shared<GcsNodeManager>(
+      gcs_publisher_, gcs_table_storage_, raylet_client_pool_);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.

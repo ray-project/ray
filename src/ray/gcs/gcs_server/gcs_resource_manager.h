@@ -83,6 +83,11 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
                                  rpc::GetAllResourceUsageReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle get gcs stats rpc request.
+  void HandleGetGcsStats(const rpc::GetGcsStatsRequest &request,
+                         rpc::GetGcsStatsReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a node registration.
   ///
   /// \param node The specified node to add.
