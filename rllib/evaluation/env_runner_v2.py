@@ -403,6 +403,7 @@ class EnvRunnerV2:
                 unfiltered_obs,
                 rewards,
                 dones,
+                truncateds,  # TODO(sven): Add to SampleBatch.
                 infos,
                 off_policy_actions,
             ) = self._base_env.poll()

@@ -129,7 +129,7 @@ class FaultInjectEnv(gym.Env):
             f"worker-idx={self.config.worker_index}!"
         )
 
-    def reset(self):
+    def reset(self, seed: Optional[int] = None):
         self._increment_count()
         self._maybe_raise_error()
         return self.env.reset()

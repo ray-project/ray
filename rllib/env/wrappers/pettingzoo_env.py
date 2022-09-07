@@ -1,3 +1,5 @@
+from typing import Optional
+
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import PublicAPI
 
@@ -102,7 +104,7 @@ class PettingZooEnv(MultiAgentEnv):
         )
         self._agent_ids = set(self.env.agents)
 
-    def reset(self):
+    def reset(self, seed: Optional[int] = None):
         self.env.reset()
         return {self.env.agent_selection: self.env.observe(self.env.agent_selection)}
 
@@ -177,7 +179,7 @@ class ParallelPettingZooEnv(MultiAgentEnv):
             "`supersuit.aec_wrappers.pad_action_space(env)`"
         )
 
-    def reset(self):
+    def reset(self, seed: Optional[int] = None):
         return self.par_env.reset()
 
     def step(self, action_dict):

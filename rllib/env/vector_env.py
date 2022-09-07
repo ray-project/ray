@@ -82,8 +82,14 @@ class VectorEnv:
         )
 
     @PublicAPI
-    def vector_reset(self) -> List[EnvObsType]:
+    def vector_reset(self, seed: Optional[int] = None) -> List[EnvObsType]:
         """Resets all sub-environments.
+
+        Args:
+            seed: The seed that is used to initialize the environment's PRNG.
+                If None, will not reset any existing PRNG. If you pass an
+                integer, the PRNG will be reset even if it already
+                exists.
 
         Returns:
             List of observations from each environment.
@@ -91,11 +97,19 @@ class VectorEnv:
         raise NotImplementedError
 
     @PublicAPI
-    def reset_at(self, index: Optional[int] = None) -> EnvObsType:
+    def reset_at(
+        self,
+        index: Optional[int] = None,
+        seed: Optional[int] = None,
+    ) -> EnvObsType:
         """Resets a single sub-environment.
 
         Args:
             index: An optional sub-env index to reset.
+            seed: The seed that is used to initialize the environment's PRNG.
+                If None, will not reset any existing PRNG. If you pass an
+                integer, the PRNG will be reset even if it already
+                exists.
 
         Returns:
             Observations from the reset sub environment.

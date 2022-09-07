@@ -96,7 +96,7 @@ class NestedDictEnv(gym.Env):
         self._spec = EnvSpec("NestedDictEnv-v0")
         self.steps = 0
 
-    def reset(self):
+    def reset(self, seed: Optional[int] = None):
         self.steps = 0
         return DICT_SAMPLES[0]
 
@@ -112,7 +112,7 @@ class NestedTupleEnv(gym.Env):
         self._spec = EnvSpec("NestedTupleEnv-v0")
         self.steps = 0
 
-    def reset(self):
+    def reset(self, seed: Optional[int] = None):
         self.steps = 0
         return TUPLE_SAMPLES[0]
 
@@ -128,7 +128,7 @@ class RepeatedSpaceEnv(gym.Env):
         self._spec = EnvSpec("RepeatedSpaceEnv-v0")
         self.steps = 0
 
-    def reset(self):
+    def reset(self, seed: Optional[int] = None):
         self.steps = 0
         return REPEATED_SAMPLES[0]
 
@@ -149,7 +149,7 @@ class NestedMultiAgentEnv(MultiAgentEnv):
         self._agent_ids = {"dict_agent", "tuple_agent"}
         self.steps = 0
 
-    def reset(self):
+    def reset(self, seed: Optional[int] = None):
         return {
             "dict_agent": DICT_SAMPLES[0],
             "tuple_agent": TUPLE_SAMPLES[0],

@@ -85,8 +85,11 @@ class GroupAgentsWrapper(MultiAgentEnv):
 
         self.env.seed(seed)
 
-    def reset(self):
-        obs = self.env.reset()
+    def reset(self, seed: Optional[int] = None):
+        if seed is None:
+            obs = self.env.reset()
+        else:
+            obs = self.env.seed(seed)
         return self._group_items(obs)
 
     def step(self, action_dict):

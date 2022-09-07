@@ -52,7 +52,7 @@ class BasicMultiAgentMultiSpaces(MultiAgentEnv):
 
         super().__init__()
 
-    def reset(self):
+    def reset(self, seed: Optional[int] = None):
         self.dones = set()
         return {i: self.observation_space[i].sample() for i in self.agents}
 

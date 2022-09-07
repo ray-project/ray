@@ -40,7 +40,7 @@ class KaggleFootballMultiAgentEnv(MultiAgentEnv):
         )
         self.last_cumulative_reward = None
 
-    def reset(self) -> MultiAgentDict:
+    def reset(self, seed: Optional[int] = None) -> MultiAgentDict:
         kaggle_state = self.kaggle_env.reset()
         self.last_cumulative_reward = None
         return {

@@ -19,7 +19,7 @@ class TestResetOnExceptionWrapper(unittest.TestCase):
                     raise ValueError("An error from a unstable environment.")
                 return self.observation_space.sample(), 0.0, False, {}
 
-            def reset(self):
+            def reset(self, seed=None):
                 return self.observation_space.sample()
 
         env = UnstableEnv()
@@ -38,7 +38,7 @@ class TestResetOnExceptionWrapper(unittest.TestCase):
             def step(self, action):
                 return self.observation_space.sample(), 0.0, False, {}
 
-            def reset(self):
+            def reset(self, seed=None):
                 raise ValueError("An error from a very unstable environment.")
 
         env = VeryUnstableEnv()

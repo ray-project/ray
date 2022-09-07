@@ -49,8 +49,11 @@ class MultiAgentEnv(gym.Env):
             self._spaces_in_preferred_format = None
 
     @PublicAPI
-    def reset(self) -> MultiAgentDict:
+    def reset(self, seed: Optional[int] = None) -> MultiAgentDict:
         """Resets the env and returns observations from ready agents.
+
+        Args:
+            seed: An optional seed to use for the new episode.
 
         Returns:
             New observations for each ready agent.
@@ -481,7 +484,7 @@ def make_multi_agent(
             return all(self.observation_space.contains(val) for val in x.values())
 
         @override(MultiAgentEnv)
-        def reset(self):
+        def reset(self, seed: Optional[int] = None):
             self.dones = set()
             return {i: a.reset() for i, a in enumerate(self.agents)}
 
@@ -764,7 +767,7 @@ class _MultiAgentEnvState:
                 self.last_dones[ag] = d
         self.last_infos = infos
 
-    def reset(self) -> MultiAgentDict:
+    def reset(self, seed: Optional[int] = None) -> MultiAgentDict:
         try:
             self.last_obs = self.env.reset()
         except Exception as e:

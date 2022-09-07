@@ -273,7 +273,7 @@ class SUMOTestMultiAgentEnv(MultiAgentEnv):
     ###########################################################################
     # REST & LEARNING STEP
 
-    def reset(self):
+    def reset(self, seed: Optional[int] = None):
         """Resets the env and returns observations from ready agents."""
         self.resetted = True
         self.episodes += 1

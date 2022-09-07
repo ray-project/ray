@@ -347,7 +347,7 @@ class _RemoteMultiAgentEnv:
         self.env = make_env(i)
         self.agent_ids = set()
 
-    def reset(self):
+    def reset(self, seed: Optional[int] = None):
         obs = self.env.reset()
         # each keyed by agent_id in the env
         rew = {}
@@ -381,7 +381,7 @@ class _RemoteSingleAgentEnv:
     def __init__(self, make_env, i):
         self.env = make_env(i)
 
-    def reset(self):
+    def reset(self, seed: Optional[int] = None):
         obs = {_DUMMY_AGENT_ID: self.env.reset()}
         rew = {agent_id: 0 for agent_id in obs.keys()}
         done = {"__all__": False}

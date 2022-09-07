@@ -65,7 +65,7 @@ class MonitorEnv(gym.Wrapper):
         self._current_reward += rew
         self._num_steps += 1
         self._total_steps += 1
-        return (obs, rew, done, info)
+        return obs, rew, done, info
 
     def get_episode_rewards(self):
         return self._episode_rewards
@@ -203,7 +203,7 @@ class MaxAndSkipEnv(gym.Wrapper):
     def step(self, action):
         """Repeat action, sum reward, and max over last observations."""
         total_reward = 0.0
-        done = None
+        done = info = None
         for i in range(self._skip):
             obs, reward, done, info = self.env.step(action)
             if i == self._skip - 2:

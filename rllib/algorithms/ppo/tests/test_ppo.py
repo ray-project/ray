@@ -103,19 +103,17 @@ class TestPPO(unittest.TestCase):
                 # overridden by the schedule below (which is expected).
                 entropy_coeff=100.0,
                 entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],
-            )
-            .rollouts(
-                num_rollout_workers=1,
-                # Test with compression.
-                compress_observations=True,
-            )
-            .training(
                 train_batch_size=128,
                 model=dict(
                     # Settings in case we use an LSTM.
                     lstm_cell_size=10,
                     max_seq_len=20,
                 ),
+            )
+            .rollouts(
+                num_rollout_workers=1,
+                # Test with compression.
+                compress_observations=True,
             )
             .callbacks(MyCallbacks)
         )  # For checking lr-schedule correctness.
