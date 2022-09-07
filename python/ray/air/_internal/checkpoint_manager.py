@@ -72,6 +72,8 @@ class _TrackedCheckpoint:
         self.metrics = flatten_dict(metrics) if metrics else {}
         self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
 
+        self.forced = False
+
         if (
             dir_or_data is not None
             and storage_mode == CheckpointStorage.MEMORY
@@ -81,6 +83,9 @@ class _TrackedCheckpoint:
                 f"Memory checkpoints only support Ray object references and dicts "
                 f"as their data. Got: {dir_or_data}"
             )
+
+    def set_forced_bit(self, val: bool):
+        self.forced = val
 
     def commit(self, path: Optional[Path] = None) -> None:
         """Commit checkpoint to disk, if needed.
