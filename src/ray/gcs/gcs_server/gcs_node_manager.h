@@ -39,7 +39,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param gcs_publisher GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  /// we get pending task info if needed.
   explicit GcsNodeManager(std::shared_ptr<GcsPublisher> gcs_publisher,
                           std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                           std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
@@ -160,8 +159,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     CountType_MAX = 4,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
-
-  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
 };
 
 }  // namespace gcs
