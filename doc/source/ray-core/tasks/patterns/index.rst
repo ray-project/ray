@@ -21,4 +21,3 @@ You may also be interested in visiting the design patterns section for :ref:`act
     submission-order
     too-many-results
     redefine-task-actor-loop
-    unnecessary-ray-get

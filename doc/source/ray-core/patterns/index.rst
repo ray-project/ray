@@ -10,4 +10,5 @@ This section is a collection of common design patterns and anti-patterns for wri
 
     generators
     ray-get-loop
+    unnecessary-ray-get
     too-fine-grained-tasks
