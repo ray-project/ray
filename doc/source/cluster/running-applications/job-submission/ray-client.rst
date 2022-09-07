@@ -42,7 +42,7 @@ Client arguments
 Ray Client is used when the address passed into ``ray.init`` is prefixed with ``ray://``. Besides the address, Client mode currently accepts two other arguments:
 
 - ``namespace`` (optional): Sets the namespace for the session.
-- ``runtime_env`` (optional): Sets the `runtime environment <../../../ray-core/handling-dependencies.html#runtime-environments>`_ for the session, allowing you to dynamically specify environment variables, packages, local files, and more.
+- ``runtime_env`` (optional): Sets the :ref:`runtime environment <runtime-environments>` for the session, allowing you to dynamically specify environment variables, packages, local files, and more.
 
 .. code-block:: python
 
