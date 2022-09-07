@@ -82,7 +82,7 @@ class VectorEnv:
         )
 
     @PublicAPI
-    def vector_reset(self, seed: Optional[int] = None) -> List[EnvObsType]:
+    def vector_reset(self, seed: Optional[int] = None) -> Tuple[List[EnvObsType], List[EnvInfoDict]]:
         """Resets all sub-environments.
 
         Args:
@@ -92,7 +92,8 @@ class VectorEnv:
                 exists.
 
         Returns:
-            List of observations from each environment.
+            Tuple consitsing of a list of observations from each environment and
+            a list of info dicts from each environment.
         """
         raise NotImplementedError
 
@@ -101,7 +102,7 @@ class VectorEnv:
         self,
         index: Optional[int] = None,
         seed: Optional[int] = None,
-    ) -> EnvObsType:
+    ) -> Tuple[EnvObsType, EnvInfoDict]:
         """Resets a single sub-environment.
 
         Args:
@@ -112,7 +113,8 @@ class VectorEnv:
                 exists.
 
         Returns:
-            Observations from the reset sub environment.
+            Tuple consisting of observations from the reset sub environment and
+            an info dict of the reset sub environment.
         """
         raise NotImplementedError
 
@@ -128,7 +130,9 @@ class VectorEnv:
     @PublicAPI
     def vector_step(
         self, actions: List[EnvActionType]
-    ) -> Tuple[List[EnvObsType], List[float], List[bool], List[EnvInfoDict]]:
+    ) -> Tuple[
+        List[EnvObsType], List[float], List[bool], List[bool], List[EnvInfoDict]
+    ]:
         """Performs a vectorized step on all sub environments using `actions`.
 
         Args:
@@ -139,7 +143,8 @@ class VectorEnv:
             1) New observations for each sub-env.
             2) Reward values for each sub-env.
             3) Done values for each sub-env.
-            4) Info values for each sub-env.
+            4) Truncated values for each sub-env.
+            5) Info values for each sub-env.
         """
         raise NotImplementedError
 
@@ -261,20 +266,20 @@ class _VectorizedGymEnv(VectorEnv):
         )
 
     @override(VectorEnv)
-    def vector_reset(self):
+    def vector_reset(self, seed: Optional[int] = None):
         # Use reset_at(index) to restart and retry until
         # we successfully create a new env.
         resetted_obs = []
         for i in range(len(self.envs)):
             while True:
-                obs = self.reset_at(i)
+                obs = self.reset_at(i, seed)
                 if not isinstance(obs, Exception):
                     break
             resetted_obs.append(obs)
         return resetted_obs
 
     @override(VectorEnv)
-    def reset_at(self, index: Optional[int] = None) -> EnvObsType:
+    def reset_at(self, index: Optional[int] = None, seed: Optional[int] = None) -> EnvObsType:
         if index is None:
             index = 0
         try:
@@ -310,10 +315,12 @@ class _VectorizedGymEnv(VectorEnv):
 
     @override(VectorEnv)
     def vector_step(self, actions):
-        obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
+        obs_batch, rew_batch, done_batch, truncated_batch, info_batch = (
+            [], [], [], [], []
+        )
         for i in range(self.num_envs):
             try:
-                obs, r, done, info = self.envs[i].step(actions[i])
+                returns = self.envs[i].step(actions[i])
             except Exception as e:
                 if self.restart_failed_sub_environments:
                     logger.exception(e.args[0])
@@ -321,6 +328,16 @@ class _VectorizedGymEnv(VectorEnv):
                     obs, r, done, info = e, 0.0, True, {}
                 else:
                     raise e
+            # Still support old-style gym.Envs, in case user hasn't changed their step
+            # method yet.
+            if len(returns) == 4:
+                obs, r, done, info = returns
+                truncated = False
+            else:
+                assert len(returns) == 5, \
+                    "ERROR: gym.Env `step()` must return 4 or 5 values!"
+                obs, r, done, truncated, info = returns
+
             if not isinstance(info, dict):
                 raise ValueError(
                     "Info should be a dict, got {} ({})".format(info, type(info))
@@ -328,8 +345,9 @@ class _VectorizedGymEnv(VectorEnv):
             obs_batch.append(obs)
             rew_batch.append(r)
             done_batch.append(done)
+            truncated_batch.append(truncated)
             info_batch.append(info)
-        return obs_batch, rew_batch, done_batch, info_batch
+        return obs_batch, rew_batch, done_batch, truncated_batch, info_batch
 
     @override(VectorEnv)
     def get_sub_environments(self):

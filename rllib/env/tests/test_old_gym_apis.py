@@ -1,10 +1,19 @@
 import gym
 import unittest
 
+import ray
 from ray.rllib.algorithms.ppo import PPOConfig
 
 
 class TestOldGymEnvAPI(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_reset_wo_seed_and_step_returning_4_tuple(self):
 
         class GymOld(gym.Env):
@@ -21,7 +30,6 @@ class TestOldGymEnvAPI(unittest.TestCase):
 
             def seed(self, seed=None):
                 pass
-
 
         algo = PPOConfig().\
             environment(env=GymOld).\
