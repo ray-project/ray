@@ -1866,7 +1866,8 @@ def memory(
     "--verbose",
     required=False,
     is_flag=True,
-    help="Display additional debuggging information.",
+    hidden=True,
+    help="Experimental: Display additional debuggging information.",
 )
 @PublicAPI
 def status(address: str, redis_password: str, verbose: bool):
