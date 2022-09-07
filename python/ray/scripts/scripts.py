@@ -351,7 +351,7 @@ def debug(address):
     "--ray-client-server-port",
     required=False,
     type=int,
-    default=10001,
+    default=None,
     help="the port number the ray client server binds on, default to 10001.",
 )
 @click.option(
@@ -397,6 +397,24 @@ def debug(address):
     is_flag=True,
     default=False,
     help="provide this argument for the head node",
+)
+@click.option(
+    "--api-server",
+    is_flag=True,
+    default=False,
+    help="provide this argument if api server need to start",
+)
+@click.option(
+    "--gcs",
+    is_flag=True,
+    default=False,
+    help="provide this argument if need to start",
+)
+@click.option(
+    "--raylet",
+    is_flag=True,
+    default=False,
+    help="provide this argument if need to start",
 )
 @click.option(
     "--include-dashboard",
@@ -550,6 +568,9 @@ def start(
     num_gpus,
     resources,
     head,
+    api_server,
+    gcs,
+    raylet,
     include_dashboard,
     dashboard_host,
     dashboard_port,
@@ -619,6 +640,10 @@ def start(
         )
 
     redirect_output = None if not no_redirect_output else True
+
+    if head:
+        ray_client_server_port = 10001
+
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
@@ -657,6 +682,26 @@ def start(
 
     if ray_constants.RAY_START_HOOK in os.environ:
         _load_class(os.environ[ray_constants.RAY_START_HOOK])(ray_params, head)
+
+    start_services = set()
+    if api_server is True:
+        if head is not False:
+            cli_logger.abort("`--api-server` should not be used with `--head`")
+        start_services.add(ray_constants.PROCESS_TYPE_DASHBOARD)
+
+    if raylet is True:
+        if head is not False:
+            cli_logger.abort("`--raylet` should not be used with `--head`")
+        start_services.add(ray_constants.PROCESS_TYPE_RAYLET)
+
+    if gcs is True:
+        if head is not False:
+            cli_logger.abort("`--gcs` should not be used with `--head`")
+        head = True
+        start_services.add(ray_constants.PROCESS_TYPE_GCS_SERVER)
+
+    if len(start_services) == 0:
+        start_services = None
 
     if head:
         # Start head node.
@@ -744,7 +789,11 @@ def start(
                 )
 
         node = ray._private.node.Node(
-            ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
+            ray_params,
+            head=True,
+            shutdown_at_exit=block,
+            spawn_reaper=block,
+            start_services=start_services,
         )
 
         bootstrap_address = node.address
@@ -845,7 +894,6 @@ def start(
         head_only_flags = {
             "--port": port,
             "--redis-shard-ports": redis_shard_ports,
-            "--include-dashboard": include_dashboard,
         }
         for flag, val in head_only_flags.items():
             if val is None:
@@ -883,7 +931,11 @@ def start(
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
 
         node = ray._private.node.Node(
-            ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
+            ray_params,
+            head=False,
+            shutdown_at_exit=block,
+            spawn_reaper=block,
+            start_services=start_services,
         )
 
         # Ray and Python versions should probably be checked before

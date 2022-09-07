@@ -22,6 +22,7 @@ import multiprocessing as mp
 import multiprocessing.connection
 import os
 import re
+import requests
 import sys
 import tempfile
 import time
@@ -817,6 +818,96 @@ def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
             )
 
             _check_output_via_pattern("test_ray_submit.txt", result)
+
+
+def test_ray_start_gcs_and_dashboard(call_ray_stop_only, shutdown_only):
+    import ray
+
+    runner = CliRunner()
+
+    result = runner.invoke(scripts.start, ["--head", "--gcs"])
+    assert result.exit_code == 1, result.output
+
+    result = runner.invoke(scripts.start, ["--head", "--api-server"])
+    assert result.exit_code == 1, result.output
+
+    result = runner.invoke(scripts.start, ["--gcs", "--port", "9007"])
+    assert result.exit_code == 0, result.output
+
+    result = runner.invoke(
+        scripts.start,
+        [
+            "--api-server",
+            "--address",
+            "localhost:9007",
+            "--dashboard-port",
+            "9008",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    result = runner.invoke(scripts.start, ["--address", "localhost:9007"])
+    assert result.exit_code == 0, result.output
+    # now we have everything started
+
+    @ray.remote
+    def hello():
+        return "world"
+
+    ray.init(address="auto")
+
+    assert ray.get(hello.remote()) == "world"
+    ray.shutdown()
+
+    result = runner.invoke(
+        scripts.start, ["--address", "localhost:9007", "--ray-client-server-port=10001"]
+    )
+    assert result.exit_code == 0, result.output
+    ray.init(address="ray://localhost:10001")
+    assert ray.get(hello.remote()) == "world"
+    ray.shutdown()
+
+    # test the dashbaord
+    uri = "http://localhost:9008/api/gcs_healthz"
+    wait_for_condition(lambda: requests.get(uri).status_code == 200)
+
+
+def test_ray_start_gcs_and_dashboard2(call_ray_stop_only, shutdown_only):
+    import ray
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        scripts.start,
+        [
+            "--gcs",
+            "--port",
+            "9007",
+            "--api-server",
+            "--dashboard-port=9008",
+            "--raylet",
+            "--ray-client-server-port=10001",
+            "--dashboard-host=0.0.0.0",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    @ray.remote
+    def hello():
+        return "world"
+
+    ray.init(address="auto")
+
+    assert ray.get(hello.remote()) == "world"
+    ray.shutdown()
+
+    ray.init(address="ray://localhost:10001")
+    assert ray.get(hello.remote()) == "world"
+    ray.shutdown()
+
+    # test the dashbaord
+    uri = "http://localhost:9008/api/gcs_healthz"
+    wait_for_condition(lambda: requests.get(uri).status_code == 200)
 
 
 def test_ray_status(shutdown_only, monkeypatch):
