@@ -1,0 +1,148 @@
+(kuberay-gpu-training-example)=
+
+# ML training with GPU on Kubernetes
+In this guide, we show you how to run a sample Ray machine learning training workload with GPU on Kubernetes infrastructure. We will run Ray's {ref}`PyTorch image training benchmark <pytorch_gpu_training_benchmark>` with a 1 gigabyte training set. The following script consists of:
+- Step1: Setup a Kubernetes on GCP
+- Step2: Deploy a Ray cluster on Kubernetes with KubeRay (operator)
+- Step3: Run PyTorch image training benchmark 
+
+```shell
+# Step1: Setup Kubernetes cluster on GCP
+# e2-standard-8 => 8 vCPU; 32 GB RAM
+gcloud container clusters create gpu-cluster-1 \
+    --num-nodes=1 --min-nodes 0 --max-nodes 1 --enable-autoscaling \
+    --zone=us-central1-c --machine-type e2-standard-8
+
+# Create a node-pool for GPU
+# n1-standard-8 => 8 vCPU; 30 GB RAM
+gcloud container node-pools create gpu-node-pool \
+  --accelerator type=nvidia-tesla-t4,count=1 \
+  --zone us-central1-c --cluster gpu-cluster-1 \
+  --num-nodes 1 --min-nodes 0 --max-nodes 1 --enable-autoscaling \
+  --machine-type n1-standard-8
+
+# Install NVIDIA GPU device driver
+kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/cos/daemonset-preloaded.yaml
+
+# Step2: Deploy a Ray cluster on Kubernetes with KubeRay (operator)
+# Please make sure whether you connect to your Kubernetes cluster on GCP or not.
+
+# Create an operator
+kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
+
+# Create a Ray cluster
+kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.autoscaler.gpu.yaml
+
+# port forwarding
+kubectl port-forward services/raycluster-autoscaler-head-svc 8265:8265
+
+# Test cluster
+ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
+
+# Step3: Run PyTorch image training benchmark
+pip3 install -U "ray[default]"
+
+# Download the Python script
+curl https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/doc_code/pytorch_training_e2e_submit.py -o pytorch_training_e2e_submit.py
+
+# Submit the training job to your ray cluster
+python3 pytorch_training_e2e_submit.py
+# Example STDOUT:
+# Use the following command to follow this Job's logs:
+# ray job logs 'raysubmit_jNQxy92MJ4zinaDX' --follow
+
+# Track job status
+# Substitute the Ray Job's submission id.
+ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow
+```
+
+# Step1: Setup Kubernetes cluster on GCP
+```shell
+# Step1: Setup Kubernetes cluster on GCP
+# e2-standard-8 => 8 vCPU; 32 GB RAM
+gcloud container clusters create gpu-cluster-1 \
+    --num-nodes=1 --min-nodes 0 --max-nodes 1 --enable-autoscaling \
+    --zone=us-central1-c --machine-type e2-standard-8
+
+# Create a node-pool for GPU
+# n1-standard-8 => 8 vCPU; 30 GB RAM
+gcloud container node-pools create gpu-node-pool \
+  --accelerator type=nvidia-tesla-t4,count=1 \
+  --zone us-central1-c --cluster gpu-cluster-1 \
+  --num-nodes 1 --min-nodes 0 --max-nodes 1 --enable-autoscaling \
+  --machine-type n1-standard-8
+
+# Install NVIDIA GPU device driver
+kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/cos/daemonset-preloaded.yaml
+```
+
+If you have an existing Kubernetes cluster with GPU, you can ignore this step. In addition, it is not necessary
+to run this example with a cluster having that much RAM (>30GB per node in the above commands). Feel free to update
+the option `machine-type` and the resource requirements in `ray-cluster.autoscaler.gpu.yaml`.
+
+First, we create a Kubernetes cluster `gpu-cluster-1` with a node (`e2-standard-8`: 8 vCPU; 32 GB RAM). Second,
+we add a new node (`n1-standard-8`: 8 vCPU; 30 GB RAM) with a GPU (`nvidia-tesla-t4`) to the cluster.
+
+# Step2: Deploy a Ray cluster on Kubernetes with KubeRay (operator)
+
+:::{note}
+To learn the basics of Ray on Kubernetes, we recommend taking a look
+at the {ref}`introductory guide <kuberay-quickstart>` first.
+:::
+
+If you are new to Kubernetes and you are planning to deploy Ray workloads on a managed
+Kubernetes service, we recommend taking a look at this {ref}`introductory guide <kuberay-k8s-setup>`
+first.
+
+```shell
+# Step2: Deploy a Ray cluster on Kubernetes with KubeRay (operator)
+# Create an operator
+kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
+
+# Create a Ray cluster
+kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.autoscaler.gpu.yaml
+
+# port forwarding
+kubectl port-forward services/raycluster-autoscaler-head-svc 8265:8265
+
+# Test cluster (optional)
+ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
+```
+
+Please make sure whether you connect to your Kubernetes cluster on GCP or not. The first command will deploy
+KubeRay (ray-operator) to your Kubernetes cluster. The second command will create a ray cluster with the help
+of KubeRay.
+
+The third command is used to map port 8265 of the `ray-head` pod to **127.0.0.1:8265**. You can check
+**127.0.0.1:8265** to see the dashboard. The last command is used to test your Ray cluster by submitting a simple job.
+It is optional.
+
+# Step3: Run PyTorch image training benchmark
+```shell
+# Step3: Run PyTorch image training benchmark
+pip3 install -U "ray[default]"
+
+# Download the Python script
+curl https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/doc_code/pytorch_training_e2e_submit.py -o pytorch_training_e2e_submit.py
+
+# Submit the training job to your ray cluster
+python3 pytorch_training_e2e_submit.py
+# Example STDOUT:
+# Use the following command to follow this Job's logs:
+# ray job logs 'raysubmit_jNQxy92MJ4zinaDX' --follow
+
+# Track job status
+# Substitute the Ray Job's submission id.
+ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow
+```
+
+# Clean-up
+Delete your Ray cluster and KubeRay with the following commands:
+```shell
+kubectl delete raycluster raycluster-autoscaler
+
+# Please make sure the ray cluster has already been removed before delete the operator.
+kubectl delete -k "http://github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
+```
+If you're on a public cloud, don't forget to clean up the underlying
+node group and/or Kubernetes cluster.

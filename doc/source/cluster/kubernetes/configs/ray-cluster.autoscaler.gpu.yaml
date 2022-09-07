@@ -1,0 +1,140 @@
+# This config demonstrates KubeRay's Ray autoscaler integration.
+# The resource requests and limits in this config are too small for production!
+# For an example with more realistic resource configuration, see
+# ray-cluster.autoscaler.large.yaml.
+apiVersion: ray.io/v1alpha1
+kind: RayCluster
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+    # A unique identifier for the head node and workers of this cluster.
+  name: raycluster-autoscaler
+spec:
+  # The version of Ray you are using. Make sure all Ray containers are running this version of Ray.
+  rayVersion: '2.0.0'
+  # If enableInTreeAutoscaling is true, the autoscaler sidecar will be added to the Ray head pod.
+  # Ray autoscaler integration is supported only for Ray versions >= 1.11.0
+  # Ray autoscaler integration is Beta with KubeRay >= 0.3.0 and Ray >= 2.0.0.
+  enableInTreeAutoscaling: true
+  # autoscalerOptions is an OPTIONAL field specifying configuration overrides for the Ray autoscaler.
+  # The example configuration shown below below represents the DEFAULT values.
+  # (You may delete autoscalerOptions if the defaults are suitable.)
+  autoscalerOptions:
+    # upscalingMode is "Default" or "Aggressive."
+    # Conservative: Upscaling is rate-limited; the number of pending worker pods is at most the size of the Ray cluster.
+    # Default: Upscaling is not rate-limited.
+    # Aggressive: An alias for Default; upscaling is not rate-limited.
+    upscalingMode: Default
+    # idleTimeoutSeconds is the number of seconds to wait before scaling down a worker pod which is not using Ray resources.
+    idleTimeoutSeconds: 60
+    # image optionally overrides the autoscaler's container image.
+    # If instance.spec.rayVersion is at least "2.0.0", the autoscaler will default to the same image as
+    # the ray container. For older Ray versions, the autoscaler will default to using the Ray 2.0.0 image.
+    ## image: "my-repo/my-custom-autoscaler-image:tag"
+    # imagePullPolicy optionally overrides the autoscaler container's image pull policy.
+    imagePullPolicy: Always
+    # resources specifies optional resource request and limit overrides for the autoscaler container.
+    # For large Ray clusters, we recommend monitoring container resource usage to determine if overriding the defaults is required.
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+  ######################headGroupSpec#################################
+  # head group template and specs, (perhaps 'group' is not needed in the name)
+  headGroupSpec:
+    # Kubernetes Service Type, valid values are 'ClusterIP', 'NodePort' and 'LoadBalancer'
+    serviceType: ClusterIP
+    # logical group name, for this called head-group, also can be functional
+    # pod type head or worker
+    # rayNodeType: head # Not needed since it is under the headgroup
+    # the following params are used to complete the ray start: ray start --head --block ...
+    rayStartParams:
+      # Flag "no-monitor" will be automatically set when autoscaling is enabled.
+      dashboard-host: '0.0.0.0'
+      block: 'true'
+      # num-cpus: '1' # can be auto-completed from the limits
+      # Use `resources` to optionally specify custom resource annotations for the Ray node.
+      # The value of `resources` is a string-integer mapping.
+      # Currently, `resources` must be provided in the specific format demonstrated below:
+      # resources: '"{\"Custom1\": 1, \"Custom2\": 5}"'
+    #pod template
+    template:
+      spec:
+        containers:
+        # The Ray head pod
+        - name: ray-head
+          image: rayproject/ray-ml:2.0.0-gpu
+          imagePullPolicy: Always
+          ports:
+          - containerPort: 6379
+            name: gcs
+          - containerPort: 8265
+            name: dashboard
+          - containerPort: 10001
+            name: client
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","ray stop"]
+          resources:
+            limits:
+              cpu: "4"
+              memory: "24G"
+            requests:
+              cpu: "4"
+              memory: "12G"
+  workerGroupSpecs:
+  # the pod replicas in this group typed worker
+  - replicas: 1
+    minReplicas: 1
+    maxReplicas: 300
+    # logical group name, for this called small-group, also can be functional
+    groupName: small-group
+    # if worker pods need to be added, we can simply increment the replicas
+    # if worker pods need to be removed, we decrement the replicas, and populate the podsToDelete list
+    # the operator will remove pods from the list until the number of replicas is satisfied
+    # when a pod is confirmed to be deleted, its name will be removed from the list below
+    #scaleStrategy:
+    #  workersToDelete:
+    #  - raycluster-complete-worker-small-group-bdtwh
+    #  - raycluster-complete-worker-small-group-hv457
+    #  - raycluster-complete-worker-small-group-k8tj7
+    # the following params are used to complete the ray start: ray start --block ...
+    rayStartParams:
+      block: 'true'
+      num-gpus: "1"
+    #pod template
+    template:
+      metadata:
+        labels:
+          key: value
+        # annotations for pod
+        annotations:
+          key: value
+      spec:
+        initContainers:
+        # the env var $RAY_IP is set by the operator if missing, with the value of the head service name
+        - name: init-myservice
+          image: busybox:1.28
+          command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]
+        containers:
+        - name: machine-learning # must consist of lower case alphanumeric characters or '-', and must start and end with an alphanumeric character (e.g. 'my-name',  or '123-abc'
+          image: rayproject/ray-ml:2.0.0-gpu
+          # environment variables to set in the container.Optional.
+          # Refer to https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","ray stop"]
+          resources:
+            limits:
+              cpu: "8"
+              memory: "24G"
+              nvidia.com/gpu: 1
+            requests:
+              cpu: "4"
+              memory: "12G"
+              nvidia.com/gpu: 1
