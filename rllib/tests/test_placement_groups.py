@@ -2,10 +2,10 @@ import os
 import unittest
 
 import ray
+from ray import air
 from ray import tune
 from ray.tune import Callback
 from ray.rllib.algorithms.pg import PG, DEFAULT_CONFIG
-from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.experiment import Trial
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 
@@ -72,17 +72,16 @@ class TestPlacementGroups(unittest.TestCase):
 
         tune.register_trainable("my_trainable", MyAlgo)
 
-        global trial_executor
-        trial_executor = RayTrialExecutor(reuse_actors=False)
-
-        tune.run(
+        tune.Tuner(
             "my_trainable",
-            config=config,
-            stop={"training_iteration": 2},
-            trial_executor=trial_executor,
-            callbacks=[_TestCallback()],
-            verbose=2,
-        )
+            param_space=config,
+            run_config=air.RunConfig(
+                stop={"training_iteration": 2},
+                verbose=2,
+                callbacks=[_TestCallback()],
+            ),
+            tune_config=tune.TuneConfig(reuse_actors=True),
+        ).fit()
 
     def test_default_resource_request(self):
         config = DEFAULT_CONFIG.copy()
@@ -95,17 +94,16 @@ class TestPlacementGroups(unittest.TestCase):
         config["framework"] = "torch"
         config["placement_strategy"] = "SPREAD"
 
-        global trial_executor
-        trial_executor = RayTrialExecutor(reuse_actors=False)
-
-        tune.run(
+        tune.Tuner(
             "PG",
-            config=config,
-            stop={"training_iteration": 2},
-            trial_executor=trial_executor,
-            callbacks=[_TestCallback()],
-            verbose=2,
-        )
+            param_space=config,
+            run_config=air.RunConfig(
+                stop={"training_iteration": 2},
+                verbose=2,
+                callbacks=[_TestCallback()],
+            ),
+            tune_config=tune.TuneConfig(reuse_actors=False),
+        ).fit()
 
     def test_default_resource_request_plus_manual_leads_to_error(self):
         config = DEFAULT_CONFIG.copy()
@@ -114,13 +112,12 @@ class TestPlacementGroups(unittest.TestCase):
         config["env"] = "CartPole-v0"
 
         try:
-            tune.run(
+            tune.Tuner(
                 "PG",
-                config=config,
-                stop={"training_iteration": 2},
+                param_space=config,
+                run_config=air.RunConfig(stop={"training_iteration": 2}, verbose=2),
                 resources_per_trial=PlacementGroupFactory([{"CPU": 1}]),
-                verbose=2,
-            )
+            ).fit()
         except ValueError as e:
             assert "have been automatically set to" in e.args[0]
 
