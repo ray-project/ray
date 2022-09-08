@@ -1,6 +1,5 @@
 # Dependencies
 grpcio==1.29.0
-keras==2.3.0
 h5py==2.10.0
 protobuf==3.17.3
 pyyaml==5.4
