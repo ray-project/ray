@@ -1164,7 +1164,7 @@ calls an "evaluation step" is run:
 
 
 An evaluation step runs - using its own RolloutWorkers - for ``evaluation_duration`` episodes or timesteps, depending
-on the ``evaluation_duration_unit`` setting, which can be either "episodes" (default) or "timesteps".
+on the ``evaluation_duration_unit`` setting, which can take values of either "episodes" (default) or "timesteps".
 
 
 .. code-block:: python
@@ -1198,9 +1198,9 @@ For examples:
         "evaluation_duration_unit": "episodes",
 
         # What if number of eval workers is non-dividable by 10?
-        "evaluation_num_workers": 7,
         # -> Run 7 episodes (1 per eval worker), then run 3 more episodes only using
-        #    workers 1-3 (workers 4-7 remain idle during that time).
+        #    evaluation workers 1-3 (evaluation workers 4-7 remain idle during that time).
+        "evaluation_num_workers": 7,
     }
 
 
@@ -1274,7 +1274,7 @@ you can use an (experimental) new setting: ``enable_async_evaluation=True``.
 This will run the parallel sampling of all evaluation RolloutWorkers via a fault tolerant, asynchronous manager, such that if one of the workers
 takes too long to run through an episode and return data or fails entirely, the other evaluation RolloutWorkers will pick up its task and complete the job.
 
-Note that with or without async evaluation, all `fault tolerance settings<#scaling-guide>`__,
+Note that with or without async evaluation, all :ref:`fault tolerance settings <rllib-scaling-guide>`,
 such as ``ignore_worker_failures`` or ``recreate_failed_workers`` will be respected and applied to the failed evaluation workers.
 
 Example:
