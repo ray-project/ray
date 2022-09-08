@@ -30,7 +30,6 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class ProxyActorTest extends BaseTest {
-
   @Test
   public void test() throws IOException {
     init();
@@ -50,7 +49,7 @@ public class ProxyActorTest extends BaseTest {
 
       // Controller
       ActorHandle<DummyServeController> controller =
-          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
       Map<String, EndpointInfo> endpointInfos = new HashMap<>();
       endpointInfos.put(
           endpointName,
@@ -95,7 +94,6 @@ public class ProxyActorTest extends BaseTest {
                   + route);
       try (CloseableHttpResponse httpResponse =
           (CloseableHttpResponse) httpClient.execute(httpPost)) {
-
         int status = httpResponse.getCode();
         Assert.assertEquals(status, HttpURLConnection.HTTP_OK);
         Object result =

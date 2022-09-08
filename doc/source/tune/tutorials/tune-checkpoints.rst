@@ -37,16 +37,19 @@ For this case, we only need to tell Ray Tune not to do any syncing at all (as sy
 
 .. code-block:: python
 
-    from ray import tune
+    from ray import air, tune
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        name="experiment_name",
-        local_dir="/path/to/shared/storage/",
-        sync_config=tune.SyncConfig(
-            syncer=None  # Disable syncing
+        run_config=air.RunConfig(
+            name="experiment_name",
+            local_dir="/path/to/shared/storage/",
+            sync_config=tune.SyncConfig(
+                syncer=None  # Disable syncing
+            )
         )
     )
+    tuner.fit()
 
 Note that the driver (on the head node) will have access to all checkpoints locally (in the
 shared directory) for further processing.
@@ -69,14 +72,16 @@ This will automatically store both the experiment state and the trial checkpoint
 .. code-block:: python
 
     from ray import tune
+    from ray.air.config import RunConfig
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        name="experiment_name",
-        sync_config=tune.SyncConfig(
-            upload_dir="s3://bucket-name/sub-path/"
-        )
-    )
+        run_config=RunConfig(
+            name="experiment_name",
+            sync_config=tune.SyncConfig(
+                upload_dir="s3://bucket-name/sub-path/"
+            )))
+    tuner.fit()
 
 We don't have to provide a ``syncer`` here as it will be automatically detected. However, you can provide
 a string if you want to use a custom command:
@@ -84,15 +89,19 @@ a string if you want to use a custom command:
 .. code-block:: python
 
     from ray import tune
+    from ray.air.config import RunConfig
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        name="experiment_name",
-        sync_config=tune.SyncConfig(
-            upload_dir="s3://bucket-name/sub-path/",
-            syncer="aws s3 sync {source} {target}",  # Custom sync command
-        )
+        run_config=RunConfig(
+            name="experiment_name",
+            sync_config=tune.SyncConfig(
+                upload_dir="s3://bucket-name/sub-path/",
+                syncer="aws s3 sync {source} {target}",  # Custom sync command
+            )),
     )
+    tuner.fit()
+
 
 If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``,
 as demonstrated in the example above.
@@ -123,14 +132,16 @@ If you want to customize syncing behavior, you can again specify a custom sync t
 
     from ray import tune
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        name="experiment_name",
-        sync_config=tune.SyncConfig(
-            # Do not specify an upload dir here
-            syncer="rsync -savz -e "ssh -i ssh_key.pem" {source} {target}",  # Custom sync command
-        )
+        run_config=air.RunConfig(
+            name="experiment_name",
+            sync_config=tune.SyncConfig(
+                # Do not specify an upload dir here
+                syncer="rsync -savz -e "ssh -i ssh_key.pem" {source} {target}",  # Custom sync command
+            ))
     )
+    results = tuner.fit()
 
 
 Alternatively, a function can be provided with the following signature:
@@ -144,14 +155,16 @@ Alternatively, a function can be provided with the following signature:
         sync_process = subprocess.Popen(sync_cmd, shell=True)
         sync_process.wait()
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        name="experiment_name",
-        sync_config=tune.SyncConfig(
-            syncer=custom_sync_func,
-            sync_period=60  # Synchronize more often
-        )
-    )
+        run_config=air.RunConfig(
+            name="experiment_name",
+            sync_config=tune.SyncConfig(
+                syncer=custom_sync_func,
+                sync_period=60  # Synchronize more often
+            )
+        ))
+    results = tuner.fit()
 
 When syncing results back to the driver, the source would be a path similar to
 ``ubuntu@192.0.0.1:/home/ubuntu/ray_results/trial1``, and the target would be a local path.
@@ -181,11 +194,11 @@ Your ``my_trainable`` is either a:
 
 1. **Model with an existing Ray integration**
 
-  * XGBoost (:ref:`example <xgboost-ray-tuning>`)
+  * XGBoost (`example <https://github.com/ray-project/xgboost_ray#hyperparameter-tuning>`__)
   * Pytorch (:doc:`example </tune/examples/tune-pytorch-cifar>`)
   * Pytorch Lightning (:ref:`example <pytorch-lightning-tune>`)
   * Tensorflow/Keras (:doc:`example </tune/examples/tune_mnist_keras>`)
-  * LightGBM (:ref:`example <lightgbm-ray-tuning>`)
+  * LightGBM (`example <https://github.com/ray-project/lightgbm_ray/#hyperparameter-tuning>`__)
 
 2. **Custom training function**
 
@@ -214,28 +227,27 @@ via ``ray.init()``, making your script on your laptop the "driver".
     )
 
     # this starts the run!
-    tune.run(
+    tuner = tune.Tuner(
         my_trainable,
-
-        # name of your experiment
-        name="my-tune-exp",
-
-        # a directory where results are stored before being
-        # sync'd to head node/cloud storage
-        local_dir="/tmp/mypath",
-
-        # see above! we will sync our checkpoints to S3 directory
-        sync_config=sync_config,
-
-        # we'll keep the best five checkpoints at all times
-        # checkpoints (by AUC score, reported by the trainable, descending)
-        checkpoint_score_attr="max-auc",
-        keep_checkpoints_num=5,
-
-        # a very useful trick! this will resume from the last run specified by
-        # sync_config (if one exists), otherwise it will start a new tuning run
-        resume="AUTO",
+        run_config=air.RunConfig(
+            # name of your experiment
+            # if this experiment exists, we will resume from the last run
+            # as specified by
+            name="my-tune-exp",
+            # a directory where results are stored before being
+            # sync'd to head node/cloud storage
+            local_dir="/tmp/mypath",
+            # see above! we will sync our checkpoints to S3 directory
+            sync_config=sync_config,
+            checkpoint_config=air.CheckpointConfig(
+                # we'll keep the best five checkpoints at all times
+                # checkpoints (by AUC score, reported by the trainable, descending)
+                checkpoint_score_attr="max-auc",
+                keep_checkpoints_num=5,
+            ),
+        ),
     )
+    results = tuner.fit()
 
 In this example, checkpoints will be saved:
 
@@ -244,23 +256,10 @@ In this example, checkpoints will be saved:
 * **On head node**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node)
 * **On workers nodes**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node)
 
-If your run stopped for any reason (finished, errored, user CTRL+C), you can restart it any time by running the script above again -- note with ``resume="AUTO"``, it will detect the previous run so long as the ``sync_config`` points to the same location.
-
-If, however, you prefer not to use ``resume="AUTO"`` (or are on an older version of Ray) you can resume manaully:
-
-.. code-block:: python
-
-    # Restored previous trial from the given checkpoint
-    tune.run(
-        # our same trainable as before
-        my_trainable,
-
-        # The name can be different from your original name
-        name="my-tune-exp-restart",
-
-        # our same config as above!
-        restore=sync_config,
-    )
+If your run stopped for any reason (finished, errored, user CTRL+C), you can restart it any time by
+``tuner=Tuner.restore(experiment_checkpoint_dir).fit()``.
+There are a few options for restoring an experiment:
+"resume_unfinished", "resume_errored" and "restart_errored". See ``Tuner.restore()`` for more details.
 
 .. _rsync-checkpointing:
 
@@ -287,29 +286,29 @@ Let's take a look at an example:
     sync_config = tune.syncConfig()  # the default mode is to use use rsync
 
     # this starts the run!
-    tune.run(
+    tuner = tune.Tuner(
         my_trainable,
 
-        # name of your experiment
-        name="my-tune-exp",
-
-        # a directory where results are stored before being
-        # sync'd to head node/cloud storage
-        local_dir="/tmp/mypath",
-
-        # sync our checkpoints via rsync
-        # you don't have to pass an empty sync config - but we
-        # do it here for clarity and comparison
-        sync_config=sync_config,
-
-        # we'll keep the best five checkpoints at all times
-        # checkpoints (by AUC score, reported by the trainable, descending)
-        checkpoint_score_attr="max-auc",
-        keep_checkpoints_num=5,
-
-        # a very useful trick! this will resume from the last run specified by
-        # sync_config (if one exists), otherwise it will start a new tuning run
-        resume="AUTO",
+        run_config=air.RunConfig(
+            # name of your experiment
+            # If the experiment with the same name is already run,
+            # Tuner willl resume from the last run specified by sync_config(if one exists).
+            # Otherwise, will start a new run.
+            name="my-tune-exp",
+            # a directory where results are stored before being
+            # sync'd to head node/cloud storage
+            local_dir="/tmp/mypath",
+            # sync our checkpoints via rsync
+            # you don't have to pass an empty sync config - but we
+            # do it here for clarity and comparison
+            sync_config=sync_config,
+            checkpoint_config=air.CheckpointConfig(
+                # we'll keep the best five checkpoints at all times
+                # checkpoints (by AUC score, reported by the trainable, descending)
+                checkpoint_score_attr="max-auc",
+                keep_checkpoints_num=5,
+            )
+        )
     )
 
 .. _tune-distributed-checkpointing:
@@ -318,7 +317,7 @@ Distributed Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node.
-This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also
+This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-index>` and also
 requires rsync to be installed.
 
 Note that you must use the ``session.report`` API to trigger syncing
@@ -335,4 +334,5 @@ disable cross-node syncing:
 .. code-block:: python
 
     sync_config = tune.SyncConfig(syncer=None)
-    tune.run(func, sync_config=sync_config)
+    tuner = tune.Tuner(func, run_config=air.RunConfig(sync_config=sync_config))
+    results = tuner.fit()

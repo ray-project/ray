@@ -13,10 +13,11 @@ You can install the latest official version of Ray as follows.
 
 .. code-block:: bash
 
-  pip install -U ray  # minimal install
+  # Install Ray with support for the dashboard + cluster launcher
+  pip install -U "ray[default]"
 
-  # To install Ray with support for the dashboard + cluster launcher, run
-  # `pip install -U "ray[default]"`
+  # Install Ray with minimal dependencies
+  # pip install -U ray
 
 To install Ray libraries:
 
@@ -36,37 +37,51 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. code-block:: bash
 
-  pip uninstall -y ray # clean removal of previous install, otherwise version number may cause pip not to upgrade
-  pip install -U LINK_TO_WHEEL.whl  # minimal install
+  # Clean removal of previous install
+  pip uninstall -y ray
+  # Install Ray with support for the dashboard + cluster launcher
+  pip install -U "ray[default] @ LINK_TO_WHEEL.whl"
 
-  # To install Ray with support for the dashboard + cluster launcher, run
-  # `pip install -U 'ray[default] @ LINK_TO_WHEEL.whl'`
+  # Install Ray with minimal dependencies
+  # pip install -U LINK_TO_WHEEL.whl
 
 
-===================  ===================  ======================
-       Linux                MacOS         Windows (beta)
-===================  ===================  ======================
-`Linux Python 3.9`_  `MacOS Python 3.9`_  `Windows Python 3.9`_
-`Linux Python 3.8`_  `MacOS Python 3.8`_  `Windows Python 3.8`_
-`Linux Python 3.7`_  `MacOS Python 3.7`_  `Windows Python 3.7`_
-`Linux Python 3.6`_  `MacOS Python 3.6`_
-===================  ===================  ======================
+====================  ====================  =======================
+       Linux                 MacOS          Windows (beta)
+====================  ====================  =======================
+`Linux Python 3.10`_  `MacOS Python 3.10`_  `Windows Python 3.10`_
+`Linux Python 3.9`_   `MacOS Python 3.9`_   `Windows Python 3.9`_
+`Linux Python 3.8`_   `MacOS Python 3.8`_   `Windows Python 3.8`_
+`Linux Python 3.7`_   `MacOS Python 3.7`_   `Windows Python 3.7`_
+`Linux Python 3.6`_   `MacOS Python 3.6`_
+====================  ====================  =======================
+
+.. note::
+
+  Python 3.9/3.10 support is currently experimental.
 
 .. note::
 
   On Windows, support for multi-node Ray clusters is currently experimental and untested.
   If you run into issues please file a report at https://github.com/ray-project/ray/issues.
 
+.. note::
+
+  :ref:`Usage stats <ref-usage-stats>` collection is enabled by default (can be :ref:`disabled <usage-disable>`) for nightly wheels including both local clusters started via ``ray.init()`` and remote clusters via cli.
+
+.. _`Linux Python 3.10`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl
 .. _`Linux Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
 .. _`Linux Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
 .. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 .. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
 
+.. _`MacOS Python 3.10`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-macosx_10_15_universal2.whl
 .. _`MacOS Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-macosx_10_15_x86_64.whl
 .. _`MacOS Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-macosx_10_15_x86_64.whl
 .. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
 .. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp36-cp36m-macosx_10_15_intel.whl
 
+.. _`Windows Python 3.10`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-win_amd64.whl
 .. _`Windows Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-win_amd64.whl
 .. _`Windows Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-win_amd64.whl
 .. _`Windows Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-win_amd64.whl
@@ -152,6 +167,24 @@ The latest Ray Java snapshot can be found in `sonatype repository <https://oss.s
 
   If you want to run your Java code in a multi-node Ray cluster, it's better to exclude Ray jars when packaging your code to avoid jar conficts if the versions (installed Ray with ``pip install`` and maven dependencies) don't match.
 
+.. _ray-install-cpp:
+
+Install Ray C++
+---------------
+
+You can install and use Ray C++ API as follows.
+
+.. code-block:: bash
+
+  pip install -U ray[cpp]
+
+  # Create a Ray C++ project template to start with.
+  mkdir ray-template && ray cpp --generate-bazel-project-template-to ray-template
+
+.. note::
+
+  If you build Ray from source, please remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file ``cpp/example/.bazelrc`` before running your application. The related issue is `this <https://github.com/ray-project/ray/issues/26031>`_.
+
 .. _apple-silcon-supprt:
 
 M1 Mac (Apple Silicon) Support
@@ -162,19 +195,19 @@ Ray has experimental support for machines running Apple Silicon (such as M1 macs
 #. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
 
    * ``wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh``
-   
+
    * ``bash Miniforge3-MacOSX-arm64.sh``
-   
+
    * ``rm https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh # Cleanup.``
-   
+
 #. Ensure you're using the miniforge environment (you should see (base) in your terminal).
-   
+
    * ``source ~/.bash_profile``
-   
+
    * ``conda activate``
-   
-#. Ensure that the ``grpcio`` package is installed via forge and **not pypi**. Grpcio currently requires special compilation flags, which pypi will _not_ correctly build with. Miniforge provides a prebuilt version of grpcio for M1 macs. 
-   
+
+#. Ensure that the ``grpcio`` package is installed via forge and **not pypi**. Grpcio currently requires special compilation flags, which pypi will _not_ correctly build with. Miniforge provides a prebuilt version of grpcio for M1 macs.
+
    * ``pip uninstall grpcio; conda install grpcio=1.43.0``
 
 #. Install Ray as you normally would.
@@ -227,18 +260,22 @@ If you use `Anaconda`_ (`installation instructions`_) and want to use Ray in a d
 
 .. code-block:: bash
 
-  conda create --name ray
+  conda config --env --add channels conda-forge
+  conda env create -n ray  # works with mamba too
   conda activate ray
-  conda install --name ray pip
-  pip install ray
+  pip install ray  # or `conda install ray-core`
 
-Use ``pip list`` to confirm that ``ray`` is installed.
+For a complete list of available ``ray`` libraries on Conda-forge, have a look
+at: https://github.com/conda-forge/ray-packages-feedstock
+
+.. note::
+
+  Ray conda packages are maintained by the community, not the Ray team. While
+  using a conda environment, it is recommended to install Ray from PyPi using
+  `pip install ray` in the newly created environment.
 
 .. _`Anaconda`: https://www.anaconda.com/
 .. _`installation instructions`: https://docs.anaconda.com/anaconda/install/index.html
-
-
-
 
 Building Ray from Source
 ------------------------
@@ -256,7 +293,7 @@ Docker Source Images
 Most users should pull a Docker image from the `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`__.
 
 - The ``rayproject/ray`` `images <https://hub.docker.com/r/rayproject/ray>`__ include Ray and all required dependencies. It comes with anaconda and various versions of Python.
-- The ``rayproject/ray-ml`` `images <https://hub.docker.com/r/rayproject/ray-ml>`__ include the above as well as many additional ML libraries. 
+- The ``rayproject/ray-ml`` `images <https://hub.docker.com/r/rayproject/ray-ml>`__ include the above as well as many additional ML libraries.
 - The ``rayproject/base-deps`` and ``rayproject/ray-deps`` images are for the Linux and Python dependencies respectively.
 
 Images are `tagged` with the format ``{Ray version}[-{Python version}][-{Platform}]``. ``Ray version`` tag can be one of the following:

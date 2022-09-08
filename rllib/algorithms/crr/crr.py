@@ -1,21 +1,21 @@
 import logging
 from typing import List, Optional, Type
 
-import numpy as np
-import tree
-
 from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
+from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
-from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED,
     NUM_TARGET_UPDATES,
     TARGET_NET_UPDATE_TIMER,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+    SAMPLE_TIMER,
 )
-from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
@@ -38,19 +38,13 @@ class CRRConfig(AlgorithmConfig):
         self.advantage_type = "mean"
         self.n_action_sample = 4
         self.twin_q = True
-        self.target_update_grad_intervals = 100
+        self.train_batch_size = 128
+
+        # target_network_update_freq by default is 100 * train_batch_size
+        # if target_network_update_freq is not set. See self.setup for code.
+        self.target_network_update_freq = None
         # __sphinx_doc_end__
         # fmt: on
-        self.replay_buffer_config = {
-            "type": MultiAgentReplayBuffer,
-            "capacity": 50000,
-            # How many steps of the model to sample before learning starts.
-            "learning_starts": 1000,
-            "replay_batch_size": 32,
-            # The number of contiguous environment steps to replay at once. This
-            # may be set to greater than 1 to support recurrent models.
-            "replay_sequence_length": 1,
-        }
         self.actor_hiddens = [256, 256]
         self.actor_hidden_activation = "relu"
         self.critic_hiddens = [256, 256]
@@ -59,8 +53,13 @@ class CRRConfig(AlgorithmConfig):
         self.actor_lr = 3e-4
         self.tau = 5e-3
 
-        # overriding the trainer config default
-        self.num_workers = 0  # offline RL does not need rollout workers
+        # Overriding the trainer config default:
+        # Only PyTorch supported thus far. Make this the default framework.
+        self.framework_str = "torch"
+        # If data ingestion/sample_time is slow, increase this
+        self.num_workers = 4
+        self.offline_sampling = True
+        self.min_time_s_per_iteration = 10.0
 
     def training(
         self,
@@ -71,8 +70,7 @@ class CRRConfig(AlgorithmConfig):
         advantage_type: Optional[str] = None,
         n_action_sample: Optional[int] = None,
         twin_q: Optional[bool] = None,
-        target_update_grad_intervals: Optional[int] = None,
-        replay_buffer_config: Optional[dict] = None,
+        target_network_update_freq: Optional[int] = None,
         actor_hiddens: Optional[List[int]] = None,
         actor_hidden_activation: Optional[str] = None,
         critic_hiddens: Optional[List[int]] = None,
@@ -110,10 +108,9 @@ class CRRConfig(AlgorithmConfig):
                     a^j)]
             n_action_sample: the number of actions to sample for v_t estimation.
             twin_q: if True, uses pessimistic q estimation.
-            target_update_grad_intervals: The frequency at which we update the
+            target_network_update_freq: The frequency at which we update the
                 target copy of the model in terms of the number of gradient updates
                 applied to the main model.
-            replay_buffer_config: The config dictionary for replay buffer.
             actor_hiddens: The number of hidden units in the actor's fc network.
             actor_hidden_activation: The activation used in the actor's fc network.
             critic_hiddens: The number of hidden units in the critic's fc network.
@@ -139,10 +136,8 @@ class CRRConfig(AlgorithmConfig):
             self.n_action_sample = n_action_sample
         if twin_q is not None:
             self.twin_q = twin_q
-        if target_update_grad_intervals is not None:
-            self.target_update_grad_intervals = target_update_grad_intervals
-        if replay_buffer_config is not None:
-            self.replay_buffer_config = replay_buffer_config
+        if target_network_update_freq is not None:
+            self.target_network_update_freq = target_network_update_freq
         if actor_hiddens is not None:
             self.actor_hiddens = actor_hiddens
         if actor_hidden_activation is not None:
@@ -168,44 +163,10 @@ class CRR(Algorithm):
 
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
-        # initial setup for handling the offline data in form of a replay buffer
-        # Add the entire dataset to Replay Buffer (global variable)
-        reader = self.workers.local_worker().input_reader
-
-        # For d4rl, add the D4RLReaders' dataset to the buffer.
-        if isinstance(self.config["input"], str) and "d4rl" in self.config["input"]:
-            dataset = reader.dataset
-            self.local_replay_buffer.add(dataset)
-        # For a list of files, add each file's entire content to the buffer.
-        elif isinstance(reader, ShuffledInput):
-            num_batches = 0
-            total_timesteps = 0
-            for batch in reader.child.read_all_files():
-                num_batches += 1
-                total_timesteps += len(batch)
-                # Add NEXT_OBS if not available. This is slightly hacked
-                # as for the very last time step, we will use next-obs=zeros
-                # and therefore force-set DONE=True to avoid this missing
-                # next-obs to cause learning problems.
-                if SampleBatch.NEXT_OBS not in batch:
-                    obs = batch[SampleBatch.OBS]
-                    batch[SampleBatch.NEXT_OBS] = np.concatenate(
-                        [obs[1:], np.zeros_like(obs[0:1])]
-                    )
-                    batch[SampleBatch.DONES][-1] = True
-                self.local_replay_buffer.add(batch)
-            print(
-                f"Loaded {num_batches} batches ({total_timesteps} ts) into the"
-                " replay buffer, which has capacity "
-                f"{self.local_replay_buffer.capacity}."
+        if self.config.get("target_network_update_freq", None) is None:
+            self.config["target_network_update_freq"] = (
+                self.config["train_batch_size"] * 100
             )
-        else:
-            raise ValueError(
-                "Unknown offline input! config['input'] must either be list of"
-                " offline files (json) or a D4RL-specific InputReader "
-                "specifier (e.g. 'd4rl.hopper-medium-v0')."
-            )
-
         # added a counter key for keeping track of number of gradient updates
         self._counters[NUM_GRADIENT_UPDATES] = 0
         # if I don't set this here to zero I won't see zero in the logs (defaultdict)
@@ -227,47 +188,39 @@ class CRR(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
+        with self._timers[SAMPLE_TIMER]:
+            train_batch = synchronous_parallel_sample(worker_set=self.workers)
+        train_batch = train_batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
-        total_transitions = len(self.local_replay_buffer)
-        bsize = self.config["train_batch_size"]
-        n_batches_per_epoch = total_transitions // bsize
+        # Postprocess batch before we learn on it.
+        post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
+        train_batch = post_fn(train_batch, self.workers, self.config)
 
-        results = []
-        for batch_iter in range(n_batches_per_epoch):
-            # Sample training batch from replay buffer.
-            train_batch = self.local_replay_buffer.sample(bsize)
+        # Learn on training batch.
+        # Use simple optimizer (only for multi-agent or tf-eager; all other
+        # cases should use the multi-GPU optimizer, even if only using 1 GPU)
+        if self.config.get("simple_optimizer", False):
+            train_results = train_one_step(self, train_batch)
+        else:
+            train_results = multi_gpu_train_one_step(self, train_batch)
 
-            # Postprocess batch before we learn on it.
-            post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
-            train_batch = post_fn(train_batch, self.workers, self.config)
+        # update target every few gradient updates
+        # Update target network every `target_network_update_freq` training steps.
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED
+        ]
+        last_update = self._counters[LAST_TARGET_UPDATE_TS]
 
-            # Learn on training batch.
-            # Use simple optimizer (only for multi-agent or tf-eager; all other
-            # cases should use the multi-GPU optimizer, even if only using 1 GPU)
-            if self.config.get("simple_optimizer", False):
-                train_results = train_one_step(self, train_batch)
-            else:
-                train_results = multi_gpu_train_one_step(self, train_batch)
+        if cur_ts - last_update >= self.config["target_network_update_freq"]:
+            with self._timers[TARGET_NET_UPDATE_TIMER]:
+                to_update = self.workers.local_worker().get_policies_to_train()
+                self.workers.local_worker().foreach_policy_to_train(
+                    lambda p, pid: pid in to_update and p.update_target()
+                )
+            self._counters[NUM_TARGET_UPDATES] += 1
+            self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
-            # update target every few gradient updates
-            cur_ts = self._counters[NUM_GRADIENT_UPDATES]
-            last_update = self._counters[LAST_TARGET_UPDATE_TS]
-
-            if cur_ts - last_update >= self.config["target_update_grad_intervals"]:
-                with self._timers[TARGET_NET_UPDATE_TIMER]:
-                    to_update = self.workers.local_worker().get_policies_to_train()
-                    self.workers.local_worker().foreach_policy_to_train(
-                        lambda p, pid: pid in to_update and p.update_target()
-                    )
-                self._counters[NUM_TARGET_UPDATES] += 1
-                self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
-
-            self._counters[NUM_GRADIENT_UPDATES] += 1
-
-            results.append(train_results)
-
-        summary = tree.map_structure_with_path(
-            lambda path, *v: float(np.mean(v)), *results
-        )
-
-        return summary
+        self._counters[NUM_GRADIENT_UPDATES] += 1
+        return train_results

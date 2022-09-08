@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Optional, Union
 
 import pandas as pd
@@ -6,38 +7,77 @@ import pandas as pd
 from ray.air.result import Result
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
-from ray.tune import ExperimentAnalysis
+from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
 from ray.util import PublicAPI
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class ResultGrid:
-    """A set of ``Result`` objects returned from a call to ``tuner.fit()``.
+    """A set of ``Result`` objects for interacting with Ray Tune results.
 
-    You can use it to inspect the trials run as well as obtaining the best result.
+     You can use it to inspect the trials and obtain the best result.
 
-    The constructor is a private API.
+     The constructor is a private API. This object can only be created as a result of
+     ``Tuner.fit()``.
 
-    Usage pattern:
+     Example:
 
-    .. code-block:: python
+     .. code-block:: python
 
-        result_grid = tuner.fit()
-        for i in range(len(result_grid)):
-            result = result_grid[i]
-            if not result.error:
-                print(f"Trial finishes successfully with metric {result.metric}.")
-            else:
-                print(f"Trial errors out with {result.error}.")
-        best_result = result_grid.get_best_result()
-        best_checkpoint = best_result.checkpoint
-        best_metric = best_result.metric
+         import random
+         from ray import air, tune
 
-    Note that trials of all statuses are included in the final result grid.
-    If a trial is not in terminated state, its latest result and checkpoint as
-    seen by Tune will be provided.
+         def random_error_trainable(config):
+             if random.random() < 0.5:
+                 return {"loss": 0.0}
+             else:
+                 raise ValueError("This is an error")
+
+         tuner = tune.Tuner(
+             random_error_trainable,
+             run_config=air.RunConfig(name="example-experiment"),
+             tune_config=tune.TuneConfig(num_samples=10),
+         )
+         result_grid = tuner.fit()
+
+         for i in range(len(result_grid)):
+             result = result_grid[i]
+             if not result.error:
+                 print(f"Trial finishes successfully with metric {result.metric}.")
+             else:
+                 print(f"Trial failed with error {result.error}.")
+
+
+     You can also use ``result_grid`` for more advanced analysis.
+
+     .. code-block:: python
+
+         # Get the best result based on a particular metric.
+         best_result = result_grid.get_best_result(metric="loss", mode="min")
+
+         # Get the best checkpoint corresponding to the best result.
+         best_checkpoint = best_result.checkpoint
+
+         # Get a dataframe for the last reported results of all of the trials
+         df = result_grid.get_dataframe()
+
+         # Get a dataframe for the minimum loss seen for each trial
+         df = result_grid.get_dataframe(metric="loss", mode="min")
+
+     Note that trials of all statuses are included in the final result grid.
+     If a trial is not in terminated state, its latest result and checkpoint as
+     seen by Tune will be provided.
+
+    ``ResultGrid`` will be the successor of the ``ExperimentAnalysis`` object
+    but is not yet at feature parity. For interacting with an existing experiment,
+    located at ``local_dir``, do the following:
+
+     .. code-block:: python
+
+         from ray.tune import ExperimentAnalysis
+         analysis = ExperimentAnalysis("~/ray_results/example-experiment")
     """
 
     def __init__(
@@ -74,6 +114,8 @@ class ResultGrid:
                 values are disregarded and these trials are never selected as
                 the best trial.
         """
+        if len(self._experiment_analysis.trials) == 1:
+            return self._trial_to_result(self._experiment_analysis.trials[0])
         if not metric and not self._experiment_analysis.default_metric:
             raise ValueError(
                 "No metric is provided. Either pass in a `metric` arg to "
@@ -158,6 +200,29 @@ class ResultGrid:
             self._experiment_analysis.trials[i],
         )
 
+    @property
+    def errors(self):
+        """Returns the exceptions of errored trials."""
+        return [result.error for result in self if result.error]
+
+    @property
+    def num_errors(self):
+        """Returns the number of errored trials."""
+        return len(
+            [t for t in self._experiment_analysis.trials if t.status == Trial.ERROR]
+        )
+
+    @property
+    def num_terminated(self):
+        """Returns the number of terminated (but not errored) trials."""
+        return len(
+            [
+                t
+                for t in self._experiment_analysis.trials
+                if t.status == Trial.TERMINATED
+            ]
+        )
+
     @staticmethod
     def _populate_exception(trial: Trial) -> Optional[Union[TuneError, RayTaskError]]:
         if trial.pickled_error_file and os.path.exists(trial.pickled_error_file):
@@ -180,6 +245,7 @@ class ResultGrid:
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
+            log_dir=Path(trial.logdir) if trial.logdir else None,
             metrics_dataframe=self._experiment_analysis.trial_dataframes.get(
                 trial.logdir
             )

@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 from typing import Any, Dict, List, Optional
 from pkg_resources import packaging
+import ray
 
 try:
     import requests
@@ -125,8 +126,20 @@ def parse_cluster_info(
     headers: Optional[Dict[str, Any]] = None,
 ) -> ClusterInfo:
     if address is None:
-        logger.info(f"No address provided, defaulting to {DEFAULT_DASHBOARD_ADDRESS}.")
-        address = DEFAULT_DASHBOARD_ADDRESS
+        if (
+            ray.is_initialized()
+            and ray._private.worker.global_worker.node.address_info["webui_url"]
+            is not None
+        ):
+            address = (
+                "http://"
+                f"{ray._private.worker.global_worker.node.address_info['webui_url']}"
+            )
+        else:
+            logger.info(
+                f"No address provided, defaulting to {DEFAULT_DASHBOARD_ADDRESS}."
+            )
+            address = DEFAULT_DASHBOARD_ADDRESS
 
     module_string, inner_address = _split_address(address)
 

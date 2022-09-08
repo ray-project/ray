@@ -5,7 +5,11 @@ Building Ray from Source
 
 For a majority of Ray users, installing Ray via the latest wheels or pip package is usually enough. However, you may want to build the latest master branch.
 
-.. tip:: If you are only editing Python files, follow instructions for :ref:`python-develop` to avoid long build times.
+.. tip::
+
+  If you are only editing Python files, follow instructions for :ref:`python-develop` to avoid long build times.
+
+  If you already followed the instructions in :ref:`python-develop` and want to switch to the Full build in this section, you will need to first uninstall.
 
 .. contents::
   :local:
@@ -124,6 +128,13 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
     # This replaces `<package path>/site-packages/ray/<package>`
     # with your local `ray/python/ray/<package>`.
     python python/ray/setup-dev.py
+
+.. note:: [Advanced] You can also optionally skip creating symbolic link for directories of your choice.
+
+.. code-block:: shell
+
+    # This links all folders except "_private" and "dashboard" without user prompt.
+    python setup-dev.py -y --skip _private dashboard
 
 .. warning:: Do not run ``pip uninstall ray`` or ``pip install -U`` (for Ray or Ray wheels) if setting up your environment this way. To uninstall or upgrade, you must first ``rm -rf`` the pip-installation site (usually a directory at the ``site-packages/ray`` location), then do a pip reinstall (see the command above), and finally run the above ``setup-dev.py`` script again.
 

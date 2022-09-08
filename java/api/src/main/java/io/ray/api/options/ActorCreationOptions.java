@@ -25,6 +25,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final String serializedRuntimeEnv;
   public final String namespace;
   public final int maxPendingCalls;
+  public final boolean isAsync;
 
   private ActorCreationOptions(
       String name,
@@ -38,7 +39,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
       List<ConcurrencyGroup> concurrencyGroups,
       String serializedRuntimeEnv,
       String namespace,
-      int maxPendingCalls) {
+      int maxPendingCalls,
+      boolean isAsync) {
     super(resources);
     this.name = name;
     this.lifetime = lifetime;
@@ -51,6 +53,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     this.serializedRuntimeEnv = serializedRuntimeEnv;
     this.namespace = namespace;
     this.maxPendingCalls = maxPendingCalls;
+    this.isAsync = isAsync;
   }
 
   /** The inner class for building ActorCreationOptions. */
@@ -67,6 +70,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private RuntimeEnv runtimeEnv = null;
     private String namespace = null;
     private int maxPendingCalls = -1;
+    private boolean isAsync = false;
 
     /**
      * Set the actor name of a named actor. This named actor is accessible in this namespace by this
@@ -177,6 +181,17 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     /**
+     * Mark the creating actor as async. If the Python actor is/is not async but it's marked
+     * async/not async in Java, it will result in RayActorError errors
+     *
+     * @return self
+     */
+    public Builder setAsync(boolean isAsync) {
+      this.isAsync = isAsync;
+      return this;
+    }
+
+    /**
      * Set the placement group to place this actor in.
      *
      * @param group The placement group of the actor.
@@ -200,9 +215,10 @@ public class ActorCreationOptions extends BaseTaskOptions {
           group,
           bundleIndex,
           concurrencyGroups,
-          runtimeEnv != null ? runtimeEnv.toJsonBytes() : "",
+          runtimeEnv != null ? runtimeEnv.serializeToRuntimeEnvInfo() : "",
           namespace,
-          maxPendingCalls);
+          maxPendingCalls,
+          isAsync);
     }
 
     /** Set the concurrency groups for this actor. */

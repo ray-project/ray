@@ -378,6 +378,10 @@ install_dependencies() {
     # For Ray Core and Ray Serve DAG visualization docs test
     sudo apt-get install -y graphviz
     pip install -U pydot  # For DAG visualization
+    # For the dataset examples
+    sudo apt-get install -y tesseract-ocr
+    pip install -U pytesseract "spacy>=3" spacy_langdetect
+    python -m spacy download en_core_web_sm
   fi
 
   # Additional RLlib test dependencies.

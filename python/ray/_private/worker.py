@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 import traceback
+import urllib
 import warnings
 from abc import ABCMeta, abstractmethod
 from collections.abc import Mapping
@@ -30,6 +31,7 @@ from typing import (
     Union,
     overload,
 )
+from urllib.parse import urlparse
 
 import colorama
 import setproctitle
@@ -595,11 +597,9 @@ class Worker:
         # Make sure that the value is not an object ref.
         if isinstance(value, ObjectRef):
             raise TypeError(
-                "Calling 'put' on an ray.ObjectRef is not allowed "
-                "(similarly, returning an ray.ObjectRef from a remote "
-                "function is not allowed). If you really want to "
-                "do this, you can wrap the ray.ObjectRef in a list and "
-                "call 'put' on it (or return it)."
+                "Calling 'put' on an ray.ObjectRef is not allowed. "
+                "If you really want to do this, you can wrap the "
+                "ray.ObjectRef in a list and call 'put' on it."
             )
 
         if self.mode == LOCAL_MODE:
@@ -860,7 +860,7 @@ def get_gpu_ids():
     return assigned_ids
 
 
-@Deprecated
+@Deprecated(message="Use ray.get_runtime_context().get_assigned_resources() instead.")
 def get_resource_ids():
     """Get the IDs of the resources that are available to the worker.
 
@@ -880,7 +880,7 @@ def get_resource_ids():
     return global_worker.core_worker.resource_ids()
 
 
-@Deprecated(message="Use ray.init()['webui_url'] instead.")
+@Deprecated(message="Use ray.init().address_info['webui_url'] instead.")
 def get_dashboard_url():
     """Get the URL to access the Ray dashboard.
 
@@ -889,9 +889,28 @@ def get_dashboard_url():
     Returns:
         The URL of the dashboard as a string.
     """
-    worker = global_worker
-    worker.check_connected()
-    return _global_node.webui_url
+    if ray_constants.RAY_OVERRIDE_DASHBOARD_URL in os.environ:
+        return _remove_protocol_from_url(
+            os.environ.get(ray_constants.RAY_OVERRIDE_DASHBOARD_URL)
+        )
+    else:
+        worker = global_worker
+        worker.check_connected()
+        return _global_node.webui_url
+
+
+def _remove_protocol_from_url(url: Optional[str]) -> str:
+    """
+    Helper function to remove protocol from URL if it exists.
+    """
+    if not url:
+        return url
+    parsed_url = urllib.parse.urlparse(url)
+    if parsed_url.scheme:
+        # Construct URL without protocol
+        scheme = f"{parsed_url.scheme}://"
+        return parsed_url.geturl().replace(scheme, "", 1)
+    return url
 
 
 class BaseContext(metaclass=ABCMeta):
@@ -975,7 +994,7 @@ class RayContext(BaseContext, Mapping):
     def _repr_html_(self):
         if self.dashboard_url:
             dashboard_row = Template("context_dashrow.html.j2").render(
-                dashboard_url=self.dashboard_url
+                dashboard_url="http://" + self.dashboard_url
             )
         else:
             dashboard_row = None
@@ -1029,14 +1048,16 @@ def init(
     just attach this driver to it or we start all of the processes associated
     with a Ray cluster and attach to the newly started cluster.
 
-    To start Ray locally and all of the relevant processes, use this as
-    follows:
+    In most cases, it is enough to just call this method with no arguments.
+    This will autodetect an existing Ray cluster or start a new Ray instance if
+    no existing cluster is found:
 
     .. code-block:: python
 
         ray.init()
 
-    To connect to an existing local cluster, use this as follows.
+    To explicitly connect to an existing local cluster, use this as follows. A
+    ConnectionError will be thrown if no existing local cluster is found.
 
     .. code-block:: python
 
@@ -1051,26 +1072,32 @@ def init(
         ray.init(address="ray://123.45.67.89:10001")
 
     More details for starting and connecting to a remote cluster can be found
-    here: https://docs.ray.io/en/master/cluster/ray-client.html
+    here: https://docs.ray.io/en/master/cluster/getting-started.html
 
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
     cluster with ray.init() or ray.init(address="auto").
 
     Args:
-        address: The address of the Ray cluster to connect to. If
-            this address is not provided, then this command will start Redis,
-            a raylet, a plasma store, a plasma manager, and some workers.
-            It will also kill these processes when Python exits. If the driver
-            is running on a node in a Ray cluster, using `auto` as the value
-            tells the driver to detect the cluster, removing the need to
-            specify a specific node address. If the environment variable
-            `RAY_ADDRESS` is defined and the address is None or "auto", Ray
-            will set `address` to `RAY_ADDRESS`.
-            Addresses can be prefixed with a "ray://" to connect to a remote
-            cluster. For example, passing in the address
-            "ray://123.45.67.89:50005" will connect to the cluster at the
-            given address.
+        address: The address of the Ray cluster to connect to. The provided
+            address is resolved as follows:
+            1. If a concrete address (e.g., localhost:<port>) is provided, try to
+            connect to it. Concrete addresses can be prefixed with "ray://" to
+            connect to a remote cluster. For example, passing in the address
+            "ray://123.45.67.89:50005" will connect to the cluster at the given
+            address.
+            2. If no address is provided, try to find an existing Ray instance
+            to connect to. This is done by first checking the environment
+            variable `RAY_ADDRESS`. If this is not defined, check the address
+            of the latest cluster started (found in
+            /tmp/ray/ray_current_cluster) if available. If this is also empty,
+            then start a new local Ray instance.
+            3. If the provided address is "auto", then follow the same process
+            as above. However, if there is no existing cluster found, this will
+            throw a ConnectionError instead of starting a new local Ray
+            instance.
+            4. If the provided address is "local", start a new local Ray
+            instance, even if there is already an existing local Ray instance.
         num_cpus: Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
         num_gpus: Number of GPUs the user wishes to assign to each
@@ -1107,7 +1134,7 @@ def init(
             is true.
         log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
-        namespace: Namespace to use
+        namespace: A namespace is a logical grouping of jobs and named actors.
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
         storage: [Experimental] Specify a URI for persistent cluster-wide storage.
@@ -1130,7 +1157,7 @@ def init(
         _temp_dir: If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
-        _metrics_export_port(int): Port number Ray exposes system metrics
+        _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
         _system_config: Configuration for overriding
@@ -1156,6 +1183,8 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    if configure_logging:
+        setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
@@ -1180,9 +1209,8 @@ def init(
         "_tracing_startup_hook", None
     )
     _node_name: str = kwargs.pop("_node_name", None)
-
-    if not logging_format:
-        logging_format = ray_constants.LOGGER_FORMAT
+    # Fix for https://github.com/ray-project/ray/issues/26729
+    _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
 
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
@@ -1215,7 +1243,15 @@ def init(
                 passed_kwargs[argument_name] = passed_value
         passed_kwargs.update(kwargs)
         builder._init_args(**passed_kwargs)
-        return builder.connect()
+        ctx = builder.connect()
+        from ray._private.usage import usage_lib
+
+        if passed_kwargs.get("allow_multiple") is True:
+            with ctx:
+                usage_lib.put_pre_init_usage_stats()
+        else:
+            usage_lib.put_pre_init_usage_stats()
+        return ctx
 
     if kwargs:
         # User passed in extra keyword arguments but isn't connecting through
@@ -1264,7 +1300,7 @@ def init(
         job_config_json = json.loads(os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR))
         job_config = ray.job_config.JobConfig.from_json(job_config_json)
 
-        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
+        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 job_config.runtime_env
             )
@@ -1273,7 +1309,7 @@ def init(
     # RAY_JOB_CONFIG_JSON_ENV_VAR is only set at ray job manager level and has
     # higher priority in case user also provided runtime_env for ray.init()
     else:
-        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
+        if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
             runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 runtime_env
             )
@@ -1288,20 +1324,21 @@ def init(
         node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
     raylet_ip_address = node_ip_address
 
-    bootstrap_address, redis_address, gcs_address = None, None, None
-    if address:
-        bootstrap_address = services.canonicalize_bootstrap_address(address)
-        assert bootstrap_address is not None
-        logger.info(
-            f"Connecting to existing Ray cluster at address: {bootstrap_address}"
-        )
+    redis_address, gcs_address = None, None
+    bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
+    if bootstrap_address is not None:
         gcs_address = bootstrap_address
-
-    if configure_logging:
-        setup_logger(logging_level, logging_format)
+        logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
 
     if local_mode:
         driver_mode = LOCAL_MODE
+        warnings.warn(
+            "DeprecationWarning: local mode is an experimental feature that is no "
+            "longer maintained and will be removed in the future."
+            "For debugging consider using Ray debugger. ",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     else:
         driver_mode = SCRIPT_MODE
 
@@ -1327,10 +1364,13 @@ def init(
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
 
-        # Don't collect usage stats in ray.init().
+        # Don't collect usage stats in ray.init() unless it's a nightly wheel.
         from ray._private.usage import usage_lib
 
-        usage_lib.set_usage_stats_enabled_via_env_var(False)
+        if usage_lib.is_nightly_wheel():
+            usage_lib.show_usage_stats_prompt(cli=False)
+        else:
+            usage_lib.set_usage_stats_enabled_via_env_var(False)
 
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
@@ -1429,13 +1469,52 @@ def init(
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
         )
-        _global_node = ray._private.node.Node(
-            ray_params,
-            head=False,
-            shutdown_at_exit=False,
-            spawn_reaper=False,
-            connect_only=True,
+        try:
+            _global_node = ray._private.node.Node(
+                ray_params,
+                head=False,
+                shutdown_at_exit=False,
+                spawn_reaper=False,
+                connect_only=True,
+            )
+        except ConnectionError:
+            if gcs_address == ray._private.utils.read_ray_address(_temp_dir):
+                logger.info(
+                    "Failed to connect to the default Ray cluster address at "
+                    f"{gcs_address}. This is most likely due to a previous Ray "
+                    "instance that has since crashed. To reset the default "
+                    "address to connect to, run `ray stop` or restart Ray with "
+                    "`ray start`."
+                )
+            raise
+
+    # Log a message to find the Ray address that we connected to and the
+    # dashboard URL.
+    if ray_constants.RAY_OVERRIDE_DASHBOARD_URL in os.environ:
+        dashboard_url = os.environ.get(ray_constants.RAY_OVERRIDE_DASHBOARD_URL)
+    else:
+        dashboard_url = _global_node.webui_url
+    # Add http protocol to dashboard URL if it doesn't
+    # already contain a protocol.
+    if dashboard_url and not urlparse(dashboard_url).scheme:
+        dashboard_url = "http://" + dashboard_url
+
+    # We logged the address before attempting the connection, so we don't need
+    # to log it again.
+    info_str = "Connected to Ray cluster."
+    if gcs_address is None:
+        info_str = "Started a local Ray instance."
+    if dashboard_url:
+        logger.info(
+            info_str + " View the dashboard at %s%s%s %s%s",
+            colorama.Style.BRIGHT,
+            colorama.Fore.GREEN,
+            dashboard_url,
+            colorama.Fore.RESET,
+            colorama.Style.NORMAL,
         )
+    else:
+        logger.info(info_str)
 
     connect(
         _global_node,
@@ -1465,7 +1544,9 @@ def init(
         hook()
 
     node_id = global_worker.core_worker.get_current_node_id()
-    return RayContext(dict(_global_node.address_info, node_id=node_id.hex()))
+    global_node_address_info = _global_node.address_info.copy()
+    global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
+    return RayContext(dict(global_node_address_info, node_id=node_id.hex()))
 
 
 # Functions to run as callback after a successful ray init.
@@ -1984,13 +2065,18 @@ def connect(
         # are the same.
         # When using an interactive shell, there is no script directory.
         if not interactive_mode:
-            script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
-            worker.run_function_on_all_workers(
-                lambda worker_info: sys.path.insert(1, script_directory)
-            )
+            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
+            # If driver's sys.path doesn't include the script directory
+            # (e.g driver is started via `python -m`,
+            # see https://peps.python.org/pep-0338/),
+            # then we shouldn't add it to the workers.
+            if script_directory in sys.path:
+                worker.run_function_on_all_workers(
+                    lambda worker_info: sys.path.insert(1, script_directory)
+                )
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config.client_job and not job_config.runtime_env_has_uris():
+        if not job_config.client_job and not job_config.runtime_env_has_working_dir():
             current_directory = os.path.abspath(os.path.curdir)
             worker.run_function_on_all_workers(
                 lambda worker_info: sys.path.insert(1, current_directory)
@@ -2395,6 +2481,10 @@ def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHan
     have been created with Actor.options(name="name").remote(). This
     works for both detached & non-detached actors.
 
+    This method is a sync call and it'll timeout after 60s. This can be modified
+    by setting OS env RAY_gcs_server_request_timeout_seconds before starting
+    the cluster.
+
     Args:
         name: The name of the actor.
         namespace: The namespace of the actor, or None to specify the current
@@ -2673,7 +2763,6 @@ def remote(
     resources: Dict[str, float] = Undefined,
     accelerator_type: str = Undefined,
     memory: Union[int, float] = Undefined,
-    object_store_memory: int = Undefined,
     max_calls: int = Undefined,
     max_restarts: int = Undefined,
     max_task_retries: int = Undefined,
@@ -2755,7 +2844,6 @@ def remote(*args, **kwargs):
             on a node with the specified type of accelerator.
             See `ray.accelerators` for accelerator types.
         memory: The heap memory request for this task/actor.
-        object_store_memory: The object store memory request for actors only.
         max_calls: Only for *remote functions*. This specifies the
             maximum number of times that a given worker can execute
             the given remote function before it must exit
@@ -2788,9 +2876,9 @@ def remote(*args, **kwargs):
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation. This API is
             in beta and may change before becoming stable.
-        retry_exceptions: Only for *remote functions*. This specifies
-            whether application-level errors should be retried
-            up to max_retries times.
+        retry_exceptions: Only for *remote functions*. This specifies whether
+            application-level errors should be retried up to max_retries times.
+            This can be a boolean or a list of exceptions that should be retried.
         scheduling_strategy: Strategy about how to
             schedule a remote function or actor. Possible values are
             None: ray will figure out the scheduling strategy to use, it

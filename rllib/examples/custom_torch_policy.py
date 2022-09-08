@@ -2,7 +2,7 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -34,10 +34,12 @@ class MyAlgorithm(Algorithm):
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=args.num_cpus or None)
-    tune.run(
+    tuner = tune.Tuner(
         MyAlgorithm,
-        stop={"training_iteration": args.stop_iters},
-        config={
+        run_config=air.RunConfig(
+            stop={"training_iteration": args.stop_iters},
+        ),
+        param_space={
             "env": "CartPole-v0",
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
@@ -45,3 +47,4 @@ if __name__ == "__main__":
             "framework": "torch",
         },
     )
+    tuner.fit()

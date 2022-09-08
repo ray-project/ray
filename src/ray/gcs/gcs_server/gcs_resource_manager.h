@@ -37,7 +37,7 @@ namespace gcs {
 /// from being too large to review.
 ///
 /// 1). Remove `node_resource_usages_` related code as it could be calculated from
-/// `cluseter_resource_mananger`
+/// `cluster_resource_manager`
 /// 2). Move all resource-write-related logic out from `gcs_resource_manager`
 /// 3). Move `placement_group_load_` from `gcs_resource_manager` to
 /// `placement_group_manager` and make `gcs_resource_manager` depend on
@@ -73,7 +73,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle report resource usage rpc come from raylet.
+  /// Handle report resource usage rpc from a raylet.
   void HandleReportResourceUsage(const rpc::ReportResourceUsageRequest &request,
                                  rpc::ReportResourceUsageReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;

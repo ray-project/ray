@@ -225,6 +225,7 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
   auto result1 = cluster_resource_scheduler_->Schedule(
       resource_request_list,
       SchedulingOptions::BundleStrictSpread(
+          /*max_cpu_fraction_per_node*/ 1.0,
           std::make_unique<BundleSchedulingContext>(bundle_locations)));
   ASSERT_TRUE(result1.status.IsInfeasible());
   ASSERT_EQ(result1.selected_nodes.size(), 0);
@@ -233,6 +234,7 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
   auto result2 = cluster_resource_scheduler_->Schedule(
       resource_request_list,
       SchedulingOptions::BundleStrictSpread(
+          /*max_cpu_fraction_per_node*/ 1.0,
           std::make_unique<BundleSchedulingContext>(nullptr)));
   ASSERT_TRUE(result2.status.IsSuccess());
   ASSERT_EQ(result2.selected_nodes.size(), 1);

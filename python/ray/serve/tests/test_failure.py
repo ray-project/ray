@@ -26,7 +26,7 @@ def test_controller_failure(serve_instance):
     def function(_):
         return "hello1"
 
-    function.deploy()
+    serve.run(function.bind())
 
     assert request_with_retries("/controller_failure/", timeout=1).text == "hello1"
 
@@ -45,7 +45,7 @@ def test_controller_failure(serve_instance):
 
     ray.kill(serve.context._global_client._controller, no_restart=False)
 
-    function.options(func_or_class=function2).deploy()
+    serve.run(function.options(func_or_class=function2).bind())
 
     def check_controller_failure():
         response = request_with_retries("/controller_failure/", timeout=30)
@@ -58,7 +58,7 @@ def test_controller_failure(serve_instance):
         return "hello3"
 
     ray.kill(serve.context._global_client._controller, no_restart=False)
-    function3.deploy()
+    serve.run(function3.bind())
     ray.kill(serve.context._global_client._controller, no_restart=False)
 
     for _ in range(10):
@@ -81,7 +81,7 @@ def test_http_proxy_failure(serve_instance):
     def function(_):
         return "hello1"
 
-    function.deploy()
+    serve.run(function.bind())
 
     assert request_with_retries("/proxy_failure/", timeout=1.0).text == "hello1"
 
@@ -94,7 +94,7 @@ def test_http_proxy_failure(serve_instance):
     def function2(_):
         return "hello2"
 
-    function.options(func_or_class=function2).deploy()
+    serve.run(function.options(func_or_class=function2).bind())
 
     def check_new():
         for _ in range(10):
@@ -121,7 +121,7 @@ def test_worker_restart(serve_instance):
         def __call__(self, *args):
             return os.getpid()
 
-    Worker1.deploy()
+    serve.run(Worker1.bind())
 
     # Get the PID of the worker.
     old_pid = request_with_retries("/worker_failure/", timeout=1).text
@@ -168,7 +168,7 @@ def test_worker_replica_failure(serve_instance):
             return self.index
 
     counter = Counter.remote()
-    Worker.options(num_replicas=2).deploy(counter)
+    serve.run(Worker.options(num_replicas=2).bind(counter))
 
     # Wait until both replicas have been started.
     responses = set()

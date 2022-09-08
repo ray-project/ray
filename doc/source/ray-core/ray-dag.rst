@@ -1,6 +1,6 @@
 .. _ray-dag-guide:
 
-Building Computation Graphs with Ray DAG API
+Lazy Computation Graphs with the Ray DAG API
 ============================================
 
 With ``ray.remote`` you have the flexibility of running an application where
@@ -10,7 +10,7 @@ computation graph.
 
 .. note::
 
-     Ray DAG is designed to be developer facing API where recommended use cases
+     Ray DAG is designed to be a developer facing API where recommended use cases
      are
 
      1) Locally iterate and test your application authored by higher level libraries.
@@ -42,21 +42,10 @@ of the DAG, where all other non-reachable nodes from the root will be igored.
 
 .. tabbed:: Python
 
-    .. code-block:: python
-
-        # `ray start --head` has been run to launch a local cluster
-        import ray
-
-        @ray.remote
-        def func(src, inc=1):
-            return src + inc
-
-        a_ref = func.bind(1, inc=2)
-        assert ray.get(a_ref.execute()) == 3 # 1 + 2 = 3
-        b_ref = func.bind(a_ref, inc=3)
-        assert ray.get(b_ref.execute()) == 6 # (1 + 2) + 3 = 6
-        c_ref = func.bind(b_ref, inc=a_ref)
-        assert ray.get(c_ref.execute()) == 9 # ((1 + 2) + 3) + (1 + 2) = 9
+    .. literalinclude:: ./doc_code/ray-dag.py
+      :language: python
+      :start-after: __dag_tasks_begin__
+      :end-before: __dag_tasks_end__
 
 
 Ray DAG with classes and class methods
@@ -72,41 +61,11 @@ together to form a DAG.
 
 .. tabbed:: Python
 
-    .. code-block:: python
-
-        # `ray start --head` has been run to launch a local cluster
-        import ray
-
-        @ray.remote
-        class Actor:
-            def __init__(self, init_value):
-                self.i = init_value
-
-            def inc(self, x):
-                self.i += x
-
-            def get(self):
-                return self.i
-
-        a1 = Actor.bind(10)  # Instantiate Actor with init_value 10.
-        val = a1.get.bind()  # ClassMethod that returns value from get() from
-                             # the actor created.
-        assert ray.get(val.execute()) == 10
-
-        @ray.remote
-        def combine(x, y):
-            return x + y
-
-        a2 = Actor.bind(10) # Instantiate another Actor with init_value 10.
-        a1.inc.bind(2)  # Call inc() on the actor created with increment of 2.
-        a1.inc.bind(4)  # Call inc() on the actor created with increment of 4.
-        a2.inc.bind(6)  # Call inc() on the actor created with increment of 6.
-        # Combine outputs from a1.get() and a2.get()
-        dag = combine.bind(a1.get.bind(), a2.get.bind())
-
-        # a1 +  a2 + inc(2) + inc(4) + inc(6)
-        # 10 + (10 + ( 2   +    4    +   6)) = 32
-        assert ray.get(dag.execute()) == 32
+    .. literalinclude:: ./doc_code/ray-dag.py
+      :language: python
+      :start-after: __dag_actors_begin__
+      :end-before: __dag_actors_end__
+          
 
 
 Ray DAG with custom InputNode
@@ -118,42 +77,17 @@ as args of ``dag_node.execute()``
 
 .. tabbed:: Python
 
-    .. code-block:: python
-
-        # `ray start --head` has been run to launch a local cluster
-        import ray
-        from ray.dag.input_node import InputNode
-
-        @ray.remote
-        def a(user_input):
-            return user_input * 2
-
-        @ray.remote
-        def b(user_input):
-            return user_input + 1
-
-        @ray.remote
-        def c(x, y):
-            return x + y
-
-        with InputNode() as dag_input:
-            a_ref = a.bind(dag_input)
-            b_ref = b.bind(dag_input)
-            dag = c.bind(a_ref, b_ref)
-
-        #   a(2)  +   b(2)  = c
-        # (2 * 2) + (2 * 1)
-        assert ray.get(dag.execute(2)) == 7
-        #   a(3)  +   b(3)  = c
-        # (3 * 2) + (3 * 1)
-        assert ray.get(dag.execute(3)) == 10
+    .. literalinclude:: ./doc_code/ray-dag.py
+      :language: python
+      :start-after: __dag_input_node_begin__
+      :end-before: __dag_input_node_end__
 
 More Resources
 --------------
 
 You can find more application patterns and examples in the following resources
-from other Ray libraries built on top of Ray DAG API with same mechanism.
+from other Ray libraries built on top of Ray DAG API with the same mechanism.
 
-| `Visualization of DAGs <https://docs.ray.io/en/master/serve/deployment-graph/visualize_dag_during_development.html>`_
-| `DAG Cookbook and patterns <https://docs.ray.io/en/master/serve/deployment-graph.html#patterns>`_
+| `Visualization of DAGs <https://docs.ray.io/en/master/serve/model_composition.html#visualizing-the-graph>`_
+| `DAG Cookbook and patterns <https://docs.ray.io/en/master/serve/tutorials/deployment-graph-patterns.html>`_
 | `Serve Deployment Graph's original REP <https://github.com/ray-project/enhancements/blob/main/reps/2022-03-08-serve_pipeline.md>`_

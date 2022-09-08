@@ -168,6 +168,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   std::string serialized_runtime_env = "";
   std::string ray_namespace = "";
   int32_t max_pending_calls = -1;
+  bool is_async = false;
 
   if (actorCreationOptions) {
     auto java_name = (jstring)env->GetObjectField(actorCreationOptions,
@@ -251,14 +252,16 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       serialized_runtime_env = JavaStringToNativeString(env, java_serialized_runtime_env);
     }
 
-    auto java_namespace = (jstring)env->GetObjectField(actorCreationOptions,
-                                                  java_actor_creation_options_namespace);
+    auto java_namespace = (jstring)env->GetObjectField(
+        actorCreationOptions, java_actor_creation_options_namespace);
     if (java_namespace) {
       ray_namespace = JavaStringToNativeString(env, java_namespace);
     }
 
     max_pending_calls = static_cast<int32_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_pending_calls));
+    is_async = (bool)env->GetBooleanField(actorCreationOptions,
+                                          java_actor_creation_options_is_async);
   }
 
   rpc::SchedulingStrategy scheduling_strategy;
@@ -282,7 +285,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       is_detached,
       name,
       ray_namespace,
-      /*is_asyncio=*/false,
+      is_async,
       /*scheduling_strategy=*/scheduling_strategy,
       serialized_runtime_env,
       concurrency_groups,
@@ -337,7 +340,8 @@ inline PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
   return PlacementGroupCreationOptions(name,
                                        ConvertStrategy(java_strategy),
                                        bundles,
-                                       /*is_detached=*/false);
+                                       /*is_detached=*/false,
+                                       /*max_cpu_fraction_per_node*/ 1.0);
 }
 
 #ifdef __cplusplus

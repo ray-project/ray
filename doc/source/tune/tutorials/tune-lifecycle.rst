@@ -2,27 +2,32 @@ How does Tune work?
 ===================
 
 This page provides an overview of Tune's inner workings.
-We describe in detail what happens when you call ``tune.run()``, what the lifecycle of a Tune trial looks like
+We describe in detail what happens when you call ``Tuner.fit()``, what the lifecycle of a Tune trial looks like
 and what the architectural components of Tune are.
 
 .. tip:: Before you continue, be sure to have read :ref:`the Tune Key Concepts page <tune-60-seconds>`.
 
-What happens in ``tune.run``?
------------------------------
+What happens in ``Tuner.fit``?
+------------------------------
 
 When calling the following:
 
 .. code-block:: python
 
     space = {"x": tune.uniform(0, 1)}
-    tune.run(my_trainable, config=space, num_samples=10)
+    tuner = tune.Tuner(
+        my_trainable, 
+        param_space=space, 
+        tune_config=tune.TuneConfig(num_samples=10),
+    )
+    results = tuner.fit()
 
 The provided ``my_trainable`` is evaluated multiple times in parallel
 with different hyperparameters (sampled from ``uniform(0, 1)``).
 
 Every Tune run consists of "driver process" and many "worker processes".
-The driver process is the python process that calls ``tune.run`` (which calls ``ray.init()`` underneath the hood).
-The Tune driver process runs on the node where you run your script (which calls ``tune.run``),
+The driver process is the python process that calls ``Tuner.fit()`` (which calls ``ray.init()`` underneath the hood).
+The Tune driver process runs on the node where you run your script (which calls ``Tuner.fit()``),
 while Ray Tune trainable "actors" run on any node (either on the same node or on worker nodes (distributed Ray only)).
 
 .. note:: :ref:`Ray Actors <actor-guide>` allow you to parallelize an instance of a class in Python.
@@ -80,7 +85,7 @@ Lifecycle of a Trial
 A trial's life cycle consists of 6 stages:
 
 * **Initialization** (generation): A trial is first generated as a hyperparameter sample,
-  and its parameters are configured according to what was provided in tune.run.
+  and its parameters are configured according to what was provided in ``Tuner``.
   Trials are then placed into a queue to be executed (with status PENDING).
 
 * **PENDING**: A pending trial is a trial to be executed on the machine.

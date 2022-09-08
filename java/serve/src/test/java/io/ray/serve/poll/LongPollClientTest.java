@@ -18,7 +18,6 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class LongPollClientTest {
-
   @Test
   public void disableTest() throws Throwable {
     Map<String, String> config = new HashMap<>();
@@ -48,7 +47,7 @@ public class LongPollClientTest {
           CommonUtil.formatActorName(
               Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       Serve.setInternalReplicaContext(null, null, controllerName, null, null);
 
@@ -101,6 +100,9 @@ public class LongPollClientTest {
       LongPollClientFactory.stop();
       Assert.assertFalse(LongPollClientFactory.isInitialized());
     } finally {
+      Serve.setInternalReplicaContext(null);
+      LongPollClientFactory.stop();
+      LongPollClientFactory.clearAllCache();
       if (!inited) {
         Ray.shutdown();
       }
@@ -109,9 +111,6 @@ public class LongPollClientTest {
       } else {
         System.setProperty("ray.job.namespace", previous_namespace);
       }
-      Serve.setInternalReplicaContext(null);
-      LongPollClientFactory.stop();
-      LongPollClientFactory.clearAllCache();
     }
   }
 }

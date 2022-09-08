@@ -7,6 +7,7 @@ from typing import Optional, Union
 
 import click
 import yaml
+import re
 
 import ray
 from ray import serve
@@ -16,8 +17,7 @@ from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.api import build as build_app
 from ray.serve.config import DeploymentMode
-from ray.serve.constants import (
-    DEFAULT_CHECKPOINT_PATH,
+from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     SERVE_NAMESPACE,
@@ -25,6 +25,7 @@ from ray.serve.constants import (
 from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.schema import ServeApplicationSchema
+from ray.serve._private import api as _private_api
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -41,6 +42,60 @@ RAY_DASHBOARD_ADDRESS_HELP_STR = (
     "http://localhost:52365). Can also be specified using the "
     "RAY_AGENT_ADDRESS environment variable."
 )
+
+
+# See https://stackoverflow.com/a/33300001/11162437
+def str_presenter(dumper: yaml.Dumper, data):
+    """
+    A custom representer to write multi-line strings in block notation using a literal
+    style.
+
+    Ensures strings with newline characters print correctly.
+    """
+
+    if len(data.splitlines()) > 1:
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data)
+
+
+# See https://stackoverflow.com/a/14693789/11162437
+def remove_ansi_escape_sequences(input: str):
+    """Removes ANSI escape sequences in a string"""
+    ansi_escape = re.compile(
+        r"""
+        \x1B  # ESC
+        (?:   # 7-bit C1 Fe (except CSI)
+            [@-Z\\-_]
+        |     # or [ for CSI, followed by a control sequence
+            \[
+            [0-?]*  # Parameter bytes
+            [ -/]*  # Intermediate bytes
+            [@-~]   # Final byte
+        )
+    """,
+        re.VERBOSE,
+    )
+
+    return ansi_escape.sub("", input)
+
+
+def process_dict_for_yaml_dump(data):
+    """
+    Removes ANSI escape sequences recursively for all strings in dict.
+
+    We often need to use yaml.dump() to print dictionaries that contain exception
+    tracebacks, which can contain ANSI escape sequences that color printed text. However
+    yaml.dump() will format the tracebacks incorrectly if ANSI escape sequences are
+    present, so we need to remove them before dumping.
+    """
+
+    for k, v in data.items():
+        if isinstance(v, dict):
+            data[k] = process_dict_for_yaml_dump(v)
+        elif isinstance(v, str):
+            data[k] = remove_ansi_escape_sequences(v)
+
+    return data
 
 
 @click.group(help="CLI for managing Serve instances on a Ray cluster.")
@@ -78,20 +133,7 @@ def cli():
     type=click.Choice(list(DeploymentMode)),
     help="Location of the HTTP servers. Defaults to HeadOnly.",
 )
-@click.option(
-    "--checkpoint-path",
-    default=DEFAULT_CHECKPOINT_PATH,
-    required=False,
-    type=str,
-    hidden=True,
-)
-def start(
-    address,
-    http_host,
-    http_port,
-    http_location,
-    checkpoint_path,
-):
+def start(address, http_host, http_port, http_location):
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
@@ -103,7 +145,6 @@ def start(
             port=http_port,
             location=http_location,
         ),
-        _checkpoint_path=checkpoint_path,
     )
 
 
@@ -222,6 +263,11 @@ def deploy(config_file_name: str, address: str):
         "will loop and log status until Ctrl-C'd, then clean up the app."
     ),
 )
+@click.option(
+    "--gradio",
+    is_flag=True,
+    help=("Whether to enable gradio visualization of deployment graph."),
+)
 def run(
     config_or_import_path: str,
     runtime_env: str,
@@ -232,6 +278,7 @@ def run(
     host: str,
     port: int,
     blocking: bool,
+    gradio: bool,
 ):
     sys.path.insert(0, app_dir)
 
@@ -256,19 +303,35 @@ def run(
 
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
-    client = serve.start(detached=True)
+
+    if is_config:
+        client = _private_api.serve_start(
+            detached=True, http_options={"host": config.host, "port": config.port}
+        )
+    else:
+        client = _private_api.serve_start(
+            detached=True, http_options={"host": host, "port": port}
+        )
 
     try:
         if is_config:
-            client.deploy_app(config)
+            client.deploy_app(config, _blocking=gradio)
+            if gradio:
+                handle = serve.get_deployment("DAGDriver").get_handle()
         else:
-            serve.run(node, host=host, port=port)
+            handle = serve.run(node, host=host, port=port)
         cli_logger.success("Deployed successfully.")
 
-        if blocking:
-            while True:
-                # Block, letting Ray print logs to the terminal.
-                time.sleep(10)
+        if gradio:
+            from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
+
+            visualizer = GraphVisualizer()
+            visualizer.visualize_with_gradio(handle)
+        else:
+            if blocking:
+                while True:
+                    # Block, letting Ray print logs to the terminal.
+                    time.sleep(10)
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")
@@ -315,7 +378,16 @@ def config(address: str):
 def status(address: str):
     app_status = ServeSubmissionClient(address).get_status()
     if app_status is not None:
-        print(yaml.safe_dump(app_status, default_flow_style=False, sort_keys=False))
+        # Ensure multi-line strings in app_status is dumped/printed correctly
+        yaml.SafeDumper.add_representer(str, str_presenter)
+        print(
+            yaml.safe_dump(
+                # Ensure exception tracebacks in app_status are printed correctly
+                process_dict_for_yaml_dump(app_status),
+                default_flow_style=False,
+                sort_keys=False,
+            )
+        )
 
 
 @cli.command(
@@ -388,6 +460,8 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
         deployments=[deployment_to_schema(d) for d in app.deployments.values()]
     ).dict()
     config["import_path"] = import_path
+    config["host"] = "0.0.0.0"
+    config["port"] = 8000
 
     config_str = (
         "# This file was generated using the `serve build` command "

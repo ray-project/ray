@@ -1,0 +1,6 @@
+# Dependencies for running repro-ci.py
+boto3
+click
+paramiko
+pyyaml
+pybuildkite

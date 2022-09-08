@@ -17,6 +17,9 @@ const colorMap = {
     ALIVE: green,
     DEAD: red,
   },
+  worker: {
+    ALIVE: green,
+  },
   actor: {
     [ActorEnum.ALIVE]: green,
     [ActorEnum.DEAD]: red,

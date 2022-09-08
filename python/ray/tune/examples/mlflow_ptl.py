@@ -8,7 +8,7 @@ from pl_bolts.datamodules import MNISTDataModule
 
 import mlflow
 
-from ray import tune
+from ray import air, tune
 from ray.tune.integration.mlflow import mlflow_mixin
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier
@@ -66,17 +66,21 @@ def tune_mnist(
         num_gpus=gpus_per_trial,
     )
 
-    analysis = tune.run(
-        trainable,
-        resources_per_trial={"cpu": 1, "gpu": gpus_per_trial},
-        metric="loss",
-        mode="min",
-        config=config,
-        num_samples=num_samples,
-        name="tune_mnist",
+    tuner = tune.Tuner(
+        tune.with_resources(trainable, resources={"cpu": 1, "gpu": gpus_per_trial}),
+        tune_config=tune.TuneConfig(
+            metric="loss",
+            mode="min",
+            num_samples=num_samples,
+        ),
+        run_config=air.RunConfig(
+            name="tune_mnist",
+        ),
+        param_space=config,
     )
+    results = tuner.fit()
 
-    print("Best hyperparameters found were: ", analysis.best_config)
+    print("Best hyperparameters found were: ", results.get_best_result().config)
 
 
 if __name__ == "__main__":

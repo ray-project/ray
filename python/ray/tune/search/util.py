@@ -4,7 +4,7 @@ from typing import Dict, Optional
 logger = logging.getLogger(__name__)
 
 
-def set_search_properties_backwards_compatible(
+def _set_search_properties_backwards_compatible(
     set_search_properties_func,
     metric: Optional[str],
     mode: Optional[str],

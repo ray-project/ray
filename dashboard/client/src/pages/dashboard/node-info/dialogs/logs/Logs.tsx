@@ -7,7 +7,7 @@ import {
   withStyles,
 } from "@material-ui/core";
 import React from "react";
-import { getLogs, LogsByPid } from "../../../../../api";
+import { getLogs } from "../../../../../api";
 import DialogWithTitle from "../../../../../common/DialogWithTitle";
 import NumberedLines from "../../../../../common/NumberedLines";
 
@@ -30,11 +30,11 @@ const styles = (theme: Theme) =>
 type Props = {
   clearLogDialog: () => void;
   nodeIp: string;
-  pid: number | null;
+  pid: number;
 };
 
 type State = {
-  result: LogsByPid | null;
+  result: string[] | null;
   error: string | null;
 };
 
@@ -48,7 +48,7 @@ class Logs extends React.Component<Props & WithStyles<typeof styles>, State> {
     try {
       const { nodeIp, pid } = this.props;
       const result = await getLogs(nodeIp, pid);
-      this.setState({ result: result.logs, error: null });
+      this.setState({ result, error: null });
     } catch (error) {
       this.setState({ result: null, error: error.toString() });
     }
@@ -65,20 +65,18 @@ class Logs extends React.Component<Props & WithStyles<typeof styles>, State> {
         ) : result === null ? (
           <Typography color="textSecondary">Loading...</Typography>
         ) : (
-          Object.entries(result).map(([pid, lines]) => (
-            <React.Fragment key={pid}>
-              <Typography className={classes.header}>
-                {nodeIp} (PID: {pid})
-              </Typography>
-              {lines.length > 0 ? (
-                <div className={classes.log}>
-                  <NumberedLines lines={lines} />
-                </div>
-              ) : (
-                <Typography color="textSecondary">No logs found.</Typography>
-              )}
-            </React.Fragment>
-          ))
+          <React.Fragment>
+            <Typography className={classes.header}>
+              {nodeIp} (PID: {this.props.pid})
+            </Typography>
+            {result.length > 0 ? (
+              <div className={classes.log}>
+                <NumberedLines lines={result} />
+              </div>
+            ) : (
+              <Typography color="textSecondary">No logs found.</Typography>
+            )}
+          </React.Fragment>
         )}
       </DialogWithTitle>
     );

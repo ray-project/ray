@@ -722,9 +722,12 @@ def _build_eager_tf_policy(
             # Set exploration's state.
             if hasattr(self, "exploration") and "_exploration_state" in state:
                 self.exploration.set_state(state=state["_exploration_state"])
-            # Weights and global_timestep (tf vars).
-            self.set_weights(state["weights"])
+
+            # Restore glbal timestep (tf vars).
             self.global_timestep.assign(state["global_timestep"])
+
+            # Then the Policy's (NN) weights and connectors.
+            super().set_state(state)
 
         @override(Policy)
         def export_checkpoint(self, export_dir):

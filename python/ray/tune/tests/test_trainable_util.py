@@ -60,7 +60,7 @@ class TrainableUtilTest(unittest.TestCase):
             default_mode="max",
         )
         df = a.dataframe()
-        checkpoint_dir = a.get_best_checkpoint(df["logdir"].iloc[0]).local_path
+        checkpoint_dir = a.get_best_checkpoint(df["logdir"].iloc[0])._local_path
         assert checkpoint_dir.endswith("/checkpoint_000001/")
 
     def testFindCheckpointDir(self):

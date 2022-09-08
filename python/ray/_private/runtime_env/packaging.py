@@ -31,9 +31,16 @@ FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 # The size is bounded by the max gRPC message size.
 # Keep in sync with max_grpc_message_size in ray_config_def.h.
 GCS_STORAGE_MAX_SIZE = int(
-    os.environ.get("RAY_max_grpc_message_size", 250 * 1024 * 1024)
+    os.environ.get("RAY_max_grpc_message_size", 500 * 1024 * 1024)
 )
 RAY_PKG_PREFIX = "_ray_pkg_"
+
+RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR = (
+    "RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING"
+)
+RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR = (
+    "RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING"
+)
 
 
 def _mib_string(num_bytes: float) -> str:
@@ -158,8 +165,8 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
                 netloc='_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip'
             )
             -> ("gcs", "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
-    For HTTPS URIs, the netloc will have '.' replaced with '_', and
-    the path will have '/' replaced with '_'. The package name will be the
+    For HTTPS URIs, the netloc will have '.', ':', and '@' swapped with '_',
+    and the path will have '/' replaced with '_'. The package name will be the
     adjusted path with 'https_' prepended.
         urlparse(
             "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
@@ -221,9 +228,10 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     if protocol == Protocol.S3 or protocol == Protocol.GS or protocol == Protocol.HDFS:
         return (protocol, f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
     elif protocol == Protocol.HTTPS:
+        parsed_netloc = uri.netloc.replace(".", "_").replace(":", "_").replace("@", "_")
         return (
             protocol,
-            f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}",
+            f"https_{parsed_netloc}{uri.path.replace('/', '_')}",
         )
     elif protocol == Protocol.FILE:
         return (
@@ -358,6 +366,10 @@ def _store_package_in_gcs(
 
     logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to Ray cluster...")
     try:
+        if os.environ.get(RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR):
+            raise RuntimeError(
+                "Simulating failure to upload package for testing purposes."
+            )
         _internal_kv_put(pkg_uri, data)
     except Exception as e:
         raise RuntimeError(
@@ -486,13 +498,26 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
     )
 
 
-def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes):
+def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes) -> None:
+    """Upload a local package to GCS.
+
+    Args:
+        pkg_uri: The URI of the package, e.g. gcs://my_package.zip
+        pkg_bytes: The data to be uploaded.
+
+    Raises:
+        RuntimeError: If the upload fails.
+        ValueError: If the pkg_uri is a remote path or if the data's
+            size exceeds GCS_STORAGE_MAX_SIZE.
+        NotImplementedError: If the protocol of the URI is not supported.
+
+    """
     protocol, pkg_name = parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
         _store_package_in_gcs(pkg_uri, pkg_bytes)
     elif protocol in Protocol.remote_protocols():
-        raise RuntimeError(
-            "upload_package_to_gcs should not be called with remote path."
+        raise ValueError(
+            "upload_package_to_gcs should not be called with a remote path."
         )
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
@@ -544,6 +569,12 @@ def upload_package_if_needed(
         include_parent_dir: If true, includes the top-level directory as a
             directory inside the zip file.
         excludes: List specifying files to exclude.
+
+    Raises:
+        RuntimeError: If the upload fails.
+        ValueError: If the pkg_uri is a remote path or if the data's
+            size exceeds GCS_STORAGE_MAX_SIZE.
+        NotImplementedError: If the protocol of the URI is not supported.
     """
     if excludes is None:
         excludes = []
@@ -589,7 +620,26 @@ async def download_and_unpack_package(
 
     Will be written to a file or directory named {base_directory}/{uri}.
     Returns the path to this file or directory.
+
+    Args:
+        pkg_uri: URI of the package to download.
+        base_directory: Directory to use as the parent directory of the target
+            directory for the unpacked files.
+        gcs_aio_client: Client to use for downloading from the GCS.
+        logger: The logger to use.
+
+    Returns:
+        Path to the local directory containing the unpacked package files.
+
+    Raises:
+        IOError: If the download fails.
+        ImportError: If smart_open is not installed and a remote URI is used.
+        NotImplementedError: If the protocol of the URI is not supported.
+
     """
+    if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):
+        raise IOError("Failed to download package. (Simulated failure for testing)")
+
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
     with FileLock(str(pkg_file) + ".lock"):
         if logger is None:
@@ -609,7 +659,13 @@ async def download_and_unpack_package(
                     pkg_uri.encode(), namespace=None, timeout=None
                 )
                 if code is None:
-                    raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
+                    raise IOError(
+                        f"Failed to download runtime_env file package {pkg_uri} "
+                        "from the GCS to the Ray worker node. The package may "
+                        "have prematurely been deleted from the GCS due to a "
+                        "problem with Ray. Try re-running the statement or "
+                        "restarting the Ray cluster."
+                    )
                 code = code or b""
                 pkg_file.write_bytes(code)
 
@@ -771,10 +827,13 @@ def unzip_package(
         top_level_directory = get_top_level_dir_from_compressed_package(package_path)
         if top_level_directory is None:
             raise ValueError(
-                "The package at package_path must contain "
+                f"The zip package at {package_path} must contain "
                 "a single top level directory. Make sure there "
                 "are no hidden files at the same level as the "
-                "top level directory."
+                "top level directory. You can ensure this by running "
+                "`zip -r example.zip example_dir` from the parent "
+                "directory of example_dir when creating the zip file. "
+                "You can check the contents with `zipinfo -1 example.zip`."
             )
 
         remove_dir_from_filepaths(target_dir, top_level_directory)

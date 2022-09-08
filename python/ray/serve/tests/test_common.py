@@ -1,8 +1,8 @@
 import time
 import pytest
 
-from ray.serve.utils import get_random_letters
-from ray.serve.common import (
+from ray.serve._private.utils import get_random_letters
+from ray.serve._private.common import (
     ReplicaName,
     StatusOverview,
     DeploymentStatus,

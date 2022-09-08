@@ -9,6 +9,7 @@ import numpy as np
 import urllib
 
 from ray import logger
+from ray._private.storage import _load_class
 from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 from ray.tune.experiment import Trial
@@ -22,8 +23,29 @@ except ImportError:
     wandb = None
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
-_VALID_TYPES = (Number, wandb.data_types.Video, wandb.data_types.Image)
-_VALID_ITERABLE_TYPES = (wandb.data_types.Video, wandb.data_types.Image)
+WANDB_PROJECT_ENV_VAR = "WANDB_PROJECT_NAME"
+WANDB_GROUP_ENV_VAR = "WANDB_GROUP_NAME"
+# Hook that is invoked before wandb.init in the setup method of WandbLoggerCallback
+# to populate the API key if it isn't already set when initializing the callback.
+# It doesn't take in any arguments and returns the W&B API key.
+# Example: "your.module.wandb_setup_api_key_hook".
+WANDB_SETUP_API_KEY_HOOK = "WANDB_SETUP_API_KEY_HOOK"
+# Hook that is invoked after running wandb.init in WandbLoggerCallback
+# to process information about the W&B run.
+# It takes in a W&B run object and doesn't return anything.
+# Example: "your.module.wandb_process_run_info_hook".
+WANDB_PROCESS_RUN_INFO_HOOK = "WANDB_PROCESS_RUN_INFO_HOOK"
+_VALID_TYPES = (
+    Number,
+    wandb.data_types.Video,
+    wandb.data_types.Image,
+    wandb.data_types.Histogram,
+)
+_VALID_ITERABLE_TYPES = (
+    wandb.data_types.Video,
+    wandb.data_types.Image,
+    wandb.data_types.Histogram,
+)
 
 
 def _is_allowed_type(obj):
@@ -87,6 +109,15 @@ def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = No
             raise ValueError("Both WandB `api_key_file` and `api_key` set.")
         with open(api_key_file, "rt") as fp:
             api_key = fp.readline().strip()
+    # Try to get API key from external hook
+    if not api_key and WANDB_SETUP_API_KEY_HOOK in os.environ:
+        try:
+            api_key = _load_class(os.environ[WANDB_SETUP_API_KEY_HOOK])()
+        except Exception as e:
+            logger.exception(
+                f"Error executing {WANDB_SETUP_API_KEY_HOOK} to setup API key: {e}",
+                exc_info=e,
+            )
     if api_key:
         os.environ[WANDB_ENV_VAR] = api_key
     elif not os.environ.get(WANDB_ENV_VAR):
@@ -148,7 +179,16 @@ class _WandbLoggingProcess(Process):
     def run(self):
         # Since we're running in a separate process already, use threads.
         os.environ["WANDB_START_METHOD"] = "thread"
-        wandb.init(*self.args, **self.kwargs)
+        run = wandb.init(*self.args, **self.kwargs)
+
+        # Run external hook to process information about wandb run
+        if WANDB_PROCESS_RUN_INFO_HOOK in os.environ:
+            try:
+                _load_class(os.environ[WANDB_PROCESS_RUN_INFO_HOOK])(run)
+            except Exception as e:
+                logger.exception(
+                    f"Error calling {WANDB_PROCESS_RUN_INFO_HOOK}: {e}", exc_info=e
+                )
 
         while True:
             item_type, item_content = self.queue.get()
@@ -265,7 +305,7 @@ class WandbLoggerCallback(LoggerCallback):
 
     def __init__(
         self,
-        project: str,
+        project: Optional[str] = None,
         group: Optional[str] = None,
         api_key_file: Optional[str] = None,
         api_key: Optional[str] = None,
@@ -291,6 +331,18 @@ class WandbLoggerCallback(LoggerCallback):
             os.path.expanduser(self.api_key_path) if self.api_key_path else None
         )
         _set_api_key(self.api_key_file, self.api_key)
+
+        # Try to get project and group from environment variables if not
+        # passed through WandbLoggerCallback.
+        if not self.project and os.environ.get(WANDB_PROJECT_ENV_VAR):
+            self.project = os.environ.get(WANDB_PROJECT_ENV_VAR)
+        if not self.project:
+            raise ValueError(
+                "Please pass the project name as argument or through "
+                f"the {WANDB_PROJECT_ENV_VAR} environment variable."
+            )
+        if not self.group and os.environ.get(WANDB_GROUP_ENV_VAR):
+            self.group = os.environ.get(WANDB_GROUP_ENV_VAR)
 
     def log_trial_start(self, trial: "Trial"):
         config = trial.config.copy()

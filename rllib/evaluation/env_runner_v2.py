@@ -38,7 +38,7 @@ from ray.util.debug import log_once
 if TYPE_CHECKING:
     from gym.envs.classic_control.rendering import SimpleImageViewer
 
-    from ray.rllib.agents.callbacks import DefaultCallbacks
+    from ray.rllib.algorithms.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 
@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 
 MIN_LARGE_BATCH_THRESHOLD = 1000
 DEFAULT_LARGE_BATCH_THRESHOLD = 5000
+MS_TO_SEC = 1000.0
 
 
 _PolicyEvalData = namedtuple("_PolicyEvalData", ["env_id", "agent_id", "sample_batch"])
@@ -55,7 +56,14 @@ _PolicyEvalData = namedtuple("_PolicyEvalData", ["env_id", "agent_id", "sample_b
 class _PerfStats:
     """Sampler perf stats that will be included in rollout metrics."""
 
-    def __init__(self):
+    def __init__(self, ema_coef: Optional[float] = None):
+        # If not None, enable Exponential Moving Average mode.
+        # The way we update stats is by:
+        #     updated = (1 - ema_coef) * old + ema_coef * new
+        # In general provides more responsive stats about sampler performance.
+        # TODO(jungong) : make ema the default (only) mode if it works well.
+        self.ema_coef = ema_coef
+
         self.iters = 0
         self.raw_obs_processing_time = 0.0
         self.inference_time = 0.0
@@ -63,9 +71,23 @@ class _PerfStats:
         self.env_wait_time = 0.0
         self.env_render_time = 0.0
 
-    def get(self):
-        # Mean multiplicator (1000 = ms -> sec).
-        factor = 1000 / self.iters
+    def incr(self, field: str, value: Union[int, float]):
+        if field == "iters":
+            self.iters += value
+            return
+
+        # All the other fields support either global average or ema mode.
+        if self.ema_coef is None:
+            # Global average.
+            self.__dict__[field] += value
+        else:
+            self.__dict__[field] = (1.0 - self.ema_coef) * self.__dict__[
+                field
+            ] + self.ema_coef * value
+
+    def _get_avg(self):
+        # Mean multiplicator (1000 = sec -> ms).
+        factor = MS_TO_SEC / self.iters
         return {
             # Raw observation preprocessing.
             "mean_raw_obs_processing_ms": self.raw_obs_processing_time * factor,
@@ -78,6 +100,28 @@ class _PerfStats:
             # Environment rendering (False by default).
             "mean_env_render_ms": self.env_render_time * factor,
         }
+
+    def _get_ema(self):
+        # In EMA mode, stats are already (exponentially) averaged,
+        # hence we only need to do the sec -> ms conversion here.
+        return {
+            # Raw observation preprocessing.
+            "mean_raw_obs_processing_ms": self.raw_obs_processing_time * MS_TO_SEC,
+            # Computing actions through policy.
+            "mean_inference_ms": self.inference_time * MS_TO_SEC,
+            # Processing actions (to be sent to env, e.g. clipping).
+            "mean_action_processing_ms": self.action_processing_time * MS_TO_SEC,
+            # Waiting for environment (during poll).
+            "mean_env_wait_ms": self.env_wait_time * MS_TO_SEC,
+            # Environment rendering (False by default).
+            "mean_env_render_ms": self.env_render_time * MS_TO_SEC,
+        }
+
+    def get(self):
+        if self.ema_coef is None:
+            return self._get_avg()
+        else:
+            return self._get_ema()
 
 
 class _NewDefaultDict(defaultdict):
@@ -350,7 +394,7 @@ class EnvRunnerV2:
             and other fields as dictated by `policy`.
         """
         while True:
-            self._perf_stats.iters += 1
+            self._perf_stats.incr("iters", 1)
 
             t0 = time.time()
             # Get observations from all ready agents.
@@ -362,7 +406,7 @@ class EnvRunnerV2:
                 infos,
                 off_policy_actions,
             ) = self._base_env.poll()
-            self._perf_stats.env_wait_time += time.time() - t0
+            env_poll_time = time.time() - t0
 
             # Process observations and prepare for policy evaluation.
             t1 = time.time()
@@ -374,7 +418,7 @@ class EnvRunnerV2:
                 dones=dones,
                 infos=infos,
             )
-            self._perf_stats.raw_obs_processing_time += time.time() - t1
+            self._perf_stats.incr("raw_obs_processing_time", time.time() - t1)
 
             for o in outputs:
                 yield o
@@ -383,7 +427,7 @@ class EnvRunnerV2:
             t2 = time.time()
             # types: Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]
             eval_results = self._do_policy_eval(to_eval=to_eval)
-            self._perf_stats.inference_time += time.time() - t2
+            self._perf_stats.incr("inference_time", time.time() - t2)
 
             # Process results and update episode state.
             t3 = time.time()
@@ -394,13 +438,13 @@ class EnvRunnerV2:
                 eval_results=eval_results,
                 off_policy_actions=off_policy_actions,
             )
-            self._perf_stats.action_processing_time += time.time() - t3
+            self._perf_stats.incr("action_processing_time", time.time() - t3)
 
             # Return computed actions to ready envs. We also send to envs that have
             # taken off-policy actions; those envs are free to ignore the action.
             t4 = time.time()
             self._base_env.send_actions(actions_to_send)
-            self._perf_stats.env_wait_time += time.time() - t4
+            self._perf_stats.incr("env_wait_time", env_poll_time + time.time() - t4)
 
             self._maybe_render()
 
@@ -470,14 +514,14 @@ class EnvRunnerV2:
                 # all_agents_obs is an Exception here.
                 # Drop this episode and skip to next.
                 self.end_episode(env_id, env_obs)
+                # Tell the sampler we have got a faulty episode.
+                outputs.extend(RolloutMetrics(episode_faulty=True))
                 continue
 
             episode: EpisodeV2 = self._active_episodes[env_id]
 
             # Episode length after this step.
-            # If this is a branch new episode, this step is adding init_obs.
-            # So env_steps will stay at 0. Otherwise, env_steps will advance by 1.
-            next_episode_length = episode.length + 1 if episode.has_init_obs else 0
+            next_episode_length = episode.length + 1
             # Check episode termination conditions.
             if dones[env_id]["__all__"] or next_episode_length >= self._horizon:
                 hit_horizon = (
@@ -508,7 +552,7 @@ class EnvRunnerV2:
                 agent_dones[agent_id] = agent_done
 
                 # A completely new agent is already done -> Skip entirely.
-                if not episode.has_init_obs and agent_done:
+                if not episode.has_init_obs(agent_id) and agent_done:
                     continue
 
                 values_dict = {
@@ -583,10 +627,9 @@ class EnvRunnerV2:
                 ]
                 processed.extend(policy.agent_connectors(acd_list))
 
-            is_initial_obs = not episode.has_init_obs
             for d in processed:
                 # Record transition info if applicable.
-                if is_initial_obs:
+                if not episode.has_init_obs(d.agent_id):
                     episode.add_init_obs(
                         d.agent_id,
                         d.data.for_training[SampleBatch.T],
@@ -597,17 +640,19 @@ class EnvRunnerV2:
                         d.agent_id, d.data.for_training
                     )
 
-                if not agent_dones[d.agent_id]:
+                if not all_agents_done and not agent_dones[d.agent_id]:
+                    # Add to eval set if env is not done and this particular agent
+                    # is also not done.
                     item = _PolicyEvalData(d.env_id, d.agent_id, d.data.for_action)
                     to_eval[policy_id].append(item)
+
+            # Finished advancing episode by 1 step, mark it so.
+            episode.step()
 
             # Exception: The very first env.poll() call causes the env to get reset
             # (no step taken yet, just a single starting observation logged).
             # We need to skip this callback in this case.
-            if not is_initial_obs:
-                # Finished advancing episode by 1 step, mark it so.
-                episode.step()
-
+            if episode.length > 0:
                 # Invoke the `on_episode_step` callback after the step is logged
                 # to the episode.
                 self._callbacks.on_episode_step(
@@ -728,9 +773,17 @@ class EnvRunnerV2:
             # Basically carry RNN and other buffered state to the
             # next episode from the same env.
         else:
-            resetted_obs: Dict[
-                EnvID, Dict[AgentID, EnvObsType]
-            ] = self._base_env.try_reset(env_id)
+            # TODO(jungong) : This will allow a single faulty env to
+            # take out the entire RolloutWorker indefinitely. Revisit.
+            while True:
+                resetted_obs: Dict[
+                    EnvID, Dict[AgentID, EnvObsType]
+                ] = self._base_env.try_reset(env_id)
+                if resetted_obs is None or not isinstance(resetted_obs, Exception):
+                    break
+                else:
+                    # Report a faulty episode.
+                    outputs.append(RolloutMetrics(episode_faulty=True))
             # Reset connector state if this is a hard reset.
             for p in self._worker.policy_map.cache.values():
                 p.agent_connectors.reset(env_id)
@@ -777,6 +830,9 @@ class EnvRunnerV2:
                 )
                 item = _PolicyEvalData(d.env_id, d.agent_id, d.data.for_action)
                 to_eval[policy_id].append(item)
+
+            # Step after adding initial obs. This will give us 0 env and agent step.
+            new_episode.step()
 
     def end_episode(
         self, env_id: EnvID, episode_or_exception: Union[EpisodeV2, Exception]
@@ -828,7 +884,10 @@ class EnvRunnerV2:
         # Reached the fragment-len -> We should build an MA-Batch.
         if built_steps + ongoing_steps >= self._rollout_fragment_length:
             if self._count_steps_by != "agent_steps":
-                assert built_steps + ongoing_steps == self._rollout_fragment_length
+                assert built_steps + ongoing_steps == self._rollout_fragment_length, (
+                    f"built_steps ({built_steps}) + ongoing_steps ({ongoing_steps}) != "
+                    f"rollout_fragment_length ({self._rollout_fragment_length})."
+                )
 
             # If we reached the fragment-len only because of `episode_id`
             # (still ongoing) -> postprocess `episode_id` first.
@@ -1019,7 +1078,7 @@ class EnvRunnerV2:
                 "window and then return `True`."
             )
 
-        self._perf_stats.env_render_time += time.time() - t5
+        self._perf_stats.incr("env_render_time", time.time() - t5)
 
 
 def _fetch_atari_metrics(base_env: BaseEnv) -> List[RolloutMetrics]:

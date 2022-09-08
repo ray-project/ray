@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import wandb
 
-from ray import tune
+from ray import air, tune
 from ray.air import session
 from ray.tune import Trainable
 from ray.air.callbacks.wandb import WandbLoggerCallback
@@ -23,19 +23,23 @@ def train_function(config, checkpoint_dir=None):
 
 def tune_function(api_key_file):
     """Example for using a WandbLoggerCallback with the function API"""
-    analysis = tune.run(
+    tuner = tune.Tuner(
         train_function,
-        metric="loss",
-        mode="min",
-        config={
+        tune_config=tune.TuneConfig(
+            metric="loss",
+            mode="min",
+        ),
+        run_config=air.RunConfig(
+            callbacks=[
+                WandbLoggerCallback(api_key_file=api_key_file, project="Wandb_example")
+            ]
+        ),
+        param_space={
             "mean": tune.grid_search([1, 2, 3, 4, 5]),
             "sd": tune.uniform(0.2, 0.8),
         },
-        callbacks=[
-            WandbLoggerCallback(api_key_file=api_key_file, project="Wandb_example")
-        ],
     )
-    return analysis.best_config
+    tuner.fit()
 
 
 @wandb_mixin
@@ -48,17 +52,19 @@ def decorated_train_function(config, checkpoint_dir=None):
 
 def tune_decorated(api_key_file):
     """Example for using the @wandb_mixin decorator with the function API"""
-    analysis = tune.run(
+    tuner = tune.Tuner(
         decorated_train_function,
-        metric="loss",
-        mode="min",
-        config={
+        tune_config=tune.TuneConfig(
+            metric="loss",
+            mode="min",
+        ),
+        param_space={
             "mean": tune.grid_search([1, 2, 3, 4, 5]),
             "sd": tune.uniform(0.2, 0.8),
             "wandb": {"api_key_file": api_key_file, "project": "Wandb_example"},
         },
     )
-    return analysis.best_config
+    tuner.fit()
 
 
 class WandbTrainable(WandbTrainableMixin, Trainable):
@@ -71,17 +77,19 @@ class WandbTrainable(WandbTrainableMixin, Trainable):
 
 def tune_trainable(api_key_file):
     """Example for using a WandTrainableMixin with the class API"""
-    analysis = tune.run(
+    tuner = tune.Tuner(
         WandbTrainable,
-        metric="loss",
-        mode="min",
-        config={
+        tune_config=tune.TuneConfig(
+            metric="loss",
+            mode="min",
+        ),
+        param_space={
             "mean": tune.grid_search([1, 2, 3, 4, 5]),
             "sd": tune.uniform(0.2, 0.8),
             "wandb": {"api_key_file": api_key_file, "project": "Wandb_example"},
         },
     )
-    return analysis.best_config
+    tuner.fit()
 
 
 if __name__ == "__main__":

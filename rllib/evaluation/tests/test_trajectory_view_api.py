@@ -102,6 +102,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["model"]["use_lstm"] = True
         config["model"]["lstm_use_prev_action"] = True
         config["model"]["lstm_use_prev_reward"] = True
+        config["create_env_on_driver"] = True
 
         for _ in framework_iterator(config):
             algo = ppo.PPO(config, env="CartPole-v0")
@@ -142,6 +143,24 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
                     assert view_req_policy[key].shift == 1
+
+            rollout_worker = algo.workers.local_worker()
+            sample_batch = rollout_worker.sample()
+
+            self.assertEqual(sample_batch.count, 200, "ppo rollout count != 200")
+            self.assertEqual(sum(sample_batch["seq_lens"]), sample_batch.count)
+            self.assertEqual(
+                len(sample_batch["seq_lens"]), sample_batch["state_in_0"].shape[0]
+            )
+
+            # check if non-zero state_ins are pointing to the correct state_outs
+            seq_counters = np.cumsum(sample_batch["seq_lens"])
+            for i in range(sample_batch["state_in_0"].shape[0]):
+                state_in = sample_batch["state_in_0"][i]
+                if np.any(state_in != 0):
+                    # non-zero state-in should be one of th state_outs.
+                    state_out_ind = seq_counters[i - 1] - 1
+                    check(sample_batch["state_out_0"][state_out_ind], state_in)
             algo.stop()
 
     def test_traj_view_attention_net(self):

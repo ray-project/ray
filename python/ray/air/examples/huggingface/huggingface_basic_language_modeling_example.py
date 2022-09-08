@@ -1,6 +1,8 @@
 # Based on
 # huggingface/notebooks/examples/language_modeling_from_scratch.ipynb
 
+# This example is tested with transformers==4.19.1
+
 import argparse
 import tempfile
 
@@ -19,6 +21,7 @@ import ray
 import ray.data
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
+from ray.air.config import ScalingConfig
 
 
 def main(
@@ -87,11 +90,12 @@ def main(
         training_args = TrainingArguments(
             training_dir,
             evaluation_strategy="epoch",
+            save_strategy="epoch",
+            logging_strategy="epoch",
             num_train_epochs=num_epochs,
             learning_rate=2e-5,
             weight_decay=0.01,
             disable_tqdm=True,
-            save_strategy="epoch",
             # Required to avoid an exception
             no_cuda=not torch.cuda.is_available(),
         )
@@ -111,7 +115,7 @@ def main(
 
     trainer = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
-        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         datasets={"train": ray_train, "evaluation": ray_validation},
     )
     results = trainer.fit()

@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, Type
+from typing import Any, Callable, List, Type
 
 import numpy as np
 import tree  # dm_tree
@@ -12,7 +12,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import (
     AgentConnectorDataType,
     AgentConnectorsOutput,
-    TensorStructType,
 )
 from ray.util.annotations import PublicAPI
 
@@ -40,11 +39,11 @@ def register_lambda_agent_connector(
                 ac_data.env_id, ac_data.agent_id, fn(ac_data.data)
             )
 
-        def to_config(self):
+        def to_state(self):
             return name, None
 
         @staticmethod
-        def from_config(ctx: ConnectorContext, params: List[Any]):
+        def from_state(ctx: ConnectorContext, params: List[Any]):
             return LambdaAgentConnector(ctx)
 
     LambdaAgentConnector.__name__ = name
@@ -56,13 +55,16 @@ def register_lambda_agent_connector(
 
 
 @PublicAPI(stability="alpha")
-def flatten_data(data: Dict[str, TensorStructType]):
+def flatten_data(data: AgentConnectorsOutput):
     assert isinstance(
-        data, dict
-    ), "Single agent data must be of type Dict[str, TensorStructType]"
+        data, AgentConnectorsOutput
+    ), "Single agent data must be of type AgentConnectorsOutput"
+
+    for_training = data.for_training
+    for_action = data.for_action
 
     flattened = {}
-    for k, v in data.items():
+    for k, v in for_action.items():
         if k in [SampleBatch.INFOS, SampleBatch.ACTIONS] or k.startswith("state_out_"):
             # Do not flatten infos, actions, and state_out_ columns.
             flattened[k] = v
@@ -74,7 +76,7 @@ def flatten_data(data: Dict[str, TensorStructType]):
         flattened[k] = np.array(tree.flatten(v))
     flattened = SampleBatch(flattened, is_training=False)
 
-    return AgentConnectorsOutput(data, flattened)
+    return AgentConnectorsOutput(for_training, flattened)
 
 
 # Agent connector to build and return a flattened observation SampleBatch

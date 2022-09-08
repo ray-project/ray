@@ -8,7 +8,7 @@ set -e
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/.."
 JAVA_DIRS_PATH=('java')
-RAY_JAVA_MODULES=('api' 'runtime')
+RAY_JAVA_MODULES=('api' 'runtime' 'serve')
 JAR_BASE_DIR="$WORKSPACE_DIR"/.jar
 mkdir -p "$JAR_BASE_DIR"
 cd "$WORKSPACE_DIR/java"

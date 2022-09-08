@@ -12,6 +12,11 @@ from ray import workflow
 
 
 def test_objectref_inputs(workflow_start_regular_shared):
+    from ray.workflow.tests.utils import skip_client_mode_test
+
+    # TODO(suquark): Fix workflow with ObjectRefs as inputs under client mode.
+    skip_client_mode_test()
+
     @ray.remote
     def nested_workflow(n: int):
         if n <= 0:

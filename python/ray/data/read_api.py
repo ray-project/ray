@@ -12,9 +12,12 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import _lazy_import_pyarrow_dataset
+from ray.data._internal.util import (
+    _lazy_import_pyarrow_dataset,
+    _autodetect_parallelism,
+)
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
+from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DatasetContext
 from ray.data.dataset import Dataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -39,6 +42,7 @@ from ray.data.datasource.file_based_datasource import (
 )
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.placement_group import PlacementGroup
 
 if TYPE_CHECKING:
     import dask
@@ -56,7 +60,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
+def from_items(items: List[Any], *, parallelism: int = -1) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
 
     Examples:
@@ -75,7 +79,16 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
     Returns:
         Dataset holding the items.
     """
-    block_size = max(1, len(items) // parallelism)
+
+    detected_parallelism, _ = _autodetect_parallelism(
+        parallelism,
+        ray.util.get_current_placement_group(),
+        DatasetContext.get_current(),
+    )
+    block_size = max(
+        1,
+        len(items) // detected_parallelism,
+    )
 
     blocks: List[ObjectRef[Block]] = []
     metadata: List[BlockMetadata] = []
@@ -96,8 +109,9 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
 
     return Dataset(
         ExecutionPlan(
-            BlockList(blocks, metadata),
+            BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"from_items": metadata}, parent=None),
+            run_by_consumer=False,
         ),
         0,
         False,
@@ -105,7 +119,7 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
 
 
 @PublicAPI
-def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
+def range(n: int, *, parallelism: int = -1) -> Dataset[int]:
     """Create a dataset from a range of integers [0..n).
 
     Examples:
@@ -130,7 +144,7 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
 
 
 @PublicAPI
-def range_table(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
+def range_table(n: int, *, parallelism: int = -1) -> Dataset[ArrowRow]:
     """Create a tabular dataset from a range of integers [0..n).
 
     Examples:
@@ -164,7 +178,7 @@ def range_arrow(*args, **kwargs):
 
 @PublicAPI
 def range_tensor(
-    n: int, *, shape: Tuple = (1,), parallelism: int = 200
+    n: int, *, shape: Tuple = (1,), parallelism: int = -1
 ) -> Dataset[ArrowRow]:
     """Create a Tensor dataset from a range of integers [0..n).
 
@@ -208,7 +222,7 @@ def range_tensor(
 def read_datasource(
     datasource: Datasource[T],
     *,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     **read_args,
 ) -> Dataset[T]:
@@ -217,7 +231,9 @@ def read_datasource(
     Args:
         datasource: The datasource to read data from.
         parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the available partitioning of the datasource.
+            limited by the available partitioning of the datasource. If set to -1,
+            parallelism will be automatically chosen based on the available cluster
+            resources and estimated in-memory data size.
         read_args: Additional kwargs to pass to the datasource impl.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
 
@@ -227,6 +243,7 @@ def read_datasource(
     ctx = DatasetContext.get_current()
     # TODO(ekl) remove this feature flag.
     force_local = "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ
+    cur_pg = ray.util.get_current_placement_group()
     pa_ds = _lazy_import_pyarrow_dataset()
     if pa_ds:
         partitioning = read_args.get("dataset_kwargs", {}).get("partitioning", None)
@@ -238,30 +255,46 @@ def read_datasource(
             force_local = True
 
     if force_local:
-        read_tasks = datasource.prepare_read(parallelism, **read_args)
+        requested_parallelism, min_safe_parallelism, read_tasks = _get_read_tasks(
+            datasource, ctx, cur_pg, parallelism, read_args
+        )
     else:
         # Prepare read in a remote task so that in Ray client mode, we aren't
         # attempting metadata resolution from the client machine.
-        prepare_read = cached_remote_fn(
-            _prepare_read, retry_exceptions=False, num_cpus=0
+        get_read_tasks = cached_remote_fn(
+            _get_read_tasks, retry_exceptions=False, num_cpus=0
         )
-        read_tasks = ray.get(
-            prepare_read.remote(
+
+        requested_parallelism, min_safe_parallelism, read_tasks = ray.get(
+            get_read_tasks.remote(
                 datasource,
                 ctx,
+                cur_pg,
                 parallelism,
                 _wrap_and_register_arrow_serialization_workaround(read_args),
             )
         )
 
-    if len(read_tasks) < parallelism and (
+    if read_tasks and len(read_tasks) < min_safe_parallelism * 0.7:
+        perc = 1 + round((min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1)
+        logger.warning(
+            f"{WARN_PREFIX} The blocks of this dataset are estimated to be {perc}x "
+            "larger than the target block size "
+            f"of {int(ctx.target_max_block_size / 1024 / 1024)} MiB. This may lead to "
+            "out-of-memory errors during processing. Consider reducing the size of "
+            "input files or using `.repartition(n)` to increase the number of "
+            "dataset blocks."
+        )
+    elif len(read_tasks) < requested_parallelism and (
         len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
     ):
         logger.warning(
-            "The number of blocks in this dataset ({}) limits its parallelism to {} "
-            "concurrent tasks. This is much less than the number of available "
-            "CPU slots in the cluster. Use `.repartition(n)` to increase the number of "
-            "dataset blocks.".format(len(read_tasks), len(read_tasks))
+            f"{WARN_PREFIX} The number of blocks in this dataset ({len(read_tasks)}) "
+            f"limits its parallelism to {len(read_tasks)} concurrent tasks. "
+            "This is much less than the number "
+            "of available CPU slots in the cluster. Use `.repartition(n)` to "
+            "increase the number of "
+            "dataset blocks."
         )
 
     if ray_remote_args is None:
@@ -272,12 +305,14 @@ def read_datasource(
     ):
         ray_remote_args["scheduling_strategy"] = "SPREAD"
 
-    block_list = LazyBlockList(read_tasks, ray_remote_args=ray_remote_args)
+    block_list = LazyBlockList(
+        read_tasks, ray_remote_args=ray_remote_args, owned_by_consumer=False
+    )
     block_list.compute_first_block()
     block_list.ensure_metadata_for_first_block()
 
     return Dataset(
-        ExecutionPlan(block_list, block_list.stats()),
+        ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
         0,
         False,
     )
@@ -289,7 +324,7 @@ def read_parquet(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
@@ -348,7 +383,7 @@ def read_parquet_bulk(
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_file_args: Optional[Dict[str, Any]] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
@@ -443,7 +478,7 @@ def read_json(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
@@ -504,7 +539,7 @@ def read_csv(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
@@ -513,7 +548,7 @@ def read_csv(
     ] = CSVDatasource.file_extension_filter(),
     **arrow_csv_args,
 ) -> Dataset[ArrowRow]:
-    """Create an Arrow dataset from csv files.
+    r"""Create an Arrow dataset from csv files.
 
     Examples:
         >>> import ray
@@ -526,6 +561,26 @@ def read_csv(
         >>> # Read multiple directories.
         >>> ray.data.read_csv( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
+
+        >>> # Read files that use a different delimiter. The partition_filter=None is needed here
+        >>> # because by default read_csv only reads .csv files. For more uses of ParseOptions see
+        >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html  # noqa: #501
+        >>> from pyarrow import csv
+        >>> parse_options = csv.ParseOptions(delimiter="\t")
+        >>> ray.data.read_csv( # doctest: +SKIP
+        ...     "example://iris.tsv",
+        ...     parse_options=parse_options,
+        ...     partition_filter=None)
+
+        >>> # Convert a date column with a custom format from a CSV file.
+        >>> # For more uses of ConvertOptions see
+        >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html  # noqa: #501
+        >>> from pyarrow import csv
+        >>> convert_options = csv.ConvertOptions(
+        ...     timestamp_parsers=["%m/%d/%Y"])
+        >>> ray.data.read_csv( # doctest: +SKIP
+        ...     "example://dow_jones_index.csv",
+        ...     convert_options=convert_options)
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -568,7 +623,7 @@ def read_text(
     errors: str = "ignore",
     drop_empty_lines: bool = True,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
@@ -630,7 +685,7 @@ def read_numpy(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[
@@ -688,7 +743,7 @@ def read_binary_files(
     *,
     include_paths: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    parallelism: int = 200,
+    parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
@@ -857,8 +912,9 @@ def from_pandas_refs(
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
         return Dataset(
             ExecutionPlan(
-                BlockList(dfs, metadata),
+                BlockList(dfs, metadata, owned_by_consumer=False),
                 DatasetStats(stages={"from_pandas_refs": metadata}, parent=None),
+                run_by_consumer=False,
             ),
             0,
             False,
@@ -871,8 +927,9 @@ def from_pandas_refs(
     metadata = ray.get(metadata)
     return Dataset(
         ExecutionPlan(
-            BlockList(blocks, metadata),
+            BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"from_pandas_refs": metadata}, parent=None),
+            run_by_consumer=False,
         ),
         0,
         False,
@@ -929,8 +986,9 @@ def from_numpy_refs(
     metadata = ray.get(metadata)
     return Dataset(
         ExecutionPlan(
-            BlockList(blocks, metadata),
+            BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(stages={"from_numpy_refs": metadata}, parent=None),
+            run_by_consumer=False,
         ),
         0,
         False,
@@ -980,8 +1038,9 @@ def from_arrow_refs(
     metadata = ray.get([get_metadata.remote(t) for t in tables])
     return Dataset(
         ExecutionPlan(
-            BlockList(tables, metadata),
+            BlockList(tables, metadata, owned_by_consumer=False),
             DatasetStats(stages={"from_arrow_refs": metadata}, parent=None),
+            run_by_consumer=False,
         ),
         0,
         False,
@@ -1072,12 +1131,37 @@ def _get_metadata(table: Union["pyarrow.Table", "pandas.DataFrame"]) -> BlockMet
     )
 
 
-def _prepare_read(
-    ds: Datasource, ctx: DatasetContext, parallelism: int, kwargs: dict
-) -> List[ReadTask]:
+def _get_read_tasks(
+    ds: Datasource,
+    ctx: DatasetContext,
+    cur_pg: Optional[PlacementGroup],
+    parallelism: int,
+    kwargs: dict,
+) -> (int, int, List[ReadTask]):
+    """Generates read tasks.
+
+    Args:
+        ds: Datasource to read from.
+        ctx: Dataset config to use.
+        cur_pg: The current placement group, if any.
+        parallelism: The user-requested parallelism, or -1 for autodetection.
+        kwargs: Additional kwargs to pass to the reader.
+
+    Returns:
+        Request parallelism from the datasource, the min safe parallelism to avoid
+        OOM, and the list of read tasks generated.
+    """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     DatasetContext._set_current(ctx)
-    return ds.prepare_read(parallelism, **kwargs)
+    reader = ds.create_reader(**kwargs)
+    requested_parallelism, min_safe_parallelism = _autodetect_parallelism(
+        parallelism, cur_pg, DatasetContext.get_current(), reader
+    )
+    return (
+        requested_parallelism,
+        min_safe_parallelism,
+        reader.get_read_tasks(requested_parallelism),
+    )
 
 
 def _resolve_parquet_args(
