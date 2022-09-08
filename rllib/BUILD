@@ -1538,6 +1538,13 @@ py_test(
     srcs = ["env/tests/test_external_multi_agent_env.py"]
 )
 
+py_test(
+    name = "env/tests/test_gym_env_apis",
+    tags = ["team:rllib", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_gym_env_apis.py"]
+)
+
 sh_test(
     name = "env/tests/test_local_inference_cartpole",
     tags = ["team:rllib", "env"],
