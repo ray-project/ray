@@ -136,9 +136,9 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     /**
-     * This specifies the maximum number of times that the actor task can be resubmitted.
-     * The minimum valid value is 0 (default), which indicates that the actor task can't
-     * be resubmited. A value of -1 indicates that an actor task can be resubmited indefinitely.
+     * This specifies the maximum number of times that the actor task can be resubmitted. The
+     * minimum valid value is 0 (default), which indicates that the actor task can't be resubmited.
+     * A value of -1 indicates that an actor task can be resubmited indefinitely.
      *
      * @param maxTaskRetries max number of actor task restries.
      * @return self
