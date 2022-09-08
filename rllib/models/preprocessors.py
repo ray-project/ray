@@ -73,11 +73,11 @@ class Preprocessor:
                 if not self._obs_space.contains(observation):
                     raise ValueError(
                         "Observation ({} dtype={}) outside given space ({})!".format(
-                        observation,
-                        observation.dtype
-                        if isinstance(self._obs_space, gym.spaces.Box)
-                        else None,
-                        self._obs_space,
+                            observation,
+                            observation.dtype
+                            if isinstance(self._obs_space, gym.spaces.Box)
+                            else None,
+                            self._obs_space,
                         )
                     )
             except AttributeError as e:
