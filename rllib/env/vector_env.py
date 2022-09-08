@@ -82,7 +82,10 @@ class VectorEnv:
         )
 
     @PublicAPI
-    def vector_reset(self, seed: Optional[int] = None) -> Tuple[List[EnvObsType], List[EnvInfoDict]]:
+    def vector_reset(
+        self,
+        seed: Optional[int] = None,
+    ) -> Tuple[List[EnvObsType], List[EnvInfoDict]]:
         """Resets all sub-environments.
 
         Args:
@@ -102,7 +105,7 @@ class VectorEnv:
         self,
         index: Optional[int] = None,
         seed: Optional[int] = None,
-    ) -> Tuple[EnvObsType, EnvInfoDict]:
+    ) -> Union[Tuple[EnvObsType, EnvInfoDict], Exception]:
         """Resets a single sub-environment.
 
         Args:
@@ -114,7 +117,9 @@ class VectorEnv:
 
         Returns:
             Tuple consisting of observations from the reset sub environment and
-            an info dict of the reset sub environment.
+            an info dict of the reset sub environment. Alternatively an Exception
+            can be returned, indicating that the reset operation on the sub environment
+            has failed (and why it failed).
         """
         raise NotImplementedError
 
@@ -270,28 +275,48 @@ class _VectorizedGymEnv(VectorEnv):
         # Use reset_at(index) to restart and retry until
         # we successfully create a new env.
         resetted_obs = []
+        resetted_infos = []
         for i in range(len(self.envs)):
             while True:
-                obs = self.reset_at(i, seed)
+                obs, infos = self.reset_at(i, seed)
                 if not isinstance(obs, Exception):
                     break
+                assert isinstance(infos, Exception), (
+                    "ERROR: If VectorEnv.reset_at() returns an Exception as "
+                    "observation, the returned info dict must be an Exception, too!"
+                )
             resetted_obs.append(obs)
-        return resetted_obs
+            resetted_infos.append(infos)
+        return resetted_obs, resetted_infos
 
     @override(VectorEnv)
-    def reset_at(self, index: Optional[int] = None, seed: Optional[int] = None) -> EnvObsType:
+    def reset_at(
+        self,
+        index: Optional[int] = None,
+        seed: Optional[int] = None,
+    ) -> Tuple[Union[EnvObsType, Exception], Union[EnvInfoDict, Exception]]:
         if index is None:
             index = 0
         try:
-            obs = self.envs[index].reset()
+            # Gym < 0.26 support.
+            if seed is None:
+                obs_and_infos = self.envs[index].reset()
+            else:
+                obs_and_infos = self.envs[index].reset(seed)
+
+            # Gym < 0.26 support.
+            # Cover the case where `reset()` only returns obs (not infos).
+            if not isinstance(obs_and_infos, tuple) or len(obs_and_infos) != 2:
+                obs_and_infos = (obs_and_infos, {})
+
         except Exception as e:
             if self.restart_failed_sub_environments:
                 logger.exception(e.args[0])
                 self.restart_at(index)
-                obs = e
+                obs_and_infos = e, e
             else:
                 raise e
-        return obs
+        return obs_and_infos
 
     @override(VectorEnv)
     def restart_at(self, index: Optional[int] = None) -> None:
@@ -314,7 +339,9 @@ class _VectorizedGymEnv(VectorEnv):
         logger.warning(f"Sub-environment at index {index} restarted successfully.")
 
     @override(VectorEnv)
-    def vector_step(self, actions):
+    def vector_step(self, actions) -> Tuple[
+        MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict
+    ]:
         obs_batch, rew_batch, done_batch, truncated_batch, info_batch = (
             [], [], [], [], []
         )
@@ -325,11 +352,10 @@ class _VectorizedGymEnv(VectorEnv):
                 if self.restart_failed_sub_environments:
                     logger.exception(e.args[0])
                     self.restart_at(i)
-                    obs, r, done, info = e, 0.0, True, {}
+                    returns = e, 0.0, True, True, {}
                 else:
                     raise e
-            # Still support old-style gym.Envs, in case user hasn't changed their step
-            # method yet.
+            # Gym < 0.26 support.
             if len(returns) == 4:
                 obs, r, done, info = returns
                 truncated = False
@@ -379,6 +405,7 @@ class VectorEnvWrapper(BaseEnv):
         self.new_obs = None
         self.cur_rewards = None
         self.cur_dones = None
+        self.cur_truncateds = None
         self.cur_infos = None
         # At first `poll()`, reset everything (all sub-environments).
         self.first_reset_done = False
@@ -388,27 +415,38 @@ class VectorEnvWrapper(BaseEnv):
     @override(BaseEnv)
     def poll(
         self,
-    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
+    ) -> Tuple[
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+    ]:
         from ray.rllib.env.base_env import with_dummy_agent_id
 
         if not self.first_reset_done:
             self.first_reset_done = True
-            self.new_obs = self.vector_env.vector_reset()
+            # TODO(sven): We probably would like to seed this call here as well.
+            self.new_obs, self.cur_infos = self.vector_env.vector_reset()
         new_obs = dict(enumerate(self.new_obs))
         rewards = dict(enumerate(self.cur_rewards))
         dones = dict(enumerate(self.cur_dones))
+        truncateds = dict(enumerate(self.cur_truncateds))
         infos = dict(enumerate(self.cur_infos))
 
         # Empty all states (in case `poll()` gets called again).
         self.new_obs = []
         self.cur_rewards = []
         self.cur_dones = []
+        self.cur_truncateds = []
         self.cur_infos = []
 
         return (
             with_dummy_agent_id(new_obs),
             with_dummy_agent_id(rewards),
             with_dummy_agent_id(dones, "__all__"),
+            with_dummy_agent_id(truncateds),
             with_dummy_agent_id(infos),
             {},
         )
@@ -424,17 +462,32 @@ class VectorEnvWrapper(BaseEnv):
             self.new_obs,
             self.cur_rewards,
             self.cur_dones,
+            self.cur_truncateds,
             self.cur_infos,
         ) = self.vector_env.vector_step(action_vector)
 
     @override(BaseEnv)
-    def try_reset(self, env_id: Optional[EnvID] = None) -> MultiEnvDict:
+    def try_reset(
+        self,
+        env_id: Optional[EnvID] = None,
+        seed: Optional[int] = None,
+    ) -> Tuple[MultiEnvDict, MultiEnvDict]:
         from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 
-        assert env_id is None or isinstance(env_id, int)
-        env_id = env_id if env_id is not None else 0
-        obs = self.vector_env.reset_at(env_id)
-        return {env_id: obs if isinstance(obs, Exception) else {_DUMMY_AGENT_ID: obs}}
+        if env_id is None:
+            env_id = 0
+        assert isinstance(env_id, int)
+        obs, infos = self.vector_env.reset_at(env_id, seed=seed)
+
+        # `reset_at()` returned exceptions -> Return MultiAgent.
+        if isinstance(obs, Exception):
+            assert isinstance(infos, Exception)
+            return {env_id: obs}, {env_id: infos}
+        #TODO: seems like a quite leaky API here:
+        else:
+            #TODO(sven): Why _DUMMY_AGENT_ID here and not env_id?
+            #Explain why we return single agent observations/infos here?
+            return {_DUMMY_AGENT_ID: obs}, {_DUMMY_AGENT_ID: infos}
 
     @override(BaseEnv)
     def try_restart(self, env_id: Optional[EnvID] = None) -> None:
@@ -499,11 +552,12 @@ class VectorEnvWrapper(BaseEnv):
             self.new_obs = [None for _ in range(self.num_envs)]
             self.cur_rewards = [0.0 for _ in range(self.num_envs)]
             self.cur_dones = [False for _ in range(self.num_envs)]
+            self.cur_truncateds = [False for _ in range(self.num_envs)]
             self.cur_infos = [{} for _ in range(self.num_envs)]
         # Index provided, reset only the sub-env's state at the given index.
         else:
-            self.new_obs[idx] = self.vector_env.reset_at(idx)
+            self.new_obs[idx], self.cur_infos[idx] = self.vector_env.reset_at(idx)
             # Reset all other states to null values.
             self.cur_rewards[idx] = 0.0
             self.cur_dones[idx] = False
-            self.cur_infos[idx] = {}
+            self.cur_truncateds[idx] = False

@@ -187,10 +187,25 @@ def check_gym_environments(env: gym.Env) -> None:
         )
         if not env.observation_space.contains(temp_sampled_reset_obs):
             raise ValueError(error)
-    # check if env.step can run, and generates observations rewards, done
+    # Check if env.step can run, and generates observations rewards, done
     # signals and infos that are within their respective spaces and are of
-    # the correct dtypes
-    next_obs, reward, done, info = env.step(sampled_action)
+    # the correct dtypes.
+    results = env.step(sampled_action)
+
+    # Gym < 0.26 support.
+    if len(results) == 4:
+        next_obs, reward, done, info = results
+        truncated = True
+    elif len(results) == 5:
+        next_obs, reward, done, truncated, info = results
+    else:
+        raise ValueError(
+            "The number of values returned from `env.step([action])` must be either "
+            "4 (old gym.Env API) or 5 (new gym.Env API including `truncated` flags)!"
+            " Make sure your `step()` method returns: [obs], [reward], "
+            "[done], [truncated], and [infos]!"
+        )
+
     if not env.observation_space.contains(next_obs):
         next_obs_type = get_type(next_obs)
         space_type = env.observation_space.dtype
@@ -209,6 +224,7 @@ def check_gym_environments(env: gym.Env) -> None:
         if not env.observation_space.contains(temp_sampled_next_obs):
             raise ValueError(error)
     _check_done(done)
+    _check_done(truncated)
     _check_reward(reward)
     _check_info(info)
 

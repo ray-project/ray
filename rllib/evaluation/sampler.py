@@ -670,7 +670,7 @@ def _env_runner(
         t0 = time.time()
         # Get observations from all ready agents.
         # types: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
-        unfiltered_obs, rewards, dones, infos, off_policy_actions = base_env.poll()
+        unfiltered_obs, rewards, dones, truncateds, infos, off_policy_actions = base_env.poll()
         env_poll_time = time.time() - t0
 
         if log_once("env_returns"):
@@ -688,6 +688,7 @@ def _env_runner(
             unfiltered_obs=unfiltered_obs,
             rewards=rewards,
             dones=dones,
+            truncateds=truncateds,
             infos=infos,
             horizon=horizon,
             multiple_episodes_in_batch=multiple_episodes_in_batch,
@@ -774,6 +775,7 @@ def _process_observations(
     unfiltered_obs: Dict[EnvID, Dict[AgentID, EnvObsType]],
     rewards: Dict[EnvID, Dict[AgentID, float]],
     dones: Dict[EnvID, Dict[AgentID, bool]],
+    truncateds: Dict[EnvID, Dict[AgentID, bool]],
     infos: Dict[EnvID, Dict[AgentID, EnvInfoDict]],
     horizon: int,
     multiple_episodes_in_batch: bool,
@@ -801,6 +803,8 @@ def _process_observations(
             rewards tensor, returned by a `BaseEnv.poll()` call.
         dones: Doubly keyed dict of env-ids -> agent ids ->
             boolean done flags, returned by a `BaseEnv.poll()` call.
+        dones: Doubly keyed dict of env-ids -> agent ids ->
+            boolean truncated flags, returned by a `BaseEnv.poll()` call.
         infos: Doubly keyed dict of env-ids -> agent ids ->
             info dicts, returned by a `BaseEnv.poll()` call.
         horizon: Horizon of the episode.
@@ -920,6 +924,7 @@ def _process_observations(
 
             last_observation: EnvObsType = episode.last_observation_for(agent_id)
             agent_done = bool(all_agents_done or dones[env_id].get(agent_id))
+            agent_truncated = truncateds[env_id].get(agent_id)
 
             # A new agent (initial obs) is already done -> Skip entirely.
             if last_observation is None and agent_done:
@@ -942,6 +947,7 @@ def _process_observations(
             episode._set_last_observation(agent_id, filtered_obs)
             episode._set_last_raw_obs(agent_id, raw_obs)
             episode._set_last_done(agent_id, agent_done)
+            episode._set_last_truncated(agent_id, agent_truncated)
             # Infos from the environment.
             agent_infos = infos[env_id].get(agent_id, {})
             episode._set_last_info(agent_id, agent_infos)
@@ -972,6 +978,9 @@ def _process_observations(
                         if (no_done_at_end or (hit_horizon and soft_horizon))
                         else agent_done
                     ),
+                    # Was the episode truncated artificially
+                    # (e.g. b/c of some time limit)?
+                    SampleBatch.TRUNCATEDS: truncateds,
                     # Next observation.
                     SampleBatch.NEXT_OBS: filtered_obs,
                 }
@@ -982,8 +991,8 @@ def _process_observations(
                     if key in pol.view_requirements:
                         values_dict[key] = value
                 # Env infos for this agent.
-                if "infos" in pol.view_requirements:
-                    values_dict["infos"] = agent_infos
+                if SampleBatch.INFOS in pol.view_requirements:
+                    values_dict[SampleBatch.INFOS] = agent_infos
                 sample_collector.add_action_reward_next_obs(
                     episode.episode_id,
                     agent_id,

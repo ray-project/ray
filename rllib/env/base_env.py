@@ -157,16 +157,14 @@ class BaseEnv:
 
     @PublicAPI
     def try_reset(
-        self, env_id: Optional[EnvID] = None
-    ) -> Optional[Union[MultiAgentDict, MultiEnvDict]]:
+        self,
+        env_id: Optional[EnvID] = None,
+        seed: Optional[int] = None,
+    ) -> Tuple[MultiEnvDict, MultiEnvDict]:
         """Attempt to reset the sub-env with the given id or all sub-envs.
 
-        If the environment does not support synchronous reset, None can be
-        returned here.
-
-        Args:
-            env_id: The sub-environment's ID if applicable. If None, reset
-                the entire Env (i.e. all sub-environments).
+        If the environment does not support synchronous reset, a tuple of
+        (ASYNC_RESET_REQUEST, ASYNC_RESET_REQUEST) can be returned here.
 
         Note: A MultiAgentDict is returned when using the deprecated wrapper
         classes such as `ray.rllib.env.base_env._MultiAgentEnvToBaseEnv`,
@@ -174,11 +172,15 @@ class BaseEnv:
         returned from the new wrapper classes, such as
         `ray.rllib.env.multi_agent_env.MultiAgentEnvWrapper`.
 
+        Args:
+            env_id: The sub-environment's ID if applicable. If None, reset
+                the entire Env (i.e. all sub-environments).
+
         Returns:
-            The reset (multi-agent) observation dict. None if reset is not
-            supported.
+            A tuple consisting of a) the reset (multi-env/multi-agent) observation
+            dict and b) the reset (multi-env/multi-agent) infos dict.
         """
-        return None
+        raise NotImplementedError
 
     @DeveloperAPI
     def try_restart(self, env_id: Optional[EnvID] = None) -> None:

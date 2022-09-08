@@ -43,6 +43,7 @@ class SampleBatch(dict):
     PREV_ACTIONS = "prev_actions"
     PREV_REWARDS = "prev_rewards"
     DONES = "dones"
+    TRUNCATEDS = "truncateds"
     INFOS = "infos"
     SEQ_LENS = "seq_lens"
     # This is only computed and used when RE3 exploration strategy is enabled

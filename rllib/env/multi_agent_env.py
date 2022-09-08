@@ -49,7 +49,10 @@ class MultiAgentEnv(gym.Env):
             self._spaces_in_preferred_format = None
 
     @PublicAPI
-    def reset(self, seed: Optional[int] = None) -> MultiAgentDict:
+    def reset(
+        self,
+        seed: Optional[int] = None,
+    ) -> Tuple[MultiAgentDict, MultiAgentDict]:
         """Resets the env and returns observations from ready agents.
 
         Args:
@@ -64,7 +67,7 @@ class MultiAgentEnv(gym.Env):
             ...     # Define your env here. # doctest: +SKIP
             ...     ... # doctest: +SKIP
             >>> env = MyMultiAgentEnv() # doctest: +SKIP
-            >>> obs = env.reset() # doctest: +SKIP
+            >>> obs, infos = env.reset(seed=42) # doctest: +SKIP
             >>> print(obs) # doctest: +SKIP
             {
                 "car_0": [2.4, 1.6],
@@ -77,7 +80,9 @@ class MultiAgentEnv(gym.Env):
     @PublicAPI
     def step(
         self, action_dict: MultiAgentDict
-    ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
+    ) -> Tuple[
+        MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict
+    ]:
         """Returns observations from ready agents.
 
         The returns are dicts mapping from agent_id strings to values. The
@@ -89,11 +94,12 @@ class MultiAgentEnv(gym.Env):
             the episode is just started, the value will be None.
             3) Done values for each ready agent. The special key
             "__all__" (required) is used to indicate env termination.
-            4) Optional info values for each agent id.
+            4) Truncated values for each ready agent.
+            5) Info values for each agent id (may be empty dicts).
 
         Examples:
             >>> env = ... # doctest: +SKIP
-            >>> obs, rewards, dones, infos = env.step( # doctest: +SKIP
+            >>> obs, rewards, dones, truncated, infos = env.step( # doctest: +SKIP
             ...    action_dict={ # doctest: +SKIP
             ...        "car_0": 1, "car_1": 0, "traffic_light_1": 2, # doctest: +SKIP
             ...    }) # doctest: +SKIP
@@ -550,11 +556,18 @@ class MultiAgentEnvWrapper(BaseEnv):
     @override(BaseEnv)
     def poll(
         self,
-    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
-        obs, rewards, dones, infos = {}, {}, {}, {}
+    ) -> Tuple[
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+    ]:
+        obs, rewards, dones, truncateds, infos = {}, {}, {}, {}, {}
         for i, env_state in enumerate(self.env_states):
-            obs[i], rewards[i], dones[i], infos[i] = env_state.poll()
-        return obs, rewards, dones, infos, {}
+            obs[i], rewards[i], dones[i], truncateds[i], infos[i] = env_state.poll()
+        return obs, rewards, dones, truncateds, infos, {}
 
     @override(BaseEnv)
     def send_actions(self, action_dict: MultiEnvDict) -> None:
@@ -565,20 +578,28 @@ class MultiAgentEnvWrapper(BaseEnv):
                 )
             env = self.envs[env_id]
             try:
-                obs, rewards, dones, infos = env.step(agent_dict)
+                results = env.step(agent_dict)
             except Exception as e:
                 if self.restart_failed_sub_environments:
                     logger.exception(e.args[0])
                     self.try_restart(env_id=env_id)
-                    obs, rewards, dones, infos = e, {}, {"__all__": True}, {}
+                    results = e, {}, {"__all__": True}, {}, {}
                 else:
                     raise e
+
+            # Gym < 0.26 support.
+            if len(results) == 4:
+                obs, rewards, dones, infos = results
+                truncateds = {k: False for k in dones.keys() if k != "__all__"}
+            else:
+                obs, rewards, dones, truncateds, infos = results
 
             assert isinstance(
                 obs, (dict, Exception)
             ), "Not a multi-agent obs dict or an Exception!"
             assert isinstance(rewards, dict), "Not a multi-agent reward dict!"
             assert isinstance(dones, dict), "Not a multi-agent done dict!"
+            assert isinstance(truncateds, dict), "Not a multi-agent truncateds dict!"
             assert isinstance(infos, dict), "Not a multi-agent info dict!"
             if isinstance(obs, dict) and set(infos).difference(set(obs)):
                 raise ValueError(
@@ -593,17 +614,32 @@ class MultiAgentEnvWrapper(BaseEnv):
 
             if dones["__all__"]:
                 self.dones.add(env_id)
-            self.env_states[env_id].observe(obs, rewards, dones, infos)
+            self.env_states[env_id].observe(obs, rewards, dones, truncateds, infos)
 
     @override(BaseEnv)
-    def try_reset(self, env_id: Optional[EnvID] = None) -> Optional[MultiEnvDict]:
-        ret = {}
+    def try_reset(
+        self,
+        env_id: Optional[EnvID] = None,
+        seed: Optional[int] = None,
+    ) -> Optional[Tuple[MultiEnvDict, MultiEnvDict]]:
+        ret_obs = {}
+        ret_infos = {}
         if isinstance(env_id, int):
             env_id = [env_id]
         if env_id is None:
             env_id = list(range(len(self.envs)))
         for idx in env_id:
-            obs = self.env_states[idx].reset()
+            if seed is None:
+                obs_and_infos = self.env_states[idx].reset()
+            else:
+                obs_and_infos = self.env_states[idx].reset(seed)
+
+            # Gym < 0.26 support.
+            if not isinstance(obs_and_infos, tuple) or len(obs_and_infos) != 2:
+                obs_and_infos = (obs_and_infos, {})
+
+            obs, infos = obs_and_infos
+
             if isinstance(obs, Exception):
                 if self.restart_failed_sub_environments:
                     self.env_states[idx].env = self.envs[idx] = self.make_env(idx)
@@ -613,8 +649,9 @@ class MultiAgentEnvWrapper(BaseEnv):
                 assert isinstance(obs, dict), "Not a multi-agent obs dict!"
             if obs is not None and idx in self.dones:
                 self.dones.remove(idx)
-            ret[idx] = obs
-        return ret
+            ret_obs[idx] = obs
+            ret_infos[idx] = infos
+        return ret_obs, ret_infos
 
     @override(BaseEnv)
     def try_restart(self, env_id: Optional[EnvID] = None) -> None:
@@ -705,18 +742,27 @@ class _MultiAgentEnvState:
         self.last_obs = {}
         self.last_rewards = {}
         self.last_dones = {"__all__": False}
+        self.last_truncateds = {}
         self.last_infos = {}
 
     def poll(
         self,
-    ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
+    ) -> Tuple[
+        MultiAgentDict,
+        MultiAgentDict,
+        MultiAgentDict,
+        MultiAgentDict,
+        MultiAgentDict,
+    ]:
         if not self.initialized:
+            # TODO(sven): Should we make it possible to pass in a seed here?
             self.reset()
             self.initialized = True
 
         observations = self.last_obs
         rewards = {}
         dones = {"__all__": self.last_dones["__all__"]}
+        truncateds = {}
         infos = {}
 
         # If episode is done or we have an error, release everything we have.
@@ -727,10 +773,12 @@ class _MultiAgentEnvState:
             if isinstance(observations, Exception):
                 dones["__all__"] = True
             self.last_dones = {}
+            truncateds = self.last_truncateds
+            self.last_truncateds = {}
             self.last_obs = {}
             infos = self.last_infos
             self.last_infos = {}
-        # Only release those agents' rewards/dones/infos, whose
+        # Only release those agents' rewards/dones/truncateds/infos, whose
         # observations we have.
         else:
             for ag in observations.keys():
@@ -740,18 +788,22 @@ class _MultiAgentEnvState:
                 if ag in self.last_dones:
                     dones[ag] = self.last_dones[ag]
                     del self.last_dones[ag]
+                if ag in self.last_truncateds:
+                    truncateds[ag] = self.last_truncateds[ag]
+                    del self.last_truncateds[ag]
                 if ag in self.last_infos:
                     infos[ag] = self.last_infos[ag]
                     del self.last_infos[ag]
 
         self.last_dones["__all__"] = False
-        return observations, rewards, dones, infos
+        return observations, rewards, dones, truncateds, infos
 
     def observe(
         self,
         obs: MultiAgentDict,
         rewards: MultiAgentDict,
         dones: MultiAgentDict,
+        truncateds: MultiAgentDict,
         infos: MultiAgentDict,
     ):
         self.last_obs = obs
@@ -765,18 +817,38 @@ class _MultiAgentEnvState:
                 self.last_dones[ag] = self.last_dones[ag] or d
             else:
                 self.last_dones[ag] = d
+        for ag, t in truncateds.items():
+            if ag in self.last_truncateds:
+                self.last_truncateds[ag] = self.last_truncateds[ag] or t
+            else:
+                self.last_truncateds[ag] = t
         self.last_infos = infos
 
-    def reset(self, seed: Optional[int] = None) -> MultiAgentDict:
+    def reset(
+        self,
+        seed: Optional[int] = None,
+    ) -> Tuple[MultiAgentDict, MultiAgentDict]:
         try:
-            self.last_obs = self.env.reset()
+            # Gym < 0.26 support.
+            if seed is None:
+                obs_and_infos = self.env.reset()
+            else:
+                obs_and_infos = self.env.reset(seed)
         except Exception as e:
             if self.return_error_as_obs:
                 logger.exception(e.args[0])
-                self.last_obs = e
+                obs_and_infos = e, e
             else:
                 raise e
+
+        # Gym < 0.26 support.
+        if not isinstance(obs_and_infos, tuple) or len(obs_and_infos) != 2:
+            obs_and_infos = (obs_and_infos, {})
+
+        self.last_obs, self.last_infos = obs_and_infos
+
         self.last_rewards = {}
         self.last_dones = {"__all__": False}
+        self.last_truncateds = {}
         self.last_infos = {}
-        return self.last_obs
+        return self.last_obs, self.last_infos

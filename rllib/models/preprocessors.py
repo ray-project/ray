@@ -71,6 +71,7 @@ class Preprocessor:
                 )
             try:
                 if not self._obs_space.contains(observation):
+                    print()#TODO
                     raise ValueError(
                         "Observation ({} dtype={}) outside given space ({})!",
                         observation,

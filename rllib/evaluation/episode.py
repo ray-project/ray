@@ -109,6 +109,7 @@ class Episode:
         self._agent_to_last_obs: Dict[AgentID, EnvObsType] = {}
         self._agent_to_last_raw_obs: Dict[AgentID, EnvObsType] = {}
         self._agent_to_last_done: Dict[AgentID, bool] = {}
+        self._agent_to_last_truncated: Dict[AgentID, bool] = {}
         self._agent_to_last_info: Dict[AgentID, EnvInfoDict] = {}
         self._agent_to_last_action: Dict[AgentID, EnvActionType] = {}
         self._agent_to_last_extra_action_outs: Dict[AgentID, dict] = {}
@@ -381,6 +382,20 @@ class Episode:
         return self._agent_to_last_done[agent_id]
 
     @DeveloperAPI
+    def last_truncated_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> bool:
+        """Returns the last truncated flag for the specified AgentID.
+
+        Args:
+            agent_id: The agent's ID to get the last done flag for.
+
+        Returns:
+            Last truncated flag for the specified AgentID.
+        """
+        if agent_id not in self._agent_to_last_truncated:
+            self._agent_to_last_truncated[agent_id] = False
+        return self._agent_to_last_truncated[agent_id]
+
+    @DeveloperAPI
     def last_extra_action_outs_for(
         self,
         agent_id: AgentID = _DUMMY_AGENT_ID,
@@ -427,6 +442,9 @@ class Episode:
 
     def _set_last_done(self, agent_id, done):
         self._agent_to_last_done[agent_id] = done
+
+    def _set_last_truncated(self, agent_id, truncated):
+        self._agent_to_last_truncated[agent_id] = truncated
 
     def _set_last_info(self, agent_id, info):
         self._agent_to_last_info[agent_id] = info

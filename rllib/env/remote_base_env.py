@@ -239,11 +239,23 @@ class RemoteBaseEnv(BaseEnv):
 
     @override(BaseEnv)
     @PublicAPI
-    def try_reset(self, env_id: Optional[EnvID] = None) -> Optional[MultiEnvDict]:
+    def try_reset(
+        self,
+        env_id: Optional[EnvID] = None,
+        seed: Optional[int] = None,
+    ) -> Tuple[MultiEnvDict, MultiEnvDict]:
         actor = self.actors[env_id]
-        obj_ref = actor.reset.remote()
+        # Gym < 0.26 support.
+        if seed is None:
+            obj_ref = actor.reset.remote()
+        else:
+            obj_ref = actor.reset.remote(seed)
+
         self.pending[obj_ref] = actor
-        return ASYNC_RESET_RETURN
+        # Because this env type does not support synchronous reset requests (with
+        # immediate return value), we return ASYNC_RESET_RETURN here to indicate
+        # that the reset results will be available via the next `poll()` call.
+        return ASYNC_RESET_RETURN, ASYNC_RESET_RETURN
 
     @override(BaseEnv)
     def try_restart(self, env_id: Optional[EnvID] = None) -> None:
