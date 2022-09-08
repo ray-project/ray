@@ -35,7 +35,7 @@ class GymNew(gym.Env):
         return self.observation_space.sample(), 1.0, done, truncated, {}
 
 
-class TestOldGymEnvAPI(unittest.TestCase):
+class TestGymEnvAPIs(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init(local_mode=True)#TODO
