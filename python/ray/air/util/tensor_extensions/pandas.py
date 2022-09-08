@@ -683,7 +683,7 @@ class TensorArray(
         "var": np.var,
     }
 
-    # See https://github.com/pandas-dev/pandas/blob/master/pandas/core/arrays/base.py  # noqa
+    # See https://github.com/pandas-dev/pandas/blob/master/pandas/core/arrays/base.py
     # for interface documentation and the subclassing contract.
     def __init__(
         self,
@@ -703,14 +703,17 @@ class TensorArray(
         # Try to convert some well-known objects to ndarrays before handing off to
         # ndarray handling logic.
         if isinstance(values, ABCSeries):
-            values = values.to_numpy()
+            values = np.array(values, copy=False)
         elif isinstance(values, Sequence):
-            values = np.array([np.asarray(v) for v in values], copy=False)
+            values = np.array(
+                [
+                    np.asarray(v) if isinstance(v, TensorArrayElement) else v
+                    for v in values
+                ],
+                copy=False,
+            )
         elif isinstance(values, TensorArrayElement):
             values = np.array([np.asarray(values)], copy=False)
-        elif np.isscalar(values):
-            # `values` is a single scalar element.
-            values = np.array([values], copy=False)
 
         if isinstance(values, np.ndarray):
             if values.dtype.type is np.object_:
@@ -718,11 +721,12 @@ class TensorArray(
                     # Tensor is empty, pass through to create empty TensorArray.
                     pass
                 elif all(isinstance(v, str) for v in values):
-                    # Tensor of strings, these don't need a TensorArray representation.
+                    # 1D array of strings, these don't need a TensorArray
+                    # representation.
                     raise TypeError(
-                        "Got a tensor of strings when constructing a TensorArray, but "
-                        "a tensor of strings doesn't need to be represented using a "
-                        "TensorArray."
+                        "Got a 1D array of strings when constructing a TensorArray; "
+                        "this can be represented natively within Pandas and Arrow "
+                        "without the tensor extension."
                     )
                 elif all(
                     isinstance(v, (np.ndarray, TensorArrayElement, Sequence))
@@ -737,6 +741,12 @@ class TensorArray(
                         "ndarray pointers, but got an object-typed ndarray whose "
                         f"subndarrays are of type {type(values[0])}."
                     )
+            elif values.ndim == 1:
+                raise TypeError(
+                    "Expected a multi-dimensional ndarray but got a 1-dimensional "
+                    "ndarray; this can be represented natively within Pandas and Arrow "
+                    "without the tensor extension."
+                )
         elif isinstance(values, TensorArray):
             raise TypeError("Use the copy() method to create a copy of a TensorArray.")
         else:
@@ -1406,3 +1416,21 @@ def _is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
         if a.shape != shape:
             return True
     return True
+
+
+def column_needs_tensor_extension(s: pd.Series) -> bool:
+    """Return whether the provided pandas Series column needs a tensor extension
+    representation. This tensor extension representation provides more efficient slicing
+    and interop with ML frameworks.
+
+    Args:
+        s: The pandas Series column that may need to be represented using the tensor
+            extension.
+
+    Returns:
+        Whether the provided Series needs a tensor extension representation.
+    """
+    # NOTE: This is an O(1) check.
+    return (
+        s.dtype.type is np.object_ and not s.empty and isinstance(s.iloc[0], np.ndarray)
+    )
