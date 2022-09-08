@@ -9,6 +9,8 @@ import numpy as np
 
 
 # TF/Keras-specific
+import horovod.keras as hvd
+
 from ray.air.callbacks.keras import Callback as KerasCallback
 import tensorflow as tf
 
@@ -49,14 +51,19 @@ def keras_train_loop(config):
     batch_size = config["batch_size"]
     num_features = config["num_features"]
 
+    hvd.init()
+
     dataset = session.get_dataset_shard("train")
 
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
     with strategy.scope():
         # Model building/compiling need to be within `strategy.scope()`.
+        optimizer = tf.keras.optimizers.SGD(learning_rate=lr * hvd.size())
+        optimizer = hvd.DistributedOptimizer(optimizer)
+
         multi_worker_model = create_keras_model(num_features)
         multi_worker_model.compile(
-            optimizer=tf.keras.optimizers.SGD(learning_rate=lr),
+            optimizer=optimizer,
             loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
             metrics=[
                 tf.keras.metrics.BinaryCrossentropy(
@@ -71,13 +78,17 @@ def keras_train_loop(config):
         )
         multi_worker_model.fit(
             tf_dataset,
-            callbacks=[KerasCallback()],
+            callbacks=[
+                hvd.callbacks.BroadcastGlobalVariablesCallback(0),
+                KerasCallback(),
+            ],
             verbose=0,
         )
 
 
-def tune_horovod(num_workers, num_samples, use_gpu):
-    dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
+def tune_horovod_keras(num_workers, num_samples, use_gpu):
+    # dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
+    dataset = ray.data.read_csv("/tmp/breast_cancer.csv")
     num_features = len(dataset.schema().names) - 1
 
     preprocessor = Chain(
@@ -112,4 +123,4 @@ def tune_horovod(num_workers, num_samples, use_gpu):
 
 if __name__ == "__main__":
     ray.init(num_cpus=16)
-    tune_horovod(num_workers=2, num_samples=4, use_gpu=False)
+    tune_horovod_keras(num_workers=2, num_samples=4, use_gpu=False)
