@@ -306,11 +306,17 @@ def run(
 
     if is_config:
         client = _private_api.serve_start(
-            detached=True, http_options={"host": config.host, "port": config.port}
+            detached=True,
+            http_options={
+                "host": config.host,
+                "port": config.port,
+                "location": "EveryNode",
+            },
         )
     else:
         client = _private_api.serve_start(
-            detached=True, http_options={"host": host, "port": port}
+            detached=True,
+            http_options={"host": host, "port": port, "location": "EveryNode"},
         )
 
     try:
