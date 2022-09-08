@@ -42,6 +42,15 @@ class _AbstractKBinsDiscretizer(Preprocessor):
 
         return df.apply(bin_values, axis=0)
 
+    def _validate_bins_columns(self):
+        if isinstance(self.bins, dict) and not all(
+            col in self.bins for col in self.columns
+        ):
+            raise ValueError(
+                "If `bins` is a dictionary, all elements of `columns` must be present "
+                "in it."
+            )
+
     def __repr__(self):
         attr_str = ", ".join(
             [
@@ -146,6 +155,10 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         self.dtypes = dtypes
 
     _is_fittable = False
+
+    def _transform(self, dataset: Dataset) -> Dataset:
+        self._validate_bins_columns()
+        return super()._transform(dataset)
 
 
 class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
@@ -271,13 +284,7 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         return self
 
     def _validate_on_fit(self):
-        if isinstance(self.bins, dict) and not all(
-            col in self.bins for col in self.columns
-        ):
-            raise ValueError(
-                "If `bins` is a dictionary, all elements of `columns` must be present "
-                "in it."
-            )
+        self._validate_bins_columns()
 
     def _fit_uniform_covert_bin_to_aggregate_if_needed(self, column: str):
         bins = self.bins[column] if isinstance(self.bins, dict) else self.bins
