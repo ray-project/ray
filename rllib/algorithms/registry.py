@@ -1,6 +1,7 @@
 """Registry of algorithm names for `rllib train --run=<alg_name>`"""
 
 import importlib
+import re
 import traceback
 
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
@@ -351,15 +352,35 @@ POLICIES = {
 
 
 def get_policy_class_name(policy_class: type):
-    name = policy_class.__name__
-    if name.endswith("_traced"):
-        name = name[:-7]
+    """Returns a string name for the provided policy class.
+
+    Args:
+        policy_class: RLlib policy class, e.g. A3CTorchPolicy, DQNTFPolicy, etc.
+
+    Returns:
+        A string name uniquely mapped to the given policy class.
+    """
+    # TF2 policy classes may get automatically converted into new class types
+    # that have eager tracing capability.
+    # These policy classes have the "_traced" postfix in their names.
+    # When checkpointing these policy classes, we should save the name of the
+    # original policy class instead. So that users have the choice of turning
+    # on eager tracing during inference time.
+    name = re.sub("_traced$", "", policy_class.__name__)
     if name in POLICIES:
         return name
     return None
 
 
 def get_policy_class(name: str):
+    """Return an actual policy class given the string name.
+
+    Args:
+        name: string name of the policy class.
+
+    Returns:
+        Actual policy class for the given name.
+    """
     if name not in POLICIES:
         return None
 

@@ -139,6 +139,10 @@ def load_policies_from_checkpoint(
             continue
 
         merged_config = merge_dicts(policy_config, policy_spec.config or {})
+        # Similar to PolicyMap.create_policy(), we need to wrap a TF2 policy
+        # automatically into an eager traced policy class if necessary.
+        # Basically, PolicyMap handles this step automatically for training,
+        # and we handle it automatically here for inference use cases.
         policy_class = get_tf_eager_cls_if_necessary(
             policy_spec.policy_class, merged_config
         )
