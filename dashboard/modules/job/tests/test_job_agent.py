@@ -322,10 +322,11 @@ async def test_tail_job_logs_with_echo(job_sdk_client):
     client = job_sdk_client
 
     runtime_env = RuntimeEnv().to_dict()
+    entrypoint = "python -c \"import time; [(print('Hello', i), time.sleep(0.1)) for i in range(100)]\""  # noqa: E501
     request = validate_request_type(
         {
             "runtime_env": runtime_env,
-            "entrypoint": "for i in {0..99}; do echo Hello $i && sleep 0.1; done",
+            "entrypoint": entrypoint,
         },
         JobSubmitRequest,
     )
