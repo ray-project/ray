@@ -15,7 +15,6 @@ trial_executor = None
 class _TestCallback(Callback):
     def on_step_end(self, iteration, trials, **info):
         num_running = len([t for t in trials if t.status == Trial.RUNNING])
-        num_error = len([t for t in trials if t.status == Trial.ERROR])
 
         # All 3 trials (3 different learning rates) should be scheduled.
         assert 3 == min(3, len(trials))
