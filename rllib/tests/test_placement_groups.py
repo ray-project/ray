@@ -14,30 +14,16 @@ trial_executor = None
 
 class _TestCallback(Callback):
     def on_step_end(self, iteration, trials, **info):
-        num_finished = len(
-            [
-                t
-                for t in trials
-                if t.status == Trial.TERMINATED or t.status == Trial.ERROR
-            ]
-        )
         num_running = len([t for t in trials if t.status == Trial.RUNNING])
-
-        num_staging = sum(len(s) for s in trial_executor._pg_manager._staging.values())
-        num_ready = sum(len(s) for s in trial_executor._pg_manager._ready.values())
-        num_in_use = len(trial_executor._pg_manager._in_use_pgs)
-        num_cached = len(trial_executor._pg_manager._cached_pgs)
-
-        total_num_tracked = num_staging + num_ready + num_in_use + num_cached
+        num_error = len([t for t in trials if t.status == Trial.ERROR])
 
         # All 3 trials (3 different learning rates) should be scheduled.
         assert 3 == min(3, len(trials))
         # Cannot run more than 2 at a time
         # (due to different resource restrictions in the test cases).
         assert num_running <= 2
-        # The number of placement groups should decrease
-        # when trials finish.
-        assert max(3, len(trials)) - num_finished == total_num_tracked
+        # No errors.
+        assert num_error == 2
 
 
 class TestPlacementGroups(unittest.TestCase):
