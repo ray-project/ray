@@ -128,7 +128,10 @@ class SampleBatch(dict):
             and not (tf and tf.is_tensor(seq_lens_))
             and len(seq_lens_) > 0
         ):
-            self.max_seq_len = max(seq_lens_)
+            if torch and torch.is_tensor(seq_lens_):
+                self.max_seq_len = seq_lens_.max().item()
+            else:
+                self.max_seq_len = max(seq_lens_)
 
         if self._is_training is None:
             self._is_training = self.pop("is_training", False)
@@ -160,7 +163,10 @@ class SampleBatch(dict):
             and not (tf and tf.is_tensor(self[SampleBatch.SEQ_LENS]))
             and len(self[SampleBatch.SEQ_LENS]) > 0
         ):
-            self.count = sum(self[SampleBatch.SEQ_LENS])
+            if torch and torch.is_tensor(self[SampleBatch.SEQ_LENS]):
+                self.count = self[SampleBatch.SEQ_LENS].sum().item()
+            else:
+                self.count = sum(self[SampleBatch.SEQ_LENS])
         else:
             self.count = lengths[0] if lengths else 0
 
