@@ -3,7 +3,7 @@
 Tasks
 =====
 
-Ray enables arbitrary functions to be executed asynchronously on separate Python workers. These asynchronous Ray functions are called **Ray tasks** or **Ray remote functions**. Here is an example.
+Ray enables arbitrary functions to be executed asynchronously on separate Python workers. Such functions are called **Ray remote functions** and their asynchronous invocations are called **Ray tasks**. Here is an example.
 
 .. tabbed:: Python
 
@@ -37,7 +37,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
         }
       }
 
-      // Invocations of Ray tasks happen in parallel.
+      // Ray tasks are executed in parallel.
       // All computation is performed in the background, driven by Ray's internal event loop.
       for(int i = 0; i < 4; i++) {
         // This doesn't block.
@@ -69,7 +69,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
       }
       RAY_REMOTE(SlowFunction);
 
-      // Invocations of Ray tasks happen in parallel.
+      // Ray tasks are executed in parallel.
       // All computation is performed in the background, driven by Ray's internal event loop.
       for(int i = 0; i < 4; i++) {
         // This doesn't block.
@@ -81,7 +81,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
 Passing object refs to Ray tasks 
 ---------------------------------------
 
-In addition to values, `Object refs <objects.html>`__ can also be passed into remote functions. When the function actually gets executed, **the argument will be automatically dereferenced as the underlying value**. For example, take this function:
+In addition to values, `Object refs <objects.html>`__ can also be passed into remote functions. When the task gets executed, inside the function body **the argument will be the underlying value**. For example, take this function:
 
 .. tabbed:: Python
 
@@ -167,6 +167,7 @@ By default, a Ray task only returns a single Object Ref. However, you can config
 For tasks that return multiple objects, Ray also supports remote generators that allow a task to return one object at a time to reduce memory usage at the worker. See the :ref:`user guide <generators>` for more details on use cases.
 
 .. tabbed:: Python
+
     .. code-block:: python
 
       @ray.remote(num_returns=3)
@@ -182,7 +183,7 @@ For tasks that return multiple objects, Ray also supports remote generators that
 Cancelling tasks
 ----------------
 
-Remote functions can be canceled by calling ``ray.cancel`` (:ref:`docstring <ray-cancel-ref>`) on the returned Object ref.
+Ray tasks can be canceled by calling ``ray.cancel`` (:ref:`docstring <ray-cancel-ref>`) on the returned Object ref.
 
 .. tabbed:: Python
 
