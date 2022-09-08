@@ -10,7 +10,11 @@ from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
 from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_mixins import TargetNetworkMixin, compute_gradients
+from ray.rllib.policy.tf_mixins import (
+    TargetNetworkMixin,
+    compute_gradients,
+    LearningRateSchedule,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import huber_loss
@@ -39,7 +43,7 @@ def get_simple_q_tf_policy(
         A TF Policy to be used with MAMLTrainer.
     """
 
-    class SimpleQTFPolicy(TargetNetworkMixin, base):
+    class SimpleQTFPolicy(LearningRateSchedule, TargetNetworkMixin, base):
         def __init__(
             self,
             obs_space,
@@ -65,6 +69,8 @@ def get_simple_q_tf_policy(
                 existing_inputs=existing_inputs,
                 existing_model=existing_model,
             )
+
+            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.
@@ -184,7 +190,10 @@ def get_simple_q_tf_policy(
 
         @override(base)
         def extra_learn_fetches_fn(self) -> Dict[str, TensorType]:
-            return {"td_error": self.td_error}
+            return {
+                "td_error": self.td_error,
+                "learner_stats": {"learning_rate": self.cur_lr},
+            }
 
         def _compute_q_values(
             self, model: ModelV2, obs_batch: TensorType, is_training=None

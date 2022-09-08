@@ -21,6 +21,7 @@ from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.tf_mixins import LearningRateSchedule
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
 
@@ -41,6 +42,7 @@ def get_pg_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     """
 
     class PGTFPolicy(
+        LearningRateSchedule,
         base,
     ):
         def __init__(
@@ -65,6 +67,8 @@ def get_pg_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                 existing_inputs=existing_inputs,
                 existing_model=existing_model,
             )
+
+            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.
@@ -138,6 +142,7 @@ def get_pg_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
 
             return {
                 "policy_loss": self.policy_loss,
+                "cur_lr": self.cur_lr,
             }
 
     PGTFPolicy.__name__ = name
