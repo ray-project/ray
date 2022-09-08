@@ -1,5 +1,6 @@
 import ray
 
+
 # By default, a Ray task only returns a single Object Ref.
 @ray.remote
 def return_single():
