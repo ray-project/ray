@@ -21,7 +21,7 @@ from ray.air._internal.remote_storage import (
     read_file_from_uri,
     upload_to_uri,
 )
-from ray.air.constants import CHECKPOINT_TYPE_KEY, PREPROCESSOR_KEY
+from ray.air.constants import PREPROCESSOR_KEY
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
