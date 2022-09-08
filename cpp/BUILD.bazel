@@ -316,11 +316,11 @@ cc_binary(
     ],
 )
 
-cc_test(
+cc_binary(
     name = "simple_job",
-    srcs = glob([
+    srcs = [
         "src/ray/test/examples/simple_job.cc",
-    ]),
+    ],
     copts = COPTS,
     data = [
         "simple_job.so",
@@ -328,16 +328,15 @@ cc_test(
     linkstatic = True,
     tags = ["team:core"],
     deps = [
-        "ray_api",
+        ":ray_api",
     ],
 )
 
 cc_binary(
     name = "simple_job.so",
-    testonly = True,
-    srcs = glob([
+    srcs = [
         "src/ray/test/examples/simple_job.cc",
-    ]),
+    ],
     copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
