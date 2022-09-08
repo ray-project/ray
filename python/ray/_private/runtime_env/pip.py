@@ -177,7 +177,7 @@ class PipProcessor:
                     "-c",
                     """
 import ray
-with open("{ray_version_path}", "wt") as f:
+with open(r"{ray_version_path}", "wt") as f:
     f.write(ray.__version__)
     f.write(" ")
     f.write(ray.__path__[0])
