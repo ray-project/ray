@@ -297,6 +297,7 @@ if setup_spec.type == SetupType.RAY:
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
+        "packaging; python_version >= '3.10'",
         "protobuf >= 3.15.3, < 4.0.0",
         "pyyaml",
         "aiosignal",
