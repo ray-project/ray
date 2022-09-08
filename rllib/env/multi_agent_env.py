@@ -492,17 +492,31 @@ def make_multi_agent(
         @override(MultiAgentEnv)
         def reset(self, seed: Optional[int] = None):
             self.dones = set()
-            return {i: a.reset() for i, a in enumerate(self.agents)}
+            obs, infos = {}, {}
+            for i, a in enumerate(self.agents):
+                results = a.reset()
+                if not isinstance(results, tuple) or len(results) != 2:
+                    obs[i] = results
+                    infos[i] = {}
+                else:
+                    obs[i], infos[i] = results
+            return obs, infos
 
         @override(MultiAgentEnv)
         def step(self, action_dict):
-            obs, rew, done, info = {}, {}, {}, {}
+            obs, rew, done, truncated, info = {}, {}, {}, {}, {}
             for i, action in action_dict.items():
-                obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
+                results = self.agents[i].step(action)
+                # Gym < 0.26 support.
+                if len(results) == 4:
+                    obs[i], rew[i], done[i], info[i] = results
+                    truncated[i] = False
+                else:
+                    obs[i], rew[i], done[i], truncated[i], info[i] = results
                 if done[i]:
                     self.dones.add(i)
             done["__all__"] = len(self.dones) == len(self.agents)
-            return obs, rew, done, info
+            return obs, rew, done, truncated, info
 
         @override(MultiAgentEnv)
         def render(self, mode=None):

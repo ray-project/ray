@@ -168,7 +168,12 @@ def check_gym_environments(env: gym.Env) -> None:
     sampled_observation = env.observation_space.sample()
     # check if observation generated from stepping the environment is
     # contained within the observation space
-    reset_obs = env.reset()
+    obs_and_infos = env.reset()
+    # Gym < 0.26 support.
+    if not isinstance(obs_and_infos, tuple) or len(obs_and_infos) != 2:
+        obs_and_infos = (obs_and_infos, {})
+    reset_obs, reset_infos = obs_and_infos
+
     if not env.observation_space.contains(reset_obs):
         reset_obs_type = get_type(reset_obs)
         space_type = env.observation_space.dtype
@@ -224,7 +229,7 @@ def check_gym_environments(env: gym.Env) -> None:
         if not env.observation_space.contains(temp_sampled_next_obs):
             raise ValueError(error)
     _check_done(done)
-    _check_done(truncated)
+    _check_done(truncated, is_truncateds=True)
     _check_reward(reward)
     _check_info(info)
 
@@ -256,7 +261,12 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
             )
         return
 
-    reset_obs = env.reset()
+    obs_and_infos = env.reset()
+    if not isinstance(obs_and_infos, tuple) or len(obs_and_infos) != 2:
+        obs_and_infos = (obs_and_infos, {k: {} for k in obs_and_infos.keys()})
+
+    reset_obs, reset_infos = obs_and_infos
+
     sampled_obs = env.observation_space_sample()
     _check_if_element_multi_agent_dict(env, reset_obs, "reset()")
     _check_if_element_multi_agent_dict(
@@ -300,15 +310,29 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         )
         raise ValueError(error)
 
-    next_obs, reward, done, info = env.step(sampled_action)
+    results = env.step(sampled_action)
+    # Gym < 0.26 support.
+    if len(results) == 4:
+        next_obs, reward, done, info = results
+        truncated = {k: False for k in done.keys() if k != "__all__"}
+    else:
+        next_obs, reward, done, truncated, info = results
+
     _check_if_element_multi_agent_dict(env, next_obs, "step, next_obs")
     _check_if_element_multi_agent_dict(env, reward, "step, reward")
     _check_if_element_multi_agent_dict(env, done, "step, done")
+    _check_if_element_multi_agent_dict(env, truncated, "step, truncated")
     _check_if_element_multi_agent_dict(env, info, "step, info")
     _check_reward(
         {"dummy_env_id": reward}, base_env=True, agent_ids=env.get_agent_ids()
     )
     _check_done({"dummy_env_id": done}, base_env=True, agent_ids=env.get_agent_ids())
+    _check_done(
+        {"dummy_env_id": truncated},
+        base_env=True,
+        agent_ids=env.get_agent_ids(),
+        is_truncateds=True,
+    )
     _check_info({"dummy_env_id": info}, base_env=True, agent_ids=env.get_agent_ids())
     if not env.observation_space_contains(next_obs):
         error = (
@@ -331,7 +355,13 @@ def check_base_env(env: "BaseEnv") -> None:
     if not isinstance(env, BaseEnv):
         raise ValueError("The passed env is not a BaseEnv.")
 
-    reset_obs = env.try_reset()
+    obs_and_infos = env.try_reset()
+
+    # Gym < 0.26 support.
+    if not isinstance(obs_and_infos, tuple) or len(obs_and_infos) != 2:
+        obs_and_infos = (obs_and_infos, {k: {} for k in obs_and_infos.keys()})
+    reset_obs, reset_infos = obs_and_infos
+
     sampled_obs = env.observation_space_sample()
     _check_if_multi_env_dict(env, reset_obs, "try_reset")
     _check_if_multi_env_dict(env, sampled_obs, "observation_space_sample()")
@@ -373,10 +403,11 @@ def check_base_env(env: "BaseEnv") -> None:
 
     env.send_actions(sampled_action)
 
-    next_obs, reward, done, info, _ = env.poll()
+    next_obs, reward, done, truncated, info, _ = env.poll()
     _check_if_multi_env_dict(env, next_obs, "step, next_obs")
     _check_if_multi_env_dict(env, reward, "step, reward")
     _check_if_multi_env_dict(env, done, "step, done")
+    _check_if_multi_env_dict(env, truncated, "step, truncated")
     _check_if_multi_env_dict(env, info, "step, info")
 
     if not env.observation_space_contains(next_obs):
@@ -388,6 +419,12 @@ def check_base_env(env: "BaseEnv") -> None:
 
     _check_reward(reward, base_env=True, agent_ids=env.get_agent_ids())
     _check_done(done, base_env=True, agent_ids=env.get_agent_ids())
+    _check_done(
+        truncated,
+        base_env=True,
+        agent_ids=env.get_agent_ids(),
+        is_truncateds=True,
+    )
     _check_info(info, base_env=True, agent_ids=env.get_agent_ids())
 
 
@@ -431,26 +468,27 @@ def _check_reward(reward, base_env=False, agent_ids=None):
         raise ValueError(error)
 
 
-def _check_done(done, base_env=False, agent_ids=None):
+def _check_done(done, base_env=False, agent_ids=None, is_truncateds=False):
+    field = "truncated" if is_truncateds else "done"
     if base_env:
         for _, multi_agent_dict in done.items():
             for agent_id, done_ in multi_agent_dict.items():
                 if not isinstance(done_, (bool, np.bool, np.bool_)):
                     raise ValueError(
-                        "Your step function must return dones that are boolean. But "
-                        f"instead was a {type(done)}"
+                        f"Your step function must return `{field}s` that are boolean. "
+                        f"But instead was a {type(done)}"
                     )
                 if not (agent_id in agent_ids or agent_id == "__all__"):
                     error = (
-                        f"Your dones dictionary must have agent ids that belong to "
-                        f"the environment. Agent_ids recieved from "
+                        f"Your `{field}s` dictionary must have agent ids that belong "
+                        f"to the environment. Agent_ids recieved from "
                         f"env.get_agent_ids() are: {agent_ids}"
                     )
                     raise ValueError(error)
     elif not isinstance(done, (bool, np.bool_)):
         error = (
-            "Your step function must return a done that is a boolean. But instead "
-            f"was a {type(done)}"
+            f"Your step function must return a `{field}` that is a boolean. But "
+            f"instead was a {type(done)}"
         )
         raise ValueError(error)
 
