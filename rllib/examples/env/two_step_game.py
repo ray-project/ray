@@ -40,7 +40,7 @@ class TwoStepGame(MultiAgentEnv):
         if seed:
             np.random.seed(seed)
 
-    def reset(self, seed: Optional[int] = None):
+    def reset(self):
         self.state = np.array([1, 0, 0])
         return self._obs()
 
@@ -117,7 +117,7 @@ class TwoStepGameWithGroupedAgents(MultiAgentEnv):
         self._agent_ids = {"agents"}
         self._skip_env_checking = True
 
-    def reset(self, seed: Optional[int] = None):
+    def reset(self):
         return self.env.reset()
 
     def step(self, actions):

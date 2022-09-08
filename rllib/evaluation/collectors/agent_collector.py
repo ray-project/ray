@@ -79,7 +79,8 @@ class AgentCollector:
         # episode starts. This is used for 0-buffering of e.g. prev-actions,
         # or internal state inputs.
         view_req_shifts = [
-            min(vr.shift_arr) - int((vr.data_col or k) == SampleBatch.OBS)
+            min(vr.shift_arr)
+            - int((vr.data_col or k) in [SampleBatch.OBS, SampleBatch.INFOS])
             for k, vr in view_reqs.items()
         ]
         self.shift_before = -min(view_req_shifts)
@@ -127,6 +128,7 @@ class AgentCollector:
         env_id: EnvID,
         t: int,
         init_obs: TensorType,
+        init_infos: Dict[str, TensorType],
     ) -> None:
         """Adds an initial observation (after reset) to the Agent's trajectory.
 
@@ -138,8 +140,8 @@ class AgentCollector:
             env_id: The environment index (in a vectorized setup).
             t: The time step (episode length - 1). The initial obs has
                 ts=-1(!), then an action/reward/next-obs at t=0, etc..
-            init_obs: The initial observation tensor (after
-            `env.reset()`).
+            init_obs: The initial observation tensor (after `env.reset()`).
+            init_infos: The initial infos dict (after `env.reset()`).
         """
         # Store episode ID + unroll ID, which will be constant throughout this
         # AgentCollector's lifecycle.
@@ -152,6 +154,7 @@ class AgentCollector:
             self._build_buffers(
                 single_row={
                     SampleBatch.OBS: init_obs,
+                    SampleBatch.INFOS: init_infos,
                     SampleBatch.AGENT_INDEX: agent_index,
                     SampleBatch.ENV_ID: env_id,
                     SampleBatch.T: t,
@@ -164,6 +167,7 @@ class AgentCollector:
         flattened = tree.flatten(init_obs)
         for i, sub_obs in enumerate(flattened):
             self.buffers[SampleBatch.OBS][i].append(sub_obs)
+        self.buffers[SampleBatch.INFOS][i].append(init_infos)
         self.buffers[SampleBatch.AGENT_INDEX][0].append(agent_index)
         self.buffers[SampleBatch.ENV_ID][0].append(env_id)
         self.buffers[SampleBatch.T][0].append(t)
@@ -327,9 +331,9 @@ class AgentCollector:
                 if not is_state:
                     continue
 
-            # OBS are already shifted by -1 (the initial obs starts one ts
-            # before all other data columns).
-            obs_shift = -1 if data_col == SampleBatch.OBS else 0
+            # OBS and INFOS are already shifted by -1 (the initial obs/info starts one
+            # ts before all other data columns).
+            obs_shift = -1 if data_col in [SampleBatch.OBS, SampleBatch.INFOS] else 0
 
             # Keep an np-array cache so we don't have to regenerate the
             # np-array for different view_cols using to the same data_col.
@@ -438,6 +442,7 @@ class AgentCollector:
                 if col
                 in [
                     SampleBatch.OBS,
+                    SampleBatch.INFOS,
                     SampleBatch.EPS_ID,
                     SampleBatch.AGENT_INDEX,
                     SampleBatch.ENV_ID,

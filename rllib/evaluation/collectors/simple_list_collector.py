@@ -222,6 +222,7 @@ class SimpleListCollector(SampleCollector):
         policy_id: PolicyID,
         t: int,
         init_obs: TensorType,
+        init_infos: Dict[str, TensorType],
     ) -> None:
         # Make sure our mappings are up to date.
         agent_key = (episode.episode_id, agent_id)
@@ -253,6 +254,7 @@ class SimpleListCollector(SampleCollector):
             env_id=env_id,
             t=t,
             init_obs=init_obs,
+            init_infos=init_infos,
         )
 
         self.episodes[episode.episode_id] = episode
@@ -338,6 +340,7 @@ class SimpleListCollector(SampleCollector):
                 if data_col
                 in [
                     SampleBatch.OBS,
+                    SampleBatch.INFOS,
                     SampleBatch.ENV_ID,
                     SampleBatch.EPS_ID,
                     SampleBatch.AGENT_INDEX,

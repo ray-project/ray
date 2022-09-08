@@ -403,7 +403,7 @@ class EnvRunnerV2:
                 unfiltered_obs,
                 rewards,
                 dones,
-                truncateds,  # TODO(sven): Add to SampleBatch.
+                truncateds,
                 infos,
                 off_policy_actions,
             ) = self._base_env.poll()
@@ -417,6 +417,7 @@ class EnvRunnerV2:
                 unfiltered_obs=unfiltered_obs,
                 rewards=rewards,
                 dones=dones,
+                truncateds=truncateds,
                 infos=infos,
             )
             self._perf_stats.incr("raw_obs_processing_time", time.time() - t1)
@@ -476,6 +477,7 @@ class EnvRunnerV2:
         unfiltered_obs: MultiEnvDict,
         rewards: MultiEnvDict,
         dones: MultiEnvDict,
+        truncateds: MultiEnvDict,
         infos: MultiEnvDict,
     ) -> Tuple[
         Dict[PolicyID, List[_PolicyEvalData]],
@@ -486,10 +488,13 @@ class EnvRunnerV2:
         Group data for active agents by policy. Reset environments that are done.
 
         Args:
-            unfiltered_obs: obs
-            rewards: rewards
-            dones: dones
-            infos: infos
+            unfiltered_obs: The unfiltered, raw observations from the BaseEnv
+                (vectorized, possibly multi-agent). Dict of dict: By env index,
+                then agent ID, then mapped to actual obs.
+            rewards: The rewards MultiEnvDict of the BaseEnv.
+            dones: The dones flags MultiEnvDict of the BaseEnv.
+            truncateds: The truncateds flags MultiEnvDict of the BaseEnv.
+            infos: The MultiEnvDict of infos dicts of the BaseEnv.
 
         Returns:
             A tuple of:
@@ -551,6 +556,7 @@ class EnvRunnerV2:
 
                 agent_done = bool(all_agents_done or dones[env_id].get(agent_id))
                 agent_dones[agent_id] = agent_done
+                agent_truncated = truncateds[env_id].get(agent_id, False)
 
                 # A completely new agent is already done -> Skip entirely.
                 if not episode.has_init_obs(agent_id) and agent_done:
@@ -572,6 +578,9 @@ class EnvRunnerV2:
                         )
                         else agent_done
                     ),
+                    # Was the episode truncated artificially
+                    # (e.g. b/c of some time limit)?
+                    SampleBatch.TRUNCATEDS: agent_truncated,
                     SampleBatch.INFOS: infos[env_id].get(agent_id, {}),
                     SampleBatch.NEXT_OBS: obs,
                 }
@@ -601,8 +610,11 @@ class EnvRunnerV2:
                         SampleBatch.T: episode.length - 1,
                         SampleBatch.ENV_ID: env_id,
                         SampleBatch.AGENT_INDEX: episode.agent_index(agent_id),
-                        SampleBatch.REWARDS: 0.0,
+                        # TODO(sven): These should be the summed-up(!) rewards since the
+                        #  last observation received for this agent.
+                        SampleBatch.REWARDS: rewards[env_id].get(agent_id, 0.0),
                         SampleBatch.DONES: True,
+                        SampleBatch.TRUNCATEDS: truncateds[env_id].get(agent_id, False),
                         SampleBatch.INFOS: {},
                         SampleBatch.NEXT_OBS: tree.map_structure(
                             np.zeros_like, obs_space.sample()
@@ -635,6 +647,7 @@ class EnvRunnerV2:
                         d.agent_id,
                         d.data.for_training[SampleBatch.T],
                         d.data.for_training[SampleBatch.NEXT_OBS],
+                        d.data.for_training[SampleBatch.INFOS],
                     )
                 else:
                     episode.add_action_reward_done_next_obs(
@@ -774,16 +787,23 @@ class EnvRunnerV2:
             # Basically carry RNN and other buffered state to the
             # next episode from the same env.
         else:
-            # TODO(jungong) : This will allow a single faulty env to
-            # take out the entire RolloutWorker indefinitely. Revisit.
+            # The sub environment at index `env_id` might throw an exception
+            # during the following `try_reset()` attempt. If configured with
+            # `restart_failed_sub_environments=True`, the BaseEnv will restart
+            # the affected sub environment (create a new one using its c'tor) and
+            # must reset the recreated sub env right after that.
+            # Should the sub environment fail indefinitely during these
+            # repeated reset attempts, the entire worker will be blocked.
+            # This would be ok, b/c the alternative would be the worker crashing
+            # entirely.
             while True:
-                resetted_obs: Dict[
-                    EnvID, Dict[AgentID, EnvObsType]
-                ] = self._base_env.try_reset(env_id)
-                if resetted_obs is None or not isinstance(resetted_obs, Exception):
+                resetted_obs, resetted_infos = self._base_env.try_reset(env_id)
+                if resetted_obs[env_id] is None or not isinstance(
+                    resetted_obs[env_id], Exception
+                ):
                     break
                 else:
-                    # Report a faulty episode.
+                    # Failed to reset, add metrics about a faulty episode.
                     outputs.append(RolloutMetrics(episode_faulty=True))
             # Reset connector state if this is a hard reset.
             for p in self._worker.policy_map.cache.values():

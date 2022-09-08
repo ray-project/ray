@@ -165,6 +165,7 @@ class EpisodeV2:
         agent_id: AgentID,
         t: int,
         init_obs: TensorType,
+        init_infos: Dict[str, TensorType],
     ) -> None:
         """Add initial env obs at the start of a new episode
 
@@ -172,6 +173,7 @@ class EpisodeV2:
             agent_id: Agent ID.
             t: timestamp.
             init_obs: Initial observations.
+            init_infos: Initial infos dicts.
         """
         policy = self.policy_map[self.policy_for(agent_id)]
 
@@ -191,6 +193,7 @@ class EpisodeV2:
             env_id=self.env_id,
             t=t,
             init_obs=init_obs,
+            init_infos=init_infos,
         )
 
         self._has_init_obs[agent_id] = True

@@ -70,7 +70,7 @@ class NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv(TaskSettableEnv):
         self.observation_space = gym.spaces.Box(0, 1, shape=(2,))
         self.task = 1
 
-    def reset(self, seed: Optional[int] = None):
+    def reset(self):
         self.steps = 0
         return self.observation_space.sample()
 

@@ -178,7 +178,7 @@ class MultiAgentEnv(gym.Env):
                 self._check_if_space_maps_agent_id_to_sub_space()
             )
         if self._spaces_in_preferred_format:
-            return all([self.action_space[agent].contains(x[agent]) for agent in x])
+            return all(self.action_space[agent].contains(x[agent]) for agent in x)
 
         if log_once("action_space_contains"):
             logger.warning("action_space_contains() has not been implemented")

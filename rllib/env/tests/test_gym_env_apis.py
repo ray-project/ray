@@ -38,26 +38,30 @@ class GymNew(gym.Env):
 class TestGymEnvAPIs(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)#TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_reset_wo_seed_and_step_returning_4_tuple(self):
-        algo = PPOConfig().\
-            environment(env=GymOld).\
-            rollouts(num_envs_per_worker=2, num_rollout_workers=2).\
-            build()
-        algo.train()
+        algo = (
+            PPOConfig()
+            .environment(env=GymOld)
+            .rollouts(num_envs_per_worker=2, num_rollout_workers=2)
+            .build()
+        )
+        print(algo.train())
         algo.stop()
 
     def test_new_api(self):
-        algo = PPOConfig().\
-            environment(env=GymNew).\
-            rollouts(num_envs_per_worker=2, num_rollout_workers=2).\
-            build()
-        algo.train()
+        algo = (
+            PPOConfig()
+            .environment(env=GymNew)
+            .rollouts(num_envs_per_worker=2, num_rollout_workers=2)
+            .build()
+        )
+        print(algo.train())
         algo.stop()
 
 

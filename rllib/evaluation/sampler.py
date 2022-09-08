@@ -670,7 +670,14 @@ def _env_runner(
         t0 = time.time()
         # Get observations from all ready agents.
         # types: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
-        unfiltered_obs, rewards, dones, truncateds, infos, off_policy_actions = base_env.poll()
+        (
+            unfiltered_obs,
+            rewards,
+            dones,
+            truncateds,
+            infos,
+            off_policy_actions,
+        ) = base_env.poll()
         env_poll_time = time.time() - t0
 
         if log_once("env_returns"):
@@ -803,7 +810,7 @@ def _process_observations(
             rewards tensor, returned by a `BaseEnv.poll()` call.
         dones: Doubly keyed dict of env-ids -> agent ids ->
             boolean done flags, returned by a `BaseEnv.poll()` call.
-        dones: Doubly keyed dict of env-ids -> agent ids ->
+        truncateds: Doubly keyed dict of env-ids -> agent ids ->
             boolean truncated flags, returned by a `BaseEnv.poll()` call.
         infos: Doubly keyed dict of env-ids -> agent ids ->
             info dicts, returned by a `BaseEnv.poll()` call.
@@ -924,7 +931,7 @@ def _process_observations(
 
             last_observation: EnvObsType = episode.last_observation_for(agent_id)
             agent_done = bool(all_agents_done or dones[env_id].get(agent_id))
-            agent_truncated = truncateds[env_id].get(agent_id)
+            agent_truncated = truncateds[env_id].get(agent_id, False)
 
             # A new agent (initial obs) is already done -> Skip entirely.
             if last_observation is None and agent_done:
@@ -981,7 +988,7 @@ def _process_observations(
                     ),
                     # Was the episode truncated artificially
                     # (e.g. b/c of some time limit)?
-                    SampleBatch.TRUNCATEDS: truncateds,
+                    SampleBatch.TRUNCATEDS: agent_truncated,
                     # Next observation.
                     SampleBatch.NEXT_OBS: filtered_obs,
                 }
@@ -1101,7 +1108,7 @@ def _process_observations(
                 # entirely.
                 while True:
                     resetted_obs, resetted_infos = base_env.try_reset(env_id)
-                    if resetted_obs is None or not isinstance(
+                    if resetted_obs[env_id] is None or not isinstance(
                         resetted_obs[env_id], Exception
                     ):
                         break

@@ -40,7 +40,7 @@ class CustomRenderedEnv(gym.Env):
         self.action_space = Discrete(2)
         self.observation_space = Box(0.0, 999.0, shape=(1,), dtype=np.float32)
 
-    def reset(self, seed: Optional[int] = None):
+    def reset(self):
         self.cur_pos = 0.0
         self.steps = 0
         return [self.cur_pos]

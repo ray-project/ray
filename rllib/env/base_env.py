@@ -4,7 +4,7 @@ from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING, Un
 import gym
 import ray
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, PublicAPI
-from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, MultiEnvDict
+from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiEnvDict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.rollout_worker import RolloutWorker

@@ -60,7 +60,8 @@ class SampleCollector(metaclass=ABCMeta):
     @abstractmethod
     def add_init_obs(self, episode: Episode, agent_id: AgentID,
                      policy_id: PolicyID, t: int,
-                     init_obs: TensorType) -> None:
+                     init_obs: TensorType,
+                     init_infos: Dict[str, TensorType]) -> None:
         """Adds an initial obs (after reset) to this collector.
 
         Since the very first observation in an environment is collected w/o
@@ -80,13 +81,15 @@ class SampleCollector(metaclass=ABCMeta):
             t: The time step (episode length - 1). The initial obs has
                 ts=-1(!), then an action/reward/next-obs at t=0, etc..
             init_obs: Initial observation (after env.reset()).
+            init_infos: Initial infos dict (after env.reset()).
 
         Examples:
-            >>> obs = env.reset()
-            >>> collector.add_init_obs(my_episode, 0, "pol0", -1, obs)
-            >>> obs, r, done, info = env.step(action)
+            >>> obs, infos = env.reset()
+            >>> collector.add_init_obs(my_episode, 0, "pol0", -1, obs, infos)
+            >>> obs, r, done, truncated, info = env.step(action)
             >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
-            ...     "action": action, "obs": obs, "reward": r, "done": done
+            ...     "action": action, "obs": obs, "reward": r, "done": done,
+            ...     "truncated": truncated, "info": info
             ... })
         """
         raise NotImplementedError

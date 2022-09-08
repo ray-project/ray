@@ -1335,7 +1335,7 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
                                               "b": np.array([10, 11, 12])}}
     """
 
-    if any([isinstance(s, MultiAgentBatch) for s in samples]):
+    if any(isinstance(s, MultiAgentBatch) for s in samples):
         return concat_samples_into_ma_batch(samples)
 
     # the output is a SampleBatch type

@@ -42,7 +42,7 @@ class WindyMazeEnv(gym.Env):
         )
         self.action_space = Discrete(2)  # whether to move or not
 
-    def reset(self, seed: Optional[int] = None):
+    def reset(self):
         self.wind_direction = random.choice([0, 1, 2, 3])
         self.pos = self.start_pos
         self.num_steps = 0
@@ -89,7 +89,7 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
         self._skip_env_checking = True
         self.flat_env = WindyMazeEnv(env_config)
 
-    def reset(self, seed: Optional[int] = None):
+    def reset(self):
         self.cur_obs = self.flat_env.reset()
         self.current_goal = None
         self.steps_remaining_at_level = None

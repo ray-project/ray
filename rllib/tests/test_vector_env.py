@@ -13,7 +13,7 @@ class MockEnvDictSubclass(gym.Env):
         self.observation_space = gym.spaces.Discrete(1)
         self.action_space = gym.spaces.Discrete(2)
 
-    def reset(self, seed: Optional[int] = None):
+    def reset(self):
         return 0
 
     def step(self, action):

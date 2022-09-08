@@ -339,11 +339,15 @@ class _VectorizedGymEnv(VectorEnv):
         logger.warning(f"Sub-environment at index {index} restarted successfully.")
 
     @override(VectorEnv)
-    def vector_step(self, actions) -> Tuple[
-        MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict
-    ]:
+    def vector_step(
+        self, actions
+    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
         obs_batch, rew_batch, done_batch, truncated_batch, info_batch = (
-            [], [], [], [], []
+            [],
+            [],
+            [],
+            [],
+            [],
         )
         for i in range(self.num_envs):
             try:
@@ -360,8 +364,9 @@ class _VectorizedGymEnv(VectorEnv):
                 obs, r, done, info = returns
                 truncated = False
             else:
-                assert len(returns) == 5, \
-                    "ERROR: gym.Env `step()` must return 4 or 5 values!"
+                assert (
+                    len(returns) == 5
+                ), "ERROR: gym.Env `step()` must return 4 or 5 values!"
                 obs, r, done, truncated, info = returns
 
             if not isinstance(info, dict):
@@ -479,15 +484,15 @@ class VectorEnvWrapper(BaseEnv):
         assert isinstance(env_id, int)
         obs, infos = self.vector_env.reset_at(env_id, seed=seed)
 
-        # `reset_at()` returned exceptions -> Return MultiAgent.
+        # If exceptions were returned, return MultiEnvDict mapping env indices to
+        # these exceptions (for obs and infos).
         if isinstance(obs, Exception):
             assert isinstance(infos, Exception)
             return {env_id: obs}, {env_id: infos}
-        #TODO: seems like a quite leaky API here:
+        # Otherwise, return a MultiEnvDict (with single agent ID) and the actual
+        # obs and info dicts.
         else:
-            #TODO(sven): Why _DUMMY_AGENT_ID here and not env_id?
-            #Explain why we return single agent observations/infos here?
-            return {_DUMMY_AGENT_ID: obs}, {_DUMMY_AGENT_ID: infos}
+            return {env_id: {_DUMMY_AGENT_ID: obs}}, {env_id: {_DUMMY_AGENT_ID: infos}}
 
     @override(BaseEnv)
     def try_restart(self, env_id: Optional[EnvID] = None) -> None:
