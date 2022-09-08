@@ -128,7 +128,7 @@ class AgentCollector:
         env_id: EnvID,
         t: int,
         init_obs: TensorType,
-        init_infos: Dict[str, TensorType],
+        init_infos: Optional[Dict[str, TensorType]] = None,
     ) -> None:
         """Adds an initial observation (after reset) to the Agent's trajectory.
 
@@ -154,7 +154,7 @@ class AgentCollector:
             self._build_buffers(
                 single_row={
                     SampleBatch.OBS: init_obs,
-                    SampleBatch.INFOS: init_infos,
+                    SampleBatch.INFOS: init_infos or {},
                     SampleBatch.AGENT_INDEX: agent_index,
                     SampleBatch.ENV_ID: env_id,
                     SampleBatch.T: t,
@@ -167,7 +167,7 @@ class AgentCollector:
         flattened = tree.flatten(init_obs)
         for i, sub_obs in enumerate(flattened):
             self.buffers[SampleBatch.OBS][i].append(sub_obs)
-        self.buffers[SampleBatch.INFOS][i].append(init_infos)
+        self.buffers[SampleBatch.INFOS][i].append(init_infos or {})
         self.buffers[SampleBatch.AGENT_INDEX][0].append(agent_index)
         self.buffers[SampleBatch.ENV_ID][0].append(env_id)
         self.buffers[SampleBatch.T][0].append(t)
