@@ -377,8 +377,6 @@ install_dependencies() {
   # Additional Tune/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_tune.txt
-    # Todo: move to requirements_tune.txt when we upgraded tensorflow (conflicting typing-extensions dependency)
-    pip install "pytorch-lightning~=1.7.0"
     download_mnist
   fi
 
@@ -421,6 +419,12 @@ install_dependencies() {
   # RLlib testing with TF 1.x.
   if [ "${RLLIB_TESTING-}" = 1 ] && { [ -n "${TF_VERSION-}" ] || [ -n "${TFP_VERSION-}" ]; }; then
     pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}"
+  fi
+
+  # For Tune, install specific requirements
+  if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
+    # Todo: move to requirements_tune.txt when we upgraded tensorflow (conflicting typing-extensions dependency)
+    pip install "pytorch-lightning~=1.7.0"
   fi
 
   # Additional Tune dependency for Horovod.
