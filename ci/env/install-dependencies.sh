@@ -424,7 +424,7 @@ install_dependencies() {
   # For Tune, install specific requirements
   if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
     # Todo: move to requirements_tune.txt when we upgraded tensorflow (conflicting typing-extensions dependency)
-    pip install "pytorch-lightning~=1.7.0"
+    pip install "pytorch-lightning~=1.7.0" "ray_lightning==0.3.0"
   fi
 
   # Additional Tune dependency for Horovod.
