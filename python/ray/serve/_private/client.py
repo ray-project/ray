@@ -7,7 +7,12 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type, U
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve._private.common import DeploymentInfo, DeploymentStatus, StatusOverview
+from ray.serve._private.common import (
+    DeploymentInfo,
+    DeploymentStatus,
+    StatusOverview,
+    ApplicationStatus,
+)
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve._private.constants import (
     CLIENT_POLLING_INTERVAL_S,
@@ -287,8 +292,24 @@ class ServeControllerClient:
             self.delete_deployments(deployment_names_to_delete, blocking=_blocking)
 
     @_ensure_connected
-    def deploy_app(self, config: ServeApplicationSchema) -> None:
+    def deploy_app(
+        self, config: ServeApplicationSchema, _blocking: bool = False
+    ) -> None:
         ray.get(self._controller.deploy_app.remote(config))
+
+        if _blocking:
+            timeout_s = 60
+
+            start = time.time()
+            while time.time() - start < timeout_s:
+                curr_status = self.get_serve_status()
+                if curr_status.app_status.status == ApplicationStatus.RUNNING:
+                    break
+                time.sleep(CLIENT_POLLING_INTERVAL_S)
+            else:
+                raise TimeoutError(
+                    f"Serve application isn't running after {timeout_s}s."
+                )
 
     @_ensure_connected
     def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:
