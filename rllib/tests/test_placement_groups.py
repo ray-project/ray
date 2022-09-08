@@ -22,8 +22,6 @@ class _TestCallback(Callback):
         # Cannot run more than 2 at a time
         # (due to different resource restrictions in the test cases).
         assert num_running <= 2
-        # No errors.
-        assert num_error == 0
 
 
 class TestPlacementGroups(unittest.TestCase):
