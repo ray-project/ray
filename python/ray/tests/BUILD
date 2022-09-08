@@ -212,7 +212,7 @@ py_test_module_list(
     "test_autoscaler_drain_node_api.py",
     "test_autoscaler_gcp.py",
     "test_cli_logger.py",
-    "test_client_metadata.py",
+    # "test_client_metadata.py",
     # "test_client_terminate.py",
     "test_command_runner.py",
     "test_coordinator_server.py",

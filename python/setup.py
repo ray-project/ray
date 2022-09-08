@@ -561,7 +561,7 @@ def build(build_python, build_java, build_cpp):
 
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
-    bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
+    # bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
 
     if setup_spec.build_type == BuildType.DEBUG:
