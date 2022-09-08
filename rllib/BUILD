@@ -1525,6 +1525,13 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "env/tests/test_env_with_subprocess",
+    tags = ["team:rllib", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_env_with_subprocess.py"]
+)
+
+py_test(
     name = "env/tests/test_external_env",
     tags = ["team:rllib", "env"],
     size = "large",
@@ -1548,6 +1555,38 @@ sh_test(
 )
 
 sh_test(
+    name = "env/tests/test_local_inference_cartpole_w_2_concurrent_episodes",
+    tags = ["team:rllib", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["local", "cartpole-dummy-2-episodes", "8830"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_local_inference_unity3d",
+    tags = ["team:rllib", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["local", "unity3d", "8850"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+py_test(
+    name = "env/tests/test_multi_agent_env",
+    tags = ["team:rllib", "tests_dir", "tests_dir_M"],
+    size = "medium",
+    srcs = ["env/tests/test_multi_agent_env.py"]
+)
+
+py_test(
+    name = "env/tests/test_multi_agent_pendulum",
+    tags = ["team:rllib", "tests_dir", "tests_dir_M"],
+    size = "large",
+    srcs = ["env/tests/test_multi_agent_pendulum.py"]
+)
+
+sh_test(
     name = "env/tests/test_remote_inference_cartpole",
     tags = ["team:rllib", "env"],
     size = "medium",
@@ -1566,29 +1605,11 @@ sh_test(
 )
 
 sh_test(
-    name = "env/tests/test_local_inference_cartpole_w_2_concurrent_episodes",
-    tags = ["team:rllib", "env"],
-    size = "medium",
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "cartpole-dummy-2-episodes", "8830"],
-    data = glob(["examples/serving/*.py"]),
-)
-
-sh_test(
     name = "env/tests/test_remote_inference_cartpole_w_2_concurrent_episodes",
     tags = ["team:rllib", "env"],
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole-dummy-2-episodes", "8840"],
-    data = glob(["examples/serving/*.py"]),
-)
-
-sh_test(
-    name = "env/tests/test_local_inference_unity3d",
-    tags = ["team:rllib", "env"],
-    size = "medium",
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "unity3d", "8850"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -1601,33 +1622,11 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-
 py_test(
     name = "env/tests/test_remote_worker_envs",
     tags = ["team:rllib", "env"],
     size = "medium",
     srcs = ["env/tests/test_remote_worker_envs.py"]
-)
-
-py_test(
-    name = "env/tests/test_env_with_subprocess",
-    tags = ["team:rllib", "env"],
-    size = "medium",
-    srcs = ["env/tests/test_env_with_subprocess.py"]
-)
-
-py_test(
-    name = "env/wrappers/tests/test_unity3d_env",
-    tags = ["team:rllib", "env"],
-    size = "small",
-    srcs = ["env/wrappers/tests/test_unity3d_env.py"]
-)
-
-py_test(
-    name = "env/wrappers/tests/test_recsim_wrapper",
-    tags = ["team:rllib", "env"],
-    size = "small",
-    srcs = ["env/wrappers/tests/test_recsim_wrapper.py"]
 )
 
 py_test(
@@ -1642,6 +1641,20 @@ py_test(
     tags = ["team:rllib", "env"],
     size = "small",
     srcs = ["env/wrappers/tests/test_group_agents_wrapper.py"]
+)
+
+py_test(
+    name = "env/wrappers/tests/test_recsim_wrapper",
+    tags = ["team:rllib", "env"],
+    size = "small",
+    srcs = ["env/wrappers/tests/test_recsim_wrapper.py"]
+)
+
+py_test(
+    name = "env/wrappers/tests/test_unity3d_env",
+    tags = ["team:rllib", "env"],
+    size = "small",
+    srcs = ["env/wrappers/tests/test_unity3d_env.py"]
 )
 
 # --------------------------------------------------------------------
@@ -1888,6 +1901,13 @@ py_test(
 #
 # Tag: utils
 # --------------------------------------------------------------------
+
+py_test(
+    name = "test_errors",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/tests/test_errors.py"]
+)
 
 py_test(
     name = "test_serialization",
@@ -2172,20 +2192,6 @@ py_test(
     size = "medium",
     data = glob(["tests/data/model_weights/**"]),
     srcs = ["tests/test_model_imports.py"]
-)
-
-py_test(
-    name = "tests/test_multi_agent_env",
-    tags = ["team:rllib", "tests_dir", "tests_dir_M"],
-    size = "medium",
-    srcs = ["tests/test_multi_agent_env.py"]
-)
-
-py_test(
-    name = "tests/test_multi_agent_pendulum",
-    tags = ["team:rllib", "tests_dir", "tests_dir_M"],
-    size = "large",
-    srcs = ["tests/test_multi_agent_pendulum.py"]
 )
 
 py_test(
@@ -3557,16 +3563,12 @@ py_test_module_list(
   files = [
     "tests/test_dnc.py",
     "tests/test_perf.py",
-    "tests/test_vector_env.py",
-    "env/tests/test_multi_agent_env.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
     "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",
     "examples/env/tests/test_coin_game_vectorized_env.py",
     "examples/env/tests/test_matrix_sequential_social_dilemma.py",
     "examples/env/tests/test_wrappers.py",
-    "execution/tests/test_mixin_multi_agent_replay_buffer.py",
-    "utils/tests/test_errors.py",
     "utils/tests/test_utils.py",
   ],
   size = "large",

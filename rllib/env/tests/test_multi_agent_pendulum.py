@@ -51,7 +51,7 @@ class TestMultiAgentPendulum(unittest.TestCase):
                         },
                     }
                 },
-                verbose=1,
+                verbose=2,
             )
             if (
                 trials[0].last_result["episode_reward_mean"]
