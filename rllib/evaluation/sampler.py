@@ -961,6 +961,7 @@ def _process_observations(
                     policy_id,
                     episode.length - 1,
                     filtered_obs,
+                    agent_infos,
                 )
             else:
                 # Add actions, rewards, next-obs to collectors.
@@ -1081,19 +1082,25 @@ def _process_observations(
                     env_index=env_id,
                 )
             # Horizon hit and we have a soft horizon (no hard env reset).
+            # Keep both current obs and infos for the "new" episode's reset.
             if not episode.is_faulty and hit_horizon and soft_horizon:
                 episode.soft_reset()
-                resetted_obs: Dict[EnvID, Dict[AgentID, EnvObsType]] = {
-                    env_id: all_agents_obs
-                }
+                resetted_obs = {env_id: all_agents_obs}
+                resetted_infos = {env_id: infos[env_id]}
+            # Regular done (no horizon hit). Try to reset the sub environment.
             else:
                 del active_episodes[env_id]
-                # TODO(jungong) : This will allow a single faulty env to
-                # take out the entire RolloutWorker indefinitely. Revisit.
+                # The sub environment at index `env_id` might throw an exception
+                # during the following `try_reset()` attempt. If configured with
+                # `restart_failed_sub_environments=True`, the BaseEnv will restart
+                # the affected sub environment (create a new one using its c'tor) and
+                # must reset the recreated sub env right after that.
+                # Should the sub environment fail indefinitely during these
+                # repeated reset attempts, the entire worker will be blocked.
+                # This would be ok, b/c the alternative would be the worker crashing
+                # entirely.
                 while True:
-                    resetted_obs: Optional[
-                        Dict[EnvID, Dict[AgentID, EnvObsType]]
-                    ] = base_env.try_reset(env_id)
+                    resetted_obs, resetted_infos = base_env.try_reset(env_id)
                     if resetted_obs is None or not isinstance(
                         resetted_obs[env_id], Exception
                     ):
@@ -1101,9 +1108,8 @@ def _process_observations(
                     else:
                         # Failed to reset, add metrics about a faulty episode.
                         outputs.append(RolloutMetrics(episode_faulty=True))
-            # Reset not supported, drop this env from the ready list.
-            if resetted_obs is None:
-                if horizon != float("inf"):
+                # Reset not supported, drop this env from the ready list.
+                if resetted_obs is None and horizon != float("inf"):
                     raise ValueError(
                         "Setting episode horizon requires reset() support "
                         "from the environment."
@@ -1111,10 +1117,11 @@ def _process_observations(
 
             # Creates a new episode if this is not async return.
             # If reset is async, we will get its result in some future poll.
-            elif resetted_obs != ASYNC_RESET_RETURN:
+            if resetted_obs is not None and resetted_obs != ASYNC_RESET_RETURN:
                 new_episode: Episode = active_episodes[env_id]
                 _assert_episode_not_faulty(new_episode)
                 resetted_obs = resetted_obs[env_id]
+                resetted_infos = resetted_infos[env_id]
                 if observation_fn:
                     resetted_obs: Dict[AgentID, EnvObsType] = observation_fn(
                         agent_obs=resetted_obs,
@@ -1145,6 +1152,7 @@ def _process_observations(
                         policy_id,
                         new_episode.length - 1,
                         filtered_obs,
+                        resetted_infos,
                     )
 
                     item = _PolicyEvalData(
