@@ -19,7 +19,7 @@ Dask |dask|
 
 Dask provides advanced parallelism for analytics, enabling performance at scale for the tools you love. Dask uses existing Python APIs and data structures to make it easy to switch between Numpy, Pandas, Scikit-learn to their Dask-powered equivalents.
 
-[`Link to integration <../data/dask-on-ray.html>`__]
+[:ref:`Link to integration <dask-on-ray>`]
 
 Flambe |flambe|
 ---------------
@@ -74,7 +74,7 @@ MARS |mars|
 
 Mars is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn. Mars can scale in to a single machine, and scale out to a cluster with thousands of machines.
 
-[`Link to integration <../data/mars-on-ray.html>`__]
+[:ref:`Link to integration <mars-on-ray>`]
 
 Modin |modin|
 -------------

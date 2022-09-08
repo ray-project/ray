@@ -68,9 +68,9 @@ def _convert_scaling_config_to_ray_params(
 
 @DeveloperAPI
 class GBDTTrainer(BaseTrainer):
-    """Common logic for gradient-boosting decision tree (GBDT) frameworks
-    like XGBoost-Ray and LightGBM-Ray.
+    """Abstract class for scaling gradient-boosting decision tree (GBDT) frameworks.
 
+    Inherited by XGBoostTrainer and LightGBMTrainer.
 
     Args:
         datasets: Ray Datasets to use for training and validation. Must include a
