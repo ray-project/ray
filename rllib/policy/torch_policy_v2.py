@@ -902,8 +902,19 @@ class TorchPolicyV2(Policy):
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
 
-        # Restore glbal timestep.
-        self.global_timestep = state["global_timestep"]
+        # Restore global timestep.
+        if "total_global_timestep" in state:
+            self._total_global_timestep_at_init = state["total_global_timestep"]
+            if "global_timestep" in state:
+                raise ValueError(
+                    "Trying to set state of policy {}, which contains a "
+                    "global_timestep and a total_global_timestep. This "
+                    "should not happen. Please try setting only "
+                    "total_global_timestep going forward.".format(self)
+                )
+        else:
+            # TODO: (artur) Deprecate restoration of global_timestep
+            self.global_timestep = state["global_timestep"]
 
         # Then the Policy's (NN) weights and connectors.
         super().set_state(state)
@@ -986,7 +997,7 @@ class TorchPolicyV2(Policy):
             A tuple consisting of a) actions, b) state_out, c) extra_fetches.
         """
         explore = explore if explore is not None else self.config["explore"]
-        timestep = timestep if timestep is not None else self.global_timestep
+        timestep = timestep if timestep is not None else self.total_global_timestep
         self._is_recurrent = state_batches is not None and state_batches != []
 
         # Switch to eval mode.

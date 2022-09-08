@@ -243,7 +243,12 @@ class EpisodeSequenceBuffer(ReplayBuffer):
         return concat_samples(episodes_buffer)
 
 
-def total_sampled_timesteps(worker):
+def sampled_timesteps(worker):
+    """Check global_timestep to prefill buffer."""
+
+    # We check global_timestep instead of total_global_timestep here so that we prefill
+    # the buffer every time we train Dreamer, rather than skipping prefilling upon
+    # loading from a checkpoint.
     return worker.policy_map[DEFAULT_POLICY_ID].global_timestep
 
 
@@ -342,7 +347,7 @@ class Dreamer(Algorithm):
 
             # Prefill episode buffer with initial exploration (uniform sampling)
             while (
-                total_sampled_timesteps(self.workers.local_worker())
+                sampled_timesteps(self.workers.local_worker())
                 < self.config["prefill_timesteps"]
             ):
                 samples = self.workers.local_worker().sample()
@@ -363,7 +368,7 @@ class Dreamer(Algorithm):
         local_worker = workers.local_worker()
 
         # Prefill episode buffer with initial exploration (uniform sampling)
-        while total_sampled_timesteps(local_worker) < config["prefill_timesteps"]:
+        while sampled_timesteps(local_worker) < config["prefill_timesteps"]:
             samples = local_worker.sample()
             episode_buffer.add(samples)
 

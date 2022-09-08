@@ -441,7 +441,7 @@ class EagerTFPolicyV2(Policy):
         self._is_training = False
 
         explore = explore if explore is not None else self.explore
-        timestep = timestep if timestep is not None else self.global_timestep
+        timestep = timestep if timestep is not None else self.total_global_timestep
         if isinstance(timestep, tf.Tensor):
             timestep = int(timestep.numpy())
 
@@ -693,8 +693,17 @@ class EagerTFPolicyV2(Policy):
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
 
-        # Restore glbal timestep (tf vars).
-        self.global_timestep.assign(state["global_timestep"])
+        # Restore global timestep (tf vars).
+        if state.get("global_timestep"):
+            logger.warning(
+                "Found global_timestep variable in restored state. "
+                "Restoring global_timestep is no longer supported. "
+                "Restoring from this state instead sets "
+                "total_global_timestep."
+            )
+            self.total_global_timestep.assign(state["global_timestep"])
+        else:
+            self.total_global_timestep.assign(state["total_global_timestep"])
 
         # Then the Policy's (NN) weights and connectors.
         super().set_state(state)

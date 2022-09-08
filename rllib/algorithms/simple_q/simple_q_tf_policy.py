@@ -102,7 +102,7 @@ def get_simple_q_tf_policy(
             **kwargs,
         ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorStructType]]:
             if timestep is None:
-                timestep = self.global_timestep
+                timestep = self.total_global_timestep
             # Compute the Q-values for each possible action, using our Q-value network.
             q_vals = self._compute_q_values(
                 self.model, input_dict[SampleBatch.OBS], is_training=is_training

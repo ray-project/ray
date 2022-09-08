@@ -292,7 +292,7 @@ class TFPolicy(Policy):
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 
         explore = explore if explore is not None else self.config["explore"]
-        timestep = timestep if timestep is not None else self.global_timestep
+        timestep = timestep if timestep is not None else self.total_global_timestep
 
         # Switch off is_training flag in our batch.
         if isinstance(input_dict, SampleBatch):
@@ -336,7 +336,7 @@ class TFPolicy(Policy):
     ):
 
         explore = explore if explore is not None else self.config["explore"]
-        timestep = timestep if timestep is not None else self.global_timestep
+        timestep = timestep if timestep is not None else self.total_global_timestep
 
         builder = _TFRunBuilder(self.get_session(), "compute_actions")
 
@@ -517,8 +517,19 @@ class TFPolicy(Policy):
                 state=state["_exploration_state"], sess=self.get_session()
             )
 
-        # Restore glbal timestep.
-        self.global_timestep = state["global_timestep"]
+        # Restore global timestep.
+        if "total_global_timestep" in state:
+            self._total_global_timestep_at_init = state["total_global_timestep"]
+            if "global_timestep" in state:
+                raise ValueError(
+                    "Trying to set state of policy {}, which contains a "
+                    "global_timestep and a total_global_timestep. This "
+                    "should not happen. Please try setting only "
+                    "total_global_timestep going forward.".format(self)
+                )
+        else:
+            # TODO: (artur) Deprecate restoration of global_timestep
+            self.global_timestep = state["global_timestep"]
 
         # Then the Policy's (NN) weights and connectors.
         super().set_state(state)
@@ -1020,7 +1031,7 @@ class TFPolicy(Policy):
         timestep=None,
     ):
         explore = explore if explore is not None else self.config["explore"]
-        timestep = timestep if timestep is not None else self.global_timestep
+        timestep = timestep if timestep is not None else self.total_global_timestep
 
         # Call the exploration before_compute_actions hook.
         self.exploration.before_compute_actions(

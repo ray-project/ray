@@ -968,7 +968,7 @@ class EnvRunnerV2:
             )
             eval_results[policy_id] = policy.compute_actions_from_input_dict(
                 input_dict,
-                timestep=policy.global_timestep,
+                timestep=policy.total_global_timestep,
                 episodes=[self._active_episodes[t.env_id] for t in eval_data],
             )
 

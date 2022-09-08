@@ -207,6 +207,12 @@ class Policy(metaclass=ABCMeta):
         # The global timestep, broadcast down from time to time from the
         # local worker to all remote workers.
         self.global_timestep: int = 0
+        # The sum of global timesteps. If we train a policy multiple times, possibly
+        # in multiple sessions, together with different other policies, each policy
+        # may have a different global timestep.
+        # We add global timestep to the total global timestep at initialization
+        # time to receive the current total global timestep
+        self._total_global_timestep_at_init: int = 0
 
         # The action distribution class to use for action sampling, if any.
         # Child classes may set this.
@@ -761,7 +767,7 @@ class Policy(metaclass=ABCMeta):
             # All the policy's weights.
             "weights": self.get_weights(),
             # The current global timestep.
-            "global_timestep": self.global_timestep,
+            "total_global_timestep": self.total_global_timestep,
         }
         if self.config.get("enable_connectors", False):
             # Checkpoint connectors state as well if enabled.
@@ -850,9 +856,26 @@ class Policy(metaclass=ABCMeta):
         # Make sure, we keep global_timestep as a Tensor for tf-eager
         # (leads to memory leaks if not doing so).
         if self.framework in ["tfe", "tf2"]:
-            self.global_timestep.assign(global_vars["timestep"])
+            self.global_timestep.assign(global_vars["global_timestep"])
         else:
-            self.global_timestep = global_vars["timestep"]
+            self.global_timestep = global_vars["global_timestep"]
+
+    @DeveloperAPI
+    @property
+    def total_global_timestep(self):
+        return self._total_global_timestep_at_init + self.global_timestep
+
+    @DeveloperAPI
+    @property.setter
+    def total_global_timestep(self, value):
+        raise ValueError(
+            "Total global timestep is defined as sum("
+            "policy._total_global_timestep_at_init, global_timestep). "
+            "Setting a "
+            "sum is underdetermined and should not be necessary. If you "
+            "really need to modify this, consider modifying the "
+            "individual components."
+        )
 
     @DeveloperAPI
     def export_checkpoint(self, export_dir: str) -> None:

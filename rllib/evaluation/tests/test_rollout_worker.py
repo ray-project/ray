@@ -182,6 +182,32 @@ class TestRolloutWorker(unittest.TestCase):
                 check(lr, expected_lr, rtol=0.05)
             agent.stop()
 
+    def test_total_global_timestep(self):
+        from ray.rllib.examples.env.random_env import RandomEnv
+
+        action_space = gym.spaces.Box(-2.0, 1.0, (3,))
+
+        # Clipping: True (clip between Policy's action_space.low/high).
+        ev = RolloutWorker(
+            env_creator=lambda _: RandomEnv(
+                config=dict(
+                    action_space=action_space,
+                    max_episode_len=10,
+                    p_done=0.0,
+                    check_action_bounds=True,
+                )
+            ),
+            policy_spec=RandomPolicy,
+            policy_config=dict(
+                action_space=action_space,
+                ignore_action_bounds=True,
+            ),
+            normalize_actions=False,
+            clip_actions=True,
+            batch_mode="complete_episodes",
+        )
+        sample = ev.sample()
+
     def test_no_step_on_init(self):
         register_env("fail", lambda _: FailOnStepEnv())
         for fw in framework_iterator():

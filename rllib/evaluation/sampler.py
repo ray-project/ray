@@ -1206,7 +1206,7 @@ def _do_policy_eval(
         input_dict = sample_collector.get_inference_input_dict(policy_id)
         eval_results[policy_id] = policy.compute_actions_from_input_dict(
             input_dict,
-            timestep=policy.global_timestep,
+            timestep=policy.total_global_timestep,
             episodes=[active_episodes[t.env_id] for t in eval_data],
         )
 

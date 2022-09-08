@@ -5,6 +5,7 @@ import ray
 import ray.rllib.algorithms.pg as pg
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 
 
 class TestTimeSteps(unittest.TestCase):
@@ -47,6 +48,29 @@ class TestTimeSteps(unittest.TestCase):
                 check(policy.global_timestep, i + crazy_timesteps)
             algo.train()
             algo.stop()
+
+            # Clone algo
+            state = algo.__getstate__()
+            algo_2 = pg.PG(config=config, env=RandomEnv)
+            algo_2.__setstate__(state)
+
+            # Check if total_global_timesteps are equal
+            self.assertEqual(
+                algo.workers.local_worker()
+                .get_policy(DEFAULT_POLICY_ID)
+                .total_global_timestep,
+                algo_2.workers.local_worker()
+                .get_policy(DEFAULT_POLICY_ID)
+                .total_global_timestep,
+            )
+            # Check if global timestep of cloned policy is 0, such as would be the
+            # case when training from a checkpoint
+            self.assertEqual(
+                algo_2.workers.local_worker()
+                .get_policy(DEFAULT_POLICY_ID)
+                .global_timestep,
+                0,
+            )
 
 
 if __name__ == "__main__":

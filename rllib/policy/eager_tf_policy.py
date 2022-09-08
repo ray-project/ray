@@ -326,6 +326,9 @@ def _build_eager_tf_policy(
 
             # Global timestep should be a tensor.
             self.global_timestep = tf.Variable(0, trainable=False, dtype=tf.int64)
+            self._total_global_timestep_at_init = tf.Variable(
+                0, trainable=False, dtype=tf.int64
+            )
             self.explore = tf.Variable(
                 self.config["explore"], trainable=False, dtype=tf.bool
             )
@@ -463,7 +466,7 @@ def _build_eager_tf_policy(
             self._is_training = False
 
             explore = explore if explore is not None else self.explore
-            timestep = timestep if timestep is not None else self.global_timestep
+            timestep = timestep if timestep is not None else self.total_global_timestep
             if isinstance(timestep, tf.Tensor):
                 timestep = int(timestep.numpy())
 
@@ -699,7 +702,7 @@ def _build_eager_tf_policy(
         @override(Policy)
         def get_state(self):
             state = super().get_state()
-            state["global_timestep"] = state["global_timestep"].numpy()
+            state["total_global_timestep"] = state["total_global_timestep"].numpy()
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()
             # Add exploration state.
@@ -723,11 +726,29 @@ def _build_eager_tf_policy(
             if hasattr(self, "exploration") and "_exploration_state" in state:
                 self.exploration.set_state(state=state["_exploration_state"])
 
-            # Restore glbal timestep (tf vars).
-            self.global_timestep.assign(state["global_timestep"])
+            # Restore global timestep.
+            if "total_global_timestep" in state:
+                self._total_global_timestep_at_init.assign(
+                    state["total_global_timestep"]
+                )
+                if "global_timestep" in state:
+                    raise ValueError(
+                        "Trying to set state of policy {}, which contains a "
+                        "global_timestep and a total_global_timestep. This "
+                        "should not happen. Please try setting only "
+                        "total_global_timestep going forward.".format(self)
+                    )
+            else:
+                # TODO: (artur) Deprecate restoration of global_timestep
+                self.global_timestep.assign(state["global_timestep"])
 
             # Then the Policy's (NN) weights and connectors.
             super().set_state(state)
+
+        @DeveloperAPI
+        @property
+        def total_global_timestep(self):
+            return tf.add(self._total_global_timestep_at_init, self.global_timestep)
 
         @override(Policy)
         def export_checkpoint(self, export_dir):
