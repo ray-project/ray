@@ -126,7 +126,8 @@ public class Deployment {
         .setGracefulShutdownWaitLoopS(this.config.getGracefulShutdownWaitLoopS())
         .setGracefulShutdownTimeoutS(this.config.getGracefulShutdownTimeoutS())
         .setHealthCheckPeriodS(this.config.getHealthCheckPeriodS())
-        .setHealthCheckTimeoutS(this.config.getHealthCheckTimeoutS());
+        .setHealthCheckTimeoutS(this.config.getHealthCheckTimeoutS())
+        .setLanguage(this.config.getDeploymentLanguage());
   }
 
   public String getDeploymentDef() {

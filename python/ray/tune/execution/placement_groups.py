@@ -19,6 +19,7 @@ from ray.util.placement_group import (
     placement_group_table,
     remove_placement_group,
 )
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
     from ray.tune.experiment import Trial
@@ -273,7 +274,6 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
     cpus = spec.pop("cpu", 0.0)
     gpus = spec.pop("gpu", 0.0)
     memory = spec.pop("memory", 0.0)
-    object_store_memory = spec.pop("object_store_memory", 0.0)
 
     bundle = {k: v for k, v in spec.pop("custom_resources", {}).items()}
 
@@ -282,7 +282,6 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
             "CPU": cpus,
             "GPU": gpus,
             "memory": memory,
-            "object_store_memory": object_store_memory,
         }
     )
 
@@ -525,24 +524,26 @@ class _PlacementGroupManager:
             num_cpus = head_bundle.pop("CPU", 0)
             num_gpus = head_bundle.pop("GPU", 0)
             memory = head_bundle.pop("memory", None)
-            object_store_memory = head_bundle.pop("object_store_memory", None)
 
             # Only custom resources remain in `head_bundle`
             resources = head_bundle
             return actor_cls.options(
-                placement_group=pg,
-                placement_group_bundle_index=0,
-                placement_group_capture_child_tasks=True,
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg,
+                    placement_group_bundle_index=0,
+                    placement_group_capture_child_tasks=True,
+                ),
                 num_cpus=num_cpus,
                 num_gpus=num_gpus,
                 memory=memory,
-                object_store_memory=object_store_memory,
                 resources=resources,
             )
         else:
             return actor_cls.options(
-                placement_group=pg,
-                placement_group_capture_child_tasks=True,
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg,
+                    placement_group_capture_child_tasks=True,
+                ),
                 num_cpus=0,
                 num_gpus=0,
                 resources={},
