@@ -11,9 +11,10 @@ Key Concepts
 ============
 
 On this page, we'll cover the key concepts to help you understand how RLlib works and
-how to use it. In RLlib you use ``Algorithm``'s to learn in problem environments.
-These algorithms use ``policies`` to select actions for your agents.
-Given a policy, ``evaluation`` of a policy produces ``sample batches`` of experiences.
+how to use it. In RLlib, you use ``Algorithm``'s to learn how to solve problem ``environments``.
+The algorithms use ``policies`` to select actions. Given a policy,
+``rollouts`` throughout an ``environment`` produce
+``sample batches`` (or ``trajectories``) of experiences.
 You can also customize the ``training_step``\s of your RL experiments.
 
 .. _environments:
