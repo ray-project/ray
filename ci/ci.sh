@@ -306,6 +306,9 @@ build_sphinx_docs() {
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
       make html
+      # The following avoids
+      # ImportError: cannot import name '_mul_broadcast_shape' from 'gpytorch.utils.broadcasting'
+      pip install gpytorch==1.8.1  # See https://github.com/pytorch/botorch/issues/1370
       RAY_MOCK_MODULES=0 make doctest
     fi
   )
