@@ -3527,7 +3527,6 @@
   legacy:
     test_name: stress_test_state_api_scale
     test_suite: nightly_tests
-  stable: false
 
   frequency: nightly
   team: core
@@ -3538,6 +3537,8 @@
   run:
     timeout: 3600
     script: python stress_tests/test_state_api_scale.py
+    wait_for_nodes:
+      num_nodes: 7
     type: sdk_command
     file_manager: sdk
 
@@ -3558,7 +3559,6 @@
   legacy:
     test_name: shuffle_20gb_with_state_api
     test_suite: nightly_tests
-  stable: false
 
   frequency: nightly
   team: core
@@ -4643,7 +4643,7 @@
     cluster_compute: compute_tpl.yaml
 
   run:
-    timeout: 1800
+    timeout: 28800 # 8h
     prepare: bash prepare.sh
     script: python run_gcs_ft_on_k8s.py
     type: sdk_command

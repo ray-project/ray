@@ -415,6 +415,9 @@ class GcsAioClient:
         self._heartbeat_info_stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
             self._channel.channel()
         )
+        self._job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
+            self._channel.channel()
+        )
 
     @_auto_reconnect
     async def check_alive(
@@ -520,6 +523,14 @@ class GcsAioClient:
                 f"Failed to list prefix {prefix!r} "
                 f"due to error {reply.status.message}"
             )
+
+    @_auto_reconnect
+    async def get_all_job_info(
+        self, timeout: Optional[float] = None
+    ) -> gcs_service_pb2.GetAllJobInfoReply:
+        req = gcs_service_pb2.GetAllJobInfoRequest()
+        reply = await self._job_info_stub.GetAllJobInfo(req, timeout=timeout)
+        return reply
 
 
 def use_gcs_for_bootstrap():
