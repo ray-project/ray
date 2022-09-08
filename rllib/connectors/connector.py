@@ -438,7 +438,7 @@ class ConnectorPipeline(abc.ABC):
                 results.append(c)
 
         if len(results) == 0:
-            raise []
+            return []
 
         return results
 
