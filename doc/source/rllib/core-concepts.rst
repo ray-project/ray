@@ -68,8 +68,8 @@ which implements the proximal policy optimization algorithm in RLlib.
     .. code-block:: python
 
         # Configure.
-        from ray.rllib.algorithms import PPOConfig
-        config = PPOConfig().environment("CartPole-v0").training(train_batch_size=4000)
+        from ray.rllib.algorithms.ppo import PPOConfig
+        config = PPOConfig().environment(env="CartPole-v0").training(train_batch_size=4000)
 
         # Build.
         algo = config.build()
@@ -86,8 +86,8 @@ which implements the proximal policy optimization algorithm in RLlib.
         from ray import tune
 
         # Configure.
-        from ray.rllib.algorithms import PPOConfig
-        config = PPOConfig().environment("CartPole-v0").training(train_batch_size=4000)
+        from ray.rllib.algorithms.ppo import PPOConfig
+        config = PPOConfig().environment(env="CartPole-v0").training(train_batch_size=4000)
 
         # Train via Ray Tune.
         # Note that Ray Tune does not yet support AlgorithmConfig objects, hence
