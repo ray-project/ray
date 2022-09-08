@@ -8,7 +8,7 @@ import tempfile
 import traceback
 from pathlib import Path
 import platform
-from typing import Any, Dict, Iterator, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Any, Dict, Iterator, Optional, Tuple, Type, Union, TYPE_CHECKING
 import uuid
 
 from ray import cloudpickle as pickle
@@ -18,9 +18,10 @@ from ray.air._internal.remote_storage import (
     download_from_uri,
     fs_hint,
     is_non_local_path_uri,
+    read_file_from_uri,
     upload_to_uri,
 )
-from ray.air.constants import PREPROCESSOR_KEY
+from ray.air.constants import CHECKPOINT_TYPE_KEY, PREPROCESSOR_KEY
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
 
 
 _DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
+_CHECKPOINT_TYPE_FILE_NAME = ".type.pkl"
 _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY = "_ray_additional_checkpoint_files"
 _METADATA_CHECKPOINT_SUFFIX = ".meta.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
@@ -36,6 +38,12 @@ _BYTES_DATA_KEY = "bytes_data"
 _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
 
 logger = logging.getLogger(__name__)
+
+
+class CheckpointDict(dict):
+    def __init__(self, *args, checkpoint_cls: Type["Checkpoint"], **kwargs):
+        self.checkpoint_cls = checkpoint_cls
+        super().__init__(*args, **kwargs)
 
 
 @PublicAPI(stability="beta")
@@ -218,17 +226,24 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
+        if isinstance(data, CheckpointDict):
+            cls = data.checkpoint_cls
         return cls(data_dict=data)
 
     def to_dict(self) -> dict:
         """Return checkpoint data as dictionary.
+
+        .. note::
+            :meth:`~Checkpoint.to_dict` returns a ``dict`` subclass that contains
+            information about the checkpoint type. This ``dict`` subclass is
+            functionally identical to the built-in ``dict``.
 
         Returns:
             dict: Dictionary containing checkpoint data.
         """
         if self._data_dict:
             # If the checkpoint data is already a dict, return
-            return self._data_dict
+            checkpoint_data = self._data_dict
         elif self._local_path or self._uri:
             # Else, checkpoint is either on FS or external storage
             with self.as_directory() as local_path:
@@ -245,7 +260,12 @@ class Checkpoint:
                     # _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
                     additional_files = {}
                     for file_or_dir in os.listdir(local_path):
-                        if file_or_dir in [".", "..", _DICT_CHECKPOINT_FILE_NAME]:
+                        if file_or_dir in [
+                            ".",
+                            "..",
+                            _DICT_CHECKPOINT_FILE_NAME,
+                            _CHECKPOINT_TYPE_FILE_NAME,
+                        ]:
                             continue
 
                         additional_files[file_or_dir] = _pack(
@@ -277,9 +297,10 @@ class Checkpoint:
                         _FS_CHECKPOINT_KEY: data,
                     }
                     checkpoint_data.update(metadata)
-                return checkpoint_data
         else:
             raise RuntimeError(f"Empty data for checkpoint {self}")
+
+        return CheckpointDict(checkpoint_data, checkpoint_cls=self.__class__)
 
     @classmethod
     def from_directory(cls, path: str) -> "Checkpoint":
@@ -293,6 +314,11 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
+        checkpoint_type_path = os.path.join(path, _CHECKPOINT_TYPE_FILE_NAME)
+        if os.path.exists(checkpoint_type_path):
+            with open(checkpoint_type_path, "rb") as file:
+                cls = pickle.load(file)
+
         return cls(local_path=path)
 
     @classmethod
@@ -382,6 +408,10 @@ class Checkpoint:
                 raise RuntimeError(
                     f"No valid location found for checkpoint {self}: {self._uri}"
                 )
+
+        checkpoint_type_path = os.path.join(path, _CHECKPOINT_TYPE_FILE_NAME)
+        with open(checkpoint_type_path, "wb") as file:
+            pickle.dump(self.__class__, file)
 
     def to_directory(self, path: Optional[str] = None) -> str:
         """Write checkpoint data to directory.
@@ -490,6 +520,11 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
+        try:
+            checkpoint_type_uri = os.path.join(uri, _CHECKPOINT_TYPE_FILE_NAME)
+            cls = pickle.loads(read_file_from_uri(checkpoint_type_uri))
+        except FileNotFoundError:
+            pass
         return cls(uri=uri)
 
     def to_uri(self, uri: str) -> str:
@@ -513,6 +548,10 @@ class Checkpoint:
             )
 
         with self.as_directory() as local_path:
+            checkpoint_type_path = os.path.join(local_path, _CHECKPOINT_TYPE_FILE_NAME)
+            with open(checkpoint_type_path, "wb") as file:
+                pickle.dump(self.__class__, file)
+
             upload_to_uri(local_path=local_path, uri=uri)
 
         return uri

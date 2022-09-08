@@ -31,6 +31,10 @@ def test_repr():
     assert pattern.match(representation)
 
 
+class StubCheckpoint(Checkpoint):
+    pass
+
+
 class CheckpointsConversionTest(unittest.TestCase):
     def setUp(self):
         self.tmpdir = os.path.realpath(tempfile.mkdtemp())
@@ -60,10 +64,10 @@ class CheckpointsConversionTest(unittest.TestCase):
         shutil.rmtree(self.tmpdir)
         shutil.rmtree(self.tmpdir_pa)
 
-    def _prepare_dict_checkpoint(self) -> Checkpoint:
+    def _prepare_dict_checkpoint(self) -> StubCheckpoint:
         # Create checkpoint from dict
-        checkpoint = Checkpoint.from_dict(self.checkpoint_dict_data)
-        self.assertIsInstance(checkpoint, Checkpoint)
+        checkpoint = StubCheckpoint.from_dict(dict(self.checkpoint_dict_data))
+        self.assertIsInstance(checkpoint, StubCheckpoint)
         self.assertTrue(checkpoint._data_dict)
         self.assertEqual(
             checkpoint._data_dict["metric"], self.checkpoint_dict_data["metric"]
@@ -73,6 +77,7 @@ class CheckpointsConversionTest(unittest.TestCase):
     def _assert_dict_checkpoint(self, checkpoint):
         # Convert into dict
         checkpoint_data = checkpoint.to_dict()
+        self.assertIsInstance(checkpoint, StubCheckpoint)
         self.assertDictEqual(checkpoint_data, self.checkpoint_dict_data)
 
     def test_dict_checkpoint_bytes(self):
@@ -166,11 +171,11 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         self._assert_dict_checkpoint(checkpoint)
 
-    def _prepare_fs_checkpoint(self) -> Checkpoint:
+    def _prepare_fs_checkpoint(self) -> StubCheckpoint:
         # Create checkpoint from fs
-        checkpoint = Checkpoint.from_directory(self.checkpoint_dir)
+        checkpoint = StubCheckpoint.from_directory(self.checkpoint_dir)
 
-        self.assertIsInstance(checkpoint, Checkpoint)
+        self.assertIsInstance(checkpoint, StubCheckpoint)
         self.assertTrue(checkpoint._local_path, str)
         self.assertEqual(checkpoint._local_path, self.checkpoint_dir)
 
@@ -183,6 +188,7 @@ class CheckpointsConversionTest(unittest.TestCase):
         with open(os.path.join(local_dir, "test_data.pkl"), "rb") as fp:
             local_data = pickle.load(fp)
 
+        self.assertIsInstance(checkpoint, StubCheckpoint)
         self.assertDictEqual(local_data, self.checkpoint_dir_data)
 
     def test_fs_checkpoint_bytes(self):
@@ -443,7 +449,7 @@ class CheckpointsSerdeTest(unittest.TestCase):
         # URI checkpoints keep the same internal representation, pointing to
         # a remote location
 
-        checkpoint = Checkpoint.from_uri("s3://some/bucket")
+        checkpoint = Checkpoint.from_uri("memory:///some/bucket")
 
         self._testCheckpointSerde(checkpoint, *checkpoint.get_internal_representation())
 

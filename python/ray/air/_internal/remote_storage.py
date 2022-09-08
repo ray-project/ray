@@ -138,6 +138,21 @@ def delete_at_uri(uri: str):
         logger.warning(f"Caught exception when clearing URI `{uri}`: {e}")
 
 
+def read_file_from_uri(uri: str) -> bytes:
+    _assert_pyarrow_installed()
+
+    fs, file_path = get_fs_and_path(uri)
+    if not fs:
+        raise ValueError(
+            f"Could not download from URI: "
+            f"URI `{uri}` is not a valid or supported cloud target. "
+            f"Hint: {fs_hint(uri)}"
+        )
+
+    with fs.open_input_file(file_path) as file:
+        return file.read()
+
+
 def download_from_uri(uri: str, local_path: str, filelock: bool = True):
     _assert_pyarrow_installed()
 
