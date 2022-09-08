@@ -87,8 +87,7 @@ def keras_train_loop(config):
 
 
 def tune_horovod_keras(num_workers, num_samples, use_gpu):
-    # dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
-    dataset = ray.data.read_csv("/tmp/breast_cancer.csv")
+    dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
     num_features = len(dataset.schema().names) - 1
 
     preprocessor = Chain(

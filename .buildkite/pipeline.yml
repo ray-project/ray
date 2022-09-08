@@ -566,6 +566,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - PYTHON=3.6 ./ci/env/install-dependencies.sh
     - pip install -r /ray/python/requirements/ml/requirements_compat.txt
+    - pip install U typing-extensions
     - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_TENSORFLOW=1 HOROVOD_WITH_PYTORCH=1 pip install horovod
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=compat 
       python/ray/tests/horovod/...
