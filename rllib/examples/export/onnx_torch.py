@@ -1,4 +1,7 @@
-from distutils.version import LooseVersion
+try:
+    from packaging.version import Version
+except ImportError:
+    from distutils.version import LooseVersion as Version
 
 import numpy as np
 import ray
@@ -54,7 +57,7 @@ exported_model_file = os.path.join(outdir, "model.onnx")
 session = onnxruntime.InferenceSession(exported_model_file, None)
 
 # Pass the same test batch to the ONNX model
-if LooseVersion(torch.__version__) < LooseVersion("1.9.0"):
+if Version(torch.__version__) < Version("1.9.0"):
     # In torch < 1.9.0 the second input/output name gets mixed up
     test_data["state_outs"] = test_data.pop("state_ins")
 
