@@ -1,0 +1,21 @@
+# Dependencies
+grpcio==1.29.0
+keras==2.3.0
+h5py==2.10.0
+protobuf==3.17.3
+pyyaml==5.4
+
+# ML libraries
+torch==1.7.0+cpu
+tensorflow==2.6.0 keras==2.6.0
+
+# Torch addons
+torchmetrics==0.7.3
+torchvision==0.8.1+cpu
+
+pytorch-fast-transformers==0.4.0
+pytorch-lightning==1.5.8
+
+# Upstream libraries
+lightgbm_ray==0.1.5
+xgboost_ray==0.1.10
