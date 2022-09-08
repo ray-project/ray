@@ -23,7 +23,7 @@ class _TestCallback(Callback):
         # (due to different resource restrictions in the test cases).
         assert num_running <= 2
         # No errors.
-        assert num_error == 2
+        assert num_error == 0
 
 
 class TestPlacementGroups(unittest.TestCase):
