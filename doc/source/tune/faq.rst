@@ -280,6 +280,12 @@ on other nodes as well. Please refer to the
 :ref:`placement groups documentation <ray-placement-group-doc-ref>` to learn more
 about these placement strategies.
 
+How do I set resources using a custom function?
+~~~~~~~~~~~~~~~~~~~~~~~
+If you want to allocate specific resources to a trial based on a custom resource function,
+you can consider using the tune `sample_from` operator.
+
+
 Why is my training stuck and Ray reporting that pending actor or tasks cannot be scheduled?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
