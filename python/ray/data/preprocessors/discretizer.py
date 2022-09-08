@@ -240,50 +240,53 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
     def _fit(self, dataset: Dataset) -> Preprocessor:
         self._validate_on_fit()
         stats = {}
-        if isinstance(self.bins, dict):
-            for column, bin in self.bins.items():
-                stats[column] = self._fit_uniform_covert_bin_to_aggregate_if_needed(
-                    column, bin
-                )
-        else:
-            for column in self.columns:
-                stats[column] = self._fit_uniform_covert_bin_to_aggregate_if_needed(
-                    column, self.bins
-                )
-
         aggregates = []
-        bin_sizes = {}
-        for column, stat in stats.items():
-            aggregates.extend(stat[:-1])
-            bin_sizes[column] = stat[-1]
+        if isinstance(self.bins, dict):
+            columns = self.bins.keys()
+        else:
+            columns = self.columns
 
-        if aggregates:
-            aggregate_stats = dataset.aggregate(*aggregates)
-            mins = {}
-            maxes = {}
-            for key, value in aggregate_stats.items():
-                column_name = key[4:-1]  # min(column) -> column
-                if key.startswith("min"):
-                    mins[column_name] = value
-                if key.startswith("max"):
-                    maxes[column_name] = value
+        for column in columns:
+            aggregates.extend(
+                self._fit_uniform_covert_bin_to_aggregate_if_needed(column)
+            )
 
-            for column in mins.keys():
-                stats[column] = _translate_min_max_number_of_bins_to_bin_edges(
-                    mins[column], maxes[column], bin_sizes[column], self.right
-                )
+        aggregate_stats = dataset.aggregate(*aggregates)
+        mins = {}
+        maxes = {}
+        for key, value in aggregate_stats.items():
+            column_name = key[4:-1]  # min(column) -> column
+            if key.startswith("min"):
+                mins[column_name] = value
+            if key.startswith("max"):
+                maxes[column_name] = value
+
+        for column in mins.keys():
+            bins = self.bins[column] if isinstance(self.bins, dict) else self.bins
+            stats[column] = _translate_min_max_number_of_bins_to_bin_edges(
+                mins[column], maxes[column], bins, self.right
+            )
 
         self.stats_ = stats
         return self
 
     def _validate_on_fit(self):
-        pass
+        if isinstance(self.bins, dict) and not all(
+            col in self.bins for col in self.columns
+        ):
+            raise ValueError(
+                "If `bins` is a dictionary, all elements of `columns` must be present "
+                "in it."
+            )
 
-    def _fit_uniform_covert_bin_to_aggregate_if_needed(self, column: str, bin):
-        if isinstance(bin, int):
-            return (Min(column), Max(column), bin)
+    def _fit_uniform_covert_bin_to_aggregate_if_needed(self, column: str):
+        bins = self.bins[column] if isinstance(self.bins, dict) else self.bins
+        if isinstance(bins, int):
+            return (Min(column), Max(column))
         else:
-            raise TypeError()
+            raise TypeError(
+                f"`bins` must be an integer or a dict of integers, got {bins}"
+            )
 
 
 # Copied from
