@@ -32,6 +32,7 @@ from ray.rllib.utils.torch_utils import (
     concat_multi_gpu_td_errors,
     FLOAT_MIN,
     huber_loss,
+    l2_loss,
     reduce_mean_ignore_inf,
     softmax_cross_entropy_with_logits,
 )
@@ -50,7 +51,6 @@ class QLoss:
         q_logits_t_selected: TensorType,
         q_tp1_best: TensorType,
         q_probs_tp1_best: TensorType,
-        importance_weights: TensorType,
         rewards: TensorType,
         done_mask: TensorType,
         gamma=0.99,
@@ -94,7 +94,7 @@ class QLoss:
             self.td_error = softmax_cross_entropy_with_logits(
                 logits=q_logits_t_selected, labels=m.detach()
             )
-            self.loss = torch.mean(self.td_error * importance_weights)
+            self.loss = torch.mean(self.td_error)
             self.stats = {
                 # TODO: better Q stats for dist dqn
             }
@@ -106,9 +106,7 @@ class QLoss:
 
             # compute the error (potentially clipped)
             self.td_error = q_t_selected - q_t_selected_target.detach()
-            self.loss = torch.mean(
-                importance_weights.float() * huber_loss(self.td_error)
-            )
+            self.loss = torch.mean(l2_loss(self.td_error))  # huber_loss(self.td_error)
             self.stats = {
                 "mean_q": torch.mean(q_t_selected),
                 "min_q": torch.min(q_t_selected),
@@ -123,15 +121,12 @@ class ComputeTDErrorMixin:
     """
 
     def __init__(self):
-        def compute_td_error(
-            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
-        ):
+        def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask):
             input_dict = self._lazy_tensor_dict({SampleBatch.CUR_OBS: obs_t})
             input_dict[SampleBatch.ACTIONS] = act_t
             input_dict[SampleBatch.REWARDS] = rew_t
             input_dict[SampleBatch.NEXT_OBS] = obs_tp1
             input_dict[SampleBatch.DONES] = done_mask
-            input_dict[PRIO_WEIGHTS] = importance_weights
 
             # Do forward pass on loss to update td error attribute
             build_q_losses(self, self.model, None, input_dict)
@@ -333,7 +328,6 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
         q_logits_t_selected,
         q_tp1_best,
         q_probs_tp1_best,
-        train_batch[PRIO_WEIGHTS],
         train_batch[SampleBatch.REWARDS],
         train_batch[SampleBatch.DONES].float(),
         config["gamma"],

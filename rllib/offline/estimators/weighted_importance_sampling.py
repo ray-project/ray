@@ -51,6 +51,9 @@ class WeightedImportanceSampling(OffPolicyEstimator):
             - v_gain_std: The standard deviation corresponding to v_gain
             - v_delta: The difference between v_target and v_behavior.
         """
+        print(batch)
+        print(len(batch))
+
         batch = self.convert_ma_batch_to_sample_batch(batch)
         self.check_action_prob_in_batch(batch)
         estimates_per_epsiode = {"v_behavior": [], "v_target": []}
