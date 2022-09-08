@@ -138,9 +138,9 @@ class Dataset(Generic[T]):
     Examples:
         >>> import ray
         >>> # Create dataset from synthetic data.
-        >>> ds = ray.data.range(1000) # doctest: +SKIP
+        >>> ds = ray.data.range(1000)
         >>> # Create dataset from in-memory data.
-        >>> ds = ray.data.from_items( # doctest: +SKIP
+        >>> ds = ray.data.from_items(
         ...     [{"col1": i, "col2": i * 2} for i in range(1000)])
         >>> # Create dataset from external storage system.
         >>> ds = ray.data.read_parquet("s3://bucket/path") # doctest: +SKIP

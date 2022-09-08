@@ -306,7 +306,7 @@ build_sphinx_docs() {
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
       make html
-      make doctest
+      RAY_MOCK_MODULES=0 make doctest
     fi
   )
 }
