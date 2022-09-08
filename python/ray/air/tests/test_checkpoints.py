@@ -130,8 +130,6 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         # Create from dict
         checkpoint = ray.get(obj_ref)
-        self.assertTrue(checkpoint._obj_ref)
-
         self._assert_dict_checkpoint(checkpoint)
 
     def test_dict_checkpoint_uri(self):
@@ -268,8 +266,6 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         # Create from object ref
         checkpoint = ray.get(obj_ref)
-        self.assertIsInstance(checkpoint._obj_ref, ray.ObjectRef)
-
         self._assert_fs_checkpoint(checkpoint)
 
     def test_fs_checkpoint_uri(self):
@@ -341,11 +337,11 @@ class CheckpointsConversionTest(unittest.TestCase):
         obj_ref = ray.put(checkpoint)
 
         # Create from object ref
-        checkpoint = ray.get(checkpoint)
+        checkpoint = ray.get(obj_ref)
 
         with checkpoint.as_directory() as checkpoint_dir:
             assert os.path.exists(checkpoint_dir)
-            assert checkpoint_dir.endswith(obj_ref.hex())
+            assert checkpoint_dir.endswith(checkpoint._uuid.hex)
 
         assert not os.path.exists(checkpoint_dir)
 

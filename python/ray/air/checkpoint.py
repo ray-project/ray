@@ -7,7 +7,9 @@ import tarfile
 import tempfile
 import traceback
 from pathlib import Path
+import platform
 from typing import Any, Dict, Iterator, Optional, Tuple, Union, TYPE_CHECKING
+import uuid
 
 from ray import cloudpickle as pickle
 from ray.air._internal.checkpointing import load_preprocessor_from_dir
@@ -171,6 +173,8 @@ class Checkpoint:
         self._data_dict: Optional[Dict[str, Any]] = data_dict
         self._uri: Optional[str] = uri
 
+        self._uuid = uuid.uuid4()
+
     def __repr__(self):
         parameter, argument = self.get_internal_representation()
         return f"{self.__class__.__name__}({parameter}={argument})"
@@ -310,6 +314,30 @@ class Checkpoint:
             uri=other._uri,
         )
 
+    def _get_temporary_checkpoint_dir(self) -> str:
+        """Return the name for the temporary checkpoint dir."""
+        tmp_dir_path = tempfile.gettempdir()
+        checkpoint_dir_name = _CHECKPOINT_DIR_PREFIX + self._uuid.hex
+        if platform.system() == "Windows":
+            # Max path on Windows is 260 chars, -1 for joining \
+            # Also leave a little for the del lock
+            del_lock_name = _get_del_lock_path("")
+            checkpoint_dir_name = (
+                _CHECKPOINT_DIR_PREFIX
+                + self._uuid.hex[
+                    -259
+                    + len(_CHECKPOINT_DIR_PREFIX)
+                    + len(tmp_dir_path)
+                    + len(del_lock_name) :
+                ]
+            )
+            if not checkpoint_dir_name.startswith(_CHECKPOINT_DIR_PREFIX):
+                raise RuntimeError(
+                    "Couldn't create checkpoint directory due to length "
+                    "constraints. Try specifing a shorter checkpoint path."
+                )
+        return os.path.join(tmp_dir_path, checkpoint_dir_name)
+
     def _to_directory(self, path: str) -> None:
         if self._data_dict:
             data_dict = self.to_dict()
@@ -366,7 +394,7 @@ class Checkpoint:
             str: Directory containing checkpoint data.
         """
         user_provided_path = path is not None
-        path = path if user_provided_path else _temporary_checkpoint_dir()
+        path = path if user_provided_path else self._get_temporary_checkpoint_dir()
         path = os.path.normpath(path)
 
         _make_dir(path, acquire_del_lock=not user_provided_path)
@@ -569,11 +597,6 @@ def _get_external_path(path: Optional[str]) -> Optional[str]:
     if not isinstance(path, str) or not is_non_local_path_uri(path):
         return None
     return path
-
-
-def _temporary_checkpoint_dir() -> str:
-    """Create temporary checkpoint dir."""
-    return tempfile.mkdtemp(prefix=_CHECKPOINT_DIR_PREFIX)
 
 
 def _pack(path: str) -> bytes:
