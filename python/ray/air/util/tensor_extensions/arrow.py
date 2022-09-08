@@ -429,10 +429,9 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
             raise ValueError("Creating empty ragged tensor arrays is not supported.")
 
         # Whether all subndarrays are contiguous views of the same ndarray.
-        dtypes, shapes, sizes, raveled = [], [], [], []
+        shapes, sizes, raveled = [], [], []
         for a in arr:
             a = np.asarray(a)
-            dtypes.append(a.dtype)
             shapes.append(a.shape)
             sizes.append(a.size)
             # Convert to 1D array view; this should be zero-copy in the common case.
@@ -440,25 +439,20 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
             # C-contiguous order, incurring a copy.
             a = np.ravel(a, order="C")
             raveled.append(a)
-        dtype = np.find_common_type([], dtypes)
-        if dtype is None:
-            raise ValueError(f"Unable to find a common dtype for dtypes: {dtypes}")
-        pa_dtype = pa.from_numpy_dtype(dtype)
         # Get size offsets and total size.
         sizes = np.array(sizes)
         size_offsets = np.cumsum(sizes)
         total_size = size_offsets[-1]
         # Concatenate 1D views into a contiguous 1D array.
-        if (
-            all(_is_contiguous_view(curr, prev) for prev, curr in _pairwise(raveled))
-            and dtype is raveled[-1].base.dtype
-        ):
+        if all(_is_contiguous_view(curr, prev) for prev, curr in _pairwise(raveled)):
             # An optimized zero-copy path if raveled tensor elements are already
             # contiguous in memory, e.g. if this tensor array has already done a
             # roundtrip through our Arrow representation.
             np_data_buffer = raveled[-1].base
         else:
-            np_data_buffer = np.concatenate(raveled).astype(dtype)
+            np_data_buffer = np.concatenate(raveled)
+        dtype = np_data_buffer.dtype
+        pa_dtype = pa.from_numpy_dtype(dtype)
         if dtype.type is np.bool_:
             # NumPy doesn't represent boolean arrays as bit-packed, so we manually
             # bit-pack the booleans before handing the buffer off to Arrow.
@@ -594,7 +588,7 @@ def _is_contiguous_view(curr: np.ndarray, prev: Optional[np.ndarray]) -> bool:
         # - a view that does not share its base with the other subndarrays.
         return False
     else:
-        # a is a C-contiguous view that shares the same base with the seen
+        # curr is a C-contiguous view that shares the same base with the seen
         # subndarrays, but we need to confirm that it is contiguous with the
         # previous subndarray.
         if prev is not None and (
