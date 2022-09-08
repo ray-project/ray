@@ -906,6 +906,24 @@ def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
         _check_output_via_pattern("test_ray_cluster_dump.txt", result)
 
 
+def test_ray_cluster_no_resources_head_node(call_ray_stop_only, monkeypatch):
+    monkeypatch.setenv("RAY_head_no_compute_resources", "1")
+    runner = CliRunner()
+    result = runner.invoke(
+        scripts.start,
+        ["--head", "--port=9031", "--object-manager-port=8076", "--no-monitor"],
+    )
+    assert result.exit_code == 0, result.output
+
+    @ray.remote
+    def f():
+        pass
+
+    # make sure nothing can be scheduled
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(f.remote(), timeout=1)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

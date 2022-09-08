@@ -619,6 +619,13 @@ def start(
         )
 
     redirect_output = None if not no_redirect_output else True
+
+    # Prevent jobs from running in the head node.
+    # The head node is defined to be the node having GCS.
+    if os.environ.get("RAY_head_no_compute_resources") == "1" and head is True:
+        num_cpus = 0
+        num_gpus = 0
+
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,
