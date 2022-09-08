@@ -61,7 +61,7 @@ class SampleCollector(metaclass=ABCMeta):
     def add_init_obs(self, episode: Episode, agent_id: AgentID,
                      policy_id: PolicyID, t: int,
                      init_obs: TensorType,
-                     init_infos: Dict[str, TensorType]) -> None:
+                     init_infos: Optional[Dict[str, TensorType]] = None) -> None:
         """Adds an initial obs (after reset) to this collector.
 
         Since the very first observation in an environment is collected w/o

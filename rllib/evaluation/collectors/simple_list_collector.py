@@ -3,7 +3,7 @@ from gym.spaces import Space
 import logging
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Dict, List, Tuple, TYPE_CHECKING, Union
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING, Union
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -222,7 +222,7 @@ class SimpleListCollector(SampleCollector):
         policy_id: PolicyID,
         t: int,
         init_obs: TensorType,
-        init_infos: Dict[str, TensorType],
+        init_infos: Optional[Dict[str, TensorType]] = None,
     ) -> None:
         # Make sure our mappings are up to date.
         agent_key = (episode.episode_id, agent_id)
@@ -254,7 +254,7 @@ class SimpleListCollector(SampleCollector):
             env_id=env_id,
             t=t,
             init_obs=init_obs,
-            init_infos=init_infos,
+            init_infos=init_infos or {},
         )
 
         self.episodes[episode.episode_id] = episode

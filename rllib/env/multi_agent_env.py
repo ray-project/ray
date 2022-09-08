@@ -636,7 +636,7 @@ class MultiAgentEnvWrapper(BaseEnv):
 
             # Gym < 0.26 support.
             if not isinstance(obs_and_infos, tuple) or len(obs_and_infos) != 2:
-                obs_and_infos = (obs_and_infos, {})
+                obs_and_infos = (obs_and_infos, {k: {} for k in obs_and_infos.keys()})
 
             obs, infos = obs_and_infos
 
@@ -843,12 +843,11 @@ class _MultiAgentEnvState:
 
         # Gym < 0.26 support.
         if not isinstance(obs_and_infos, tuple) or len(obs_and_infos) != 2:
-            obs_and_infos = (obs_and_infos, {})
+            obs_and_infos = (obs_and_infos, {k: {} for k in obs_and_infos.keys()})
 
         self.last_obs, self.last_infos = obs_and_infos
-
         self.last_rewards = {}
         self.last_dones = {"__all__": False}
         self.last_truncateds = {}
-        self.last_infos = {}
+
         return self.last_obs, self.last_infos

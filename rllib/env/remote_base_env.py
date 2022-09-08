@@ -134,10 +134,17 @@ class RemoteBaseEnv(BaseEnv):
     @override(BaseEnv)
     def poll(
         self,
-    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
+    ) -> Tuple[
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+    ]:
 
         # each keyed by env_id in [0, num_remote_envs)
-        obs, rewards, dones, infos = {}, {}, {}, {}
+        obs, rewards, dones, truncateds, infos = {}, {}, {}, {}, {}
         ready = []
 
         # Wait for at least 1 env to be ready here.
@@ -175,6 +182,7 @@ class RemoteBaseEnv(BaseEnv):
                         {},
                         {"__all__": True},
                         {},
+                        {},
                     )
                 # Do not try to restart. Just raise the error.
                 else:
@@ -182,44 +190,71 @@ class RemoteBaseEnv(BaseEnv):
 
             # Our sub-envs are simple Actor-turned gym.Envs or MultiAgentEnvs.
             if self.make_env_creates_actors:
-                rew, done, info = None, None, None
+                rew, done, truncated, info = None, None, None, None
                 if self.multiagent:
-                    # `step()` result: Obs, reward, done, info.
-                    if isinstance(ret, tuple) and len(ret) == 4:
-                        ob, rew, done, info = ret
-                    # `reset()` result: Only obs.
+                    if isinstance(ret, tuple):
+                        # Gym < 0.26: `step()` result: Obs, reward, done, info.
+                        if len(ret) == 4:
+                            ob, rew, done, info = ret
+                            truncated = False
+                        # Gym >= 0.26: `step()` result: Obs, reward, done, truncated,
+                        # info.
+                        elif len(ret) == 5:
+                            ob, rew, done, truncated, info = ret
+                        # Gym >= 0.26: `reset()` result: Obs and infos.
+                        elif len(ret) == 2:
+                            ob = ret[0]
+                            info = ret[1]
+                    # Gym < 0.26: `reset()` result: Only obs.
                     else:
                         ob = ret
+                        info = {}
                 else:
-                    # `step()` result: Obs, reward, done, info.
-                    if isinstance(ret, tuple) and len(ret) == 4:
-                        ob = {_DUMMY_AGENT_ID: ret[0]}
-                        rew = {_DUMMY_AGENT_ID: ret[1]}
-                        done = {_DUMMY_AGENT_ID: ret[2], "__all__": ret[2]}
-                        info = {_DUMMY_AGENT_ID: ret[3]}
-                    # `reset()` result: Only obs.
+                    if isinstance(ret, tuple):
+                        # `step()` result: Obs, reward, done, truncated(?), info.
+                        if len(ret) in [4, 5]:
+                            ob = {_DUMMY_AGENT_ID: ret[0]}
+                            rew = {_DUMMY_AGENT_ID: ret[1]}
+                            done = {_DUMMY_AGENT_ID: ret[2], "__all__": ret[2]}
+                            if len(ret) == 4:
+                                truncated = {_DUMMY_AGENT_ID: False}
+                                info = {_DUMMY_AGENT_ID: ret[3]}
+                            else:
+                                truncated = {_DUMMY_AGENT_ID: ret[3]}
+                                info = {_DUMMY_AGENT_ID: ret[4]}
+                        # Gym >= 0.26: `reset()` result: Obs and infos.
+                        elif len(ret) == 2:
+                            ob = {_DUMMY_AGENT_ID: ret[0]}
+                            info = {_DUMMY_AGENT_ID: ret[1]}
+                    # Gym < 0.26: `reset()` result: Only obs.
                     else:
                         ob = {_DUMMY_AGENT_ID: ret}
+                        info = {_DUMMY_AGENT_ID: {}}
 
                 # If this is a `reset()` return value, we only have the initial
-                # observations: Set rewards, dones, and infos to dummy values.
+                # observations and infos: Set rewards, dones, and truncateds to
+                # dummy values.
                 if rew is None:
                     rew = {agent_id: 0 for agent_id in ob.keys()}
                     done = {"__all__": False}
-                    info = {agent_id: {} for agent_id in ob.keys()}
+                    truncated = {}
 
             # Our sub-envs are auto-wrapped (by `_RemoteSingleAgentEnv` or
             # `_RemoteMultiAgentEnv`) and already behave like multi-agent
             # envs.
             else:
-                ob, rew, done, info = ret
+                try:
+                    ob, rew, done, truncated, info = ret
+                except Exception as e:
+                    raise e  # TODO
             obs[env_id] = ob
             rewards[env_id] = rew
             dones[env_id] = done
+            truncateds[env_id] = truncated
             infos[env_id] = info
 
-        logger.debug("Got obs batch for actors {}".format(env_ids))
-        return obs, rewards, dones, infos, {}
+        logger.debug(f"Got obs batch for actors {env_ids}")
+        return obs, rewards, dones, truncateds, infos, {}
 
     @override(BaseEnv)
     @PublicAPI
@@ -360,19 +395,35 @@ class _RemoteMultiAgentEnv:
         self.agent_ids = set()
 
     def reset(self, seed: Optional[int] = None):
-        obs = self.env.reset()
+        if seed is None:
+            obs_and_info = self.env.reset()
+        else:
+            obs_and_info = self.env.reset(seed)
+
+        if not isinstance(obs_and_info, tuple) or len(obs_and_info) != 2:
+            obs_and_info = (obs_and_info, {k: {} for k in obs_and_info.keys()})
+
+        obs, info = obs_and_info
+
         # each keyed by agent_id in the env
         rew = {}
-        info = {}
         for agent_id in obs.keys():
             self.agent_ids.add(agent_id)
             rew[agent_id] = 0.0
-            info[agent_id] = {}
         done = {"__all__": False}
-        return obs, rew, done, info
+        truncated = {}
+        return obs, rew, done, truncated, info
 
     def step(self, action_dict):
-        return self.env.step(action_dict)
+        results = self.env.step(action_dict)
+        # Gym < 0.26 support.
+        if len(results) == 4:
+            obs, rew, done, info = results
+            truncated = {k: False for k in done.keys() if k != "__all__"}
+        else:
+            obs, rew, done, truncated, info = results
+
+        return obs, rew, done, truncated, info
 
     # Defining these 2 functions that way this information can be queried
     # with a call to ray.get().
@@ -394,17 +445,28 @@ class _RemoteSingleAgentEnv:
         self.env = make_env(i)
 
     def reset(self, seed: Optional[int] = None):
-        obs = {_DUMMY_AGENT_ID: self.env.reset()}
+        if seed is not None:
+            obs_and_info = {_DUMMY_AGENT_ID: self.env.reset()}
+        else:
+            obs_and_info = {_DUMMY_AGENT_ID: self.env.reset(seed)}
+
+        if not isinstance(obs_and_info, tuple) or len(obs_and_info) != 2:
+            obs_and_info = (obs_and_info, {k: {} for k in obs_and_info.keys()})
+
+        obs, info = obs_and_info
+
         rew = {agent_id: 0 for agent_id in obs.keys()}
         done = {"__all__": False}
-        info = {agent_id: {} for agent_id in obs.keys()}
-        return obs, rew, done, info
+        truncated = {}
+        return obs, rew, done, truncated, info
 
     def step(self, action):
-        obs, rew, done, info = self.env.step(action[_DUMMY_AGENT_ID])
-        obs, rew, done, info = [{_DUMMY_AGENT_ID: x} for x in [obs, rew, done, info]]
+        obs, rew, done, truncated, info = self.env.step(action[_DUMMY_AGENT_ID])
+        obs, rew, done, truncated, info = [
+            {_DUMMY_AGENT_ID: x} for x in [obs, rew, done, truncated, info]
+        ]
         done["__all__"] = done[_DUMMY_AGENT_ID]
-        return obs, rew, done, info
+        return obs, rew, done, truncated, info
 
     # Defining these 2 functions that way this information can be queried
     # with a call to ray.get().
