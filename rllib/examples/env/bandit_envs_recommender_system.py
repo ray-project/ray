@@ -147,7 +147,10 @@ class ParametricRecSys(gym.Env):
 
         reward = 0.0
         if which_clicked < self.slate_size:
+            # Reward is 1.0 - regret if clicked. 0.0 if not clicked.
             regret = best_reward - user_doc_overlaps[which_clicked]
+            # The reward also represents the user engagement that we define to be
+            # withing the range [0...100].
             reward = (1 - regret) * 100
             # If anything clicked, deduct from the current user's time budget.
             self.current_user_budget -= 1.0
