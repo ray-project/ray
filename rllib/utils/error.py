@@ -53,8 +53,8 @@ c) Make sure you provide a fully qualified classpath, e.g.:
 HOWTO_CHANGE_CONFIG = """
 To change the config for the `rllib train|rollout` command, use
   `--config={'[key]': '[value]'}` on the command line.
-To change the config for `tune.run()` in a script: Modify the python dict
-  passed to `tune.run(config=[...])`.
+To change the config for `tune.Tuner().fit()` in a script: Modify the python dict
+  passed to `tune.Tuner(param_space=[...]).fit()`.
 To change the config for an RLlib Algorithm instance: Modify the python dict
   passed to the Algorithm's constructor, e.g. `PPO(config=[...])`.
 """

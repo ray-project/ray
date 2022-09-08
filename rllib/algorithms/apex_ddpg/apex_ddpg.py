@@ -29,6 +29,7 @@ class ApexDDPGConfig(DDPGConfig):
     Example:
         >>> from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPGConfig
         >>> from ray import tune
+        >>> import ray.air as air
         >>> config = ApexDDPGConfig()
         >>> # Print out some default values.
         >>> print(config.lr) # doctest: +SKIP
@@ -39,11 +40,11 @@ class ApexDDPGConfig(DDPGConfig):
         >>> config.environment(env="Pendulum-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "APEX_DDPG",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):

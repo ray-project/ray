@@ -43,6 +43,7 @@ class QMixConfig(SimpleQConfig):
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
         >>> from ray.rllib.algorithms.qmix import QMixConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = QMixConfig()
         >>> # Print out some default values.
@@ -53,11 +54,11 @@ class QMixConfig(SimpleQConfig):
         >>> config.environment(env=TwoStepGame)
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "QMix",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self):

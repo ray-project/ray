@@ -50,15 +50,16 @@ class MADDPGConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = MADDPGConfig()
         >>> config.training(n_step=tune.grid_search([3, 5]))
         >>> config.environment(env="CartPole-v1")
-        >>> tune.run(
+        >>> tune.Tuner(
         >>>     "MADDPG",
-        >>>     stop={"episode_reward_mean":200},
-        >>>     config=config.to_dict()
-        >>> )
+        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        >>>     param_space=config.to_dict()
+        >>> ).fit()
     """
 
     def __init__(self, algo_class=None):

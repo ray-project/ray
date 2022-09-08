@@ -49,6 +49,7 @@ class APPOConfig(ImpalaConfig):
 
     Example:
         >>> from ray.rllib.algorithms.appo import APPOConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = APPOConfig()
         >>> # Print out some default values.
@@ -59,11 +60,11 @@ class APPOConfig(ImpalaConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "APPO",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
