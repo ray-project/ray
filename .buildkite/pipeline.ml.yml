@@ -421,6 +421,11 @@
     - DOC_TESTING=1 INSTALL_HOROVOD=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-ray_air,-gpu,-py37,-post_wheel_build doc/...
+    # Only run examples with credentials in non-PRs
+    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    - python ./ci/env/setup_credentials.py wandb comet_ml
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,needs_credentials,-gpu,-py37,-post_wheel_build doc/...
+    - python ./ci/env/cleanup_test_state.py wandb comet_ml
 
 - label: ":book: :airplane: Ray AIR examples"
   conditions:
@@ -430,8 +435,3 @@
     - DOC_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-needs_credentials,-gpu,-py37,-post_wheel_build doc/...
-    # Only run examples with credentials in non-PRs
-    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
-    - python ./ci/env/setup_credentials.py wandb comet_ml
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,needs_credentials,-gpu,-py37,-post_wheel_build doc/...
-    - python ./ci/env/cleanup_test_state.py wandb comet_ml
