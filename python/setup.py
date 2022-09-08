@@ -291,7 +291,7 @@ if setup_spec.type == SetupType.RAY:
         "click >= 7.0, <= 8.0.4",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "grpcio >= 1.28.1, <= 1.43.0; python_version < '3.10'",
+        "grpcio >= 1.32.0, <= 1.43.0; python_version < '3.10'",
         "grpcio >= 1.42.0, <= 1.43.0; python_version >= '3.10'",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
@@ -305,7 +305,7 @@ if setup_spec.type == SetupType.RAY:
         # Light weight requirement, can be replaced with "typing" once
         # we deprecate Python 3.7 (this will take a while).
         "typing_extensions; python_version < '3.8'",
-        "virtualenv",  # For pip runtime env.
+        "virtualenv>=20.0.24",  # For pip runtime env.
     ]
 
 

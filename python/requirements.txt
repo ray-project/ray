@@ -12,7 +12,8 @@ cloudpickle
 filelock
 frozenlist
 gpustat == 1.0.0b1
-grpcio >= 1.28.1, <= 1.43.0
+grpcio >= 1.32.0, <= 1.43.0; python_version < '3.10'
+grpcio >= 1.42.0, <= 1.43.0; python_version >= '3.10'
 jsonschema
 msgpack >= 1.0.0, < 2.0.0
 numpy >= 1.16
@@ -24,7 +25,7 @@ pydantic >= 1.8, < 1.10.0
 pyyaml
 requests
 smart_open
-virtualenv
+virtualenv>=20.0.24
 
 ## setup.py extras
 dm_tree
