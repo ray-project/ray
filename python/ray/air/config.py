@@ -300,7 +300,7 @@ class DatasetConfig:
             in streaming mode). Note that this is an expensive all-to-all operation,
             and most likely you want to use local shuffle instead.
             See https://docs.ray.io/en/master/data/faq.html and
-            https://docs.ray.io/en/master/air/check-ingest.html.
+            https://docs.ray.io/en/master/ray-air/check-ingest.html.
             False by default.
         randomize_block_order: Whether to randomize the iteration order over blocks.
             The main purpose of this is to prevent data fetching hotspots in the

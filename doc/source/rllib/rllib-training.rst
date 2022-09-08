@@ -750,7 +750,7 @@ Here is an example of the basic usage (for a more complete example, see `custom_
 
     It's recommended that you run RLlib algorithms with :ref:`Ray Tune <tune-main>`, for easy experiment management and visualization of results. Just set ``"run": ALG_NAME, "env": ENV_NAME`` in the experiment config.
 
-All RLlib algorithms are compatible with the :ref:`Tune API <tune-60-seconds>`. This enables them to be easily used in experiments with :doc:`Tune <../tune/index>`. For example, the following code performs a simple hyperparam sweep of PPO:
+All RLlib algorithms are compatible with the :ref:`Tune API <tune-60-seconds>`. This enables them to be easily used in experiments with :ref:`Ray Tune <tune-main>`. For example, the following code performs a simple hyperparam sweep of PPO:
 
 .. code-block:: python
 
