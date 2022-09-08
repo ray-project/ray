@@ -241,7 +241,7 @@ class AlgorithmConfig:
 
         Returns:
             A complete AlgorithmConfigDict, usable in backward-compatible Tune/RLlib
-            use cases, e.g. w/ `tune.Tuenr().fit()`.
+            use cases, e.g. w/ `tune.Tuner().fit()`.
         """
         config = copy.deepcopy(vars(self))
         config.pop("algo_class")
