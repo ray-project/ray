@@ -8,7 +8,7 @@ def normal_function():
 
 
 # By adding the `@ray.remote` decorator, a regular Python function
-# becomes a Ray task.
+# becomes a Ray remote function.
 @ray.remote
 def my_function():
     return 1
@@ -29,7 +29,7 @@ def slow_function():
     return 1
 
 
-# Invocations of Ray tasks happen in parallel.
+# Ray tasks are executed in parallel.
 # All computation is performed in the background, driven by Ray's internal event loop.
 for _ in range(4):
     # This doesn't block.
