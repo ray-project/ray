@@ -131,7 +131,9 @@ ViewRequirementsDict: TypeAlias = Dict[str, "ViewRequirement"]
 ResultDict: TypeAlias = dict
 
 # A tf or torch local optimizer object.
-LocalOptimizer: TypeAlias = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
+LocalOptimizer: TypeAlias = Union[
+    "tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"
+]
 
 # Dict of tensors returned by compute gradients on the policy, e.g.,
 # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}, for multi-agent,
