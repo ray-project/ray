@@ -8,9 +8,7 @@ import numpy as np
 
 import ray._private.ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
-from ray.autoscaler._private.constants import (
-    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
-)
+from ray.autoscaler._private.constants import AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 from ray.autoscaler._private.resource_demand_scheduler import NodeIP, ResourceDict
 from ray.autoscaler._private.util import DictCount, LoadMetricsSummary
 from ray.core.generated.common_pb2 import PlacementStrategy
@@ -349,9 +347,7 @@ class LoadMetrics:
 
         def format_resource(key, value):
             if key in ["object_store_memory", "memory"]:
-                return "{} GiB".format(
-                    round(value / (1024 * 1024 * 1024), 2)
-                )
+                return "{} GiB".format(round(value / (1024 * 1024 * 1024), 2))
             else:
                 return round(value, 2)
 
