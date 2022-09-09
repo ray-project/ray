@@ -83,7 +83,7 @@ class ResourceDemandScheduler:
         inferered resources are not lost.
         """
         self.provider = provider
-        self.node_types = copy.deep_copy(node_types)
+        self.node_types = copy.deepcopy(node_types)
         self.node_resource_updated = set()
         self.max_workers = max_workers
         self.head_node_type = head_node_type
