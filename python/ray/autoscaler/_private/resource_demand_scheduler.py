@@ -265,7 +265,7 @@ class ResourceDemandScheduler:
         """Update static node type resources with runtime resources
 
         This will update the cached static node type resources with the runtime
-        resources. Because we can not know the correctly memory or
+        resources. Because we can not know the exact autofilled memory or
         object_store_memory from config file.
         """
         need_update = len(self.node_types) != len(self.node_resource_updated)
