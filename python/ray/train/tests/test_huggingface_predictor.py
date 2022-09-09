@@ -15,8 +15,9 @@ from transformers.pipelines import pipeline
 
 
 import ray
-from ray.data.preprocessor import Preprocessor
 from ray.train.huggingface import HuggingFaceCheckpoint, HuggingFacePredictor
+
+from dummy_preprocessor import DummyPreprocessor, assert_preprocessor_used
 
 test_strings = ["Complete me", "And me", "Please complete"]
 prompts = pd.DataFrame(test_strings, columns=["sentences"])
@@ -27,31 +28,6 @@ model_checkpoint = "hf-internal-testing/tiny-random-gpt2"
 tokenizer_checkpoint = "hf-internal-testing/tiny-random-gpt2"
 
 
-@pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
-def ray_start_runtime_env():
-    # Requires at least torch 1.11 to pass
-    # TODO update torch version in requirements instead
-    runtime_env = {"pip": ["torch==1.11.0"]}
-    address_info = ray.init(runtime_env=runtime_env)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-class DummyPreprocessor(Preprocessor):
-    def transform_batch(self, df):
-        self._batch_transformed = True
-        return df
-
-
 def test_repr(tmpdir):
     predictor = HuggingFacePredictor()
 
@@ -60,48 +36,6 @@ def test_repr(tmpdir):
     assert len(representation) < MAX_REPR_LENGTH
     pattern = re.compile("^HuggingFacePredictor\\((.*)\\)$")
     assert pattern.match(representation)
-
-
-def test_huggingface_checkpoint(tmpdir, ray_start_runtime_env):
-    model_config = AutoConfig.from_pretrained(model_checkpoint)
-    model = AutoModelForCausalLM.from_config(model_config)
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
-    preprocessor = DummyPreprocessor()
-    preprocessor.attr = 1
-
-    checkpoint = HuggingFaceCheckpoint.from_model(
-        model, tokenizer, path=tmpdir, preprocessor=preprocessor
-    )
-    checkpoint_model = checkpoint.get_model(AutoModelForCausalLM)
-    checkpoint_tokenizer = checkpoint.get_tokenizer(AutoTokenizer)
-    checkpoint_preprocessor = checkpoint.get_preprocessor()
-
-    @ray.remote
-    def test(model, tokenizer, preprocessor):
-        os.chdir(tmpdir)
-        predictor = HuggingFacePredictor(
-            pipeline=pipeline(
-                task="text-generation",
-                model=model,
-                tokenizer=tokenizer,
-            ),
-            preprocessor=preprocessor,
-        )
-
-        predictions = predictor.predict(prompts)
-        return predictions
-
-    tokens = tokenizer(test_strings)
-    checkpoint_tokens = checkpoint_tokenizer(test_strings)
-
-    predictions = ray.get(test.remote(model, tokenizer, preprocessor))
-    checkpoint_predictions = ray.get(
-        test.remote(checkpoint_model, checkpoint_tokenizer, checkpoint_preprocessor)
-    )
-
-    assert all(predictions == checkpoint_predictions)
-    assert tokens == checkpoint_tokens
-    assert checkpoint_preprocessor.attr == preprocessor.attr
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
@@ -130,7 +64,7 @@ def test_predict(tmpdir, ray_start_runtime_env, batch_type):
 
         assert len(predictions) == 3
         if preprocessor:
-            assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
+            assert_preprocessor_used(predictor.get_preprocessor())
 
     ray.get(test.remote(use_preprocessor=True))
     ray.get(test.remote(use_preprocessor=False))
