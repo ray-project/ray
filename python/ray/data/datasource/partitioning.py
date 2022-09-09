@@ -1,4 +1,3 @@
-from email import message
 import posixpath
 from enum import Enum
 from typing import (
