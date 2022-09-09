@@ -11,8 +11,7 @@ BASE_NUM = 2459  # white circle, black numbers
 
 
 class CalloutIncludePostTransform(SphinxTransform):
-    """Code block post-processor for `literalinclude` blocks used in callouts.
-    """
+    """Code block post-processor for `literalinclude` blocks used in callouts."""
     default_priority = 400
 
     def apply(self, **kwargs) -> None:
@@ -22,6 +21,7 @@ class CalloutIncludePostTransform(SphinxTransform):
 
 class LiteralIncludeVisitor(nodes.NodeVisitor):
     """Change a literal block upon visiting it."""
+
     def __init__(self, document: nodes.document) -> None:
         super().__init__(document)
 
@@ -56,6 +56,7 @@ class LiteralIncludeVisitor(nodes.NodeVisitor):
 
 class callout(nodes.General, nodes.Element):
     """Sphinx callout node."""
+
     pass
 
 
@@ -72,6 +73,7 @@ def depart_callout_node(self, node):
 
 class annotations(nodes.Element):
     """Sphinx annotations node."""
+
     pass
 
 
@@ -91,10 +93,7 @@ def _replace_numbers(content: str):
 
 def _parse_recursively(self, node):
     """Utility to recursively parse a node from the Sphinx AST."""
-    self.state.nested_parse(
-        self.content,
-        self.content_offset,
-        node)
+    self.state.nested_parse(self.content, self.content_offset, node)
 
 
 class CalloutDirective(SphinxDirective):
@@ -155,7 +154,7 @@ class CalloutDirective(SphinxDirective):
         content = self.content
         content = _replace_numbers(content)
 
-        callout_node = callout('\n'.join(content))
+        callout_node = callout("\n".join(content))
         _parse_recursively(self, callout_node)
 
         return [callout_node]
@@ -169,7 +168,7 @@ class AnnotationsDirective(SphinxDirective):
     def run(self):
         content = self.content
         content = _replace_numbers(content)
-        joined_content = '\n'.join(content)
+        joined_content = "\n".join(content)
         logging.warning(str(joined_content))
 
         annotations_node = callout(joined_content)
@@ -180,22 +179,23 @@ class AnnotationsDirective(SphinxDirective):
 
 def setup(app):
     # Add new node types
-    app.add_node(callout,
-                 html=(visit_callout_node, depart_callout_node),
-                 latex=(visit_callout_node, depart_callout_node),
-                 text=(visit_callout_node, depart_callout_node)
-                 )
+    app.add_node(
+        callout,
+        html=(visit_callout_node, depart_callout_node),
+        latex=(visit_callout_node, depart_callout_node),
+        text=(visit_callout_node, depart_callout_node)
+    )
     app.add_node(annotations)
 
     # Add new directives
-    app.add_directive('callout', CalloutDirective)
-    app.add_directive('annotations', AnnotationsDirective)
+    app.add_directive("callout", CalloutDirective)
+    app.add_directive("annotations", AnnotationsDirective)
 
     # Add post-processor
     app.add_post_transform(CalloutIncludePostTransform)
 
     return {
-        'version': '0.1',
-        'parallel_read_safe': True,
-        'parallel_write_safe': True,
+        "version": "0.1",
+        "parallel_read_safe": True,
+        "parallel_write_safe": True,
     }
