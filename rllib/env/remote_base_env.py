@@ -6,6 +6,7 @@ import ray
 from ray.util import log_once
 from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID, ASYNC_RESET_RETURN
 from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.gym import check_old_gym_env
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiEnvDict
 
 if TYPE_CHECKING:
@@ -397,7 +398,7 @@ class _RemoteMultiAgentEnv:
         else:
             obs_and_info = self.env.reset(seed)
 
-        if not isinstance(obs_and_info, tuple) or len(obs_and_info) != 2:
+        if check_old_gym_env(self.env, reset_results=obs_and_info):
             obs_and_info = (obs_and_info, {k: {} for k in obs_and_info.keys()})
 
         obs, info = obs_and_info
@@ -447,7 +448,7 @@ class _RemoteSingleAgentEnv:
         else:
             obs_and_info = {_DUMMY_AGENT_ID: self.env.reset(seed)}
 
-        if not isinstance(obs_and_info, tuple) or len(obs_and_info) != 2:
+        if check_old_gym_env(self.env, reset_results=obs_and_info):
             obs_and_info = (obs_and_info, {k: {} for k in obs_and_info.keys()})
 
         obs, info = obs_and_info

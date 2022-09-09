@@ -5,6 +5,7 @@ from typing import Callable, List, Optional, Tuple, Union, Set
 
 from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
+from ray.rllib.utils.gym import check_old_gym_env
 from ray.rllib.utils.typing import (
     EnvActionType,
     EnvID,
@@ -305,8 +306,7 @@ class _VectorizedGymEnv(VectorEnv):
                 obs_and_infos = self.envs[index].reset(seed)
 
             # Gym < 0.26 support.
-            # Cover the case where `reset()` only returns obs (not infos).
-            if not isinstance(obs_and_infos, tuple) or len(obs_and_infos) != 2:
+            if check_old_gym_env(self.envs[index], reset_results=obs_and_infos):
                 obs_and_infos = (obs_and_infos, {})
 
         except Exception as e:
@@ -351,23 +351,20 @@ class _VectorizedGymEnv(VectorEnv):
         )
         for i in range(self.num_envs):
             try:
-                returns = self.envs[i].step(actions[i])
+                results = self.envs[i].step(actions[i])
             except Exception as e:
                 if self.restart_failed_sub_environments:
                     logger.exception(e.args[0])
                     self.restart_at(i)
-                    returns = e, 0.0, True, True, {}
+                    results = e, 0.0, True, True, {}
                 else:
                     raise e
             # Gym < 0.26 support.
-            if len(returns) == 4:
-                obs, r, done, info = returns
+            if check_old_gym_env(self.envs[i], step_results=results):
+                obs, r, done, info = results
                 truncated = False
             else:
-                assert (
-                    len(returns) == 5
-                ), "ERROR: gym.Env `step()` must return 4 or 5 values!"
-                obs, r, done, truncated, info = returns
+                obs, r, done, truncated, info = results
 
             if not isinstance(info, dict):
                 raise ValueError(

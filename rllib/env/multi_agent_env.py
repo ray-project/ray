@@ -10,6 +10,7 @@ from ray.rllib.utils.annotations import (
     PublicAPI,
     DeveloperAPI,
 )
+from ray.rllib.utils.gym import check_old_gym_env
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,
@@ -453,18 +454,18 @@ def make_multi_agent(
                 config = {}
             num = config.pop("num_agents", 1)
             if isinstance(env_name_or_creator, str):
-                self.agents = [gym.make(env_name_or_creator) for _ in range(num)]
+                self.envs = [gym.make(env_name_or_creator) for _ in range(num)]
             else:
-                self.agents = [env_name_or_creator(config) for _ in range(num)]
+                self.envs = [env_name_or_creator(config) for _ in range(num)]
             self.dones = set()
-            self.observation_space = self.agents[0].observation_space
-            self.action_space = self.agents[0].action_space
+            self.observation_space = self.envs[0].observation_space
+            self.action_space = self.envs[0].action_space
             self._agent_ids = set(range(num))
 
         @override(MultiAgentEnv)
         def observation_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
             if agent_ids is None:
-                agent_ids = list(range(len(self.agents)))
+                agent_ids = list(range(len(self.envs)))
             obs = {agent_id: self.observation_space.sample() for agent_id in agent_ids}
 
             return obs
@@ -472,7 +473,7 @@ def make_multi_agent(
         @override(MultiAgentEnv)
         def action_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
             if agent_ids is None:
-                agent_ids = list(range(len(self.agents)))
+                agent_ids = list(range(len(self.envs)))
             actions = {agent_id: self.action_space.sample() for agent_id in agent_ids}
 
             return actions
@@ -493,9 +494,9 @@ def make_multi_agent(
         def reset(self, seed: Optional[int] = None):
             self.dones = set()
             obs, infos = {}, {}
-            for i, a in enumerate(self.agents):
-                results = a.reset()
-                if not isinstance(results, tuple) or len(results) != 2:
+            for i, env in enumerate(self.envs):
+                results = env.reset()
+                if check_old_gym_env(env, reset_results=results):
                     obs[i] = results
                     infos[i] = {}
                 else:
@@ -506,21 +507,22 @@ def make_multi_agent(
         def step(self, action_dict):
             obs, rew, done, truncated, info = {}, {}, {}, {}, {}
             for i, action in action_dict.items():
-                results = self.agents[i].step(action)
+                results = self.envs[i].step(action)
                 # Gym < 0.26 support.
-                if len(results) == 4:
+                if check_old_gym_env(self.envs[i], step_results=results):
                     obs[i], rew[i], done[i], info[i] = results
                     truncated[i] = False
                 else:
                     obs[i], rew[i], done[i], truncated[i], info[i] = results
+
                 if done[i]:
                     self.dones.add(i)
-            done["__all__"] = len(self.dones) == len(self.agents)
+            done["__all__"] = len(self.dones) == len(self.envs)
             return obs, rew, done, truncated, info
 
         @override(MultiAgentEnv)
         def render(self, mode=None):
-            return self.agents[0].render(mode)
+            return self.envs[0].render(mode)
 
     return MultiEnv
 
@@ -602,7 +604,7 @@ class MultiAgentEnvWrapper(BaseEnv):
                     raise e
 
             # Gym < 0.26 support.
-            if len(results) == 4:
+            if check_old_gym_env(env, step_results=results):
                 obs, rewards, dones, infos = results
                 truncateds = {k: False for k in dones.keys() if k != "__all__"}
             else:
@@ -649,7 +651,7 @@ class MultiAgentEnvWrapper(BaseEnv):
                 obs_and_infos = self.env_states[idx].reset(seed)
 
             # Gym < 0.26 support.
-            if not isinstance(obs_and_infos, tuple) or len(obs_and_infos) != 2:
+            if check_old_gym_env(self.envs[idx], reset_results=obs_and_infos):
                 obs_and_infos = (obs_and_infos, {k: {} for k in obs_and_infos.keys()})
 
             obs, infos = obs_and_infos
@@ -856,7 +858,7 @@ class _MultiAgentEnvState:
                 raise e
 
         # Gym < 0.26 support.
-        if not isinstance(obs_and_infos, tuple) or len(obs_and_infos) != 2:
+        if check_old_gym_env(self.env, reset_results=obs_and_infos):
             obs_and_infos = (obs_and_infos, {k: {} for k in obs_and_infos.keys()})
 
         self.last_obs, self.last_infos = obs_and_infos

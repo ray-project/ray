@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Set
 
 from ray.actor import ActorHandle
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.gym import check_old_gym_env
 from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
 from ray.rllib.utils.typing import EnvType
 from ray.util import log_once
@@ -170,7 +171,7 @@ def check_gym_environments(env: gym.Env) -> None:
     # contained within the observation space
     obs_and_infos = env.reset()
     # Gym < 0.26 support.
-    if not isinstance(obs_and_infos, tuple) or len(obs_and_infos) != 2:
+    if check_old_gym(reset_results=obs_and_infos):
         obs_and_infos = (obs_and_infos, {})
     reset_obs, reset_infos = obs_and_infos
 
@@ -198,18 +199,11 @@ def check_gym_environments(env: gym.Env) -> None:
     results = env.step(sampled_action)
 
     # Gym < 0.26 support.
-    if len(results) == 4:
+    if check_old_gym_env(env, step_results=results):
         next_obs, reward, done, info = results
         truncated = True
-    elif len(results) == 5:
-        next_obs, reward, done, truncated, info = results
     else:
-        raise ValueError(
-            "The number of values returned from `env.step([action])` must be either "
-            "4 (old gym.Env API) or 5 (new gym.Env API including `truncated` flags)!"
-            " Make sure your `step()` method returns: [obs], [reward], "
-            "[done], [truncated], and [infos]!"
-        )
+        next_obs, reward, done, truncated, info = results
 
     if not env.observation_space.contains(next_obs):
         next_obs_type = get_type(next_obs)
@@ -262,7 +256,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         return
 
     obs_and_infos = env.reset()
-    if not isinstance(obs_and_infos, tuple) or len(obs_and_infos) != 2:
+    if check_old_gym_env(env, reset_results=obs_and_infos):
         obs_and_infos = (obs_and_infos, {k: {} for k in obs_and_infos.keys()})
 
     reset_obs, reset_infos = obs_and_infos
@@ -312,7 +306,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
 
     results = env.step(sampled_action)
     # Gym < 0.26 support.
-    if len(results) == 4:
+    if check_old_gym_env(env, step_results=results):
         next_obs, reward, done, info = results
         truncated = {k: False for k in done.keys() if k != "__all__"}
     else:
@@ -355,12 +349,7 @@ def check_base_env(env: "BaseEnv") -> None:
     if not isinstance(env, BaseEnv):
         raise ValueError("The passed env is not a BaseEnv.")
 
-    obs_and_infos = env.try_reset()
-
-    # Gym < 0.26 support.
-    if not isinstance(obs_and_infos, tuple) or len(obs_and_infos) != 2:
-        obs_and_infos = (obs_and_infos, {k: {} for k in obs_and_infos.keys()})
-    reset_obs, reset_infos = obs_and_infos
+    reset_obs, reset_infos = env.try_reset()
 
     sampled_obs = env.observation_space_sample()
     _check_if_multi_env_dict(env, reset_obs, "try_reset")
