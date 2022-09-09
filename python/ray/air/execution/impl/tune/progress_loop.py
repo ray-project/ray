@@ -1,5 +1,6 @@
 import time
 
+from ray import tune
 from ray._private.dict import flatten_dict, unflatten_dict
 from ray.air.execution.impl.split.split_controller import SplitController
 from ray.air.execution.impl.tune.tune_controller import TuneController
@@ -56,7 +57,10 @@ def tune_run(trainable, param_space=None, search_alg=None, resource_manager=None
     tune_loop(tune_controller=tune_controller)
 
 
-def _split(available_resources, trainable, param_space, search_alg):
+def _split(available_resources, index, trainable, param_space, search_alg):
+    if isinstance(search_alg, BasicVariantGenerator):
+        search_alg._uuid_prefix = f"split_{index:05d}_"
+
     tune_controller = TuneController(
         trainable_cls=wrap_function(trainable),
         param_space=param_space,
@@ -90,15 +94,16 @@ def tune_split(
         resource_manager=resource_manager,
     )
 
-    for split_value in split_values:
+    for index, split_value in enumerate(split_values):
         split_param_flat = flat_space.copy()
-        split_param_flat[split_by] = split_value
+        split_param_flat[split_by] = tune.choice([split_value])
         split_param_space = unflatten_dict(split_param_flat)
 
         split_controller.add_split(
             _split,
             resources=resources_per_split,
             available_resources=resources_per_split,
+            index=index,
             trainable=trainable,
             param_space=split_param_space,
             search_alg=search_alg,

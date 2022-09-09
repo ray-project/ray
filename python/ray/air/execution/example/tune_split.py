@@ -8,7 +8,7 @@ ray.init()
 
 
 def train_fn(config):
-    return {"metric": config["A"] - config["B"], "fixed": config["B"]}
+    return {"metric": config["A"] - config["B"]}
 
 
 tune_split(
