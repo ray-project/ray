@@ -36,6 +36,8 @@ void RuntimeEnvHandler::HandlePinRuntimeEnvURI(
       },
       /* expiration_ms= */ request.expiration_s() * 1000);
 
+  // The `request` object will be destroyed when the reply is sent, so this
+  // must be called after the delay executor is set up.
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 }  // namespace gcs
