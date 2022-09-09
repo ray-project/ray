@@ -1017,6 +1017,15 @@ You can provide callbacks to be called at points during policy evaluation. These
 
 User-defined state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__ in the ``episode.user_data`` dict, and custom scalar metrics reported by saving values to the ``episode.custom_metrics`` dict. These custom metrics will be aggregated and reported as part of training results. For a full example, see `custom_metrics_and_callbacks.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__.
 
+.. tip::
+    You can create custom logic that can run on each evaluation episode by checking if the
+    :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` is in evaluation mode,
+    through accessing ``worker.policy_config["in_evaluation"]``. You can then implement this check in
+    ``on_episode_start()`` or ``on_episode_end()`` in your subclass of
+    :py:class:`~ray.rllib.algorithms.callbacks.DefaultCallbacks`. For running callbacks before and after the evaluation
+    runs in whole we provide ``on_evaluate_start()`` and ``on_evaluate_end``.
+
+
 .. autoclass:: ray.rllib.algorithms.callbacks.DefaultCallbacks
     :members:
 

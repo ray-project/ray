@@ -760,6 +760,8 @@ class Algorithm(Trainable):
                 ],
             )
 
+        self.callbacks.on_evaluate_start(algorithm=self)
+
         if self.config["custom_eval_function"]:
             logger.info(
                 "Running custom eval function {}".format(
@@ -942,6 +944,10 @@ class Algorithm(Trainable):
         # Save evaluation metrics on trainer, so it can be attached to
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
+
+        self.callbacks.on_evaluate_end(
+            algorithm=self, evaluation_metrics=self.evaluation_metrics
+        )
 
         # Also return the results here for convenience.
         return self.evaluation_metrics
