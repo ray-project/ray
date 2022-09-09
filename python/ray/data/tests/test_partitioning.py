@@ -330,7 +330,6 @@ def test_path_partition_parser_dir(fs, base_dir):
     )
 
     partitioned_path = posixpath.join(base_dir, "1970/countries/fr/products.csv")
-    # The parser shouldn't parse `countries`.
     assert partition_parser(partitioned_path) == {"year": "1970", "country": "fr"}
 
 
