@@ -22,10 +22,10 @@ from ray.train.huggingface import HuggingFaceCheckpoint, HuggingFacePredictor
 test_strings = ["Complete me", "And me", "Please complete"]
 prompts = pd.DataFrame(test_strings, columns=["sentences"])
 
-# We are only testing Casual Language Modeling here
+# We are only testing Causal Language Modeling here
 
-model_checkpoint = "sshleifer/tiny-gpt2"
-tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
+model_checkpoint = "hf-internal-testing/tiny-random-gpt2"
+tokenizer_checkpoint = "hf-internal-testing/tiny-random-gpt2"
 
 
 @pytest.fixture

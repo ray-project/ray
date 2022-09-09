@@ -11,7 +11,7 @@ from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional, Type, Union
 
-from ray.air._internal.util import StartTraceback, skip_exceptions
+from ray.air._internal.util import StartTraceback
 from ray.tune.resources import Resources
 from six.moves import queue
 
@@ -590,7 +590,7 @@ class FunctionTrainable(Trainable):
     def _report_thread_runner_error(self, block=False):
         try:
             e = self._error_queue.get(block=block, timeout=ERROR_FETCH_TIMEOUT)
-            raise StartTraceback from skip_exceptions(e)
+            raise StartTraceback from e
         except queue.Empty:
             pass
 

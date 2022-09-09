@@ -597,11 +597,9 @@ class Worker:
         # Make sure that the value is not an object ref.
         if isinstance(value, ObjectRef):
             raise TypeError(
-                "Calling 'put' on an ray.ObjectRef is not allowed "
-                "(similarly, returning an ray.ObjectRef from a remote "
-                "function is not allowed). If you really want to "
-                "do this, you can wrap the ray.ObjectRef in a list and "
-                "call 'put' on it (or return it)."
+                "Calling 'put' on an ray.ObjectRef is not allowed. "
+                "If you really want to do this, you can wrap the "
+                "ray.ObjectRef in a list and call 'put' on it."
             )
 
         if self.mode == LOCAL_MODE:
@@ -2067,7 +2065,7 @@ def connect(
         # are the same.
         # When using an interactive shell, there is no script directory.
         if not interactive_mode:
-            script_directory = os.path.realpath(os.path.dirname(sys.argv[0]))
+            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
             # (e.g driver is started via `python -m`,
             # see https://peps.python.org/pep-0338/),
