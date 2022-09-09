@@ -283,28 +283,19 @@ about these placement strategies.
 You can also allocate specific resources to a trial based on a custom rule via lambda functions.
 For instance, if you want to allocate GPU resources to trials based on a setting in your config:
 
-.. code-block:: python
-
-    tuner = tune.Tuner(
-        tune.with_resources(
-            train_fn,
-            resources=lambda spec: {"GPU": 1} if config.use_gpu else {"GPU": 0})
-    )
-    tuner.fit()
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __resources_lambda_start__
+    :end-before: __resources_lambda_end__
 
 You can also use the :ref:`ScalingConfig <train-config>` to specify your lambda function:
 
-.. code-block:: python
-
-    tuner = tune.Tuner(
-        train_fn,
-        param_space={
-            "scaling_config": ScalingConfig(
-                trainer_resources=lambda spec: {"GPU": 1} if config.use_gpu else {"GPU": 0})
-            )
-        }
-    )
-    tuner.fit()
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __resources_scalingconfig_start__
+    :end-before: __resources_scalingconfig_end__
 
 
 Why is my training stuck and Ray reporting that pending actor or tasks cannot be scheduled?
