@@ -29,6 +29,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/util.h"
@@ -2183,6 +2184,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                std::vector<std::shared_ptr<RayObject>> *return_objects,
                                ReferenceCounter::ReferenceTableProto *borrowed_refs,
                                bool *is_retryable_error) {
+  ray::stats::STATS_tasks.Record(1, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING));
+  ray::stats::STATS_tasks.Record(-1, rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_EXECUTION));
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
@@ -2340,6 +2343,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     RAY_LOG(FATAL) << "Unexpected task status type : " << status;
   }
 
+  ray::stats::STATS_tasks.Record(0, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING));
+  ray::stats::STATS_tasks.Record(0, rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_EXECUTION));
   return status;
 }
 

@@ -28,13 +28,22 @@
 namespace ray {
 namespace core {
 
+// TODO(ekl) move to cc file
 class TaskStatusCounter {
   public:
     void Swap(rpc::TaskStatus old_status, rpc::TaskStatus new_status) {
+      counters_[old_status] -= 1;
+      counters_[new_status] += 1;
+      RAY_CHECK(counters_[old_status] >= 0);
+      ray::stats::STATS_tasks.Record(counters_[old_status], rpc::TaskStatus_Name(old_status));
+      ray::stats::STATS_tasks.Record(counters_[new_status], rpc::TaskStatus_Name(new_status));
     }
     void Increment(rpc::TaskStatus status) {
-      ray::stats::STATS_tasks.Record(1, "RUNNING");
+      counters_[status] += 1;
+      ray::stats::STATS_tasks.Record(counters_[status], rpc::TaskStatus_Name(status));
     }
+  private:
+    int64_t counters_[rpc::TaskStatus_ARRAYSIZE] = {};
 };
 
 class TaskFinisherInterface {
@@ -300,6 +309,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       status = new_status;
     }
 
+    rpc::TaskStatus GetStatus() const {
+      return status;
+    }
+
     bool IsPending() const { return status != rpc::TaskStatus::FINISHED; }
 
     bool IsWaitingForExecution() const {
@@ -325,8 +338,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     TaskStatusCounter& counter;
     // Number of times this task successfully completed execution so far.
     int num_successful_executions = 0;
-    // The task's current execution status.
-    rpc::TaskStatus status = rpc::TaskStatus::WAITING_FOR_DEPENDENCIES;
     // Objects returned by this task that are reconstructable. This is set
     // initially to the task's return objects, since if the task fails, these
     // objects may be reconstructed by resubmitting the task. Once the task
@@ -344,6 +355,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // lineage. We cache this because the task spec protobuf can mutate
     // out-of-band.
     int64_t lineage_footprint_bytes = 0;
+
+    private:
+      // The task's current execution status.
+      rpc::TaskStatus status = rpc::TaskStatus::WAITING_FOR_DEPENDENCIES;
   };
 
   /// Remove a lineage reference to this object ID. This should be called
