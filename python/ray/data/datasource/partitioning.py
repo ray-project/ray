@@ -402,7 +402,14 @@ class PathPartitionParser:
             f"Expected {len(field_names)} partition value(s) but found "
             f"{len(dirs)}: {dirs}."
         )
-        return {field_names[i]: d for i, d in enumerate(dirs)} if dirs else {}
+
+        if not dirs:
+            return {}
+        return {
+            field: directory
+            for field, directory in zip(field_names, dirs)
+            if field is not None
+        }
 
 
 @PublicAPI(stability="beta")
