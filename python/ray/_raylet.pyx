@@ -573,8 +573,6 @@ cdef execute_task(
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
         CFiberEvent task_done_event
-        CObjectID dynamic_return_id
-        c_vector[CObjectID] dynamic_return_ids
         c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
     # Automatically restrict the GPUs available to this task.
@@ -860,8 +858,10 @@ cdef execute_task(
                 CObjectID.Nil(),
                 NULL)
             if not dynamic_returns[0].empty():
-                # We generated dynamic objects during the first execution.
-                # Store the error for these objects too.
+                # We generated dynamic objects during the first execution and
+                # we are now re-executing the task during object
+                # reconstruction. Store the error for the dynamically generated
+                # objects too.
                 dynamic_errors = []
                 for _ in range(dynamic_returns[0].size()):
                     dynamic_errors.append(failure_object)
@@ -2185,7 +2185,6 @@ cdef class CoreWorker:
 
         task_output_inlined_bytes = 0
         i = -1
-        outputs = list(outputs)
         for i, output in enumerate(outputs):
             if num_returns >= 0 and i >= num_returns:
                 raise ValueError(
@@ -2208,12 +2207,13 @@ cdef class CoreWorker:
                 assert i < dynamic_returns[0].size()
                 return_ptr = &dynamic_returns[0][i].second
 
-            # TODO(swang): We should only try to create an existing return
-            # value if there were multiple return values, and we errored while
-            # trying to create one of them. We should try to delete the first
-            # value and store the error instead here.
             # Skip return values that we already created.
             if return_ptr.get() != NULL:
+                # TODO(swang): If there were multiple return values, and we
+                # errored while trying to create one of them, then earlier
+                # return objects will already have a value stored. We should
+                # try to delete the first value and store the error instead
+                # here.
                 continue
 
             context = worker.get_serialization_context()

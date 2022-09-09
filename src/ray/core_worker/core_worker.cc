@@ -2225,17 +2225,17 @@ Status CoreWorker::ExecuteTask(
   std::vector<ObjectID> borrowed_ids;
   RAY_CHECK_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
 
-  // TODO(swang): For generator objects, pass the return IDs that were
-  // dynamically generated on the first execution.
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
     return_ids.push_back(task_spec.ReturnId(i));
   }
+  // For dynamic tasks, pass the return IDs that were dynamically generated on
+  // the first execution.
   for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
     dynamic_return_objects->push_back(
         std::make_pair<>(dynamic_return_id, std::shared_ptr<RayObject>()));
-    RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " will return dynamic object "
-                   << dynamic_return_id;
+    RAY_LOG(DEBUG) << "Re-executed task " << task_spec.TaskId()
+                   << " should return dynamic object " << dynamic_return_id;
   }
 
   Status status;
