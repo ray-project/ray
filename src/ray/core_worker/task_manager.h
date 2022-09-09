@@ -20,12 +20,22 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/stats/metric_defs.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace core {
+
+class TaskStatusCounter {
+  public:
+    void Swap(rpc::TaskStatus old_status, rpc::TaskStatus new_status) {
+    }
+    void Increment(rpc::TaskStatus status) {
+      ray::stats::STATS_tasks.Record(1, "RUNNING");
+    }
+};
 
 class TaskFinisherInterface {
  public:
@@ -276,11 +286,18 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   struct TaskEntry {
     TaskEntry(const TaskSpecification &spec_arg,
               int num_retries_left_arg,
-              size_t num_returns)
-        : spec(spec_arg), num_retries_left(num_retries_left_arg) {
+              size_t num_returns,
+              TaskStatusCounter& counter)
+        : spec(spec_arg), num_retries_left(num_retries_left_arg), counter(counter) {
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
+      counter.Increment(rpc::TaskStatus::WAITING_FOR_DEPENDENCIES);
+    }
+
+    void SetStatus(rpc::TaskStatus new_status) {
+      counter.Swap(status, new_status);
+      status = new_status;
     }
 
     bool IsPending() const { return status != rpc::TaskStatus::FINISHED; }
@@ -304,6 +321,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // Number of times this task may be resubmitted. If this reaches 0, then
     // the task entry may be erased.
     int num_retries_left;
+    // Reference to the task stats tracker.
+    TaskStatusCounter& counter;
     // Number of times this task successfully completed execution so far.
     int num_successful_executions = 0;
     // The task's current execution status.
@@ -381,6 +400,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Protects below fields.
   mutable absl::Mutex mu_;
+
+  /// Tracks per-task-state counters for metric purposes.
+  TaskStatusCounter task_counter_ GUARDED_BY(mu_);
 
   /// This map contains one entry per task that may be submitted for
   /// execution. This includes both tasks that are currently pending execution
