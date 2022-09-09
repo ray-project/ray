@@ -31,7 +31,7 @@ from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
 )
-from ray.data.datasource.partitioning import PathPartitionFilter
+from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -335,6 +335,7 @@ class _FileBasedDatasourceReader(Reader):
         open_stream_args: Optional[Dict[str, Any]] = None,
         meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
         partition_filter: PathPartitionFilter = None,
+        partitioning: Partitioning = None,
         # TODO(ekl) deprecate this once read fusion is available.
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **reader_args,

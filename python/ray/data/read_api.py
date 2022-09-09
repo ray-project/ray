@@ -40,6 +40,7 @@ from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
     _wrap_and_register_arrow_serialization_workaround,
 )
+from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup
@@ -546,6 +547,7 @@ def read_csv(
     partition_filter: Optional[
         PathPartitionFilter
     ] = CSVDatasource.file_extension_filter(),
+    partitioning: Partitioning = Partitioning("hive"),
     **arrow_csv_args,
 ) -> Dataset[ArrowRow]:
     r"""Create an Arrow dataset from csv files.
@@ -597,6 +599,7 @@ def read_csv(
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
             match "*.csv*".
+        partitioning: TODO
         arrow_csv_args: Other csv read options to pass to pyarrow.
 
     Returns:
@@ -611,6 +614,7 @@ def read_csv(
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        partitioning=partitioning,
         **arrow_csv_args,
     )
 
