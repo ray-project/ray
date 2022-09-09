@@ -1,4 +1,3 @@
-import errno
 import logging
 import math
 import os
@@ -529,12 +528,7 @@ class TFPolicy(Policy):
         self, export_dir: str, filename_prefix: str = "model"
     ) -> None:
         """Export tensorflow checkpoint to export_dir."""
-        try:
-            os.makedirs(export_dir)
-        except OSError as e:
-            # ignore error if export dir already exists
-            if e.errno != errno.EEXIST:
-                raise
+        os.makedirs(export_dir, exist_ok=True)
         save_path = os.path.join(export_dir, filename_prefix)
         with self.get_session().graph.as_default():
             saver = tf1.train.Saver()

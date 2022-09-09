@@ -258,7 +258,7 @@ class TunerInternal:
             run_config.name,
         )
         if not os.path.exists(path):
-            os.makedirs(path)
+            os.makedirs(path, exist_ok=True)
         return path
 
     # This has to be done through a function signature (@property won't do).

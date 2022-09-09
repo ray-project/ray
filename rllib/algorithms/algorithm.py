@@ -260,7 +260,9 @@ class Algorithm(Trainable):
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             logdir_prefix = "{}_{}_{}".format(str(self), env_descr, timestr)
             if not os.path.exists(DEFAULT_RESULTS_DIR):
-                os.makedirs(DEFAULT_RESULTS_DIR)
+                # Possible race condition if dir is created several times on
+                # rollout workers
+                os.makedirs(DEFAULT_RESULTS_DIR, exist_ok=True)
             logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
 
             # Allow users to more precisely configure the created logger
