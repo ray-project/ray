@@ -175,8 +175,8 @@
     - echo "--- Setting up Python 3.7 environment."
     - PYTHON=3.7 ./ci/env/install-dependencies.sh
     # Specifying PYTHON=3.7 above somehow messes up the Ray install.
-    # Uninstall and re-install Ray so that we can use Ray Client.
-    # (Remove thirdparty_files to sidestep an issue with psutil.)
+    # Uninstall and re-install Ray so that we can use Ray Client
+    # (remove thirdparty_files to sidestep an issue with psutil).
     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
     - ./ci/ci.sh build
 
