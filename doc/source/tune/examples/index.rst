@@ -299,7 +299,8 @@ Other Examples
 - :doc:`/tune/examples/includes/logging_example`: Example of custom loggers and custom trial directory naming.
 - :doc:`/tune/examples/includes/genetic_example`: Optimizing the Michalewicz function using the contributed
   GeneticSearch algorithm with AsyncHyperBandScheduler.
-
+- :doc:`/tune/examples/pbt_visualization/pbt_visualization`:
+  Configuring and running PBT and understanding the underlying algorithm behavior with a simple example.
 
 .. _tune-exercises:
 
