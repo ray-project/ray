@@ -979,8 +979,13 @@ class Algorithm(Trainable):
     ) -> dict:
         """Evaluates current policy under `evaluation_config` settings.
 
-        Note that this default implementation does not do anything beyond
-        merging evaluation_config with the normal trainer config.
+        Uses the AsyncParallelRequests manager to send frequent `sample.remote()`
+        requests to the evaluation RolloutWorkers and collect the results of these
+        calls. Handles worker failures (or slowdowns) gracefully due to the asynch'ness
+        and the fact that other eval RolloutWorkers can thus cover the workload.
+
+        Important Note: This will replace the current `self.evaluate()` method as the
+        default in the future.
 
         Args:
             duration_fn: An optional callable taking the already run

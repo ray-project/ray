@@ -41,10 +41,10 @@ class BaseTrainer(abc.ABC):
     Note: The base ``BaseTrainer`` class cannot be instantiated directly. Only
     one of its subclasses can be used.
 
-    How does a trainer work?
+    **How does a trainer work?**
 
     - First, initialize the Trainer. The initialization runs locally,
-      so heavyweight setup should not be done in __init__.
+      so heavyweight setup should not be done in ``__init__``.
     - Then, when you call ``trainer.fit()``, the Trainer is serialized
       and copied to a remote Ray actor. The following methods are then
       called in sequence on the remote actor.
@@ -301,7 +301,7 @@ class BaseTrainer(abc.ABC):
     def training_loop(self) -> None:
         """Loop called by fit() to run training and report results to Tune.
 
-        Note: this method runs on a remote process.
+        .. note:: This method runs on a remote process.
 
         ``self.datasets`` have already been preprocessed by ``self.preprocessor``.
 
@@ -311,7 +311,7 @@ class BaseTrainer(abc.ABC):
 
         Example:
 
-        .. code-block: python
+        .. code-block:: python
 
             from ray.train.trainer import BaseTrainer
 
