@@ -371,7 +371,7 @@ py_test(
     srcs = ["test_submit_cpp_job.py"],
     data = [
         "simple_job",
-        "simple_job.so"
+        "simple_job.so",
     ],
     env = {
         "SIMPLE_DRIVER_SO_PATH": "$(location simple_job.so)",
