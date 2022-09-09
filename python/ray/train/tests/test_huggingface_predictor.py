@@ -10,7 +10,6 @@ from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
-import transformers
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.pipelines import pipeline
 
@@ -78,12 +77,8 @@ def test_huggingface_checkpoint(tmpdir, ray_start_runtime_env):
     checkpoint_preprocessor = checkpoint.get_preprocessor()
 
     @ray.remote
-    def test(model, tokenizer):
+    def test(model, tokenizer, preprocessor):
         os.chdir(tmpdir)
-        # Ensure that model outputs are deterministic
-        model_config = AutoConfig.from_pretrained(model_checkpoint)
-        model = AutoModelForCausalLM.from_config(model_config)
-        model.eval()
         predictor = HuggingFacePredictor(
             pipeline=pipeline(
                 task="text-generation",
@@ -99,9 +94,9 @@ def test_huggingface_checkpoint(tmpdir, ray_start_runtime_env):
     tokens = tokenizer(test_strings)
     checkpoint_tokens = checkpoint_tokenizer(test_strings)
 
-    predictions = ray.get(test.remote(model, tokenizer))
+    predictions = ray.get(test.remote(model, tokenizer, preprocessor))
     checkpoint_predictions = ray.get(
-        test.remote(checkpoint_model, checkpoint_tokenizer)
+        test.remote(checkpoint_model, checkpoint_tokenizer, checkpoint_preprocessor)
     )
 
     assert all(predictions == checkpoint_predictions)
