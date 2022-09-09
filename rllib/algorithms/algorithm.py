@@ -288,7 +288,9 @@ class Algorithm(Trainable):
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             logdir_prefix = "{}_{}_{}".format(str(self), env_descr, timestr)
             if not os.path.exists(DEFAULT_RESULTS_DIR):
-                os.makedirs(DEFAULT_RESULTS_DIR)
+                # Possible race condition if dir is created several times on
+                # rollout workers
+                os.makedirs(DEFAULT_RESULTS_DIR, exist_ok=True)
             logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
 
             # Allow users to more precisely configure the created logger
@@ -786,6 +788,8 @@ class Algorithm(Trainable):
                 ],
             )
 
+        self.callbacks.on_evaluate_start(algorithm=self)
+
         if self.config["custom_eval_function"]:
             logger.info(
                 "Running custom eval function {}".format(
@@ -968,6 +972,10 @@ class Algorithm(Trainable):
         # Save evaluation metrics on trainer, so it can be attached to
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
+
+        self.callbacks.on_evaluate_end(
+            algorithm=self, evaluation_metrics=self.evaluation_metrics
+        )
 
         # Also return the results here for convenience.
         return self.evaluation_metrics
