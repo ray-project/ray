@@ -660,7 +660,7 @@ def read_text(
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
             By default, this does not filter out any files.
-            If wishing to filter out all file paths except those whose file extension
+            If wishing to filter out all file paths except those whose file extensionar
             matches e.g. "*.txt*", a ``FileXtensionFilter("txt")`` can be provided.
 
     Returns:

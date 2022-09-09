@@ -217,7 +217,11 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         return None
 
     def _read_stream(
-        self, f: "pyarrow.NativeFile", path: str, **reader_args
+        self,
+        f: "pyarrow.NativeFile",
+        path: str,
+        partitioning: Optional[Partitioning],
+        **reader_args,
     ) -> Iterator[Block]:
         """Streaming read a single file, passing all kwargs to the reader.
 
@@ -225,7 +229,13 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         """
         yield self._read_file(f, path, **reader_args)
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Block:
+    def _read_file(
+        self,
+        f: "pyarrow.NativeFile",
+        path: str,
+        partitioning: Optional[Partitioning],
+        **reader_args,
+    ) -> Block:
         """Reads a single file, passing all kwargs to the reader.
 
         This method should be implemented by subclasses.
@@ -346,6 +356,7 @@ class _FileBasedDatasourceReader(Reader):
         self._open_stream_args = open_stream_args
         self._meta_provider = meta_provider
         self._partition_filter = partition_filter
+        self._partitioning = partitioning
         self._block_udf = _block_udf
         self._reader_args = reader_args
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
@@ -375,6 +386,7 @@ class _FileBasedDatasourceReader(Reader):
 
         open_stream_args = self._open_stream_args
         reader_args = self._reader_args
+        partitioning = self._partitioning
         _block_udf = self._block_udf
 
         paths, file_sizes = self._paths, self._file_sizes
@@ -436,7 +448,7 @@ class _FileBasedDatasourceReader(Reader):
                     # can take care of streaming decompression for us.
                     open_stream_args["compression"] = compression
                 with open_input_source(fs, read_path, **open_stream_args) as f:
-                    for data in read_stream(f, read_path, **reader_args):
+                    for data in read_stream(f, read_path, partitioning, **reader_args):
                         output_buffer.add_block(data)
                         if output_buffer.has_next():
                             yield output_buffer.next()
@@ -499,6 +511,8 @@ def _resolve_paths_and_filesystem(
 
     if isinstance(paths, str):
         paths = [paths]
+    if isinstance(paths, pathlib.Path):
+        paths = [str(paths)]
     elif not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
         raise ValueError("paths must be a path string or a list of path strings.")
     elif len(paths) == 0:
