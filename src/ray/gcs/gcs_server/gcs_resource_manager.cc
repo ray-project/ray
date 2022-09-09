@@ -93,8 +93,7 @@ void GcsResourceManager::HandleGetAllAvailableResources(
       if (using_resource_reports) {
         auto resource_iter =
             node_resource_usages_[node_id].resources_available().find(resource_name);
-        if (resource_iter != node_resource_usages_[node_id].resources_available().end() &&
-            resource_iter->second > 0) {
+        if (resource_iter != node_resource_usages_[node_id].resources_available().end()) {
           resource.mutable_resources_available()->insert(
               {resource_name, resource_iter->second});
         }
@@ -112,12 +111,6 @@ void GcsResourceManager::HandleGetAllAvailableResources(
 
 void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data) {
   NodeID node_id = NodeID::FromBinary(data.node_id());
-  // We only need to update worker nodes' resource usage. Gcs node ifself does not
-  // execute any tasks so its report can be ignored.
-  if (node_id == local_node_id_) {
-    return;
-  }
-
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, data);
   } else {
