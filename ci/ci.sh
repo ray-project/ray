@@ -173,6 +173,9 @@ test_python() {
       -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
       -python/ray/serve:test_gcs_failure # Fork not supported in windows
       -python/ray/serve:test_standalone2 # Multinode not supported on Windows
+      -python/ray/serve:test_gradio
+      -python/ray/serve:test_gradio_visualization
+      -python/ray/serve:test_air_integrations_gpu
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -303,7 +306,7 @@ build_sphinx_docs() {
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
       make html
-      make doctest
+      RAY_MOCK_MODULES=0 make doctest
     fi
   )
 }
@@ -796,6 +799,8 @@ test_minimal() {
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/dashboard/test_dashboard
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_usage_stats
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_usage_stats
 }
 
 _main() {

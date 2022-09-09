@@ -12,19 +12,21 @@ cloudpickle
 filelock
 frozenlist
 gpustat == 1.0.0b1
-grpcio >= 1.28.1, <= 1.43.0
+grpcio >= 1.32.0, <= 1.43.0; python_version < '3.10'
+grpcio >= 1.42.0, <= 1.43.0; python_version >= '3.10'
 jsonschema
 msgpack >= 1.0.0, < 2.0.0
 numpy >= 1.16
 opencensus
+packaging; python_version >= '3.10'
 prometheus_client >= 0.7.1, < 0.14.0
 protobuf >= 3.15.3, < 4.0.0
 py-spy >= 0.2.0
-pydantic >= 1.8
+pydantic >= 1.8, < 1.10.0
 pyyaml
 requests
 smart_open
-virtualenv
+virtualenv>=20.0.24
 
 ## setup.py extras
 dm_tree
@@ -43,6 +45,7 @@ uvicorn==0.16.0
 dataclasses; python_version < '3.7'
 starlette==0.18.0
 aiorwlock
+gradio; platform_system != "Windows"
 
 # Requirements for running tests
 pyarrow >= 6.0.1, < 7.0.0
@@ -63,7 +66,7 @@ google-cloud-storage
 gym-minigrid==1.0.3
 kubernetes
 lxml
-moto[s3,server]
+moto[s3,server] >= 4.0.0
 mypy
 networkx
 numba

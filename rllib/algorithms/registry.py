@@ -1,6 +1,7 @@
 """Registry of algorithm names for `rllib train --run=<alg_name>`"""
 
 import importlib
+import re
 import traceback
 
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
@@ -106,6 +107,12 @@ def _import_dreamer():
     import ray.rllib.algorithms.dreamer as dreamer
 
     return dreamer.Dreamer, dreamer.DreamerConfig().to_dict()
+
+
+def _import_dt():
+    import ray.rllib.algorithms.dt as dt
+
+    return dt.DT, dt.DTConfig().to_dict()
 
 
 def _import_es():
@@ -215,6 +222,7 @@ ALGORITHMS = {
     "DDPPO": _import_ddppo,
     "DQN": _import_dqn,
     "Dreamer": _import_dreamer,
+    "DT": _import_dt,
     "IMPALA": _import_impala,
     "APPO": _import_appo,
     "AlphaStar": _import_alpha_star,
@@ -309,6 +317,7 @@ POLICIES = {
     "DQNTFPolicy": "dqn.dqn_tf_policy",
     "DQNTorchPolicy": "dqn.dqn_torch_policy",
     "DreamerTorchPolicy": "dreamer.dreamer_torch_policy",
+    "DTTorchPolicy": "dt.dt_torch_policy",
     "ESTFPolicy": "es.es_tf_policy",
     "ESTorchPolicy": "es.es_torch_policy",
     "ImpalaTF1Policy": "impala.impala_tf_policy",
@@ -343,12 +352,35 @@ POLICIES = {
 
 
 def get_policy_class_name(policy_class: type):
-    if policy_class.__name__ in POLICIES:
-        return policy_class.__name__
+    """Returns a string name for the provided policy class.
+
+    Args:
+        policy_class: RLlib policy class, e.g. A3CTorchPolicy, DQNTFPolicy, etc.
+
+    Returns:
+        A string name uniquely mapped to the given policy class.
+    """
+    # TF2 policy classes may get automatically converted into new class types
+    # that have eager tracing capability.
+    # These policy classes have the "_traced" postfix in their names.
+    # When checkpointing these policy classes, we should save the name of the
+    # original policy class instead. So that users have the choice of turning
+    # on eager tracing during inference time.
+    name = re.sub("_traced$", "", policy_class.__name__)
+    if name in POLICIES:
+        return name
     return None
 
 
 def get_policy_class(name: str):
+    """Return an actual policy class given the string name.
+
+    Args:
+        name: string name of the policy class.
+
+    Returns:
+        Actual policy class for the given name.
+    """
     if name not in POLICIES:
         return None
 

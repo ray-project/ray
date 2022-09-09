@@ -583,18 +583,17 @@ cdef execute_task(
         actor_id = core_worker.get_actor_id()
         actor = actor_class.__new__(actor_class)
         worker.actors[actor_id] = actor
-        if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-            # Record the actor class via :actor_name: magic token in the log.
-            #
-            # (Phase 1): this covers code run before __init__ finishes.
-            # We need to handle this separately because `__repr__` may not be
-            # runnable until after `__init__` (e.g., if it accesses fields
-            # defined in the constructor).
-            actor_magic_token = "{}{}\n".format(
-                ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__)
-            # Flush to both .out and .err
-            print(actor_magic_token, end="")
-            print(actor_magic_token, file=sys.stderr, end="")
+        # Record the actor class via :actor_name: magic token in the log.
+        #
+        # (Phase 1): this covers code run before __init__ finishes.
+        # We need to handle this separately because `__repr__` may not be
+        # runnable until after `__init__` (e.g., if it accesses fields
+        # defined in the constructor).
+        actor_magic_token = "{}{}\n".format(
+            ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__)
+        # Flush to both .out and .err
+        print(actor_magic_token, end="")
+        print(actor_magic_token, file=sys.stderr, end="")
 
         # Initial eventloops for asyncio for this actor.
         if core_worker.current_actor_is_asyncio():
@@ -635,6 +634,13 @@ cdef execute_task(
             function = execution_info.function
 
             if core_worker.current_actor_is_asyncio():
+                if len(inspect.getmembers(
+                        actor.__class__,
+                        predicate=inspect.iscoroutinefunction)) == 0:
+                    raise RayActorError(
+                        f"Failed to create the actor {core_worker.get_actor_id()}. "
+                        "The failure reason is that you set the async flag, "
+                        "but the actor has no any coroutine function.")
                 # Increase recursion limit if necessary. In asyncio mode,
                 # we have many parallel callstacks (represented in fibers)
                 # that's suspended for execution. Python interpreter will
@@ -702,8 +708,8 @@ cdef execute_task(
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
-                    is_existing = core_worker.is_exiting()
-                    if is_existing:
+                    is_exiting = core_worker.is_exiting()
+                    if is_exiting:
                         title = f"{title}::Exiting"
                         next_title = f"{next_title}::Exiting"
                     with ray._private.worker._changeproctitle(title, next_title):
@@ -748,10 +754,10 @@ cdef execute_task(
                                         core_worker.get_current_task_id()),
                                     exc_info=True)
                     else:
-                        logger.info("Task failed with unretryable exception:"
-                                    " {}.".format(
-                                        core_worker.get_current_task_id()),
-                                    exc_info=True)
+                        logger.debug("Task failed with unretryable exception:"
+                                     " {}.".format(
+                                         core_worker.get_current_task_id()),
+                                     exc_info=True)
                     raise e
                 if c_return_ids.size() == 1:
                     # If there is only one return specified, we should return

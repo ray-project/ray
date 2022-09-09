@@ -675,9 +675,7 @@ def start(
         ray_params.gcs_server_port = port
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
-            ray_params.env_vars = {
-                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
-            }
+            ray_params.env_vars = {"RAY_RAYLET_NODE_ID": FAKE_HEAD_NODE_ID}
 
         num_redis_shards = None
         # Start Ray on the head node.
@@ -1960,7 +1958,7 @@ def local_dump(
     )
 
 
-@cli.command()
+@cli.command(name="logs")
 @click.argument(
     "glob_filter",
     required=False,
@@ -2046,6 +2044,7 @@ def local_dump(
         "automatically from querying the GCS server."
     ),
 )
+@PublicAPI(stability="alpha")
 def ray_logs(
     glob_filter,
     node_ip: str,
@@ -2563,7 +2562,6 @@ cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
-add_command_alias(ray_logs, name="logs", hidden=False)
 cli.add_command(ray_list, name="list")
 cli.add_command(ray_get, name="get")
 add_command_alias(summary_state_cli_group, name="summary", hidden=False)

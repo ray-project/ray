@@ -11,6 +11,9 @@ from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+STATS_ACTOR_NAME = "datasets_stats_actor"
+STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
+
 
 def fmt(seconds: float) -> str:
     if seconds > 1:
@@ -84,24 +87,41 @@ class _DatasetStatsBuilder:
 class _StatsActor:
     """Actor holding stats for blocks created by LazyBlockList.
 
-    This actor is shared across all datasets created by the same process.
-    The stats data is small so we don't worry about clean up for now.
+    This actor is shared across all datasets created in the same cluster.
+    In order to cap memory usage, we set a max number of stats to keep
+    in the actor. When this limit is exceeded, the stats will be garbage
+    collected in FIFO order.
 
     TODO(ekl) we should consider refactoring LazyBlockList so stats can be
     extracted without using an out-of-band actor."""
 
-    def __init__(self):
+    def __init__(self, max_stats=1000):
         # Mapping from uuid -> dataset-specific stats.
         self.metadata = collections.defaultdict(dict)
         self.last_time = {}
         self.start_time = {}
+        self.max_stats = max_stats
+        self.fifo_queue = []
 
     def record_start(self, stats_uuid):
         self.start_time[stats_uuid] = time.perf_counter()
+        self.fifo_queue.append(stats_uuid)
+        # Purge the oldest stats if the limit is exceeded.
+        if len(self.fifo_queue) > self.max_stats:
+            uuid = self.fifo_queue.pop(0)
+            if uuid in self.start_time:
+                del self.start_time[uuid]
+            if uuid in self.last_time:
+                del self.last_time[uuid]
+            if uuid in self.metadata:
+                del self.metadata[uuid]
 
-    def record_task(self, stats_uuid, i, metadata):
-        self.metadata[stats_uuid][i] = metadata
-        self.last_time[stats_uuid] = time.perf_counter()
+    def record_task(self, stats_uuid, task_idx, metadata):
+        # Null out the schema to keep the stats size small.
+        metadata.schema = None
+        if stats_uuid in self.start_time:
+            self.metadata[stats_uuid][task_idx] = metadata
+            self.last_time[stats_uuid] = time.perf_counter()
 
     def get(self, stats_uuid):
         if stats_uuid not in self.metadata:
@@ -111,41 +131,27 @@ class _StatsActor:
             self.last_time[stats_uuid] - self.start_time[stats_uuid],
         )
 
-
-# Actor handle, job id the actor was created for.
-_stats_actor = [None, None]
+    def _get_stats_dict_size(self):
+        return len(self.start_time), len(self.last_time), len(self.metadata)
 
 
 def _get_or_create_stats_actor():
-    # Need to re-create it if Ray restarts (mostly for unit tests).
-    if (
-        not _stats_actor[0]
-        or not ray.is_initialized()
-        or _stats_actor[1] != ray.get_runtime_context().job_id.hex()
-    ):
-        ctx = DatasetContext.get_current()
-        scheduling_strategy = ctx.scheduling_strategy
-        if not ray.util.client.ray.is_connected():
-            # Pin the stats actor to the local node
-            # so it fate-shares with the driver.
-            scheduling_strategy = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(),
-                soft=False,
-            )
-
-        _stats_actor[0] = _StatsActor.options(
-            name="datasets_stats_actor",
-            get_if_exists=True,
-            scheduling_strategy=scheduling_strategy,
-        ).remote()
-        _stats_actor[1] = ray.get_runtime_context().job_id.hex()
-
-        # Clear the actor handle after Ray reinits since it's no longer valid.
-        def clear_actor():
-            _stats_actor[0] = None
-
-        ray._private.worker._post_init_hooks.append(clear_actor)
-    return _stats_actor[0]
+    ctx = DatasetContext.get_current()
+    scheduling_strategy = ctx.scheduling_strategy
+    if not ray.util.client.ray.is_connected():
+        # Pin the stats actor to the local node
+        # so it fate-shares with the driver.
+        scheduling_strategy = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
+    return _StatsActor.options(
+        name=STATS_ACTOR_NAME,
+        namespace=STATS_ACTOR_NAMESPACE,
+        get_if_exists=True,
+        lifetime="detached",
+        scheduling_strategy=scheduling_strategy,
+    ).remote()
 
 
 class DatasetStats:
@@ -223,10 +229,9 @@ class DatasetStats:
             already_printed = set()
 
         if self.needs_stats_actor:
+            ac = self.stats_actor
             # XXX this is a super hack, clean it up.
-            stats_map, self.time_total_s = ray.get(
-                self.stats_actor.get.remote(self.stats_uuid)
-            )
+            stats_map, self.time_total_s = ray.get(ac.get.remote(self.stats_uuid))
             for i, metadata in stats_map.items():
                 self.stages["read"][i] = metadata
         out = ""

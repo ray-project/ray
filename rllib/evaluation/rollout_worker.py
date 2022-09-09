@@ -746,6 +746,10 @@ class RolloutWorker(ParallelIteratorWorker):
         self.input_reader: InputReader = input_creator(self.io_context)
         self.output_writer: OutputWriter = output_creator(self.io_context)
 
+        # The current weights sequence number (version). May remain None for when
+        # not tracking weights versions.
+        self.weights_seq_no: Optional[int] = None
+
         logger.debug(
             "Created rollout worker with env {} ({}), policies {}".format(
                 self.async_env, self.env, self.policy_map
@@ -1237,9 +1241,26 @@ class RolloutWorker(ParallelIteratorWorker):
         if policy_state:
             new_policy.set_state(policy_state)
 
-        self.filters[policy_id] = get_filter(
-            self.observation_filter, new_policy.observation_space.shape
+        filter_shape = tree.map_structure(
+            lambda s: (
+                None
+                if isinstance(s, (Discrete, MultiDiscrete))  # noqa
+                else np.array(s.shape)
+            ),
+            new_policy.observation_space_struct,
         )
+
+        self.filters[policy_id] = get_filter(self.observation_filter, filter_shape)
+
+        if (
+            self.policy_config.get("enable_connectors")
+            and policy_id in self.policy_map
+            and not (
+                self.policy_map[policy_id].agent_connectors
+                or self.policy_map[policy_id].action_connectors
+            )
+        ):
+            create_connectors_for_policy(self.policy_map[policy_id], self.policy_config)
 
         self.set_policy_mapping_fn(policy_mapping_fn)
         if policies_to_train is not None:
@@ -1563,7 +1584,10 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @DeveloperAPI
     def set_weights(
-        self, weights: Dict[PolicyID, ModelWeights], global_vars: Optional[Dict] = None
+        self,
+        weights: Dict[PolicyID, ModelWeights],
+        global_vars: Optional[Dict] = None,
+        weights_seq_no: Optional[int] = None,
     ) -> None:
         """Sets each policies' model weights of this worker.
 
@@ -1571,6 +1595,10 @@ class RolloutWorker(ParallelIteratorWorker):
             weights: Dict mapping PolicyIDs to the new weights to be used.
             global_vars: An optional global vars dict to set this
                 worker to. If None, do not update the global_vars.
+            weights_seq_no: If needed, a sequence number for the weights version
+                can be passed into this method. If not None, will store this seq no
+                (in self.weights_seq_no) and in future calls - if the seq no did not
+                change wrt. the last call - will ignore the call to save on performance.
 
         Examples:
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -1580,13 +1608,21 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> # Set `global_vars` (timestep) as well.
             >>> worker.set_weights(weights, {"timestep": 42}) # doctest: +SKIP
         """
-        # If per-policy weights are object refs, `ray.get()` them first.
-        if weights and isinstance(next(iter(weights.values())), ObjectRef):
-            actual_weights = ray.get(list(weights.values()))
-            weights = {pid: actual_weights[i] for i, pid in enumerate(weights.keys())}
+        # Only update our weights, if no seq no given OR given seq no is different
+        # from ours
+        if weights_seq_no is None or weights_seq_no != self.weights_seq_no:
+            # If per-policy weights are object refs, `ray.get()` them first.
+            if weights and isinstance(next(iter(weights.values())), ObjectRef):
+                actual_weights = ray.get(list(weights.values()))
+                weights = {
+                    pid: actual_weights[i] for i, pid in enumerate(weights.keys())
+                }
 
-        for pid, w in weights.items():
-            self.policy_map[pid].set_weights(w)
+            for pid, w in weights.items():
+                self.policy_map[pid].set_weights(w)
+
+        self.weights_seq_no = weights_seq_no
+
         if global_vars:
             self.set_global_vars(global_vars)
 

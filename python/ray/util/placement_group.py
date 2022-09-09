@@ -7,6 +7,7 @@ from ray._private.ray_constants import to_memory_units
 from ray._private.utils import hex_to_binary, get_ray_doc_version
 from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 bundle_reservation_check = None
 BUNDLE_RESOURCE_LABEL = "bundle"
@@ -76,7 +77,8 @@ class PlacementGroup:
         )
 
         return bundle_reservation_check.options(
-            placement_group=self, resources={BUNDLE_RESOURCE_LABEL: 0.001}
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=self),
+            resources={BUNDLE_RESOURCE_LABEL: 0.001},
         ).remote(self)
 
     def wait(self, timeout_seconds: Union[float, int]) -> bool:
@@ -129,7 +131,7 @@ def placement_group(
     strategy: str = "PACK",
     name: str = "",
     lifetime: Optional[str] = None,
-    _max_cpu_fraction_per_node: Optional[float] = None,
+    _max_cpu_fraction_per_node: float = 1.0,
 ) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
@@ -172,10 +174,14 @@ def placement_group(
     if not isinstance(bundles, list):
         raise ValueError("The type of bundles must be list, got {}".format(bundles))
 
-    if _max_cpu_fraction_per_node is None:
-        _max_cpu_fraction_per_node = 1.0
-    if _max_cpu_fraction_per_node < 0 or _max_cpu_fraction_per_node > 1:
-        raise ValueError("max_cpu_fraction_per_node must be a float between 0 and 1.")
+    assert _max_cpu_fraction_per_node is not None
+
+    if _max_cpu_fraction_per_node <= 0 or _max_cpu_fraction_per_node > 1:
+        raise ValueError(
+            "Invalid argument `_max_cpu_fraction_per_node`: "
+            f"{_max_cpu_fraction_per_node}. "
+            "_max_cpu_fraction_per_node must be a float between 0 and 1. "
+        )
 
     # Validate bundles
     for bundle in bundles:

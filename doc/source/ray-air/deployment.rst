@@ -33,7 +33,7 @@ This scenario describes most usages of Ray libraries today.
 In the above diagram:
 
 * Only one library is used -- showing that you can pick and choose and do not need to replace all of your ML infrastructure to use Ray AIR.
-* You can use one of :ref:`Ray's many deployment modes <ref-deployment-guide>` to launch and manage Ray clusters and Ray applications.
+* You can use one of :ref:`Ray's many deployment modes <jobs-overview>` to launch and manage Ray clusters and Ray applications.
 * AIR libraries can read data from external storage systems such as Amazon S3 / Google Cloud Storage, as well as store results there.
 
 
