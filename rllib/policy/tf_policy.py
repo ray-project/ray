@@ -579,7 +579,7 @@ class TFPolicy(Policy):
                 except Exception:
                     raise ValueError(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
         else:
-            raise ValueError(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
+            logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 
     @override(Policy)
     @DeveloperAPI

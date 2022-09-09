@@ -946,6 +946,10 @@ class Policy(metaclass=ABCMeta):
             export_dir: Local writable directory.
             onnx: If given, will export model in ONNX format. The
                 value of this parameter set the ONNX OpSet version to use.
+
+        Raises:
+            ValueError: If a native DL-framework based model (e.g. a keras Model)
+            cannot be saved to disk for various reasons.
         """
         raise NotImplementedError
 

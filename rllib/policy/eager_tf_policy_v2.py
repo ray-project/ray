@@ -729,7 +729,7 @@ class EagerTFPolicyV2(Policy):
         ):
             self.model.base_model.save(export_dir, save_format="tf")
         else:
-            raise ValueError(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
+            logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 
     def variables(self):
         """Return the list of all savable variables for this policy."""

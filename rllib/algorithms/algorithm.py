@@ -28,6 +28,7 @@ import pkg_resources
 from packaging import version
 
 import ray
+from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
@@ -1793,8 +1794,16 @@ class Algorithm(Trainable):
 
     @override(Trainable)
     def load_checkpoint(self, checkpoint: Union[Dict, str]) -> None:
+        # Checkpoint is provided as a directory name.
+        # Restore from the checkpoint file or dir.
         if isinstance(checkpoint, str):
-            checkpoint_data = pickle.load(open(checkpoint, "rb"))
+            # Just in case the actual file is provided (old style checkpoints).
+            if os.path.isfile(checkpoint):
+                filename = checkpoint
+            # Normal case: User provides checkpoint dir (not file).
+            else:
+                filename = os.path.join(checkpoint, "state.pkl")
+            checkpoint_data = pickle.load(open(filename, "rb"))
         else:
             checkpoint_data = checkpoint
         self.__setstate__(checkpoint_data)
