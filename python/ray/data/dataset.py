@@ -1194,15 +1194,15 @@ class Dataset(Generic[T]):
     ) -> Tuple["Dataset[T]", "Dataset[T]"]:
         """Split the dataset into train and test subsets.
 
-        Example:
-            .. code-block:: python
+        Examples:
 
-                import ray
-
-                ds = ray.data.range(8)
-                train, test = ds.train_test_split(test_size=0.25)
-                print(train.take())  # [0, 1, 2, 3, 4, 5]
-                print(test.take())  # [6, 7]
+            >>> import ray
+            >>> ds = ray.data.range(8)
+            >>> train, test = ds.train_test_split(test_size=0.25)
+            >>> train.take()
+            [0, 1, 2, 3, 4, 5]
+            >>> test.take()
+            [6, 7]
 
         Args:
             test_size: If float, should be between 0.0 and 1.0 and represent the
@@ -1326,11 +1326,13 @@ class Dataset(Generic[T]):
         Examples:
             >>> import ray
             >>> # Group by a key function and aggregate.
-            >>> ray.data.range(100).groupby(lambda x: x % 3).count() # doctest: +SKIP
+            >>> ray.data.range(100).groupby(lambda x: x % 3).count()
+            Dataset(num_blocks=34, num_rows=3, schema=<class 'tuple'>)
             >>> # Group by an Arrow table column and aggregate.
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby( # doctest: +SKIP
-            ...     "A").count() # doctest: +SKIP
+            >>> ray.data.from_items([
+            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
+            ...     "A").count()
+            Dataset(num_blocks=100, num_rows=3, schema={A: int64, count(): int64})
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -1358,9 +1360,11 @@ class Dataset(Generic[T]):
         Examples:
             >>> import ray
             >>> from ray.data.aggregate import Max, Mean
-            >>> ray.data.range(100).aggregate(Max()) # doctest: +SKIP
-            >>> ray.data.range_table(100).aggregate( # doctest: +SKIP
-            ...    Max("value"), Mean("value")) # doctest: +SKIP
+            >>> ray.data.range(100).aggregate(Max())
+            (99,)
+            >>> ray.data.range_table(100).aggregate(
+            ...    Max("value"), Mean("value"))
+            {'max(value)': 99, 'mean(value)': 49.5}
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1388,14 +1392,18 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).sum() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]).sum(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_table(100).sum("value") # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i, "B": i**2} # doctest: +SKIP
-            ...     for i in range(100)]).sum(["A", "B"]) # doctest: +SKIP
+            >>> ray.data.range(100).sum()
+            4950
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).sum(lambda x: x[1])
+            328350
+            >>> ray.data.range_table(100).sum("value")
+            4950
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).sum(["A", "B"])
+            {'sum(A)': 4950, 'sum(B)': 328350}
 
         Args:
             on: The data subset on which to compute the sum.
@@ -1447,14 +1455,18 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).min() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]).min(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_table(100).min("value") # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i, "B": i**2} # doctest: +SKIP
-            ...     for i in range(100)]).min(["A", "B"]) # doctest: +SKIP
+            >>> ray.data.range(100).min()
+            0
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).min(lambda x: x[1])
+            0
+            >>> ray.data.range_table(100).min("value")
+            0
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).min(["A", "B"])
+            {'min(A)': 0, 'min(B)': 0}
 
         Args:
             on: The data subset on which to compute the min.
@@ -1506,14 +1518,18 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).max() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]).max(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_table(100).max("value") # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i, "B": i**2} # doctest: +SKIP
-            ...     for i in range(100)]).max(["A", "B"]) # doctest: +SKIP
+            >>> ray.data.range(100).max()
+            99
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).max(lambda x: x[1])
+            9801
+            >>> ray.data.range_table(100).max("value")
+            99
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).max(["A", "B"])
+            {'max(A)': 99, 'max(B)': 9801}
 
         Args:
             on: The data subset on which to compute the max.
@@ -1565,14 +1581,18 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).mean() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]).mean(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_table(100).mean("value") # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i, "B": i**2} # doctest: +SKIP
-            ...     for i in range(100)]).mean(["A", "B"]) # doctest: +SKIP
+            >>> ray.data.range(100).mean()
+            49.5
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).mean(lambda x: x[1])
+            3283.5
+            >>> ray.data.range_table(100).mean("value")
+            49.5
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).mean(["A", "B"])
+            {'mean(A)': 49.5, 'mean(B)': 3283.5}
 
         Args:
             on: The data subset on which to compute the mean.
@@ -1626,15 +1646,19 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> import ray # doctest: +SKIP
-            >>> ray.data.range(100).std() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]).std(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_table(100).std("value", ddof=0) # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i, "B": i**2} # doctest: +SKIP
-            ...     for i in range(100)]).std(["A", "B"]) # doctest: +SKIP
+            >>> import ray
+            >>> ray.data.range(100).std()
+            29.011491975882016
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).std(lambda x: x[1])
+            2968.1748039269296
+            >>> ray.data.range_table(100).std("value", ddof=0)
+            28.86607004772212
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).std(["A", "B"])
+            {'std(A)': 29.011491975882016, 'std(B)': 2968.1748039269296}
 
         NOTE: This uses Welford's online method for an accumulator-style
         computation of the standard deviation. This method was chosen due to
