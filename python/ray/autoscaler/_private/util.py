@@ -688,11 +688,7 @@ def format_info_string(
     header = "=" * 8 + f" Autoscaler status: {time} " + "=" * 8
     separator = "-" * len(header)
     if verbose:
-        staleness = datetime.timestamp(datetime.now()) - datetime.timestamp(time)
-        header += f"""
-Time since last update: {staleness:3f}s
-"""
-
+        header += "\n"
         if gcs_request_time:
             header += f"GCS request time: {gcs_request_time:3f}s\n"
         if non_terminated_nodes_time:
@@ -768,7 +764,7 @@ Resources
 {"Total " if verbose else ""}Demands:
 {demand_report}"""
 
-    if verbose:
+    if verbose and lm_summary.usage_by_node:
         formatted_output += get_per_node_breakdown(lm_summary)
 
     return formatted_output.strip()
