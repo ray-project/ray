@@ -10,7 +10,6 @@ import ray._private.ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
-    MEMORY_RESOURCE_UNIT_BYTES,
 )
 from ray.autoscaler._private.resource_demand_scheduler import NodeIP, ResourceDict
 from ray.autoscaler._private.util import DictCount, LoadMetricsSummary
@@ -281,14 +280,8 @@ class LoadMetrics:
         usage_dict = {}
         for key in total_resources:
             if key in ["memory", "object_store_memory"]:
-                total = (
-                    total_resources[key]
-                    * ray._private.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
-                )
-                available = (
-                    available_resources[key]
-                    * ray._private.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
-                )
+                total = total_resources[key]
+                available = available_resources[key]
                 usage_dict[key] = (total - available, total)
             else:
                 total = total_resources[key]
@@ -357,7 +350,7 @@ class LoadMetrics:
         def format_resource(key, value):
             if key in ["object_store_memory", "memory"]:
                 return "{} GiB".format(
-                    round(value * MEMORY_RESOURCE_UNIT_BYTES / (1024 * 1024 * 1024), 2)
+                    round(value / (1024 * 1024 * 1024), 2)
                 )
             else:
                 return round(value, 2)

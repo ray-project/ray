@@ -118,9 +118,6 @@ DUPLICATE_REMOTE_FUNCTION_THRESHOLD = 100
 # for large resource quantities due to bookkeeping of specific resource IDs.
 MAX_RESOURCE_QUANTITY = 100e12
 
-# Each memory "resource" counts as this many bytes of memory.
-MEMORY_RESOURCE_UNIT_BYTES = 1
-
 # Number of units 1 resource can be subdivided into.
 MIN_RESOURCE_GRANULARITY = 0.0001
 
@@ -130,37 +127,6 @@ MIN_RESOURCE_GRANULARITY = 0.0001
 # the dashboard URL when returning or printing to a user through a public
 # API, but not in the internal KV store.
 RAY_OVERRIDE_DASHBOARD_URL = "RAY_OVERRIDE_DASHBOARD_URL"
-
-
-def round_to_memory_units(memory_bytes, round_up):
-    """Round bytes to the nearest memory unit."""
-    return from_memory_units(to_memory_units(memory_bytes, round_up))
-
-
-def from_memory_units(memory_units):
-    """Convert from memory units -> bytes."""
-    return memory_units * MEMORY_RESOURCE_UNIT_BYTES
-
-
-def to_memory_units(memory_bytes, round_up):
-    """Convert from bytes -> memory units."""
-    value = memory_bytes / MEMORY_RESOURCE_UNIT_BYTES
-    if value < 1:
-        raise ValueError(
-            "The minimum amount of memory that can be requested is {} bytes, "
-            "however {} bytes was asked.".format(
-                MEMORY_RESOURCE_UNIT_BYTES, memory_bytes
-            )
-        )
-    if isinstance(value, float) and not value.is_integer():
-        # TODO(ekl) Ray currently does not support fractional resources when
-        # the quantity is greater than one. We should fix memory resources to
-        # be allocated in units of bytes and not 100MB.
-        if round_up:
-            value = int(math.ceil(value))
-        else:
-            value = int(math.floor(value))
-    return int(value)
 
 
 # Different types of Ray errors that can be pushed to the driver.
