@@ -1,8 +1,8 @@
 import inspect
-from tkinter import W
 import os
 import composer.trainer
 from torch.utils.data import Dataset as TorchDataset
+
 
 from ray.air import session
 from ray.train.constants import (
@@ -10,7 +10,7 @@ from ray.train.constants import (
     TRAIN_DATASET_KEY,
 )
 
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.mosaic._mosaic_utils import process_datasets
@@ -123,40 +123,31 @@ def _mosaic_train_loop_per_worker(config):
     """Per-worker training loop for Mosaic Composers."""
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
 
-    # TODO : set env variables for composer DDP
     os.environ["RANK"] = str(session.get_world_rank())
     os.environ["WORLD_SIZE"] = str(session.get_world_size())
     os.environ["LOCAL_RANK"] = str(session.get_local_rank())
+
+    # Arbitrary value set for these as they are needed for some composer functions
+    os.environ["LOCAL_WORLD_SIZE"] = str(1)
+    os.environ["NODE_RANK"] = str(0)
 
     # get dataset shard
     train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
     eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)
 
-    print("traind dataset key : ", TRAIN_DATASET_KEY)
-    print("eval dataset key : ", EVALUATION_DATASET_KEY)
-
-    print("datasets in loop worker", type(train_dataset), type(eval_dataset))
-
-    # TODO : process dataset to convert ray dataset into torch dataset
-    # TODO : implement process datasets in _mosaic_utils
     train_torch_dataset, eval_torch_dataset = process_datasets(
-        train_dataset,
-        eval_dataset,
-        config['batch_size'],config['labels']
+        train_dataset, eval_dataset, config["batch_size"], config["labels"]
     )
 
     trainer: composer.trainer.Trainer = trainer_init_per_worker(
         train_torch_dataset, eval_torch_dataset, **config
     )
 
-    # TODO : override per batch logging/evaluation/checkpointing.
+    # TODO : add supports for logging
 
-    # TODO : wrap composer trainer for more optimized data loading if necessary => implement in mosaic_utils
+    # TODO : add callbacks if needed
 
-    # TODO : add callbacks
-
-    # TODO : add checkpoint    
+    # TODO : add checkpoint if needed
 
     # call the trainer
     trainer.fit()
-
