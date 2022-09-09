@@ -2672,7 +2672,7 @@ def test_info_string_verbose():
         node_types=[],
         usage_by_node={
             "192.168.1.1": {
-                "CPU": (5., 20.0),
+                "CPU": (5.0, 20.0),
                 "GPU": (0.7, 1),
                 "AcceleratorType:V100": (0.1, 1),
                 "memory": (2 ** 30, 2 ** 32),
@@ -2684,8 +2684,8 @@ def test_info_string_verbose():
                 "AcceleratorType:V100": (0.9, 1),
                 "memory": (2 ** 30, 1.5 * 2 ** 33),
                 "object_store_memory": (0, 2 ** 32),
-            }
-        }
+            },
+        },
     )
     autoscaler_summary = AutoscalerSummary(
         active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
