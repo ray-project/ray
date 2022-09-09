@@ -83,11 +83,8 @@ class ResourceDemandScheduler:
         For legacy yamls, it merges previous state and new state to make sure
         inferered resources are not lost.
         """
-        new_node_types = copy.deepcopy(node_types)
-        final_node_types = _convert_memory_unit(new_node_types)
-
         self.provider = provider
-        self.node_types = copy.deepcopy(final_node_types)
+        self.node_types = _convert_memory_unit(node_types)
         self.node_resource_updated = set()
         self.max_workers = max_workers
         self.head_node_type = head_node_type
