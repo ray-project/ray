@@ -34,7 +34,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionEncoder,
     PathPartitionFilter,
     PathPartitionParser,
-    PathPartitionScheme,
+    Partitioning,
 )
 from ray.data.datasource.tensorflow_datasource import SimpleTensorFlowDatasource
 from ray.data.datasource.torch_datasource import SimpleTorchDatasource
@@ -63,7 +63,7 @@ __all__ = [
     "PathPartitionEncoder",
     "PathPartitionFilter",
     "PathPartitionParser",
-    "PathPartitionScheme",
+    "Partitioning",
     "RandomIntRowDatasource",
     "RangeDatasource",
     "ReadTask",
