@@ -86,10 +86,10 @@ public class BaseActorCreator<T extends BaseActorCreator> {
     return self();
   }
 
-    /**
-   * This specifies the maximum number of times that an actor task can be retried.
-   * The minimum valid value is 0 (default), which indicates that the actor task can't
-   * be retried. A value of -1 indicates that an actor task can be retried indefinitely.
+  /**
+   * This specifies the maximum number of times that an actor task can be retried. The minimum valid
+   * value is 0 (default), which indicates that the actor task can't be retried. A value of -1
+   * indicates that an actor task can be retried indefinitely.
    *
    * @param maxTaskRetries max number of actor task retries
    * @return self
