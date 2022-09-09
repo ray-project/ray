@@ -62,7 +62,7 @@ make linkcheck
 To run tests for examples shipping with docstrings in Python files, run the following command:
 
 ```shell
-make doctest
+RAY_MOCK_MODULES=0 make doctest
 ```
 
 ## Adding examples as MyST Markdown Notebooks
