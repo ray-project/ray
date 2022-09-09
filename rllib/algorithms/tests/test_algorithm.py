@@ -154,13 +154,35 @@ class TestAlgorithm(unittest.TestCase):
 
             # Delete all added policies again from Algorithm.
             for i in range(2, 0, -1):
+                pid = f"p{i}"
                 algo.remove_policy(
-                    f"p{i}",
+                    pid,
                     # Note that the complete signature of a policy_mapping_fn
                     # is: `agent_id, episode, worker, **kwargs`.
-                    policy_mapping_fn=lambda aid, eps, **kwargs: f"p{i - 1}",
+                    policy_mapping_fn=(
+                        lambda agent_id, worker, episode, **kwargs: f"p{i - 1}"
+                    ),
+                    # Update list of policies to train.
                     policies_to_train=[f"p{i - 1}"],
                 )
+                # Make sure removed policy is no longer part of remote workers in the
+                # worker set and the eval worker set.
+                assert pid not in (
+                    ray.get(algo.workers.remote_workers()[0].apply.remote(
+                        lambda w: list(w.policy_map.keys())
+                    ))
+                )
+                assert pid not in (
+                    ray.get(algo.evaluation_workers.remote_workers()[0].apply.remote(
+                        lambda w: list(w.policy_map.keys())
+                    ))
+                )
+                # Assert removed policy is no longer part of local worker
+                # (eval worker set does NOT have a local worker, only the main WorkerSet
+                # does).
+                pol_map = algo.workers.local_worker().policy_map
+                self.assertTrue(pid not in pol_map)
+                self.assertTrue(len(pol_map) == i)
 
             algo.stop()
 
