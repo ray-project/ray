@@ -160,7 +160,7 @@ class BaseEnv:
         self,
         env_id: Optional[EnvID] = None,
         seed: Optional[int] = None,
-    ) -> Tuple[MultiEnvDict, MultiEnvDict]:
+    ) -> Tuple[Optional[MultiEnvDict], Optional[MultiEnvDict]]:
         """Attempt to reset the sub-env with the given id or all sub-envs.
 
         If the environment does not support synchronous reset, a tuple of
@@ -180,7 +180,7 @@ class BaseEnv:
             A tuple consisting of a) the reset (multi-env/multi-agent) observation
             dict and b) the reset (multi-env/multi-agent) infos dict.
         """
-        raise NotImplementedError
+        return None, None
 
     @DeveloperAPI
     def try_restart(self, env_id: Optional[EnvID] = None) -> None:

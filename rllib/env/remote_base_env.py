@@ -243,10 +243,7 @@ class RemoteBaseEnv(BaseEnv):
             # `_RemoteMultiAgentEnv`) and already behave like multi-agent
             # envs.
             else:
-                try:
-                    ob, rew, done, truncated, info = ret
-                except Exception as e:
-                    raise e  # TODO
+                ob, rew, done, truncated, info = ret
             obs[env_id] = ob
             rewards[env_id] = rew
             dones[env_id] = done

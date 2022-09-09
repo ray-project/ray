@@ -798,7 +798,7 @@ class EnvRunnerV2:
             # entirely.
             while True:
                 resetted_obs, resetted_infos = self._base_env.try_reset(env_id)
-                if resetted_obs[env_id] is None or not isinstance(
+                if resetted_obs is None or not isinstance(
                     resetted_obs[env_id], Exception
                 ):
                     break
