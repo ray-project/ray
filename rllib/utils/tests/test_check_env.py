@@ -1,7 +1,6 @@
-import logging
-
 import gym
 from gym.spaces import Box, Dict, Discrete
+import logging
 import numpy as np
 import pytest
 import unittest
