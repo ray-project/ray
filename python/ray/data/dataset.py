@@ -1723,14 +1723,16 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> import ray # doctest: +SKIP
+            >>> import ray
             >>> # Sort using the entire record as the key.
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.sort() # doctest: +SKIP
+            >>> ds = ray.data.range(100)
+            >>> ds.sort()
+            Dataset(num_blocks=34, num_rows=100, schema=<class 'int'>)
             >>> # Sort by a single column in descending order.
-            >>> ds = ray.data.from_items( # doctest: +SKIP
+            >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
-            >>> ds.sort("value", descending=True) # doctest: +SKIP
+            >>> ds.sort("value", descending=True)
+            Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
             >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["value"]) # doctest: +SKIP
 
@@ -1769,8 +1771,8 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(5) # doctest: +SKIP
-            >>> ds.zip(ds).take() # doctest: +SKIP
+            >>> ds = ray.data.range(5)
+            >>> ds.zip(ds).take()
             [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
 
         Returns:
@@ -1790,8 +1792,9 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(1000) # doctest: +SKIP
-            >>> ds.limit(100).map(lambda x: x * 2).take() # doctest: +SKIP
+            >>> ds = ray.data.range(1000)
+            >>> ds.limit(100).map(lambda x: x * 2).take()
+            [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38]
 
         Time complexity: O(limit specified)
 
