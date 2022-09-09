@@ -9,7 +9,6 @@ import time
 from pathlib import Path
 
 import pytest
-from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 import yaml
 
 from ray._private.gcs_utils import GcsAioClient
@@ -27,6 +26,8 @@ from ray.dashboard.modules.job.utils import (
     get_supervisor_actor_into,
 )
 from ray.dashboard.tests.conftest import *  # noqa
+from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
+from ray.experimental.state.api import list_nodes
 from ray.job_submission import JobStatus
 from ray.tests.conftest import _ray_start
 from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
@@ -379,24 +380,7 @@ async def test_job_log_in_multiple_node(
 
     def _check_nodes():
         try:
-            response = requests.get(webui_url + "/nodes?view=summary")
-            response.raise_for_status()
-            summary = response.json()
-            assert summary["result"] is True, summary["msg"]
-            summary = summary["data"]["summary"]
-            assert len(summary) == 3
-            for node_info in summary:
-                node_id = node_info["raylet"]["nodeId"]
-                response = requests.get(webui_url + f"/nodes/{node_id}")
-                response.raise_for_status()
-                detail = response.json()
-                assert detail["result"] is True, detail["msg"]
-                detail = detail["data"]["detail"]
-                assert detail["raylet"]["state"] == "ALIVE"
-            response = requests.get(webui_url + "/test/dump?key=agents")
-            response.raise_for_status()
-            agents = response.json()
-            assert len(agents["data"]["agents"]) == 3
+            assert len(list_nodes()) == 3
             return True
         except Exception as ex:
             logger.info(ex)
@@ -445,12 +429,14 @@ async def test_job_log_in_multiple_node(
                 gcs_aio_client, job_id
             )
 
+            # Try to get the node id which supervisor actor running in.
             node_id = supervisor_actor_info.actor_table_data.address.raylet_id.hex()
             for node_info in summary:
                 if node_info["raylet"]["nodeId"] == node_id:
                     break
             assert node_info["raylet"]["nodeId"] == node_id, f"node id: {node_id}"
 
+            # Try to get the agent HTTP port by node id.
             for agent_port in job_agent_ports:
                 if f"--listen-port={agent_port}" in " ".join(node_info["cmdline"]):
                     break
@@ -458,6 +444,7 @@ async def test_job_log_in_multiple_node(
                 node_info["cmdline"]
             ), f"port: {agent_port}"
 
+            # Finally, we got the whole agent address, and try to get the job log.
             ip = supervisor_actor_info.actor_table_data.address.ip_address
             agent_address = f"{ip}:{agent_port}"
             assert wait_until_server_available(agent_address)
