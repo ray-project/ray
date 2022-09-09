@@ -168,11 +168,11 @@ public class LongPollClientFactory {
       longPollResult = LongPollResult.parseFrom((byte[]) data);
     } else {
       // Poll from java controller.
-      ObjectRef<LongPollResult> currentRef =
+      ObjectRef<byte[]> currentRef =
           ((ActorHandle<ServeController>) hostActor)
               .task(ServeController::listenForChange, longPollRequest)
               .remote();
-      longPollResult = Ray.get(currentRef, longPollTimoutS * 1000);
+      longPollResult = LongPollResult.parseFrom(currentRef.get(longPollTimoutS * 1000));
     }
     processUpdate(longPollResult == null ? null : longPollResult.getUpdatedObjects());
   }
