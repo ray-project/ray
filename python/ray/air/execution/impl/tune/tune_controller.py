@@ -16,7 +16,12 @@ from ray.air.execution.impl.tune.tune_result import (
 )
 from ray.air.execution.resources.fixed import FixedResourceManager
 from ray.air.execution.resources.request import ResourceRequest
-from ray.air.execution.event import FutureResult, FutureFailed, ExecutionEvent
+from ray.air.execution.event import (
+    FutureResult,
+    FutureFailed,
+    ExecutionEvent,
+    MultiFutureResult,
+)
 from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.tune.callback import CallbackList
 from ray.tune.result import RESULT_DUPLICATE, DONE, SHOULD_CHECKPOINT
@@ -240,3 +245,6 @@ class TuneController(Controller):
         trial = self._live_actors[actor]
         trial.saving_to.dir_or_data = result.dir_or_data
         trial.on_checkpoint(trial.saving_to)
+
+    def multi_future_result(self, result: MultiFutureResult):
+        pass

@@ -1,6 +1,6 @@
 from ray import tune
 from ray.air import session, Checkpoint
-from ray.air.execution.impl.tune.progress_loop import tune_run
+from ray.air.execution.impl.tune.progress_loop import tune_loop
 from ray.air.execution.impl.tune.tune_controller import TuneController
 from ray.air.execution.resources.fixed import FixedResourceManager
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -37,4 +37,4 @@ tune_controller = TuneController(
     scheduler=FrequentPausesScheduler(),
     resource_manager=FixedResourceManager(total_resources={"CPU": 4}),
 )
-tune_run(tune_controller=tune_controller)
+tune_loop(tune_controller=tune_controller)

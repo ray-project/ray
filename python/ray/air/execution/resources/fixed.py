@@ -2,6 +2,8 @@ from typing import Dict, Optional, List
 
 from dataclasses import dataclass
 
+import ray
+from ray import SCRIPT_MODE
 from ray.air.execution.resources.request import ResourceRequest, ReadyResource
 from ray.air.execution.resources.resource_manager import ResourceManager
 
@@ -29,7 +31,16 @@ class FixedReadyResource(ReadyResource):
 
 
 class FixedResourceManager(ResourceManager):
-    def __init__(self, total_resources: Dict[str, float]):
+    _resource_cls: ReadyResource = FixedReadyResource
+
+    def __init__(self, total_resources: Optional[Dict[str, float]] = None):
+        if not total_resources:
+            rtc = ray.get_runtime_context()
+            if rtc.worker.mode in {None, SCRIPT_MODE}:
+                total_resources = ray.available_resources()
+            else:
+                total_resources = rtc.get_assigned_resources()
+
         self._total_resources = total_resources
         self._used_resources = []
 
@@ -56,14 +67,12 @@ class FixedResourceManager(ResourceManager):
                 return False
         return True
 
-    def acquire_resources(
-        self, resources: ResourceRequest
-    ) -> Optional[FixedReadyResource]:
+    def acquire_resources(self, resources: ResourceRequest) -> Optional[ReadyResource]:
         if not self.has_resources_ready(resources):
             return None
 
         self._used_resources.append(resources)
-        return FixedReadyResource(bundles=resources.bundles, request=resources)
+        return self._resource_cls(bundles=resources.bundles, request=resources)
 
     def return_resources(self, ready_resources: ReadyResource):
         resources = ready_resources.request
