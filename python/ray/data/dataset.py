@@ -159,17 +159,22 @@ class Dataset(Generic[T]):
 
     Examples:
         >>> import ray
-        >>> ds = ray.data.range(1000) # doctest: +SKIP
+        >>> ds = ray.data.range(1000)
         >>> # Transform in parallel with map_batches().
-        >>> ds.map_batches(lambda batch: [v * 2 for v in batch]) # doctest: +SKIP
+        >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
+        Dataset(num_blocks=33, num_rows=1000, schema=<class 'int'>)
         >>> # Compute max.
-        >>> ds.max() # doctest: +SKIP
+        >>> ds.max()
+        999
         >>> # Group the data.
-        >>> ds.groupby(lambda x: x % 3).count() # doctest: +SKIP
+        >>> ds.groupby(lambda x: x % 3).count()
+        Dataset(num_blocks=33, num_rows=3, schema=<class 'tuple'>)
         >>> # Shuffle this dataset randomly.
-        >>> ds.random_shuffle() # doctest: +SKIP
+        >>> ds.random_shuffle()
+        Dataset(num_blocks=33, num_rows=1000, schema=<class 'int'>)
         >>> # Sort it back in order.
-        >>> ds.sort() # doctest: +SKIP
+        >>> ds.sort()
+        Dataset(num_blocks=33, num_rows=1000, schema=<class 'int'>)
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors without incurring a copy. Datasets support
@@ -221,12 +226,14 @@ class Dataset(Generic[T]):
         Examples:
             >>> import ray
             >>> # Transform python objects.
-            >>> ds = ray.data.range(1000) # doctest: +SKIP
-            >>> ds.map(lambda x: x * 2) # doctest: +SKIP
+            >>> ds = ray.data.range(1000)
+            >>> ds.map(lambda x: x * 2)
+            Dataset(num_blocks=33, num_rows=1000, schema=<class 'int'>)
             >>> # Transform Arrow records.
-            >>> ds = ray.data.from_items( # doctest: +SKIP
+            >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
-            >>> ds.map(lambda record: {"v2": record["value"] * 2}) # doctest: +SKIP
+            >>> ds.map(lambda record: {"v2": record["value"] * 2})
+            Dataset(num_blocks=200, num_rows=1000, schema={v2: int64})
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
             >>> init_model = ... # doctest: +SKIP
@@ -320,9 +327,10 @@ class Dataset(Generic[T]):
         Examples:
             >>> import ray
             >>> # Transform python objects.
-            >>> ds = ray.data.range(1000) # doctest: +SKIP
+            >>> ds = ray.data.range(1000)
             >>> # Transform batches in parallel.
-            >>> ds.map_batches(lambda batch: [v * 2 for v in batch]) # doctest: +SKIP
+            >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
+            Dataset(num_blocks=33, num_rows=1000, schema=<class 'int'>)
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
             >>> init_model = ... # doctest: +SKIP
@@ -344,11 +352,11 @@ class Dataset(Generic[T]):
             You can use ``map_batches`` to efficiently filter records.
 
             >>> import ray
-            >>> ds = ray.data.range(10000)  # doctest: +SKIP
-            >>> ds.count()  # doctest: +SKIP
+            >>> ds = ray.data.range(10000)
+            >>> ds.count()
             10000
-            >>> ds = ds.map_batches(lambda batch: [x for x in batch if x % 2 == 0])  # doctest: +SKIP  # noqa: #501
-            >>> ds.count()  # doctest: +SKIP
+            >>> ds = ds.map_batches(lambda batch: [x for x in batch if x % 2 == 0])
+            >>> ds.count()
             5000
 
         Time complexity: O(dataset size / parallelism)
@@ -512,12 +520,12 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range_table(100) # doctest: +SKIP
+            >>> ds = ray.data.range_table(100)
             >>> # Add a new column equal to value * 2.
-            >>> ds = ds.add_column( # doctest: +SKIP
+            >>> ds = ds.add_column(
             ...     "new_col", lambda df: df["value"] * 2)
             >>> # Overwrite the existing "value" with zeros.
-            >>> ds = ds.add_column("value", lambda df: 0) # doctest: +SKIP
+            >>> ds = ds.add_column("value", lambda df: 0)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -556,12 +564,12 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range_table(100) # doctest: +SKIP
+            >>> ds = ray.data.range_table(100)
             >>> # Add a new column equal to value * 2.
-            >>> ds = ds.add_column( # doctest: +SKIP
+            >>> ds = ds.add_column(
             ...     "new_col", lambda df: df["value"] * 2)
             >>> # Drop the existing "value" column.
-            >>> ds = ds.drop_columns(["value"]) # doctest: +SKIP
+            >>> ds = ds.drop_columns(["value"])
 
 
         Time complexity: O(dataset size / parallelism)
@@ -593,8 +601,9 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(1000) # doctest: +SKIP
-            >>> ds.flat_map(lambda x: [x, x ** 2, x ** 3]) # doctest: +SKIP
+            >>> ds = ray.data.range(1000)
+            >>> ds.flat_map(lambda x: [x, x ** 2, x ** 3])
+            Dataset(num_blocks=33, num_rows=3000, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -659,8 +668,9 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.filter(lambda x: x % 2 == 0) # doctest: +SKIP
+            >>> ds = ray.data.range(100)
+            >>> ds.filter(lambda x: x % 2 == 0)
+            Dataset(num_blocks=34, num_rows=50, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -715,9 +725,9 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds = ray.data.range(100)
             >>> # Set the number of output partitions to write to disk.
-            >>> ds.repartition(10).write_parquet(...) # doctest: +SKIP
+            >>> ds.repartition(10).write_parquet("/tmp/test")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -749,11 +759,13 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds = ray.data.range(100)
             >>> # Shuffle this dataset randomly.
-            >>> ds.random_shuffle() # doctest: +SKIP
+            >>> ds.random_shuffle()
+            Dataset(num_blocks=34, num_rows=100, schema=<class 'int'>)
             >>> # Shuffle this dataset with a fixed random seed.
-            >>> ds.random_shuffle(seed=12345) # doctest: +SKIP
+            >>> ds.random_shuffle(seed=12345)
+            Dataset(num_blocks=34, num_rows=100, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1055,13 +1067,13 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(10) # doctest: +SKIP
-            >>> d1, d2, d3 = ds.split_at_indices([2, 5]) # doctest: +SKIP
-            >>> d1.take() # doctest: +SKIP
+            >>> ds = ray.data.range(10)
+            >>> d1, d2, d3 = ds.split_at_indices([2, 5])
+            >>> d1.take()
             [0, 1]
-            >>> d2.take() # doctest: +SKIP
+            >>> d2.take()
             [2, 3, 4]
-            >>> d3.take() # doctest: +SKIP
+            >>> d3.take()
             [5, 6, 7, 8, 9]
 
         Time complexity: O(num splits)
@@ -1123,13 +1135,13 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(10) # doctest: +SKIP
-            >>> d1, d2, d3 = ds.split_proportionately([0.2, 0.5]) # doctest: +SKIP
-            >>> d1.take() # doctest: +SKIP
+            >>> ds = ray.data.range(10)
+            >>> d1, d2, d3 = ds.split_proportionately([0.2, 0.5])
+            >>> d1.take()
             [0, 1]
-            >>> d2.take() # doctest: +SKIP
+            >>> d2.take()
             [2, 3, 4, 5, 6]
-            >>> d3.take() # doctest: +SKIP
+            >>> d3.take()
             [7, 8, 9]
 
         Time complexity: O(num splits)
