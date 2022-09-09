@@ -171,7 +171,7 @@ def check_gym_environments(env: gym.Env) -> None:
     # contained within the observation space
     obs_and_infos = env.reset()
     # Gym < 0.26 support.
-    if check_old_gym(reset_results=obs_and_infos):
+    if check_old_gym_env(reset_results=obs_and_infos):
         obs_and_infos = (obs_and_infos, {})
     reset_obs, reset_infos = obs_and_infos
 
