@@ -171,6 +171,7 @@
     - ./ci/ci.sh lint
 
 - label: ":book: Documentation"
+  commands:
     - export LINT=1
     - echo "--- Setting up Python 3.7 environment."
     - PYTHON=3.7 ./ci/env/install-dependencies.sh
