@@ -29,6 +29,7 @@ def train_fn(config):
 
 tune_controller = TuneController(
     trainable_cls=wrap_function(train_fn),
+    num_samples=8,
     param_space={
         "A": tune.randint(0, 100),
         "B": tune.randint(20, 30),

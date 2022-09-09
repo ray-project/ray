@@ -39,6 +39,7 @@ class TuneController(Controller):
         self,
         trainable_cls: Type[Trainable],
         param_space: dict,
+        num_samples: int = 1,
         search_alg: Optional[SearchAlgorithm] = None,
         scheduler: Optional[TrialScheduler] = None,
         resource_manager: Optional[ResourceManager] = None,
@@ -69,7 +70,7 @@ class TuneController(Controller):
                 name="some_test",
                 run=trainable_cls,
                 config=self._param_space,
-                num_samples=8,
+                num_samples=num_samples,
             )
         )
 

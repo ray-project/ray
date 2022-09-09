@@ -42,7 +42,9 @@ def tune_loop(tune_controller: TuneController):
     _report_progress(tune_controller, progress_reporter, done=True)
 
 
-def tune_run(trainable, param_space=None, search_alg=None, resource_manager=None):
+def tune_run(
+    trainable, num_samples=1, param_space=None, search_alg=None, resource_manager=None
+):
     search_alg = search_alg or BasicVariantGenerator(max_concurrent=4)
     resource_manager = resource_manager or FixedResourceManager(
         total_resources={"CPU": 4}
@@ -50,6 +52,7 @@ def tune_run(trainable, param_space=None, search_alg=None, resource_manager=None
 
     tune_controller = TuneController(
         trainable_cls=wrap_function(trainable),
+        num_samples=num_samples,
         param_space=param_space,
         search_alg=search_alg,
         resource_manager=resource_manager,
@@ -57,12 +60,13 @@ def tune_run(trainable, param_space=None, search_alg=None, resource_manager=None
     tune_loop(tune_controller=tune_controller)
 
 
-def _split(available_resources, index, trainable, param_space, search_alg):
+def _split(available_resources, index, trainable, num_samples, param_space, search_alg):
     if isinstance(search_alg, BasicVariantGenerator):
         search_alg._uuid_prefix = f"split_{index:05d}_"
 
     tune_controller = TuneController(
         trainable_cls=wrap_function(trainable),
+        num_samples=num_samples,
         param_space=param_space,
         search_alg=search_alg,
         resource_manager=FixedResourceManager(available_resources),
@@ -73,6 +77,7 @@ def _split(available_resources, index, trainable, param_space, search_alg):
 def tune_split(
     trainable,
     split_by,
+    num_samples=1,
     param_space=None,
     search_alg=None,
     resource_manager=None,
@@ -105,6 +110,7 @@ def tune_split(
             available_resources=resources_per_split,
             index=index,
             trainable=trainable,
+            num_samples=num_samples,
             param_space=split_param_space,
             search_alg=search_alg,
         )

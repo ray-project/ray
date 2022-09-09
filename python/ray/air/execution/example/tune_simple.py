@@ -12,6 +12,7 @@ def train_fn(config):
 
 tune_run(
     trainable=train_fn,
+    num_samples=4,
     param_space={
         "A": tune.randint(0, 100),
         "B": tune.randint(20, 30),
