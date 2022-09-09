@@ -28,7 +28,6 @@ import pkg_resources
 from packaging import version
 
 import ray
-from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
