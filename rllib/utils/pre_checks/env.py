@@ -172,8 +172,6 @@ def check_gym_environments(env: gym.Env) -> None:
     # contained within the observation space.
     reset_obs = env.reset()
     if not env.observation_space.contains(reset_obs):
-        reset_obs_type = _get_type(reset_obs)
-        space_type = env.observation_space.dtype
         temp_sampled_reset_obs = convert_element_to_space_type(
             reset_obs, sampled_observation
         )
@@ -186,9 +184,9 @@ def check_gym_environments(env: gym.Env) -> None:
                 "The observation collected from env.reset() was not "
                 "contained within your env's observation space. It is possible "
                 "that there was a type mismatch, or that one of the "
-                "sub-observations was out of bounds: \n\n {}(sub-)obs: {} ({})"
+                "sub-observations was out of bounds:\n {}(sub-)obs: {} ({})"
                 "\n (sub-)observation space: {} ({})".format(
-                    ("path='" + key + "'\n ") if key else "",
+                    ("path: '" + key + "'\n ") if key else "",
                     value,
                     value_type,
                     space,
@@ -573,7 +571,7 @@ def _find_offending_sub_space(space, value):
          ...
     """
     if not isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
-        return None, space, space.dtype, value, _get_type(value) 
+        return None, space, space.dtype, value, _get_type(value)
 
     structured_space = get_base_struct_from_space(space)
 
@@ -593,4 +591,3 @@ def _find_offending_sub_space(space, value):
 
 def _get_type(var):
     return var.dtype if hasattr(var, "dtype") else type(var)
-
