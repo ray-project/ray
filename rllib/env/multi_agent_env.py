@@ -850,16 +850,17 @@ class _MultiAgentEnvState:
                 obs_and_infos = self.env.reset()
             else:
                 obs_and_infos = self.env.reset(seed)
+
+            # Gym < 0.26 support.
+            if check_old_gym_env(self.env, reset_results=obs_and_infos):
+                obs_and_infos = (obs_and_infos, {k: {} for k in obs_and_infos.keys()})
+
         except Exception as e:
             if self.return_error_as_obs:
                 logger.exception(e.args[0])
                 obs_and_infos = e, e
             else:
                 raise e
-
-        # Gym < 0.26 support.
-        if check_old_gym_env(self.env, reset_results=obs_and_infos):
-            obs_and_infos = (obs_and_infos, {k: {} for k in obs_and_infos.keys()})
 
         self.last_obs, self.last_infos = obs_and_infos
         self.last_rewards = {}
