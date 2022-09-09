@@ -6,12 +6,12 @@ import ray
 from ray.train.huggingface import HuggingFaceCheckpoint, HuggingFacePredictor
 
 
-from dummy_preprocessor import DummyPreprocessor, assert_preprocessor_used
+from dummy_preprocessor import DummyPreprocessor
 from test_huggingface_predictor import (
     model_checkpoint,
     tokenizer_checkpoint,
     test_strings,
-    prompts
+    prompts,
 )
 
 
@@ -19,7 +19,7 @@ def test_huggingface_checkpoint(tmpdir, ray_start_runtime_env):
     model_config = AutoConfig.from_pretrained(model_checkpoint)
     model = AutoModelForCausalLM.from_config(model_config)
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
-    preprocessor = DummyPreprocessor(id=1)
+    preprocessor = DummyPreprocessor()
 
     checkpoint = HuggingFaceCheckpoint.from_model(
         model, tokenizer, path=tmpdir, preprocessor=preprocessor
@@ -42,7 +42,7 @@ def test_huggingface_checkpoint(tmpdir, ray_start_runtime_env):
 
         predictions = predictor.predict(prompts)
         if preprocessor:
-            assert_preprocessor_used(predictor.get_preprocessor())
+            assert predictor.get_preprocessor().has_preprocessed
         return predictions
 
     tokens = tokenizer(test_strings)
@@ -57,7 +57,9 @@ def test_huggingface_checkpoint(tmpdir, ray_start_runtime_env):
     assert tokens == checkpoint_tokens
     assert checkpoint_preprocessor == preprocessor
 
+
 if __name__ == "__main__":
     import sys
     import pytest
+
     sys.exit(pytest.main(["-v", "-x", __file__]))

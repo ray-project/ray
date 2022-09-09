@@ -1,18 +1,20 @@
+import uuid
+
 from ray.data.preprocessor import Preprocessor
 
-class DummyPreprocessor(Preprocessor):
-    def __init__(self, id=None):
-        self.id = id
 
-    def transform_batch(self, df):
+class DummyPreprocessor(Preprocessor):
+    def __init__(self, transform=lambda b: b):
+        self.id = uuid.uuid4()
+        self.transform = transform
+
+    def transform_batch(self, batch):
         self._batch_transformed = True
-        return df
+        return self.transform(batch)
+
+    @property
+    def has_preprocessed(self):
+        return hasattr(self, "_batch_transformed")
 
     def __eq__(self, other_preprocessor):
         return self.id == other_preprocessor.id
-
-
-def assert_preprocessor_used(preprocessor: DummyPreprocessor):
-    assert hasattr(preprocessor, "_batch_transformed"), (
-        "Must use DummyPreprocessor and assert after calling `predict`"
-    )

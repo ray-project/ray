@@ -23,16 +23,9 @@ from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.rl import RLTrainer
 from ray.train.rl.rl_checkpoint import RLCheckpoint
 from ray.train.rl.rl_predictor import RLPredictor
-from ray.train.tests.test_huggingface_predictor import DummyPreprocessor
 from ray.tune.trainable.util import TrainableUtil
 
-
-@pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
+from dummy_preprocessor import DummyPreprocessor
 
 
 class _DummyAlgo(Algorithm):
@@ -92,12 +85,6 @@ class _DummyStatefulPolicy(Policy):
         )
 
 
-class _DummyPreprocessor(Preprocessor):
-    def transform_batch(self, df):
-        self._batch_transformed = True
-        return df * 2
-
-
 def create_checkpoint(
     preprocessor: Optional[Preprocessor] = None, config: Optional[dict] = None
 ) -> Checkpoint:
@@ -119,7 +106,6 @@ def create_checkpoint(
 
 def test_rl_checkpoint():
     preprocessor = DummyPreprocessor()
-    preprocessor.attr = 1
 
     rl_trainer = RLTrainer(
         algorithm=_DummyAlgo,
@@ -148,7 +134,8 @@ def test_rl_checkpoint():
     checkpoint_actions = checkpoint_predictor.predict(obs)
 
     assert actions == checkpoint_actions
-    assert preprocessor.attr == checkpoint.get_preprocessor().attr
+    assert preprocessor == checkpoint.get_preprocessor()
+    assert checkpoint_predictor.get_preprocessor().has_preprocessed
 
 
 def test_repr():
@@ -184,7 +171,7 @@ def test_predict_no_preprocessor(batch_type, batch_size):
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
 @pytest.mark.parametrize("batch_size", [1, 20])
 def test_predict_with_preprocessor(batch_type, batch_size):
-    preprocessor = _DummyPreprocessor()
+    preprocessor = DummyPreprocessor(lambda df: 2 * df)
     checkpoint = create_checkpoint(preprocessor=preprocessor)
     predictor = RLPredictor.from_checkpoint(checkpoint)
 
@@ -205,7 +192,7 @@ def test_predict_with_preprocessor(batch_type, batch_size):
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table])
 @pytest.mark.parametrize("batch_size", [1, 20])
 def test_predict_batch(ray_start_4_cpus, batch_type, batch_size):
-    preprocessor = _DummyPreprocessor()
+    preprocessor = DummyPreprocessor(lambda df: 2 * df)
     checkpoint = create_checkpoint(preprocessor=preprocessor)
     predictor = BatchPredictor.from_checkpoint(checkpoint, RLPredictor)
 

@@ -16,7 +16,7 @@ from ray.train.lightgbm import LightGBMCheckpoint, LightGBMPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from typing import Tuple
 
-from dummy_preprocessor import DummyPreprocessor, assert_preprocessor_used
+from dummy_preprocessor import DummyPreprocessor
 
 
 dummy_data = np.array([[1, 2], [3, 4], [5, 6]])
@@ -39,7 +39,7 @@ def test_repr():
 
 
 def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
-    preprocessor = DummyPreprocessor(id=1)
+    preprocessor = DummyPreprocessor()
 
     checkpoint = LightGBMCheckpoint.from_model(booster=model, preprocessor=preprocessor)
 
@@ -67,7 +67,7 @@ def test_predict(batch_type):
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert_preprocessor_used(predictor.get_preprocessor())
+    assert predictor.get_preprocessor().has_preprocessed
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table])
@@ -100,7 +100,7 @@ def test_predict_feature_columns():
     predictions = predictor.predict(data_batch, feature_columns=[0, 1])
 
     assert len(predictions) == 3
-    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
+    assert predictor.get_preprocessor().has_preprocessed
 
 
 def test_predict_feature_columns_pandas():
@@ -117,7 +117,7 @@ def test_predict_feature_columns_pandas():
     predictions = predictor.predict(data_batch, feature_columns=["A", "B"])
 
     assert len(predictions) == 3
-    assert_preprocessor_used(predictor.get_preprocessor())
+    assert predictor.get_preprocessor().has_preprocessed
 
 
 def test_predict_no_preprocessor_no_training():

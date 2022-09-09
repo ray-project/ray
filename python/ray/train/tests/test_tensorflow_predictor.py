@@ -18,19 +18,7 @@ from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.tensorflow import TensorflowCheckpoint, TensorflowPredictor
 from typing import Tuple
 
-
-@pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-class DummyPreprocessor(Preprocessor):
-    def transform_batch(self, df):
-        self._batch_transformed = True
-        return df * 2
+from dummy_preprocessor import DummyPreprocessor
 
 
 def build_model() -> tf.keras.Model:
@@ -106,7 +94,6 @@ def test_tensorflow_checkpoint():
     model = build_model()
     model.build(input_shape=(1,))
     preprocessor = DummyPreprocessor()
-    preprocessor.attr = 1
 
     checkpoint = TensorflowCheckpoint.from_model(model, preprocessor=preprocessor)
     assert checkpoint.get_model_weights() == model.get_weights()
@@ -115,7 +102,7 @@ def test_tensorflow_checkpoint():
         checkpoint = TensorflowCheckpoint.from_directory(path)
         checkpoint_preprocessor = checkpoint.get_preprocessor()
         assert checkpoint.get_model_weights() == model.get_weights()
-        assert checkpoint_preprocessor.attr == preprocessor.attr
+        assert checkpoint_preprocessor == preprocessor
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
@@ -145,7 +132,8 @@ def test_predict_array_with_preprocessor(use_gpu):
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert predictions.flatten().tolist() == [4, 8, 12]
+    assert predictor.get_preprocessor().has_preprocessed
+    assert predictions.flatten().tolist() == [2, 4, 6]
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
