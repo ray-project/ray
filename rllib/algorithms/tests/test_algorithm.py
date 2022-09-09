@@ -104,6 +104,20 @@ class TestAlgorithm(unittest.TestCase):
                     # Change the list of policies to train.
                     policies_to_train=[f"p{i}", f"p{i-1}"],
                 )
+                # Make sure new policy is part of remote workers in the
+                # worker set and the eval worker set.
+                assert pid in (
+                    ray.get(algo.workers.remote_workers()[0].apply.remote(
+                        lambda w: list(w.policy_map.keys())
+                    ))
+                )
+                assert pid in (
+                    ray.get(algo.evaluation_workers.remote_workers()[0].apply.remote(
+                        lambda w: list(w.policy_map.keys())
+                    ))
+                )
+                # Assert new policy is part of local worker (eval worker set does NOT
+                # have a local worker, only the main WorkerSet does).
                 pol_map = algo.workers.local_worker().policy_map
                 self.assertTrue(new_pol is not pol0)
                 for j in range(i + 1):
@@ -117,12 +131,15 @@ class TestAlgorithm(unittest.TestCase):
                 test = pg.PG(config=config)
                 test.restore(checkpoint)
 
-                # Make sure evaluation worker also gets the restored policy.
-                def _has_policy(w):
-                    return w.get_policy("p0") is not None
+                # Make sure evaluation worker also got the restored, added policy.
+                def _has_policies(w):
+                    return (
+                        w.get_policy("p0") is not None
+                        and w.get_policy(pid) is not None
+                    )
 
                 self.assertTrue(
-                    all(test.evaluation_workers.foreach_worker(_has_policy))
+                    all(test.evaluation_workers.foreach_worker(_has_policies))
                 )
 
                 # Make sure algorithm can continue training the restored policy.
