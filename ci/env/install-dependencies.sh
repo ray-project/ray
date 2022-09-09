@@ -421,13 +421,6 @@ install_dependencies() {
     pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}"
   fi
 
-  # For Tune, install specific requirements
-  if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
-    # Todo: move to requirements_tune.txt when we upgraded tensorflow (conflicting typing-extensions dependency)
-    pip install "ray_lightning==0.3.0"
-    pip install "pytorch-lightning~=1.7.0"
-  fi
-
   # Additional Tune dependency for Horovod.
   # This must be run last (i.e., torch cannot be re-installed after this)
   if [ "${INSTALL_HOROVOD-}" = 1 ]; then
