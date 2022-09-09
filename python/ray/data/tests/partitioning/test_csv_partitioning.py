@@ -102,7 +102,7 @@ class TestReadCSVWithNoPartitioning:
             write_csv({"X": [0, 0, 0], "Y": [0, 0, 0]}, path)
 
         # `read_csv` shouldn't raise an error if `partitioning` is set to `None`.
-        ds = ray.data.read_csv(paths, partitioning=None)
+        ray.data.read_csv(paths, partitioning=None)
 
 
 class TestReadCSVWithDirPartitioning:
@@ -143,7 +143,7 @@ class TestReadCSVWithDirPartitioning:
 
         # `read_csv` should error because `path` is missing the `country` field.
         with pytest.raises(ValueError):
-            ds = ray.data.read_csv(
+            ray.data.read_csv(
                 path,
                 partitioning=Partitioning(
                     "dir", field_names=["year", "country"], base_dir=tmp_path
@@ -167,9 +167,7 @@ class TestReadCSVWithDirPartitioning:
                 ),
             )
 
-    def test_read_files_with_conflicting_key(
-        self, relative_paths, tmp_path, shutdown_only
-    ):
+    def test_read_files_with_conflicting_key(self, tmp_path, shutdown_only):
         path = os.path.join(tmp_path, "fr", "data.csv")
         write_csv({"country": ["ir", "ir", "ir"]}, path)
 

@@ -31,7 +31,12 @@ from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
 )
-from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
+from ray.data.datasource.partitioning import (
+    Partitioning,
+    PathPartitionFilter,
+    PathPartitionParser,
+)
+
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -220,7 +225,6 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         self,
         f: "pyarrow.NativeFile",
         path: str,
-        partitioning: Optional[Partitioning],
         **reader_args,
     ) -> Iterator[Block]:
         """Streaming read a single file, passing all kwargs to the reader.
@@ -447,8 +451,15 @@ class _FileBasedDatasourceReader(Reader):
                     # Non-Snappy compression, pass as open_input_stream() arg so Arrow
                     # can take care of streaming decompression for us.
                     open_stream_args["compression"] = compression
+
+                partitions: Dict[str, str] = {}
+                if partitioning is not None:
+                    parse = PathPartitionParser(partitioning)
+                    partitions = parse(read_path)
+
                 with open_input_source(fs, read_path, **open_stream_args) as f:
-                    for data in read_stream(f, read_path, partitioning, **reader_args):
+                    for data in read_stream(f, read_path, **reader_args):
+                        data = _add_partitions(data, partitions)
                         output_buffer.add_block(data)
                         if output_buffer.has_next():
                             yield output_buffer.next()
@@ -478,6 +489,28 @@ class _FileBasedDatasourceReader(Reader):
             read_tasks.append(read_task)
 
         return read_tasks
+
+
+def _add_partitions(data: Block, partitions: Dict[str, Any]) -> Block:
+    import pyarrow
+
+    if isinstance(data, pyarrow.Table):
+        return _add_partitions_to_table(data, partitions)
+    raise NotImplementedError("TODO")
+
+
+def _add_partitions_to_table(
+    table: "pyarrow.Table", partitions: Dict[str, Any]
+) -> "pyarrow.Table":
+    if any(field in table.column_names for field in partitions):
+        raise ValueError("TODO")
+
+    num_columns = table.num_columns
+    for i, (field, value) in enumerate(partitions.items()):
+        column = [[value] * len(table)]
+        table = table.add_column(num_columns + i, field, column)
+
+    return table
 
 
 # TODO(Clark): Add unit test coverage of _resolve_paths_and_filesystem and

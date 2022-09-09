@@ -1,4 +1,3 @@
-from multiprocessing.sharedctypes import Value
 import posixpath
 from enum import Enum
 from typing import (
@@ -385,7 +384,8 @@ class PathPartitionParser:
             for i, field_name in enumerate(field_names):
                 if kv_pairs[i][0] != field_name:
                     raise ValueError(
-                        f"Expected partition key {field_name} but found {kv_pairs[i][0]}"
+                        f"Expected partition key {field_name} but found "
+                        f"{kv_pairs[i][0]}"
                     )
         return dict(kv_pairs)
 

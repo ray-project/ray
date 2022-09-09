@@ -1,11 +1,10 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator
 
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     _resolve_kwargs,
 )
-from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -31,7 +30,6 @@ class CSVDatasource(FileBasedDatasource):
         self,
         f: "pyarrow.NativeFile",
         path: str,
-        partitioning: Optional[Partitioning],
         **reader_args,
     ) -> Iterator[Block]:
         import pyarrow
@@ -45,11 +43,6 @@ class CSVDatasource(FileBasedDatasource):
         if hasattr(parse_options, "invalid_row_handler"):
             parse_options.invalid_row_handler = parse_options.invalid_row_handler
 
-        partitions: Dict[str, str] = {}
-        if partitioning is not None:
-            parse = PathPartitionParser(partitioning)
-            partitions = parse(path)
-
         reader = csv.open_csv(
             f, read_options=read_options, parse_options=parse_options, **reader_args
         )
@@ -61,11 +54,6 @@ class CSVDatasource(FileBasedDatasource):
                 table = pyarrow.Table.from_batches([batch], schema=schema)
                 if schema is None:
                     schema = table.schema
-
-                num_csv_fields = table.num_columns
-                for i, (field, value) in enumerate(partitions.items()):
-                    column = [[value] * len(table)]
-                    table = table.add_column(num_csv_fields + i, field, column)
 
                 yield table
             except StopIteration:
