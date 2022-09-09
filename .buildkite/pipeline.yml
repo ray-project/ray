@@ -179,6 +179,7 @@
     # Uninstall and re-install Ray so that we can use Ray Client
     # (remove thirdparty_files to sidestep an issue with psutil).
     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
+    - pushd /ray && git clean -f -f -x -d -e .whl -e python/ray/dashboard/client && popd
     - ./ci/ci.sh build
 
 - label: ":book: LinkCheck"
