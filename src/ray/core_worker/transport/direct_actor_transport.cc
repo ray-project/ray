@@ -121,7 +121,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
     RAY_CHECK(num_returns >= 0);
 
-    std::vector<std::shared_ptr<RayObject>> return_objects;
+    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
     bool is_retryable_error = false;
     auto status = task_handler_(task_spec,
@@ -133,6 +133,12 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     reply->set_is_retryable_error(is_retryable_error);
 
     bool objects_valid = return_objects.size() == num_returns;
+    for (const auto &return_object : return_objects) {
+      if (return_object.second == NULL) {
+        objects_valid = false;
+      }
+    }
+
     if (objects_valid) {
       size_t num_dynamic_returns_expected = task_spec.DynamicReturnIds().size();
       if (num_dynamic_returns_expected > 0) {
@@ -147,9 +153,9 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       }
       for (size_t i = 0; i < return_objects.size(); i++) {
         const auto &return_object = return_objects[i];
-        ObjectID id = ObjectID::FromIndex(task_spec.TaskId(), /*index=*/i + 1);
         auto return_object_proto = reply->add_return_objects();
-        SerializeReturnObject(id, return_object, return_object_proto);
+        SerializeReturnObject(
+            return_object.first, return_object.second, return_object_proto);
       }
 
       if (task_spec.IsActorCreationTask()) {
@@ -180,7 +186,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         send_reply_callback(status, nullptr, nullptr);
       }
     } else {
-      RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
+      RAY_CHECK(objects_valid);
       send_reply_callback(status, nullptr, nullptr);
     }
   };

@@ -168,8 +168,11 @@ class ObjectRefGenerator:
         self._refs = refs
 
     def __iter__(self):
-        while self.refs:
-            yield self.refs.pop(0)
+        while self._refs:
+            yield self._refs.pop(0)
+
+    def __len__(self):
+        return len(self._refs)
 
 
 cdef int check_status(const CRayStatus& status) nogil except -1:
@@ -551,10 +554,9 @@ cdef execute_task(
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectReference] &c_arg_refs,
-        const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
         const c_string serialized_retry_exception_allowlist,
-        c_vector[shared_ptr[CRayObject]] *returns,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_bool *is_retryable_error,
         # This parameter is only used for actor creation task to define
@@ -768,7 +770,7 @@ cdef execute_task(
                                          core_worker.get_current_task_id()),
                                      exc_info=True)
                     raise e
-                if c_return_ids.size() == 1 and not inspect.isgenerator(outputs):
+                if returns[0].size() == 1 and not inspect.isgenerator(outputs):
                     # If there is only one return specified, we should return
                     # all return values as a single object.
                     outputs = (outputs,)
@@ -793,16 +795,16 @@ cdef execute_task(
                 raise TaskCancelledError(
                             core_worker.get_current_task_id())
 
-            if (c_return_ids.size() > 0 and
+            if (returns[0].size() > 0 and
                     not inspect.isgenerator(outputs) and
-                    len(outputs) != int(c_return_ids.size())):
+                    len(outputs) != int(returns[0].size())):
                 raise ValueError(
                     "Task returned {} objects, but num_returns={}.".format(
-                        len(outputs), c_return_ids.size()))
+                        len(outputs), returns[0].size()))
 
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
-                num_returns = c_return_ids.size()
+                num_returns = returns[0].size()
                 if num_returns == 1 and inspect.isgenerator(outputs):
                     # If the task has a single return value and it is a
                     # generator, first store all outputs yielded by the
@@ -810,9 +812,9 @@ cdef execute_task(
                     # TODO(swang): Fix reconstruction case where generator
                     # returned a single value.
                     core_worker.store_task_outputs(
-                        caller_address, worker, outputs, NULL,
-                        NULL,
-                        c_return_ids[0],
+                        caller_address, worker, outputs,
+                        True,  # is_dynamic
+                        returns[0][0].first,
                         dynamic_returns)
                     dynamic_refs = []
                     for idx in range(dynamic_returns.size()):
@@ -825,10 +827,10 @@ cdef execute_task(
                     outputs = (ObjectRefGenerator(dynamic_refs), )
 
                 core_worker.store_task_outputs(
-                    caller_address, worker, outputs, &c_return_ids,
-                    returns,
+                    caller_address, worker, outputs,
+                    False,  # is_dynamic
                     CObjectID.Nil(),
-                    NULL)
+                    returns)
         except Exception as error:
             # If the debugger is enabled, drop into the remote pdb here.
             if "RAY_PDB" in os.environ:
@@ -850,13 +852,13 @@ cdef execute_task(
                                               error, proctitle=title,
                                               actor_repr=actor_repr)
             errors = []
-            for _ in range(c_return_ids.size()):
+            for _ in range(returns[0].size()):
                 errors.append(failure_object)
             core_worker.store_task_outputs(
-                caller_address, worker, errors, &c_return_ids,
-                returns,
+                caller_address, worker, errors,
+                False,  # is_dynamic
                 CObjectID.Nil(),
-                NULL)
+                returns)
             if not dynamic_returns[0].empty():
                 # We generated dynamic objects during the first execution and
                 # we are now re-executing the task during object
@@ -866,8 +868,9 @@ cdef execute_task(
                 for _ in range(dynamic_returns[0].size()):
                     dynamic_errors.append(failure_object)
                 core_worker.store_task_outputs(
-                    caller_address, worker, dynamic_errors, NULL, NULL,
-                    c_return_ids[0],
+                    caller_address, worker, dynamic_errors,
+                    False,  # is_dynamic,
+                    CObjectID.Nil(),
                     dynamic_returns)
 
             ray._private.utils.push_error_to_driver(
@@ -905,10 +908,9 @@ cdef CRayStatus task_execution_handler(
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectReference] &c_arg_refs,
-        const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
         const c_string serialized_retry_exception_allowlist,
-        c_vector[shared_ptr[CRayObject]] *returns,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
         c_bool *is_retryable_error,
@@ -921,7 +923,7 @@ cdef CRayStatus task_execution_handler(
                 # it does, that indicates that there was an internal error.
                 execute_task(caller_address, task_type, task_name,
                              ray_function, c_resources,
-                             c_args, c_arg_refs, c_return_ids,
+                             c_args, c_arg_refs,
                              debugger_breakpoint,
                              serialized_retry_exception_allowlist,
                              returns,
@@ -2162,11 +2164,10 @@ cdef class CoreWorker:
     cdef store_task_outputs(self,
                             const CAddress &caller_address,
                             worker, outputs,
-                            const c_vector[CObjectID] *static_return_ids,
-                            c_vector[shared_ptr[CRayObject]] *returns,
-                            const CObjectID &generator_id,
+                            is_dynamic,
+                            const CObjectID &outer_id,
                             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]]
-                            *dynamic_returns):
+                            *returns):
         cdef:
             CObjectID return_id
             size_t data_size
@@ -2175,10 +2176,20 @@ cdef class CoreWorker:
             int64_t task_output_inlined_bytes
             int64_t num_returns = -1
             shared_ptr[CRayObject] *return_ptr
-        if static_return_ids is not NULL:
-            num_returns = static_return_ids[0].size()
-        elif dynamic_returns is not NULL and dynamic_returns.size() > 0:
-            num_returns = dynamic_returns[0].size()
+        if is_dynamic:
+            # The task specified a dynamic number of return values. Determine
+            # the expected number of return values.
+            if returns[0].size() > 0:
+                # We are re-executing the task. We should return the same
+                # number of objects as before.
+                num_returns = returns[0].size()
+            else:
+                # This is the first execution of the task, so we don't know how
+                # many return objects it should have yet.
+                num_returns = -1
+        else:
+            # The task specified how many return values it should have.
+            num_returns = returns[0].size()
 
         if num_returns == 0:
             return
@@ -2190,30 +2201,26 @@ cdef class CoreWorker:
                 raise ValueError(
                     "Task returned more than num_returns={} objects.".format(
                         num_returns))
-            if static_return_ids != NULL:
-                return_id = static_return_ids[0][i]
-                while returns[0].size() <= i:
-                    returns[0].push_back(shared_ptr[CRayObject]())
-                return_ptr = &returns[0][i]
-            else:
-                if num_returns == -1:
-                    return_id = (CCoreWorkerProcess.GetCoreWorker()
-                                 .AllocateDynamicReturnId())
-                    dynamic_returns[0].push_back(
-                            c_pair[CObjectID, shared_ptr[CRayObject]](
-                                return_id, shared_ptr[CRayObject]()))
-                else:
-                    return_id = dynamic_returns[0][i].first
-                assert i < dynamic_returns[0].size()
-                return_ptr = &dynamic_returns[0][i].second
+            while i >= returns[0].size():
+                return_id = (CCoreWorkerProcess.GetCoreWorker()
+                             .AllocateDynamicReturnId())
+                returns[0].push_back(
+                        c_pair[CObjectID, shared_ptr[CRayObject]](
+                            return_id, shared_ptr[CRayObject]()))
+            assert i < returns[0].size()
+            return_id = returns[0][i].first
+            if returns[0][i].second == nullptr:
+                returns[0][i].second = shared_ptr[CRayObject]()
+            return_ptr = &returns[0][i].second
 
-            # Skip return values that we already created.
+            # Skip return values that we already created. This can occur if
+            # there were multiple return values, and we errored while trying to
+            # create one of them.
             if return_ptr.get() != NULL:
-                # TODO(swang): If there were multiple return values, and we
-                # errored while trying to create one of them, then earlier
-                # return objects will already have a value stored. We should
-                # try to delete the first value and store the error instead
-                # here.
+                # TODO(swang): This return object already has a value stored
+                # because we created it before the error triggered.  We should
+                # try to delete the current value and store the same error
+                # instead here.
                 continue
 
             context = worker.get_serialization_context()
@@ -2235,7 +2242,7 @@ cdef class CoreWorker:
 
             if not self.store_task_output(
                     serialized_object, return_id,
-                    generator_id,
+                    outer_id,
                     data_size, metadata, contained_id,
                     &task_output_inlined_bytes, return_ptr):
                 # If the object already exists, but we fail to pin the copy, it
@@ -2243,7 +2250,7 @@ cdef class CoreWorker:
                 # create another copy.
                 self.store_task_output(
                         serialized_object, return_id,
-                        generator_id,
+                        outer_id,
                         data_size, metadata,
                         contained_id, &task_output_inlined_bytes,
                         return_ptr)

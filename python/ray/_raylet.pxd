@@ -142,10 +142,9 @@ cdef class CoreWorker:
             self,
             const CAddress &caller_address,
             worker, outputs,
-            const c_vector[CObjectID] *static_return_ids,
-            c_vector[shared_ptr[CRayObject]] *returns,
-            const CObjectID &generator_id,
-            c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns)
+            is_dynamic,
+            const CObjectID &outer_id,
+            c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle)
     cdef c_function_descriptors_to_python(

@@ -211,6 +211,12 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     #         ray.get(ref)
 
 
+# TODO: Test cases:
+# - generator errors before yield
+# - generator calls ray.put, reconstruction
+# - ref counting, check for leaks
+# - passing ObjRefGenerator, passing generated ObjRefs
+
 if __name__ == "__main__":
     import os
 

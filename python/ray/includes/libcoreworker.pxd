@@ -291,10 +291,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const unordered_map[c_string, double] &resources,
             const c_vector[shared_ptr[CRayObject]] &args,
             const c_vector[CObjectReference] &arg_refs,
-            const c_vector[CObjectID] &return_ids,
             const c_string debugger_breakpoint,
             const c_string serialized_retry_exception_allowlist,
-            c_vector[shared_ptr[CRayObject]] *returns,
+            c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
             shared_ptr[LocalMemoryBuffer]
             &creation_task_exception_pb_bytes,

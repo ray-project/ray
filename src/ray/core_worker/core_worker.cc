@@ -2186,7 +2186,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
 Status CoreWorker::ExecuteTask(
     const TaskSpecification &task_spec,
     const std::shared_ptr<ResourceMappingType> &resource_ids,
-    std::vector<std::shared_ptr<RayObject>> *return_objects,
+    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error) {
@@ -2225,9 +2225,8 @@ Status CoreWorker::ExecuteTask(
   std::vector<ObjectID> borrowed_ids;
   RAY_CHECK_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
 
-  std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-    return_ids.push_back(task_spec.ReturnId(i));
+    return_objects->push_back(std::make_pair<>(task_spec.ReturnId(i), nullptr));
   }
   // For dynamic tasks, pass the return IDs that were dynamically generated on
   // the first execution.
@@ -2241,8 +2240,8 @@ Status CoreWorker::ExecuteTask(
   Status status;
   TaskType task_type = TaskType::NORMAL_TASK;
   if (task_spec.IsActorCreationTask()) {
-    RAY_CHECK(return_ids.size() > 0);
-    return_ids.pop_back();
+    RAY_CHECK(return_objects->size() > 0);
+    return_objects->pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
     {
@@ -2257,8 +2256,8 @@ Status CoreWorker::ExecuteTask(
     }
     RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {
-    RAY_CHECK(return_ids.size() > 0);
-    return_ids.pop_back();
+    RAY_CHECK(return_objects->size() > 0);
+    return_objects->pop_back();
     task_type = TaskType::ACTOR_TASK;
   }
 
@@ -2280,7 +2279,6 @@ Status CoreWorker::ExecuteTask(
       task_spec.GetRequiredResources().GetResourceUnorderedMap(),
       args,
       arg_refs,
-      return_ids,
       task_spec.GetDebuggerBreakpoint(),
       task_spec.GetSerializedRetryExceptionAllowlist(),
       return_objects,
@@ -2446,7 +2444,7 @@ ObjectID CoreWorker::AllocateDynamicReturnId() {
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
     const TaskSpecification &task_spec, const ActorID &actor_id) {
   auto resource_ids = std::make_shared<ResourceMappingType>();
-  auto return_objects = std::vector<std::shared_ptr<RayObject>>();
+  auto return_objects = std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>();
   auto borrowed_refs = ReferenceCounter::ReferenceTableProto();
 
   std::vector<rpc::ObjectReference> returned_refs;
@@ -2468,6 +2466,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
     ref.set_object_id(task_spec.ReturnId(i).Binary());
     ref.mutable_owner_address()->CopyFrom(task_spec.CallerAddress());
     returned_refs.push_back(std::move(ref));
+    return_objects.push_back(std::make_pair<>(task_spec.ReturnId(i), nullptr));
   }
   auto old_id = GetActorId();
   SetActorId(actor_id);
