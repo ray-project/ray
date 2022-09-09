@@ -876,7 +876,7 @@ class TorchPolicy(Policy):
         }
 
         if not os.path.exists(export_dir):
-            os.makedirs(export_dir)
+            os.makedirs(export_dir, exist_ok=True)
 
         seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
         if onnx:
