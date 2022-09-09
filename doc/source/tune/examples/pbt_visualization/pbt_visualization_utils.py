@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation, PillowWriter
 import numpy as np
 
 
@@ -7,8 +8,7 @@ def get_init_theta():
 
 
 def Q_batch(theta):
-    """Returns the true function value for a batch of parameters with size (B, 2)
-    """
+    """Returns the true function value for a batch of parameters with size (B, 2)"""
     return 1.2 - (3 / 4 * theta[:, 0] ** 2 + theta[:, 1] ** 2)
 
 
@@ -109,3 +109,28 @@ def plot_Q_history(results, colors, labels, ax=None):
         df = results[i].metrics_dataframe
         ax.plot(df["Q"], label=labels[i], color=colors[i])
     ax.legend()
+
+
+def make_animation(
+    results, colors, labels, perturbation_interval=None, filename="pbt.gif"
+):
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    def animate(i):
+        ax.clear()
+        return plot_parameter_history(
+            results,
+            colors,
+            labels,
+            perturbation_interval=perturbation_interval,
+            fig=fig,
+            ax=ax,
+            plot_until_iter=i,
+            include_colorbar=False,
+        )
+
+    ani = FuncAnimation(
+        fig, animate, interval=200, blit=True, repeat=True, frames=range(1, 101)
+    )
+    ani.save(filename, writer=PillowWriter())
+    plt.close()
