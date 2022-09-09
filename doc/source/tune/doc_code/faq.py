@@ -97,7 +97,8 @@ if not MOCK:
     tuner = tune.Tuner(
         tune.with_resources(
             train_fn,
-            resources=lambda spec: {"GPU": 1} if config.use_gpu else {"GPU": 0})
+            resources=lambda spec: {"GPU": 1} if config.use_gpu else {"GPU": 0},
+        )
     )
     tuner.fit()
     # __resources_lambda_end__
@@ -107,9 +108,11 @@ if not MOCK:
         train_fn,
         param_space={
             "scaling_config": ScalingConfig(
-                trainer_resources=lambda spec: {"GPU": 1} if config.use_gpu else {"GPU": 0}
-                )
-        }
+                trainer_resources=lambda spec: {"GPU": 1}
+                if config.use_gpu
+                else {"GPU": 0}
+            )
+        },
     )
     tuner.fit()
     # __resources_scalingconfig_end__
