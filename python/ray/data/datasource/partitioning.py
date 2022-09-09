@@ -1,3 +1,4 @@
+from email import message
 import posixpath
 from enum import Enum
 from typing import (
@@ -11,7 +12,7 @@ from typing import (
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
 @DeveloperAPI
@@ -35,7 +36,7 @@ class PartitionStyle(str, Enum):
 
 
 @DeveloperAPI
-class PathPartitionScheme:
+class Partitioning:
     """Partition scheme used to describe path-based partitions.
 
     Path-based partition formats embed all partition keys and values directly in
@@ -126,6 +127,11 @@ class PathPartitionScheme:
         self._normalized_base_dir = normalized_base_dir
 
 
+@Deprecated(message="`PathPartitionScheme` has been renamed `Partitioning`. ")
+class PathPartitionScheme(Partitioning):
+    pass
+
+
 @DeveloperAPI
 class PathPartitionEncoder:
     """Callable that generates directory path strings for path-based partition formats.
@@ -167,10 +173,10 @@ class PathPartitionEncoder:
         Returns:
             The new partition path encoder.
         """
-        scheme = PathPartitionScheme(style, base_dir, field_names, filesystem)
+        scheme = Partitioning(style, base_dir, field_names, filesystem)
         return PathPartitionEncoder(scheme)
 
-    def __init__(self, path_partition_scheme: PathPartitionScheme):
+    def __init__(self, path_partition_scheme: Partitioning):
         """Creates a new partition path encoder.
 
         Args:
@@ -219,7 +225,7 @@ class PathPartitionEncoder:
         return posixpath.join(self._scheme.normalized_base_dir, *partition_dirs)
 
     @property
-    def scheme(self) -> PathPartitionScheme:
+    def scheme(self) -> Partitioning:
         """Returns the path partition scheme for this encoder."""
         return self._scheme
 
@@ -299,10 +305,10 @@ class PathPartitionParser:
         Returns:
             The new path-based partition parser.
         """
-        scheme = PathPartitionScheme(style, base_dir, field_names, filesystem)
+        scheme = Partitioning(style, base_dir, field_names, filesystem)
         return PathPartitionParser(scheme)
 
-    def __init__(self, path_partition_scheme: PathPartitionScheme):
+    def __init__(self, path_partition_scheme: Partitioning):
         """Creates a path-based partition parser.
 
         Args:
@@ -350,7 +356,7 @@ class PathPartitionParser:
         return self._parser_fn(dir_path)
 
     @property
-    def scheme(self) -> PathPartitionScheme:
+    def scheme(self) -> Partitioning:
         """Returns the path partition scheme for this parser."""
         return self._scheme
 
@@ -465,7 +471,7 @@ class PathPartitionFilter:
         Returns:
             The new path-based partition filter.
         """
-        scheme = PathPartitionScheme(style, base_dir, field_names, filesystem)
+        scheme = Partitioning(style, base_dir, field_names, filesystem)
         path_partition_parser = PathPartitionParser(scheme)
         return PathPartitionFilter(path_partition_parser, filter_fn)
 
