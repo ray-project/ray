@@ -2,13 +2,14 @@ import logging
 import math
 from pathlib import Path
 import re
+import numpy as np
 from typing import List, Tuple, Optional
 import zipfile
 
 import ray.data
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
-from ray.rllib.offline.json_reader import from_json_data
+from ray.rllib.offline.json_reader import from_json_data, postprocess_actions
 from ray.rllib.policy.sample_batch import concat_samples, SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.typing import SampleBatchType, AlgorithmConfigDict
@@ -251,16 +252,15 @@ class DatasetReader(InputReader):
             d = next(self._iter).as_pydict()
             # Columns like obs are compressed when written by DatasetWriter.
             d = from_json_data(d, self._ioctx.worker)
+            d = postprocess_actions(d, self._ioctx.worker)
             count += d.count
             d = self._preprocess_if_needed(d)
-            ret.append(self._postprocess_if_needed(d))
+            ret.append(d)
         ret = concat_samples(ret)
         return ret
 
     def _preprocess_if_needed(self, batch: SampleBatchType) -> SampleBatchType:
         # TODO: @kourosh, preprocessor is only supported for single agent case.
-        import numpy as np
-
         preprocessors = self._ioctx.worker.preprocessors
         enable_preprocessor = not self._ioctx.config.get(
             "_disable_preprocessors", False
