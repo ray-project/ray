@@ -458,7 +458,10 @@ class TestWorkerFailure(unittest.TestCase):
             self.assertTrue(
                 not any(
                     ray.get(
-                        [is_recreated(worker) for worker in a.evaluation_workers.remote_workers()]
+                        [
+                            is_recreated(worker)
+                            for worker in a.evaluation_workers.remote_workers()
+                        ]
                     )
                 )
             )
@@ -479,7 +482,10 @@ class TestWorkerFailure(unittest.TestCase):
             self.assertTrue(
                 all(
                     ray.get(
-                        [is_recreated(worker) for worker in a.evaluation_workers.remote_workers()]
+                        [
+                            is_recreated(worker)
+                            for worker in a.evaluation_workers.remote_workers()
+                        ]
                     )
                 )
             )
@@ -490,7 +496,10 @@ class TestWorkerFailure(unittest.TestCase):
             self.assertTrue(
                 all(
                     ray.get(
-                        [w.apply.remote(has_test_policy) for w in a.workers.remote_workers()]
+                        [
+                            w.apply.remote(has_test_policy)
+                            for w in a.workers.remote_workers()
+                        ]
                     )
                 )
             )
@@ -498,7 +507,10 @@ class TestWorkerFailure(unittest.TestCase):
             self.assertTrue(
                 all(
                     ray.get(
-                        [w.apply.remote(has_test_policy) for w in a.evaluation_workers.remote_workers()]
+                        [
+                            w.apply.remote(has_test_policy)
+                            for w in a.evaluation_workers.remote_workers()
+                        ]
                     )
                 )
             )
