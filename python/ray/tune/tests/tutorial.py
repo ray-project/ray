@@ -166,7 +166,7 @@ from hyperopt import hp
 from ray.tune.search.hyperopt import HyperOptSearch
 
 space = {
-    "lr": hp.loguniform("lr", 1e-10, 0.1),
+    "lr": hp.loguniform("lr", -10, -1),
     "momentum": hp.uniform("momentum", 0.1, 0.9),
 }
 

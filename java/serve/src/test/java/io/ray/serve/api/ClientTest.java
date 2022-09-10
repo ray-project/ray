@@ -6,7 +6,9 @@ import io.ray.serve.DummyServeController;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.handle.RayServeHandle;
+import io.ray.serve.poll.LongPollClientFactory;
 import io.ray.serve.util.CommonUtil;
 import java.util.HashMap;
 import java.util.Map;
@@ -39,9 +41,12 @@ public class ClientTest {
       Serve.setInternalReplicaContext(null, null, controllerName, null, config);
 
       // Mock endpoints.
-      Map<String, EndpointInfo> endpoints = new HashMap<>();
-      endpoints.put(endpointName, EndpointInfo.newBuilder().setEndpointName(endpointName).build());
-      controllerHandle.task(DummyServeController::setEndpoints, endpoints).remote();
+      EndpointSet endpointSet =
+          EndpointSet.newBuilder()
+              .putEndpoints(
+                  endpointName, EndpointInfo.newBuilder().setEndpointName(endpointName).build())
+              .build();
+      controllerHandle.task(DummyServeController::setEndpoints, endpointSet.toByteArray()).remote();
 
       // Client.
       ServeControllerClient client =
@@ -51,6 +56,8 @@ public class ClientTest {
       RayServeHandle rayServeHandle = client.getHandle(endpointName, false);
       Assert.assertNotNull(rayServeHandle);
     } finally {
+      LongPollClientFactory.stop();
+      LongPollClientFactory.clearAllCache();
       if (!inited) {
         Ray.shutdown();
       }

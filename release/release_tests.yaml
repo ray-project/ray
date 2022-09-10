@@ -3527,24 +3527,25 @@
   legacy:
     test_name: stress_test_state_api_scale
     test_suite: nightly_tests
-  stable: false
 
   frequency: nightly
   team: core
   cluster:
-    cluster_env: stress_tests/stress_tests_app_config.yaml
-    cluster_compute: stress_tests/stress_tests_compute.yaml
+    cluster_env: stress_tests/state_api_app_config.yaml
+    cluster_compute: stress_tests/stress_tests_compute_large.yaml
 
   run:
     timeout: 3600
     script: python stress_tests/test_state_api_scale.py
+    wait_for_nodes:
+      num_nodes: 7
     type: sdk_command
     file_manager: sdk
 
   smoke_test:
     frequency: multi
     cluster:
-      app_config: stress_tests/stress_tests_app_config.yaml
+      app_config: stress_tests/state_api_app_config.yaml
       cluster_compute: stress_tests/smoke_test_compute.yaml
 
     run:
@@ -3558,12 +3559,11 @@
   legacy:
     test_name: shuffle_20gb_with_state_api
     test_suite: nightly_tests
-  stable: false
 
   frequency: nightly
   team: core
   cluster:
-    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_env: shuffle/shuffle_with_state_api_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_single.yaml
 
   run:
@@ -4643,7 +4643,7 @@
     cluster_compute: compute_tpl.yaml
 
   run:
-    timeout: 1800
+    timeout: 28800 # 8h
     prepare: bash prepare.sh
     script: python run_gcs_ft_on_k8s.py
     type: sdk_command
