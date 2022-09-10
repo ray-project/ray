@@ -91,6 +91,9 @@ class TestDT(unittest.TestCase):
             .reporting(
                 min_train_timesteps_per_iteration=10,
             )
+            .experimental(
+                _disable_preprocessor_api=True,
+            )
         )
 
         num_iterations = 4
@@ -162,6 +165,9 @@ class TestDT(unittest.TestCase):
             .rollouts(
                 num_rollout_workers=0,
                 horizon=200,
+            )
+            .experimental(
+                _disable_preprocessor_api=True
             )
         )
         algo = config.build()

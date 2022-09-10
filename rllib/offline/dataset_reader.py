@@ -214,6 +214,7 @@ class DatasetReader(InputReader):
         """
         self._ioctx = ioctx or IOContext()
         self._default_policy = self.policy_map = None
+        self.preprocessor = None
         self._dataset = ds
         self.count = None if not self._dataset else self._dataset.count()
         # do this to disable the ray data stdout logging
@@ -231,6 +232,11 @@ class DatasetReader(InputReader):
             if self._ioctx.worker is not None:
                 self._policy_map = self._ioctx.worker.policy_map
                 self._default_policy = self._policy_map.get(DEFAULT_POLICY_ID)
+                self.preprocessor = (
+                    self._ioctx.worker.preprocessors.get(DEFAULT_POLICY_ID)
+                    if not self._ioctx.config.get("_disable_preprocessors", False)
+                    else None
+                )
             self._dataset.random_shuffle(seed=seed)
             print(
                 f"DatasetReader {self._ioctx.worker_index} has {ds.count()}, samples."
@@ -252,32 +258,22 @@ class DatasetReader(InputReader):
             d = next(self._iter).as_pydict()
             # Columns like obs are compressed when written by DatasetWriter.
             d = from_json_data(d, self._ioctx.worker)
-            d = postprocess_actions(d, self._ioctx.worker)
             count += d.count
             d = self._preprocess_if_needed(d)
-            ret.append(self._postprocess_if_needed(d))
+            d = postprocess_actions(d, self._ioctx)
+            d = self._postprocess_if_needed(d)
+            ret.append(d)
         ret = concat_samples(ret)
         return ret
 
     def _preprocess_if_needed(self, batch: SampleBatchType) -> SampleBatchType:
         # TODO: @kourosh, preprocessor is only supported for single agent case.
-        preprocessors = self._ioctx.worker.preprocessors
-        enable_preprocessor = not self._ioctx.config.get(
-            "_disable_preprocessors", False
-        )
-        if preprocessors and enable_preprocessor:
-            msg = (
-                f"Offline RL is only supported for single agent cases. Found "
-                f"{len(preprocessors)} policy ids in the preprocessor dict."
-            )
-            assert len(preprocessors) == 1 and "default_policy" in preprocessors, msg
-            preprocessor = preprocessors["default_policy"]
+        if self.preprocessor:
             for key in (SampleBatch.CUR_OBS, SampleBatch.NEXT_OBS):
                 if key in batch:
-                    samples = []
-                    for sample in batch[key]:
-                        samples.append(preprocessor.transform(sample))
-                    batch[key] = np.stack(samples, axis=0)
+                    batch[key] = (
+                        np.stack([self.preprocessor.transform(s) for s in batch[key]])
+                    )
         return batch
 
     def _postprocess_if_needed(self, batch: SampleBatchType) -> SampleBatchType:
