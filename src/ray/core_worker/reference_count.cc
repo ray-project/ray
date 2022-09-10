@@ -856,10 +856,9 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
       RAY_LOG(WARNING)
           << "Tried to decrease ref count for object ID that has count 0 " << borrowed_id
           << ". This should only happen if ray.internal.free was called earlier.";
-      continue;
+    } else {
+      it->second.local_ref_count--;
     }
-
-    it->second.local_ref_count--;
     PRINT_REF_COUNT(it);
     if (it->second.RefCount() == 0) {
       DeleteReferenceInternal(it, deleted);

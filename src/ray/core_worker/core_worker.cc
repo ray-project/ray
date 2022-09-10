@@ -2304,6 +2304,10 @@ Status CoreWorker::ExecuteTask(
   if (!borrowed_ids.empty()) {
     reference_counter_->PopAndClearLocalBorrowers(borrowed_ids, borrowed_refs, &deleted);
   }
+  for (const auto &dynamic_return : *dynamic_return_objects) {
+    reference_counter_->PopAndClearLocalBorrowers(
+        {dynamic_return.first}, borrowed_refs, &deleted);
+  }
   memory_store_->Delete(deleted);
 
   if (task_spec.IsNormalTask() && reference_counter_->NumObjectIDsInScope() != 0) {

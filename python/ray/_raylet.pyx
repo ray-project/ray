@@ -821,7 +821,6 @@ cdef execute_task(
                         dynamic_refs.append(ObjectRef(
                             dynamic_returns[0][idx].first.Binary(),
                             caller_address.SerializeAsString(),
-                            skip_adding_local_ref=True
                         ))
                     # Swap out the generator for an ObjectRef generator.
                     outputs = (ObjectRefGenerator(dynamic_refs), )
@@ -867,6 +866,8 @@ cdef execute_task(
                 dynamic_errors = []
                 for _ in range(dynamic_returns[0].size()):
                     dynamic_errors.append(failure_object)
+                # We pass is_dynamic=False because we have a fixed number of
+                # return objects to populate.
                 core_worker.store_task_outputs(
                     caller_address, worker, dynamic_errors,
                     False,  # is_dynamic,

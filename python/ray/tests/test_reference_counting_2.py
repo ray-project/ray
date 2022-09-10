@@ -746,6 +746,35 @@ def test_out_of_band_actor_handle_bypass_reference_counting(shutdown_only):
         ray.get(config["actor"].ping.remote())
 
 
+def test_generators(one_worker_100MiB):
+    @ray.remote
+    def remote_generator():
+        for _ in range(3):
+            yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)
+
+    ref = remote_generator.remote()
+    _fill_object_store_and_get(ref)
+    ref_generator = ray.get(ref)
+    refs = list(ref_generator)
+    for r in refs:
+        _fill_object_store_and_get(r)
+
+    # Outer ID out of scope, we should still be able to get the dynamic
+    # objects.
+    del ref
+    for r in refs:
+        print(r)
+        _fill_object_store_and_get(r)
+
+    # Inner IDs out of scope.
+    refs_oids = [r.binary() for r in refs]
+    del r
+    del refs
+
+    for r_oid in refs_oids:
+        _fill_object_store_and_get(r_oid, succeed=False)
+
+
 if __name__ == "__main__":
     import sys
 
