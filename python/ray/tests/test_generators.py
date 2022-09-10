@@ -87,7 +87,7 @@ def test_generator_returns(ray_start_regular, use_actors):
 
 
 def test_dynamic_generator(ray_start_regular):
-    @ray.remote
+    @ray.remote(num_returns="dynamic")
     def dynamic_generator(num_returns):
         for i in range(num_returns):
             yield np.ones(100_000_000, dtype=np.int8) * i
@@ -116,7 +116,7 @@ def test_dynamic_generator_reconstruction(ray_start_cluster):
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
     cluster.wait_for_nodes()
 
-    @ray.remote
+    @ray.remote(num_returns="dynamic")
     def dynamic_generator(num_returns):
         for i in range(num_returns):
             yield np.ones(1_000_000, dtype=np.int8) * i
@@ -177,7 +177,7 @@ def test_dynamic_generator_reconstruction_nondeterministic(
             self.count += 1
             return self.count
 
-    @ray.remote
+    @ray.remote(num_returns="dynamic")
     def dynamic_generator(exec_counter):
         num_returns = 10
         if ray.get(exec_counter.inc.remote()) > 1:
@@ -212,6 +212,7 @@ def test_dynamic_generator_reconstruction_nondeterministic(
 
 
 # TODO: Test cases:
+# - test exception when num_returns="dynamic" but not a generator, and vice versa
 # - generator errors before yield
 # - generator calls ray.put, reconstruction
 # - ref counting, check for leaks

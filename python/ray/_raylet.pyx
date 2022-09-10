@@ -806,6 +806,10 @@ cdef execute_task(
             with core_worker.profile_event(b"task:store_outputs"):
                 num_returns = returns[0].size()
                 if num_returns == 1 and inspect.isgenerator(outputs):
+                    if dynamic_returns == NULL:
+                        raise ValueError(
+                                "Generator remote functions must specify "
+                                "num_returns > 1 or num_returns=\"dynamic\"")
                     # If the task has a single return value and it is a
                     # generator, first store all outputs yielded by the
                     # generator. We will assign their ObjectIDs dynamically.
@@ -824,6 +828,11 @@ cdef execute_task(
                         ))
                     # Swap out the generator for an ObjectRef generator.
                     outputs = (ObjectRefGenerator(dynamic_refs), )
+                elif dynamic_returns != NULL:
+                    assert not inspect.isgenerator(outputs)
+                    raise ValueError(
+                            "Functions with @ray.remote(num_returns=\"dynamic\" "
+                            "must return a generator")
 
                 core_worker.store_task_outputs(
                     caller_address, worker, outputs,
@@ -858,7 +867,7 @@ cdef execute_task(
                 False,  # is_dynamic
                 CObjectID.Nil(),
                 returns)
-            if not dynamic_returns[0].empty():
+            if dynamic_returns != NULL:
                 # We generated dynamic objects during the first execution and
                 # we are now re-executing the task during object
                 # reconstruction. Store the error for the dynamically generated

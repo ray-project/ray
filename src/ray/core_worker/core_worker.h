@@ -874,7 +874,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const rpc::Address &address,
       const RayFunction &function,
       const std::vector<std::unique_ptr<TaskArg>> &args,
-      uint64_t num_returns,
+      int64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       const std::string &debugger_breakpoint,

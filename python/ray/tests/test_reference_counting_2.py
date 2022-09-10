@@ -747,7 +747,7 @@ def test_out_of_band_actor_handle_bypass_reference_counting(shutdown_only):
 
 
 def test_generators(one_worker_100MiB):
-    @ray.remote
+    @ray.remote(num_returns="dynamic")
     def remote_generator():
         for _ in range(3):
             yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)

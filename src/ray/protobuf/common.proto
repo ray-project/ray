@@ -330,13 +330,15 @@ message TaskSpec {
   // A count of the number of times this task has been attempted so far. 0
   // means this is the first execution.
   uint64 attempt_number = 29;
+  // This task returns a dynamic number of objects.
+  bool returns_dynamic = 30;
   // A list of ObjectIDs that were created by this task but that should be
   // owned by the task's caller. The task should return the corresponding
   // ObjectRefs in its actual return value.
   // NOTE(swang): This should only be set when the attempt number > 0. On the
   // first execution, we do not yet know whether the task has dynamic return
   // objects.
-  repeated bytes dynamic_return_ids = 30;
+  repeated bytes dynamic_return_ids = 31;
 }
 
 message TaskInfoEntry {

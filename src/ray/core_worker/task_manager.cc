@@ -588,8 +588,10 @@ void TaskManager::RemoveFinishedTaskReferences(
   for (size_t i = 0; i < num_returns; i++) {
     return_ids.push_back(spec.ReturnId(i));
   }
-  for (const auto &dynamic_return_id : spec.DynamicReturnIds()) {
-    return_ids.push_back(dynamic_return_id);
+  if (spec.ReturnsDynamic()) {
+    for (const auto &dynamic_return_id : spec.DynamicReturnIds()) {
+      return_ids.push_back(dynamic_return_id);
+    }
   }
 
   std::vector<ObjectID> deleted;

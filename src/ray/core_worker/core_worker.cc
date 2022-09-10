@@ -1537,7 +1537,7 @@ void CoreWorker::BuildCommonTaskSpec(
     const rpc::Address &address,
     const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args,
-    uint64_t num_returns,
+    int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     const std::string &debugger_breakpoint,
@@ -1547,6 +1547,14 @@ void CoreWorker::BuildCommonTaskSpec(
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
+
+  bool returns_dynamic = num_returns == -1;
+  if (returns_dynamic) {
+    // This remote function returns 1 ObjectRef, whose value
+    // is a generator of ObjectRefs.
+    num_returns = 1;
+  }
+  RAY_CHECK(num_returns >= 0);
   builder.SetCommonTaskSpec(task_id,
                             name,
                             function.GetLanguage(),
@@ -1557,6 +1565,7 @@ void CoreWorker::BuildCommonTaskSpec(
                             caller_id,
                             address,
                             num_returns,
+                            returns_dynamic,
                             required_resources,
                             required_placement_resources,
                             debugger_breakpoint,
@@ -2230,7 +2239,9 @@ Status CoreWorker::ExecuteTask(
   }
   // For dynamic tasks, pass the return IDs that were dynamically generated on
   // the first execution.
-  if (task_spec.AttemptNumber() > 0) {
+  if (!task_spec.ReturnsDynamic()) {
+    dynamic_return_objects = NULL;
+  } else if (task_spec.AttemptNumber() > 0) {
     for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
       dynamic_return_objects->push_back(
           std::make_pair<>(dynamic_return_id, std::shared_ptr<RayObject>()));
@@ -2304,9 +2315,11 @@ Status CoreWorker::ExecuteTask(
   if (!borrowed_ids.empty()) {
     reference_counter_->PopAndClearLocalBorrowers(borrowed_ids, borrowed_refs, &deleted);
   }
-  for (const auto &dynamic_return : *dynamic_return_objects) {
-    reference_counter_->PopAndClearLocalBorrowers(
-        {dynamic_return.first}, borrowed_refs, &deleted);
+  if (dynamic_return_objects != NULL) {
+    for (const auto &dynamic_return : *dynamic_return_objects) {
+      reference_counter_->PopAndClearLocalBorrowers(
+          {dynamic_return.first}, borrowed_refs, &deleted);
+    }
   }
   memory_store_->Delete(deleted);
 
