@@ -271,8 +271,8 @@ class DatasetReader(InputReader):
         if self.preprocessor:
             for key in (SampleBatch.CUR_OBS, SampleBatch.NEXT_OBS):
                 if key in batch:
-                    batch[key] = (
-                        np.stack([self.preprocessor.transform(s) for s in batch[key]])
+                    batch[key] = np.stack(
+                        [self.preprocessor.transform(s) for s in batch[key]]
                     )
         return batch
 

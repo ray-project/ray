@@ -166,9 +166,7 @@ class TestDT(unittest.TestCase):
                 num_rollout_workers=0,
                 horizon=200,
             )
-            .experimental(
-                _disable_preprocessor_api=True
-            )
+            .experimental(_disable_preprocessor_api=True)
         )
         algo = config.build()
 
