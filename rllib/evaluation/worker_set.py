@@ -173,6 +173,8 @@ class WorkerSet:
                     env_creator=env_creator,
                     validate_env=validate_env,
                     policy_cls=self._policy_class,
+                    # Initially, policy_specs will be inferred from config dict.
+                    policy_specs=None,
                     worker_index=0,
                     num_workers=num_workers,
                     config=self._local_config,
@@ -253,6 +255,9 @@ class WorkerSet:
                     env_creator=self._env_creator,
                     validate_env=None,
                     policy_cls=self._policy_class,
+                    # Setup remote workers with policy_specs inferred from config dict.
+                    # Simply provide None here.
+                    policy_specs=None,
                     worker_index=old_num_workers + i + 1,
                     num_workers=old_num_workers + num_workers,
                     config=self._remote_config,
@@ -333,6 +338,13 @@ class WorkerSet:
                 env_creator=self._env_creator,
                 validate_env=None,
                 policy_cls=self._policy_class,
+                # For recreated remote workers, we need to sync the entire
+                # policy specs dict from local_worker_for_synching.
+                # We can not let self._make_worker() infer policy specs
+                # from self._remote_config dict because custom policies
+                # may be added to both rollout and evaluation workers
+                # while the training job progresses.
+                policy_specs=local_worker_for_synching.policy_dict,
                 worker_index=worker_index,
                 num_workers=len(self._remote_workers),
                 recreated_worker=True,
@@ -340,6 +352,7 @@ class WorkerSet:
             )
 
             # Sync new worker from provided one (or local one).
+            # Restore weights and global variables.
             new_worker.set_weights.remote(
                 weights=local_worker_for_synching.get_weights(),
                 global_vars=local_worker_for_synching.get_global_vars(),
@@ -546,6 +559,7 @@ class WorkerSet:
         env_creator: EnvCreator,
         validate_env: Optional[Callable[[EnvType], None]],
         policy_cls: Type[Policy],
+        policy_specs: Optional[Dict[str, PolicySpec]] = None,
         worker_index: int,
         num_workers: int,
         recreated_worker: bool = False,
@@ -638,16 +652,19 @@ class WorkerSet:
                 compress_columns=config["output_compress_columns"],
             )
 
-        # Assert everything is correct in "multiagent" config dict (if given).
-        ma_policies = config["multiagent"]["policies"]
-        if ma_policies:
-            for pid, policy_spec in ma_policies.copy().items():
+        if policy_specs:
+            policies = policy_specs
+        elif config["multiagent"]["policies"]:
+            # Make a copy so we don't modify the original multiagent config dict
+            # by accident.
+            ma_policies = config["multiagent"]["policies"].copy()
+            # Assert everything is correct in "multiagent" config dict (if given).
+            for policy_spec in ma_policies.values():
                 assert isinstance(policy_spec, PolicySpec)
                 # Class is None -> Use `policy_cls`.
                 if policy_spec.policy_class is None:
-                    ma_policies[pid].policy_class = policy_cls
+                    policy_spec.policy_class = policy_cls
             policies = ma_policies
-
         # Create a policy_spec (MultiAgentPolicyConfigDict),
         # even if no "multiagent" setup given by user.
         else:

@@ -6,7 +6,9 @@ import gym
 import numpy as np
 
 import ray
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.pg import PG, PGConfig
+from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.examples.env.random_env import RandomEnv
@@ -377,6 +379,126 @@ class TestWorkerFailure(unittest.TestCase):
                 all(
                     ray.get(
                         [is_recreated(worker) for worker in a.workers.remote_workers()]
+                    )
+                )
+            )
+
+    def test_policies_are_restored_on_recovered_worker(self):
+        class AddPolicyCallback(DefaultCallbacks):
+            def __init__(self):
+                super().__init__()
+
+            def on_algorithm_init(self, *, algorithm, **kwargs):
+                # Add a custom policy to algorithm
+                algorithm.add_policy(
+                    policy_id="test_policy",
+                    policy_cls=PGTorchPolicy,
+                    observation_space=gym.spaces.Box(low=0, high=1, shape=(8,)),
+                    action_space=gym.spaces.Discrete(2),
+                    config={},
+                    policy_state=None,
+                    evaluation_workers=True,
+                )
+
+        # Counter that will survive restarts.
+        COUNTER_NAME = "test_policies_are_restored_on_recovered_worker"
+        counter = Counter.options(name=COUNTER_NAME).remote()
+
+        config = {
+            "num_workers": 2,
+            # Worker fault tolerance.
+            "ignore_worker_failures": False,  # Do not ignore
+            "recreate_failed_workers": True,  # But recover.
+            "model": {"fcnet_hiddens": [4]},
+            "env_config": {
+                # Make both worker idx=1 and 2 fail.
+                "bad_indices": [1, 2],
+                # Env throws error between steps 100 and 102.
+                "failure_start_count": 100,
+                "failure_stop_count": 102,
+                "counter": COUNTER_NAME,
+            },
+            # 2 eval workers.
+            "evaluation_num_workers": 1,
+            "evaluation_interval": 1,
+            "evaluation_config": {
+                "ignore_worker_failures": False,
+                "recreate_failed_workers": True,
+                # Restart the entire eval worker.
+                "restart_failed_sub_environments": False,
+                "env_config": {
+                    "evaluation": True,
+                    # Make eval worker (index 1) fail.
+                    "bad_indices": [1],
+                    "failure_start_count": 10,
+                    "failure_stop_count": 12,
+                    "counter": COUNTER_NAME,
+                },
+            },
+            "callbacks": AddPolicyCallback,
+        }
+
+        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+            # Reset interaciton counter.
+            ray.wait([counter.reset.remote()])
+
+            a = PG(config=config, env="multi-agent-fault_env")
+
+            # Should have the custom policy.
+            self.assertIsNotNone(a.get_policy("test_policy"))
+
+            # Before train loop, workers are fresh and not recreated.
+            self.assertTrue(
+                not any(
+                    ray.get(
+                        [is_recreated(worker) for worker in a.workers.remote_workers()]
+                    )
+                )
+            )
+            self.assertTrue(
+                not any(
+                    ray.get(
+                        [is_recreated(worker) for worker in a.evaluation_workers.remote_workers()]
+                    )
+                )
+            )
+
+            result = a.train()
+
+            self.assertEqual(result["num_healthy_workers"], 2)
+            # Both workers are re-created.
+            self.assertEqual(result["num_recreated_workers"], 2)
+            self.assertTrue(
+                all(
+                    ray.get(
+                        [is_recreated(worker) for worker in a.workers.remote_workers()]
+                    )
+                )
+            )
+            # Eval worker is re-created.
+            self.assertTrue(
+                all(
+                    ray.get(
+                        [is_recreated(worker) for worker in a.evaluation_workers.remote_workers()]
+                    )
+                )
+            )
+
+            # Let's verify that our custom policy exists on both recovered workers.
+            has_test_policy = lambda w: "test_policy" in w.policy_map
+            # Rollout worker has test policy.
+            self.assertTrue(
+                all(
+                    ray.get(
+                        [w.apply.remote(has_test_policy) for w in a.workers.remote_workers()]
+                    )
+                )
+            )
+            # Eval worker has test policy.
+            self.assertTrue(
+                all(
+                    ray.get(
+                        [w.apply.remote(has_test_policy) for w in a.evaluation_workers.remote_workers()]
                     )
                 )
             )
