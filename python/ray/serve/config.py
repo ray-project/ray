@@ -469,8 +469,8 @@ class ReplicaConfig:
         return ReplicaConfig(
             proto.deployment_def_name,
             proto.deployment_def,
-            proto.init_args,
-            proto.init_kwargs,
+            proto.init_args if proto.init_args != b"" else None,
+            proto.init_kwargs if proto.init_kwargs != b"" else None,
             json.loads(proto.ray_actor_options),
             needs_pickle,
         )
