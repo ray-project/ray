@@ -62,8 +62,9 @@ object. In any case, Ray Tune will try to start a placement group for each trial
 
 
 Tune will allocate the specified GPU and CPU as specified by ``tune.with_resources`` to each individual trial.
-Similarly, you can also use the ``ScalingConfig`` to specify resources for each trial. See :ref:`ScalingConfig <train-config>` for more information. Even if the trial cannot be scheduled right now, Ray Tune will still try to start
-the respective placement group. If not enough resources are available, this will trigger
+Similarly, you can also use the ``ScalingConfig`` to specify trial resources.
+See :ref:`ScalingConfig <train-config>` for more information.
+Even if the trial cannot be scheduled right now, Ray Tune will still try to start the respective placement group. If not enough resources are available, this will trigger
 :ref:`autoscaling behavior <cluster-index>` if you're using the Ray cluster launcher.
 
 It is also possible to specify memory (``"memory"``, in bytes) and custom resource requirements.
