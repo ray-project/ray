@@ -162,19 +162,19 @@ class Dataset(Generic[T]):
         >>> ds = ray.data.range(1000)
         >>> # Transform in parallel with map_batches().
         >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
-        Dataset(num_blocks=33, num_rows=1000, schema=<class 'int'>)
+        Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
         >>> # Compute max.
         >>> ds.max()
         999
         >>> # Group the data.
         >>> ds.groupby(lambda x: x % 3).count()
-        Dataset(num_blocks=33, num_rows=3, schema=<class 'tuple'>)
+        Dataset(num_blocks=..., num_rows=3, schema=<class 'tuple'>)
         >>> # Shuffle this dataset randomly.
         >>> ds.random_shuffle()
-        Dataset(num_blocks=33, num_rows=1000, schema=<class 'int'>)
+        Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
         >>> # Sort it back in order.
         >>> ds.sort()
-        Dataset(num_blocks=33, num_rows=1000, schema=<class 'int'>)
+        Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors without incurring a copy. Datasets support
@@ -228,12 +228,12 @@ class Dataset(Generic[T]):
             >>> # Transform python objects.
             >>> ds = ray.data.range(1000)
             >>> ds.map(lambda x: x * 2)
-            Dataset(num_blocks=33, num_rows=1000, schema=<class 'int'>)
+            Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
             >>> # Transform Arrow records.
             >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
             >>> ds.map(lambda record: {"v2": record["value"] * 2})
-            Dataset(num_blocks=200, num_rows=1000, schema={v2: int64})
+            Dataset(num_blocks=..., num_rows=1000, schema={v2: int64})
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
             >>> init_model = ... # doctest: +SKIP
@@ -330,7 +330,7 @@ class Dataset(Generic[T]):
             >>> ds = ray.data.range(1000)
             >>> # Transform batches in parallel.
             >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
-            Dataset(num_blocks=33, num_rows=1000, schema=<class 'int'>)
+            Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
             >>> init_model = ... # doctest: +SKIP
@@ -603,7 +603,7 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> ds = ray.data.range(1000)
             >>> ds.flat_map(lambda x: [x, x ** 2, x ** 3])
-            Dataset(num_blocks=33, num_rows=3000, schema=<class 'int'>)
+            Dataset(num_blocks=..., num_rows=3000, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -670,7 +670,7 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> ds = ray.data.range(100)
             >>> ds.filter(lambda x: x % 2 == 0)
-            Dataset(num_blocks=34, num_rows=50, schema=<class 'int'>)
+            Dataset(num_blocks=..., num_rows=50, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -762,10 +762,10 @@ class Dataset(Generic[T]):
             >>> ds = ray.data.range(100)
             >>> # Shuffle this dataset randomly.
             >>> ds.random_shuffle()
-            Dataset(num_blocks=34, num_rows=100, schema=<class 'int'>)
+            Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
             >>> # Shuffle this dataset with a fixed random seed.
             >>> ds.random_shuffle(seed=12345)
-            Dataset(num_blocks=34, num_rows=100, schema=<class 'int'>)
+            Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1327,12 +1327,12 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> # Group by a key function and aggregate.
             >>> ray.data.range(100).groupby(lambda x: x % 3).count()
-            Dataset(num_blocks=34, num_rows=3, schema=<class 'tuple'>)
+            Dataset(num_blocks=..., num_rows=3, schema=<class 'tuple'>)
             >>> # Group by an Arrow table column and aggregate.
             >>> ray.data.from_items([
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
             ...     "A").count()
-            Dataset(num_blocks=100, num_rows=3, schema={A: int64, count(): int64})
+            Dataset(num_blocks=..., num_rows=3, schema={A: int64, count(): int64})
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -1727,12 +1727,12 @@ class Dataset(Generic[T]):
             >>> # Sort using the entire record as the key.
             >>> ds = ray.data.range(100)
             >>> ds.sort()
-            Dataset(num_blocks=34, num_rows=100, schema=<class 'int'>)
+            Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
             >>> # Sort by a single column in descending order.
             >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
             >>> ds.sort("value", descending=True)
-            Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
+            Dataset(num_blocks=..., num_rows=1000, schema={value: int64})
             >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["value"]) # doctest: +SKIP
 
