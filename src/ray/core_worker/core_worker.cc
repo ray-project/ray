@@ -2230,11 +2230,17 @@ Status CoreWorker::ExecuteTask(
   }
   // For dynamic tasks, pass the return IDs that were dynamically generated on
   // the first execution.
-  for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
-    dynamic_return_objects->push_back(
-        std::make_pair<>(dynamic_return_id, std::shared_ptr<RayObject>()));
-    RAY_LOG(DEBUG) << "Re-executed task " << task_spec.TaskId()
-                   << " should return dynamic object " << dynamic_return_id;
+  if (task_spec.AttemptNumber() > 0) {
+    for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
+      dynamic_return_objects->push_back(
+          std::make_pair<>(dynamic_return_id, std::shared_ptr<RayObject>()));
+      RAY_LOG(DEBUG) << "Re-executed task " << task_spec.TaskId()
+                     << " should return dynamic object " << dynamic_return_id;
+
+      AddLocalReference(dynamic_return_id, "<temporary (ObjectRefGenerator)>");
+      reference_counter_->AddBorrowedObject(
+          dynamic_return_id, ObjectID::Nil(), task_spec.CallerAddress());
+    }
   }
 
   Status status;
