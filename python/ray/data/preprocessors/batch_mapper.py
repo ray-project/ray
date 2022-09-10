@@ -1,4 +1,5 @@
-from typing import Callable, TYPE_CHECKING
+from typing import Dict, Callable, Union, TYPE_CHECKING
+import numpy as np
 
 from ray.data.preprocessor import Preprocessor
 
@@ -43,8 +44,19 @@ class BatchMapper(Preprocessor):
 
     _is_fittable = False
 
-    def __init__(self, fn: Callable[["pandas.DataFrame"], "pandas.DataFrame"]):
+    def __init__(
+        self,
+        fn: Callable[
+            [Union["pandas.DataFrame", np.ndarray, Dict[str, np.ndarray]]],
+            Union["pandas.DataFrame", np.ndarray, Dict[str, np.ndarray]],
+        ],
+    ):
         self.fn = fn
+
+    def _transform_numpy(
+        self, np_data: Union[np.ndarray, Dict[str, np.ndarray]]
+    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+        return self.fn(np_data)
 
     def _transform_pandas(self, df: "pandas.DataFrame") -> "pandas.DataFrame":
         return self.fn(df)
