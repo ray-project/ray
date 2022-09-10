@@ -255,7 +255,7 @@ class DatasetReader(InputReader):
             d = postprocess_actions(d, self._ioctx.worker)
             count += d.count
             d = self._preprocess_if_needed(d)
-            ret.append(d)
+            ret.append(self._postprocess_if_needed(d))
         ret = concat_samples(ret)
         return ret
 
