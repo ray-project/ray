@@ -4,10 +4,11 @@
 Transforming Datasets
 =====================
 
-Datasets transformations take in datasets and produce new datasets.
-For example, *map* is a transformation that applies a user-defined function
-on each dataset record and returns a new dataset as the result. Datasets
-transformations can be composed to express a chain of computations.
+Datasets transformations take in datasets and produce new datasets. For example, *map*
+is a transformation that applies a
+:ref:`user-defined function <transform_datasets_writing_udfs>` on each dataset record
+and returns a new dataset as the result. Datasets transformations can be composed to
+express a chain of computations.
 
 .. _transform_datasets_transformations:
 
