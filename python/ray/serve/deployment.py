@@ -366,7 +366,7 @@ class Deployment:
         if max_concurrent_queries is not DEFAULT.VALUE:
             new_config.max_concurrent_queries = max_concurrent_queries
 
-        if func_or_class is not None:
+        if func_or_class is None:
             func_or_class = self._func_or_class
 
         if name is DEFAULT.VALUE:
