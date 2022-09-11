@@ -297,14 +297,16 @@ class Deployment:
         func_or_class: Optional[Callable] = None,
         name: Default[str] = DEFAULT.VALUE,
         version: Default[str] = DEFAULT.VALUE,
+        num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
         init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
         init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
-        num_replicas: Default[int] = DEFAULT.VALUE,
-        ray_actor_options: Default[Dict] = DEFAULT.VALUE,
-        user_config: Default[Any] = DEFAULT.VALUE,
+        ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
+        user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_concurrent_queries: Default[int] = DEFAULT.VALUE,
-        autoscaling_config: Default[Union[Dict, AutoscalingConfig]] = DEFAULT.VALUE,
+        autoscaling_config: Default[
+            Union[Dict, AutoscalingConfig, None]
+        ] = DEFAULT.VALUE,
         graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
@@ -340,10 +342,10 @@ class Deployment:
         if not _internal:
             new_config.user_configured_options.update(user_configured_options)
 
-        if (
-            num_replicas is not DEFAULT.VALUE
-            and autoscaling_config is not DEFAULT.VALUE
-        ):
+        if num_replicas not in [DEFAULT.VALUE, None] and autoscaling_config not in [
+            DEFAULT.VALUE,
+            None,
+        ]:
             raise ValueError(
                 "Manually setting num_replicas is not allowed when "
                 "autoscaling_config is provided."
@@ -359,7 +361,7 @@ class Deployment:
                 "future!"
             )
 
-        if num_replicas is not DEFAULT.VALUE:
+        if num_replicas not in [DEFAULT.VALUE, None]:
             new_config.num_replicas = num_replicas
         if user_config is not DEFAULT.VALUE:
             new_config.user_config = user_config
@@ -421,14 +423,16 @@ class Deployment:
         func_or_class: Optional[Callable] = None,
         name: Default[str] = DEFAULT.VALUE,
         version: Default[str] = DEFAULT.VALUE,
+        num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
         init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
         init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
-        num_replicas: Default[int] = DEFAULT.VALUE,
-        ray_actor_options: Default[Dict] = DEFAULT.VALUE,
-        user_config: Default[Any] = DEFAULT.VALUE,
+        ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
+        user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_concurrent_queries: Default[int] = DEFAULT.VALUE,
-        autoscaling_config: Default[Union[Dict, AutoscalingConfig]] = DEFAULT.VALUE,
+        autoscaling_config: Default[
+            Union[Dict, AutoscalingConfig, None]
+        ] = DEFAULT.VALUE,
         graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,

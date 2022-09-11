@@ -277,14 +277,14 @@ def deployment(
     _func_or_class: Optional[Callable] = None,
     name: Default[str] = DEFAULT.VALUE,
     version: Default[str] = DEFAULT.VALUE,
-    num_replicas: Default[int] = DEFAULT.VALUE,
+    num_replicas: Default[Optional[int]] = DEFAULT.VALUE,
     init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
     init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
     route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
-    ray_actor_options: Default[Dict] = DEFAULT.VALUE,
-    user_config: Default[Any] = DEFAULT.VALUE,
+    ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
+    user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_concurrent_queries: Default[int] = DEFAULT.VALUE,
-    autoscaling_config: Default[Union[Dict, AutoscalingConfig]] = DEFAULT.VALUE,
+    autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
     graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
     health_check_period_s: Default[float] = DEFAULT.VALUE,
@@ -301,7 +301,7 @@ def deployment(
             is re-deployed with a version change, a rolling update of the
             replicas will be performed. If not provided, every deployment will
             be treated as a new version.
-        num_replicas (Default[int]): The number of processes to start up that
+        num_replicas (Default[Optional[int]]): The number of processes to start up that
             will handle requests to this deployment. Defaults to 1.
         init_args (Default[Tuple[Any]]): Positional args to be passed to the
             class constructor when starting up deployment replicas. These can
@@ -318,9 +318,9 @@ def deployment(
             to '/a/b', '/a/b/', and '/a/b/c' go to B. Routes must not end with
             a '/' unless they're the root (just '/'), which acts as a
             catch-all.
-        ray_actor_options (Default[Dict]): Options to be passed to each
+        ray_actor_options (Default[Optional[Dict]]): Options to be passed to each
             replica Ray actor's constructor, such as resource requirements.
-        user_config (Default[Any]): Config to pass to the
+        user_config (Default[Optional[Any]]): Config to pass to the
             reconfigure method of the deployment. This can be updated
             dynamically without changing the version of the deployment and
             restarting its replicas. The user_config must be json-serializable
@@ -356,7 +356,10 @@ def deployment(
     if num_replicas == 0:
         raise ValueError("num_replicas is expected to larger than 0")
 
-    if num_replicas is not DEFAULT.VALUE and autoscaling_config is not DEFAULT.VALUE:
+    if num_replicas not in [DEFAULT.VALUE, None] and autoscaling_config not in [
+        DEFAULT.VALUE,
+        None,
+    ]:
         raise ValueError(
             "Manually setting num_replicas is not allowed when "
             "autoscaling_config is provided."
@@ -369,7 +372,7 @@ def deployment(
         )
 
     config = DeploymentConfig.from_default(
-        num_replicas=num_replicas,
+        num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
         max_concurrent_queries=max_concurrent_queries,
         autoscaling_config=autoscaling_config,

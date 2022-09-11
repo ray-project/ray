@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, Extra, root_validator, validator
-from typing import Union, List, Dict, Set
+from typing import Union, List, Dict, Set, Optional
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     DeploymentStatusInfo,
@@ -89,7 +89,7 @@ class DeploymentSchema(
     name: str = Field(
         ..., description=("Globally-unique name identifying this deployment.")
     )
-    num_replicas: int = Field(
+    num_replicas: Optional[int] = Field(
         default=DEFAULT.VALUE,
         description=(
             "The number of processes that handle requests to this "
@@ -120,7 +120,7 @@ class DeploymentSchema(
         ),
         gt=0,
     )
-    user_config: Dict = Field(
+    user_config: Optional[Dict] = Field(
         default=DEFAULT.VALUE,
         description=(
             "Config to pass into this deployment's "
@@ -128,7 +128,7 @@ class DeploymentSchema(
             "without restarting replicas"
         ),
     )
-    autoscaling_config: Dict = Field(
+    autoscaling_config: Optional[Dict] = Field(
         default=DEFAULT.VALUE,
         description=(
             "Config specifying autoscaling "
@@ -173,16 +173,15 @@ class DeploymentSchema(
         ),
         gt=0,
     )
-    ray_actor_options: RayActorOptionsSchema = Field(
+    ray_actor_options: Optional[RayActorOptionsSchema] = Field(
         default=DEFAULT.VALUE, description="Options set for each replica actor."
     )
 
     @root_validator
     def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
-        if (
-            values.get("num_replicas", DEFAULT.VALUE) is not DEFAULT.VALUE
-            and values.get("autoscaling_config", DEFAULT.VALUE) is not DEFAULT.VALUE
-        ):
+        if values.get("num_replicas", None) not in [DEFAULT.VALUE, None] and values.get(
+            "autoscaling_config", None
+        ) not in [DEFAULT.VALUE, None]:
             raise ValueError(
                 "Manually setting num_replicas is not allowed "
                 "when autoscaling_config is provided."

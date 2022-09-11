@@ -204,27 +204,7 @@ class TestDeploymentSchema:
     def get_minimal_deployment_schema(self):
         # Generate a DeploymentSchema with the fewest possible attributes set
 
-        return {
-            "name": "deep",
-            "num_replicas": None,
-            "route_prefix": None,
-            "max_concurrent_queries": None,
-            "user_config": None,
-            "autoscaling_config": None,
-            "graceful_shutdown_wait_loop_s": None,
-            "graceful_shutdown_timeout_s": None,
-            "health_check_period_s": None,
-            "health_check_timeout_s": None,
-            "ray_actor_options": {
-                "runtime_env": {},
-                "num_cpus": None,
-                "num_gpus": None,
-                "memory": None,
-                "object_store_memory": None,
-                "resources": {},
-                "accelerator_type": None,
-            },
-        }
+        return {"name": "deep"}
 
     def test_valid_deployment_schema(self):
         # Ensure a valid DeploymentSchema can be generated
@@ -403,24 +383,6 @@ class TestServeApplicationSchema:
                 },
                 {
                     "name": "deep",
-                    "num_replicas": None,
-                    "route_prefix": None,
-                    "max_concurrent_queries": None,
-                    "user_config": None,
-                    "autoscaling_config": None,
-                    "graceful_shutdown_wait_loop_s": None,
-                    "graceful_shutdown_timeout_s": None,
-                    "health_check_period_s": None,
-                    "health_check_timeout_s": None,
-                    "ray_actor_options": {
-                        "runtime_env": {},
-                        "num_cpus": None,
-                        "num_gpus": None,
-                        "memory": None,
-                        "object_store_memory": None,
-                        "resources": {},
-                        "accelerator_type": None,
-                    },
                 },
             ],
         }
