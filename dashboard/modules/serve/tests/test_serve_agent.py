@@ -27,7 +27,7 @@ def deploy_and_check_config(config: Dict):
     print("GET request returned correct config.")
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+# @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_put_get(ray_start_stop):
     config1 = {
         "import_path": (
@@ -93,7 +93,7 @@ def test_put_get(ray_start_stop):
         print("Deployments are live and reachable over HTTP.\n")
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+# @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_delete(ray_start_stop):
     config = {
         "import_path": "dir.subdir.a.add_and_sub.serve_dag",
@@ -159,7 +159,7 @@ def test_delete(ray_start_stop):
         print("Deployments have been deleted and are not reachable.\n")
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+# @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_get_status(ray_start_stop):
     print("Checking status info before any deployments.")
 
@@ -209,7 +209,7 @@ def test_get_status(ray_start_stop):
     print("Serve app status is correct.")
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+# @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_serve_namespace(ray_start_stop):
     """
     Check that the Dashboard's Serve can interact with the Python API

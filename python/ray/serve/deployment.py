@@ -354,7 +354,7 @@ class Deployment:
         if num_replicas == 0:
             raise ValueError("num_replicas is expected to larger than 0")
 
-        if not _internal and version is DEFAULT.VALUE:
+        if not _internal and version is not DEFAULT.VALUE:
             logger.warning(
                 "DeprecationWarning: `version` in `Deployment.options()` has been "
                 "deprecated. Explicitly specifying version will raise an error in the "

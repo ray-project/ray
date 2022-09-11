@@ -462,12 +462,17 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
 
     app = build_app(node)
 
-    config = ServeApplicationSchema(
-        deployments=[deployment_to_schema(d) for d in app.deployments.values()]
-    ).dict()
-    config["import_path"] = import_path
-    config["host"] = "0.0.0.0"
-    config["port"] = 8000
+    config = {
+        "import_path": import_path,
+        "runtime_env": {},
+        "host": "0.0.0.0",
+        "port": 8000,
+    }
+    config.update(
+        ServeApplicationSchema(
+            deployments=[deployment_to_schema(d) for d in app.deployments.values()]
+        ).dict(exclude_defaults=True)
+    )
 
     config_str = (
         "# This file was generated using the `serve build` command "
@@ -476,6 +481,9 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
     config_str += yaml.dump(
         config, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
     )
+
+    # Remove extraneous newline
+    config_str = config_str[:-1]
 
     with open(output_path, "w") if output_path else sys.stdout as f:
         f.write(config_str)
