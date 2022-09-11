@@ -2,87 +2,56 @@ import jax
 
 import ray
 from ray.train._internal.utils import get_address_and_port
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 ray.init()
 
-NUM_WORKERS = 7
-
-address, port = get_address_and_port()
-coordinator_address = f"{address}:{port}"
-
-@ray.remote(num_gpus=1)
-class Coordinator:
-    def __init__(self, coordinator_address):
-        import jax
-        print(f"initialize coordinator with address: {coordinator_address}")
-        jax.distributed.initialize(
-            coordinator_address=coordinator_address,
-            num_processes=NUM_WORKERS + 1,
-            process_id=0,
-        )
-
-    def ready(self):
-        return True
-
-    def get_device_count(self):
-        return f"Process[0]: {jax.device_count()}"
-
-    def get_local_device_count(self):
-        return f"Process[0]: {jax.local_device_count()}"
-
-    def get_devices(self):
-        return f"Process[0]: {str(jax.devices())}"
-
+NUM_WORKERS = 16
 
 @ray.remote(num_gpus=1)
 class Worker:
-    def __init__(self, coordinator_address, index):
+    def __init__(self, rank):
         import jax
-        print(f"initialize worker with index: {index}")
+        # Note: No jax calls should be made here before initializing jax.distributed
+        self.rank = rank
+
+    def init_jax_distributed_group(
+        self, coordinator_address, world_size
+    ):
+        print(f"initialize worker with rank: {self.rank}, world_size: {world_size}, coordinator_address: {coordinator_address}")
         jax.distributed.initialize(
             coordinator_address=coordinator_address,
-            num_processes=NUM_WORKERS + 1,
-            process_id=index,
+            num_processes=world_size,
+            process_id=self.rank,
         )
-        self.x = jax.device_put(1)
-        self.index = index
-
-    def ready(self):
         return True
+
+    def get_coordinator_address(self) -> str:
+        assert self.rank == 0, "Should only use rank 0 to get address and port"
+        address, port = get_address_and_port()
+        return f"{address}:{port}"
+
+    def put_x(self):
+        self.x = jax.device_put(self.rank)
 
     def get_x(self):
         return self.x
 
     def get_device_count(self):
-        return f"Process[{self.index}]: {jax.device_count()}"
+        return f"Worker[{self.rank}]: {jax.device_count()}"
 
     def get_local_device_count(self):
-        return f"Process[{self.index}]: {jax.local_device_count()}"
+        return f"Worker[{self.rank}]: {jax.local_device_count()}"
 
     def get_devices(self):
-        return f"Process[{self.index}]: {str(jax.devices())}"
-
-# Ensure this runs on the head node
-coordinator = Coordinator.options(
-    scheduling_strategy=NodeAffinitySchedulingStrategy(
-        ray.get_runtime_context().get_node_id(),
-        soft=False,
-    )
-).remote(coordinator_address)
+        return f"Worker[{self.rank}]: {str(jax.devices())}"
 
 workers = [
-    Worker.remote(coordinator_address, index + 1)
-    for index in range(NUM_WORKERS)
+    Worker.remote(rank)
+    for rank in range(NUM_WORKERS)
 ]
-
-print(ray.get([w.ready.remote() for w in workers + [coordinator]]))
-print(ray.get([w.get_x.remote() for w in workers]))
-
+coordinator = workers[0]
+coordinator_address = ray.get(coordinator.get_coordinator_address.remote())
+print(ray.get([w.init_jax_distributed_group.remote(coordinator_address, NUM_WORKERS) for w in workers]))
 print(f"Device count: {ray.get([w.get_device_count.remote() for w in workers])}")
 print(f"Local device count: {ray.get([w.get_local_device_count.remote() for w in workers])}")
-print(ray.get([w.get_devices.remote() for w in workers]))
-
-print(f"On headnode get_device_count -- {ray.get(coordinator.get_device_count.remote())}")
-print(f"On headnode get_local_device_count: -- {ray.get(coordinator.get_local_device_count.remote())}")
-print(f"On headnode get_devices: -- {ray.get(coordinator.get_devices.remote())}")
+print(f"Get devices: {ray.get(coordinator.get_devices.remote())}")
