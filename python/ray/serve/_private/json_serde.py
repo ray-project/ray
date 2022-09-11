@@ -88,7 +88,7 @@ class DAGNodeEncoder(json.JSONEncoder):
         if isinstance(obj, DeploymentSchema):
             return {
                 DAGNODE_TYPE_KEY: "DeploymentSchema",
-                "schema": obj.dict(),
+                "schema": obj.dict(exclude_defaults=True),
             }
         elif isinstance(obj, RayServeHandle):
             return _serve_handle_to_json_dict(obj)
