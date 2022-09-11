@@ -178,6 +178,11 @@ Supported File Formats
 
   See the API docs for :func:`read_binary_files() <ray.data.read_binary_files>`.
 
+.. tabbed:: TFRecord
+
+  TODO
+
+
 .. _dataset_reading_remote_storage:
 
 Reading from Remote Storage

@@ -53,6 +53,12 @@ Binary
 
 .. autofunction:: ray.data.read_binary_files
 
+TFRecord
+--------
+
+.. autofunction:: ray.data.read_tf_records
+
+
 Pandas
 ------
 
@@ -177,6 +183,9 @@ Built-in Datasources
     :members:
 
 .. autoclass:: ray.data.datasource.SimpleTorchDatasource
+    :members:
+
+.. autoclass:: ray.data.datasource.TFRecordsDatasource
     :members:
 
 Partitioning API
