@@ -1,7 +1,7 @@
 import inspect
 import json
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Set
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
@@ -123,6 +123,8 @@ class DeploymentConfig(BaseModel):
         health_check_timeout_s (Optional[float]):
             Timeout that the controller will wait for a response from the
             replica's health check before marking it unhealthy.
+        user_configured_options (Set[str]):
+            The options manually configured by the user.
     """
 
     num_replicas: NonNegativeInt = 1
@@ -150,6 +152,9 @@ class DeploymentConfig(BaseModel):
     deployment_language: Any = DeploymentLanguage.PYTHON
 
     version: Optional[str] = None
+
+    # Contains the deployment options manually set by the user
+    user_configured_options: Set[str] = set()
 
     class Config:
         validate_assignment = True
@@ -190,6 +195,7 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
+        data["user_configured_options"] = list(data["user_configured_options"])
         return DeploymentConfigProto(**data)
 
     def to_proto_bytes(self):
@@ -226,6 +232,8 @@ class DeploymentConfig(BaseModel):
         if "version" in data:
             if data["version"] == "":
                 data["version"] = None
+        if "user_configured_options" in data:
+            data["user_configured_options"] = set(data["user_configured_options"])
         return cls(**data)
 
     @classmethod
