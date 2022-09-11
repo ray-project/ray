@@ -14,14 +14,14 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 @PublicAPI(stability="beta")
 class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
     runtime_env: dict = Field(
-        default=DEFAULT.VALUE,
+        default={},
         description=(
             "This deployment's runtime_env. working_dir and "
             "py_modules may contain only remote URIs."
         ),
     )
     num_cpus: float = Field(
-        default=DEFAULT.VALUE,
+        default=None,
         description=(
             "The number of CPUs required by the deployment's "
             "application per replica. This is the same as a ray "
@@ -30,7 +30,7 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
         ge=0,
     )
     num_gpus: float = Field(
-        default=DEFAULT.VALUE,
+        default=None,
         description=(
             "The number of GPUs required by the deployment's "
             "application per replica. This is the same as a ray "
@@ -39,14 +39,14 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
         ge=0,
     )
     memory: float = Field(
-        default=DEFAULT.VALUE,
+        default=None,
         description=(
             "Restrict the heap memory usage of each replica. Uses a default if null."
         ),
         ge=0,
     )
     object_store_memory: float = Field(
-        default=DEFAULT.VALUE,
+        default=None,
         description=(
             "Restrict the object store memory used per replica when "
             "creating objects. Uses a default if null."
@@ -54,11 +54,11 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
         ge=0,
     )
     resources: Dict = Field(
-        default=DEFAULT.VALUE,
+        default={},
         description=("The custom resources required by each replica."),
     )
     accelerator_type: str = Field(
-        default=DEFAULT.VALUE,
+        default=None,
         description=(
             "Forces replicas to run on nodes with the specified accelerator type."
         ),
@@ -68,7 +68,7 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
     def runtime_env_contains_remote_uris(cls, v):
         # Ensure that all uris in py_modules and working_dir are remote
 
-        if v is DEFAULT.VALUE:
+        if v is None:
             return
 
         uris = v.get("py_modules", [])
