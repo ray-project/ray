@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, Extra, root_validator, validator
-from typing import Union, List, Dict
+from typing import Union, List, Dict, Set
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     DeploymentStatusInfo,
@@ -222,6 +222,14 @@ class DeploymentSchema(
             )
 
         return v
+
+    def get_user_configured_options(self) -> Set[str]:
+        """Get set of all user-configured options.
+
+        Any field not set to DEFAULT.VALUE is considered user-configured options.
+        """
+
+        return {field for field, value in self.dict() if value is not DEFAULT.VALUE}
 
 
 @PublicAPI(stability="beta")

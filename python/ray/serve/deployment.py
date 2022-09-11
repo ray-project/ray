@@ -495,36 +495,39 @@ class Deployment:
 
 
 def deployment_to_schema(d: Deployment) -> DeploymentSchema:
-    """Converts a live deployment object to a corresponding structured schema.
+    """Converts a live deployment object to a corresponding structured schema."""
 
-    If the deployment has a class or function, it will be attemptetd to be
-    converted to a valid corresponding import path.
-
-    init_args and init_kwargs must also be JSON-serializable or this call will
-    fail.
-    """
     if d.ray_actor_options is not None:
         ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
     else:
         ray_actor_options_schema = None
 
-    return DeploymentSchema(
-        name=d.name,
-        # TODO(Sihan) DeploymentConfig num_replicas and auto_config can be set together
-        # because internally we use these two field for autoscale and deploy.
-        # We can improve the code after we separate the user faced deployment config and
-        # internal deployment config.
-        num_replicas=None if d._config.autoscaling_config else d.num_replicas,
-        route_prefix=d.route_prefix,
-        max_concurrent_queries=d.max_concurrent_queries,
-        user_config=d.user_config,
-        autoscaling_config=d._config.autoscaling_config,
-        graceful_shutdown_wait_loop_s=d._config.graceful_shutdown_wait_loop_s,
-        graceful_shutdown_timeout_s=d._config.graceful_shutdown_timeout_s,
-        health_check_period_s=d._config.health_check_period_s,
-        health_check_timeout_s=d._config.health_check_timeout_s,
-        ray_actor_options=ray_actor_options_schema,
-    )
+    deployment_options = {
+        "name": d.name,
+        "num_replicas": None if d._config.autoscaling_config else d.num_replicas,
+        "route_prefix": d.route_prefix,
+        "max_concurrent_queries": d.max_concurrent_queries,
+        "user_config": d.user_config,
+        "autoscaling_config": d._config.autoscaling_config,
+        "graceful_shutdown_wait_loop_s": d._config.graceful_shutdown_wait_loop_s,
+        "graceful_shutdown_timeout_s": d._config.graceful_shutdown_timeout_s,
+        "health_check_period_s": d._config.health_check_period_s,
+        "health_check_timeout_s": d._config.health_check_timeout_s,
+        "ray_actor_options": ray_actor_options_schema,
+    }
+
+    # Pass DEFAULT.VALUE directly to non-user-configured options. If the schema
+    # is converted back to a deployment, this lets Serve continue tracking
+    # which options were set by the user.
+    for option in deployment_options:
+        if option not in d._config.user_configured_options:
+            deployment_options[option] = DEFAULT.VALUE
+
+    # TODO(Sihan) DeploymentConfig num_replicas and auto_config can be set together
+    # because internally we use these two field for autoscale and deploy.
+    # We can improve the code after we separate the user faced deployment config and
+    # internal deployment config.
+    return DeploymentSchema(**deployment_options)
 
 
 def schema_to_deployment(s: DeploymentSchema) -> Deployment:
@@ -536,7 +539,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     before the deployment can be deployed.
     """
 
-    if s.ray_actor_options is None:
+    if s.ray_actor_options is DEFAULT.VALUE:
         ray_actor_options = None
     else:
         ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
@@ -551,6 +554,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
     )
+    config.user_configured_options = s.get_user_configured_options()
 
     return Deployment(
         func_or_class="",
