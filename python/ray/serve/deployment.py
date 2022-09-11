@@ -518,9 +518,10 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
     # Let non-user-configured options be set to defaults. If the schema
     # is converted back to a deployment, this lets Serve continue tracking
-    # which options were set by the user.
+    # which options were set by the user. Name is a required field in the
+    # schema, so it should be passed in explicitly.
     for option in list(deployment_options.keys()):
-        if option not in d._config.user_configured_options:
+        if option != "name" and option not in d._config.user_configured_options:
             del deployment_options[option]
 
     # TODO(Sihan) DeploymentConfig num_replicas and auto_config can be set together
