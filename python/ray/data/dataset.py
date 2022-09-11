@@ -13,6 +13,7 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Type,
     Optional,
     Tuple,
     Union,
@@ -3552,6 +3553,68 @@ class Dataset(Generic[T]):
             self._lazy,
         )
         return l_ds, r_ds
+
+    def native_batch_format(self) -> Type:
+        """Return this dataset's native batch format.
+
+        The native batch format describes what batches of data look like. To learn more
+        about batch formats, read
+        :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
+
+        Example:
+
+            If your dataset represents a list of Python objects, then the native batch
+            format is ``list``.
+
+            >>> ds = ray.data.range(100)
+            >>> ds
+            Dataset(num_blocks=20, num_rows=100, schema=<class 'int'>)
+            >>> ds.native_batch_format()
+            <class 'list'>
+            >>> next(ds.iter_batches(batch_size=4))
+            [0, 1, 2, 3]
+
+            If your dataset contains a single column of ``TensorDtype`` or
+            ``ArrowTensorType``, then the native batch format is ``ndarray``.
+
+            >>> ds = ray.data.range_tensor(100)
+            >>> ds
+            Dataset(num_blocks=20, num_rows=100, schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})
+            >>> ds.native_batch_format()
+            <class 'numpy.ndarray'>
+            >>> next(ds.iter_batches(batch_size=4))
+            array([[0],
+                   [1],
+                   [2],
+                   [3]])
+
+            If your dataset represents structured data and the native batch format isn't
+            ``ndarray``, then the native batch format is ``DataFrame``.
+
+            >>> import pandas as pd
+            >>> df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
+            >>> ds = ray.data.from_pandas(df)
+            >>> ds
+            Dataset(num_blocks=1, num_rows=2, schema={foo: object, bar: int64})
+            >>> ds.native_batch_format()
+            <class 'pandas.core.frame.DataFrame'>
+            >>> next(ds.iter_batches(batch_size=4))
+              foo  bar
+            0   a    0
+            1   b    1
+
+        .. seealso::
+
+            :meth:`~Dataset.map_batches`
+                Call this function to transform batches of data.
+
+            :meth:`~Dataset.iter_batches`
+                Call this function to iterate over batches of data.
+
+        """  # noqa: E501
+        block = ray.get(next(self._plan.execute().iter_blocks()))
+        native_batch = BlockAccessor.for_block(block).to_native()
+        return type(native_batch)
 
     def _dataset_format(self) -> str:
         """Determine the format of the dataset. Possible values are: "arrow",
