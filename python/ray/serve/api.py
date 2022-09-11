@@ -383,14 +383,14 @@ def deployment(
     def decorator(_func_or_class):
         return Deployment(
             _func_or_class,
-            name if name != DEFAULT.VALUE else _func_or_class.__name__,
+            name if name is not DEFAULT.VALUE else _func_or_class.__name__,
             config,
-            version=(version if version != DEFAULT.VALUE else None),
-            init_args=(init_args if init_args != DEFAULT.VALUE else None),
-            init_kwargs=(init_kwargs if init_kwargs != DEFAULT.VALUE else None),
+            version=(version if version is not DEFAULT.VALUE else None),
+            init_args=(init_args if init_args is not DEFAULT.VALUE else None),
+            init_kwargs=(init_kwargs if init_kwargs is not DEFAULT.VALUE else None),
             route_prefix=route_prefix,
             ray_actor_options=(
-                ray_actor_options if ray_actor_options != DEFAULT.VALUE else None
+                ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
             ),
             _internal=True,
         )

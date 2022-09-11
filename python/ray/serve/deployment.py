@@ -1,4 +1,4 @@
-from copy import copy
+from copy import copy, deepcopy
 import inspect
 import logging
 from typing import (
@@ -20,7 +20,7 @@ from ray.serve.config import (
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve._private.utils import DEFAULT, guarded_deprecation_warning
+from ray.serve._private.utils import DEFAULT, Default, guarded_deprecation_warning
 from ray.util.annotations import Deprecated, PublicAPI
 from ray.serve.schema import (
     RayActorOptionsSchema,
@@ -295,30 +295,55 @@ class Deployment:
     def options(
         self,
         func_or_class: Optional[Callable] = None,
-        name: Optional[str] = None,
-        version: Optional[str] = None,
-        init_args: Optional[Tuple[Any]] = None,
-        init_kwargs: Optional[Dict[Any, Any]] = None,
-        route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-        num_replicas: Optional[int] = None,
-        ray_actor_options: Optional[Dict] = None,
-        user_config: Optional[Any] = None,
-        max_concurrent_queries: Optional[int] = None,
-        autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-        graceful_shutdown_wait_loop_s: Optional[float] = None,
-        graceful_shutdown_timeout_s: Optional[float] = None,
-        health_check_period_s: Optional[float] = None,
-        health_check_timeout_s: Optional[float] = None,
+        name: Default[str] = DEFAULT.VALUE,
+        version: Default[str] = DEFAULT.VALUE,
+        init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
+        init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
+        route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
+        num_replicas: Default[int] = DEFAULT.VALUE,
+        ray_actor_options: Default[Dict] = DEFAULT.VALUE,
+        user_config: Default[Any] = DEFAULT.VALUE,
+        max_concurrent_queries: Default[int] = DEFAULT.VALUE,
+        autoscaling_config: Default[Union[Dict, AutoscalingConfig]] = DEFAULT.VALUE,
+        graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
+        graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
+        health_check_period_s: Default[float] = DEFAULT.VALUE,
+        health_check_timeout_s: Default[float] = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
         Only those options passed in will be updated, all others will remain
         unchanged from the existing deployment.
-        """
-        new_config = self._config.copy()
 
-        if num_replicas is not None and autoscaling_config is not None:
+        Args:
+            Refer to @serve.deployment decorator docstring for all non-private
+            arguments.
+
+            _internal: If True, this function:
+                    1. Won't log deprecation warnings
+                    2. Won't update this deployment's config's
+                        user_configured_options.
+                Should only be True when used internally by Serve.
+                Should be False when called by users.
+        """
+
+        # Create list of all user-configured options from keyword args
+        user_configured_options = [
+            option
+            for option, value in locals()
+            if value != DEFAULT.VALUE
+            and option not in {"self", "_func_or_class", "_internal"}
+        ]
+
+        new_config = deepcopy(self._config)
+        if not _internal:
+            new_config.user_configured_options.update(user_configured_options)
+
+        if (
+            num_replicas is not DEFAULT.VALUE
+            and autoscaling_config is not DEFAULT.VALUE
+        ):
             raise ValueError(
                 "Manually setting num_replicas is not allowed when "
                 "autoscaling_config is provided."
@@ -327,55 +352,55 @@ class Deployment:
         if num_replicas == 0:
             raise ValueError("num_replicas is expected to larger than 0")
 
-        if not _internal and version is not None:
+        if not _internal and version is DEFAULT.VALUE:
             logger.warning(
                 "DeprecationWarning: `version` in `Deployment.options()` has been "
                 "deprecated. Explicitly specifying version will raise an error in the "
                 "future!"
             )
 
-        if num_replicas is not None:
+        if num_replicas is not DEFAULT.VALUE:
             new_config.num_replicas = num_replicas
-        if user_config is not None:
+        if user_config is not DEFAULT.VALUE:
             new_config.user_config = user_config
-        if max_concurrent_queries is not None:
+        if max_concurrent_queries is not DEFAULT.VALUE:
             new_config.max_concurrent_queries = max_concurrent_queries
 
-        if func_or_class is None:
+        if func_or_class is not None:
             func_or_class = self._func_or_class
 
-        if name is None:
+        if name is DEFAULT.VALUE:
             name = self._name
 
-        if version is None:
+        if version is DEFAULT.VALUE:
             version = self._version
 
-        if init_args is None:
+        if init_args is DEFAULT.VALUE:
             init_args = self._init_args
 
-        if init_kwargs is None:
+        if init_kwargs is DEFAULT.VALUE:
             init_kwargs = self._init_kwargs
 
         if route_prefix is DEFAULT.VALUE:
             # Default is to keep the previous value
             route_prefix = self._route_prefix
 
-        if ray_actor_options is None:
+        if ray_actor_options is DEFAULT.VALUE:
             ray_actor_options = self._ray_actor_options
 
-        if autoscaling_config is not None:
+        if autoscaling_config is not DEFAULT.VALUE:
             new_config.autoscaling_config = autoscaling_config
 
-        if graceful_shutdown_wait_loop_s is not None:
+        if graceful_shutdown_wait_loop_s is not DEFAULT.VALUE:
             new_config.graceful_shutdown_wait_loop_s = graceful_shutdown_wait_loop_s
 
-        if graceful_shutdown_timeout_s is not None:
+        if graceful_shutdown_timeout_s is not DEFAULT.VALUE:
             new_config.graceful_shutdown_timeout_s = graceful_shutdown_timeout_s
 
-        if health_check_period_s is not None:
+        if health_check_period_s is not DEFAULT.VALUE:
             new_config.health_check_period_s = health_check_period_s
 
-        if health_check_timeout_s is not None:
+        if health_check_timeout_s is not DEFAULT.VALUE:
             new_config.health_check_timeout_s = health_check_timeout_s
 
         return Deployment(
@@ -394,20 +419,20 @@ class Deployment:
     def set_options(
         self,
         func_or_class: Optional[Callable] = None,
-        name: Optional[str] = None,
-        version: Optional[str] = None,
-        init_args: Optional[Tuple[Any]] = None,
-        init_kwargs: Optional[Dict[Any, Any]] = None,
-        route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-        num_replicas: Optional[int] = None,
-        ray_actor_options: Optional[Dict] = None,
-        user_config: Optional[Any] = None,
-        max_concurrent_queries: Optional[int] = None,
-        autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-        graceful_shutdown_wait_loop_s: Optional[float] = None,
-        graceful_shutdown_timeout_s: Optional[float] = None,
-        health_check_period_s: Optional[float] = None,
-        health_check_timeout_s: Optional[float] = None,
+        name: Default[str] = DEFAULT.VALUE,
+        version: Default[str] = DEFAULT.VALUE,
+        init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
+        init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
+        route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
+        num_replicas: Default[int] = DEFAULT.VALUE,
+        ray_actor_options: Default[Dict] = DEFAULT.VALUE,
+        user_config: Default[Any] = DEFAULT.VALUE,
+        max_concurrent_queries: Default[int] = DEFAULT.VALUE,
+        autoscaling_config: Default[Union[Dict, AutoscalingConfig]] = DEFAULT.VALUE,
+        graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
+        graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
+        health_check_period_s: Default[float] = DEFAULT.VALUE,
+        health_check_timeout_s: Default[float] = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> None:
         """Overwrite this deployment's options. Mutates the deployment.
