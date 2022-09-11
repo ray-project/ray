@@ -435,7 +435,7 @@ class Dataset(Generic[T]):
 
             :meth:`~Dataset.native_batch_format`
                 Call this function to determine the default batch type.
-        """
+        """  # noqa: E501
         import pandas as pd
         import pyarrow as pa
 
