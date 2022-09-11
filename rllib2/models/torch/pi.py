@@ -38,6 +38,8 @@ Example:
 """
 
 
+# TODO: PiOutput seems to have the exact same structure as PiDistribution
+# We should probably stick with only one of these
 @dataclass
 class PiOutput(NNOutput):
     action_dist: Optional[PiDistribution] = None
@@ -106,11 +108,15 @@ class Pi(
     * [x] Should be able to save/load very easily for serving (if needed)
     """
 
-    def __init__(self, config: ModelConfig) -> None:
+    def __init__(self, config: PiConfig) -> None:
         super().__init__(config)
 
         # action distribution
-        self._action_dist_class, self._logit_dim = self._make_action_dist()
+        if config.action_dist_class is None:
+            self._action_dist_class, self._logit_dim = self._make_action_dist()
+        else:
+            # TODO: What about logit dim? Logit_dim for beta == 2, normal == 2
+            self._action_dist_class = config.action_dist_class
 
         # output layer
         self._out_layer = self._make_output_layer()
@@ -173,5 +179,3 @@ class Pi(
             }
         )
         return output, next_state
-
-
