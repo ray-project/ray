@@ -229,7 +229,9 @@ class DeploymentSchema(
         Any field not set to DEFAULT.VALUE is considered user-configured options.
         """
 
-        return {field for field, value in self.dict() if value is not DEFAULT.VALUE}
+        return {
+            field for field, value in self.dict().items() if value is not DEFAULT.VALUE
+        }
 
 
 @PublicAPI(stability="beta")

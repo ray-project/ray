@@ -516,12 +516,12 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "ray_actor_options": ray_actor_options_schema,
     }
 
-    # Pass DEFAULT.VALUE directly to non-user-configured options. If the schema
+    # Let non-user-configured options be set to defaults. If the schema
     # is converted back to a deployment, this lets Serve continue tracking
     # which options were set by the user.
-    for option in deployment_options:
+    for option in list(deployment_options.keys()):
         if option not in d._config.user_configured_options:
-            deployment_options[option] = DEFAULT.VALUE
+            del deployment_options[option]
 
     # TODO(Sihan) DeploymentConfig num_replicas and auto_config can be set together
     # because internally we use these two field for autoscale and deploy.
