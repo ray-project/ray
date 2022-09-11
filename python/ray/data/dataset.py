@@ -375,8 +375,8 @@ class Dataset(Generic[T]):
             >>> ds
             Dataset(num_blocks=1, num_rows=3, schema=<class 'int'>)
 
-            Shared state can improve performance. To persist state across function
-            invocations, pass a callable type to ``fn`` and specify an
+            Shared state can improve the performance of some workloads. To persist state
+            across function invocations, pass a callable type to ``fn`` and specify an
             :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>`.
 
             In the example below, ``CachedModel`` is called on an autoscaling pool of
