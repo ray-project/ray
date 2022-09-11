@@ -348,7 +348,7 @@ def deployment(
     user_configured_options = [
         option
         for option, value in locals().items()
-        if value != DEFAULT.VALUE and option != "_func_or_class"
+        if option != "_func_or_class" and value is not DEFAULT.VALUE
     ]
 
     # Num of replicas should not be 0.

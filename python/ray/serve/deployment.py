@@ -332,8 +332,8 @@ class Deployment:
         user_configured_options = [
             option
             for option, value in locals().items()
-            if value != DEFAULT.VALUE
-            and option not in {"self", "_func_or_class", "_internal"}
+            if option not in {"self", "_func_or_class", "_internal"}
+            and value is not DEFAULT.VALUE
         ]
 
         new_config = deepcopy(self._config)
