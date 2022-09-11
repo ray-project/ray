@@ -347,7 +347,7 @@ def deployment(
     # Create list of all user-configured options from keyword args
     user_configured_options = [
         option
-        for option, value in locals()
+        for option, value in locals().items()
         if value != DEFAULT.VALUE and option != "_func_or_class"
     ]
 
