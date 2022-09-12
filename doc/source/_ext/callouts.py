@@ -1,5 +1,3 @@
-import logging
-
 from docutils import nodes
 
 from sphinx.util.docutils import SphinxDirective
