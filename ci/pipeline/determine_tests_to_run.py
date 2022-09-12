@@ -70,7 +70,9 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=str, help="json or envvars", default="envvars")
     args = parser.parse_args()
 
-    RAY_CI_BRANCH_BUILD = os.environ.get("BUILDKITE_PULL_REQUEST", "false") == "false"
+    RAY_CI_BRANCH_BUILD = int(
+        os.environ.get("BUILDKITE_PULL_REQUEST", "false") == "false"
+    )
     RAY_CI_ML_AFFECTED = 0
     RAY_CI_TUNE_AFFECTED = 0
     RAY_CI_TRAIN_AFFECTED = 0
