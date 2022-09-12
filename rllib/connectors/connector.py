@@ -3,7 +3,7 @@
 
 import abc
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
 import gym
 
@@ -403,6 +403,44 @@ class ConnectorPipeline(abc.ABC):
             [" " * indentation + self.__class__.__name__]
             + [c.__str__(indentation + 4) for c in self.connectors]
         )
+
+    def __getitem__(self, key: Union[str, int, type]):
+        """Returns a list of connectors that fit 'key'.
+
+        If key is a number n, we return a list with the nth element of this pipeline.
+        If key is a Connector class or a string matching the class name of a
+        Connector class, we return a list of all connectors in this pipeline matching
+        the specified class.
+
+        Args:
+            key: The key to index by
+
+        Returns: The Connector at index `key`.
+        """
+        # In case key is a class
+        if not isinstance(key, str):
+            if isinstance(key, slice):
+                raise NotImplementedError(
+                    "Slicing of ConnectorPipeline is currently not supported."
+                )
+            elif isinstance(key, int):
+                return [self.connectors[key]]
+            elif isinstance(key, type):
+                key = key.__name__
+            else:
+                raise NotImplementedError(
+                    "Indexing by {} is currently not supported.".format(type(key))
+                )
+
+        results = []
+        for c in self.connectors:
+            if c.__class__.__name__ == key:
+                results.append(c)
+
+        if len(results) == 0:
+            return []
+
+        return results
 
 
 @PublicAPI(stability="alpha")
