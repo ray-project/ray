@@ -69,9 +69,10 @@ class PGConfig(AlgorithmConfig):
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
             optimizer: Arguments to pass to the policy optimizer.
-            lr_schedule: Learning rate schedule. In the format of [[timestep, value],
-                [timestep, value], ...]. A schedule should normally start from
-                timestep 0.
+            lr_schedule: Learning rate schedule. In the format of
+                [[timestep, lr-value], [timestep, lr-value], ...]
+                Intermediary timesteps will be assigned to interpolated learning rate
+                values. A schedule should normally start from timestep 0.
 
         Returns:
             This updated AlgorithmConfig object.

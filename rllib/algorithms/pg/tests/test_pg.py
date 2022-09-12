@@ -17,6 +17,11 @@ from ray.rllib.utils.test_utils import (
     framework_iterator,
 )
 from ray import tune
+from ray.rllib.utils.metrics.learner_info import (
+    LEARNER_INFO,
+    LEARNER_STATS_KEY,
+    DEFAULT_POLICY_ID,
+)
 
 
 class TestPG(unittest.TestCase):
@@ -31,13 +36,14 @@ class TestPG(unittest.TestCase):
     def test_pg_compilation(self):
         """Test whether PG can be built with all frameworks."""
         config = pg.PGConfig()
+
         # Test with filter to see whether they work w/o preprocessing.
         config.rollouts(
             num_rollout_workers=1,
             rollout_fragment_length=500,
             observation_filter="MeanStdFilter",
-        )
-        num_iterations = 1
+        ).training(lr_schedule=[1, 1e-3, [500, 5e-3]])
+        num_iterations = 2
 
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
         simple_space = Box(-1.0, 1.0, shape=(3,))
@@ -174,6 +180,51 @@ class TestPG(unittest.TestCase):
                 expected_logp = expected_logp.numpy()
             expected_loss = -np.mean(expected_logp * adv)
             check(results, expected_loss, decimals=4)
+
+    def test_pg_lr(self):
+        """Test PG with learning rate schedule."""
+        config = pg.PGConfig()
+        config.reporting(
+            min_sample_timesteps_per_iteration=10,
+            # Make sure that results contain info on default policy
+            min_train_timesteps_per_iteration=10,
+            # 0 metrics reporting delay, this makes sure timestep,
+            # which lr depends on, is updated after each worker rollout.
+            min_time_s_per_iteration=0,
+        )
+        config.rollouts(
+            num_rollout_workers=1,
+            rollout_fragment_length=50,
+        )
+        config.training(lr=0.2, lr_schedule=[[0, 0.2], [500, 0.001]])
+
+        def _step_n_times(algo, n: int):
+            """Step trainer n times.
+
+            Returns:
+                learning rate at the end of the execution.
+            """
+            for _ in range(n):
+                results = algo.train()
+            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
+                "cur_lr"
+            ]
+
+        algo = config.build(env="CartPole-v0")
+
+        lr = _step_n_times(algo, 1)  # 50 timesteps
+        # Close to 0.2
+        self.assertGreaterEqual(lr, 0.15)
+
+        lr = _step_n_times(algo, 8)  # Close to 500 timesteps
+        # LR Annealed to 0.001
+        self.assertLessEqual(float(lr), 0.5)
+
+        lr = _step_n_times(algo, 2)  # > 500 timesteps
+        # LR == 0.001
+        self.assertAlmostEqual(lr, 0.001)
+
+        algo.stop()
 
 
 if __name__ == "__main__":
