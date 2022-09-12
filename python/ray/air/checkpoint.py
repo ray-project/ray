@@ -10,6 +10,7 @@ from pathlib import Path
 import platform
 from typing import Any, Dict, Iterator, Optional, Tuple, Union, TYPE_CHECKING
 import uuid
+import warnings
 
 import ray
 from ray import cloudpickle as pickle
@@ -313,6 +314,11 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
+        warnings.warn(
+            "`from_object_ref` is deprecated and will be removed. Call `ray.get` ",
+            "instead.",
+            DeprecationWarning,
+        )
         return cls(obj_ref=obj_ref)
 
     def to_object_ref(self) -> ray.ObjectRef:
@@ -321,6 +327,11 @@ class Checkpoint:
         Returns:
             ray.ObjectRef: ObjectRef pointing to checkpoint data.
         """
+        warnings.warn(
+            "`to_object_ref` is deprecated and will be removed. Call `ray.put` ",
+            "instead.",
+            DeprecationWarning,
+        )
         if self._obj_ref:
             return self._obj_ref
         else:
