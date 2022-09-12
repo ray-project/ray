@@ -1,7 +1,5 @@
-from typing import Tuple
-
+from typing import Tuple, Iterable
 from ray.data.dataset import Dataset
-from torch.utils.data import IterableDataset
 import math
 
 
@@ -33,13 +31,13 @@ class RayDatasetMosaicIterable:
 
 def process_datasets(
     train_dataset: Dataset, eval_dataset: Dataset, batch_size, labels
-) -> Tuple["IterableDataset", "IterableDataset"]:
-    """Convert Ray train and validation to HF IterableDatasets."""
-    train_torch_dataset = RayDatasetMosaicIterable(train_dataset, batch_size, labels)
+) -> Tuple["Iterable", "Iterable"]:
+    """Convert Ray train and validation to Iterables."""
+    train_torch_iterable = RayDatasetMosaicIterable(train_dataset, batch_size, labels)
 
     if eval_dataset:
-        eval_torch_dataset = RayDatasetMosaicIterable(eval_dataset, batch_size, labels)
+        eval_torch_iterable = RayDatasetMosaicIterable(eval_dataset, batch_size, labels)
     else:
-        eval_torch_dataset = None
+        eval_torch_iterable = None
 
-    return train_torch_dataset, eval_torch_dataset
+    return train_torch_iterable, eval_torch_iterable

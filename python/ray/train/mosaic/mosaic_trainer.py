@@ -1,8 +1,7 @@
 import inspect
 import os
 import composer.trainer
-from torch.utils.data import Dataset as TorchDataset
-
+from composer.core import DataSpec
 
 from ray.air import session
 from ray.train.constants import (
@@ -26,9 +25,9 @@ if TYPE_CHECKING:
 class MosaicTrainer(TorchTrainer):
     """A Trainer for data parallel Mosaic Composers on PyTorch training.
 
-    This Trainer runs the ``composer.Trainer.fit()`` method on multiple
+    This Trainer runs the ``composer.trainer.Trainer.fit()`` method on multiple
     Ray Actors. The training is carried out in a distributed fashion through PyTorch
-    DDP[TODO]. These actors already have the necessary torch process group already
+    DDP. These actors already have the necessary torch process group already
     configured for distributed PyTorch training.
 
     The training function ran on every Actor will first run the
@@ -36,19 +35,15 @@ class MosaicTrainer(TorchTrainer):
     ``composer.Trainer`` object. The ``trainer_init_per_worker`` function
     will have access to preprocessed train and evaluation datasets.
 
-    If the ``datasets`` dict contains a training dataset (denoted by
-    the "train" key), then it will be split into multiple dataset
-    shards, with each Actor training on a single shard.
-    All the other datasets will not be split.
-
     Args:
         trainer_init_per_worker: The function that returns an instantiated
             ``composer.Trainer`` object and takes in the following arguments:
-            train ``Torch.Dataset``, optional evaluation ``Torch.Dataset``
-            and config as kwargs. The Torch Datasets are automatically
-            created by converting the Ray Datasets internally before
-            they are passed into the function.
-        datasets: Any Ray Datasets to use for training. Use
+            train ``composer.core.DataSpec``, optional evaluation
+            ``composer.core.DataSpec`` and config as kwargs. The Composer DataSpecs
+            are automatically created by converting the Ray Datasets internally
+            before they are passed into the function.
+        datasets: Any Ray Datasets to use for training. The datasets must be mapped to
+            pandas DataFrame and the labels for each column should be provided. Use
             the key "train" to denote which dataset is the training
             dataset and (optionally) key "evaluation" to denote the evaluation
             dataset. Can only contain a training dataset
@@ -72,7 +67,7 @@ class MosaicTrainer(TorchTrainer):
     def __init__(
         self,
         trainer_init_per_worker: Callable[
-            [TorchDataset, Optional[TorchDataset], Any], composer.trainer.Trainer
+            [DataSpec, Optional[DataSpec], Any], composer.trainer.Trainer
         ],
         *,
         datasets: Dict[str, GenDataset],
@@ -127,7 +122,7 @@ def _mosaic_train_loop_per_worker(config):
     os.environ["WORLD_SIZE"] = str(session.get_world_size())
     os.environ["LOCAL_RANK"] = str(session.get_local_rank())
 
-    # Arbitrary value set for these as they are needed for some composer functions
+    # Arbitrary values set for these as they are needed for some composer functions
     os.environ["LOCAL_WORLD_SIZE"] = str(1)
     os.environ["NODE_RANK"] = str(0)
 
