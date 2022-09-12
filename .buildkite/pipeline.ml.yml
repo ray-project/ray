@@ -432,8 +432,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-needs_credentials,-gpu,-py37,-post_wheel_build doc/...
 
 - label: ":book: Doc examples with authentication "
-  conditions:
-    ["RAY_CI_BRANCH_BUILD"]
+  conditions: ["RAY_CI_BRANCH_BUILD"]
   commands:
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
