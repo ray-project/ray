@@ -119,6 +119,28 @@ def test_task_finish(shutdown_only):
     )
 
 
+def test_task_retry(shutdown_only):
+    info = ray.init(num_cpus=2)
+
+    @ray.remote(retry_exceptions=True)
+    def f():
+        assert False
+
+    f.remote()
+    time.sleep(2)  # Enough sleep so that retries have time to run.
+
+    expected = {
+        "RUNNING": 0.0,
+        "WAITING_FOR_EXECUTION": 0.0,
+        "SCHEDULED": 0.0,
+        "WAITING_FOR_DEPENDENCIES": 0.0,
+        "FINISHED": 1.0,  # Only recorded as finished once.
+    }
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
+    )
+
+
 # TODO(ekl) test wait on object store transfer (??)
 
 
