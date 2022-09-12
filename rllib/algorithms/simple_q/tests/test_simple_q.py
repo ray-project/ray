@@ -176,24 +176,25 @@ class TestSimpleQ(unittest.TestCase):
             for _ in range(n):
                 results = algo.train()
             return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
-                "learning_rate"
+                "cur_lr"
             ]
 
-        algo = config.build(env="CartPole-v0")
+        for _ in framework_iterator(config):
+            algo = config.build(env="CartPole-v0")
 
-        lr = _step_n_times(algo, 1)  # 50 timesteps
-        # Close to 0.2
-        self.assertGreaterEqual(lr, 0.15)
+            lr = _step_n_times(algo, 1)  # 50 timesteps
+            # Close to 0.2
+            self.assertGreaterEqual(lr, 0.15)
 
-        lr = _step_n_times(algo, 8)  # Close to 500 timesteps
-        # LR Annealed to 0.001
-        self.assertLessEqual(float(lr), 0.5)
+            lr = _step_n_times(algo, 8)  # Close to 500 timesteps
+            # LR Annealed to 0.001
+            self.assertLessEqual(float(lr), 0.5)
 
-        lr = _step_n_times(algo, 2)  # > 500 timesteps
-        # LR == 0.001
-        self.assertAlmostEqual(lr, 0.001)
+            lr = _step_n_times(algo, 2)  # > 500 timesteps
+            # LR == 0.001
+            self.assertAlmostEqual(lr, 0.001)
 
-        algo.stop()
+            algo.stop()
 
 
 if __name__ == "__main__":

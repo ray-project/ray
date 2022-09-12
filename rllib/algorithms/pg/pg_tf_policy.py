@@ -129,8 +129,14 @@ def get_pg_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             )
 
         @override(base)
+        def extra_learn_fetches_fn(self) -> Dict[str, TensorType]:
+            return {
+                "learner_stats": {"cur_lr": self.cur_lr},
+            }
+
+        @override(base)
         def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
-            """Returns the calculated loss in a stats dict.
+            """Returns the calculated loss and learning rate in a stats dict.
 
             Args:
                 policy: The Policy object.

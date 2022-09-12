@@ -192,7 +192,23 @@ def get_simple_q_tf_policy(
         def extra_learn_fetches_fn(self) -> Dict[str, TensorType]:
             return {
                 "td_error": self.td_error,
-                "learner_stats": {"learning_rate": self.cur_lr},
+                "learner_stats": {"cur_lr": self.cur_lr},
+            }
+
+        @override(base)
+        def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
+            """Returns the learning rate in a stats dict.
+
+            Args:
+                policy: The Policy object.
+                train_batch: The data used for training.
+
+            Returns:
+                Dict[str, TensorType]: The stats dict.
+            """
+
+            return {
+                "cur_lr": self.cur_lr,
             }
 
         def _compute_q_values(
