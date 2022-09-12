@@ -60,7 +60,7 @@ class XGBoostPredictor(Predictor):
         feature_columns: Optional[Union[List[str], List[int]]] = None,
         dmatrix_kwargs: Optional[Dict[str, Any]] = None,
         **predict_kwargs,
-        ) -> DataBatchType:
+    ) -> DataBatchType:
         """Run inference on data batch.
 
         The data is converted into an XGBoost DMatrix before being inputted to
