@@ -146,9 +146,10 @@ class PlacementGroupFactory:
         *args,
         **kwargs,
     ):
-        assert (
-            len(bundles) > 0
-        ), "Cannot initialize a PlacementGroupFactory with zero bundles."
+        if not bundles:
+            raise ValueError(
+                "Cannot initialize a PlacementGroupFactory with zero bundles."
+            )
 
         self._bundles = [
             {k: float(v) for k, v in bundle.items() if v != 0} for bundle in bundles
@@ -158,6 +159,12 @@ class PlacementGroupFactory:
             # This is when trainable itself doesn't need resources.
             self._head_bundle_is_empty = True
             self._bundles.pop(0)
+
+            if not self._bundles:
+                raise ValueError(
+                    "Cannot initialize a PlacementGroupFactory with an empty head "
+                    "and zero worker bundles."
+                )
         else:
             self._head_bundle_is_empty = False
 
