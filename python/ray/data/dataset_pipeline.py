@@ -1,5 +1,6 @@
 import itertools
 import logging
+import sys
 import time
 from typing import (
     TYPE_CHECKING,
@@ -39,6 +40,11 @@ from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 if TYPE_CHECKING:
     import pandas
