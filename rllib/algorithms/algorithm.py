@@ -1640,7 +1640,10 @@ class Algorithm(Trainable):
         *,
         policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
         policies_to_train: Optional[
-            Union[Set[PolicyID], Callable[[PolicyID, Optional[SampleBatchType]], bool]]
+            Union[
+                Container[PolicyID],
+                Callable[[PolicyID, Optional[SampleBatchType]], bool],
+            ]
         ] = None,
         evaluation_workers: bool = True,
     ) -> None:
