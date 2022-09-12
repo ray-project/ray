@@ -40,8 +40,9 @@ class LightGBMCheckpoint(Checkpoint):
             An :py:class:`LightGBMCheckpoint` containing the specified ``Estimator``.
 
         Examples:
-            >>> from ray.train.lightgbm import LightGBMCheckpoint
             >>> import lightgbm
+            >>> import numpy as np
+            >>> from ray.train.lightgbm import LightGBMCheckpoint
             >>>
             >>> train_X = np.array([[1, 2], [3, 4]])
             >>> train_y = np.array([0, 1])
