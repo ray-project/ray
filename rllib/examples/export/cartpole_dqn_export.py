@@ -11,15 +11,15 @@ tf1, tf, tfv = try_import_tf()
 ray.init(num_cpus=10)
 
 
-def train_and_export(algo_name, num_steps, model_dir, ckpt_dir, prefix):
+def train_and_export(algo_name, num_steps, model_dir, ckpt_dir):
     cls = get_algorithm_class(algo_name)
     alg = cls(config={}, env="CartPole-v0")
     for _ in range(num_steps):
         alg.train()
 
-    # Export tensorflow checkpoint for fine-tuning
-    alg.export_policy_checkpoint(ckpt_dir, filename_prefix=prefix)
-    # Export tensorflow SavedModel for online serving
+    # Export Policy checkpoint.
+    alg.export_policy_checkpoint(ckpt_dir)
+    # Export tensorflow keras Model for online serving
     alg.export_policy_model(model_dir)
 
 
@@ -40,9 +40,8 @@ def restore_saved_model(export_dir):
             print("https://www.tensorflow.org/guide/saved_model")
 
 
-def restore_checkpoint(export_dir, prefix):
+def restore_checkpoint(export_dir):
     sess = tf1.Session()
-    meta_file = "%s.meta" % prefix
     saver = tf1.train.import_meta_graph(os.path.join(export_dir, meta_file))
     saver.restore(sess, os.path.join(export_dir, prefix))
     print("Checkpoint restored!")
@@ -56,8 +55,7 @@ if __name__ == "__main__":
     algo = "DQN"
     model_dir = os.path.join(ray._private.utils.get_user_temp_dir(), "model_export_dir")
     ckpt_dir = os.path.join(ray._private.utils.get_user_temp_dir(), "ckpt_export_dir")
-    prefix = "model.ckpt"
     num_steps = 3
-    train_and_export(algo, num_steps, model_dir, ckpt_dir, prefix)
+    train_and_export(algo, num_steps, model_dir, ckpt_dir)
     restore_saved_model(model_dir)
-    restore_checkpoint(ckpt_dir, prefix)
+    restore_checkpoint(ckpt_dir)

@@ -1,11 +1,11 @@
 import os
-import pickle
 import threading
 from collections import deque
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Set, Type
 
 import gym
 
+import ray.cloudpickle as pickle
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.framework import try_import_tf
