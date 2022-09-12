@@ -2185,7 +2185,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                ReferenceCounter::ReferenceTableProto *borrowed_refs,
                                bool *is_retryable_error) {
   ray::stats::STATS_tasks.Record(1, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING));
-  ray::stats::STATS_tasks.Record(-1, rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_EXECUTION));
+  ray::stats::STATS_tasks.Record(
+      -1, rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_EXECUTION));
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
@@ -2344,7 +2345,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   }
 
   ray::stats::STATS_tasks.Record(0, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING));
-  ray::stats::STATS_tasks.Record(0, rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_EXECUTION));
+  ray::stats::STATS_tasks.Record(
+      0, rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_EXECUTION));
   return status;
 }
 

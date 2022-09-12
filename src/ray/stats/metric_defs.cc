@@ -32,12 +32,11 @@ namespace stats {
 /// python/ray/tests/test_metrics_agent.py to ensure that its existence is tested.
 
 /// Scheduler
-DEFINE_stats(
-    tasks,
-    "Cumulative number of tasks currently in a particular state.",
-    ("State"),
-    (),
-    ray::stats::GAUGE);
+DEFINE_stats(tasks,
+             "Cumulative number of tasks currently in a particular state.",
+             ("State"),
+             (),
+             ray::stats::GAUGE);
 
 /// Event stats
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);

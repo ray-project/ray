@@ -32,7 +32,7 @@ def test_task_basic(shutdown_only):
     def f():
         time.sleep(999)
 
-    refs = [f.remote() for _ in range(10)]
+    [f.remote() for _ in range(10)]
 
     expected = {
         "RUNNING": 2.0,
@@ -42,7 +42,8 @@ def test_task_basic(shutdown_only):
     }
     # TODO(ekl) optimize the reporting interval to be faster for testing
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000)
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
+    )
 
 
 def test_task_wait_on_deps(shutdown_only):
@@ -57,7 +58,7 @@ def test_task_wait_on_deps(shutdown_only):
         time.sleep(999)
 
     x = f.remote()
-    refs = [g.remote(x) for _ in range(10)]
+    [g.remote(x) for _ in range(10)]
 
     expected = {
         "RUNNING": 1.0,
@@ -66,7 +67,8 @@ def test_task_wait_on_deps(shutdown_only):
         "WAITING_FOR_DEPENDENCIES": 10.0,
     }
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000)
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
+    )
 
 
 def test_actor_tasks_queued(shutdown_only):
@@ -78,7 +80,7 @@ def test_actor_tasks_queued(shutdown_only):
             time.sleep(999)
 
     a = F.remote()
-    refs = [a.f.remote() for _ in range(10)]
+    [a.f.remote() for _ in range(10)]
 
     expected = {
         "RUNNING": 1.0,
@@ -88,7 +90,8 @@ def test_actor_tasks_queued(shutdown_only):
         "FINISHED": 1.0,
     }
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000)
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
+    )
 
 
 def test_task_finish(shutdown_only):
@@ -102,7 +105,7 @@ def test_task_finish(shutdown_only):
     def g():
         assert False
 
-    refs = (f.remote(), g.remote())
+    (f.remote(), g.remote())
 
     expected = {
         "RUNNING": 0.0,
@@ -112,7 +115,8 @@ def test_task_finish(shutdown_only):
         "FINISHED": 2.0,
     }
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000)
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
+    )
 
 
 # TODO(ekl) test wait on object store transfer (??)
