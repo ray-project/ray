@@ -532,5 +532,12 @@ py_test(
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve", "py37"],
+)
+
+py_test(
+    name = "test_grpc",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )

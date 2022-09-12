@@ -44,7 +44,7 @@ class Deployment:
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
         ray_actor_options: Optional[Dict] = None,
         _internal=False,
-        driver_mode: Optional[bool] = False,
+        driver_deployment: Optional[bool] = False,
     ) -> None:
         """Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
 
@@ -95,7 +95,7 @@ class Deployment:
         self._init_kwargs = init_kwargs
         self._route_prefix = route_prefix
         self._ray_actor_options = ray_actor_options
-        self._driver_mode = driver_mode
+        self._driver_deployment = driver_deployment
 
     @property
     def name(self) -> str:
@@ -159,7 +159,7 @@ class Deployment:
             # this deployment is not exposed over HTTP
             return None
 
-        return self.route_prefix
+        return get_global_client().root_url
 
     def __call__(self):
         raise RuntimeError(
@@ -277,7 +277,9 @@ class Deployment:
 
     # TODO(Sihan) Promote the _get_handle to get_handle after we fully deprecate the API
     def _get_handle(
-        self, sync: Optional[bool] = True
+        self,
+        sync: Optional[bool] = True,
+        _internal_pickled_http_request: bool = False,
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Get a ServeHandle to this deployment to invoke it from Python.
 
@@ -291,7 +293,12 @@ class Deployment:
             ServeHandle
         """
 
-        return get_global_client().get_handle(self._name, missing_ok=True, sync=sync)
+        return get_global_client().get_handle(
+            self._name,
+            missing_ok=True,
+            sync=sync,
+            _internal_pickled_http_request=_internal_pickled_http_request,
+        )
 
     @PublicAPI
     def options(
@@ -314,7 +321,7 @@ class Deployment:
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
         _internal: bool = False,
-        driver_mode: bool = False,
+        driver_deployment: bool = False,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -409,6 +416,9 @@ class Deployment:
         if health_check_timeout_s is not DEFAULT.VALUE:
             new_config.health_check_timeout_s = health_check_timeout_s
 
+        if driver_deployment:
+            self._driver_deployment = driver_deployment
+
         return Deployment(
             func_or_class,
             name,
@@ -419,7 +429,7 @@ class Deployment:
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
             _internal=True,
-            driver_mode=driver_mode,
+            driver_deployment=self._driver_deployment,
         )
 
     @PublicAPI(stability="alpha")
@@ -523,7 +533,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "health_check_period_s": d._config.health_check_period_s,
         "health_check_timeout_s": d._config.health_check_timeout_s,
         "ray_actor_options": ray_actor_options_schema,
-        "driver_mode": d._driver_mode,
+        "driver_deployment": d._driver_deployment,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -576,5 +586,5 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         route_prefix=s.route_prefix,
         ray_actor_options=ray_actor_options,
         _internal=True,
-        driver_mode=s.driver_mode,
+        driver_deployment=s.driver_deployment,
     )

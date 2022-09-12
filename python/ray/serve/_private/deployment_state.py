@@ -678,11 +678,10 @@ class DeploymentReplica(VersionedReplica):
         replica_tag: ReplicaTag,
         deployment_name: str,
         version: DeploymentVersion,
-        # can be grouped to be a class
-        is_driver: bool = False,
+        is_driver_deployment: bool = False,
         node_id=None,
     ):
-        if is_driver:
+        if is_driver_deployment:
             self._actor = DriverActorReplicaWrapper(
                 f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
                 detached,
@@ -1615,32 +1614,6 @@ class DeploymentState:
 
         return running_replicas_changed
 
-    def _deploy_driver(self):
-        deployed_nodes = set()
-        for replica in self._replicas.get(
-            [ReplicaState.STARTING, ReplicaState.RUNNING, ReplicaState.RECOVERING]
-        ):
-            if replica.actor_node_id:
-                deployed_nodes.add(replica.actor_node_id)
-        for node_id, _ in get_all_node_ids(self._gcs_client):
-            if node_id in deployed_nodes:
-                continue
-            replica_name = ReplicaName(self._name, get_random_letters())
-            new_deployment_replica = DeploymentReplica(
-                self._controller_name,
-                self._detached,
-                replica_name.replica_tag,
-                replica_name.deployment_tag,
-                self._target_state.version,
-                True,
-                node_id,
-            )
-            new_deployment_replica.start(
-                self._target_state.info, self._target_state.version
-            )
-
-            self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
-
     def update(self) -> bool:
         """Attempts to reconcile this deployment to match its goal state.
 
@@ -1655,17 +1628,14 @@ class DeploymentState:
             # Add or remove DeploymentReplica instances in self._replicas.
             # This should be the only place we adjust total number of replicas
             # we manage.
-            if self.target_info.driver_mode:
-                self._deploy_driver()
-                self._check_and_update_replicas()
-            else:
-                running_replicas_changed = self._scale_deployment_replicas()
 
-                # Check the state of existing replicas and transition if necessary.
-                running_replicas_changed |= self._check_and_update_replicas()
+            running_replicas_changed = self._scale_deployment_replicas()
 
-                if running_replicas_changed:
-                    self._notify_running_replicas_changed()
+            # Check the state of existing replicas and transition if necessary.
+            running_replicas_changed |= self._check_and_update_replicas()
+
+            if running_replicas_changed:
+                self._notify_running_replicas_changed()
 
             deleted = self._check_curr_status()
         except Exception:
@@ -1685,6 +1655,67 @@ class DeploymentState:
         self._replicas.add(ReplicaState.STOPPING, replica_to_stop)
         for replica in running_replicas:
             self._replicas.add(ReplicaState.RUNNING, replica)
+
+
+class DriverDeploymentState(DeploymentState):
+    def __init__(
+        self,
+        name: str,
+        controller_name: str,
+        detached: bool,
+        _save_checkpoint_func: Callable,
+    ):
+        super().__init__(name, controller_name, detached, None, _save_checkpoint_func)
+
+    def _deploy_driver(self):
+        all_nodes = get_all_node_ids(self._gcs_client)
+        self.target_info.deployment_config.num_replicas = len(all_nodes)
+        deployed_nodes = set()
+        for replica in self._replicas.get(
+            [ReplicaState.STARTING, ReplicaState.RUNNING, ReplicaState.RECOVERING]
+        ):
+            if replica.actor_node_id:
+                deployed_nodes.add(replica.actor_node_id)
+        for node_id, _ in all_nodes:
+            if node_id in deployed_nodes:
+                continue
+            replica_name = ReplicaName(self._name, get_random_letters())
+            new_deployment_replica = DeploymentReplica(
+                self._controller_name,
+                self._detached,
+                replica_name.replica_tag,
+                replica_name.deployment_tag,
+                self._target_state.version,
+                True,
+                node_id,
+            )
+            new_deployment_replica.start(
+                self._target_state.info, self._target_state.version
+            )
+
+            self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
+
+    def _stop_all_replicas(self):
+        for replica in self._replicas.pop(
+            states=[
+                ReplicaState.STARTING,
+                ReplicaState.RUNNING,
+                ReplicaState.RECOVERING,
+            ]
+        ):
+            replica.stop()
+            self._replicas.add(ReplicaState.STOPPING, replica)
+
+    def update(self) -> bool:
+        if self._target_state.deleting:
+            self._stop_all_replicas()
+        else:
+            self._deploy_driver()
+        self._check_and_update_replicas()
+        return self._check_curr_status()
+
+    def should_autoscale(self) -> bool:
+        return False
 
 
 class DeploymentStateManager:
@@ -1707,6 +1738,7 @@ class DeploymentStateManager:
         self._detached = detached
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
+
         self._create_deployment_state: Callable = lambda name: DeploymentState(
             name,
             controller_name,
@@ -1714,6 +1746,16 @@ class DeploymentStateManager:
             long_poll_host,
             self._save_checkpoint_func,
         )
+
+        self._create_driver_deployment_state: Callable = (
+            lambda name: DriverDeploymentState(
+                name,
+                controller_name,
+                detached,
+                self._save_checkpoint_func,
+            )
+        )
+
         self._deployment_states: Dict[str, DeploymentState] = dict()
         self._deleted_deployment_metadata: Dict[str, DeploymentInfo] = OrderedDict()
 
@@ -1788,7 +1830,12 @@ class DeploymentStateManager:
             ) = cloudpickle.loads(checkpoint)
 
             for deployment_tag, checkpoint_data in deployment_state_info.items():
-                deployment_state = self._create_deployment_state(deployment_tag)
+                if checkpoint_data.info.driver_deployment:
+                    deployment_state = self._create_driver_deployment_state(
+                        deployment_tag
+                    )
+                else:
+                    deployment_state = self._create_deployment_state(deployment_tag)
                 deployment_state.recover_target_state_from_checkpoint(checkpoint_data)
                 if len(deployment_to_current_replicas[deployment_tag]) > 0:
                     deployment_state.recover_current_state_from_replica_actor_names(  # noqa: E501
@@ -1897,9 +1944,14 @@ class DeploymentStateManager:
             del self._deleted_deployment_metadata[deployment_name]
 
         if deployment_name not in self._deployment_states:
-            self._deployment_states[deployment_name] = self._create_deployment_state(
-                deployment_name
-            )
+            if deployment_info.driver_deployment:
+                self._deployment_states[
+                    deployment_name
+                ] = self._create_driver_deployment_state(deployment_name)
+            else:
+                self._deployment_states[
+                    deployment_name
+                ] = self._create_deployment_state(deployment_name)
             record_extra_usage_tag(
                 TagKey.SERVE_NUM_DEPLOYMENTS, str(len(self._deployment_states))
             )
@@ -1965,6 +2017,7 @@ class DeploymentStateManager:
         """Updates the state of all deployments to match their goal state."""
         deleted_tags = []
         for deployment_name, deployment_state in self._deployment_states.items():
+
             if deployment_state.should_autoscale():
                 current_num_ongoing_requests = self.get_replica_ongoing_request_metrics(
                     deployment_name,

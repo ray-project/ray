@@ -177,7 +177,7 @@ class DeploymentSchema(
         default=DEFAULT.VALUE, description="Options set for each replica actor."
     )
 
-    driver_mode: bool = Field(
+    driver_deployment: bool = Field(
         default=False,
         description="Driver mode for the deployment, (e.g. 'gRPC', 'HTTP')",
     )

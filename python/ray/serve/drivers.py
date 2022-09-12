@@ -5,7 +5,6 @@ from typing import Any, Callable, Optional, Type, Union, Dict
 from pydantic import BaseModel
 from ray.serve._private.utils import install_serve_encoders_to_fastapi
 from ray.util.annotations import DeveloperAPI, PublicAPI
-import sys
 
 import starlette
 from fastapi import Body, Depends, FastAPI
@@ -16,23 +15,14 @@ from ray.serve._private.http_util import ASGIHTTPSender
 from ray.serve.handle import RayServeDeploymentHandle
 from ray.serve.exceptions import RayServeException
 from ray import serve
-
+import sys
+import asyncio
 import grpc
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-import asyncio
-import socket
-import uvicorn
-import os
-from ray.serve._private.http_util import (
-    set_socket_reuse_port,
-)
-
+from ray.serve._private.constants import DEFAULT_GRPC_PORT
 
 DEFAULT_HTTP_ADAPTER = "ray.serve.http_adapters.starlette_request"
 HTTPAdapterFn = Callable[[Any], Any]
-SOCKET_REUSE_PORT_ENABLED = (
-    os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
-)
 
 
 def _load_http_adapter(
@@ -99,55 +89,9 @@ class SimpleSchemaIngress:
         return sender.build_asgi_response()
 
 
-class ServeHttpIngress:
-    def __init__(self, app):
-        self.app = app
-        self.setup_complete = asyncio.Event()
-        self.running_task = asyncio.get_event_loop().create_task(self.run())
-
-    async def run(self):
-        sock = socket.socket()
-        if SOCKET_REUSE_PORT_ENABLED:
-            set_socket_reuse_port(sock)
-        try:
-            sock.bind(("0.0.0.0", 8000))
-        except OSError:
-            # The OS failed to bind a socket to the given host and port.
-            raise ValueError(
-                f"""Failed to bind Ray Serve HTTP proxy to '[:]:{self.port}'.
-Please make sure your http-host and http-port are specified correctly."""
-            )
-
-        # Note(simon): we have to use lower level uvicorn Config and Server
-        # class because we want to run the server as a coroutine. The only
-        # alternative is to call uvicorn.run which is blocking.
-        config = uvicorn.Config(
-            self.app,
-            host="0.0.0.0",
-            port=8000,
-            root_path="/",
-            lifespan="off",
-            access_log=False,
-        )
-        server = uvicorn.Server(config=config)
-        # TODO(edoakes): we need to override install_signal_handlers here
-        # because the existing implementation fails if it isn't running in
-        # the main thread and uvicorn doesn't expose a way to configure it.
-        server.install_signal_handlers = lambda: None
-
-        self.setup_complete.set()
-        await server.serve(sockets=[sock])
-
-
-# add ray actor options
-# self.max_concurrency=ASYNC_CONCURRENCY,
-# self.max_restarts=-1,
-# self.max_task_retries=-1,
-
-
 @PublicAPI(stability="beta")
-@serve.deployment(route_prefix="/", driver_mode=True)
-class DAGDriver(ServeHttpIngress):
+@serve.deployment(route_prefix="/")
+class DAGDriver:
     """A driver implementation that accepts HTTP requests."""
 
     MATCH_ALL_ROUTE_PREFIX = "/{path:path}"
@@ -194,16 +138,12 @@ class DAGDriver(ServeHttpIngress):
             async def handle_request(inp=Depends(http_adapter)):
                 return await self.predict(inp)
 
-        ServeHttpIngress.__init__(self, self.app)
-
-    """
     async def __call__(self, request: starlette.requests.Request):
         # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
         # generate FastAPI on the fly, we should find a way to unify the two.
         sender = ASGIHTTPSender()
         await self.app(request.scope, receive=request.receive, send=sender)
         return sender.build_asgi_response()
-    """
 
     async def predict(self, *args, _ray_cache_refs: bool = False, **kwargs):
         """Perform inference directly without HTTP."""
@@ -240,9 +180,9 @@ class DAGDriver(ServeHttpIngress):
         """Returns the json serialized root dag node"""
         return self.dags[self.MATCH_ALL_ROUTE_PREFIX].dag_node_json
 
-class ServeGrpcIngress:
+class ServegRPCIngress:
     # servicer is from schema generated code
-    def __init__(self, port="50001"):
+    def __init__(self, port):
         self.server = grpc.aio.server()
         self.port = port
 
@@ -263,16 +203,15 @@ class ServeGrpcIngress:
         # can be configured
         self.server.add_insecure_port("[::]:{}".format(self.port))
         self.setup_complete.set()
-        print("starting server")
         await self.server.start()
         await self.server.wait_for_termination()
 
 
-@serve.deployment(driver_mode=True)
-class GrpcDriver(ServeGrpcIngress, serve_pb2_grpc.PredictAPIsServiceServicer):
-    def __init__(self, dags: RayServeDAGHandle):
+@serve.deployment(driver_deployment=True)
+class gRPCDriver(ServegRPCIngress, serve_pb2_grpc.PredictAPIsServiceServicer):
+    def __init__(self, dags: RayServeDAGHandle, port=DEFAULT_GRPC_PORT):
         self.dag = dags
-        ServeGrpcIngress.__init__(self)
+        ServegRPCIngress.__init__(self, port)
 
     async def Predict(self, request, context):
         # add a customized serializer for protobuf
