@@ -56,6 +56,7 @@ class _AbstractKBinsDiscretizer(Preprocessor):
             [
                 f"{attr_name}={attr_value!r}"
                 for attr_name, attr_value in vars(self).items()
+                if not attr_name.startswith("_")
             ]
         )
         return f"{self.__class__.__name__}({attr_str})"
@@ -76,12 +77,12 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         ...     "value_1": [0.2, 1.4, 2.5, 6.2, 9.7, 2.1],
         ...     "value_2": [10, 15, 13, 12, 23, 25],
         ... })
-        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> ds = ray.data.from_pandas(df)
         >>> discretizer = CustomKBinsDiscretizer(
         ...     columns=["value_1", "value_2"],
         ...     bins=[0, 1, 4, 10, 25]
         ... )
-        >>> discretizer.transform(ds).to_pandas()  # doctest: +SKIP
+        >>> discretizer.transform(ds).to_pandas()
            value_1  value_2
         0        0        2
         1        1        3
@@ -96,14 +97,14 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         ...     columns=["value_1", "value_2"],
         ...     bins={"value_1": [0, 1, 4], "value_2": [0, 18, 35, 70]},
         ... )
-        >>> discretizer.transform(ds).to_pandas()  # doctest: +SKIP
+        >>> discretizer.transform(ds).to_pandas()
            value_1  value_2
-        0        0        0
-        1        1        0
-        2        1        0
-        3        1        0
-        4        1        1
-        5        1        1
+        0      0.0        0
+        1      1.0        0
+        2      1.0        0
+        3      NaN        0
+        4      NaN        1
+        5      1.0        1
 
 
     Args:
@@ -175,11 +176,11 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         ...     "value_1": [0.2, 1.4, 2.5, 6.2, 9.7, 2.1],
         ...     "value_2": [10, 15, 13, 12, 23, 25],
         ... })
-        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> ds = ray.data.from_pandas(df)
         >>> discretizer = UniformKBinsDiscretizer(
         ...     columns=["value_1", "value_2"], bins=4
         ... )
-        >>> discretizer.fit_transform(ds).to_pandas()  # doctest: +SKIP
+        >>> discretizer.fit_transform(ds).to_pandas()
            value_1  value_2
         0        0        0
         1        0        1
@@ -193,7 +194,7 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         >>> discretizer = UniformKBinsDiscretizer(
         ...     columns=["value_1", "value_2"], bins={"value_1": 4, "value_2": 3}
         ... )
-        >>> discretizer.fit_transform(ds).to_pandas()  # doctest: +SKIP
+        >>> discretizer.fit_transform(ds).to_pandas()
            value_1  value_2
         0        0        0
         1        0        0
