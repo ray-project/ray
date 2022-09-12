@@ -7,7 +7,6 @@ import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import requests
-from anyscale.sdk.anyscale_client.models.create_project import CreateProject
 from ray_release.logger import logger
 
 if TYPE_CHECKING:
