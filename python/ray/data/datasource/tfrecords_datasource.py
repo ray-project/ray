@@ -1,5 +1,7 @@
+import tempfile
 from typing import Dict, List, Union
 
+import os
 import pandas as pd
 import pyarrow
 import tensorflow as tf
@@ -13,15 +15,24 @@ class TFRecordsDatasource(FileBasedDatasource):
     _FILE_EXTENSION = "tfrecords"
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Block:
-        dataset = tf.data.TFRecordDataset([path])
+        with tempfile.NamedTemporaryFile() as temporary_file:
+            # TensorFlow doesn't expose a function for reading TFRecords with a file
+            # handle; you can only read TFRecords with a file path. So, if the TFRecord
+            # doesn't exist locally (e.g., because it's stored in S3), we have to
+            # download a copy.
+            if not os.path.exists(path):
+                f.write(temporary_file)
+                path = temporary_file.name
 
-        data = []
-        for record in dataset:
-            example = tf.train.Example()
-            example.ParseFromString(record.numpy())
-            data.append(_convert_example_to_dict(example))
+            dataset = tf.data.TFRecordDataset([path])
 
-        return pd.DataFrame.from_records(data)
+            data = []
+            for record in dataset:
+                example = tf.train.Example()
+                example.ParseFromString(record.numpy())
+                data.append(_convert_example_to_dict(example))
+
+            return pd.DataFrame.from_records(data)
 
 
 def _convert_example_to_dict(example: tf.train.Example) -> pd.DataFrame:
@@ -46,8 +57,8 @@ def _get_feature_value(
     assert sum(bool(value) for value in values) == 1
 
     if feature.bytes_list.value:
-        return feature.bytes_list.value
+        return list(feature.bytes_list.value)
     if feature.float_list.value:
-        return feature.float_list.value
+        return list(feature.float_list.value)
     if feature.int64_list.value:
-        return feature.int64_list.value
+        return list(feature.int64_list.value)
