@@ -120,7 +120,14 @@ if __name__ == "__main__":
             print(e, file=sys.stderr)
         # End of dry run.
 
-        skip_prefix_list = ["doc/", "examples/", "dev/", "kubernetes/", "site/"]
+        skip_prefix_list = [
+            "doc/",
+            "examples/",
+            "dev/",
+            "kubernetes/",
+            "release/",
+            "site/",
+        ]
 
         for changed_file in files:
             if changed_file.startswith("python/ray/air"):
@@ -194,10 +201,6 @@ if __name__ == "__main__":
                 RAY_CI_DOC_AFFECTED = 1
             elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
-                pass
-            elif changed_file.startswith("release/ray_release/"):
-                # Tests for release/ray_release always run, so it is unnecessary to
-                # tag affected tests.
                 pass
             elif changed_file.endswith("build-docker-images.py"):
                 RAY_CI_DOCKER_AFFECTED = 1
