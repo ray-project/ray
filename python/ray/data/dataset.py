@@ -2,6 +2,7 @@ import collections
 import itertools
 import logging
 import os
+import sys
 import time
 import html
 from typing import (
@@ -13,7 +14,6 @@ from typing import (
     Iterable,
     Iterator,
     List,
-    Literal,
     Optional,
     Tuple,
     Union,
@@ -95,6 +95,11 @@ from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.widgets import Template
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 if TYPE_CHECKING:
     import dask
