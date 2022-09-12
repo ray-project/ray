@@ -50,25 +50,15 @@ We may not know the size of the argument until we execute the task, so we don't 
 
 In these cases, we can use a remote generator function that returns a *dynamic* number of values.
 To use this feature, set ``num_returns="dynamic"`` in the ``@ray.remote`` decorator or the remote function's ``.options()``.
-Then, when invoking the remote function, Ray will return an ``ObjectRefGenerator`` instead of one or multiple ``ObjectRefs``.
-
-Note that when an ``ObjectRefGenerator`` is first iterated upon, *the caller will block until the corresponding task is complete* and the number of return values is known.
-Ray will then populate the generator with a list of ``ObjectRefs`` pointing to the values returned by the remote function.
-Then, the caller can iterate through the generator like any other list of ``ObjectRefs``.
+Then, when invoking the remote function, Ray will return a *single* ``ObjectRef`` that will get populated with an ``ObjectRefGenerator`` when the task completes.
+The ``ObjectRefGenerator`` can be used to iterate over a list of ``ObjectRefs`` containing the actual values returned by the task.
 
 .. literalinclude:: ../doc_code/generator.py
     :language: python
     :start-after: __dynamic_generator_start__
     :end-before: __dynamic_generator_end__
 
-We can also get the return values as a generator by passing the ``ObjectRefGenerator`` to ``ray.get``. This will return another generator, this time of the **values** of the contained ``ObjectRefs``.
-
-.. literalinclude:: ../doc_code/generator.py
-    :language: python
-    :start-after: __dynamic_generator_ray_get_start__
-    :end-before: __dynamic_generator_ray_get_end__
-
-Finally, the semantics for passing an ``ObjectRefGenerator`` to another remote function are similar to that of passing a list of ``ObjectRefs``. The remote task worker will receive the same ``ObjectRefGenerator``, which it can iterate over directly or pass to ``ray.get`` or another task.
+We can also pass the ``ObjectRef`` returned by a task with ``num_returns="dynamic"`` to another task. The task will receive the ``ObjectRefGenerator``, which it can use to iterate over the task's return values. Similarly, you can also pass an ``ObjectRefGenerator`` as a task argument.
 
 .. literalinclude:: ../doc_code/generator.py
     :language: python

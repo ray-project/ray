@@ -1,5 +1,6 @@
 # __program_start__
 import ray
+from ray import ObjectRefGenerator
 
 # fmt: off
 # __dynamic_generator_start__
@@ -16,14 +17,13 @@ def split(array, chunk_size):
 array_ref = ray.put(np.zeros(np.random.randint(1000_000)))
 block_size = 1000
 
-ref_generator = split.remote(array_ref, block_size)  # Returns an ObjectRefGenerator.
-print(ref_generator)
+# Returns an ObjectRef[ObjectRefGenerator].
+dynamic_ref = split.remote(array_ref, block_size)
+print(dynamic_ref)
 
 i = -1
-# NOTE: When the generator is iterated for the first time, this will block
-# until the task is complete and the number of ObjectRefs returned by the task
-# is known. This is unlike remote functions with a static num_returns, where
-# ObjectRefs can be passed to another function before the task is complete.
+ref_generator = ray.get(dynamic_ref)
+print(ref_generator)
 for i, ref in enumerate(ref_generator):
     # Each ObjectRefGenerator iteration returns an ObjectRef.
     assert len(ray.get(ref)) <= block_size
@@ -32,35 +32,35 @@ array_size = len(ray.get(array_ref))
 assert array_size <= num_blocks_generated * block_size
 print(f"Split array of size {array_size} into {num_blocks_generated} blocks of "
       f"size {block_size} each.")
+
+# NOTE: The dynamic_ref points to the generated ObjectRefs. Make sure that this
+# ObjectRef goes out of scope so that Ray can garbage-collect the internal
+# ObjectRefs.
+del dynamic_ref
 # __dynamic_generator_end__
-# fmt: on
-
-
-# fmt: off
-# __dynamic_generator_ray_get_start__
-ref_generator = split.remote(array_ref, block_size)
-value_generator = ray.get(ref_generator)
-print(value_generator)
-for array in value_generator:
-    assert len(array) <= block_size
-# __dynamic_generator_ray_get_end__
 # fmt: on
 
 
 # fmt: off
 # __dynamic_generator_pass_start__
 @ray.remote
-def get_size(ref_generator):
-    value_generator = ray.get(ref_generator)
-    print(value_generator)
+def get_size(ref_generator : ObjectRefGenerator):
+    print(ref_generator)
     num_elements = 0
-    for array in value_generator:
+    for ref in ref_generator:
+        array = ray.get(ref)
         assert len(array) <= block_size
         num_elements += len(array)
     return num_elements
 
 
-ref_generator = split.remote(array_ref, block_size)
+# Returns an ObjectRef[ObjectRefGenerator].
+dynamic_ref = split.remote(array_ref, block_size)
+assert array_size == ray.get(get_size.remote(dynamic_ref))
+
+# This also works, but should be avoided because you have to call an additional
+# `ray.get`, which blocks the driver.
+ref_generator = ray.get(dynamic_ref)
 assert array_size == ray.get(get_size.remote(ref_generator))
 # __dynamic_generator_pass_end__
 # fmt: on
