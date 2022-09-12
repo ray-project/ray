@@ -78,16 +78,20 @@ def test_actor_tasks_queued(shutdown_only):
     class F:
         def f(self):
             time.sleep(999)
+        def g(self):
+            pass
 
     a = F.remote()
-    [a.f.remote() for _ in range(10)]
+    [a.g.remote() for _ in range(10)]
+    [a.f.remote() for _ in range(1)]  # Further tasks should be blocked on this one.
+    [a.g.remote() for _ in range(9)]
 
     expected = {
         "RUNNING": 1.0,
         "WAITING_FOR_EXECUTION": 9.0,
         "SCHEDULED": 0.0,
         "WAITING_FOR_DEPENDENCIES": 0.0,
-        "FINISHED": 1.0,
+        "FINISHED": 11.0,
     }
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
