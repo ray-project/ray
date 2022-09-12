@@ -61,16 +61,14 @@ Then, the caller can iterate through the generator like any other list of ``Obje
     :start-after: __dynamic_generator_start__
     :end-before: __dynamic_generator_end__
 
-We can also get the return values as a generator by passing the ``ObjectRefGenerator`` to ``ray.get``.
- This will return another generator, this time of the **values** of the contained ``ObjectRefs``.
+We can also get the return values as a generator by passing the ``ObjectRefGenerator`` to ``ray.get``. This will return another generator, this time of the **values** of the contained ``ObjectRefs``.
 
 .. literalinclude:: ../doc_code/generator.py
     :language: python
     :start-after: __dynamic_generator_ray_get_start__
     :end-before: __dynamic_generator_ray_get_end__
 
-Finally, the semantics for passing an ``ObjectRefGenerator`` to another remote function are similar to that of passing a list of ``ObjectRefs``.
- The remote task worker will receive the same ``ObjectRefGenerator``, which it can iterate over directly or pass to ``ray.get`` or another task.
+Finally, the semantics for passing an ``ObjectRefGenerator`` to another remote function are similar to that of passing a list of ``ObjectRefs``. The remote task worker will receive the same ``ObjectRefGenerator``, which it can iterate over directly or pass to ``ray.get`` or another task.
 
 .. literalinclude:: ../doc_code/generator.py
     :language: python

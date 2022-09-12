@@ -59,6 +59,7 @@ def get_size(ref_generator):
         num_elements += len(array)
     return num_elements
 
+
 ref_generator = split.remote(array_ref, block_size)
 assert array_size == ray.get(get_size.remote(ref_generator))
 # __dynamic_generator_pass_end__
