@@ -28,7 +28,7 @@ DEFAULT_CLOUD_ID = DeferredEnvVar(
 )
 DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
     "RELEASE_DEFAULT_PROJECT",
-    "prj_incSRzuwXscmSpBpbiz5HjMY",
+    "prj_FKRmeV5pA6X72aVscFALNC32",
 )
 DEFAULT_PYTHON_VERSION = (3, 7)
 
