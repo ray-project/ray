@@ -123,7 +123,7 @@ class TestPPO(unittest.TestCase):
         for fw in framework_iterator(config, with_eager_tracing=True):
             for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
-                for lstm in [False]:
+                for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
                     config.training(
                         model=dict(

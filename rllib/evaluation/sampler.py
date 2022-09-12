@@ -1088,6 +1088,7 @@ def _process_observations(
                     episode=episode,
                     env_index=env_id,
                 )
+
             # Horizon hit and we have a soft horizon (no hard env reset).
             # Keep both current obs and infos for the "new" episode's reset.
             if not episode.is_faulty and hit_horizon and soft_horizon:
