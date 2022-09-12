@@ -90,7 +90,8 @@ class XGBoostPredictor(Predictor):
             >>>
             >>> # Only use first and second column as the feature
             >>> data = np.array([[1, 2, 8], [3, 4, 9]])
-            >>> predictions = predictor.predict(data, feature_columns=[0, 1])
+            >>> predictor.predict(data, feature_columns=[0, 1])
+            array([0.5, 0.5], dtype=float32)
 
             >>> import pandas as pd
             >>> import xgboost as xgb
@@ -108,7 +109,10 @@ class XGBoostPredictor(Predictor):
             >>>
             >>> # Only use first and second column as the feature
             >>> data = pd.DataFrame([[1, 2, 8], [3, 4, 9]], columns=["A", "B", "C"])
-            >>> predictions = predictor.predict(data, feature_columns=["A", "B"])
+            >>> predictor.predict(data, feature_columns=["A", "B"])
+               predictions
+            0          0.5
+            1          0.5
 
 
         Returns:
