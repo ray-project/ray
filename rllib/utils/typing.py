@@ -17,9 +17,9 @@ import gym
 
 from ray.rllib.utils.annotations import ExperimentalAPI
 
-if sys.version_info >= (3, 10):
+try:
     from typing import TypeAlias
-else:
+except ImportError:
     from typing_extensions import TypeAlias
 
 if TYPE_CHECKING:
