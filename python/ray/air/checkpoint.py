@@ -470,34 +470,26 @@ class Checkpoint:
     def as_directory(self) -> Iterator[str]:
         """Return checkpoint directory path in a context.
 
-         This function makes checkpoint data available as a directory while avoiding
-         unnecessary copies and left-over temporary data.
+        This function makes checkpoint data available as a directory while avoiding
+        unnecessary copies and left-over temporary data.
 
-         If the checkpoint is already a directory checkpoint, it will return
-         the existing path. If it is not, it will create a temporary directory,
-         which will be deleted after the context is exited.
+        If the checkpoint is already a directory checkpoint, it will return
+        the existing path. If it is not, it will create a temporary directory,
+        which will be deleted after the context is exited.
 
-        If the checkpoint has been created from an object reference, the directory name
-         will be constant and equal to the object reference ID. This allows for multiple
-         processes to use the same files for improved performance. The directory
-         will be deleted after exiting the context only if no other processes are using
-         it.
-         In any other case, a new temporary directory will be created with each call
-         to ``as_directory``.
+        Users should treat the returned checkpoint directory as read-only and avoid
+        changing any data within it, as it might get deleted when exiting the context.
 
-         Users should treat the returned checkpoint directory as read-only and avoid
-         changing any data within it, as it might get deleted when exiting the context.
+        Example:
 
-         Example:
+        .. code-block:: python
 
-         .. code-block:: python
+            with checkpoint.as_directory() as checkpoint_dir:
+                # Do some read-only processing of files within checkpoint_dir
+                pass
 
-             with checkpoint.as_directory() as checkpoint_dir:
-                 # Do some read-only processing of files within checkpoint_dir
-                 pass
-
-             # At this point, if a temporary directory was created, it will have
-             # been deleted.
+            # At this point, if a temporary directory was created, it will have
+            # been deleted.
 
         """
         if self._local_path:
