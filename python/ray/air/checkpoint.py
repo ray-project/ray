@@ -11,6 +11,7 @@ import platform
 from typing import Any, Dict, Iterator, Optional, Tuple, Union, TYPE_CHECKING
 import uuid
 
+import ray
 from ray import cloudpickle as pickle
 from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.air._internal.filelock import TempFileLock
@@ -95,8 +96,9 @@ class Checkpoint:
 
     When converting between different checkpoint formats, it is guaranteed
     that a full round trip of conversions (e.g. directory --> dict -->
-    directory) will recover the original checkpoint data. There are no guarantees made
-    about compatibility of intermediate representations.
+    obj ref --> directory) will recover the original checkpoint data.
+    There are no guarantees made about compatibility of intermediate
+    representations.
 
     New data can be added to a Checkpoint
     during conversion. Consider the following conversion:
@@ -119,6 +121,13 @@ class Checkpoint:
     this will only work if the "remote" task is scheduled on the
     same node or a node that also has access to the local data path (e.g.
     on a shared file system like NFS).
+
+    Checkpoints pointing to object store references will keep the
+    object reference in tact - this means that these checkpoints cannot
+    be properly deserialized on other Ray clusters or outside a Ray
+    cluster. If you need persistence across clusters, use the ``to_uri()``
+    or ``to_directory()`` methods to persist your checkpoints to disk.
+
     """
 
     @DeveloperAPI
@@ -297,8 +306,10 @@ class Checkpoint:
     @classmethod
     def from_object_ref(cls, obj_ref: ray.ObjectRef) -> "Checkpoint":
         """Create checkpoint object from object reference.
+
         Args:
             obj_ref: ObjectRef pointing to checkpoint data.
+
         Returns:
             Checkpoint: checkpoint object.
         """
@@ -306,6 +317,7 @@ class Checkpoint:
 
     def to_object_ref(self) -> ray.ObjectRef:
         """Return checkpoint data as object reference.
+
         Returns:
             ray.ObjectRef: ObjectRef pointing to checkpoint data.
         """
@@ -374,6 +386,7 @@ class Checkpoint:
 
     def _to_directory(self, path: str) -> None:
         if self._data_dict or self._obj_ref:
+            # This is a object ref or dict
             data_dict = self.to_dict()
             if _FS_CHECKPOINT_KEY in data_dict:
                 for key in data_dict.keys():
@@ -457,26 +470,34 @@ class Checkpoint:
     def as_directory(self) -> Iterator[str]:
         """Return checkpoint directory path in a context.
 
-        This function makes checkpoint data available as a directory while avoiding
-        unnecessary copies and left-over temporary data.
+         This function makes checkpoint data available as a directory while avoiding
+         unnecessary copies and left-over temporary data.
 
-        If the checkpoint is already a directory checkpoint, it will return
-        the existing path. If it is not, it will create a temporary directory,
-        which will be deleted after the context is exited.
+         If the checkpoint is already a directory checkpoint, it will return
+         the existing path. If it is not, it will create a temporary directory,
+         which will be deleted after the context is exited.
 
-        Users should treat the returned checkpoint directory as read-only and avoid
-        changing any data within it, as it might get deleted when exiting the context.
+        If the checkpoint has been created from an object reference, the directory name
+         will be constant and equal to the object reference ID. This allows for multiple
+         processes to use the same files for improved performance. The directory
+         will be deleted after exiting the context only if no other processes are using
+         it.
+         In any other case, a new temporary directory will be created with each call
+         to ``as_directory``.
 
-        Example:
+         Users should treat the returned checkpoint directory as read-only and avoid
+         changing any data within it, as it might get deleted when exiting the context.
 
-        .. code-block:: python
+         Example:
 
-            with checkpoint.as_directory() as checkpoint_dir:
-                # Do some read-only processing of files within checkpoint_dir
-                pass
+         .. code-block:: python
 
-            # At this point, if a temporary directory was created, it will have
-            # been deleted.
+             with checkpoint.as_directory() as checkpoint_dir:
+                 # Do some read-only processing of files within checkpoint_dir
+                 pass
+
+             # At this point, if a temporary directory was created, it will have
+             # been deleted.
 
         """
         if self._local_path:
