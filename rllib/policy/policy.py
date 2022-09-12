@@ -854,9 +854,9 @@ class Policy(metaclass=ABCMeta):
         # Make sure, we keep global_timestep as a Tensor for tf-eager
         # (leads to memory leaks if not doing so).
         if self.framework in ["tfe", "tf2"]:
-            self.global_timestep.assign(global_vars["timestep"])
+            self.global_timestep.assign(global_vars.get("timestep", 0))
         else:
-            self.global_timestep = global_vars["timestep"]
+            self.global_timestep = global_vars.get("timestep", 0)
 
     @DeveloperAPI
     def export_checkpoint(self, export_dir: str) -> None:

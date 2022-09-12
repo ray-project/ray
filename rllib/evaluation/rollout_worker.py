@@ -459,7 +459,7 @@ class RolloutWorker(ParallelIteratorWorker):
         )
         self.observation_filter = observation_filter
         self.last_batch: Optional[SampleBatchType] = None
-        self.global_vars: Optional[dict] = None
+        self.global_vars: dict = {}
         self.fake_sampler: bool = fake_sampler
         self._disable_env_checking: bool = disable_env_checking
 
@@ -1240,6 +1240,8 @@ class RolloutWorker(ParallelIteratorWorker):
         # Set the state of the newly created policy.
         if policy_state:
             new_policy.set_state(policy_state)
+        # Set the global vars of the new policy.
+        new_policy.on_global_var_update(global_vars=self.global_vars.copy())
 
         filter_shape = tree.map_structure(
             lambda s: (

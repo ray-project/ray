@@ -118,15 +118,19 @@ class TestAlgorithm(unittest.TestCase):
                 test.restore(checkpoint)
 
                 # Make sure algorithm can continue training the restored policy.
-                pol0 = test.get_policy("p0")
-
                 new_counters = test._counters.copy()
                 self.assertEqual(old_counters, new_counters)
 
                 # Also make sure the existing policies (and the newly added one)
                 # have the correct global timesteps.
-                check(pol0.global_timestep, pol_map["p0"].global_timestep)
-                check(test.get_policy(pid).global_timestep, new_pol.global_timestep)
+                check(
+                    test.get_policy("p0").global_timestep,
+                    algo.get_policy("p0").global_timestep,
+                )
+                check(
+                    test.get_policy(pid).global_timestep,
+                    algo.get_policy(pid).global_timestep,
+                )
 
                 # Make sure evaluation worker also gets the restored policy.
                 def _has_policy(w):
@@ -138,6 +142,7 @@ class TestAlgorithm(unittest.TestCase):
 
                 test.train()
                 # Test creating an action with the added (and restored) policy.
+                pol0 = test.get_policy("p0")
                 a = test.compute_single_action(
                     np.zeros_like(pol0.observation_space.sample()), policy_id=pid
                 )
