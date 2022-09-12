@@ -315,7 +315,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_tensorflow_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
