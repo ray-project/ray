@@ -537,7 +537,7 @@ Load image data stored as individual files using :py:class:`~ray.data.datasource
 Custom Datasources
 ------------------
 
-Datasets can read and write in parallel to `custom datasources <package-ref.html#custom-datasource-api>`__ defined in Python.
+Datasets can read and write in parallel to :ref:`custom datasources <data_source_api>` defined in Python.
 Once you have implemented `YourCustomDataSource`, you can use it like any other source in Ray Data:
 
 .. code-block:: python
