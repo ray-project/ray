@@ -161,17 +161,22 @@ logger = logging.getLogger(__name__)
 
 
 class ObjectRefGenerator:
-    def __init__(self, refs):
+    def __init__(self, generator_ref, refs=None):
         # TODO(swang): As an optimization, can also store the generator
         # ObjectID so that we don't need to keep individual ref counts for the
         # inner ObjectRefs.
+        self._generator_ref = generator_ref
         self._refs = refs
 
     def __iter__(self):
+        if self._refs is None:
+            self._refs = ray.get(self._generator_ref)
         while self._refs:
             yield self._refs.pop(0)
 
     def __len__(self):
+        if self._refs is None:
+            self._refs = ray.get(self._generator_ref)
         return len(self._refs)
 
 
@@ -827,7 +832,7 @@ cdef execute_task(
                             caller_address.SerializeAsString(),
                         ))
                     # Swap out the generator for an ObjectRef generator.
-                    outputs = (ObjectRefGenerator(dynamic_refs), )
+                    outputs = (dynamic_refs, )
                 elif dynamic_returns != NULL:
                     assert not inspect.isgenerator(outputs)
                     raise ValueError(
