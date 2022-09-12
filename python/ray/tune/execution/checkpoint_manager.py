@@ -55,6 +55,11 @@ class _CheckpointManager(CommonCheckpointManager):
             checkpoint_score_order=MIN if checkpoint_score_desc else MAX,
         )
 
+        self.forced = {
+            CheckpointStorage.MEMORY: False,
+            CheckpointStorage.PERSISTENT: False
+        }
+
         super().__init__(checkpoint_strategy=checkpoint_strategy, delete_fn=delete_fn)
 
     def handle_checkpoint(self, checkpoint: _TrackedCheckpoint):
@@ -74,8 +79,7 @@ class _CheckpointManager(CommonCheckpointManager):
 
     def on_checkpoint(self, checkpoint: _TrackedCheckpoint, force: bool = False):
         """Ray Tune's entrypoint"""
-        if force:
-            checkpoint.set_forced_bit(True)
+        self.forced[checkpoint.storage_mode] = force
         # Todo (krfricke): Replace with handle_checkpoint.
         self.handle_checkpoint(checkpoint)
 
@@ -106,7 +110,7 @@ class _CheckpointManager(CommonCheckpointManager):
         # Always prefer forced checkpoints
         # If multiple are forced, take the one with the highest checkpoint id
         checkpoints.sort(key=lambda c: c.id)
-        checkpoints.sort(key=lambda c: c.forced)
+        checkpoints.sort(key=lambda c: self.forced[c.storage_mode])
         newest_checkpoint = checkpoints[-1]
         return newest_checkpoint
 
