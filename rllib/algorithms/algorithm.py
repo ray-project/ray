@@ -1,14 +1,18 @@
+from collections import defaultdict
 import concurrent
 import copy
+from datetime import datetime
 import functools
+import gym
+import importlib
 import logging
 import math
+import numpy as np
 import os
+from packaging import version
+import pkg_resources
 import tempfile
 import time
-import importlib
-from collections import defaultdict
-from datetime import datetime
 from typing import (
     Callable,
     Container,
@@ -22,12 +26,8 @@ from typing import (
     Union,
 )
 
-import gym
-import numpy as np
-import pkg_resources
-from packaging import version
-
 import ray
+from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
@@ -209,7 +209,36 @@ class Algorithm(Trainable):
     ]
 
     @staticmethod
-    def from_state(state: Dict):
+    def from_checkpoint(checkpoint: Union[str, Checkpoint]) -> "Algorithm":
+        """Creates a new algorithm instance from a given checkpoint.
+
+        Note: This method must remain backward compatible from 2.0.0 on.
+
+        Args:
+            checkpoint: The path (str) to the checkpoint directory to use
+                or an AIR Checkpoint instance to restore from.
+
+        Returns:
+            The instantiated Algorithm.
+        """
+        if isinstance(checkpoint, str):
+            checkpoint = Checkpoint.from_directory(checkpoint)
+
+        # Analyze version of checkpoint.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            checkpoint.to_directory(tmp_dir)
+            state_file = os.path.join(tmp_dir, "state.pkl")
+            if not os.path.isfile(state_file):
+                raise ValueError(
+                    "Given checkpoint does not seem to be valid! No file "
+                    "with the name `state.pkl` found."
+                )
+            state = pickle.load(open(os.path.join(tmp_dir, state_file), "rb"))
+
+        return Algorithm.from_state(state)
+
+    @staticmethod
+    def from_state(state: Dict) -> "Algorithm":
         """Recovers an Algorithm from a state object.
 
         The `state` of an instantiated Algorithm can be retrieved by calling its

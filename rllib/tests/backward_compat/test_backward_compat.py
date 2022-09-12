@@ -1,4 +1,14 @@
+import os
+from pathlib import Path
+import tempfile
 import unittest
+
+import ray.cloudpickle as pickle
+from ray.air.checkpoint import Checkpoint
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.utils.test_utils import framework_iterator
 
 
 class TestBackwardCompatibility(unittest.TestCase):
@@ -38,6 +48,37 @@ class TestBackwardCompatibility(unittest.TestCase):
         trainer.train()
         trainer.stop()
 
+    def test_old_checkpoint_formats(self):
+        """Tests, whether we remain backward compatible (from 2.0 on) wrt checkpoints.
+        """
+        for fw in framework_iterator():
+            for version in ["2.0.0"]:
+                path_to_checkpoint = os.path.join(
+                    str(Path.cwd()),
+                    "checkpoints",
+                    version,
+                    "ppo_frozenlake_" + fw,
+                )
+
+                # Old version: Need to create algo first, then call `restore()`.
+                if version == "2.0.0":
+                    checkpoint = Checkpoint.from_directory(path_to_checkpoint)
+                    # Analyze version of checkpoint.
+                    with tempfile.TemporaryDirectory() as tmp_dir:
+                        checkpoint.to_directory(tmp_dir)
+                        state_file = os.path.join(tmp_dir, "checkpoint-2")
+                        state = pickle.load(open(state_file, "rb"))
+                        local_worker_state = pickle.loads(state["worker"])
+                        config = local_worker_state["policy_config"]
+                        config["callbacks"] = DefaultCallbacks
+                    algo = PPO(config=config)
+                    algo.restore(path_to_checkpoint)
+                # New version: Simply use new Algorithm.from_checkpoint staticmethod.
+                else:
+                    algo = Algorithm.from_checkpoint(path_to_checkpoint)
+
+                print(algo.train())
+                algo.stop()
 
 if __name__ == "__main__":
     import pytest
