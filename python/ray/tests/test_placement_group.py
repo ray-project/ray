@@ -539,8 +539,9 @@ def test_placement_group_scheduling_warning(ray_start_regular_shared):
     # No warning when scheduling_strategy is specified.
     with warnings.catch_warnings(record=True) as w:
         Foo.options(
-            placement_group_bundle_index=0,
-            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_bundle_index=0
+            ),
         ).remote()
     assert not w
 
