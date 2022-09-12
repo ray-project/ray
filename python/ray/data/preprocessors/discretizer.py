@@ -108,12 +108,11 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
 
     Args:
         columns: The columns to discretize.
-        bins: Defines custom bin edges. Can be either an interable of numbers,
+        bins: Defines custom bin edges. Can be an iterable of numbers,
             a ``pd.IntervalIndex``, or a dict mapping columns to either of them.
             Note that ``pd.IntervalIndex`` for bins must be non-overlapping.
-        right: Indicates whether bins includes the rightmost edge or not.
-        include_lowest: Whether the first interval should be left-inclusive
-            or not.
+        right: Indicates whether bins include the rightmost edge.
+        include_lowest: Indicates whether the first interval should be left-inclusive.
         duplicates: Can be either 'raise' or 'drop'. If bin edges are not unique,
             raise ``ValueError`` or drop non-uniques.
         dtypes: An optional dictionary that maps columns to ``pd.CategoricalDtype``
