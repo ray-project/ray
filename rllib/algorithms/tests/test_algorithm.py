@@ -1,5 +1,4 @@
 import copy
-
 import gym
 import numpy as np
 import os
@@ -110,12 +109,24 @@ class TestAlgorithm(unittest.TestCase):
                     self.assertTrue(f"p{j}" in pol_map)
                 self.assertTrue(len(pol_map) == i + 1)
                 algo.train()
+                old_counters = algo._counters.copy()
                 checkpoint = algo.save()
 
                 # Test restoring from the checkpoint (which has more policies
                 # than what's defined in the config dict).
                 test = pg.PG(config=config)
                 test.restore(checkpoint)
+
+                # Make sure algorithm can continue training the restored policy.
+                pol0 = test.get_policy("p0")
+
+                new_counters = test._counters.copy()
+                self.assertEqual(old_counters, new_counters)
+
+                # Also make sure the existing policies (and the newly added one)
+                # have the correct global timesteps.
+                check(pol0.global_timestep, pol_map["p0"].global_timestep)
+                check(test.get_policy(pid).global_timestep, new_pol.global_timestep)
 
                 # Make sure evaluation worker also gets the restored policy.
                 def _has_policy(w):
@@ -125,8 +136,6 @@ class TestAlgorithm(unittest.TestCase):
                     all(test.evaluation_workers.foreach_worker(_has_policy))
                 )
 
-                # Make sure algorithm can continue training the restored policy.
-                pol0 = test.get_policy("p0")
                 test.train()
                 # Test creating an action with the added (and restored) policy.
                 a = test.compute_single_action(

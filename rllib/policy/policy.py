@@ -812,6 +812,10 @@ class Policy(metaclass=ABCMeta):
         """
         self.set_weights(state["weights"])
         self.restore_connectors(state)
+        if "global_timestep" in state:
+            self.on_global_var_update(
+                global_vars={"timestep": state["global_timestep"]}
+            )
 
     @ExperimentalAPI
     def apply(

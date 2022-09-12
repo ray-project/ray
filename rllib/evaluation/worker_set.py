@@ -225,7 +225,8 @@ class WorkerSet:
         if from_worker is not None and self.local_worker() is not None:
             self.local_worker().set_weights(weights, global_vars=global_vars)
         # If `global_vars` is provided and local worker exists  -> Update its
-        # global_vars.
+        # global_vars (global vars of the remote workers have already been
+        # updated above in this case).
         elif self.local_worker() is not None and global_vars is not None:
             self.local_worker().set_global_vars(global_vars)
 

@@ -2496,12 +2496,29 @@ class Algorithm(Trainable):
         ):
             state["local_replay_buffer"] = self.local_replay_buffer.get_state()
 
+        # Save state of our counters.
+        state["counters"] = self._counters.copy()
+
         if self.train_exec_impl is not None:
             state["train_exec_impl"] = self.train_exec_impl.shared_metrics.get().save()
 
         return state
 
     def __setstate__(self, state: dict):
+        # Restore counters.
+        global_vars = {}
+        if "counters" in state:
+            # Don't recreate `self._counters` (it's already a defaultdict),
+            # just set its values.
+            for key, value in state["counters"].items():
+                self._counters[key] = value
+
+            # Set global vars.
+            if hasattr(self, "workers"):
+                global_vars = {
+                    "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]
+                }
+
         if hasattr(self, "workers") and "worker" in state:
             self.workers.local_worker().restore(state["worker"])
             remote_state = ray.put(state["worker"])
@@ -2512,6 +2529,7 @@ class Algorithm(Trainable):
                 # there in case they are used for evaluation purpose.
                 for r in self.evaluation_workers.remote_workers():
                     r.restore.remote(remote_state)
+
         # If necessary, restore replay data as well.
         if self.local_replay_buffer is not None:
             # TODO: Experimental functionality: Restore contents of replay
