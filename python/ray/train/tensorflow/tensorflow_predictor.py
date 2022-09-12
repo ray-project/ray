@@ -192,7 +192,8 @@ class TensorflowPredictor(DLPredictor):
             ...     )
             >>>
             >>> weights = [np.array([[2.0]]), np.array([0.0])]
-            >>> predictor = TensorflowPredictor(model_definition=build_model, model_weights=weights)
+            >>> predictor = TensorflowPredictor(
+            ...     model_definition=build_model, model_weights=weights)
             >>>
             >>> data = np.asarray([1, 2, 3])
             >>> predictions = predictor.predict(data) # doctest: +SKIP
@@ -206,7 +207,8 @@ class TensorflowPredictor(DLPredictor):
             ...     input2 = tf.keras.layers.Input(shape=(1,), name="B")
             ...     merged = tf.keras.layers.Concatenate(axis=1)([input1, input2])
             ...     output = tf.keras.layers.Dense(2, input_dim=2)(merged)
-            ...     return tf.keras.models.Model(inputs=[input1, input2], outputs=output)
+            ...     return tf.keras.models.Model(
+            ...         inputs=[input1, input2], outputs=output)
             >>>
             >>> predictor = TensorflowPredictor(model_definition=build_model)
             >>>

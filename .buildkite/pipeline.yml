@@ -175,6 +175,7 @@
     - export LINT=1
     - echo "--- Setting up Python 3.7 environment."
     - PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - pip install datasets
     # Specifying PYTHON=3.7 above somehow messes up the Ray install.
     # Uninstall and re-install Ray so that we can use Ray Client
     # (remove thirdparty_files to sidestep an issue with psutil).
