@@ -1,4 +1,6 @@
 from collections import defaultdict
+import inspect
+import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
 import numpy as np
@@ -8,6 +10,7 @@ from ray import serve
 from ray._private.utils import import_attr
 from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
 from ray.serve._private.utils import require_packages
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -19,6 +22,8 @@ try:
     import pandas as pd
 except ImportError:
     pd = None
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def _load_checkpoint(
@@ -54,10 +59,10 @@ def _unpack_tensorarray_from_pandas(output_df: "pd.DataFrame") -> "pd.DataFrame"
     TensorArray to list to ensure output is json serializable as http
     response.
     """
-    from ray.data.extensions import TensorArray, TensorArrayElement
+    from ray.data.extensions import TensorDtype
 
-    for col in output_df:
-        if isinstance(output_df[col].values, (TensorArray, TensorArrayElement)):
+    for col in output_df.columns:
+        if isinstance(output_df.dtypes[col], TensorDtype):
             output_df[col] = output_df[col].to_numpy()
 
     return output_df
@@ -208,6 +213,20 @@ class PredictorWrapper(SimpleSchemaIngress):
     ):
         predictor_cls = _load_predictor_cls(predictor_cls)
         checkpoint = _load_checkpoint(checkpoint)
+
+        # Automatic set use_gpu in predictor constructor if user provided
+        # explicit GPU resources
+        if (
+            "use_gpu" in inspect.signature(predictor_cls.from_checkpoint).parameters
+            and "use_gpu" not in predictor_from_checkpoint_kwargs
+            and len(ray.get_gpu_ids()) > 0
+        ):
+            logger.info(
+                "GPU resources identified in `PredictorDeployment`. "
+                "Automatically enabling GPU prediction for this predictor. To "
+                "disable set `use_gpu` to `False` in `PredictorDeployment`."
+            )
+            predictor_from_checkpoint_kwargs["use_gpu"] = True
 
         self.model = predictor_cls.from_checkpoint(
             checkpoint, **predictor_from_checkpoint_kwargs

@@ -185,7 +185,7 @@ class ActorReuseMultiTest(unittest.TestCase):
             config={
                 "message": tune.grid_search(["First", "Second", "Third", "Fourth"]),
                 "id": -1,
-                "sleep": 1,
+                "sleep": 2,
             },
             reuse_actors=True,
         ).trials

@@ -51,11 +51,11 @@ class A3CConfig(AlgorithmConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "A3C",
         ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -172,8 +172,6 @@ class A3C(Algorithm):
             raise ValueError("`entropy_coeff` must be >= 0.0!")
         if config["num_workers"] <= 0 and config["sample_async"]:
             raise ValueError("`num_workers` for A3C must be >= 1!")
-        if "_fake_gpus" in config:
-            assert not config["_fake_gpus"], "A3C/A2C do not support fake_gpus"
 
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:

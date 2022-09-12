@@ -1,3 +1,4 @@
+import asyncio
 import pickle
 import time
 from dataclasses import dataclass, replace
@@ -6,18 +7,22 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from ray._private import ray_constants
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.packaging import parse_uri
 from ray.experimental.internal_kv import (
-    _internal_kv_get,
     _internal_kv_initialized,
-    _internal_kv_list,
-    _internal_kv_put,
 )
 
 # NOTE(edoakes): these constants should be considered a public API because
 # they're exposed in the snapshot API.
 JOB_ID_METADATA_KEY = "job_submission_id"
 JOB_NAME_METADATA_KEY = "job_name"
+JOB_ACTOR_NAME_TEMPLATE = (
+    f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_id}"
+)
+# In order to get information about SupervisorActors launched by different jobs,
+# they must be set to the same namespace.
+SUPERVISOR_ACTOR_RAY_NAMESPACE = "SUPERVISOR_ACTOR_RAY_NAMESPACE"
 
 
 class JobStatus(str, Enum):
@@ -97,19 +102,21 @@ class JobInfoStorageClient:
     JOB_DATA_KEY_PREFIX = f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_info_"
     JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}{{job_id}}"
 
-    def __init__(self):
+    def __init__(self, gcs_aio_client: GcsAioClient):
+        self._gcs_aio_client = gcs_aio_client
         assert _internal_kv_initialized()
 
-    def put_info(self, job_id: str, data: JobInfo):
-        _internal_kv_put(
-            self.JOB_DATA_KEY.format(job_id=job_id),
+    async def put_info(self, job_id: str, data: JobInfo):
+        await self._gcs_aio_client.internal_kv_put(
+            self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             pickle.dumps(data),
+            True,
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
 
-    def get_info(self, job_id: str) -> Optional[JobInfo]:
-        pickled_info = _internal_kv_get(
-            self.JOB_DATA_KEY.format(job_id=job_id),
+    async def get_info(self, job_id: str) -> Optional[JobInfo]:
+        pickled_info = await self._gcs_aio_client.internal_kv_get(
+            self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
         if pickled_info is None:
@@ -117,10 +124,12 @@ class JobInfoStorageClient:
         else:
             return pickle.loads(pickled_info)
 
-    def put_status(self, job_id: str, status: JobStatus, message: Optional[str] = None):
+    async def put_status(
+        self, job_id: str, status: JobStatus, message: Optional[str] = None
+    ):
         """Puts or updates job status.  Sets end_time if status is terminal."""
 
-        old_info = self.get_info(job_id)
+        old_info = await self.get_info(job_id)
 
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():
@@ -134,18 +143,18 @@ class JobInfoStorageClient:
         if status.is_terminal():
             new_info.end_time = int(time.time() * 1000)
 
-        self.put_info(job_id, new_info)
+        await self.put_info(job_id, new_info)
 
-    def get_status(self, job_id: str) -> Optional[JobStatus]:
-        job_info = self.get_info(job_id)
+    async def get_status(self, job_id: str) -> Optional[JobStatus]:
+        job_info = await self.get_info(job_id)
         if job_info is None:
             return None
         else:
             return job_info.status
 
-    def get_all_jobs(self) -> Dict[str, JobInfo]:
-        raw_job_ids_with_prefixes = _internal_kv_list(
-            self.JOB_DATA_KEY_PREFIX, namespace=ray_constants.KV_NAMESPACE_JOB
+    async def get_all_jobs(self) -> Dict[str, JobInfo]:
+        raw_job_ids_with_prefixes = await self._gcs_aio_client.internal_kv_keys(
+            self.JOB_DATA_KEY_PREFIX.encode(), namespace=ray_constants.KV_NAMESPACE_JOB
         )
         job_ids_with_prefixes = [
             job_id.decode() for job_id in raw_job_ids_with_prefixes
@@ -156,7 +165,17 @@ class JobInfoStorageClient:
                 self.JOB_DATA_KEY_PREFIX
             ), "Unexpected format for internal_kv key for Job submission"
             job_ids.append(job_id_with_prefix[len(self.JOB_DATA_KEY_PREFIX) :])
-        return {job_id: self.get_info(job_id) for job_id in job_ids}
+
+        async def get_job_info(job_id: str):
+            job_info = await self.get_info(job_id)
+            return job_id, job_info
+
+        return {
+            job_id: job_info
+            for job_id, job_info in await asyncio.gather(
+                *[get_job_info(job_id) for job_id in job_ids]
+            )
+        }
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:

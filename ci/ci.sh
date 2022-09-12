@@ -133,11 +133,14 @@ test_core() {
 }
 
 prepare_docker() {
+    rm "${WORKSPACE_DIR}"/python/dist/* ||:
     pushd "${WORKSPACE_DIR}/python"
+    pip install -e . --verbose
     python setup.py bdist_wheel
     tmp_dir="/tmp/prepare_docker_$RANDOM"
     mkdir -p $tmp_dir
     cp "${WORKSPACE_DIR}"/python/dist/*.whl $tmp_dir
+    wheel=$(ls "${WORKSPACE_DIR}"/python/dist/)
     base_image=$(python -c "import sys; print(f'rayproject/ray-deps:nightly-py{sys.version_info[0]}{sys.version_info[1]}-cpu')")
     echo "
     FROM $base_image
@@ -147,7 +150,7 @@ prepare_docker() {
     COPY ./*.whl /
     EXPOSE 8000
     EXPOSE 10001
-    RUN pip install ray[serve] --find-links=/ && pip install redis
+    RUN pip install /${wheel}[serve]
     RUN sudo apt update && sudo apt install curl -y
     " > $tmp_dir/Dockerfile
 
@@ -170,6 +173,9 @@ test_python() {
       -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
       -python/ray/serve:test_gcs_failure # Fork not supported in windows
       -python/ray/serve:test_standalone2 # Multinode not supported on Windows
+      -python/ray/serve:test_gradio
+      -python/ray/serve:test_gradio_visualization
+      -python/ray/serve:test_air_integrations_gpu
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -300,7 +306,7 @@ build_sphinx_docs() {
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
       make html
-      make doctest
+      RAY_MOCK_MODULES=0 make doctest
     fi
   )
 }
@@ -793,6 +799,8 @@ test_minimal() {
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/dashboard/test_dashboard
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_usage_stats
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_usage_stats
 }
 
 _main() {

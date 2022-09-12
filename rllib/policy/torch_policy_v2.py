@@ -75,6 +75,7 @@ class TorchPolicyV2(Policy):
         """
         self.framework = config["framework"] = "torch"
 
+        self._loss_initialized = False
         super().__init__(observation_space, action_space, config)
 
         # Create model.
@@ -195,6 +196,9 @@ class TorchPolicyV2(Policy):
 
         self.batch_divisibility_req = self.get_batch_divisibility_req()
         self.max_seq_len = max_seq_len
+
+    def loss_initialized(self):
+        return self._loss_initialized
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -936,7 +940,7 @@ class TorchPolicyV2(Policy):
         }
 
         if not os.path.exists(export_dir):
-            os.makedirs(export_dir)
+            os.makedirs(export_dir, exist_ok=True)
 
         seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
         if onnx:

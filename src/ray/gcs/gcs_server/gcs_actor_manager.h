@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #pragma once
+#include <gtest/gtest_prod.h>
 
 #include <utility>
 
@@ -164,8 +165,8 @@ class GcsActor {
 };
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
-using CreateActorCallback =
-    std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>;
+using CreateActorCallback = std::function<void(
+    std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply, bool creation_cancelled)>;
 
 /// GcsActorManager is responsible for managing the lifecycle of all actors.
 /// This class is not thread-safe.
@@ -273,9 +274,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Create actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.
-  /// \param callback Will be invoked after the actor is created successfully or be
-  /// invoked immediately if the actor is already registered to `registered_actors_` and
-  /// its state is `ALIVE`.
+  /// \param callback Will be invoked after the actor is created successfully or if the
+  /// actor creation is cancelled (e.g. due to the actor going out-of-scope or being
+  /// killed before actor creation has been completed), or will be invoked immediately if
+  /// the actor is already registered to `registered_actors_` and its state is `ALIVE`.
   /// \return Status::Invalid if this is a named actor and an actor with the specified
   /// name already exists. The callback will not be called in this case.
   Status CreateActor(const rpc::CreateActorRequest &request,
@@ -586,6 +588,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
+
+  FRIEND_TEST(GcsActorManagerTest, TestKillActorWhenActorIsCreating);
 };
 
 }  // namespace gcs

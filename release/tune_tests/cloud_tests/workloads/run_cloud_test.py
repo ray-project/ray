@@ -99,11 +99,11 @@ class TrialStub:
 
     @property
     def hostname(self):
-        return self.last_result["hostname"]
+        return self.last_result.get("hostname")
 
     @property
     def node_ip(self):
-        return self.last_result["node_ip"]
+        return self.last_result.get("node_ip")
 
     @property
     def dirname(self):

@@ -388,11 +388,8 @@ futures.
   ``Dataset`` backed by the distributed Pandas DataFrame partitions that underly the
   Dask DataFrame.
 
-  .. note::
-
-    This conversion should have near-zero overhead: it involves zero data copying and
-    zero data movement. Datasets simply reinterprets the existing Dask DataFrame partitions
-    as Ray Datasets partitions without touching the underlying data.
+  This conversion has near-zero overhead, since Datasets simply reinterprets existing
+  Dask-in-Ray partition objects as Dataset blocks.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
@@ -418,11 +415,8 @@ futures.
   Create a ``Dataset`` from a Modin DataFrame. This constructs a ``Dataset``
   backed by the distributed Pandas DataFrame partitions that underly the Modin DataFrame.
 
-  .. note::
-
-    This conversion should have near-zero overhead: it involves zero data copying and
-    zero data movement. Datasets simply reinterprets the existing Modin DataFrame partitions
-    as Ray Datasets partitions without touching the underlying data.
+  This conversion has near-zero overhead, since Datasets simply reinterprets existing
+  Modin partition objects as Dataset blocks.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
@@ -434,11 +428,8 @@ futures.
   Create a ``Dataset`` from a Mars DataFrame. This constructs a ``Dataset``
   backed by the distributed Pandas DataFrame partitions that underly the Mars DataFrame.
 
-  .. note::
-
-    This conversion should have near-zero overhead: it involves zero data copying and
-    zero data movement. Datasets simply reinterprets the existing Mars DataFrame partitions
-    as Ray Datasets partitions without touching the underlying data.
+  This conversion has near-zero overhead, since Datasets simply reinterprets existing
+  Mars partition objects as Dataset blocks.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
@@ -527,13 +518,26 @@ converts it into a Ray Dataset directly.
     ray_datasets["train"].take(2)
     # [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
 
+.. _datasets_from_images:
+
+-------------------------------
+From Image Files (experimental)
+-------------------------------
+
+Load image data stored as individual files using :py:class:`~ray.data.datasource.ImageFolderDatasource`:
+
+.. literalinclude:: ./doc_code/tensor.py
+    :language: python
+    :start-after: __create_images_begin__
+    :end-before: __create_images_end__
+
 .. _datasets_custom_datasource:
 
 ------------------
 Custom Datasources
 ------------------
 
-Datasets can read and write in parallel to `custom datasources <package-ref.html#custom-datasource-api>`__ defined in Python.
+Datasets can read and write in parallel to :ref:`custom datasources <data_source_api>` defined in Python.
 Once you have implemented `YourCustomDataSource`, you can use it like any other source in Ray Data:
 
 .. code-block:: python

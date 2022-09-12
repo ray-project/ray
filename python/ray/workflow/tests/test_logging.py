@@ -9,7 +9,7 @@ from ray import workflow
 
 ray.init(address='auto')
 
-@ray.remote(**workflow.options(name="f"))
+@ray.remote(**workflow.options(task_id="f"))
 def f():
     return 10
 
@@ -22,7 +22,7 @@ workflow.run(f.bind(), workflow_id="wid")
     # # in WorkflowManagementActor's run_or_resume.remote()
     # assert "run_or_resume: wid" in logs
     # assert "Workflow job [id=wid] started." in logs
-    # in _workflow_step_executor_remote
+    # in _workflow_task_executor_remote
     assert "Task status [RUNNING]\t[wid@f" in logs
     assert "Task status [SUCCESSFUL]\t[wid@f" in logs
 
@@ -34,11 +34,11 @@ from ray import workflow
 
 ray.init(address='auto')
 
-@ray.remote(**workflow.options(name="f1"))
+@ray.remote(**workflow.options(task_id="f1"))
 def f1():
     return 10
 
-@ray.remote(**workflow.options(name="f2"))
+@ray.remote(**workflow.options(task_id="f2"))
 def f2(x):
     return x+1
 
@@ -51,7 +51,7 @@ workflow.run(f2.bind(f1.bind()), workflow_id="wid1")
     # # in WorkflowManagementActor's run_or_resume.remote()
     # assert "run_or_resume: wid1" in logs
     # assert "Workflow job [id=wid1] started." in logs
-    # in _workflow_step_executor_remote
+    # in _workflow_task_executor_remote
     assert "Task status [RUNNING]\t[wid1@f1" in logs
     assert "Task status [SUCCESSFUL]\t[wid1@f1" in logs
     assert "Task status [RUNNING]\t[wid1@f2" in logs
@@ -65,11 +65,11 @@ from ray import workflow
 
 ray.init(address='auto')
 
-@ray.remote(**workflow.options(name="f3"))
+@ray.remote(**workflow.options(task_id="f3"))
 def f3(x):
     return x+1
 
-@ray.remote(**workflow.options(name="f4"))
+@ray.remote(**workflow.options(task_id="f4"))
 def f4(x):
     return f3.bind(x*2)
 
@@ -82,7 +82,7 @@ workflow.run(f4.bind(10), workflow_id="wid2")
     # # in WorkflowManagementActor's run_or_resume.remote()
     # assert "run_or_resume: wid2" in logs
     # assert "Workflow job [id=wid2] started." in logs
-    # in _workflow_step_executor_remote
+    # in _workflow_task_executor_remote
     assert "Task status [RUNNING]\t[wid2@f3" in logs
     assert "Task status [SUCCESSFUL]\t[wid2@f3" in logs
     assert "Task status [RUNNING]\t[wid2@f4" in logs

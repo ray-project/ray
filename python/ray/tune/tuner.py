@@ -28,7 +28,7 @@ _TUNER_INTERNAL = "_tuner_internal"
 _SELF = "self"
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class Tuner:
     """Tuner is the recommended way of launching hyperparameter tuning jobs with Ray Tune.
 
@@ -226,7 +226,8 @@ class Tuner:
         to resume.
 
         Raises:
-            RayTaskError when the exception happens in trainable else TuneError.
+            RayTaskError: If user-provided trainable raises an exception
+            TuneError: General Ray Tune error.
         """
 
         if not self._is_ray_client:

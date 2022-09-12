@@ -1,11 +1,12 @@
 import gym
-import pickle
+import ray.cloudpickle as pickle
 from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
@@ -138,9 +139,17 @@ def load_policies_from_checkpoint(
             continue
 
         merged_config = merge_dicts(policy_config, policy_spec.config or {})
+        # Similar to PolicyMap.create_policy(), we need to wrap a TF2 policy
+        # automatically into an eager traced policy class if necessary.
+        # Basically, PolicyMap handles this step automatically for training,
+        # and we handle it automatically here for inference use cases.
+        policy_class = get_tf_eager_cls_if_necessary(
+            policy_spec.policy_class, merged_config
+        )
+
         policy = create_policy_for_framework(
             id,
-            policy_spec.policy_class,
+            policy_class,
             merged_config,
             policy_spec.observation_space,
             policy_spec.action_space,
@@ -183,6 +192,11 @@ def local_policy_inference(
     assert (
         policy.agent_connectors
     ), "policy_inference only works with connector enabled policies."
+
+    # Put policy in inference mode, so we don't spend time on training
+    # only transformations.
+    policy.agent_connectors.is_training(False)
+    policy.action_connectors.is_training(False)
 
     # TODO(jungong) : support multiple env, multiple agent inference.
     input_dict = {SampleBatch.NEXT_OBS: obs}
@@ -240,6 +254,6 @@ def compute_log_likelihoods_from_input_dict(
         state_batches=[batch[k] for k in state_keys],
         prev_action_batch=batch.get(SampleBatch.PREV_ACTIONS),
         prev_reward_batch=batch.get(SampleBatch.PREV_REWARDS),
-        actions_normalized=policy.config["actions_in_input_normalized"],
+        actions_normalized=policy.config.get("actions_in_input_normalized", False),
     )
     return log_likelihoods

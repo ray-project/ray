@@ -19,6 +19,7 @@
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/common/id.h"
+#include "ray/common/memory_monitor.h"
 #include "ray/common/task/task.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
@@ -185,6 +186,21 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return string.
   std::string DebugString() const;
 
+  /// Returns workers sorted by the time of the last submitted task, in descending order.
+  ///
+  /// \return the list of sorted workers
+  const std::vector<std::shared_ptr<WorkerInterface>> WorkersWithLatestSubmittedTasks()
+      const;
+
+  /// Returns debug string of the workers.
+  ///
+  /// \param workers The workers to be printed.
+  /// \param num_workers The number of workers to print starting from the beginning of the
+  /// worker list. \return the debug string.
+  std::string WorkersDebugString(
+      const std::vector<std::shared_ptr<WorkerInterface>> workers,
+      int64_t num_workers) const;
+
   /// Record metrics.
   void RecordMetrics();
 
@@ -236,13 +252,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       bool include_task_info,
       int64_t limit,
       const std::function<void()> &on_all_replied);
-
-  /// Try to Get the information about the agent process.
-  ///
-  /// \param[out] agent_info The information of the agent process.
-  /// \return Status, if successful will return `ray::Status::OK`,
-  /// otherwise will return `ray::Status::Invalid`.
-  const ray::Status TryToGetAgentInfo(rpc::AgentInfo *agent_info) const;
 
  private:
   /// Methods for handling nodes.
@@ -372,8 +381,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Kill a worker.
   ///
   /// \param worker The worker to kill.
+  /// \param force true to kill immediately, false to give time for the worker to
+  /// clean up and exit gracefully.
   /// \return Void.
-  void KillWorker(std::shared_ptr<WorkerInterface> worker);
+  void KillWorker(std::shared_ptr<WorkerInterface> worker, bool force = false);
 
   /// Destroy a worker.
   /// We will disconnect the worker connection first and then kill the worker.
@@ -381,10 +392,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param worker The worker to destroy.
   /// \param disconnect_type The reason why this worker process is disconnected.
   /// \param disconnect_detail The detailed reason for a given exit.
+  /// \param force true to destroy immediately, false to give time for the worker to
+  /// clean up and exit gracefully.
   /// \return Void.
   void DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                      rpc::WorkerExitType disconnect_type,
-                     const std::string &disconnect_detail);
+                     const std::string &disconnect_detail,
+                     bool force = false);
 
   /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.
@@ -672,6 +686,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   bool TryLocalGC();
 
+  /// Creates the callback used in the memory monitor.
+  MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
+
   /// ID of this node.
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.
@@ -771,6 +788,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Throttler for global gc
   Throttler global_gc_throttler_;
 
+  /// Target being evicted or null if no target
+  std::shared_ptr<WorkerInterface> high_memory_eviction_target_;
+
   /// Seconds to initialize a local gc
   const uint64_t local_gc_interval_ns_;
 
@@ -828,6 +848,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// RaySyncerService for gRPC
   syncer::RaySyncerService ray_syncer_service_;
+
+  /// Monitors and reports node memory usage and whether it is above threshold.
+  std::unique_ptr<MemoryMonitor> memory_monitor_;
 };
 
 }  // namespace raylet

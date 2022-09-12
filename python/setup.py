@@ -4,6 +4,7 @@ import glob
 import io
 import logging
 import os
+import pathlib
 import re
 import shutil
 import subprocess
@@ -194,23 +195,33 @@ ray_files += [
     for filename in filenames
 ]
 
-# Files for ray.init html template.
+# html templates for notebook integration
 ray_files += [
-    "ray/widgets/templates/context_dashrow.html.j2",
-    "ray/widgets/templates/context.html.j2",
+    p.as_posix() for p in pathlib.Path("ray/widgets/templates/").glob("*.html.j2")
 ]
 
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
+    if sys.version_info >= (3, 7):
+        pandas_dep = "pandas >= 1.3"
+        numpy_dep = "numpy >= 1.20"
+    else:
+        # Pandas dropped python 3.6 support in 1.2.
+        pandas_dep = "pandas >= 1.0.5"
+        # Numpy dropped python 3.6 support in 1.20.
+        numpy_dep = "numpy >= 1.19"
     setup_spec.extras = {
         "data": [
-            "pandas",
+            numpy_dep,
+            pandas_dep,
             "pyarrow >= 6.0.1, < 7.0.0",
             "fsspec",
         ],
         "default": [
+            # If adding dependencies necessary to launch the dashboard api server,
+            # please add it to dashboard/optional_deps.py as well.
             "aiohttp >= 3.7",
             "aiohttp_cors",
             "colorful",
@@ -231,12 +242,6 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-exporter-otlp==1.1.0",
         ],
     }
-
-    if sys.version_info >= (3, 7):
-        # Numpy dropped python 3.6 support in 1.20.
-        setup_spec.extras["data"].append("numpy >= 1.20")
-    else:
-        setup_spec.extras["data"].append("numpy >= 1.19")
 
     # Ray Serve depends on the Ray dashboard components.
     setup_spec.extras["serve"] = list(
@@ -286,11 +291,13 @@ if setup_spec.type == SetupType.RAY:
         "click >= 7.0, <= 8.0.4",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "grpcio >= 1.28.1, <= 1.43.0",
+        "grpcio >= 1.32.0, <= 1.43.0; python_version < '3.10'",
+        "grpcio >= 1.42.0, <= 1.43.0; python_version >= '3.10'",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
+        "packaging; python_version >= '3.10'",
         "protobuf >= 3.15.3, < 4.0.0",
         "pyyaml",
         "aiosignal",
@@ -299,7 +306,7 @@ if setup_spec.type == SetupType.RAY:
         # Light weight requirement, can be replaced with "typing" once
         # we deprecate Python 3.7 (this will take a while).
         "typing_extensions; python_version < '3.8'",
-        "virtualenv",  # For pip runtime env.
+        "virtualenv>=20.0.24",  # For pip runtime env.
     ]
 
 

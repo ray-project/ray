@@ -1,5 +1,6 @@
 import os
 import shutil
+from distutils.version import LooseVersion
 from functools import partial
 from io import BytesIO
 from typing import Any, Dict, List, Union
@@ -11,6 +12,10 @@ import pyarrow.json as pajson
 import pyarrow.parquet as pq
 import pytest
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
+from ray.data.datasource.image_folder_datasource import (
+    IMAGE_EXTENSIONS,
+    _ImageFolderDatasourceReader,
+)
 import requests
 import snappy
 from fsspec.implementations.local import LocalFileSystem
@@ -36,13 +41,17 @@ from ray.data.datasource import (
     SimpleTorchDatasource,
     WriteResult,
 )
-from ray.data.datasource.file_based_datasource import _unwrap_protocol
+from ray.data.datasource.file_based_datasource import (
+    FileExtensionFilter,
+    _unwrap_protocol,
+)
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
     _ParquetDatasourceReader,
     _SerializedPiece,
     _deserialize_pieces_with_retry,
 )
+from ray.data.extensions import TensorDtype
 from ray.data.preprocessors import BatchMapper
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -1981,6 +1990,49 @@ def test_json_read_with_read_options(
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
+def test_json_read_with_parse_options(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+):
+    # Arrow's JSON ParseOptions isn't serializable in pyarrow < 8.0.0, so this test
+    # covers our custom ParseOptions serializer, similar to ReadOptions in above test.
+    # TODO(chengsu): Remove this test and our custom serializer once we require
+    # pyarrow >= 8.0.0.
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(data_path, "test1.json")
+    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    ds = ray.data.read_json(
+        path1,
+        filesystem=fs,
+        parse_options=pajson.ParseOptions(
+            explicit_schema=pa.schema([("two", pa.string())]),
+            unexpected_field_behavior="ignore",
+        ),
+    )
+    dsdf = ds.to_pandas()
+    assert len(dsdf.columns) == 1
+    assert (df1["two"]).equals(dsdf["two"])
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert ds.input_files() == [_unwrap_protocol(path1)]
+    assert "{two: string}" in str(ds), ds
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
 def test_json_read_partitioned_with_filter(
     ray_start_regular_shared,
     fs,
@@ -2825,22 +2877,102 @@ def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
 def test_image_folder_datasource(
     ray_start_regular_shared, enable_automatic_tensor_extension_cast
 ):
-    root = os.path.join(os.path.dirname(__file__), "image-folder")
-    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, size=(64, 64))
+    """Test basic `ImageFolderDatasource` functionality.
 
-    assert ds.size_bytes() >= 15000
-    assert ds.count() == 3
+    The folder "simple" contains two cat images and one dog images, all of which are
+    are 32x32 RGB images.
+    """
+    root = "example://image-folders/simple"
+    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root)
+
+    _, types = ds.schema()
+    image_type, label_type = types
+    if enable_automatic_tensor_extension_cast:
+        assert isinstance(image_type, TensorDtype)
+    else:
+        assert image_type == np.dtype("O")
+    assert label_type == np.dtype("O")
 
     df = ds.to_pandas()
     assert sorted(df["label"]) == ["cat", "cat", "dog"]
-    assert df["image"].dtype.type is np.object_
+
     tensors = df["image"]
-    assert all(tensor.shape == (64, 64, 3) for tensor in tensors)
+    assert all(tensor.shape == (32, 32, 3) for tensor in tensors)
+
+
+def test_image_folder_datasource_filtering(
+    ray_start_regular_shared, enable_automatic_tensor_extension_cast
+):
+    """Test `ImageFolderDatasource` correctly filters non-image files.
+
+    The folder "different-extensions" contains two cat images, one dog image, and two
+    non-images. All images are 32x32 RGB images.
+    """
+    root = "example://image-folders/different-extensions"
+    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root)
+
+    assert ds.count() == 3
+    assert sorted(ds.to_pandas()["label"]) == ["cat", "cat", "dog"]
+
+
+def test_image_folder_datasource_size_parameter(
+    ray_start_regular_shared, enable_automatic_tensor_extension_cast
+):
+    """Test `ImageFolderDatasource` size parameter works with differently-sized images.
+
+    The folder "different-sizes" contains two cat images and one dog image. Each image
+    has a different size, with the size described in file names (e.g., 32x32.png). All
+    images are RGB images.
+    """
+    root = "example://image-folders/different-sizes"
+    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, size=(32, 32))
+
+    tensors = ds.to_pandas()["image"]
+    assert all(tensor.shape == (32, 32, 3) for tensor in tensors)
+
+
+def test_image_folder_datasource_retains_shape_without_cast(
+    ray_start_regular_shared, enable_automatic_tensor_extension_cast
+):
+    """Test `ImageFolderDatasource` retains image shapes if casting is disabled.
+
+    The folder "different-sizes" contains two cat images and one dog image. The image
+    sizes are 16x16, 32x32, and 64x32. All images are RGB images.
+    """
+    if enable_automatic_tensor_extension_cast:
+        return
+
+    root = "example://image-folders/different-sizes"
+    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root)
+    arrays = ds.to_pandas()["image"]
+    shapes = sorted(array.shape for array in arrays)
+    assert shapes == [(16, 16, 3), (32, 32, 3), (64, 64, 3)]
+
+
+@pytest.mark.parametrize(
+    "mode, expected_shape", [("L", (32, 32)), ("RGB", (32, 32, 3))]
+)
+def test_image_folder_datasource_mode_parameter(
+    mode,
+    expected_shape,
+    ray_start_regular_shared,
+    enable_automatic_tensor_extension_cast,
+):
+    """Test `ImageFolderDatasource` works with images from different colorspaces.
+
+    The folder "different-modes" contains two cat images and one dog image. Their modes
+    are "CMYK", "L", and "RGB". All images are 32x32.
+    """
+    root = "example://image-folders/different-modes"
+    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, mode=mode)
+
+    tensors = ds.to_pandas()["image"]
+    assert all([tensor.shape == expected_shape for tensor in tensors])
 
 
 @pytest.mark.parametrize("size", [(-32, 32), (32, -32), (-32, -32)])
 def test_image_folder_datasource_value_error(ray_start_regular_shared, size):
-    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    root = "example://image-folders/simple"
     with pytest.raises(ValueError):
         ray.data.read_datasource(ImageFolderDatasource(), root=root, size=size)
 
@@ -2852,7 +2984,7 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
     from torchvision import transforms
     from torchvision.models import resnet18
 
-    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    root = "example://image-folders/simple"
     dataset = ray.data.read_datasource(
         ImageFolderDatasource(), root=root, size=(32, 32)
     )
@@ -2869,6 +3001,49 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
 
     predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
     predictor.predict(dataset, feature_columns=["image"])
+
+
+@pytest.mark.parametrize(
+    "image_size,image_mode,expected_size,expected_ratio",
+    [(64, "RGB", 30000, 4), (32, "L", 3500, 0.5), (256, "RGBA", 750000, 85)],
+)
+def test_image_folder_reader_estimate_data_size(
+    ray_start_regular_shared, image_size, image_mode, expected_size, expected_ratio
+):
+    root = "example://image-folders/different-sizes"
+    ds = ray.data.read_datasource(
+        ImageFolderDatasource(),
+        root=root,
+        size=(image_size, image_size),
+        mode=image_mode,
+    )
+
+    data_size = ds.size_bytes()
+    assert (
+        data_size >= expected_size and data_size <= expected_size * 1.5
+    ), "estimated data size is out of expected bound"
+    data_size = ds.fully_executed().size_bytes()
+    assert (
+        data_size >= expected_size and data_size <= expected_size * 1.5
+    ), "actual data size is out of expected bound"
+
+    reader = _ImageFolderDatasourceReader(
+        delegate=ImageFolderDatasource(),
+        paths=[root],
+        filesystem=LocalFileSystem(),
+        partition_filter=FileExtensionFilter(file_extensions=IMAGE_EXTENSIONS),
+        root=root,
+        size=(image_size, image_size),
+        mode=image_mode,
+    )
+    assert (
+        reader._encoding_ratio >= expected_ratio
+        and reader._encoding_ratio <= expected_ratio * 1.5
+    ), "encoding ratio is out of expected bound"
+    data_size = reader.estimate_inmemory_data_size()
+    assert (
+        data_size >= expected_size and data_size <= expected_size * 1.5
+    ), "estimated data size is out of expected bound"
 
 
 # NOTE: The last test using the shared ray_start_regular_shared cluster must use the
@@ -2906,7 +3081,7 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
             ),
         )
 
-    # Parsing scientific notation in double shoud work.
+    # Parsing scientific notation in double should work.
     ds = ray.data.read_csv(
         file_path,
         convert_options=csv.ConvertOptions(
@@ -2915,6 +3090,37 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
     )
     expected_df = pd.DataFrame({"one": [1.0, 2.0, 30.0], "two": ["a", "b", "c"]})
     assert ds.to_pandas().equals(expected_df)
+
+
+def test_csv_read_filter_no_file(shutdown_only, tmp_path):
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df)
+    path = os.path.join(str(tmp_path), "test.parquet")
+    pq.write_table(table, path)
+
+    error_message = "No input files found to read"
+    with pytest.raises(ValueError, match=error_message):
+        ray.data.read_csv(path)
+
+
+@pytest.mark.skipif(
+    LooseVersion(pa.__version__) < LooseVersion("7.0.0"),
+    reason="invalid_row_handler was added in pyarrow 7.0.0",
+)
+def test_csv_invalid_file_handler(shutdown_only, tmp_path):
+    from pyarrow import csv
+
+    invalid_txt = "f1,f2\n2,3\nx\n4,5"
+    invalid_file = os.path.join(tmp_path, "invalid.csv")
+    with open(invalid_file, "wt") as f:
+        f.write(invalid_txt)
+
+    ray.data.read_csv(
+        invalid_file,
+        parse_options=csv.ParseOptions(
+            delimiter=",", invalid_row_handler=lambda i: "skip"
+        ),
+    )
 
 
 class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
