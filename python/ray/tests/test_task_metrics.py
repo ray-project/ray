@@ -85,6 +85,7 @@ def test_actor_tasks_queued(shutdown_only):
     [a.g.remote() for _ in range(10)]
     [a.f.remote() for _ in range(1)]  # Further tasks should be blocked on this one.
     [a.g.remote() for _ in range(9)]
+    # TODO: add actor vs task type label and name label?
 
     expected = {
         "RUNNING": 1.0,
