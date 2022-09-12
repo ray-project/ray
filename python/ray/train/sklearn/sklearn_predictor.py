@@ -63,23 +63,9 @@ class SklearnPredictor(Predictor):
         self,
         data: DataBatchType,
         feature_columns: Optional[Union[List[str], List[int]]] = None,
-        dmatrix_kwargs: Optional[Dict[str, Any]] = None,
+        num_estimator_cpus: Optional[int] = None,
         **predict_kwargs,
         ) -> DataBatchType:
-
-        return Predictor.predict(
-            self, data,
-            feature_columns=feature_columns,
-            dmatrix_kwargs=dmatrix_kwargs,
-            **predict_kwargs)
-
-    def _predict_pandas(
-        self,
-        data: "pd.DataFrame",
-        feature_columns: Optional[Union[List[str], List[int]]] = None,
-        num_estimator_cpus: Optional[int] = 1,
-        **predict_kwargs,
-    ) -> "pd.DataFrame":
         """Run inference on data batch.
 
         Args:
@@ -96,13 +82,13 @@ class SklearnPredictor(Predictor):
         Examples:
             >>> import numpy as np
             >>> from sklearn.ensemble import RandomForestClassifier
-            >>> from ray.train.predictors.sklearn import SklearnPredictor
+            >>> from ray.train.sklearn import SklearnPredictor
             >>>
             >>> train_X = np.array([[1, 2], [3, 4]])
             >>> train_y = np.array([0, 1])
             >>>
             >>> model = RandomForestClassifier().fit(train_X, train_y)
-            >>> predictor = SklearnPredictor(model=model)
+            >>> predictor = SklearnPredictor(estimator=model)
             >>>
             >>> data = np.array([[1, 2], [3, 4]])
             >>> predictions = predictor.predict(data)
@@ -113,13 +99,13 @@ class SklearnPredictor(Predictor):
 
             >>> import pandas as pd
             >>> from sklearn.ensemble import RandomForestClassifier
-            >>> from ray.train.predictors.sklearn import SklearnPredictor
+            >>> from ray.train.sklearn import SklearnPredictor
             >>>
             >>> train_X = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
             >>> train_y = pd.Series([0, 1])
             >>>
             >>> model = RandomForestClassifier().fit(train_X, train_y)
-            >>> predictor = SklearnPredictor(model=model)
+            >>> predictor = SklearnPredictor(estimator=model)
             >>>
             >>> # Pandas dataframe.
             >>> data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
@@ -134,6 +120,20 @@ class SklearnPredictor(Predictor):
             Prediction result.
 
         """
+
+        return Predictor.predict(
+            self, data,
+            feature_columns=feature_columns,
+            num_estimator_cpus=num_estimator_cpus,
+            **predict_kwargs)
+
+    def _predict_pandas(
+        self,
+        data: "pd.DataFrame",
+        feature_columns: Optional[Union[List[str], List[int]]] = None,
+        num_estimator_cpus: Optional[int] = 1,
+        **predict_kwargs,
+    ) -> "pd.DataFrame":
         register_ray()
 
         if num_estimator_cpus:
