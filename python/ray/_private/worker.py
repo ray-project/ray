@@ -53,6 +53,7 @@ import ray._private.serialization as serialization
 import ray._private.services as services
 import ray._private.state
 import ray._private.storage as storage
+from ray._raylet import ObjectRefGenerator
 
 # Ray modules
 import ray.cloudpickle as pickle
@@ -2206,10 +2207,17 @@ def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
     ...
 
 
+@overload
+def get(
+    object_ref_generator: "ObjectRefGenerator", *, timeout: Optional[float] = None
+) -> Iterator[R]:
+    ...
+
+
 @PublicAPI
 @client_mode_hook(auto_init=True)
 def get(
-    object_refs: Union[ray.ObjectRef, Sequence[ray.ObjectRef]],
+    object_refs: Union[ray.ObjectRef, Sequence[ray.ObjectRef], ObjectRefGenerator],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
@@ -2263,11 +2271,21 @@ def get(
         if is_individual_id:
             object_refs = [object_refs]
 
-        if not isinstance(object_refs, list):
+        if not (
+            isinstance(object_refs, list) or isinstance(object_refs, ObjectRefGenerator)
+        ):
             raise ValueError(
-                "'object_refs' must either be an object ref "
-                "or a list of object refs."
+                "'object_refs' must either be an ObjectRef, "
+                "a list of ObjectRefs, or an ObjectRefGenerator."
             )
+
+        if isinstance(object_refs, ObjectRefGenerator):
+
+            def value_generator(object_refs, timeout):
+                for ref in object_refs:
+                    yield ray.get(ref, timeout=timeout)
+
+            return value_generator(object_refs, timeout)
 
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
         values, debugger_breakpoint = worker.get_objects(object_refs, timeout=timeout)
