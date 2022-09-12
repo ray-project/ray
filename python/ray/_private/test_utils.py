@@ -14,6 +14,7 @@ import tempfile
 import time
 import timeit
 import traceback
+from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from typing import Any, Dict, List, Optional
 
@@ -817,6 +818,14 @@ def fetch_prometheus(prom_addresses):
                     if "Component" in sample.labels:
                         components_dict[address].add(sample.labels["Component"])
     return components_dict, metric_names, metric_samples
+
+
+def fetch_prometheus_metrics(prom_addresses):
+    _, _, samples = fetch_prometheus(prom_addresses)
+    samples_by_name = defaultdict(list)
+    for sample in samples:
+        samples_by_name[sample.name].append(sample)
+    return samples_by_name
 
 
 def load_test_config(config_file_name):
