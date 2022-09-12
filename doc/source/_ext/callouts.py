@@ -12,6 +12,7 @@ BASE_NUM = 2459  # white circle, black numbers
 
 class CalloutIncludePostTransform(SphinxTransform):
     """Code block post-processor for `literalinclude` blocks used in callouts."""
+
     default_priority = 400
 
     def apply(self, **kwargs) -> None:
@@ -168,9 +169,8 @@ class AnnotationsDirective(SphinxDirective):
     def run(self):
         content = self.content
         content = _replace_numbers(content)
-        joined_content = "\n".join(content)
-        logging.warning(str(joined_content))
 
+        joined_content = "\n".join(content)
         annotations_node = callout(joined_content)
         _parse_recursively(self, annotations_node)
 
@@ -183,7 +183,7 @@ def setup(app):
         callout,
         html=(visit_callout_node, depart_callout_node),
         latex=(visit_callout_node, depart_callout_node),
-        text=(visit_callout_node, depart_callout_node)
+        text=(visit_callout_node, depart_callout_node),
     )
     app.add_node(annotations)
 
