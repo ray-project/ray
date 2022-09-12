@@ -1,7 +1,6 @@
 import inspect
 import os
 import composer.trainer
-from composer.core import DataSpec
 
 from ray.air import session
 from ray.train.constants import (
@@ -9,7 +8,7 @@ from ray.train.constants import (
     TRAIN_DATASET_KEY,
 )
 
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Iterable
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.mosaic._mosaic_utils import process_datasets
@@ -38,10 +37,12 @@ class MosaicTrainer(TorchTrainer):
     Args:
         trainer_init_per_worker: The function that returns an instantiated
             ``composer.Trainer`` object and takes in the following arguments:
-            train ``composer.core.DataSpec``, optional evaluation
-            ``composer.core.DataSpec`` and config as kwargs. The Composer DataSpecs
-            are automatically created by converting the Ray Datasets internally
-            before they are passed into the function.
+            train ``Iterable``, optional evaluation
+            ``Iterable`` and config as kwargs. The Composer Trainer should take in
+            these arguments as ``train_dataloader`` and ``eval_dataloader`` without
+            creating a new dataloader for each dataset. The Iterables are automatically
+            created by converting the Ray Datasets internally before they are passed
+            into the function.
         datasets: Any Ray Datasets to use for training. The datasets must be mapped to
             pandas DataFrame and the labels for each column should be provided. Use
             the key "train" to denote which dataset is the training
@@ -67,7 +68,7 @@ class MosaicTrainer(TorchTrainer):
     def __init__(
         self,
         trainer_init_per_worker: Callable[
-            [DataSpec, Optional[DataSpec], Any], composer.trainer.Trainer
+            [Iterable, Optional[Iterable], Any], composer.trainer.Trainer
         ],
         *,
         datasets: Dict[str, GenDataset],
@@ -130,12 +131,12 @@ def _mosaic_train_loop_per_worker(config):
     train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
     eval_dataset = session.get_dataset_shard(EVALUATION_DATASET_KEY)
 
-    train_torch_dataset, eval_torch_dataset = process_datasets(
+    train_torch_iterable, eval_torch_iterable = process_datasets(
         train_dataset, eval_dataset, config["batch_size"], config["labels"]
     )
 
     trainer: composer.trainer.Trainer = trainer_init_per_worker(
-        train_torch_dataset, eval_torch_dataset, **config
+        train_torch_iterable, eval_torch_iterable, **config
     )
 
     # TODO : add supports for logging
