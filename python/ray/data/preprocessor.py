@@ -233,6 +233,8 @@ class Preprocessor(abc.ABC):
         # TODO(matt): Expose `batch_size` or similar configurability.
         # The default may be too small for some datasets and too large for others.
 
+        # TODO(jiaodong): Numpy is not applicable yet unless we have a numpy
+        # dataset format
         dataset_format = dataset._dataset_format()
         if dataset_format not in ("pandas", "arrow", "numpy"):
             raise ValueError(

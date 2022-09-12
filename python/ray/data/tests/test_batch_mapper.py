@@ -7,6 +7,7 @@ from pandas.testing import assert_frame_equal
 import ray
 from ray.data.preprocessors import BatchMapper
 
+
 @pytest.fixture
 def test_ds():
     old_column = [1, 2, 3, 4]
@@ -16,6 +17,7 @@ def test_ds():
     )
     ds = ray.data.from_pandas(in_df)
     yield ds, old_column
+
 
 def test_batch_mapper_pandas(test_ds):
     """Tests batch mapper functionality."""
@@ -54,11 +56,8 @@ def test_batch_mapper_numpy(test_ds):
     transformed = ds.map_batches(add_and_modify_udf, batch_format="numpy")
     out_df_map_batches = transformed.to_pandas()
 
-    batch_mapper = BatchMapper(add_and_modify_udf)
-    batch_mapper.fit(ds)
-    transformed = batch_mapper.transform(ds)
-    out_df_batch_mapper = transformed.to_pandas()
-
+    # TODO(jiaodong): Numpy is not applicable yet unless we have a numpy
+    # dataset format
     expected_df = pd.DataFrame.from_dict(
         {
             "old_column": old_column,
@@ -68,7 +67,7 @@ def test_batch_mapper_numpy(test_ds):
     )
 
     assert_frame_equal(out_df_map_batches, expected_df)
-    assert_frame_equal(out_df_batch_mapper, expected_df)
+
 
 if __name__ == "__main__":
     import sys

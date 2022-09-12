@@ -56,6 +56,8 @@ class BatchMapper(Preprocessor):
     def _transform_numpy(
         self, np_data: Union[np.ndarray, Dict[str, np.ndarray]]
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+        # TODO(jiaodong): Numpy is not applicable yet unless we have a numpy
+        # dataset format
         return self.fn(np_data)
 
     def _transform_pandas(self, df: "pandas.DataFrame") -> "pandas.DataFrame":
