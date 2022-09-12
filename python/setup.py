@@ -422,7 +422,7 @@ def replace_symlinks_with_junctions():
         path = os.path.join(root_dir, link)
         try:
             out = subprocess.check_output(
-                "DIR /A:LD /B", shell=True, cwd=os.path.dirname(path)
+                "DIR /A:LD /B", shell=False, cwd=os.path.dirname(path)
             )
         except subprocess.CalledProcessError:
             out = b""
@@ -453,7 +453,7 @@ def replace_symlinks_with_junctions():
             logger.info("Setting {} -> {}".format(link, target))
             subprocess.check_call(
                 f'MKLINK /J "{os.path.basename(link)}" "{target}"',
-                shell=True,
+                shell=False,
                 cwd=os.path.dirname(path),
             )
 

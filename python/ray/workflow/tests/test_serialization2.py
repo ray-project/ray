@@ -98,7 +98,7 @@ def test_embedded_objectrefs(workflow_start_regular):
     # Shutting down the cluster should guarantee we don't accidently get the
     # old object and pass the test.
     ray.shutdown()
-    subprocess.check_output("ray stop --force", shell=True)
+    subprocess.check_output("ray stop --force", shell=False)
 
     ray.init(storage=_storage_uri)
     workflow.init()

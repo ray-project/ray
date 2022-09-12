@@ -572,7 +572,7 @@ class ReproSession:
             f"'docker exec -it ray_container bash -l'"
         )
 
-        subprocess.run(ssh_command, shell=True)
+        subprocess.run(ssh_command, shell=False)
 
 
 @click.command()

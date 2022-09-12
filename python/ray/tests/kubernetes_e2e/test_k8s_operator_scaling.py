@@ -58,7 +58,7 @@ def submit_scaling_job(num_actors):
 @retry_until_true
 def wait_for_operator():
     cmd = "kubectl get pods"
-    out = subprocess.check_output(cmd, shell=True).decode()
+    out = subprocess.check_output(cmd, shell=False).decode()
     for line in out.splitlines():
         if "ray-operator" in line and "Running" in line:
             return True
@@ -129,13 +129,13 @@ class KubernetesScaleTest(unittest.TestCase):
             # Must create CRD before operator.
             print("\n>>>Creating RayCluster CRD.")
             cmd = f"kubectl apply -f {get_crd_path()}"
-            subprocess.check_call(cmd, shell=True)
+            subprocess.check_call(cmd, shell=False)
             # Takes a bit of time for CRD to register.
             time.sleep(10)
 
             print(">>>Creating operator.")
             cmd = f"kubectl apply -f {operator_file.name}"
-            subprocess.check_call(cmd, shell=True)
+            subprocess.check_call(cmd, shell=False)
 
             print(">>>Waiting for Ray operator to enter running state.")
             wait_for_operator()
@@ -143,12 +143,12 @@ class KubernetesScaleTest(unittest.TestCase):
             # Start a 30-pod cluster.
             print(">>>Starting a cluster.")
             cd = f"kubectl -n {NAMESPACE} apply -f {example_cluster_file.name}"
-            subprocess.check_call(cd, shell=True)
+            subprocess.check_call(cd, shell=False)
 
             print(">>>Starting a cluster with same name in another namespace")
             # Assumes a namespace called {NAMESPACE}2 has been created.
             cd = f"kubectl -n {NAMESPACE}2 apply -f " f"{example_cluster_file2.name}"
-            subprocess.check_call(cd, shell=True)
+            subprocess.check_call(cd, shell=False)
 
             # Check that autoscaling respects minWorkers by waiting for
             # 32 pods in one namespace and 2 pods in the other.
@@ -164,7 +164,7 @@ class KubernetesScaleTest(unittest.TestCase):
             yaml.dump(example_cluster_edit, example_cluster_file)
             example_cluster_file.flush()
             cm = f"kubectl -n {NAMESPACE} apply -f {example_cluster_file.name}"
-            subprocess.check_call(cm, shell=True)
+            subprocess.check_call(cm, shell=False)
             print(">>>Sleeping for a minute while workers time-out.")
             time.sleep(60)
             print(">>>Verifying scale-down.")

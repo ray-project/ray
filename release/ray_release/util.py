@@ -126,7 +126,7 @@ def exponential_backoff_retry(
 
 
 def run_bash_script(bash_script: str) -> None:
-    subprocess.run(f"bash {bash_script}", shell=True, check=True)
+    subprocess.run(f"bash {bash_script}", shell=False, check=True)
 
 
 def reinstall_anyscale_dependencies() -> None:
@@ -134,7 +134,7 @@ def reinstall_anyscale_dependencies() -> None:
 
     subprocess.check_output(
         "pip install -U anyscale",
-        shell=True,
+        shell=False,
         text=True,
     )
 

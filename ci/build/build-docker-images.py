@@ -111,11 +111,11 @@ def _get_commit_sha():
 def _configure_human_version():
     global _get_branch
     global _get_commit_sha
-    fake_branch_name = input(
+    fake_branch_name = str(input(
         "Provide a 'branch name'. For releases, it " "should be `releases/x.x.x`"
-    )
+    ))
     _get_branch = lambda: fake_branch_name  # noqa: E731
-    fake_sha = input("Provide a SHA (used for tag value)")
+    fake_sha = str(input("Provide a SHA (used for tag value)"))
     _get_commit_sha = lambda: fake_sha  # noqa: E731
 
 

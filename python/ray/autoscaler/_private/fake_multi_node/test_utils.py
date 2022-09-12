@@ -217,7 +217,7 @@ class DockerCluster:
         if self._docker_image:
             try:
                 images_str = subprocess.check_output(
-                    f"docker image inspect {self._docker_image}", shell=True
+                    f"docker image inspect {self._docker_image}", shell=False
                 )
                 images = json.loads(images_str)
             except Exception as e:
@@ -227,7 +227,7 @@ class DockerCluster:
             if not images:
                 try:
                     subprocess.check_output(
-                        f"docker pull {self._docker_image}", shell=True
+                        f"docker pull {self._docker_image}", shell=False
                     )
                 except Exception as e:
                     logger.error(f"Error pulling image {self._docker_image}: {e}")
@@ -279,7 +279,7 @@ class DockerCluster:
         self._start_monitor()
 
         subprocess.check_output(
-            f"RAY_FAKE_CLUSTER=1 ray up -y {self.config_file}", shell=True
+            f"RAY_FAKE_CLUSTER=1 ray up -y {self.config_file}", shell=False
         )
 
     def stop(self):
@@ -291,7 +291,7 @@ class DockerCluster:
             ray.shutdown()
 
         subprocess.check_output(
-            f"RAY_FAKE_CLUSTER=1 ray down -y {self.config_file}", shell=True
+            f"RAY_FAKE_CLUSTER=1 ray down -y {self.config_file}", shell=False
         )
 
         self._stop_monitor()
@@ -367,7 +367,7 @@ class DockerCluster:
         """
         node_id = self._get_node(node_id=node_id, num=num, rand=rand)
         container = self._get_docker_container(node_id=node_id)
-        subprocess.check_output(f"docker kill {container}", shell=True)
+        subprocess.check_output(f"docker kill {container}", shell=False)
 
 
 class RemoteAPI:

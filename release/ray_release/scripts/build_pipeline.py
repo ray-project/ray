@@ -47,7 +47,7 @@ def main(test_collection_file: Optional[str] = None):
 
         clone_cmd = f"git clone --depth 1 --branch {branch} {repo} {tmpdir}"
         try:
-            subprocess.check_output(clone_cmd, shell=True)
+            subprocess.check_output(clone_cmd, shell=False)
         except Exception as e:
             raise ReleaseTestCLIError(
                 f"Could not clone test repository " f"{repo} (branch {branch}): {e}"

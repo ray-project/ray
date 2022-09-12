@@ -18,7 +18,7 @@ def start_service(service_name, host, port):
     args = [moto_svr_path, service_name, "-H", host, "-p", str(port)]
     process = sp.Popen(
         args, stdin=sp.PIPE, stdout=sp.DEVNULL, stderr=sp.DEVNULL
-    )  # shell=True
+    )  # shell=False
     url = "http://{host}:{port}".format(host=host, port=port)
 
     for i in range(0, 30):

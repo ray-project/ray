@@ -16,7 +16,7 @@ def leaked_processes():
         "ps aux | grep '{}' | grep -v grep || true".format(
             EnvWithSubprocess.UNIQUE_CMD
         ),
-        shell=True,
+        shell=False,
     )
     return result
 

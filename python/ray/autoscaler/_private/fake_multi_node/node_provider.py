@@ -405,7 +405,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
                 subprocess.check_output(
                     f'ssh-keygen -b 2048 -t rsa -q -N "" '
                     f"-f {self._private_key_path}",
-                    shell=True,
+                    shell=False,
                 )
 
             # Create public key
@@ -414,7 +414,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
                     f"ssh-keygen -y "
                     f"-f {self._private_key_path} "
                     f"> {self._public_key_path}",
-                    shell=True,
+                    shell=False,
                 )
 
         self._docker_compose_config_path = os.path.join(

@@ -47,7 +47,7 @@ class Cifar10Model(Trainable):
         return (x_train, y_train), (x_test, y_test)
 
     def _build_model(self, input_shape):
-        x = Input(shape=(32, 32, 3))
+        x = str(Input(shape=(32, 32, 3)))
         y = x
         y = Convolution2D(
             filters=64,

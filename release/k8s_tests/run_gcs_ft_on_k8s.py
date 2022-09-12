@@ -122,7 +122,7 @@ print(requests.get('http://localhost:8000/?val=123').text)
         try:
             resp = (
                 subprocess.check_output(
-                    f'kubectl exec {head_pod_name} -- python -c "{cmd}"', shell=True
+                    f'kubectl exec {head_pod_name} -- python -c "{cmd}"', shell=False
                 )
                 .decode()
                 .strip()
@@ -223,7 +223,7 @@ def dump_pods_actors(pod_name):
     print(
         subprocess.run(
             f"kubectl exec {pod_name} -- ps -ef | grep ::",
-            shell=True,
+            shell=False,
             capture_output=True,
         ).stdout.decode()
     )

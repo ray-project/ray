@@ -32,7 +32,7 @@ def helm(namespace, command, release, **options):
     final_cmd = " ".join(cmd)
     try:
         subprocess.check_output(
-            final_cmd, shell=True, stderr=subprocess.STDOUT
+            final_cmd, shell=False, stderr=subprocess.STDOUT
         ).decode()
     except subprocess.CalledProcessError as e:
         assert False, "returncode: {}, stdout: {}".format(e.returncode, e.stdout)
@@ -41,7 +41,7 @@ def helm(namespace, command, release, **options):
 def delete_rayclusters(namespace):
     cmd = f"kubectl -n {namespace} delete rayclusters --all"
     try:
-        subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode()
+        subprocess.check_output(cmd, shell=False, stderr=subprocess.STDOUT).decode()
     except subprocess.CalledProcessError as e:
         assert False, "returncode: {}, stdout: {}".format(e.returncode, e.stdout)
 

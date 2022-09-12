@@ -99,7 +99,7 @@ print("Current namespace:", ray.get_runtime_context().namespace)
         run_string_as_driver(run_in_namespace)
 
     assert "Current namespace: namespace" in script_output
-    subprocess.check_output("ray stop --force", shell=True)
+    subprocess.check_output("ray stop --force", shell=False)
 
 
 def test_connect_to_cluster(ray_start_regular_shared):
@@ -114,7 +114,7 @@ def test_connect_to_cluster(ray_start_regular_shared):
         assert client_context.protocol_version == protocol_version
 
     server.stop(0)
-    subprocess.check_output("ray stop --force", shell=True)
+    subprocess.check_output("ray stop --force", shell=False)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
@@ -174,11 +174,11 @@ while True:
     p3.kill()
     p4.kill()
     # Prevent flakiness since fatesharing takes some time.
-    subprocess.check_output("ray stop --force", shell=True)
+    subprocess.check_output("ray stop --force", shell=False)
 
     # Since there's a cluster started with `ray start --head`
     # we should connect to it instead.
-    subprocess.check_output("ray start --head", shell=True)
+    subprocess.check_output("ray start --head", shell=False)
     # The assertion in the driver should cause the script to fail if we start
     # a new cluster instead of connecting.
     run_string_as_driver(
@@ -196,7 +196,7 @@ assert len(ray._private.services.find_gcs_addresses()) == 1
         retry_interval_ms=1000,
     )
     p1.kill()
-    subprocess.check_output("ray stop --force", shell=True)
+    subprocess.check_output("ray stop --force", shell=False)
 
 
 def test_non_existent_modules():
@@ -238,7 +238,7 @@ def test_module_lacks_client_builder():
 @pytest.mark.skipif(sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
 def test_disconnect(call_ray_stop_only, set_enable_auto_connect):
     subprocess.check_output(
-        "ray start --head --ray-client-server-port=25555", shell=True
+        "ray start --head --ray-client-server-port=25555", shell=False
     )
     with ray.client("localhost:25555").namespace("n1").connect():
         # Connect via Ray Client
@@ -273,7 +273,7 @@ def test_disconnect(call_ray_stop_only, set_enable_auto_connect):
 @pytest.mark.skipif(sys.platform == "win32", reason="RC Proxy is Flaky on Windows.")
 def test_address_resolution(call_ray_stop_only):
     subprocess.check_output(
-        "ray start --head --ray-client-server-port=50055", shell=True
+        "ray start --head --ray-client-server-port=50055", shell=False
     )
 
     with ray.client("localhost:50055").connect():
@@ -416,7 +416,7 @@ def test_client_deprecation_warn():
 
     # cleanup
     server.stop(0)
-    subprocess.check_output("ray stop --force", shell=True)
+    subprocess.check_output("ray stop --force", shell=False)
 
 
 if __name__ == "__main__":

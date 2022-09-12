@@ -273,7 +273,7 @@ if not MOCK:
                 source=local_dir,
                 target=remote_dir,
             )
-            subprocess.check_call(cmd_str, shell=True)
+            subprocess.check_call(cmd_str, shell=False)
             return True
 
         def sync_down(
@@ -283,14 +283,14 @@ if not MOCK:
                 source=remote_dir,
                 target=local_dir,
             )
-            subprocess.check_call(cmd_str, shell=True)
+            subprocess.check_call(cmd_str, shell=False)
             return True
 
         def delete(self, remote_dir: str) -> bool:
             cmd_str = self.delete_template.format(
                 target=remote_dir,
             )
-            subprocess.check_call(cmd_str, shell=True)
+            subprocess.check_call(cmd_str, shell=False)
             return True
 
         def retry(self):

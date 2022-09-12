@@ -152,7 +152,7 @@ Alternatively, a function can be provided with the following signature:
         sync_cmd = "rsync {source} {target}".format(
             source=source,
             target=target)
-        sync_process = subprocess.Popen(sync_cmd, shell=True)
+        sync_process = subprocess.Popen(sync_cmd, shell=False)
         sync_process.wait()
 
     tuner = tune.Tuner(

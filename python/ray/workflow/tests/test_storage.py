@@ -59,7 +59,7 @@ def test_delete_2(workflow_start_regular):
 
     # Restart
     ray.shutdown()
-    subprocess.check_output("ray stop --force", shell=True)
+    subprocess.check_output("ray stop --force", shell=False)
     ray.init(storage=_storage_uri)
     workflow.init()
 

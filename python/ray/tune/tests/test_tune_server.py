@@ -141,7 +141,7 @@ class TuneServerSuite(unittest.TestCase):
             'curl "http://{}:{}/trials"'.format(
                 client.server_address, client.server_port
             ),
-            shell=True,
+            shell=False,
         )
         self.assertNotEqual(stdout, None)
         curl_trials = json.loads(stdout.decode())["trials"]

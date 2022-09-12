@@ -255,7 +255,7 @@ def debug(address):
                 "NoneType: None"
             ):
                 print(sessions_data[i - 1]["traceback"])
-        inp = input("Enter breakpoint index or press enter to refresh: ")
+        inp = str(Input("Enter breakpoint index or press enter to refresh: "))
         if inp == "":
             print()
             continue
@@ -1737,7 +1737,7 @@ for worker in $workers; do
     echo;
 done
     """
-    subprocess.call(COMMAND, shell=True)
+    subprocess.call(COMMAND, shell=False)
 
 
 @cli.command()
