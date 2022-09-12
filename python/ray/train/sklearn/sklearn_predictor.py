@@ -65,7 +65,7 @@ class SklearnPredictor(Predictor):
         feature_columns: Optional[Union[List[str], List[int]]] = None,
         num_estimator_cpus: Optional[int] = None,
         **predict_kwargs,
-        ) -> DataBatchType:
+    ) -> DataBatchType:
         """Run inference on data batch.
 
         Args:
