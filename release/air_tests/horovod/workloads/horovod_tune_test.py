@@ -4,7 +4,7 @@ import numpy as np
 import torchvision
 from ray.air import RunConfig, session
 from ray.train.horovod import HorovodTrainer
-from ray.air.config import ScalingConfig
+from ray.air.config import ScalingConfig, FailureConfig, CheckpointConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 from torch.utils.data import DataLoader
@@ -163,9 +163,10 @@ if __name__ == "__main__":
         ),
         run_config=RunConfig(
             stop={"training_iteration": 1} if args.smoke_test else None,
+            failure_config=FailureConfig(fail_fast=False),
+            checkpoint_config=CheckpointConfig(num_to_keep=1),
             callbacks=[ProgressCallback()],
         ),
-        _tuner_kwargs={"fail_fast": False, "keep_checkpoints_num": 1},
     )
 
     result_grid = tuner.fit()
