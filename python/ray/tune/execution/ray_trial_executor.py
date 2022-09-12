@@ -85,12 +85,14 @@ class _LocalWrapper:
         return self._result
 
 
-def _post_stop_cleanup(future, pg):
+def _post_stop_cleanup(future, actor, pg):
     """Things to be done after a trial is stopped."""
+    assert isinstance(actor, ray.actor.ActorHandle)
     assert isinstance(pg, PlacementGroup)
     try:
         # This should not be blocking as
         # we are only here when triggered.
+        ray.kill(actor)
         ray.get(future, timeout=0)
     except GetTimeoutError:
         if log_once("tune_trial_cleanup_timeout"):
@@ -129,7 +131,8 @@ class _TrialCleanup:
             len(self._future_to_insert_time) > 0
             and self._future_to_insert_time[0][1] + self._force_cleanup < time.time()
         ):
-            return self._future_to_insert_time.popleft()
+            future, _time = self._future_to_insert_time.popleft()
+            return future
         else:
             return None
 
@@ -204,7 +207,7 @@ class RayTrialExecutor:
         # future --> (type, trial/pg)
         self._futures = {}
 
-        force_trial_cleanup = int(os.environ.get("TUNE_FORCE_TRIAL_CLEANUP_S", "0"))
+        force_trial_cleanup = int(os.environ.get("TUNE_FORCE_TRIAL_CLEANUP_S", "600"))
         self._get_next_event_wait = int(
             os.environ.get("TUNE_GET_EXECUTOR_EVENT_WAIT_S", "5")
         )
@@ -534,7 +537,10 @@ class RayTrialExecutor:
                         future = trial.runner.stop.remote()
 
                     pg = self._pg_manager.remove_from_in_use(trial)
-                    self._futures[future] = (_ExecutorEventType.STOP_RESULT, pg)
+                    self._futures[future] = (
+                        _ExecutorEventType.STOP_RESULT,
+                        (trial.runner, pg),
+                    )
                     if self._trial_cleanup:  # force trial cleanup within a deadline
                         self._trial_cleanup.add(future)
 
@@ -592,12 +598,12 @@ class RayTrialExecutor:
         exc: Optional[Union[TuneError, RayTaskError]] = None,
     ) -> None:
         prior_status = trial.status
-        self._stop_trial(trial, error=error or exc, exc=exc)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             out = self._find_future(trial)
             for result_id in out:
                 self._futures.pop(result_id)
+        self._stop_trial(trial, error=error or exc, exc=exc)
 
     def continue_training(self, trial: Trial) -> None:
         """Continues the training of this trial."""
@@ -713,9 +719,9 @@ class RayTrialExecutor:
                 next_future_to_clean = self._trial_cleanup.get_next()
                 if not next_future_to_clean:
                     break
-                if next_future_to_clean in self._futures.keys():
-                    _, pg = self._futures.pop(next_future_to_clean)
-                    _post_stop_cleanup(next_future_to_clean, pg)
+                if next_future_to_clean in self._futures:
+                    _, (actor, pg) = self._futures.pop(next_future_to_clean)
+                    _post_stop_cleanup(next_future_to_clean, actor, pg)
                 else:
                     # This just means that before the deadline reaches,
                     # the future is already cleaned up.
@@ -845,7 +851,8 @@ class RayTrialExecutor:
                 continue
             event_type, trial_or_pg = self._futures.pop(ready[0])
             if event_type == _ExecutorEventType.STOP_RESULT:
-                _post_stop_cleanup(ready[0], trial_or_pg)
+                actor, pg = trial_or_pg
+                _post_stop_cleanup(ready[0], actor, pg)
 
         self._pg_manager.reconcile_placement_groups(trials)
         self._pg_manager.cleanup(force=True)
@@ -987,8 +994,8 @@ class RayTrialExecutor:
             ###################################################################
             result_type, trial_or_pg = self._futures.pop(ready_future)
             if result_type == _ExecutorEventType.STOP_RESULT:
-                pg = trial_or_pg
-                _post_stop_cleanup(ready_future, pg)
+                actor, pg = trial_or_pg
+                _post_stop_cleanup(ready_future, actor, pg)
             else:
                 trial = trial_or_pg
                 assert isinstance(trial, Trial)

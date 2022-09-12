@@ -15,6 +15,7 @@ from ray.tune.execution.ray_trial_executor import (
     _ExecutorEvent,
     _ExecutorEventType,
     RayTrialExecutor,
+    _TrialCleanup,
 )
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS, register_trainable
 from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
@@ -27,6 +28,23 @@ from ray.tune.execution.placement_groups import (
     _PlacementGroupManager,
 )
 from unittest.mock import patch
+
+
+class _HangingTrainable(tune.Trainable):
+    def setup(self, config):
+        pass
+
+    def save_checkpoint(self, checkpoint_dir: str):
+        return None
+
+    def load_checkpoint(self, checkpoint):
+        pass
+
+    def step(self):
+        return {"metric": 4}
+
+    def stop(self):
+        time.sleep(20)
 
 
 class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
@@ -210,6 +228,49 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("asdf", resources=Resources(1, 0))
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.ERROR, trial.status)
+
+    def testTrialHangingCleanup(self):
+        register_trainable("hanging", _HangingTrainable)
+        trial = Trial("hanging")
+
+        self.trial_executor._trial_cleanup = _TrialCleanup(1)
+        self.trial_executor._get_next_event_wait = 30
+
+        # Schedule trial PG
+        ev = self.trial_executor.get_next_executor_event(
+            [trial], next_trial_exists=True
+        )
+        assert ev.type == _ExecutorEventType.PG_READY
+
+        # Start trial
+        self.trial_executor.start_trial(trial)
+
+        # Kick off future
+        self.trial_executor.continue_training(trial)
+
+        # Wait for result
+        ev = self.trial_executor.get_next_executor_event(
+            [trial], next_trial_exists=True
+        )
+        assert ev.type == _ExecutorEventType.TRAINING_RESULT
+
+        # Kick of new training future to have something in-flight
+        self.trial_executor.get_next_executor_event([trial], next_trial_exists=True)
+
+        # Stop trial (time it)
+        start_time = time.time()
+        self.trial_executor.stop_trial(trial)
+        self.trial_executor.on_step_end([trial])
+        time.sleep(2)
+        self.trial_executor.on_step_end([trial])
+        ev = self.trial_executor.get_next_executor_event(
+            [trial], next_trial_exists=True
+        )
+        assert ev.type == _ExecutorEventType.NO_RUNNING_TRIAL_TIMEOUT
+        end_time = time.time() - start_time
+
+        # Should not wait until end of hang
+        assert 0 < end_time < 10
 
     def testPauseResume2(self):
         """Tests that pausing works for trials being processed."""
