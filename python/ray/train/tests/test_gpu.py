@@ -456,9 +456,8 @@ def test_horovod_torch_mnist_gpu_checkpoint(ray_start_4_cpus_2_gpus):
         checkpointing_func,
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
     )
-    results = trainer.fit()
-    result = results.metrics
-    assert result[TRAINING_ITERATION] == num_workers
+    result = trainer.fit()
+    assert not result.error
 
 
 def test_tune_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
