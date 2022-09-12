@@ -122,10 +122,12 @@ class SklearnPredictor(Predictor):
         """
 
         return Predictor.predict(
-            self, data,
+            self,
+            data,
             feature_columns=feature_columns,
             num_estimator_cpus=num_estimator_cpus,
-            **predict_kwargs)
+            **predict_kwargs,
+        )
 
     def _predict_pandas(
         self,

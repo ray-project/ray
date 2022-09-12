@@ -120,10 +120,12 @@ class XGBoostPredictor(Predictor):
 
         """
         return Predictor.predict(
-            self, data,
+            self,
+            data,
             feature_columns=feature_columns,
             dmatrix_kwargs=dmatrix_kwargs,
-            **predict_kwargs)
+            **predict_kwargs,
+        )
 
     def _predict_pandas(
         self,
