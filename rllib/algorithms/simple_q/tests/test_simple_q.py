@@ -15,6 +15,11 @@ from ray.rllib.utils.test_utils import (
     check_train_results,
     framework_iterator,
 )
+from ray.rllib.utils.metrics.learner_info import (
+    LEARNER_INFO,
+    LEARNER_STATS_KEY,
+    DEFAULT_POLICY_ID,
+)
 
 tf1, tf, tfv = try_import_tf()
 
@@ -144,6 +149,51 @@ class TestSimpleQ(unittest.TestCase):
                     policy, policy.model, None, input_
                 )
             check(out, expected_loss, decimals=1)
+
+    def test_simple_q_lr_schedule(self):
+        """Test PG with learning rate schedule."""
+        config = simple_q.SimpleQConfig()
+        config.reporting(
+            min_sample_timesteps_per_iteration=10,
+            # Make sure that results contain info on default policy
+            min_train_timesteps_per_iteration=10,
+            # 0 metrics reporting delay, this makes sure timestep,
+            # which lr depends on, is updated after each worker rollout.
+            min_time_s_per_iteration=0,
+        )
+        config.rollouts(
+            num_rollout_workers=1,
+            rollout_fragment_length=50,
+        )
+        config.training(lr=0.2, lr_schedule=[[0, 0.2], [500, 0.001]])
+
+        def _step_n_times(algo, n: int):
+            """Step trainer n times.
+
+            Returns:
+                learning rate at the end of the execution.
+            """
+            for _ in range(n):
+                results = algo.train()
+            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
+                "learning_rate"
+            ]
+
+        algo = config.build(env="CartPole-v0")
+
+        lr = _step_n_times(algo, 1)  # 50 timesteps
+        # Close to 0.2
+        self.assertGreaterEqual(lr, 0.15)
+
+        lr = _step_n_times(algo, 8)  # Close to 500 timesteps
+        # LR Annealed to 0.001
+        self.assertLessEqual(float(lr), 0.5)
+
+        lr = _step_n_times(algo, 2)  # > 500 timesteps
+        # LR == 0.001
+        self.assertAlmostEqual(lr, 0.001)
+
+        algo.stop()
 
 
 if __name__ == "__main__":
