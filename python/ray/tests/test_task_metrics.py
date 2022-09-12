@@ -45,9 +45,76 @@ def test_task_basic(shutdown_only):
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000)
 
 
-# TODO(ekl) test wait on deps
-# TODO(ekl) test actor tasks waiting for execution (queued vs running)
-# TODO(ekl) test finished with success / error
+def test_task_wait_on_deps(shutdown_only):
+    info = ray.init(num_cpus=2)
+
+    @ray.remote
+    def f():
+        time.sleep(999)
+
+    @ray.remote
+    def g(x):
+        time.sleep(999)
+
+    x = f.remote()
+    refs = [g.remote(x) for _ in range(10)]
+
+    expected = {
+        "RUNNING": 1.0,
+        "WAITING_FOR_EXECUTION": 0.0,
+        "SCHEDULED": 0.0,
+        "WAITING_FOR_DEPENDENCIES": 10.0,
+    }
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000)
+
+
+def test_actor_tasks_queued(shutdown_only):
+    info = ray.init(num_cpus=2)
+
+    @ray.remote
+    class F:
+        def f(self):
+            time.sleep(999)
+
+    a = F.remote()
+    refs = [a.f.remote() for _ in range(10)]
+
+    expected = {
+        "RUNNING": 1.0,
+        "WAITING_FOR_EXECUTION": 9.0,
+        "SCHEDULED": 0.0,
+        "WAITING_FOR_DEPENDENCIES": 0.0,
+        "FINISHED": 1.0,
+    }
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000)
+
+
+def test_task_finish(shutdown_only):
+    info = ray.init(num_cpus=2)
+
+    @ray.remote
+    def f():
+        return "ok"
+
+    @ray.remote
+    def g():
+        assert False
+
+    refs = (f.remote(), g.remote())
+
+    expected = {
+        "RUNNING": 0.0,
+        "WAITING_FOR_EXECUTION": 0.0,
+        "SCHEDULED": 0.0,
+        "WAITING_FOR_DEPENDENCIES": 0.0,
+        "FINISHED": 2.0,
+    }
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000)
+
+
 # TODO(ekl) test wait on object store transfer (??)
 
 
