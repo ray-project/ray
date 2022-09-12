@@ -866,7 +866,7 @@ class Policy(metaclass=ABCMeta):
         return self._total_global_timestep_at_init + self.global_timestep
 
     @DeveloperAPI
-    @property.setter
+    @total_global_timestep.setter
     def total_global_timestep(self, value):
         raise ValueError(
             "Total global timestep is defined as sum("
