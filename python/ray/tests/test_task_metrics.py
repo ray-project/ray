@@ -45,6 +45,12 @@ def test_task_basic(shutdown_only):
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000)
 
 
+# TODO(ekl) test wait on deps
+# TODO(ekl) test actor tasks waiting for execution (queued vs running)
+# TODO(ekl) test finished with success / error
+# TODO(ekl) test wait on object store transfer (??)
+
+
 if __name__ == "__main__":
     import sys
 
