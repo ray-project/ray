@@ -113,7 +113,8 @@ class LightGBMPredictor(Predictor):
 
         """
         return Predictor.predict(
-            self, data, feature_columns=feature_columns, **predict_kwargs)
+            self, data, feature_columns=feature_columns, **predict_kwargs
+        )
 
     def _predict_pandas(
         self,
