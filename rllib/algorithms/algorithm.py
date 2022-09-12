@@ -260,7 +260,9 @@ class Algorithm(Trainable):
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             logdir_prefix = "{}_{}_{}".format(str(self), env_descr, timestr)
             if not os.path.exists(DEFAULT_RESULTS_DIR):
-                os.makedirs(DEFAULT_RESULTS_DIR)
+                # Possible race condition if dir is created several times on
+                # rollout workers
+                os.makedirs(DEFAULT_RESULTS_DIR, exist_ok=True)
             logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
 
             # Allow users to more precisely configure the created logger
@@ -758,6 +760,8 @@ class Algorithm(Trainable):
                 ],
             )
 
+        self.callbacks.on_evaluate_start(algorithm=self)
+
         if self.config["custom_eval_function"]:
             logger.info(
                 "Running custom eval function {}".format(
@@ -941,6 +945,10 @@ class Algorithm(Trainable):
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
 
+        self.callbacks.on_evaluate_end(
+            algorithm=self, evaluation_metrics=self.evaluation_metrics
+        )
+
         # Also return the results here for convenience.
         return self.evaluation_metrics
 
@@ -951,8 +959,13 @@ class Algorithm(Trainable):
     ) -> dict:
         """Evaluates current policy under `evaluation_config` settings.
 
-        Note that this default implementation does not do anything beyond
-        merging evaluation_config with the normal trainer config.
+        Uses the AsyncParallelRequests manager to send frequent `sample.remote()`
+        requests to the evaluation RolloutWorkers and collect the results of these
+        calls. Handles worker failures (or slowdowns) gracefully due to the asynch'ness
+        and the fact that other eval RolloutWorkers can thus cover the workload.
+
+        Important Note: This will replace the current `self.evaluate()` method as the
+        default in the future.
 
         Args:
             duration_fn: An optional callable taking the already run

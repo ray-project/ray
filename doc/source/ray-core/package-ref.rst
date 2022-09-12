@@ -99,6 +99,8 @@ ray.method
 
 .. autofunction:: ray.method
 
+.. _ray-actor-pool-ref:
+
 ray.util.ActorPool
 ~~~~~~~~~~~~~~~~~~
 
