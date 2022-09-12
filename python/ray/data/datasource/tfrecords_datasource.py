@@ -10,7 +10,7 @@ from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
 
-class TFRecordsDatasource(FileBasedDatasource):
+class TFRecordDatasource(FileBasedDatasource):
 
     _FILE_EXTENSION = "tfrecords"
 

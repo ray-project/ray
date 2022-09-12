@@ -3299,7 +3299,7 @@ def test_read_tf_records(ray_start_regular_shared, tmp_path):
     with tf.io.TFRecordWriter(path=path) as writer:
         writer.write(example.SerializeToString())
 
-    ds = ray.data.read_tf_records(path)
+    ds = ray.data.read_tfrecords(path)
 
     df = ds.to_pandas()
     assert list(df.columns) == [

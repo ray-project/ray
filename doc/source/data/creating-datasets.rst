@@ -178,7 +178,7 @@ Supported File Formats
 
   See the API docs for :func:`read_binary_files() <ray.data.read_binary_files>`.
 
-.. tabbed:: TFRecord
+.. tabbed:: TFRecords
 
   TODO
 

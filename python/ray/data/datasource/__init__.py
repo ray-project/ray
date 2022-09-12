@@ -36,7 +36,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionParser,
     Partitioning,
 )
-from ray.data.datasource.tfrecords_datasource import TFRecordsDatasource
+from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data.datasource.tensorflow_datasource import SimpleTensorFlowDatasource
 from ray.data.datasource.torch_datasource import SimpleTorchDatasource
 

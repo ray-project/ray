@@ -36,7 +36,7 @@ from ray.data.datasource import (
     PathPartitionFilter,
     RangeDatasource,
     ReadTask,
-    TFRecordsDatasource,
+    TFRecordDatasource,
 )
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
@@ -740,7 +740,7 @@ def read_numpy(
 
 
 @PublicAPI(stability="alpha")
-def read_tf_records(
+def read_tfrecords(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
@@ -773,7 +773,7 @@ def read_tf_records(
         A :class:`~ray.data.Dataset` that contains the example features.
     """
     return read_datasource(
-        TFRecordsDatasource(),
+        TFRecordDatasource(),
         parallelism=parallelism,
         paths=paths,
         filesystem=filesystem,
