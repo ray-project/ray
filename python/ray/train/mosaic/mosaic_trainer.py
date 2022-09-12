@@ -40,9 +40,10 @@ class MosaicTrainer(TorchTrainer):
             train ``Iterable``, optional evaluation
             ``Iterable`` and config as kwargs. The Composer Trainer should take in
             these arguments as ``train_dataloader`` and ``eval_dataloader`` without
-            creating a new dataloader for each dataset. The Iterables are automatically
-            created by converting the Ray Datasets internally before they are passed
-            into the function.
+            creating a new dataloader for each dataset. The Iterable yields batches
+            of size defined in the ``trainer_init_config``. The Iterables are
+            automatically created by converting the Ray Datasets internally before
+            they are passed into the function.
         datasets: Any Ray Datasets to use for training. The datasets must be mapped to
             pandas DataFrame and the labels for each column should be provided. Use
             the key "train" to denote which dataset is the training
@@ -53,7 +54,9 @@ class MosaicTrainer(TorchTrainer):
             it will be fit on the training dataset. All datasets will be
             transformed by the ``preprocessor`` if one is provided.
         trainer_init_config: Configurations to pass into
-            ``trainer_init_per_worker`` as kwargs.
+            ``trainer_init_per_worker`` as kwargs. It must contain
+            ``labels`` and ``batch_size`` information, as these are needed when
+            converting Ray Datasets into Iterables.
         torch_config: Configuration for setting up the PyTorch backend. If set to
             None, use the default configuration. This replaces the ``backend_config``
             arg of ``DataParallelTrainer``. Same as in ``TorchTrainer``.
