@@ -12,6 +12,7 @@ value per iteration. Ray supports remote generators for two use cases:
 2. When the number of return values is set dynamically by the remote function
    instead of by the caller.
 
+Remote generators can be used in both actor and non-actor tasks.
 
 `num_returns` set by the task caller
 ------------------------------------
@@ -19,6 +20,7 @@ value per iteration. Ray supports remote generators for two use cases:
 Where possible, the caller should set the remote function's number of return values using ``@ray.remote(num_returns=x)`` or ``foo.options(num_returns=x).remote()``.
 Ray will return this many ``ObjectRefs`` to the caller.
 The remote task should then return the same number of values, usually as a tuple or list.
+Compared to setting the number of return values dynamically, this adds less complexity to user code and less performance overhead, as Ray will know exactly how many ``ObjectRefs`` to return to the caller ahead of time.
 
 Without changing the caller's syntax, we can also use a remote generator function to return the values iteratively.
 The generator should return the same number of return values specified by the caller, and these will be stored one at a time in Ray's object store.
