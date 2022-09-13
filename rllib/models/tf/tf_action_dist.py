@@ -64,7 +64,9 @@ class Categorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def logp(self, x: TensorType) -> TensorType:
-        logp = tf.math.log(tf.nn.softmax(self.inputs))
+        probs = tf.nn.softmax(self.inputs)
+        probs = tf.clip_by_value(probs, tf.keras.backend.epsilon(), 1.0)
+        logp = tf.math.log(probs)
         return tf.gather(logp, x, batch_dims=1)
 
     @override(ActionDistribution)
@@ -76,12 +78,16 @@ class Categorical(TFActionDistribution):
     @override(ActionDistribution)
     def kl(self, other: ActionDistribution) -> TensorType:
         probs = tf.nn.softmax(self.inputs)
+        probs = tf.clip_by_value(probs, tf.keras.backend.epsilon(), 1.0)
         probsOther = tf.nn.softmax(other.inputs)
+        probsOther = tf.clip_by_value(probsOther, tf.keras.backend.epsilon(), 1.0)
         return tf.keras.losses.kl_divergence(probs, probsOther)
 
     @override(TFActionDistribution)
     def _build_sample_op(self) -> TensorType:
-        logp = tf.math.log(tf.nn.softmax(self.inputs))
+        probs = tf.nn.softmax(self.inputs)
+        probs = tf.clip_by_value(probs, tf.keras.backend.epsilon(), 1.0)
+        logp = tf.math.log(probs)
         return tf.squeeze(tf.random.categorical(logp, 1), axis=1)
 
     @staticmethod
