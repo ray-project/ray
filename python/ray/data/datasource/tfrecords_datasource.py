@@ -1,6 +1,6 @@
-from multiprocessing.sharedctypes import Value
 import tempfile
 from typing import Dict, List, Union
+import warnings
 
 import os
 import pandas as pd
@@ -36,7 +36,7 @@ class TFRecordDatasource(FileBasedDatasource):
                 try:
                     example.ParseFromString(record.numpy())
                 except DecodeError:
-                    raise ValueError(
+                    warnings.warn(
                         "`TFRecordDatasource` failed to parse `tf.train.Example` "
                         f"record in '{path}'. This error can occur if your TFRecord "
                         "file contains a message type other than `tf.train.Example`."
@@ -47,7 +47,9 @@ class TFRecordDatasource(FileBasedDatasource):
             return pd.DataFrame.from_records(data)
 
 
-def _convert_example_to_dict(example: tf.train.Example) -> pd.DataFrame:
+def _convert_example_to_dict(
+    example: tf.train.Example,
+) -> Dict[str, Union[bytes, List[bytes], float, List[float], int, List[int]]]:
     record = {}
     for feature_name, feature in example.features.feature.items():
         value = _get_feature_value(feature)

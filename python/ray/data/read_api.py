@@ -752,8 +752,8 @@ def read_tfrecords(
     """Create a dataset from TFRecord files that contain ``tf.train.Example`` messages.
 
     .. warning::
-        This function exclusively supports ``tf.train.Example`` messages. If your
-        TFRecord files contain messages of other types, this function will error.
+        This function exclusively supports ``tf.train.Example`` messages. Messages that
+        aren't of type ``tf.train.Example`` are skipped.
 
     Examples:
         >>> import os
@@ -797,7 +797,7 @@ def read_tfrecords(
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
-    """
+    """  # noqa: E501
     return read_datasource(
         TFRecordDatasource(),
         parallelism=parallelism,

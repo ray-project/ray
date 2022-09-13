@@ -3297,7 +3297,7 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
     example = tf.train.Example(features=features)
     path = os.path.join(tmp_path, "data.tfrecords")
     with tf.io.TFRecordWriter(path=path) as writer:
-        writer.write(features.SerializeToString())
+        writer.write(example.SerializeToString())
 
     ds = ray.data.read_tfrecords(path)
 
