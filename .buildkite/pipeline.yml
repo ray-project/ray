@@ -181,7 +181,6 @@
     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
     - pushd /ray && git clean -f -f -x -d -e .whl -e python/ray/dashboard/client && popd
     - bazel clean --expunge
-    - pip install datasets==2.0.0
     - ./ci/ci.sh build
 
 - label: ":book: LinkCheck"
