@@ -32,6 +32,7 @@ from ray.data.extensions.tensor_extension import (
 from ray.data.row import TableRow
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def maybe_pipeline(ds, enabled):
@@ -141,7 +142,9 @@ def test_avoid_placement_group_capture(shutdown_only, pipelined):
     pg = ray.util.placement_group([{"CPU": 1}])
     ray.get(
         run.options(
-            placement_group=pg, placement_group_capture_child_tasks=True
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_capture_child_tasks=True
+            )
         ).remote()
     )
 
