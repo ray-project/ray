@@ -113,7 +113,7 @@ def test_predict(batch_type):
 @pytest.mark.parametrize("use_state_dict", [True, False])
 def test_predict_batch(ray_start_4_cpus, batch_type, use_state_dict):
     if use_state_dict:
-        checkpoint = TorchCheckpoint.from_dict({MODEL_KEY: {}})
+        checkpoint = TorchCheckpoint.from_state_dict({})
         # Notice here that predictor needs to take in additional information
         # of "model".
         predictor = BatchPredictor.from_checkpoint(
