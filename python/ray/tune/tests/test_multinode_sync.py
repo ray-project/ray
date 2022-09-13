@@ -10,7 +10,7 @@ from ray import tune
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster
 from ray.tune.callback import Callback
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 
 
 @ray.remote

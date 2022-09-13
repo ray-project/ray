@@ -2,7 +2,12 @@ import logging
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
-from ray.air import Checkpoint
+from ray.air import Checkpoint, CheckpointConfig
+from ray.air._internal.checkpoint_manager import CheckpointStorage
+from ray.air._internal.checkpoint_manager import (
+    _CheckpointManager as CommonCheckpointManager,
+)
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.train._internal.session import TrainingResult
 from ray.train._internal.utils import construct_path
 from ray.train.constants import (
@@ -11,11 +16,6 @@ from ray.train.constants import (
     TUNE_CHECKPOINT_ID,
     TUNE_INSTALLED,
 )
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, CheckpointStrategy
-from ray.util.ml_utils.checkpoint_manager import (
-    _CheckpointManager as CommonCheckpointManager,
-)
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -67,7 +67,7 @@ class CheckpointManager(CommonCheckpointManager):
     def __init__(
         self,
         run_dir: Optional[Path] = None,
-        checkpoint_strategy: Optional[CheckpointStrategy] = None,
+        checkpoint_strategy: Optional[CheckpointConfig] = None,
     ):
         self.run_dir = run_dir
 
@@ -116,7 +116,7 @@ class CheckpointManager(CommonCheckpointManager):
                 f"checkpoint_score_attribute: "
                 f"{score_attr}. "
                 f"Include this attribute in the call to "
-                f"train.save_checkpoint."
+                f"`session.report()`."
             )
 
         tracked_checkpoint = _TrackedCheckpoint(
@@ -136,11 +136,11 @@ class CheckpointManager(CommonCheckpointManager):
 
     def on_start_training(
         self,
-        checkpoint_strategy: Optional[CheckpointStrategy],
+        checkpoint_strategy: Optional[CheckpointConfig],
         run_dir: Path,
         latest_checkpoint_id: Optional[int] = 0,
     ):
-        checkpoint_strategy = checkpoint_strategy or CheckpointStrategy()
+        checkpoint_strategy = checkpoint_strategy or CheckpointConfig()
         self._checkpoint_strategy = checkpoint_strategy
 
         self._validate_checkpoint_strategy()
@@ -208,14 +208,14 @@ class TuneCheckpointManager(CheckpointManager):
         if isinstance(loaded_checkpoint, Checkpoint):
             # The new logic
             checkpoint_dict = loaded_checkpoint.to_dict()
-            self._latest_checkpoint_id = checkpoint_dict[TUNE_CHECKPOINT_ID]
+            self._latest_checkpoint_id = checkpoint_dict.get(TUNE_CHECKPOINT_ID, 0)
             return loaded_checkpoint
         # legacy path...
         if loaded_checkpoint is not None:
             # If the Tune trial is restarted, a new Trainer is instantiated.
             # However, we want the checkpoint_id to continue incrementing
             # from the previous run.
-            self._latest_checkpoint_id = loaded_checkpoint[TUNE_CHECKPOINT_ID]
+            self._latest_checkpoint_id = loaded_checkpoint.get(TUNE_CHECKPOINT_ID, 0)
         return loaded_checkpoint
 
     def add_tune_checkpoint_id(self, checkpoint: Dict):

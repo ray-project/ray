@@ -7,6 +7,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
 from ray.train.constants import PREPROCESSOR_KEY
 from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.config import ScalingConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -19,7 +20,7 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-scale_config = {"num_workers": 2}
+scale_config = ScalingConfig(num_workers=2)
 
 
 def test_fit_train(ray_start_4_cpus):
@@ -39,7 +40,7 @@ def test_scaling_config(ray_start_4_cpus):
 
     assert ray.available_resources()["CPU"] == 4
     trainer = DataParallelTrainer(
-        train_loop_per_worker=train_func, scaling_config={"num_workers": 2}
+        train_loop_per_worker=train_func, scaling_config=ScalingConfig(num_workers=2)
     )
     trainer.fit()
 
@@ -66,7 +67,7 @@ def test_datasets(ray_start_4_cpus):
     def get_dataset():
         # Train dataset should be sharded.
         train_dataset = session.get_dataset_shard("train")
-        assert train_dataset.count() == num_train_data / scale_config["num_workers"]
+        assert train_dataset.count() == num_train_data / scale_config.num_workers
         # All other datasets should not be sharded.
         val_dataset = session.get_dataset_shard("val")
         assert val_dataset.count() == num_val_data
@@ -148,6 +149,26 @@ def test_invalid_train_loop(ray_start_4_cpus):
 
     with pytest.raises(ValueError):
         DataParallelTrainer(train_loop_per_worker=train_loop)
+
+
+def test_bad_return_in_train_loop(ray_start_4_cpus):
+    """Test to check if returns from train loop are discarded."""
+
+    # Simulates what happens with eg. torch models
+    class FailOnUnpickle:
+        def __reduce__(self):
+            raise RuntimeError("Failing")
+
+    def train_loop(config):
+        session.report({"loss": 1})
+        return FailOnUnpickle()
+
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=train_loop, scaling_config=scale_config
+    )
+
+    # No exception should happen here
+    trainer.fit()
 
 
 def test_tune(ray_start_4_cpus):

@@ -19,7 +19,7 @@ DELETE_PATH = "/api/serve/deployments/"
 class ServeSubmissionClient(SubmissionClient):
     def __init__(
         self,
-        dashboard_address: str,
+        dashboard_agent_address: str,
         create_cluster_if_needed=False,
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
@@ -31,17 +31,18 @@ class ServeSubmissionClient(SubmissionClient):
                 "installation: `pip install 'ray[default']``"
             )
         super().__init__(
-            address=dashboard_address,
+            address=dashboard_agent_address,
             create_cluster_if_needed=create_cluster_if_needed,
             cookies=cookies,
             metadata=metadata,
             headers=headers,
         )
-        self._check_connection_and_version(
+        self._check_connection_and_version_with_url(
             min_version="1.12",
             version_error_message="Serve CLI is not supported on the Ray "
             "cluster. Please ensure the cluster is "
             "running Ray 1.12 or higher.",
+            url="/api/ray/version",
         )
 
     def deploy_application(self, config: Dict) -> None:

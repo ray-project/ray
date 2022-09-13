@@ -1,14 +1,17 @@
 import asyncio
 import errno
+import ipaddress
+import logging
 import os
 import sys
-import logging
-import ipaddress
 
-from distutils.version import LooseVersion
+try:
+    from packaging.version import Version
+except ImportError:
+    from distutils.version import LooseVersion as Version
 
-import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
+import ray.dashboard.utils as dashboard_utils
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
@@ -71,7 +74,7 @@ class HttpServerDashboardHead:
 
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
-        if LooseVersion(aiohttp.__version__) < LooseVersion("4.0.0"):
+        if Version(aiohttp.__version__) < Version("4.0.0"):
             self.http_session = aiohttp.ClientSession(loop=asyncio.get_event_loop())
         else:
             self.http_session = aiohttp.ClientSession()
@@ -105,7 +108,12 @@ class HttpServerDashboardHead:
         app = aiohttp.web.Application(client_max_size=100 * 1024 ** 2)
         app.add_routes(routes=routes.bound_routes())
 
-        self.runner = aiohttp.web.AppRunner(app)
+        self.runner = aiohttp.web.AppRunner(
+            app,
+            access_log_format=(
+                "%a %t '%r' %s %b bytes %D us " "'%{Referer}i' '%{User-Agent}i'"
+            ),
+        )
         await self.runner.setup()
         last_ex = None
         for i in range(1 + self.http_port_retries):

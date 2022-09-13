@@ -6,8 +6,8 @@ import time
 import traceback
 from collections import defaultdict
 from dataclasses import dataclass
-from enum import Enum
 from typing import Callable, Dict, List, Set, Tuple
+from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
 
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules.runtime_env.runtime_env_consts as runtime_env_consts
@@ -19,11 +19,13 @@ from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.java_jars import JavaJarsPlugin
 from ray._private.runtime_env.pip import PipPlugin
-from ray._private.runtime_env.plugin import PluginCacheManager
+from ray._private.runtime_env.plugin import (
+    RuntimeEnvPlugin,
+    create_for_plugin_if_needed,
+)
+from ray._private.runtime_env.plugin import RuntimeEnvPluginManager
 from ray._private.runtime_env.py_modules import PyModulesPlugin
-from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
-from ray._private.utils import import_attr
 from ray.core.generated import (
     agent_manager_pb2,
     runtime_env_agent_pb2,
@@ -31,10 +33,6 @@ from ray.core.generated import (
 )
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as ProtoRuntimeEnvState,
-)
-from ray.experimental.internal_kv import (
-    _initialize_internal_kv,
-    _internal_kv_initialized,
 )
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
@@ -56,12 +54,8 @@ class CreatedEnvResult:
     creation_time_ms: int
 
 
-class UriType(Enum):
-    WORKING_DIR = "working_dir"
-    PY_MODULES = "py_modules"
-    PIP = "pip"
-    CONDA = "conda"
-    JAVA_JARS = "java_jars"
+# e.g., "working_dir"
+UriType = str
 
 
 class ReferenceTable:
@@ -183,40 +177,34 @@ class RuntimeEnvAgent(
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
-        _initialize_internal_kv(self._dashboard_agent.gcs_client)
-        assert _internal_kv_initialized()
+        self._gcs_aio_client = self._dashboard_agent.gcs_aio_client
 
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
         self._conda_plugin = CondaPlugin(self._runtime_env_dir)
-        self._py_modules_plugin = PyModulesPlugin(self._runtime_env_dir)
-        self._java_jars_plugin = JavaJarsPlugin(self._runtime_env_dir)
-        self._working_dir_plugin = WorkingDirPlugin(self._runtime_env_dir)
+        self._py_modules_plugin = PyModulesPlugin(
+            self._runtime_env_dir, self._gcs_aio_client
+        )
+        self._java_jars_plugin = JavaJarsPlugin(
+            self._runtime_env_dir, self._gcs_aio_client
+        )
+        self._working_dir_plugin = WorkingDirPlugin(
+            self._runtime_env_dir, self._gcs_aio_client
+        )
         self._container_manager = ContainerManager(dashboard_agent.temp_dir)
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
         # through the same code path.  We should never need to refer to
         # self._xxx_plugin, we should just iterate through self._plugins.
-        self._base_plugins = [
+        self._base_plugins: List[RuntimeEnvPlugin] = [
             self._working_dir_plugin,
             self._pip_plugin,
             self._conda_plugin,
             self._py_modules_plugin,
             self._java_jars_plugin,
         ]
-        self._uri_caches = {}
-        self._base_plugin_cache_managers = {}
+        self._plugin_manager = RuntimeEnvPluginManager()
         for plugin in self._base_plugins:
-            # Set the max size for the cache.  Defaults to 10 GB.
-            cache_size_env_var = f"RAY_RUNTIME_ENV_{plugin.name}_CACHE_SIZE_GB".upper()
-            cache_size_bytes = int(
-                (1024 ** 3) * float(os.environ.get(cache_size_env_var, 10))
-            )
-            self._uri_caches[plugin.name] = URICache(
-                plugin.delete_uri, cache_size_bytes
-            )
-            self._base_plugin_cache_managers[plugin.name] = PluginCacheManager(
-                plugin, self._uri_caches[plugin.name]
-            )
+            self._plugin_manager.add_plugin(plugin)
 
         self._reference_table = ReferenceTable(
             self.uris_parser,
@@ -228,15 +216,16 @@ class RuntimeEnvAgent(
 
     def uris_parser(self, runtime_env):
         result = list()
-        for plugin in self._base_plugins:
+        for name, plugin_setup_context in self._plugin_manager.plugins.items():
+            plugin = plugin_setup_context.class_instance
             uris = plugin.get_uris(runtime_env)
             for uri in uris:
-                result.append((uri, UriType(plugin.name)))
+                result.append((uri, UriType(name)))
         return result
 
     def unused_uris_processor(self, unused_uris: List[Tuple[str, UriType]]) -> None:
         for uri, uri_type in unused_uris:
-            self._uri_caches[uri_type.value].mark_unused(uri)
+            self._plugin_manager.plugins[str(uri_type)].uri_cache.mark_unused(uri)
 
     def unused_runtime_env_processor(self, unused_runtime_env: str) -> None:
         def delete_runtime_env():
@@ -272,7 +261,9 @@ class RuntimeEnvAgent(
         )
 
         async def _setup_runtime_env(
-            runtime_env, serialized_runtime_env, serialized_allocated_resource_instances
+            runtime_env: RuntimeEnv,
+            serialized_runtime_env,
+            serialized_allocated_resource_instances,
         ):
             allocated_resource: dict = json.loads(
                 serialized_allocated_resource_instances or "{}"
@@ -287,32 +278,24 @@ class RuntimeEnvAgent(
                 runtime_env, context, logger=per_job_logger
             )
 
-            for manager in self._base_plugin_cache_managers.values():
-                await manager.create_if_needed(
-                    runtime_env, context, logger=per_job_logger
+            # Warn about unrecognized fields in the runtime env.
+            for name, _ in runtime_env.plugins():
+                if name not in self._plugin_manager.plugins:
+                    per_job_logger.warning(
+                        f"runtime_env field {name} is not recognized by "
+                        "Ray and will be ignored.  In the future, unrecognized "
+                        "fields in the runtime_env will raise an exception."
+                    )
+
+                """Run setup for each plugin unless it has already been cached."""
+            for (
+                plugin_setup_context
+            ) in self._plugin_manager.sorted_plugin_setup_contexts():
+                plugin = plugin_setup_context.class_instance
+                uri_cache = plugin_setup_context.uri_cache
+                await create_for_plugin_if_needed(
+                    runtime_env, plugin, uri_cache, context, per_job_logger
                 )
-
-            def setup_plugins():
-                # Run setup function from all the plugins
-                for plugin_class_path, config in runtime_env.plugins():
-                    per_job_logger.debug(
-                        f"Setting up runtime env plugin {plugin_class_path}"
-                    )
-                    plugin_class = import_attr(plugin_class_path)
-                    plugin = plugin_class()
-                    # TODO(architkulkarni): implement uri support
-                    plugin.create("uri not implemented", json.loads(config), context)
-                    plugin.modify_context(
-                        "uri not implemented",
-                        json.loads(config),
-                        context,
-                        per_job_logger,
-                    )
-
-            loop = asyncio.get_event_loop()
-            # Plugins setup method is sync process, running in other threads
-            # is to avoid blocking asyncio loop
-            await loop.run_in_executor(None, setup_plugins)
 
             return context
 
@@ -326,14 +309,14 @@ class RuntimeEnvAgent(
             Create runtime env with retry times. This function won't raise exceptions.
 
             Args:
-                runtime_env(RuntimeEnv): The instance of RuntimeEnv class.
-                serialized_runtime_env(str): The serialized runtime env.
-                serialized_allocated_resource_instances(str): The serialized allocated
+                runtime_env: The instance of RuntimeEnv class.
+                serialized_runtime_env: The serialized runtime env.
+                serialized_allocated_resource_instances: The serialized allocated
                 resource instances.
-                setup_timeout_seconds(int): The timeout of runtime environment creation.
+                setup_timeout_seconds: The timeout of runtime environment creation.
 
             Returns:
-                a tuple which contains result(bool), runtime env context(str), error
+                a tuple which contains result (bool), runtime env context (str), error
                 message(str).
 
             """
@@ -367,6 +350,16 @@ class RuntimeEnvAgent(
                     error_message = "".join(
                         traceback.format_exception(type(e), e, e.__traceback__)
                     )
+                    if isinstance(e, asyncio.TimeoutError):
+                        hint = (
+                            f"Failed due to timeout; check runtime_env setup logs"
+                            " and consider increasing `setup_timeout_seconds` beyond "
+                            f"the default of {DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS}."
+                            "For example: \n"
+                            '    runtime_env={"config": {"setup_timeout_seconds":'
+                            " 1800}, ...}\n"
+                        )
+                        error_message = hint + error_message
                     await asyncio.sleep(
                         runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
                     )
@@ -523,6 +516,7 @@ class RuntimeEnvAgent(
         # Cache information
         # Metrics (creation time & success)
         # Deleted URIs
+        limit = request.limit if request.HasField("limit") else -1
         runtime_env_states = defaultdict(ProtoRuntimeEnvState)
         runtime_env_refs = self._reference_table.runtime_env_refs
         for runtime_env, ref_cnt in runtime_env_refs.items():
@@ -536,9 +530,13 @@ class RuntimeEnvAgent(
             runtime_env_states[runtime_env].creation_time_ms = result.creation_time_ms
 
         reply = runtime_env_agent_pb2.GetRuntimeEnvsInfoReply()
+        count = 0
         for runtime_env_state in runtime_env_states.values():
+            if limit != -1 and count >= limit:
+                break
+            count += 1
             reply.runtime_env_states.append(runtime_env_state)
-
+        reply.total = len(runtime_env_states)
         return reply
 
     async def run(self, server):

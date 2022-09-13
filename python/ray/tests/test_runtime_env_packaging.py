@@ -1,40 +1,41 @@
 import os
-from pathlib import Path
 import random
-from shutil import copytree, rmtree, make_archive
 import shutil
 import socket
 import string
 import sys
-from filecmp import dircmp
 import uuid
+from filecmp import dircmp
+from pathlib import Path
+from shutil import copytree, make_archive, rmtree
 
 import pytest
-from ray.ray_constants import KV_NAMESPACE_PACKAGE
+
+from ray._private.gcs_utils import GcsClient
+from ray._private.ray_constants import KV_NAMESPACE_PACKAGE
+from ray._private.runtime_env.packaging import (
+    GCS_STORAGE_MAX_SIZE,
+    Protocol,
+    _dir_travel,
+    _get_excludes,
+    _store_package_in_gcs,
+    get_local_dir_from_uri,
+    get_top_level_dir_from_compressed_package,
+    get_uri_for_directory,
+    get_uri_for_package,
+    is_whl_uri,
+    is_zip_uri,
+    parse_uri,
+    remove_dir_from_filepaths,
+    unzip_package,
+    upload_package_if_needed,
+)
 from ray.experimental.internal_kv import (
-    _internal_kv_reset,
     _initialize_internal_kv,
     _internal_kv_del,
     _internal_kv_exists,
     _internal_kv_get,
-)
-from ray._private.gcs_utils import GcsClient
-from ray._private.runtime_env.packaging import (
-    _dir_travel,
-    _store_package_in_gcs,
-    get_local_dir_from_uri,
-    get_uri_for_directory,
-    _get_excludes,
-    get_uri_for_package,
-    upload_package_if_needed,
-    parse_uri,
-    is_zip_uri,
-    is_whl_uri,
-    Protocol,
-    get_top_level_dir_from_compressed_package,
-    remove_dir_from_filepaths,
-    unzip_package,
-    GCS_STORAGE_MAX_SIZE,
+    _internal_kv_reset,
 )
 
 TOP_LEVEL_DIR_NAME = "top_level"
@@ -372,6 +373,49 @@ class TestUnzipPackage:
         )
 
 
+class TestParseUri:
+    @pytest.mark.parametrize(
+        "parsing_tuple",
+        [
+            ("gcs://file.zip", Protocol.GCS, "file.zip"),
+            ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
+            ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
+            ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
+        ],
+    )
+    def test_parsing_basic(self, parsing_tuple):
+        uri, protocol, package_name = parsing_tuple
+        parsed_protocol, parsed_package_name = parse_uri(uri)
+
+        assert protocol == parsed_protocol
+        assert package_name == parsed_package_name
+
+    @pytest.mark.parametrize(
+        "parsing_tuple",
+        [
+            (
+                "https://username:PAT@github.com/repo/archive/commit_hash.zip",
+                "https_username_PAT_github_com_repo_archive_commit_hash.zip",
+            ),
+            (
+                (
+                    "https://un:pwd@gitlab.com/user/repo/-/"
+                    "archive/commit_hash/repo-commit_hash.zip"
+                ),
+                (
+                    "https_un_pwd_gitlab_com_user_repo_-_"
+                    "archive_commit_hash_repo-commit_hash.zip"
+                ),
+            ),
+        ],
+    )
+    def test_parse_private_git_https_uris(self, parsing_tuple):
+        raw_uri, parsed_uri = parsing_tuple
+        parsed_protocol, parsed_package_name = parse_uri(raw_uri)
+        assert parsed_protocol == Protocol.HTTPS
+        assert parsed_package_name == parsed_uri
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_travel(tmp_path):
     dir_paths = set()
@@ -430,23 +474,6 @@ def test_travel(tmp_path):
     _dir_travel(root, [exclude_spec], handler)
     assert file_paths == visited_file_paths
     assert dir_paths == visited_dir_paths
-
-
-@pytest.mark.parametrize(
-    "parsing_tuple",
-    [
-        ("gcs://file.zip", Protocol.GCS, "file.zip"),
-        ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
-        ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
-        ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
-    ],
-)
-def test_parsing(parsing_tuple):
-    uri, protocol, package_name = parsing_tuple
-    parsed_protocol, parsed_package_name = parse_uri(uri)
-
-    assert protocol == parsed_protocol
-    assert package_name == parsed_package_name
 
 
 def test_is_whl_uri():

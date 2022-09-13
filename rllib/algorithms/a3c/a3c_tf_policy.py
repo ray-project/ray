@@ -35,7 +35,7 @@ tf1, tf, tfv = try_import_tf()
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_a3c_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
+def get_a3c_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     """Construct a A3CTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
@@ -178,11 +178,14 @@ def get_a3c_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
         ) -> ModelGradients:
             return compute_gradients(self, optimizer, loss)
 
+    A3CTFPolicy.__name__ = name
+    A3CTFPolicy.__qualname__ = name
+
     return A3CTFPolicy
 
 
-A3CStaticGraphTFPolicy = get_a3c_tf_policy(DynamicTFPolicyV2)
-A3CEagerTFPolicy = get_a3c_tf_policy(EagerTFPolicyV2)
+A3CTF1Policy = get_a3c_tf_policy("A3CTF1Policy", DynamicTFPolicyV2)
+A3CTF2Policy = get_a3c_tf_policy("A3CTF2Policy", EagerTFPolicyV2)
 
 
 @Deprecated(

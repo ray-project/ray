@@ -5,10 +5,9 @@ import time
 
 import pytest
 
-import ray.cluster_utils
-import ray._private.test_utils
-
 import ray
+import ray._private.test_utils
+import ray.cluster_utils
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +45,7 @@ def test_actor_scheduling_latency(ray_start_cluster, args):
             self.start = time.time()
 
         def info(self):
-            return [ray.worker.global_worker.node.unique_id, self.start]
+            return [ray._private.worker.global_worker.node.unique_id, self.start]
 
         def create(self, num):
             ret_list = []
@@ -61,7 +60,7 @@ def test_actor_scheduling_latency(ray_start_cluster, args):
             self.start = time.time()
 
         def info(self):
-            return [ray.worker.global_worker.node.unique_id, self.start]
+            return [ray._private.worker.global_worker.node.unique_id, self.start]
 
     actor_distribution = {}
     actor_list = []

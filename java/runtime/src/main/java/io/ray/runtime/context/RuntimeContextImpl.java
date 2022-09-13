@@ -5,9 +5,11 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
+import io.ray.api.id.UniqueId;
 import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.api.runtimecontext.RuntimeContext;
+import io.ray.api.runtimeenv.RuntimeEnv;
 import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.util.ResourceUtil;
@@ -95,5 +97,15 @@ public class RuntimeContextImpl implements RuntimeContext {
   @Override
   public String getNamespace() {
     return runtime.getNamespace();
+  }
+
+  @Override
+  public UniqueId getCurrentNodeId() {
+    return runtime.getCurrentNodeId();
+  }
+
+  @Override
+  public RuntimeEnv getCurrentRuntimeEnv() {
+    return runtime.getWorkerContext().getCurrentRuntimeEnv();
   }
 }

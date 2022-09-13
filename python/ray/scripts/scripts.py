@@ -1,58 +1,59 @@
-from typing import Optional, Set
-
-import click
 import copy
-from datetime import datetime
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
 import time
+import traceback
 import urllib
 import urllib.parse
+import warnings
+from datetime import datetime
+from distutils.dir_util import copy_tree
+from typing import Optional, Set
+
+import click
+import psutil
 import yaml
 
 import ray
-import psutil
-from ray._private.usage import usage_lib
+import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-import ray.ray_constants as ray_constants
 import ray._private.utils
-from ray.util.annotations import PublicAPI
+from ray._private.internal_api import memory_summary
+from ray._private.storage import _load_class
+from ray._private.usage import usage_lib
+from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
+    RUN_ENV_TYPES,
     attach_cluster,
-    exec_cluster,
     create_or_update_cluster,
+    debug_status,
+    exec_cluster,
+    get_cluster_dump_archive,
+    get_head_node_ip,
+    get_local_dump_archive,
+    get_worker_node_ips,
+    kill_node,
     monitor_cluster,
     rsync,
     teardown_cluster,
-    get_head_node_ip,
-    kill_node,
-    get_worker_node_ips,
-    get_local_dump_archive,
-    get_cluster_dump_archive,
-    debug_status,
-    RUN_ENV_TYPES,
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
-from ray.internal.internal_api import memory_summary
-from ray.internal.storage import _load_class
-from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
-from ray.dashboard.modules.job.cli import job_cli_group
-from ray.experimental.state.state_cli import list as cli_list
-from ray.experimental.state.api import (
-    get_log,
-    list_logs,
-)
+from ray.experimental.state.api import get_log, list_logs
+from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
+from ray.util.annotations import PublicAPI
+
 from ray.experimental.state.state_cli import (
-    get_api_server_url,
-    get_state_api_output_to_print,
+    ray_get,
+    ray_list,
+    output_with_format,
+    summary_state_cli_group,
+    AvailableFormat,
 )
-from ray.experimental.state.common import DEFAULT_LIMIT
-from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port, no_config_ca
         ]
         click.echo(
             "Attempting to establish dashboard locally at"
-            " localhost:{} connected to"
+            " http://localhost:{}/ connected to"
             " remote port {}".format(port, remote_port)
         )
         # We want to probe with a no-op that returns quickly to avoid
@@ -178,7 +179,7 @@ def continue_debug_session(live_jobs: Set[str]):
                         )
                         return
                     host, port = session["pdb_address"].split(":")
-                    ray.util.rpdb.connect_pdb_client(host, int(port))
+                    ray.util.rpdb._connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(
                         key, namespace=ray_constants.KV_NAMESPACE_PDB
                     )
@@ -204,12 +205,14 @@ def format_table(table):
 )
 def debug(address):
     """Show all active breakpoints and exceptions in the Ray debugger."""
-    address = services.canonicalize_bootstrap_address(address)
+    address = services.canonicalize_bootstrap_address_or_die(address)
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, log_to_driver=False)
     while True:
         # Used to filter out and clean up entries from dead jobs.
-        live_jobs = {job["JobID"] for job in ray.state.jobs() if not job["IsDead"]}
+        live_jobs = {
+            job["JobID"] for job in ray._private.state.jobs() if not job["IsDead"]
+        }
         continue_debug_session(live_jobs)
 
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
@@ -264,7 +267,7 @@ def debug(address):
                 )
             )
             host, port = session["pdb_address"].split(":")
-            ray.util.rpdb.connect_pdb_client(host, int(port))
+            ray.util.rpdb._connect_pdb_client(host, int(port))
 
 
 @cli.command()
@@ -421,7 +424,7 @@ def debug(address):
 @click.option(
     "--dashboard-agent-listen-port",
     type=int,
-    default=0,
+    default=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
     help="the port for dashboard agents to listen for http on.",
 )
 @click.option(
@@ -600,6 +603,21 @@ def start(
             '"CustomReseource2": 2}\''
         )
 
+    if plasma_store_socket_name is not None:
+        warnings.warn(
+            "plasma_store_socket_name is deprecated and will be removed. You are not "
+            "supposed to specify this parameter as it's internal.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    if raylet_socket_name is not None:
+        warnings.warn(
+            "raylet_socket_name is deprecated and will be removed. You are not "
+            "supposed to specify this parameter as it's internal.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     redirect_output = None if not no_redirect_output else True
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
@@ -645,7 +663,7 @@ def start(
 
         if disable_usage_stats:
             usage_lib.set_usage_stats_enabled_via_env_var(False)
-        usage_lib.show_usage_stats_prompt()
+        usage_lib.show_usage_stats_prompt(cli=True)
         cli_logger.newline()
 
         if port is None:
@@ -657,9 +675,7 @@ def start(
         ray_params.gcs_server_port = port
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
-            ray_params.env_vars = {
-                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
-            }
+            ray_params.env_vars = {"RAY_RAYLET_NODE_ID": FAKE_HEAD_NODE_ID}
 
         num_redis_shards = None
         # Start Ray on the head node.
@@ -678,46 +694,23 @@ def start(
                 cf.bold("RAY_REDIS_ADDRESS"),
                 address,
             )
-            cli_logger.print(
-                "Will use `{}` as external Redis server address(es). "
-                "If the primary one is not reachable, we starts new one(s) "
-                "with `{}` in local.",
-                cf.bold(address),
-                cf.bold("--port"),
-            )
             external_addresses = address.split(",")
 
             # We reuse primary redis as sharding when there's only one
             # instance provided.
             if len(external_addresses) == 1:
                 external_addresses.append(external_addresses[0])
-            reachable = False
-            try:
-                [primary_redis_ip, port] = external_addresses[0].split(":")
-                ray._private.services.wait_for_redis_to_start(
-                    primary_redis_ip, port, password=redis_password
+
+            ray_params.update_if_absent(external_addresses=external_addresses)
+            num_redis_shards = len(external_addresses) - 1
+            if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
+                cli_logger.warning(
+                    "`{}` should not be specified as empty string if "
+                    "external redis server(s) `{}` points to requires "
+                    "password.",
+                    cf.bold("--redis-password"),
+                    cf.bold("--address"),
                 )
-                reachable = True
-            # We catch a generic Exception here in case someone later changes
-            # the type of the exception.
-            except Exception:
-                cli_logger.print(
-                    "The primary external redis server `{}` is not reachable. "
-                    "Will starts new one(s) with `{}` in local.",
-                    cf.bold(external_addresses[0]),
-                    cf.bold("--port"),
-                )
-            if reachable:
-                ray_params.update_if_absent(external_addresses=external_addresses)
-                num_redis_shards = len(external_addresses) - 1
-                if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
-                    cli_logger.warning(
-                        "`{}` should not be specified as empty string if "
-                        "external redis server(s) `{}` points to requires "
-                        "password.",
-                        cf.bold("--redis-password"),
-                        cf.bold("--address"),
-                    )
 
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(node_ip_address=services.get_node_ip_address())
@@ -734,30 +727,25 @@ def start(
         # Fail early when starting a new cluster when one is already running
         if address is None:
             default_address = f"{ray_params.node_ip_address}:{port}"
-            bootstrap_addresses = services.find_bootstrap_address()
-            if default_address in bootstrap_addresses:
+            bootstrap_address = services.find_bootstrap_address(temp_dir)
+            if (
+                default_address == bootstrap_address
+                and bootstrap_address in services.find_gcs_addresses()
+            ):
+                # The default address is already in use by a local running GCS
+                # instance.
                 raise ConnectionError(
                     f"Ray is trying to start at {default_address}, "
-                    f"but is already running at {bootstrap_addresses}. "
+                    f"but is already running at {bootstrap_address}. "
                     "Please specify a different port using the `--port`"
                     " flag of `ray start` command."
                 )
 
-        node = ray.node.Node(
+        node = ray._private.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
         )
 
-        bootstrap_addresses = node.address
-        if temp_dir is None:
-            # Default temp directory.
-            temp_dir = ray._private.utils.get_user_temp_dir()
-        # Using the user-supplied temp dir unblocks on-prem
-        # users who can't write to the default temp.
-        current_cluster_path = os.path.join(temp_dir, "ray_current_cluster")
-        # TODO: Consider using the custom temp_dir for this file across the
-        # code base. (https://github.com/ray-project/ray/issues/16458)
-        with open(current_cluster_path, "w") as f:
-            print(bootstrap_addresses, file=f)
+        bootstrap_address = node.address
 
         # this is a noop if new-style is not set, so the old logger calls
         # are still in place
@@ -773,9 +761,9 @@ def start(
             # of the cluster. Please be careful when updating this line.
             cli_logger.print(
                 cf.bold("  ray start --address='{}'"),
-                bootstrap_addresses,
+                bootstrap_address,
             )
-            if bootstrap_addresses.startswith("127.0.0.1:"):
+            if bootstrap_address.startswith("127.0.0.1:"):
                 cli_logger.print(
                     "This Ray runtime only accepts connections from local host."
                 )
@@ -835,6 +823,7 @@ def start(
             cli_logger.newline()
             cli_logger.print("To terminate the Ray runtime, run")
             cli_logger.print(cf.bold("  ray stop"))
+        ray_params.gcs_address = bootstrap_address
     else:
         # Start worker node.
 
@@ -870,7 +859,9 @@ def start(
             )
 
         # Start Ray on a non-head node.
-        bootstrap_address = services.canonicalize_bootstrap_address(address)
+        bootstrap_address = services.canonicalize_bootstrap_address(
+            address, temp_dir=temp_dir
+        )
 
         if bootstrap_address is None:
             cli_logger.abort(
@@ -889,7 +880,7 @@ def start(
 
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
 
-        node = ray.node.Node(
+        node = ray._private.node.Node(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
         )
 
@@ -911,33 +902,58 @@ def start(
         cli_logger.newline()
         with cli_logger.group(cf.bold("--block")):
             cli_logger.print(
-                "This command will now block until terminated by a signal."
+                "This command will now block forever until terminated by a signal."
             )
             cli_logger.print(
                 "Running subprocesses are monitored and a message will be "
-                "printed if any of them terminate unexpectedly."
+                "printed if any of them terminate unexpectedly. Subprocesses "
+                "exit with SIGTERM will be treated as graceful, thus NOT reported."
             )
             cli_logger.flush()
 
         while True:
             time.sleep(1)
             deceased = node.dead_processes()
-            if len(deceased) > 0:
+
+            # Report unexpected exits of subprocesses with unexpected return codes.
+            # We are explicitly expecting SIGTERM because this is how `ray stop` sends
+            # shutdown signal to subprocesses, i.e. log_monitor, raylet...
+            # NOTE(rickyyx): We are treating 128+15 as an expected return code since
+            # this is what autoscaler/_private/monitor.py does upon SIGTERM
+            # handling.
+            expected_return_codes = [
+                0,
+                signal.SIGTERM,
+                -1 * signal.SIGTERM,
+                128 + signal.SIGTERM,
+            ]
+            unexpected_deceased = [
+                (process_type, process)
+                for process_type, process in deceased
+                if process.returncode not in expected_return_codes
+            ]
+            if len(unexpected_deceased) > 0:
                 cli_logger.newline()
-                cli_logger.error("Some Ray subprcesses exited unexpectedly:")
+                cli_logger.error("Some Ray subprocesses exited unexpectedly:")
 
                 with cli_logger.indented():
-                    for process_type, process in deceased:
+                    for process_type, process in unexpected_deceased:
                         cli_logger.error(
                             "{}",
                             cf.bold(str(process_type)),
                             _tags={"exit code": str(process.returncode)},
                         )
 
-                # shutdown_at_exit will handle cleanup.
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
-                sys.exit(1)
+                # explicitly kill all processes since atexit handlers
+                # will not exit with errors.
+                node.kill_all_processes(check_alive=False, allow_graceful=False)
+                os._exit(1)
+        # not-reachable
+
+    assert ray_params.gcs_address is not None
+    ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
 
 
 @cli.command()
@@ -1025,14 +1041,6 @@ def stop(force, grace_period):
                     "Could not terminate `{}` due to {}", cf.bold(proc_string), str(ex)
                 )
 
-    try:
-        os.remove(
-            os.path.join(ray._private.utils.get_user_temp_dir(), "ray_current_cluster")
-        )
-    except OSError:
-        # This just means the file doesn't exist.
-        pass
-
     # Wait for the processes to actually stop.
     # Dedup processes.
     stopped, alive = psutil.wait_procs(stopped, timeout=0)
@@ -1076,6 +1084,10 @@ def stop(force, grace_period):
         proc.kill()
     # Wait a little bit to make sure processes are killed forcefully.
     psutil.wait_procs(alive, timeout=2)
+    # NOTE(swang): This will not reset the cluster address for a user-defined
+    # temp_dir. This is fine since it will get overwritten the next time we
+    # call `ray start`.
+    ray._private.utils.reset_ray_address()
 
 
 @cli.command()
@@ -1745,7 +1757,7 @@ def microbenchmark():
 )
 def timeline(address):
     """Take a Chrome tracing timeline for a Ray cluster."""
-    address = services.canonicalize_bootstrap_address(address)
+    address = services.canonicalize_bootstrap_address_or_die(address)
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
@@ -1819,7 +1831,7 @@ def memory(
     num_entries,
 ):
     """Print object references held in a Ray cluster."""
-    address = services.canonicalize_bootstrap_address(address)
+    address = services.canonicalize_bootstrap_address_or_die(address)
     if not ray._private.gcs_utils.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
@@ -1852,7 +1864,7 @@ def memory(
 @PublicAPI
 def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
-    address = services.canonicalize_bootstrap_address(address)
+    address = services.canonicalize_bootstrap_address_or_die(address)
     if not ray._private.gcs_utils.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
@@ -1946,7 +1958,7 @@ def local_dump(
     )
 
 
-@cli.command(hidden=True)
+@cli.command(name="logs")
 @click.argument(
     "glob_filter",
     required=False,
@@ -2015,7 +2027,25 @@ def local_dump(
     help="The interval to print new logs when `--follow` is specified.",
     hidden=True,
 )
-def logs(
+@click.option(
+    "--timeout",
+    default=DEFAULT_RPC_TIMEOUT,
+    help=(
+        "Timeout in seconds for the API requests. "
+        f"Default is {DEFAULT_RPC_TIMEOUT}. If --follow is specified, "
+        "this option will be ignored."
+    ),
+)
+@click.option(
+    "--address",
+    default=None,
+    help=(
+        "The address of Ray API server. If not provided, it will be configured "
+        "automatically from querying the GCS server."
+    ),
+)
+@PublicAPI(stability="alpha")
+def ray_logs(
     glob_filter,
     node_ip: str,
     node_id: str,
@@ -2025,15 +2055,55 @@ def logs(
     follow: bool,
     tail: int,
     interval: float,
+    timeout: int,
+    address: Optional[str],
 ):
+    """Print the log file that matches the GLOB_FILTER.
+
+    By default, it prints a list of log files that match the filter.
+    If there's only 1 match, it will print the log file.
+    By default, it prints the head node logs.
+
+    Usage:
+
+        Print the last 500 lines of raylet.out on a head node.
+
+        ```
+        ray logs raylet.out -tail 500
+        ```
+
+        Print the last 500 lines of raylet.out on a worker node id A.
+
+        ```
+        ray logs raylet.out -tail 500 —-node-id A
+        ```
+
+        Follow the log file with an actor id ABC.
+
+        ```
+        ray logs --actor-id ABC --follow
+        ```
+
+        Get the actor log from pid 123, ip ABC.
+        Note that this goes well with the driver log of Ray which prints
+        (ip=ABC, pid=123, class_name) logs.
+
+        ```
+        ray logs —ip=ABC pid=123
+        ```
+
+        Download the gcs_server.txt file to the local machine.
+
+        ```
+        ray logs gcs_server.out -tail -1 > gcs_server.txt
+        ```
+    """
     if task_id is not None:
         raise NotImplementedError("--task-id is not yet supported")
 
-    api_server_url = get_api_server_url()
-
     # If both id & ip are not provided, choose a head node as a default.
     if node_id is None and node_ip is None:
-        address = ray._private.services.canonicalize_bootstrap_address(None)
+        address = ray._private.services.canonicalize_bootstrap_address_or_die(address)
         node_ip = address.split(":")[0]
 
     filename = None
@@ -2042,10 +2112,11 @@ def logs(
     # If there's no unique match, try listing logs based on the glob filter.
     if not match_unique:
         logs = list_logs(
-            api_server_url=api_server_url,
+            address=address,
             node_id=node_id,
             node_ip=node_ip,
             glob_filter=glob_filter,
+            timeout=timeout,
         )
         log_files_found = []
         for _, log_files in logs.items():
@@ -2062,12 +2133,12 @@ def logs(
                 print(f"Node ID: {node_id}")
             elif node_ip:
                 print(f"Node IP: {node_ip}")
-            print(get_state_api_output_to_print(logs))
+            print(output_with_format(logs, schema=None, format=AvailableFormat.YAML))
 
     # If there's an unique match, print the log file.
     if match_unique:
         if not tail:
-            tail = 0 if follow else DEFAULT_LIMIT
+            tail = 0 if follow else DEFAULT_LOG_LIMIT
 
             if tail > 0:
                 print(
@@ -2076,7 +2147,7 @@ def logs(
                 )
 
         for chunk in get_log(
-            api_server_url=api_server_url,
+            address=address,
             node_id=node_id,
             node_ip=node_ip,
             filename=filename,
@@ -2086,6 +2157,7 @@ def logs(
             tail=tail,
             follow=follow,
             _interval=interval,
+            timeout=timeout,
         ):
             print(chunk, end="", flush=True)
 
@@ -2226,10 +2298,8 @@ def cluster_dump(
 )
 def global_gc(address):
     """Trigger Python garbage collection on all cluster workers."""
-    address = services.canonicalize_bootstrap_address(address)
-    logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
-    ray.internal.internal_api.global_gc()
+    ray._private.internal_api.global_gc()
     print("Triggered gc.collect() on all workers.")
 
 
@@ -2255,6 +2325,10 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
         KubeRay cluster configs.
     `ray kuberay-autoscaler` is NOT a public CLI.
     """
+    # Delay import to avoid introducing Ray core dependency on the Python Kubernetes
+    # client.
+    from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
+
     run_kuberay_autoscaler(cluster_name, cluster_namespace)
 
 
@@ -2276,20 +2350,29 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     help="Health check for a specific component. Currently supports: "
     "[ray_client_server]",
 )
-def healthcheck(address, redis_password, component):
+@click.option(
+    "--skip-version-check",
+    is_flag=True,
+    default=False,
+    help="Skip comparison of GCS version with local Ray version.",
+)
+def healthcheck(address, redis_password, component, skip_version_check):
     """
     This is NOT a public api.
 
     Health check a Ray or a specific component. Exit code 0 is healthy.
     """
 
-    address = services.canonicalize_bootstrap_address(address)
+    address = services.canonicalize_bootstrap_address_or_die(address)
 
     if not component:
         try:
-            if ray._private.gcs_utils.check_health(address):
+            if ray._private.gcs_utils.check_health(
+                address, skip_version_check=skip_version_check
+            ):
                 sys.exit(0)
         except Exception:
+            traceback.print_exc()
             pass
         sys.exit(1)
 
@@ -2312,7 +2395,7 @@ def healthcheck(address, redis_password, component):
 
     # If the status is too old, the service has probably already died.
     delta = cur_time - report_time
-    time_ok = delta < ray.ray_constants.HEALTHCHECK_EXPIRATION_S
+    time_ok = delta < ray._private.ray_constants.HEALTHCHECK_EXPIRATION_S
 
     if time_ok:
         sys.exit(0)
@@ -2479,8 +2562,17 @@ cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
-add_command_alias(job_cli_group, name="job", hidden=True)
-cli.add_command(cli_list)
+cli.add_command(ray_list, name="list")
+cli.add_command(ray_get, name="get")
+add_command_alias(summary_state_cli_group, name="summary", hidden=False)
+
+try:
+    from ray.dashboard.modules.job.cli import job_cli_group
+
+    add_command_alias(job_cli_group, name="job", hidden=True)
+except Exception as e:
+    logger.debug(f"Integrating ray jobs command line tool failed with {e}")
+
 
 try:
     from ray.serve.scripts import serve_cli

@@ -748,26 +748,26 @@ Here is an example of the basic usage (for a more complete example, see `custom_
 
 .. note::
 
-    It's recommended that you run RLlib algorithms with :doc:`Tune <../tune/index>`, for easy experiment management and visualization of results. Just set ``"run": ALG_NAME, "env": ENV_NAME`` in the experiment config.
+    It's recommended that you run RLlib algorithms with :ref:`Ray Tune <tune-main>`, for easy experiment management and visualization of results. Just set ``"run": ALG_NAME, "env": ENV_NAME`` in the experiment config.
 
-All RLlib algorithms are compatible with the :ref:`Tune API <tune-60-seconds>`. This enables them to be easily used in experiments with :doc:`Tune <../tune/index>`. For example, the following code performs a simple hyperparam sweep of PPO:
+All RLlib algorithms are compatible with the :ref:`Tune API <tune-60-seconds>`. This enables them to be easily used in experiments with :ref:`Ray Tune <tune-main>`. For example, the following code performs a simple hyperparam sweep of PPO:
 
 .. code-block:: python
 
     import ray
-    from ray import tune
+    from ray import air, tune
 
     ray.init()
-    tune.run(
+    tune.Tuner(
         "PPO",
-        stop={"episode_reward_mean": 200},
-        config={
+        run_config=air.RunConfig(stop={"episode_reward_mean": 200},),
+        param_space={
             "env": "CartPole-v0",
             "num_gpus": 0,
             "num_workers": 1,
             "lr": tune.grid_search([0.01, 0.001, 0.0001]),
         },
-    )
+    ).fit()
 
 Tune will schedule the trials to run in parallel on your Ray cluster:
 
@@ -783,19 +783,19 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
      - PPO_CartPole-v0_0_lr=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
      - PPO_CartPole-v0_1_lr=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
 
-``tune.run()`` returns an ExperimentAnalysis object that allows further analysis of the training results and retrieving the checkpoint(s) of the trained agent.
-It also simplifies saving the trained agent. For example:
+``Tuner.fit()`` returns an ``ResultGrid`` object that allows further analysis of the training results and retrieving the checkpoint(s) of the trained agent.
 
 .. code-block:: python
 
-    # tune.run() allows setting a custom log directory (other than ``~/ray-results``)
-    # and automatically saving the trained agent
-    analysis = ray.tune.run(
+    # ``Tuner.fit()`` allows setting a custom log directory (other than ``~/ray-results``)
+    results = ray.tune.Tuner(
         ppo.PPO,
-        config=config,
-        local_dir=log_dir,
-        stop=stop_criteria,
-        checkpoint_at_end=True)
+        param_space=config,
+        run_config=air.RunConfig(
+            local_dir=log_dir,
+            stop=stop_criteria,
+            checkpoint_config=air.CheckpointConfig(checkpoint_at_end=True),
+        )).fit()
 
     # list of lists: one list per checkpoint; each checkpoint list contains
     # 1st the path, 2nd the metric value
@@ -803,7 +803,7 @@ It also simplifies saving the trained agent. For example:
         trial=analysis.get_best_trial("episode_reward_mean"),
         metric="episode_reward_mean")
 
-    # or simply get the last checkpoint (with highest "training_iteration")
+    # or simply get the last checkpoint (with highest "training_step")
     last_checkpoint = analysis.get_last_checkpoint()
     # if there are multiple trials, select a specific trial or automatically
     # choose the best one according to a given metric
@@ -1017,6 +1017,15 @@ You can provide callbacks to be called at points during policy evaluation. These
 
 User-defined state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__ in the ``episode.user_data`` dict, and custom scalar metrics reported by saving values to the ``episode.custom_metrics`` dict. These custom metrics will be aggregated and reported as part of training results. For a full example, see `custom_metrics_and_callbacks.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__.
 
+.. tip::
+    You can create custom logic that can run on each evaluation episode by checking if the
+    :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` is in evaluation mode,
+    through accessing ``worker.policy_config["in_evaluation"]``. You can then implement this check in
+    ``on_episode_start()`` or ``on_episode_end()`` in your subclass of
+    :py:class:`~ray.rllib.algorithms.callbacks.DefaultCallbacks`. For running callbacks before and after the evaluation
+    runs in whole we provide ``on_evaluate_start()`` and ``on_evaluate_end``.
+
+
 .. autoclass:: ray.rllib.algorithms.callbacks.DefaultCallbacks
     :members:
 
@@ -1163,45 +1172,77 @@ calls an "evaluation step" is run:
     }
 
 
-One such evaluation step runs over ``evaluation_duration`` episodes or timesteps, depending
-on the ``evaluation_duration_unit`` setting, which can be either "episodes" (default) or "timesteps".
+An evaluation step runs - using its own RolloutWorkers - for ``evaluation_duration`` episodes or timesteps, depending
+on the ``evaluation_duration_unit`` setting, which can take values of either "episodes" (default) or "timesteps".
 
 
 .. code-block:: python
 
-    # Every time we do run an evaluation step, run it for exactly 10 episodes.
+    # Every time we run an evaluation step, run it for exactly 10 episodes.
     {
         "evaluation_duration": 10,
         "evaluation_duration_unit": "episodes",
     }
-    # Every time we do run an evaluation step, run it for close to 200 timesteps.
+    # Every time we run an evaluation step, run it for (close to) 200 timesteps.
     {
         "evaluation_duration": 200,
         "evaluation_duration_unit": "timesteps",
     }
 
 
-Before each evaluation step, weights from the main model are synchronized to all evaluation workers.
+Note: When using ``evaluation_duration_unit=timesteps`` and your ``evaluation_duration`` setting is NOT dividable
+by the number of evaluation workers (configurable via ``evaluation_num_workers``), RLlib will round up the number of
+timesteps specified to the nearest whole number of timesteps that is divisible by the number of evaluation workers.
+Also, when using ``evaluation_duration_unit=episodes`` and your ``evaluation_duration`` setting is NOT dividable
+by the number of evaluation workers (configurable via ``evaluation_num_workers``), RLlib will run the remainder of episodes
+on the first n eval RolloutWorkers and leave the remaining workers idle for that time.
 
-Normally, the evaluation step is run right after the respective train step. For example, for
-``evaluation_interval=2``, the sequence of steps is: ``train, train, eval, train, train, eval, ...``.
-For ``evaluation_interval=1``, the sequence is: ``train, eval, train, eval, ...``.
-
-However, it is possible to run evaluation in parallel to training via the ``evaluation_parallel_to_training=True``
-config setting. In this case, both steps (train and eval) are run at the same time via threading.
-This can speed up the evaluation process significantly, but leads to a 1-iteration delay between reported
-training results and evaluation results (the evaluation results are behind b/c they use slightly outdated
-model weights).
-
-When running with the ``evaluation_parallel_to_training=True`` setting, a special "auto" value
-is supported for ``evaluation_duration``. This can be used to make the evaluation step take
-roughly as long as the train step:
+For examples:
 
 .. code-block:: python
 
-    # Run eval and train at the same time via threading and make sure they roughly
+    # Every time we run an evaluation step, run it for exactly 10 episodes, no matter, how many eval workers we have.
+    {
+        "evaluation_duration": 10,
+        "evaluation_duration_unit": "episodes",
+
+        # What if number of eval workers is non-dividable by 10?
+        # -> Run 7 episodes (1 per eval worker), then run 3 more episodes only using
+        #    evaluation workers 1-3 (evaluation workers 4-7 remain idle during that time).
+        "evaluation_num_workers": 7,
+    }
+
+
+Before each evaluation step, weights from the main model are synchronized to all evaluation workers.
+
+By default, the evaluation step (if there is one in the current iteration) is run right **after** the respective training step.
+For example, for ``evaluation_interval=1``, the sequence of events is:
+``train(0->1), eval(1), train(1->2), eval(2), train(2->3), ...``. Here, the indices show the version of neural network weights used.
+``train(0->1)`` is an update step that changes the weights from version 0 to version 1 and ``eval(1)`` then uses weights version 1.
+Weights index 0 represents the randomly initialized weights of our neural network(s).
+
+Another example: For ``evaluation_interval=2``, the sequence is: ``train(0->1), train(1->2), eval(2), train(2->3), train(3->4), eval(4), ...``.
+
+Instead of running ``train``- and ``eval``-steps in sequence, it is also possible to run them in parallel via the ``evaluation_parallel_to_training=True``
+config setting. In this case, both training- and evaluation steps are run at the same time via multi-threading.
+This can speed up the evaluation process significantly, but leads to a 1-iteration delay between reported
+training- and evaluation results. The evaluation results are behind in this case b/c they use slightly outdated
+model weights (synchronized after the previous training step).
+
+For example, for ``evaluation_parallel_to_training=True`` and ``evaluation_interval=1``, the sequence is now:
+``train(0->1) + eval(0), train(1->2) + eval(1), train(2->3) + eval(2)``, where ``+`` means: "at the same time".
+Note: The change in the weights indices with respect to the non-parallel examples above. The evaluation weights indices are now "one behind"
+the resulting train weights indices (``train(1->**2**) + eval(**1**)``).
+
+When running with the ``evaluation_parallel_to_training=True`` setting, a special "auto" value
+is supported for ``evaluation_duration``. This can be used to make the evaluation step take
+roughly as long as the concurrently ongoing training step:
+
+.. code-block:: python
+
+    # Run evaluation and training at the same time via threading and make sure they roughly
     # take the same time, such that the next `Algorithm.train()` call can execute
-    # immediately and not have to wait for a still ongoing (e.g. very long episode)
+    # immediately and not have to wait for a still ongoing (e.g. b/c of very long episodes)
     # evaluation step:
     {
         "evaluation_interval": 1,
@@ -1230,18 +1271,65 @@ do:
     policy, even if this is a stochastic one. Setting "explore=False" above
     will result in the evaluation workers not using this stochastic policy.
 
-Parallelism for the evaluation step is determined via the ``evaluation_num_workers``
+
+The level of parallelism within the evaluation step is determined via the ``evaluation_num_workers``
 setting. Set this to larger values if you want the desired evaluation episodes or timesteps to
 run as much in parallel as possible. For example, if your ``evaluation_duration=10``,
-``evaluation_duration_unit=episodes``, and ``evaluation_num_workers=10``, each eval worker
-only has to run 1 episode in each eval step.
+``evaluation_duration_unit=episodes``, and ``evaluation_num_workers=10``, each evaluation RolloutWorker
+only has to run 1 episode in each evaluation step.
+
+In case you observe occasional failures in your (evaluation) RolloutWorkers during evaluation (e.g. you have an environment that sometimes crashes),
+you can use an (experimental) new setting: ``enable_async_evaluation=True``.
+This will run the parallel sampling of all evaluation RolloutWorkers via a fault tolerant, asynchronous manager, such that if one of the workers
+takes too long to run through an episode and return data or fails entirely, the other evaluation RolloutWorkers will pick up its task and complete the job.
+
+Note that with or without async evaluation, all :ref:`fault tolerance settings <rllib-scaling-guide>`,
+such as ``ignore_worker_failures`` or ``recreate_failed_workers`` will be respected and applied to the failed evaluation workers.
+
+Example:
+
+.. code-block:: python
+
+    # Having an environment that occasionally blocks completely for e.g. 10min would
+    # also affect (and block) training:
+    {
+        "evaluation_interval": 1,
+        "evaluation_parallel_to_training": True,
+        "evaluation_num_workers": 5,  # each worker runs two episodes
+        "evaluation_duration": 10,
+        "evaluation_duration_unit": "episodes",
+    }
+
+**Problem with the above example:**
+
+In case the environment used by worker 3 blocks for 10min, the entire training+evaluation
+pipeline will come to a (10min) halt b/c of this. The next ``train`` step cannot
+start before all evaluation has been finished.
+
+**Solution:**
+
+Switch on asynchronous evaluation, meaning, we don't wait for individual
+evaluation RolloutWorkers to complete their n episode(s) (or n timesteps), but instead:
+any evaluation RolloutWorker can cover the load of another one that failed
+or is stuck in a very long lasting environment step.
+
+.. code-block:: python
+
+    {
+        # ...
+        # same settings as above, plus:
+        "enable_async_evaluation": True,  # evaluate asynchronously
+    }
+
 
 In case you would like to entirely customize the evaluation step, set ``custom_eval_function`` in your
-config to a callable taking the Algorithm object and a WorkerSet object (the evaluation WorkerSet)
-and returning a metrics dict. See `algorithm.py <https://github.com/ray-project/ray/blob/master/rllib/algorithms/algorithm.py>`__
+config to a callable, which takes the Algorithm object and a WorkerSet object (the Algorithm's ``self.evaluation_workers`` WorkerSet instance)
+and returns a metrics dict. See `algorithm.py <https://github.com/ray-project/ray/blob/master/rllib/algorithms/algorithm.py>`__
 for further documentation.
 
-There is an end to end example of how to set up custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__. Note that if you only want to eval your policy at the end of training, you can set ``evaluation_interval: N``, where ``N`` is the number of training iterations before stopping.
+There is also an end-to-end example of how to set up a custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__.
+Note that if you only want to evaluate your policy at the end of training, you can set ``evaluation_interval: [int]``, where ``[int]`` should be the number of training
+iterations before stopping.
 
 Below are some examples of how the custom evaluation metrics are reported nested under the ``evaluation`` key of normal training results:
 
@@ -1292,6 +1380,7 @@ Below are some examples of how the custom evaluation metrics are reported nested
         episode_reward_min: 0.0
         episodes_this_iter: 223
         foo: 1
+
 
 Rewriting Trajectories
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -1345,7 +1434,7 @@ which receives the last training results and returns a new task for the env to b
         "env": MyEnv,
         "env_task_fn": curriculum_fn,
     }
-    # Train using `tune.run` or `Algorithm.train()` and the above config stub.
+    # Train using `Tuner.fit()` or `Algorithm.train()` and the above config stub.
     # ...
 
 There are two more ways to use the RLlib's other APIs to implement `curriculum learning <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`__.
@@ -1379,16 +1468,15 @@ customizations to your training loop.
     num_workers = 2
 
     ray.init()
-    tune.run(
-        train,
-        config={
+    tune.Tuner(
+        tune.with_resources(train, resources=tune.PlacementGroupFactory(
+            [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_workers
+        ),)
+        param_space={
             "num_gpus": num_gpus,
             "num_workers": num_workers,
         },
-        resources_per_trial=tune.PlacementGroupFactory(
-            [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_workers
-        ),
-    )
+    ).fit()
 
 You could also use RLlib's callbacks API to update the environment on new training results:
 
@@ -1411,13 +1499,13 @@ You could also use RLlib's callbacks API to update the environment on new traini
                     lambda env: env.set_task(task)))
 
     ray.init()
-    tune.run(
+    tune.Tuner(
         "PPO",
-        config={
+        param_space={
             "env": YourEnv,
             "callbacks": MyCallbacks,
         },
-    )
+    ).fit()
 
 Debugging
 ---------

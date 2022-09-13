@@ -5,7 +5,11 @@ Building Ray from Source
 
 For a majority of Ray users, installing Ray via the latest wheels or pip package is usually enough. However, you may want to build the latest master branch.
 
-.. tip:: If you are only editing Python files, follow instructions for :ref:`python-develop` to avoid long build times.
+.. tip::
+
+  If you are only editing Python files, follow instructions for :ref:`python-develop` to avoid long build times.
+
+  If you already followed the instructions in :ref:`python-develop` and want to switch to the Full build in this section, you will need to first uninstall.
 
 .. contents::
   :local:
@@ -125,6 +129,13 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
     # with your local `ray/python/ray/<package>`.
     python python/ray/setup-dev.py
 
+.. note:: [Advanced] You can also optionally skip creating symbolic link for directories of your choice.
+
+.. code-block:: shell
+
+    # This links all folders except "_private" and "dashboard" without user prompt.
+    python setup-dev.py -y --skip _private dashboard
+
 .. warning:: Do not run ``pip uninstall ray`` or ``pip install -U`` (for Ray or Ray wheels) if setting up your environment this way. To uninstall or upgrade, you must first ``rm -rf`` the pip-installation site (usually a directory at the ``site-packages/ray`` location), then do a pip reinstall (see the command above), and finally run the above ``setup-dev.py`` script again.
 
 .. code-block:: shell
@@ -142,11 +153,22 @@ To build Ray on Ubuntu, run the following commands:
 
 .. code-block:: bash
 
+  # Add a PPA containing gcc-9 for older versions of Ubuntu.
+  sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
   sudo apt-get update
-  sudo apt-get install -y build-essential curl unzip psmisc
+  sudo apt-get install -y build-essential curl gcc-9 g++-9 pkg-config psmisc unzip
+  sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 \
+                --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
+                --slave /usr/bin/gcov gcov /usr/bin/gcov-9
 
   # Install Bazel.
   ci/env/install-bazel.sh
+
+  # Install node version manager and node 14
+  $(curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh)
+  nvm install 14
+  nvm use 14
+
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
 
@@ -387,3 +409,32 @@ If the dependency already has a Bazel build file in it, you can use
 To test switching back to the original rule, change ``False`` to ``True``.
 
 .. _`PR template`: https://github.com/ray-project/ray/blob/master/.github/PULL_REQUEST_TEMPLATE.md
+
+Troubleshooting
+---------------
+
+If importing Ray (``python3 -c "import ray"``) in your development clone results
+in this error:
+
+.. code-block:: python
+
+  Traceback (most recent call last):
+    File "<string>", line 1, in <module>
+    File ".../ray/python/ray/__init__.py", line 63, in <module>
+      import ray._raylet  # noqa: E402
+    File "python/ray/_raylet.pyx", line 98, in init ray._raylet
+      import ray.memory_monitor as memory_monitor
+    File ".../ray/python/ray/memory_monitor.py", line 9, in <module>
+      import psutil  # noqa E402
+    File ".../ray/python/ray/thirdparty_files/psutil/__init__.py", line 159, in <module>
+      from . import _psosx as _psplatform
+    File ".../ray/python/ray/thirdparty_files/psutil/_psosx.py", line 15, in <module>
+      from . import _psutil_osx as cext
+  ImportError: cannot import name '_psutil_osx' from partially initialized module 'psutil' (most likely due to a circular import) (.../ray/python/ray/thirdparty_files/psutil/__init__.py)
+
+Then you should run the following commands:
+
+.. code-block:: bash
+
+  rm -rf python/ray/thirdparty_files/
+  python3 -m pip install setproctitle

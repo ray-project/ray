@@ -8,7 +8,7 @@ import pandas as pd
 import time
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.tune import register_env
 from ray.rllib.env.wrappers.recsim import (
     MultiDiscreteToDiscreteActionWrapper,
@@ -69,20 +69,27 @@ if __name__ == "__main__":
     print("Running training for %s time steps" % training_iterations)
 
     start_time = time.time()
-    analysis = tune.run(
+    tuner = tune.Tuner(
         "BanditLinUCB",
-        config=config,
-        stop={"training_iteration": training_iterations},
-        num_samples=2,
-        checkpoint_at_end=False,
+        param_space=config,
+        run_config=air.RunConfig(
+            stop={"training_iteration": training_iterations},
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_at_end=False,
+            ),
+        ),
+        tune_config=tune.TuneConfig(
+            num_samples=2,
+        ),
     )
+    results = tuner.fit()
 
     print("The trials took", time.time() - start_time, "seconds\n")
 
     # Analyze cumulative regrets of the trials
     frame = pd.DataFrame()
-    for key, df in analysis.trial_dataframes.items():
-        frame = frame.append(df, ignore_index=True)
+    for result in results:
+        frame = frame.append(result.metrics_dataframe, ignore_index=True)
     x = frame.groupby("agent_timesteps_total")["episode_reward_mean"].aggregate(
         ["mean", "max", "min", "std"]
     )

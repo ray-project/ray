@@ -14,7 +14,7 @@ import os
 import random
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.models.shared_weights_model import (
     SharedWeightsModel1,
@@ -110,7 +110,9 @@ if __name__ == "__main__":
         "training_iteration": args.stop_iters,
     }
 
-    results = tune.run("PPO", stop=stop, config=config, verbose=1)
+    results = tune.Tuner(
+        "PPO", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+    ).fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

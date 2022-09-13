@@ -1,18 +1,14 @@
+import os
 import sys
 import time
-import os
 
 import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import (
-    wait_for_condition,
-    SignalActor,
-    Semaphore,
-)
-from ray.internal.internal_api import memory_summary
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
+from ray._private.internal_api import memory_summary
+from ray._private.test_utils import Semaphore, SignalActor, wait_for_condition
 
 # Task status.
 WAITING_FOR_DEPENDENCIES = "WAITING_FOR_DEPENDENCIES"
@@ -478,6 +474,54 @@ def test_override_max_retries(ray_start_cluster, override_max_retries):
     finally:
         if override_max_retries:
             del os.environ["RAY_TASK_MAX_RETRIES"]
+
+
+@pytest.mark.parametrize("reconstruction_enabled", [False, True])
+def test_reconstruct_freed_object(ray_start_cluster, reconstruction_enabled):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "object_timeout_milliseconds": 200,
+    }
+    # Workaround to reset the config to the default value.
+    if not reconstruction_enabled:
+        config["lineage_pinning_enabled"] = False
+
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config=config,
+        enable_object_reconstruction=reconstruction_enabled,
+    )
+    ray.init(address=cluster.address)
+
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def large_object():
+        return np.zeros(10 ** 7, dtype=np.uint8)
+
+    @ray.remote
+    def dependent_task(x):
+        return np.zeros(10 ** 7, dtype=np.uint8)
+
+    obj = large_object.remote()
+    x = dependent_task.remote(obj)
+    ray.get(dependent_task.remote(x))
+
+    ray.internal.free(obj)
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+
+    if reconstruction_enabled:
+        ray.get(x)
+    else:
+        with pytest.raises(ray.exceptions.ObjectLostError):
+            ray.get(x)
+        with pytest.raises(ray.exceptions.ObjectFreedError):
+            ray.get(obj)
 
 
 if __name__ == "__main__":

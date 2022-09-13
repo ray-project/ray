@@ -8,10 +8,10 @@ from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.suggest import grid_search, BasicVariantGenerator
-from ray.tune.suggest.variant_generator import (
+from ray.tune.search import grid_search, BasicVariantGenerator
+from ray.tune.search.variant_generator import (
     RecursiveDependencyError,
-    resolve_nested_dict,
+    _resolve_nested_dict,
 )
 
 
@@ -337,7 +337,7 @@ class VariantGeneratorTest(unittest.TestCase):
             },
             "b": {"a": 3},
         }
-        resolved = resolve_nested_dict(config)
+        resolved = _resolve_nested_dict(config)
         for k, v in [(("a", "b"), 1), (("a", "c"), 2), (("b", "a"), 3)]:
             self.assertEqual(resolved.get(k), v)
 

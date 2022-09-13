@@ -1,12 +1,13 @@
-from typing import Dict, Union, List, Optional
+import warnings
+from typing import Dict, List, Optional, Union
 
 import ray
+from ray._private.client_mode_hook import client_mode_should_convert, client_mode_wrap
+from ray._private.ray_constants import to_memory_units
+from ray._private.utils import hex_to_binary, get_ray_doc_version
 from ray._raylet import PlacementGroupID
-from ray._private.utils import hex_to_binary
-from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.ray_constants import to_memory_units
-from ray._private.client_mode_hook import client_mode_should_convert
-from ray._private.client_mode_hook import client_mode_wrap
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 bundle_reservation_check = None
 BUNDLE_RESOURCE_LABEL = "bundle"
@@ -76,7 +77,8 @@ class PlacementGroup:
         )
 
         return bundle_reservation_check.options(
-            placement_group=self, resources={BUNDLE_RESOURCE_LABEL: 0.001}
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=self),
+            resources={BUNDLE_RESOURCE_LABEL: 0.001},
         ).remote(self)
 
     def wait(self, timeout_seconds: Union[float, int]) -> bool:
@@ -106,7 +108,7 @@ class PlacementGroup:
 
 @client_mode_wrap
 def _call_placement_group_ready(pg_id: PlacementGroupID, timeout_seconds: int) -> bool:
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
 
     return worker.core_worker.wait_placement_group_ready(pg_id, timeout_seconds)
@@ -114,10 +116,12 @@ def _call_placement_group_ready(pg_id: PlacementGroupID, timeout_seconds: int) -
 
 @client_mode_wrap
 def _get_bundle_cache(pg_id: PlacementGroupID) -> List[Dict]:
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    return list(ray.state.state.placement_group_table(pg_id)["bundles"].values())
+    return list(
+        ray._private.state.state.placement_group_table(pg_id)["bundles"].values()
+    )
 
 
 @PublicAPI
@@ -126,14 +130,15 @@ def placement_group(
     bundles: List[Dict[str, float]],
     strategy: str = "PACK",
     name: str = "",
-    lifetime=None,
+    lifetime: Optional[str] = None,
+    _max_cpu_fraction_per_node: float = 1.0,
 ) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
     Args:
-        bundles(List[Dict]): A list of bundles which
+        bundles: A list of bundles which
             represent the resources requirements.
-        strategy(str): The strategy to create the placement group.
+        strategy: The strategy to create the placement group.
 
          - "PACK": Packs Bundles into as few nodes as possible.
          - "SPREAD": Places Bundles across distinct nodes as even as possible.
@@ -141,11 +146,19 @@ def placement_group(
            not allowed to span multiple nodes.
          - "STRICT_SPREAD": Packs Bundles across distinct nodes.
 
-        name(str): The name of the placement group.
-        lifetime(str): Either `None`, which defaults to the placement group
+        name: The name of the placement group.
+        lifetime: Either `None`, which defaults to the placement group
             will fate share with its creator and will be deleted once its
             creator is dead, or "detached", which means the placement group
             will live as a global object independent of the creator.
+        _max_cpu_fraction_per_node: (Experimental) Disallow placing bundles on nodes
+            if it would cause the fraction of CPUs used by bundles from *any* placement
+            group on the node to exceed this fraction. This effectively sets aside
+            CPUs that placement groups cannot occupy on nodes. when
+            `max_cpu_fraction_per_node < 1.0`, at least 1 CPU will be excluded from
+            placement group scheduling. Note: This feature is experimental and is not
+            recommended for use with autoscaling clusters (scale-up will not trigger
+            properly).
 
     Raises:
         ValueError if bundle type is not a list.
@@ -155,11 +168,20 @@ def placement_group(
     Return:
         PlacementGroup: Placement group object.
     """
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
 
     if not isinstance(bundles, list):
         raise ValueError("The type of bundles must be list, got {}".format(bundles))
+
+    assert _max_cpu_fraction_per_node is not None
+
+    if _max_cpu_fraction_per_node <= 0 or _max_cpu_fraction_per_node > 1:
+        raise ValueError(
+            "Invalid argument `_max_cpu_fraction_per_node`: "
+            f"{_max_cpu_fraction_per_node}. "
+            "_max_cpu_fraction_per_node must be a float between 0 and 1. "
+        )
 
     # Validate bundles
     for bundle in bundles:
@@ -176,6 +198,17 @@ def placement_group(
             # transformed to memory unit.
             to_memory_units(bundle["memory"], True)
 
+        if "object_store_memory" in bundle.keys():
+            warnings.warn(
+                "Setting 'object_store_memory' for"
+                " bundles is deprecated since it doesn't actually"
+                " reserve the required object store memory."
+                f" Use object spilling that's enabled by default (https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/objects/object-spilling.html) "  # noqa: E501
+                "instead to bypass the object store memory size limitation.",
+                DeprecationWarning,
+                stacklevel=1,
+            )
+
     if lifetime is None:
         detached = False
     elif lifetime == "detached":
@@ -186,7 +219,11 @@ def placement_group(
         )
 
     placement_group_id = worker.core_worker.create_placement_group(
-        name, bundles, strategy, detached
+        name,
+        bundles,
+        strategy,
+        detached,
+        _max_cpu_fraction_per_node,
     )
 
     return PlacementGroup(placement_group_id)
@@ -201,7 +238,7 @@ def remove_placement_group(placement_group: PlacementGroup) -> None:
         placement_group: The placement group to delete.
     """
     assert placement_group is not None
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
 
     worker.core_worker.remove_placement_group(placement_group.id)
@@ -218,9 +255,9 @@ def get_placement_group(placement_group_name: str) -> PlacementGroup:
     """
     if not placement_group_name:
         raise ValueError("Please supply a non-empty value to get_placement_group")
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
-    placement_group_info = ray.state.state.get_placement_group_by_name(
+    placement_group_info = ray._private.state.state.get_placement_group_by_name(
         placement_group_name, worker.namespace
     )
     if placement_group_info is None:
@@ -240,10 +277,10 @@ def placement_group_table(placement_group: PlacementGroup = None) -> dict:
         placement_group: placement group to see
             states.
     """
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
     placement_group_id = placement_group.id if (placement_group is not None) else None
-    return ray.state.state.placement_group_table(placement_group_id)
+    return ray._private.state.state.placement_group_table(placement_group_id)
 
 
 @PublicAPI
@@ -280,7 +317,7 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
     if client_mode_should_convert(auto_init=True):
         # Client mode is only a driver.
         return None
-    worker = ray.worker.global_worker
+    worker = ray._private.worker.global_worker
     worker.check_connected()
     pg_id = worker.placement_group_id
     if pg_id.is_nil():
@@ -357,7 +394,7 @@ def _validate_resource_shape(
         )
 
 
-def configure_placement_group_based_on_context(
+def _configure_placement_group_based_on_context(
     placement_group_capture_child_tasks: bool,
     bundle_index: int,
     resources: Dict,

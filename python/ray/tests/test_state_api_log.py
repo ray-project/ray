@@ -363,11 +363,50 @@ async def test_logs_manager_stream_log(logs_manager):
         keep_alive=True,
         lines=10,
         interval=0.5,
-        timeout=30,
+        timeout=None,
     )
 
     # Currently cannot test actor_id with AsyncMock.
     # It will be tested by the integration test.
+
+
+@pytest.mark.skipif(
+    sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
+    reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
+    " or higher",
+)
+@pytest.mark.asyncio
+async def test_logs_manager_keepalive_no_timeout(logs_manager):
+    """Test when --follow is specified, there's no timeout.
+
+    Related: https://github.com/ray-project/ray/issues/25721
+    """
+    NUM_LOG_CHUNKS = 10
+    logs_client = logs_manager.data_source_client
+
+    logs_client.get_all_registered_agent_ids = MagicMock()
+    logs_client.get_all_registered_agent_ids.return_value = ["1", "2"]
+    logs_client.ip_to_node_id = MagicMock()
+    logs_client.stream_log.return_value = generate_logs_stream(NUM_LOG_CHUNKS)
+
+    # Test file_name, media_type="file", node_id
+    options = GetLogOptions(
+        timeout=30, media_type="stream", lines=10, node_id="1", filename="raylet.out"
+    )
+
+    async for chunk in logs_manager.stream_logs(options):
+        pass
+
+    # Make sure timeout == None when media_type == stream. This is to avoid
+    # closing the connection due to DEADLINE_EXCEEDED when --follow is specified.
+    logs_client.stream_log.assert_awaited_with(
+        node_id="1",
+        log_file_name="raylet.out",
+        keep_alive=True,
+        lines=10,
+        interval=None,
+        timeout=None,
+    )
 
 
 # Integration tests
@@ -546,25 +585,27 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
 
 def test_log_list(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=0)
+    num_nodes = 5
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
 
     def verify():
-        head_node = list_nodes()[0]
-        # When glob filter is not provided, it should provide all logs
-        logs = list_logs(node_id=head_node["node_id"])
-        assert "raylet" in logs
-        assert "gcs_server" in logs
-        assert "dashboard" in logs
-        assert "agent" in logs
-        assert "internal" in logs
-        assert "driver" in logs
-        assert "autoscaler" in logs
+        for node in list_nodes():
+            # When glob filter is not provided, it should provide all logs
+            logs = list_logs(node_id=node["node_id"])
+            assert "raylet" in logs
+            assert "gcs_server" in logs
+            assert "dashboard" in logs
+            assert "agent" in logs
+            assert "internal" in logs
+            assert "driver" in logs
+            assert "autoscaler" in logs
 
-        # Test glob works.
-        logs = list_logs(node_id=head_node["node_id"], glob_filter="raylet*")
-        assert len(logs) == 1
-        return True
+            # Test glob works.
+            logs = list_logs(node_id=node["node_id"], glob_filter="raylet*")
+            assert len(logs) == 1
+            return True
 
     wait_for_condition(verify)
 
@@ -643,7 +684,7 @@ def test_log_cli(shutdown_only):
 
     # Test the head node is chosen by default.
     def verify():
-        result = runner.invoke(scripts.logs)
+        result = runner.invoke(scripts.ray_logs)
         print(result.output)
         assert result.exit_code == 0
         assert "raylet.out" in result.output
@@ -656,7 +697,7 @@ def test_log_cli(shutdown_only):
 
     # Test when there's only 1 match, it prints logs.
     def verify():
-        result = runner.invoke(scripts.logs, ["raylet.out"])
+        result = runner.invoke(scripts.ray_logs, ["raylet.out"])
         assert result.exit_code == 0
         print(result.output)
         assert "raylet.out" not in result.output
@@ -671,7 +712,7 @@ def test_log_cli(shutdown_only):
 
     # Test when there's more than 1 match, it prints a list of logs.
     def verify():
-        result = runner.invoke(scripts.logs, ["raylet.*"])
+        result = runner.invoke(scripts.ray_logs, ["raylet.*"])
         assert result.exit_code == 0
         print(result.output)
         assert "raylet.out" in result.output

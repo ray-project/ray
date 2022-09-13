@@ -4,6 +4,7 @@
 import os
 import argparse
 from filelock import FileLock
+from ray.air import session
 
 import torch
 import torch.nn.functional as F
@@ -14,6 +15,7 @@ from torch_geometric.nn import SAGEConv
 
 from ray import train
 from ray.train.torch import TorchTrainer
+from ray.air.config import ScalingConfig
 from torch_geometric.transforms import RandomNodeSplit
 
 
@@ -63,8 +65,8 @@ def train_loop_per_worker(train_loop_config):
 
     data = dataset[0]
     train_idx = data.train_mask.nonzero(as_tuple=False).view(-1)
-    train_idx = train_idx.split(train_idx.size(0) // train.world_size())[
-        train.world_rank()
+    train_idx = train_idx.split(train_idx.size(0) // session.get_world_size())[
+        session.get_world_rank()
     ]
 
     train_loader = NeighborSampler(
@@ -79,7 +81,7 @@ def train_loop_per_worker(train_loop_config):
     train_loader = train.torch.prepare_data_loader(train_loader, add_dist_sampler=False)
 
     # Do validation on rank 0 worker only.
-    if train.world_rank() == 0:
+    if session.get_world_rank() == 0:
         subgraph_loader = NeighborSampler(
             data.edge_index, node_idx=None, sizes=[-1], batch_size=2048, shuffle=False
         )
@@ -112,13 +114,13 @@ def train_loop_per_worker(train_loop_config):
             loss.backward()
             optimizer.step()
 
-        if train.world_rank() == 0:
+        if session.get_world_rank() == 0:
             print(f"Epoch: {epoch:03d}, Loss: {loss:.4f}")
 
         train_accuracy = validation_accuracy = test_accuracy = None
 
         # Do validation on rank 0 worker only.
-        if train.world_rank() == 0:
+        if session.get_world_rank() == 0:
             model.eval()
             with torch.no_grad():
                 out = model.module.test(x, subgraph_loader)
@@ -131,10 +133,12 @@ def train_loop_per_worker(train_loop_config):
             )
             test_accuracy = int(res[data.test_mask].sum()) / int(data.test_mask.sum())
 
-        train.report(
-            train_accuracy=train_accuracy,
-            validation_accuracy=validation_accuracy,
-            test_accuracy=test_accuracy,
+        session.report(
+            dict(
+                train_accuracy=train_accuracy,
+                validation_accuracy=validation_accuracy,
+                test_accuracy=test_accuracy,
+            )
         )
 
 
@@ -177,7 +181,7 @@ def train_gnn(
             if dataset == "reddit"
             else gen_fake_dataset(),
         },
-        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
     result = trainer.fit()
     print(result.metrics)

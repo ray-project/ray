@@ -1,24 +1,23 @@
-from . import random
-from . import linalg
+from . import linalg, random
 from .core import (
-    zeros,
-    zeros_like,
-    ones,
-    eye,
-    dot,
-    vstack,
-    hstack,
-    subarray,
-    copy,
-    tril,
-    triu,
-    diag,
-    transpose,
     add,
+    copy,
+    diag,
+    dot,
+    eye,
+    hstack,
+    ones,
+    shape,
+    subarray,
     subtract,
     sum,
-    shape,
     sum_list,
+    transpose,
+    tril,
+    triu,
+    vstack,
+    zeros,
+    zeros_like,
 )
 
 __all__ = [

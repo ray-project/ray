@@ -13,27 +13,26 @@ RLlib: Industry-Grade Reinforcement Learning
 **RLlib** is an open-source library for reinforcement learning (RL), offering support for
 production-level, highly distributed RL workloads while maintaining
 unified and simple APIs for a large variety of industry applications.
-Whether you would like to train your agents in a multi-agent setup,
-purely from offline (historic) datasets, or using externally
-connected simulators, RLlib offers a simple solution for each of your decision
+Whether you would like to train your agents in a **multi-agent** setup,
+purely from **offline** (historic) datasets, or using **externally
+connected simulators**, RLlib offers a simple solution for each of your decision
 making needs.
 
-You **don't need** to be an **RL expert** to use RLlib, nor do you need to learn Ray or any
-other of its libraries! If you either have your problem coded (in python) as an
-`RL environment <https://medium.com/distributed-computing-with-ray/anatomy-of-a-custom-environment-for-rllib-327157f269e5>`_
+If you either have your problem coded (in python) as an
+`RL environment <rllib-env.html#configuring-environments>`_
 or own lots of pre-recorded, historic behavioral data to learn from, you will be
 up and running in only a few days.
 
 RLlib is already used in production by industry leaders in many different verticals, such as
 `climate control <https://www.anyscale.com/events/2021/06/23/applying-ray-and-rllib-to-real-life-industrial-use-cases>`_,
-`manufacturing and logistics <https://www.anyscale.com/events/2021/06/22/offline-rl-with-rllib>`_,
+`industrial control <https://www.anyscale.com/events/2021/06/23/applying-ray-and-rllib-to-real-life-industrial-use-cases>`_,
+`manufacturing and logistics <https://www.anyscale.com/events/2022/03/29/alphadow-leveraging-rays-ecosystem-to-train-and-deploy-an-rl-industrial>`_,
 `finance <https://www.anyscale.com/events/2021/06/22/a-24x-speedup-for-reinforcement-learning-with-rllib-+-ray>`_,
 `gaming <https://www.anyscale.com/events/2021/06/22/using-reinforcement-learning-to-optimize-iap-offer-recommendations-in-mobile-games>`_,
 `automobile <https://www.anyscale.com/events/2021/06/23/using-rllib-in-an-enterprise-scale-reinforcement-learning-solution>`_,
 `robotics <https://www.anyscale.com/events/2021/06/23/introducing-amazon-sagemaker-kubeflow-reinforcement-learning-pipelines-for>`_,
 `boat design <https://www.youtube.com/watch?v=cLCK13ryTpw>`_,
 and many others.
-
 
 RLlib in 60 seconds
 -------------------
@@ -52,9 +51,9 @@ PyTorch (or both as shown below):
 
 .. code-block:: bash
 
-    conda create -n rllib python=3.8
-    conda activate rllib
-    pip install "ray[rllib]" tensorflow torch
+    $ conda create -n rllib python=3.8
+    $ conda activate rllib
+    $ pip install "ray[rllib]" tensorflow torch
 
 Note, for installation on computers running Apple Silicon (such as M1), please follow instructions
 `here <https://docs.ray.io/en/latest/installation.html#m1-mac-apple-silicon-support>`_
@@ -63,11 +62,11 @@ To be able to run our Atari examples, you should also install:
 
 .. code-block:: bash
 
-    pip install "gym[atari]" "gym[accept-rom-license]" atari_py
+    $ pip install "gym[atari]" "gym[accept-rom-license]" atari_py
 
 After these quick pip installs, you can start coding against RLlib.
 
-Here is an example of running PPO on the "`Taxi domain <https://www.gymlibrary.ml/environments/toy_text/taxi/>`_"
+Here is an example of running a PPO Trainer on the `Taxi domain <https://www.gymlibrary.dev/environments/toy_text/taxi/>`_
 for a few training iterations, then perform a single evaluation loop
 (with rendering enabled):
 
@@ -80,6 +79,14 @@ for a few training iterations, then perform a single evaluation loop
 
 Feature Overview
 ----------------
+
+You can read about:
+
+- `RLlib Key Concepts <core-concepts.html>`_
+
+- `RLlib Algorithms <rllib-algorithms.html>`_
+
+- `RLlib Environments <rllib-env.html>`_
 
 The following is a summary of RLlib's most striking features.
 Click on the images below to see an example script for each of the listed features:
@@ -126,20 +133,20 @@ click on the dropdowns below:
 
     *  Model-based / Meta-learning / Offline
 
-       -  |pytorch| :ref:`Single-Player AlphaZero (AlphaZero) <alphazero>`
+       -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
 
        -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
 
        -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
 
-       -  |pytorch| :ref:`Dreamer <dreamer>`
+       -  |pytorch| :ref:`Dreamer (DREAMER) <dreamer>`
 
        -  |pytorch| :ref:`Conservative Q-Learning (CQL) <cql>`
 
     *  Multi-agent
 
        -  |pytorch| :ref:`QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <qmix>`
-       -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (MADDPG) <maddpg>`
+       -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <maddpg>`
 
     *  Offline
 
@@ -147,8 +154,8 @@ click on the dropdowns below:
 
     *  Contextual bandits
 
-       -  |pytorch| :ref:`Linear Upper Confidence Bound (LinUCB) <lin-ucb>`
-       -  |pytorch| :ref:`Linear Thompson Sampling (LinTS) <lints>`
+       -  |pytorch| :ref:`Linear Upper Confidence Bound (contrib/LinUCB) <lin-ucb>`
+       -  |pytorch| :ref:`Linear Thompson Sampling (contrib/LinTS) <lints>`
 
     *  Exploration-based plug-ins (can be combined with any algo)
 
@@ -204,5 +211,3 @@ RL (MARL) becomes an easy-to-use low-level primitive for our users.
 .. |pytorch| image:: images/pytorch.png
     :class: inline-figure
     :width: 16
-
-.. include:: /_includes/rllib/announcement_bottom.rst

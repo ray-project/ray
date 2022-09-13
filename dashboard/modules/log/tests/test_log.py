@@ -1,17 +1,15 @@
-import sys
+import html.parser
 import logging
-import requests
+import sys
 import time
 import traceback
-import html.parser
 import urllib.parse
-import pytest
-import ray
-from ray._private.test_utils import (
-    format_web_url,
-    wait_until_server_available,
-)
 
+import pytest
+import requests
+
+import ray
+from ray._private.test_utils import format_web_url, wait_until_server_available
 from ray.dashboard.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
@@ -44,7 +42,7 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
 
     test_file = "test.log"
     with open(
-        f"{ray.worker.global_worker.node.get_logs_dir_path()}/{test_file}", "w"
+        f"{ray._private.worker.global_worker.node.get_logs_dir_path()}/{test_file}", "w"
     ) as f:
         f.write(test_log_text)
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -117,7 +115,11 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
 
-def test_log_proxy(ray_start_with_dashboard):
+@pytest.mark.parametrize(
+    "test_file",
+    ["test.log", "test#1234.log"],
+)
+def test_log_proxy(ray_start_with_dashboard, test_file):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
@@ -126,17 +128,17 @@ def test_log_proxy(ray_start_with_dashboard):
     start_time = time.time()
     last_ex = None
     test_log_text = "test_log_text"
-    test_file = "test.log"
     with open(
-        f"{ray.worker.global_worker.node.get_logs_dir_path()}/{test_file}", "w"
+        f"{ray._private.worker.global_worker.node.get_logs_dir_path()}/{test_file}", "w"
     ) as f:
         f.write(test_log_text)
     while True:
         time.sleep(1)
         try:
+            url = urllib.parse.quote(f"{webui_url}/logs/{test_file}")
             # Test range request.
             response = requests.get(
-                f"{webui_url}/log_proxy?url={webui_url}/logs/{test_file}",
+                f"{webui_url}/log_proxy?url={url}",
                 headers={"Range": "bytes=2-5"},
             )
             response.raise_for_status()

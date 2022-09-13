@@ -99,14 +99,12 @@ class WorkerSet:
         }
         self._cls = RolloutWorker.as_remote(**self._remote_args).remote
         self._logdir = logdir
-
         if _setup:
             # Force a local worker if num_workers == 0 (no remote workers).
             # Otherwise, this WorkerSet would be empty.
             self._local_worker = None
             if num_workers == 0:
                 local_worker = True
-
             self._local_config = merge_dicts(
                 trainer_config,
                 {"tf_session_args": trainer_config["local_tf_session_args"]},
@@ -116,7 +114,7 @@ class WorkerSet:
                 # Create the set of dataset readers to be shared by all the
                 # rollout workers.
                 self._ds, self._ds_shards = get_dataset_and_shards(
-                    trainer_config, num_workers, local_worker
+                    trainer_config, num_workers
                 )
             else:
                 self._ds = None
@@ -262,14 +260,13 @@ class WorkerSet:
                 for i in range(num_workers)
             ]
         )
+
         # Validate here, whether all remote workers have been constructed properly
         # and are "up and running". If not, the following will throw a RayError
         # which needs to be handled by this WorkerSet's owner (usually
         # a RLlib Algorithm instance).
         if validate:
-            self.foreach_worker_with_index(
-                lambda w, i: w.policy_map and w.input_reader and w.output_writer
-            )
+            self.foreach_worker(lambda w: w.assert_healthy())
 
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
         """Hard overrides the remote workers in this set with the given one.
@@ -306,7 +303,19 @@ class WorkerSet:
             )
         return removed_workers
 
-    def recreate_failed_workers(self) -> Tuple[List[ActorHandle], List[ActorHandle]]:
+    def recreate_failed_workers(
+        self, local_worker_for_synching: RolloutWorker
+    ) -> Tuple[List[ActorHandle], List[ActorHandle]]:
+        """Recreates any failed workers (after health check).
+
+        Args:
+            local_worker_for_synching: RolloutWorker to use to synchronize the weights
+                after recreation.
+
+        Returns:
+            A tuple consisting of two items: The list of removed workers and the list of
+            newly added ones.
+        """
         faulty_indices = self._worker_health_check()
         removed_workers = []
         new_workers = []
@@ -329,14 +338,17 @@ class WorkerSet:
                 recreated_worker=True,
                 config=self._remote_config,
             )
-            # Sync new worker from local one.
+
+            # Sync new worker from provided one (or local one).
             new_worker.set_weights.remote(
-                weights=self.local_worker().get_weights(),
-                global_vars=self.local_worker().get_global_vars(),
+                weights=local_worker_for_synching.get_weights(),
+                global_vars=local_worker_for_synching.get_global_vars(),
             )
+
             # Add new worker to list of remote workers.
             self._remote_workers[worker_index - 1] = new_worker
             new_workers.append(new_worker)
+
         return removed_workers, new_workers
 
     def stop(self) -> None:
@@ -576,7 +588,7 @@ class WorkerSet:
             # Input dataset shards should have already been prepared.
             # We just need to take the proper shard here.
             input_creator = lambda ioctx: DatasetReader(
-                ioctx, self._ds_shards[worker_index]
+                self._ds_shards[worker_index], ioctx
             )
         # Dict: Mix of different input methods with different ratios.
         elif isinstance(config["input"], dict):
@@ -626,11 +638,6 @@ class WorkerSet:
                 compress_columns=config["output_compress_columns"],
             )
 
-        if config["input"] == "sampler":
-            off_policy_estimation_methods = {}
-        else:
-            off_policy_estimation_methods = config["off_policy_estimation_methods"]
-
         # Assert everything is correct in "multiagent" config dict (if given).
         ma_policies = config["multiagent"]["policies"]
         if ma_policies:
@@ -638,9 +645,7 @@ class WorkerSet:
                 assert isinstance(policy_spec, PolicySpec)
                 # Class is None -> Use `policy_cls`.
                 if policy_spec.policy_class is None:
-                    ma_policies[pid] = ma_policies[pid]._replace(
-                        policy_class=policy_cls
-                    )
+                    ma_policies[pid].policy_class = policy_cls
             policies = ma_policies
 
         # Create a policy_spec (MultiAgentPolicyConfigDict),
@@ -682,7 +687,6 @@ class WorkerSet:
             log_level=config["log_level"],
             callbacks=config["callbacks"],
             input_creator=input_creator,
-            off_policy_estimation_methods=off_policy_estimation_methods,
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
             remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
@@ -725,6 +729,26 @@ class WorkerSet:
                 faulty_worker_indices.append(i + 1)
 
         return faulty_worker_indices
+
+    @classmethod
+    def _valid_module(cls, class_path):
+        del cls
+        if (
+            isinstance(class_path, str)
+            and not os.path.isfile(class_path)
+            and "." in class_path
+        ):
+            module_path, class_name = class_path.rsplit(".", 1)
+            try:
+                spec = importlib.util.find_spec(module_path)
+                if spec is not None:
+                    return True
+            except (ModuleNotFoundError, ValueError):
+                print(
+                    f"module {module_path} not found while trying to get "
+                    f"input {class_path}"
+                )
+        return False
 
     @Deprecated(new="WorkerSet.foreach_policy_to_train", error=False)
     def foreach_trainable_policy(self, func):

@@ -13,14 +13,14 @@ if TYPE_CHECKING:
     from ray.air.data_batch_type import DataBatchType
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class PreprocessorNotFittedException(RuntimeError):
     """Error raised when the preprocessor needs to be fitted first."""
 
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class Preprocessor(abc.ABC):
     """Implements an ML preprocessing operation.
 
@@ -35,11 +35,12 @@ class Preprocessor(abc.ABC):
 
     If you are implementing your own Preprocessor sub-class, you should override the
     following:
-    * ``_fit`` - if your preprocessor is stateful. Otherwise, set
-    ``_is_fittable=False``.
-    * ``_transform_pandas`` and/or ``_transform_arrow`` - for best performance,
-    implement both. Otherwise, the data will be converted to the match the
-    implemented method.
+
+    * ``_fit`` if your preprocessor is stateful. Otherwise, set
+      ``_is_fittable=False``.
+    * ``_transform_pandas`` and/or ``_transform_arrow`` for best performance,
+      implement both. Otherwise, the data will be converted to the match the
+      implemented method.
     """
 
     class FitStatus(str, Enum):
@@ -129,7 +130,7 @@ class Preprocessor(abc.ABC):
             ray.data.Dataset: The transformed Dataset.
 
         Raises:
-            PreprocessorNotFittedException, if ``fit`` is not called yet.
+            PreprocessorNotFittedException: if ``fit`` is not called yet.
         """
         fit_status = self.fit_status()
         if fit_status in (
@@ -154,7 +155,8 @@ class Preprocessor(abc.ABC):
             df: Input data batch.
 
         Returns:
-            DataBatchType: The transformed data batch. This may differ
+            DataBatchType:
+                The transformed data batch. This may differ
                 from the input type depending on which ``_transform_*`` method(s)
                 are implemented.
         """

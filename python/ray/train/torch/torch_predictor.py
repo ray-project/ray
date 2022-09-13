@@ -1,36 +1,78 @@
-from typing import TYPE_CHECKING, List, Optional, Union
+import logging
+from typing import TYPE_CHECKING, Dict, Optional, Union
 
 import numpy as np
-import pandas as pd
 import torch
 
-from ray.air._internal.torch_utils import convert_pandas_to_torch_tensor
+from ray.util import log_once
+from ray.train.predictor import DataBatchType
 from ray.air.checkpoint import Checkpoint
-from ray.train.predictor import DataBatchType, Predictor
-from ray.train.torch.torch_trainer import load_checkpoint
+from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
+from ray.train.torch.torch_checkpoint import TorchCheckpoint
+from ray.train._internal.dl_predictor import DLPredictor
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
+logger = logging.getLogger(__name__)
 
-class TorchPredictor(Predictor):
+
+@PublicAPI(stability="beta")
+class TorchPredictor(DLPredictor):
     """A predictor for PyTorch models.
 
     Args:
         model: The torch module to use for predictions.
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
+        use_gpu: If set, the model will be moved to GPU on instantiation and
+            prediction happens on GPU.
     """
 
     def __init__(
-        self, model: torch.nn.Module, preprocessor: Optional["Preprocessor"] = None
+        self,
+        model: torch.nn.Module,
+        preprocessor: Optional["Preprocessor"] = None,
+        use_gpu: bool = False,
     ):
         self.model = model
-        self.preprocessor = preprocessor
+        self.model.eval()
+
+        # TODO (jiaodong): #26249 Use multiple GPU devices with sharded input
+        self.use_gpu = use_gpu
+        if use_gpu:
+            # Ensure input tensor and model live on GPU for GPU inference
+            self.model.to(torch.device("cuda"))
+
+        if (
+            not use_gpu
+            and torch.cuda.device_count() > 0
+            and log_once("torch_predictor_not_using_gpu")
+        ):
+            logger.warning(
+                "You have `use_gpu` as False but there are "
+                f"{torch.cuda.device_count()} GPUs detected on host where "
+                "prediction will only use CPU. Please consider explicitly "
+                "setting `TorchPredictor(use_gpu=True)` or "
+                "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
+                "enable GPU prediction."
+            )
+
+        super().__init__(preprocessor)
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(model={self.model!r}, "
+            f"preprocessor={self._preprocessor!r}, use_gpu={self.use_gpu!r})"
+        )
 
     @classmethod
     def from_checkpoint(
-        cls, checkpoint: Checkpoint, model: Optional[torch.nn.Module] = None
+        cls,
+        checkpoint: Checkpoint,
+        model: Optional[torch.nn.Module] = None,
+        use_gpu: bool = False,
     ) -> "TorchPredictor":
         """Instantiate the predictor from a Checkpoint.
 
@@ -43,130 +85,136 @@ class TorchPredictor(Predictor):
             model: If the checkpoint contains a model state dict, and not
                 the model itself, then the state dict will be loaded to this
                 ``model``.
+            use_gpu: If set, the model will be moved to GPU on instantiation and
+                prediction happens on GPU.
         """
-        model, preprocessor = load_checkpoint(checkpoint, model)
-        return TorchPredictor(model=model, preprocessor=preprocessor)
+        checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
+        model = checkpoint.get_model(model)
+        preprocessor = checkpoint.get_preprocessor()
+        return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
-    # parity with Datset.to_torch
-    def _convert_to_tensor(
-        self,
-        data: pd.DataFrame,
-        feature_columns: Optional[
-            Union[List[str], List[List[str]], List[int], List[List[int]]]
-        ] = None,
-        dtypes: Optional[torch.dtype] = None,
-        unsqueeze: bool = True,
-    ) -> torch.Tensor:
-        """Handle conversion of data to tensor.
+    def call_model(
+        self, tensor: Union[torch.Tensor, Dict[str, torch.Tensor]]
+    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        """Runs inference on a single batch of tensor data.
 
-        Same arguments as in ``convert_pandas_to_torch_tensor``."""
-        # TODO(amog): Add `_convert_numpy_to_torch_tensor to use based on input type.
-        # Reduce conversion cost if input is in Numpy
-        if isinstance(feature_columns, dict):
-            features_tensor = {
-                key: convert_pandas_to_torch_tensor(
-                    data,
-                    feature_columns[key],
-                    dtypes[key] if isinstance(dtypes, dict) else dtypes,
-                    unsqueeze=unsqueeze,
-                )
-                for key in feature_columns
-            }
-        else:
-            features_tensor = convert_pandas_to_torch_tensor(
-                data,
-                columns=feature_columns,
-                column_dtypes=dtypes,
-                unsqueeze=unsqueeze,
-            )
-        return features_tensor
+        This method is called by `TorchPredictor.predict` after converting the
+        original data batch to torch tensors.
 
-    def _predict(self, tensor: torch.Tensor) -> pd.DataFrame:
-        """Handle actual prediction."""
-        prediction = self.model(tensor).cpu().detach().numpy()
-        # If model has outputs a Numpy array (for example outputting logits),
-        # these cannot be used as values in a Pandas Dataframe.
-        # We have to convert the outermost dimension to a python list (but the values
-        # in the list can still be Numpy arrays).
-        return pd.DataFrame({"predictions": list(prediction)}, columns=["predictions"])
+        Override this method to add custom logic for processing the model input or
+        output.
+
+        Example:
+
+            .. code-block:: python
+
+                # List outputs are not supported by default TorchPredictor.
+                class MyModel(torch.nn.Module):
+                    def forward(self, input_tensor):
+                        return [input_tensor, input_tensor]
+
+                # Use a custom predictor to format model output as a dict.
+                class CustomPredictor(TorchPredictor):
+                    def call_model(self, tensor):
+                        model_output = super().call_model(tensor)
+                        return {
+                            str(i): model_output[i] for i in range(len(model_output))
+                        }
+
+                predictor = CustomPredictor(model=MyModel())
+                predictions = predictor.predict(data_batch)
+
+        Args:
+            tensor: A batch of data to predict on, represented as either a single
+                PyTorch tensor or for multi-input models, a dictionary of tensors.
+
+        Returns:
+            The model outputs, either as a single tensor or a dictionary of tensors.
+
+        """
+        with torch.no_grad():
+            output = self.model(tensor)
+        return output
 
     def predict(
         self,
         data: DataBatchType,
-        feature_columns: Optional[
-            Union[List[str], List[List[str]], List[int], List[List[int]]]
-        ] = None,
-        dtype: Optional[torch.dtype] = None,
-        unsqueeze: bool = True,
+        dtype: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     ) -> DataBatchType:
         """Run inference on data batch.
 
-        The data is converted into a torch Tensor before being inputted to
-        the model.
+        If the provided data is a single array or a dataframe/table with a single
+        column, it will be converted into a single PyTorch tensor before being
+        inputted to the model.
+
+        If the provided data is a multi-column table or a dict of numpy arrays,
+        it will be converted into a dict of tensors before being inputted to the
+        model. This is useful for multi-modal inputs (for example your model accepts
+        both image and text).
 
         Args:
-            data: A batch of input data. Either a pandas DataFrame or numpy
-                array.
-            feature_columns: The names or indices of the columns in the
-                data to use as features to predict on. If this arg is a
-                list of lists or a dict of  string-list pairs, then the
-                data batch will be converted into a
-                multiple tensors which are then concatenated before feeding
-                into the model. This is useful for multi-input models. If
-                None, then use all columns in ``data``.
-            dtype: The dtypes to use for the tensors. This should match the
-                format of ``feature_columns``, or be a single dtype, in which
-                case it will be applied to all tensors.
-                If None, then automatically infer the dtype.
-            unsqueeze: If set to True, the features tensors will be unsqueezed
-                (reshaped to (N, 1)) before being concatenated into the final features
-                tensor. Otherwise, they will be left as is, that is (N, ).
-                Defaults to True.
+            data: A batch of input data of ``DataBatchType``.
+            dtype: The dtypes to use for the tensors. Either a single dtype for all
+                tensors or a mapping from column name to dtype.
 
         Examples:
+            >>> import numpy as np
+            >>> import torch
+            >>> from ray.train.torch import TorchPredictor
+            >>>
+            >>> model = torch.nn.Linear(2, 1)
+            >>> predictor = TorchPredictor(model=model)
+            >>>
+            >>> data = np.array([[1, 2], [3, 4]])
+            >>> predictions = predictor.predict(data, dtype=torch.float)
 
-        .. code-block:: python
-
-            import numpy as np
-            import torch
-            from ray.train.torch import TorchPredictor
-
-            model = torch.nn.Linear(2, 1)
-            predictor = TorchPredictor(model=model)
-
-            data = np.array([[1, 2], [3, 4]])
-            predictions = predictor.predict(data)
-
-        .. code-block:: python
-
-            import pandas as pd
-            import torch
-            from ray.train.torch import TorchPredictor
-
-            model = torch.nn.Linear(1, 1)
-            predictor = TorchPredictor(model=model)
-
-            # Pandas dataframe.
-            data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
-
-            predictions = predictor.predict(data)
-
-            # Only use first column as the feature
-            predictions = predictor.predict(data, feature_columns=["A"])
+            >>> import pandas as pd
+            >>> import torch
+            >>> from ray.train.torch import TorchPredictor
+            >>>
+            >>> class CustomModule(torch.nn.Module):
+            ...     def __init__(self):
+            ...         super().__init__()
+            ...         self.linear1 = torch.nn.Linear(1, 1)
+            ...         self.linear2 = torch.nn.Linear(1, 1)
+            ...
+            ...     def forward(self, input_dict: dict):
+            ...         out1 = self.linear1(input_dict["A"].unsqueeze(1))
+            ...         out2 = self.linear2(input_dict["B"].unsqueeze(1))
+            ...         return out1 + out2
+            >>>
+            >>> predictor = TorchPredictor(model=CustomModule())
+            >>>
+            >>> # Pandas dataframe.
+            >>> data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
+            >>>
+            >>> predictions = predictor.predict(data, dtype=torch.float)
 
         Returns:
-            DataBatchType: Prediction result.
+            DataBatchType: Prediction result. The return type will be the same as the
+                input type.
         """
-        self.model.eval()
+        return super(TorchPredictor, self).predict(data=data, dtype=dtype)
 
-        if self.preprocessor:
-            data = self.preprocessor.transform_batch(data)
+    def _arrays_to_tensors(
+        self,
+        numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
+        dtypes: Union[torch.dtype, Dict[str, torch.dtype]],
+    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        return convert_ndarray_batch_to_torch_tensor_batch(
+            numpy_arrays,
+            dtypes=dtypes,
+            device="cuda" if self.use_gpu else None,
+        )
 
-        if isinstance(data, np.ndarray):
-            tensor = torch.tensor(data, dtype=dtype)
-        else:
-            tensor = self._convert_to_tensor(
-                data, feature_columns=feature_columns, dtypes=dtype, unsqueeze=unsqueeze
+    def _tensor_to_array(self, tensor: torch.Tensor) -> np.ndarray:
+        if not isinstance(tensor, torch.Tensor):
+            raise ValueError(
+                "Expected the model to return either a torch.Tensor or a "
+                f"dict of torch.Tensor, but got {type(tensor)} instead. "
+                f"To support models with different output types, subclass "
+                f"TorchPredictor and override the `call_model` method to "
+                f"process the output into either torch.Tensor or Dict["
+                f"str, torch.Tensor]."
             )
-
-        return self._predict(tensor)
+        return tensor.cpu().detach().numpy()

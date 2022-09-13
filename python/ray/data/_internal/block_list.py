@@ -1,11 +1,10 @@
 import math
-from typing import List, Iterator, Tuple, Optional
+from typing import Iterator, List, Optional, Tuple
 
 import numpy as np
 
-import ray
-from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata
+from ray.types import ObjectRef
 
 
 class BlockList:
@@ -16,11 +15,20 @@ class BlockList:
     change after execution due to block splitting.
     """
 
-    def __init__(self, blocks: List[ObjectRef[Block]], metadata: List[BlockMetadata]):
+    def __init__(
+        self,
+        blocks: List[ObjectRef[Block]],
+        metadata: List[BlockMetadata],
+        *,
+        owned_by_consumer: bool,
+    ):
         assert len(blocks) == len(metadata), (blocks, metadata)
         self._blocks: List[ObjectRef[Block]] = blocks
         self._num_blocks = len(self._blocks)
         self._metadata: List[BlockMetadata] = metadata
+        # Whether the block list is owned by consuming APIs, and if so it can be
+        # eagerly deleted after read by the consumer.
+        self._owned_by_consumer = owned_by_consumer
 
     def get_metadata(self, fetch_if_missing: bool = False) -> List[BlockMetadata]:
         """Get the metadata for all blocks."""
@@ -28,7 +36,9 @@ class BlockList:
 
     def copy(self) -> "BlockList":
         """Perform a shallow copy of this BlockList."""
-        return BlockList(self._blocks, self._metadata)
+        return BlockList(
+            self._blocks, self._metadata, owned_by_consumer=self._owned_by_consumer
+        )
 
     def clear(self) -> None:
         """Erase references to the tasks tracked by the BlockList."""
@@ -58,7 +68,11 @@ class BlockList:
         meta = np.array_split(self._metadata, num_splits)
         output = []
         for b, m in zip(blocks, meta):
-            output.append(BlockList(b.tolist(), m.tolist()))
+            output.append(
+                BlockList(
+                    b.tolist(), m.tolist(), owned_by_consumer=self._owned_by_consumer
+                )
+            )
         return output
 
     def split_by_bytes(self, bytes_per_split: int) -> List["BlockList"]:
@@ -79,7 +93,11 @@ class BlockList:
                 )
             size = m.size_bytes
             if cur_blocks and cur_size + size > bytes_per_split:
-                output.append(BlockList(cur_blocks, cur_meta))
+                output.append(
+                    BlockList(
+                        cur_blocks, cur_meta, owned_by_consumer=self._owned_by_consumer
+                    )
+                )
                 cur_blocks = []
                 cur_meta = []
                 cur_size = 0
@@ -87,8 +105,36 @@ class BlockList:
             cur_meta.append(m)
             cur_size += size
         if cur_blocks:
-            output.append(BlockList(cur_blocks, cur_meta))
+            output.append(
+                BlockList(
+                    cur_blocks, cur_meta, owned_by_consumer=self._owned_by_consumer
+                )
+            )
         return output
+
+    def truncate_by_rows(self, limit: int) -> "BlockList":
+        """Truncate the block list to the minimum number of blocks that contains at
+        least limit rows.
+
+        If the number of rows is not available, it will be treated as a 0-row block and
+        will be included in the truncated output.
+        """
+        self._check_if_cleared()
+        out_blocks = []
+        out_meta = []
+        out_num_rows = 0
+        for b, m in self.iter_blocks_with_metadata():
+            num_rows = m.num_rows
+            if num_rows is None:
+                num_rows = 0
+            out_blocks.append(b)
+            out_meta.append(m)
+            out_num_rows += num_rows
+            if out_num_rows >= limit:
+                break
+        return BlockList(
+            out_blocks, out_meta, owned_by_consumer=self._owned_by_consumer
+        )
 
     def size_bytes(self) -> int:
         """Returns the total size in bytes of the blocks, or -1 if not known."""
@@ -111,8 +157,16 @@ class BlockList:
         """
         self._check_if_cleared()
         return (
-            BlockList(self._blocks[:block_idx], self._metadata[:block_idx]),
-            BlockList(self._blocks[block_idx:], self._metadata[block_idx:]),
+            BlockList(
+                self._blocks[:block_idx],
+                self._metadata[:block_idx],
+                owned_by_consumer=self._owned_by_consumer,
+            ),
+            BlockList(
+                self._blocks[block_idx:],
+                self._metadata[block_idx:],
+                owned_by_consumer=self._owned_by_consumer,
+            ),
         )
 
     def get_blocks(self) -> List[ObjectRef[Block]]:
@@ -131,21 +185,7 @@ class BlockList:
         The length of this iterator is not known until execution.
         """
         self._check_if_cleared()
-        outer = self
-
-        class Iter:
-            def __init__(self):
-                self._base_iter = outer.iter_blocks_with_metadata()
-
-            def __iter__(self):
-                return self
-
-            def __next__(self):
-                ref, meta = next(self._base_iter)
-                assert isinstance(ref, ray.ObjectRef), (ref, meta)
-                return ref
-
-        return Iter()
+        return iter(self._blocks)
 
     def get_blocks_with_metadata(self) -> List[Tuple[ObjectRef[Block], BlockMetadata]]:
         """Bulk version of iter_blocks_with_metadata().
@@ -195,4 +235,4 @@ class BlockList:
         random.shuffle(blocks_with_metadata)
         blocks, metadata = map(list, zip(*blocks_with_metadata))
 
-        return BlockList(blocks, metadata)
+        return BlockList(blocks, metadata, owned_by_consumer=self._owned_by_consumer)

@@ -16,7 +16,6 @@ from ray.rllib.execution.common import (
     STEPS_SAMPLED_COUNTER,
     STEPS_TRAINED_COUNTER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
-    WORKER_UPDATE_TIMER,
     _check_sample_batch_type,
     _get_global_vars,
     _get_shared_metrics,
@@ -25,7 +24,11 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_TRAINED, NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.metrics import (
+    NUM_ENV_STEPS_TRAINED,
+    NUM_AGENT_STEPS_TRAINED,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+)
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, LEARNER_INFO
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
@@ -82,6 +85,12 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
     algorithm._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
     algorithm._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
 
+    if algorithm.reward_estimators:
+        info[DEFAULT_POLICY_ID]["off_policy_estimation"] = {}
+        for name, estimator in algorithm.reward_estimators.items():
+            info[DEFAULT_POLICY_ID]["off_policy_estimation"][name] = estimator.train(
+                train_batch
+            )
     return info
 
 
@@ -181,6 +190,13 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     algorithm._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
     algorithm._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
 
+    if algorithm.reward_estimators:
+        learner_info[DEFAULT_POLICY_ID]["off_policy_estimation"] = {}
+        for name, estimator in algorithm.reward_estimators.items():
+            learner_info[DEFAULT_POLICY_ID]["off_policy_estimation"][
+                name
+            ] = estimator.train(train_batch)
+
     return learner_info
 
 
@@ -231,7 +247,7 @@ class TrainOneStep:
         # Update weights - after learning on the local worker - on all remote
         # workers.
         if self.workers.remote_workers():
-            with metrics.timers[WORKER_UPDATE_TIMER]:
+            with metrics.timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 weights = ray.put(
                     lw.get_weights(self.policies or lw.get_policies_to_train(batch))
                 )
@@ -354,7 +370,7 @@ class MultiGPUTrainOneStep:
         metrics.info[LEARNER_INFO] = learner_info
 
         if self.workers.remote_workers():
-            with metrics.timers[WORKER_UPDATE_TIMER]:
+            with metrics.timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 weights = ray.put(
                     self.workers.local_worker().get_weights(
                         self.local_worker.get_policies_to_train()
@@ -453,7 +469,7 @@ class ApplyGradients:
 
         if self.update_all:
             if self.workers.remote_workers():
-                with metrics.timers[WORKER_UPDATE_TIMER]:
+                with metrics.timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                     weights = ray.put(
                         self.local_worker.get_weights(
                             self.policies or self.local_worker.get_policies_to_train()
@@ -468,7 +484,7 @@ class ApplyGradients:
                     "update_all=False, `current_actor` must be set "
                     "in the iterator context."
                 )
-            with metrics.timers[WORKER_UPDATE_TIMER]:
+            with metrics.timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 weights = self.local_worker.get_weights(
                     self.policies or self.local_worker.get_policies_to_train()
                 )

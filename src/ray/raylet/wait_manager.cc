@@ -23,6 +23,10 @@ void WaitManager::Wait(const std::vector<ObjectID> &object_ids,
                        int64_t timeout_ms,
                        uint64_t num_required_objects,
                        const WaitCallback &callback) {
+  absl::flat_hash_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
+  RAY_CHECK_EQ(object_id_set.size(), object_ids.size())
+      << "Waiting duplicate objects is not allowed. Please make sure all object IDs are "
+         "unique before calling `WaitManager::Wait`.";
   RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
   RAY_CHECK_NE(num_required_objects, 0u);
   RAY_CHECK_LE(num_required_objects, object_ids.size());

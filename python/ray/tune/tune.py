@@ -1,86 +1,91 @@
-import threading
-from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
-
 import datetime
 import logging
 import os
 import signal
 import sys
+import threading
 import time
 import warnings
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
 import ray
-from ray.util.annotations import PublicAPI
-from ray.util.ml_utils.node import force_on_current_node
-from ray.util.queue import Queue, Empty
-
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
-from ray.tune.experiment import Experiment, convert_to_experiment_list
+from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.progress_reporter import (
-    RemoteReporterMixin,
-    detect_reporter,
     ProgressReporter,
+    RemoteReporterMixin,
+    _detect_reporter,
+    _detect_progress_metrics,
 )
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
+
+# Must come last to avoid circular imports
 from ray.tune.schedulers import (
+    FIFOScheduler,
     PopulationBasedTraining,
     PopulationBasedTrainingReplay,
     ResourceChangingScheduler,
-)
-from ray.tune.stopper import Stopper
-from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
-from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
-
-# Turn off black here, as it will format the lines to be longer than 88 chars
-# fmt: off
-from ray.tune.suggest.util import (
-    set_search_properties_backwards_compatible
-    as searcher_set_search_properties_backwards_compatible,
+    TrialScheduler,
 )
 from ray.tune.schedulers.util import (
-    set_search_properties_backwards_compatible
-    as scheduler_set_search_properties_backwards_compatible,
+    _set_search_properties_backwards_compatible as scheduler_set_search_props,
 )
-# fmt: on
-
-from ray.tune.suggest.variant_generator import has_unresolved_values
-from ray.tune.syncer import (
-    SyncConfig,
-    _validate_upload_dir,
-    SyncerCallback,
+from ray.tune.stopper import Stopper
+from ray.tune.search import (
+    BasicVariantGenerator,
+    SearchAlgorithm,
+    SearchGenerator,
+    ConcurrencyLimiter,
+    Searcher,
+    create_searcher,
 )
+from ray.tune.search.util import (
+    _set_search_properties_backwards_compatible as searcher_set_search_props,
+)
+from ray.tune.search.variant_generator import _has_unresolved_values
+from ray.tune.syncer import SyncConfig, SyncerCallback, _validate_upload_dir
 from ray.tune.trainable import Trainable
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
-from ray.tune.utils.callback import create_default_callbacks
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
+from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
-
-# Must come last to avoid circular imports
-from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.utils.node import _force_on_current_node
+from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.util.annotations import PublicAPI
+from ray.util.queue import Empty, Queue
 
 logger = logging.getLogger(__name__)
 
 
-def _check_default_resources_override(
+def _get_trainable(
     run_identifier: Union[Experiment, str, Type, Callable]
-) -> bool:
+) -> Optional[Type[Trainable]]:
     if isinstance(run_identifier, Experiment):
         run_identifier = run_identifier.run_identifier
 
     if isinstance(run_identifier, type):
         if not issubclass(run_identifier, Trainable):
             # If obscure dtype, assume it is overridden.
-            return True
+            return None
         trainable_cls = run_identifier
     elif callable(run_identifier):
         trainable_cls = run_identifier
     elif isinstance(run_identifier, str):
         trainable_cls = get_trainable_cls(run_identifier)
     else:
+        return None
+
+    return trainable_cls
+
+
+def _check_default_resources_override(
+    run_identifier: Union[Experiment, str, Type, Callable]
+) -> bool:
+    trainable_cls = _get_trainable(run_identifier)
+    if not trainable_cls:
         # Default to True
         return True
 
@@ -301,17 +306,25 @@ def run(
         restore: Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
         server_port: Port number for launching TuneServer.
-        resume: One of "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY", "AUTO",
-            or bool. "LOCAL"/True restores the checkpoint from the
+        resume: One of [True, False, "LOCAL", "REMOTE", "PROMPT", "AUTO"]. Can
+            be suffixed with one or more of ["+ERRORED", "+ERRORED_ONLY",
+            "+RESTART_ERRORED", "+RESTART_ERRORED_ONLY"] (e.g. ``AUTO+ERRORED``).
+            "LOCAL"/True restores the checkpoint from the
             local experiment directory, determined
-            by ``name`` and ``local_dir``. "REMOTE" restores the checkpoint
+            by ``name`` and ``local_dir``.
+            "REMOTE" restores the checkpoint
             from ``upload_dir`` (as passed to ``sync_config``).
             "PROMPT" provides the CLI feedback.
-            False forces a new experiment. "ERRORED_ONLY" resets and reruns
-            errored trials upon resume - previous trial artifacts will
-            be left untouched.
+            False forces a new experiment.
             "AUTO" will attempt to resume from a checkpoint and otherwise
             start a new experiment.
+            The suffix "+ERRORED" resets and reruns errored trials upon resume -
+            previous trial artifacts will be left untouched. It will try to continue
+            from the last observed checkpoint.
+            The suffix "+RESTART_ERRORED" will instead start the errored trials from
+            scratch. "+ERRORED_ONLY" and "+RESTART_ERRORED_ONLY" will disable
+            resuming non-errored trials - they will be added as finished instead. New
+            trials can still be generated by the search algorithm.
             If resume is set but checkpoint does not exist,
             ValueError will be thrown.
         reuse_actors: Whether to reuse actors between different trials
@@ -364,10 +377,10 @@ def run(
         remote_run = ray.remote(num_cpus=0)(run)
 
         # Make sure tune.run is called on the sever node.
-        remote_run = force_on_current_node(remote_run)
+        remote_run = _force_on_current_node(remote_run)
 
         set_verbosity(verbose)
-        progress_reporter = progress_reporter or detect_reporter()
+        progress_reporter = progress_reporter or _detect_reporter()
 
         # JupyterNotebooks don't work with remote tune runs out of the box
         # (e.g. via Ray client) as they don't have access to the main
@@ -375,7 +388,7 @@ def run(
         # strings, which will then be displayed on the driver side.
         if isinstance(progress_reporter, RemoteReporterMixin):
             string_queue = Queue(
-                actor_options={"num_cpus": 0, **force_on_current_node(None)}
+                actor_options={"num_cpus": 0, **_force_on_current_node(None)}
             )
             progress_reporter.output_queue = string_queue
 
@@ -533,13 +546,10 @@ def run(
         raise ValueError("max_failures must be 0 if fail_fast=True.")
 
     if isinstance(search_alg, str):
-        # importing at top level causes a recursive dependency
-        from ray.tune.suggest import create_searcher
-
         search_alg = create_searcher(search_alg)
 
     # if local_mode=True is set during ray.init().
-    is_local_mode = ray.worker._mode() == ray.worker.LOCAL_MODE
+    is_local_mode = ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
 
     if is_local_mode:
         max_concurrent_trials = 1
@@ -585,14 +595,14 @@ def run(
     if isinstance(search_alg, Searcher):
         search_alg = SearchGenerator(search_alg)
 
-    if config and not searcher_set_search_properties_backwards_compatible(
+    if config and not searcher_set_search_props(
         search_alg.set_search_properties,
         metric,
         mode,
         config,
         **experiments[0].public_spec,
     ):
-        if has_unresolved_values(config):
+        if _has_unresolved_values(config):
             raise ValueError(
                 "You passed a `config` parameter to `tune.run()` with "
                 "unresolved parameters, but the search algorithm was already "
@@ -601,7 +611,7 @@ def run(
                 "them in the search algorithm's search space if necessary."
             )
 
-    if not scheduler_set_search_properties_backwards_compatible(
+    if not scheduler_set_search_props(
         scheduler.set_search_properties, metric, mode, **experiments[0].public_spec
     ):
         raise ValueError(
@@ -611,8 +621,12 @@ def run(
             "from your scheduler or from your call to `tune.run()`"
         )
 
+    progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
+
     # Create syncer callbacks
-    callbacks = create_default_callbacks(callbacks, sync_config, metric=metric)
+    callbacks = _create_default_callbacks(
+        callbacks, sync_config, metric=metric, progress_metrics=progress_metrics
+    )
 
     runner = TrialRunner(
         search_alg=search_alg,
@@ -659,9 +673,11 @@ def run(
         else:
             logger.warning(
                 "Tune detects GPUs, but no trials are using GPUs. "
-                "To enable trials to use GPUs, set "
-                "tune.run(resources_per_trial={'gpu': 1}...) "
+                "To enable trials to use GPUs, wrap `train_func` with "
+                "`tune.with_resources(train_func, resources_per_trial={'gpu': 1})` "
                 "which allows Tune to expose 1 GPU to each trial. "
+                "For Ray AIR Trainers, you can specify GPU resources "
+                "through `ScalingConfig(use_gpu=True)`. "
                 "You can also override "
                 "`Trainable.default_resource_request` if using the "
                 "Trainable API."
@@ -696,7 +712,7 @@ def run(
         if hasattr(signal, "SIGUSR1"):
             signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
 
-    progress_reporter = progress_reporter or detect_reporter()
+    progress_reporter = progress_reporter or _detect_reporter()
 
     tune_start = time.time()
 
@@ -808,7 +824,7 @@ def run_experiments(
         remote_run = ray.remote(num_cpus=0)(run_experiments)
 
         # Make sure tune.run_experiments is run on the server node.
-        remote_run = force_on_current_node(remote_run)
+        remote_run = _force_on_current_node(remote_run)
 
         return ray.get(
             remote_run.remote(
@@ -830,7 +846,7 @@ def run_experiments(
     # This is important to do this here
     # because it schematize the experiments
     # and it conducts the implicit registration.
-    experiments = convert_to_experiment_list(experiments)
+    experiments = _convert_to_experiment_list(experiments)
 
     if concurrent:
         return run(

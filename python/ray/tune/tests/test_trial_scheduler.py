@@ -13,8 +13,9 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import tune
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.tune import Trainable
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (
     FIFOScheduler,
@@ -27,13 +28,12 @@ from ray.tune.schedulers import (
 )
 
 from ray.tune.schedulers.pbt import _explore, PopulationBasedTrainingReplay
-from ray.tune.suggest._mock import _MockSearcher
-from ray.tune.suggest.suggestion import ConcurrencyLimiter
-from ray.tune.trial import Trial
+from ray.tune.search._mock import _MockSearcher
+from ray.tune.search import ConcurrencyLimiter
+from ray.tune.experiment import Trial
 from ray.tune.resources import Resources
 
 from ray.rllib import _register_all
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 _register_all()
 
@@ -349,7 +349,7 @@ class HyperbandSuite(unittest.TestCase):
         """Default statistics for HyperBand."""
         sched = HyperBandScheduler()
         res = {
-            str(s): {"n": sched._get_n0(s), "r": sched._get_r0(s)}
+            str(s): {"n": sched._get_n0(s), "r": sched._get_r0(s)}  # noqa
             for s in range(sched._s_max_1)
         }
         res["max_trials"] = sum(v["n"] for v in res.values())
@@ -733,6 +733,8 @@ class BOHBSuite(unittest.TestCase):
         decision = sched.on_trial_result(runner, trials[-1], spy_result)
         self.assertEqual(decision, TrialScheduler.STOP)
         sched.choose_trial_to_run(runner)
+        self.assertEqual(runner._search_alg.searcher.on_pause.call_count, 2)
+        self.assertEqual(runner._search_alg.searcher.on_unpause.call_count, 1)
         self.assertTrue("hyperband_info" in spy_result)
         self.assertEqual(spy_result["hyperband_info"]["budget"], 1)
 
@@ -759,6 +761,7 @@ class BOHBSuite(unittest.TestCase):
         decision = sched.on_trial_result(runner, trials[-1], spy_result)
         self.assertEqual(decision, TrialScheduler.CONTINUE)
         sched.choose_trial_to_run(runner)
+        self.assertEqual(runner._search_alg.searcher.on_pause.call_count, 2)
         self.assertTrue("hyperband_info" in spy_result)
         self.assertEqual(spy_result["hyperband_info"]["budget"], 1)
 
@@ -790,7 +793,7 @@ class BOHBSuite(unittest.TestCase):
         )
 
     def testNonstopBOHB(self):
-        from ray.tune.suggest.bohb import TuneBOHB
+        from ray.tune.search.bohb import TuneBOHB
 
         def train(cfg, checkpoint_dir=None):
             start = 0
@@ -2311,7 +2314,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
         self._testAnonymousMetricEndToEnd(AsyncHyperBandScheduler)
 
     def testAnonymousMetricEndToEndBOHB(self):
-        from ray.tune.suggest.bohb import TuneBOHB
+        from ray.tune.search.bohb import TuneBOHB
 
         self._testAnonymousMetricEndToEnd(HyperBandForBOHB, TuneBOHB())
 

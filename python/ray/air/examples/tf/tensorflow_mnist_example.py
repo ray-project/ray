@@ -8,16 +8,10 @@ import os
 import numpy as np
 from ray.air.result import Result
 import tensorflow as tf
-from tensorflow.keras.callbacks import Callback
 
-import ray.train as train
 from ray.train.tensorflow import TensorflowTrainer
-
-
-class TrainCheckpointReportCallback(Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        train.save_checkpoint(**{"model": self.model.get_weights()})
-        train.report(**logs)
+from ray.air.callbacks.keras import Callback as TrainCheckpointReportCallback
+from ray.air.config import ScalingConfig
 
 
 def mnist_dataset(batch_size: int) -> tf.data.Dataset:
@@ -86,11 +80,10 @@ def train_tensorflow_mnist(
     num_workers: int = 2, use_gpu: bool = False, epochs: int = 4
 ) -> Result:
     config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
-    scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu)
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
-        scaling_config=scaling_config,
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
     results = trainer.fit()
     return results

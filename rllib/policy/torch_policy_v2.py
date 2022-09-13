@@ -75,6 +75,7 @@ class TorchPolicyV2(Policy):
         """
         self.framework = config["framework"] = "torch"
 
+        self._loss_initialized = False
         super().__init__(observation_space, action_space, config)
 
         # Create model.
@@ -93,26 +94,15 @@ class TorchPolicyV2(Policy):
         #   parallelization will be done.
 
         # Get devices to build the graph on.
-        worker_idx = self.config.get("worker_index", 0)
-        if not config["_fake_gpus"] and ray.worker._mode() == ray.worker.LOCAL_MODE:
-            num_gpus = 0
-        elif worker_idx == 0:
-            num_gpus = config["num_gpus"]
-        else:
-            num_gpus = config["num_gpus_per_worker"]
+        num_gpus = self._get_num_gpus_for_policy()
         gpu_ids = list(range(torch.cuda.device_count()))
+        logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
 
         # Place on one or more CPU(s) when either:
         # - Fake GPU mode.
         # - num_gpus=0 (either set by user or we are in local_mode=True).
         # - No GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
-            logger.info(
-                "TorchPolicy (worker={}) running on {}.".format(
-                    worker_idx if worker_idx > 0 else "local",
-                    "{} fake-GPUs".format(num_gpus) if config["_fake_gpus"] else "CPU",
-                )
-            )
             self.device = torch.device("cpu")
             self.devices = [self.device for _ in range(int(math.ceil(num_gpus)) or 1)]
             self.model_gpu_towers = [
@@ -130,14 +120,9 @@ class TorchPolicyV2(Policy):
         # - actual GPUs available AND
         # - non-fake GPU mode.
         else:
-            logger.info(
-                "TorchPolicy (worker={}) running on {} GPU(s).".format(
-                    worker_idx if worker_idx > 0 else "local", num_gpus
-                )
-            )
             # We are a remote worker (WORKER_MODE=1):
             # GPUs should be assigned to us by ray.
-            if ray.worker._mode() == ray.worker.WORKER_MODE:
+            if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
                 gpu_ids = ray.get_gpu_ids()
 
             if len(gpu_ids) < num_gpus:
@@ -211,6 +196,9 @@ class TorchPolicyV2(Policy):
 
         self.batch_divisibility_req = self.get_batch_divisibility_req()
         self.max_seq_len = max_seq_len
+
+    def loss_initialized(self):
+        return self._loss_initialized
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -691,7 +679,7 @@ class TorchPolicyV2(Policy):
     def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
         if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
             assert buffer_index == 0
-        return len(self._loaded_batches[buffer_index])
+        return sum(len(b) for b in self._loaded_batches[buffer_index])
 
     @override(Policy)
     @DeveloperAPI
@@ -913,7 +901,11 @@ class TorchPolicyV2(Policy):
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
-        # Then the Policy's (NN) weights.
+
+        # Restore glbal timestep.
+        self.global_timestep = state["global_timestep"]
+
+        # Then the Policy's (NN) weights and connectors.
         super().set_state(state)
 
     @override(Policy)
@@ -948,7 +940,7 @@ class TorchPolicyV2(Policy):
         }
 
         if not os.path.exists(export_dir):
-            os.makedirs(export_dir)
+            os.makedirs(export_dir, exist_ok=True)
 
         seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
         if onnx:

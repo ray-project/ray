@@ -15,28 +15,25 @@ dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
 
 # __air_tf_train_start__
 import tensorflow as tf
-from tensorflow.keras.callbacks import Callback
 
-import ray.train as train
+from ray.air import session
+from ray.air.callbacks.keras import Callback
 from ray.train.tensorflow import prepare_dataset_shard
 from ray.train.tensorflow import TensorflowTrainer
+from ray.air.config import ScalingConfig
 
 
 def build_model() -> tf.keras.Model:
     model = tf.keras.Sequential(
         [
-            tf.keras.layers.InputLayer(input_shape=(1,)),
+            tf.keras.layers.InputLayer(input_shape=()),
+            # Add feature dimension, expanding (batch_size,) to (batch_size, 1).
+            tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(10),
             tf.keras.layers.Dense(1),
         ]
     )
     return model
-
-
-class TrainCheckpointReportCallback(Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        train.save_checkpoint(**{"model": self.model.get_weights()})
-        train.report(**logs)
 
 
 def train_func(config: dict):
@@ -53,23 +50,28 @@ def train_func(config: dict):
             metrics=[tf.keras.metrics.mean_squared_error],
         )
 
-    dataset = train.get_dataset_shard("train")
+    dataset = session.get_dataset_shard("train")
+
+    def to_tf_dataset(dataset, batch_size):
+        def to_tensor_iterator():
+            for batch in dataset.iter_tf_batches(
+                batch_size=batch_size, dtypes=tf.float32
+            ):
+                yield batch["x"], batch["y"]
+
+        output_signature = (
+            tf.TensorSpec(shape=(None), dtype=tf.float32),
+            tf.TensorSpec(shape=(None), dtype=tf.float32),
+        )
+        tf_dataset = tf.data.Dataset.from_generator(
+            to_tensor_iterator, output_signature=output_signature
+        )
+        return prepare_dataset_shard(tf_dataset)
 
     results = []
     for _ in range(epochs):
-        tf_dataset = prepare_dataset_shard(
-            dataset.to_tf(
-                label_column="y",
-                output_signature=(
-                    tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
-                    tf.TensorSpec(shape=(None), dtype=tf.float32),
-                ),
-                batch_size=batch_size,
-            )
-        )
-        history = multi_worker_model.fit(
-            tf_dataset, callbacks=[TrainCheckpointReportCallback()]
-        )
+        tf_dataset = to_tf_dataset(dataset=dataset, batch_size=batch_size)
+        history = multi_worker_model.fit(tf_dataset, callbacks=[Callback()])
         results.append(history.history)
     return results
 
@@ -82,7 +84,7 @@ config = {"lr": 1e-3, "batch_size": 32, "epochs": 4}
 trainer = TensorflowTrainer(
     train_loop_per_worker=train_func,
     train_loop_config=config,
-    scaling_config=dict(num_workers=num_workers, use_gpu=use_gpu),
+    scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     datasets={"train": dataset},
 )
 result = trainer.fit()
@@ -105,7 +107,7 @@ prediction_dataset = ray.data.from_items(items)
 
 predictions = batch_predictor.predict(prediction_dataset, dtype=tf.float32)
 
-pandas_predictions = predictions.to_pandas(float("inf"))
+print("PREDICTIONS")
+predictions.show()
 
-print(f"PREDICTIONS\n{pandas_predictions}")
 # __air_tf_batchpred_end__

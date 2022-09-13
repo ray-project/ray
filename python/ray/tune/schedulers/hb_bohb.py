@@ -1,10 +1,10 @@
 import logging
 from typing import Dict, Optional
 
-from ray.tune import trial_runner
+from ray.tune.execution import trial_runner
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
 from ray.tune.schedulers.hyperband import HyperBandScheduler
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class HyperBandForBOHB(HyperBandScheduler):
                 "{} has been instantiated without a valid `metric` ({}) or "
                 "`mode` ({}) parameter. Either pass these parameters when "
                 "instantiating the scheduler, or pass them as parameters "
-                "to `tune.run()`".format(
+                "to `tune.TuneConfig()`".format(
                     self.__class__.__name__, self._metric, self._mode
                 )
             )
@@ -97,9 +97,26 @@ class HyperBandForBOHB(HyperBandScheduler):
         if not bracket.filled() or any(
             status != Trial.PAUSED for t, status in statuses if t is not trial
         ):
+            # BOHB Specific. This hack existed in old Ray versions
+            # and was removed, but it needs to be brought back
+            # as otherwise the BOHB doesn't behave as intended.
+            # The default concurrency limiter works by discarding
+            # new suggestions if there are more running trials
+            # than the limit. That doesn't take into account paused
+            # trials. With BOHB, this leads to N trials finishing
+            # completely and then another N trials starting,
+            # instead of trials being paused and resumed in brackets
+            # as intended.
+            # There should be a better API for this.
+            # TODO(team-ml): Refactor alongside HyperBandForBOHB
+            trial_runner._search_alg.searcher.on_pause(trial.trial_id)
             return TrialScheduler.PAUSE
         action = self._process_bracket(trial_runner, bracket)
         return action
+
+    def _unpause_trial(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
+        # Hack. See comment in on_trial_result
+        trial_runner._search_alg.searcher.on_unpause(trial.trial_id)
 
     def choose_trial_to_run(
         self, trial_runner: "trial_runner.TrialRunner", allow_recurse: bool = True

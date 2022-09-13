@@ -1,14 +1,14 @@
 import unittest
 
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.tune import PlacementGroupFactory
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 from ray.tune.schedulers.resource_changing_scheduler import (
     ResourceChangingScheduler,
     DistributeResources,
     DistributeResourcesToTopJob,
 )
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 
 class MockResourceUpdater:

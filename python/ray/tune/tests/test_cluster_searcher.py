@@ -7,8 +7,8 @@ import sys
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.mock_trainable import MyTrainableClass
 
 

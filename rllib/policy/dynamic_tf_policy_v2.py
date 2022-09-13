@@ -251,15 +251,12 @@ class DynamicTFPolicyV2(TFPolicy):
     @OverrideToImplementCustomLogic
     def apply_gradients_fn(
         self,
-        policy: Policy,
         optimizer: "tf.keras.optimizers.Optimizer",
         grads: ModelGradients,
     ) -> "tf.Operation":
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy: The Policy object that generated the loss tensor and
-                that holds the given local optimizer.
             optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
             grads: The gradient tensor to be applied.
@@ -715,7 +712,10 @@ class DynamicTFPolicyV2(TFPolicy):
                 logger.info("Adding extra-action-fetch `{}` to view-reqs.".format(key))
                 self.view_requirements[key] = ViewRequirement(
                     space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype.name
+                        -1.0,
+                        1.0,
+                        shape=value.shape.as_list()[1:],
+                        dtype=value.dtype.name,
                     ),
                     used_for_compute_actions=False,
                 )

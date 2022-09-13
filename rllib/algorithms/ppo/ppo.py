@@ -38,7 +38,7 @@ from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
-    WORKER_UPDATE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,7 @@ class PPOConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.ppo import PPOConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = PPOConfig()
         >>> # Print out some default values.
@@ -69,11 +70,11 @@ class PPOConfig(AlgorithmConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "PPO",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -426,7 +427,7 @@ class PPO(Algorithm):
         # Update weights - after learning on the local worker - on all remote
         # workers.
         if self.workers.remote_workers():
-            with self._timers[WORKER_UPDATE_TIMER]:
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(global_vars=global_vars)
 
         # For each policy: update KL scale and warn about possible issues

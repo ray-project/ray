@@ -5,12 +5,9 @@ import time
 import pytest
 
 import ray
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
+from ray._private.test_utils import get_other_nodes, wait_for_condition
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray._private.test_utils import (
-    get_other_nodes,
-    wait_for_condition,
-)
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 

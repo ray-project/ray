@@ -7,7 +7,7 @@
 
 This tutorial will give you a quick tour of Ray's features.
 To get started, we'll start by installing Ray.
-Most of the examples in this guide are based on Python, but we'll also show you how to user Ray Core in Java.
+Most of the examples in this guide are based on Python, but we'll also show you how to use Ray Core in Java.
 
 ````{panels}
 :container: text-center
@@ -40,10 +40,10 @@ Check out our detailed [installation guide](installation.rst).
 
 Preprocess your data with a ``Preprocessor``.
 
-```{literalinclude} ../ray-air/doc_code/xgboost_starter.py
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
     :language: python
-    :start-after: __air_xgb_preprocess_start__
-    :end-before: __air_xgb_preprocess_end__
+    :start-after: __air_generic_preprocess_start__
+    :end-before: __air_generic_preprocess_end__
 ```
 `````
 
@@ -51,7 +51,7 @@ Preprocess your data with a ``Preprocessor``.
 
 Train a model with an ``XGBoostTrainer``.
 
-```{literalinclude} ../ray-air/doc_code/xgboost_starter.py
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
     :language: python
     :start-after: __air_xgb_train_start__
     :end-before: __air_xgb_train_end__
@@ -62,7 +62,7 @@ Train a model with an ``XGBoostTrainer``.
 
 Use the trained model for batch prediction with a ``BatchPredictor``.
 
-```{literalinclude} ../ray-air/doc_code/xgboost_starter.py
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
     :language: python
     :start-after: __air_xgb_batchpred_start__
     :end-before: __air_xgb_batchpred_end__
@@ -549,7 +549,7 @@ Assuming you have stored this configuration in a file called `cluster.yaml`, you
 ray submit cluster.yaml example.py --start
 ```
 
-```{link-button} cluster-cloud
+```{link-button} cluster-index
 :type: ref
 :text: Learn more about launching Ray Clusters
 :classes: btn-outline-primary btn-block

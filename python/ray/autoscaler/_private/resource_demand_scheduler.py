@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler._private.util import (
@@ -207,6 +207,21 @@ class ResourceDemandScheduler:
         # Step 3: get resource demands of placement groups and return the
         # groups that should be strictly spread.
         logger.debug(f"Placement group demands: {pending_placement_groups}")
+        # TODO(Clark): Refactor placement group bundle demands such that their placement
+        # group provenance is mantained, since we need to keep an accounting of the
+        # cumulative CPU cores allocated as fulfilled during bin packing in order to
+        # ensure that a placement group's cumulative allocation is under the placement
+        # group's max CPU fraction per node. Without this, and placement group with many
+        # bundles might not be schedulable, but will fail to trigger scale-up since the
+        # max CPU fraction is properly applied to the cumulative bundle requests for a
+        # single node.
+        #
+        # placement_group_demand_vector: List[Tuple[List[ResourceDict], double]]
+        #
+        # bin_pack_residual() can keep it's packing priority; we just need to account
+        # for (1) the running CPU allocation for the bundle's placement group for that
+        # particular node, and (2) the max CPU cores allocatable for a single placement
+        # group for that particular node.
         (
             placement_group_demand_vector,
             strict_spreads,
@@ -244,13 +259,16 @@ class ResourceDemandScheduler:
             node_resources,
             node_type_counts,
         ) = self.reserve_and_allocate_spread(
-            strict_spreads, node_resources, node_type_counts
+            strict_spreads,
+            node_resources,
+            node_type_counts,
         )
 
         # Calculate the nodes to add for bypassing max launch limit for
         # placement groups and spreads.
         unfulfilled_placement_groups_demands, _ = get_bin_pack_residual(
-            node_resources, placement_group_demand_vector
+            node_resources,
+            placement_group_demand_vector,
         )
         # Add 1 to account for the head node.
         max_to_add = self.max_workers + 1 - sum(node_type_counts.values())

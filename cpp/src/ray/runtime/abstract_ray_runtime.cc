@@ -87,7 +87,7 @@ void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
 }
 
 std::string AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
-  ObjectID object_id{};
+  ObjectID object_id;
   object_store_->Put(data, &object_id);
   return object_id.Binary();
 }
@@ -224,8 +224,8 @@ const JobID &AbstractRayRuntime::GetCurrentJobID() {
   return GetWorkerContext().GetCurrentJobID();
 }
 
-const WorkerContext &AbstractRayRuntime::GetWorkerContext() {
-  return CoreWorkerProcess::GetCoreWorker().GetWorkerContext();
+const ActorID &AbstractRayRuntime::GetCurrentActorID() {
+  return GetWorkerContext().GetCurrentActorID();
 }
 
 void AbstractRayRuntime::AddLocalReference(const std::string &id) {
@@ -242,8 +242,9 @@ void AbstractRayRuntime::RemoveLocalReference(const std::string &id) {
   }
 }
 
-std::string AbstractRayRuntime::GetActorId(const std::string &actor_name) {
-  auto actor_id = task_submitter_->GetActor(actor_name);
+std::string AbstractRayRuntime::GetActorId(const std::string &actor_name,
+                                           const std::string &ray_namespace) {
+  auto actor_id = task_submitter_->GetActor(actor_name, ray_namespace);
   if (actor_id.IsNil()) {
     return "";
   }
@@ -350,12 +351,36 @@ PlacementGroup AbstractRayRuntime::GetPlacementGroupById(const std::string &id) 
 }
 
 PlacementGroup AbstractRayRuntime::GetPlacementGroup(const std::string &name) {
-  auto str_ptr = global_state_accessor_->GetPlacementGroupByName(name, "");
+  // TODO(WangTaoTheTonic): Add namespace support for placement group.
+  auto str_ptr = global_state_accessor_->GetPlacementGroupByName(
+      name, CoreWorkerProcess::GetCoreWorker().GetJobConfig().ray_namespace());
   if (str_ptr == nullptr) {
     return {};
   }
   PlacementGroup group = GeneratePlacementGroup(*str_ptr);
   return group;
+}
+
+std::string AbstractRayRuntime::GetNamespace() {
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  return core_worker.GetJobConfig().ray_namespace();
+}
+
+std::string AbstractRayRuntime::SerializeActorHandle(const std::string &actor_id) {
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  std::string output;
+  ObjectID actor_handle_id;
+  auto status = core_worker.SerializeActorHandle(
+      ActorID::FromBinary(actor_id), &output, &actor_handle_id);
+  return output;
+}
+
+std::string AbstractRayRuntime::DeserializeAndRegisterActorHandle(
+    const std::string &serialized_actor_handle) {
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  return core_worker
+      .DeserializeAndRegisterActorHandle(serialized_actor_handle, ObjectID::Nil())
+      .Binary();
 }
 
 }  // namespace internal

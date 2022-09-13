@@ -9,10 +9,11 @@ from typing import Callable
 
 import ray
 from ray.exceptions import RayActorError
-from ray.serve.common import ReplicaTag
-from ray.serve.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
+from ray.serve._private.client import ServeControllerClient
+from ray.serve._private.common import ReplicaTag
+from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
-from ray.serve.client import ServeControllerClient
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__file__)
 
@@ -20,6 +21,7 @@ _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _global_client: ServeControllerClient = None
 
 
+@PublicAPI(stability="alpha")
 @dataclass
 class ReplicaContext:
     """Stores data for Serve API calls from within deployments."""
@@ -30,6 +32,7 @@ class ReplicaContext:
     servable_object: Callable
 
 
+@PublicAPI(stability="alpha")
 def get_global_client(_health_check_controller: bool = False) -> ServeControllerClient:
     """Gets the global client, which stores the controller's handle.
 
@@ -49,21 +52,22 @@ def get_global_client(_health_check_controller: bool = False) -> ServeController
             return _global_client
     except RayActorError:
         logger.info("The cached controller has died. Reconnecting.")
-        set_global_client(None)
+        _set_global_client(None)
 
     return _connect()
 
 
-def set_global_client(client):
+def _set_global_client(client):
     global _global_client
     _global_client = client
 
 
+@PublicAPI(stability="alpha")
 def get_internal_replica_context():
     return _INTERNAL_REPLICA_CONTEXT
 
 
-def set_internal_replica_context(
+def _set_internal_replica_context(
     deployment: str,
     replica_tag: ReplicaTag,
     controller_name: str,
@@ -92,8 +96,8 @@ def _connect() -> ServeControllerClient:
         RayServeException: if there is no running Serve controller actor.
     """
 
-    # Initialize Ray if needed.
-    ray.worker.global_worker.filter_logs_by_job = False
+    # Initialize ray if needed.
+    ray._private.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 
@@ -120,5 +124,5 @@ def _connect() -> ServeControllerClient:
         controller_name,
         detached=True,
     )
-    set_global_client(client)
+    _set_global_client(client)
     return client

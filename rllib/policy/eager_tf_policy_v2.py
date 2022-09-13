@@ -85,6 +85,14 @@ class EagerTFPolicyV2(Policy):
             self.config["explore"], trainable=False, dtype=tf.bool
         )
 
+        # Log device and worker index.
+        num_gpus = self._get_num_gpus_for_policy()
+        if num_gpus > 0:
+            gpu_ids = get_gpu_devices()
+            logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
+
+        self._is_training = False
+
         self._loss_initialized = False
         # Backward compatibility workaround so Policy will call self.loss() directly.
         # TODO(jungong): clean up after all policies are migrated to new sub-class
@@ -244,15 +252,12 @@ class EagerTFPolicyV2(Policy):
     @OverrideToImplementCustomLogic
     def apply_gradients_fn(
         self,
-        policy: Policy,
         optimizer: "tf.keras.optimizers.Optimizer",
         grads: ModelGradients,
     ) -> "tf.Operation":
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy: The Policy object that generated the loss tensor and
-                that holds the given local optimizer.
             optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
             grads: The gradient tensor to be applied.
@@ -687,9 +692,12 @@ class EagerTFPolicyV2(Policy):
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
-        # Weights and global_timestep (tf vars).
-        self.set_weights(state["weights"])
+
+        # Restore glbal timestep (tf vars).
         self.global_timestep.assign(state["global_timestep"])
+
+        # Then the Policy's (NN) weights and connectors.
+        super().set_state(state)
 
     @override(Policy)
     def export_checkpoint(self, export_dir):

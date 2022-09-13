@@ -72,4 +72,3 @@ RLlib Feature Guides
         :text: How To Contribute To RLlib?
         :classes: btn-link btn-block stretched-link
 
-.. include:: /_includes/rllib/announcement_bottom.rst

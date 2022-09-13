@@ -14,7 +14,8 @@ from gluoncv.model_zoo import get_model
 from gluoncv.data import transforms as gcv_transforms
 
 from ray.tune.schedulers import create_scheduler
-from ray import tune
+from ray import air, tune
+from ray.air import session
 
 # Training settings
 parser = argparse.ArgumentParser(description="CIFAR-10 Example")
@@ -189,28 +190,35 @@ def train_cifar10(config):
     for epoch in range(1, args.epochs + 1):
         train(epoch)
         test_loss, test_acc = test()
-        tune.report(mean_loss=test_loss, mean_accuracy=test_acc)
+        session.report({"mean_loss": test_loss, "mean_accuracy": test_acc})
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
     sched = create_scheduler(args.scheduler)
 
-    analysis = tune.run(
-        train_cifar10,
-        name=args.expname,
-        verbose=2,
-        scheduler=sched,
-        stop={
-            "mean_accuracy": 0.98,
-            "training_iteration": 1 if args.smoke_test else args.epochs,
-        },
-        resources_per_trial={"cpu": int(args.num_workers), "gpu": int(args.num_gpus)},
-        num_samples=1 if args.smoke_test else args.num_samples,
-        config={
+    tuner = tune.Tuner(
+        tune.with_resources(
+            train_cifar10,
+            resources={"cpu": int(args.num_workers), "gpu": int(args.num_gpus)},
+        ),
+        tune_config=tune.TuneConfig(
+            scheduler=sched,
+            num_samples=1 if args.smoke_test else args.num_samples,
+        ),
+        run_config=air.RunConfig(
+            name=args.expname,
+            verbose=2,
+            stop={
+                "mean_accuracy": 0.98,
+                "training_iteration": 1 if args.smoke_test else args.epochs,
+            },
+        ),
+        param_space={
             "args": args,
             "lr": tune.loguniform(1e-4, 1e-1),
             "momentum": tune.uniform(0.85, 0.95),
         },
     )
-    print("Best hyperparameters found were: ", analysis.best_config)
+    results = tuner.fit()
+    print("Best hyperparameters found were: ", results.get_best_result().config)

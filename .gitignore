@@ -119,6 +119,7 @@ scripts/nodes.txt
 /doc/_build
 /doc/source/_static/thumbs
 /doc/source/tune/generated_guides/
+/doc/source/ray-more-libs/
 
 # User-specific stuff:
 .idea/**/workspace.xml
@@ -163,6 +164,7 @@ java/**/.settings
 java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
+java/testng_custom.xml
 
 dependency-reduced-pom.xml
 
@@ -183,6 +185,8 @@ venv
 # Vim
 .*.swp
 *.swp
+.*.swo
+*.swo
 tags
 tags.lock
 tags.temp

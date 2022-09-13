@@ -24,7 +24,7 @@ ML pipeline completely within Ray without requiring data to be materialized to e
    :width: 650px
    :align: center
 
-See the :ref:`ML preprocessing docs <datasets-ml-preprocessing>` for information on how to use Datasets as the
+See below for information on how to use Datasets as the
 last-mile bridge to model training and inference, and see :ref:`the Talks section <data-talks>` for more
 Datasets ML use cases and benchmarks.
 

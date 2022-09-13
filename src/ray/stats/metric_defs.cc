@@ -177,13 +177,6 @@ DEFINE_stats(spill_manager_throughput_mb,
              (),
              ray::stats::GAUGE);
 
-/// GCS Resource Manager
-DEFINE_stats(gcs_new_resource_creation_latency_ms,
-             "Time to persist newly created resources to Redis.",
-             (),
-             ({0.1, 1, 10, 100, 1000, 10000}, ),
-             ray::stats::HISTOGRAM);
-
 /// GCS Storage
 DEFINE_stats(gcs_storage_operation_latency_ms,
              "Time to invoke an operation on Gcs storage",
@@ -226,6 +219,13 @@ DEFINE_stats(gcs_actors_count,
              ("State"),
              (),
              ray::stats::GAUGE);
+
+/// Memory Manager
+DEFINE_stats(memory_manager_worker_eviction_total,
+             "Total worker eviction events broken per work type {Actor, Task}",
+             ("Type"),
+             (),
+             ray::stats::COUNT);
 }  // namespace stats
 
 }  // namespace ray

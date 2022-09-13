@@ -6,19 +6,19 @@ import tempfile
 import unittest
 
 import ray
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.rllib import _register_all
 
 from ray.tune import TuneError
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.result import DONE
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.resources import Resources
-from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.tests.utils_for_test_trial_runner import TrialResultObserver
-from ray.tune.utils.trainable import TrainableUtil
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.tune.search import BasicVariantGenerator
+from ray.tune.tests.tune_test_util import TrialResultObserver
+from ray.tune.trainable.util import TrainableUtil
 
 
 def create_mock_components():
@@ -224,7 +224,7 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[1].runner.get_info.remote()), 1)
-        self.addCleanup(os.remove, trials[0].checkpoint.dir_or_data)
+        self.addCleanup(shutil.rmtree, trials[0].checkpoint.dir_or_data)
 
     def testRestoreMetricsAfterCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -263,7 +263,7 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[1].last_result["timesteps_since_restore"], 20)
         self.assertEqual(trials[1].last_result["iterations_since_restore"], 2)
         self.assertGreater(trials[1].last_result["time_since_restore"], 0)
-        self.addCleanup(os.remove, trials[0].checkpoint.dir_or_data)
+        self.addCleanup(shutil.rmtree, trials[0].checkpoint.dir_or_data)
 
     def testCheckpointingAtEnd(self):
         ray.init(num_cpus=1, num_gpus=1)

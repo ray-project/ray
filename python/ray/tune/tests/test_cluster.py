@@ -13,10 +13,10 @@ from ray.cluster_utils import Cluster
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.tune.experiment import Experiment
 from ray.tune.error import TuneError
-from ray.tune.suggest import BasicVariantGenerator
+from ray.tune.search import BasicVariantGenerator
 from ray.tune.syncer import SyncerCallback
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
 
 
 def _check_trial_running(trial):
@@ -346,7 +346,7 @@ def test_migration_checkpoint_removal(
     cluster.wait_for_nodes()
 
     # Remove checkpoint on "remote" node
-    shutil.rmtree(os.path.dirname(t1.checkpoint.dir_or_data))
+    shutil.rmtree(t1.checkpoint.dir_or_data)
 
     if not durable:
         # Recover from driver file

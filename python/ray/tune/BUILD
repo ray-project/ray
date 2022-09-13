@@ -68,6 +68,7 @@ py_test(
     name = "test_cluster_searcher",
     size = "large",
     srcs = ["tests/test_cluster_searcher.py"],
+    data = ["tests/_test_cluster_interrupt_searcher.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_C"],
 )
@@ -126,6 +127,22 @@ py_test(
     srcs = ["tests/test_function_api.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_F"],
+)
+
+py_test(
+    name = "test_function_api_legacy",
+    size = "medium",
+    srcs = ["tests/test_function_api_legacy.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_F"],
+)
+
+py_test(
+    name = "test_legacy_import",
+    size = "medium",
+    srcs = ["tests/test_legacy_import.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_L"],
 )
 
 py_test(
@@ -289,6 +306,14 @@ py_test(
 )
 
 py_test(
+    name = "test_trainable",
+    size = "medium",
+    srcs = ["tests/test_trainable.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
     name = "test_trainable_util",
     size = "small",
     srcs = ["tests/test_trainable_util.py"],
@@ -412,6 +437,14 @@ py_test(
     name = "test_tuner",
     size = "medium",
     srcs = ["tests/test_tuner.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_tuner_restore",
+    size = "medium",
+    srcs = ["tests/test_tuner_restore.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_T"],
 )

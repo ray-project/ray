@@ -1,22 +1,21 @@
 from typing import Any, Callable, Dict, List, Type
 
 from ray.rllib.connectors.connector import (
-    ConnectorContext,
     ActionConnector,
+    ConnectorContext,
     register_connector,
 )
-from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     PolicyOutputType,
     StateBatches,
     TensorStructType,
 )
+from ray.util.annotations import PublicAPI
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 def register_lambda_action_connector(
     name: str, fn: Callable[[TensorStructType, StateBatches, Dict], PolicyOutputType]
 ) -> Type[ActionConnector]:
@@ -34,7 +33,9 @@ def register_lambda_action_connector(
     """
 
     class LambdaActionConnector(ActionConnector):
-        def __call__(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
+        def transform(
+            self, ac_data: ActionConnectorDataType
+        ) -> ActionConnectorDataType:
             assert isinstance(
                 ac_data.output, tuple
             ), "Action connector requires PolicyOutputType data."
@@ -46,11 +47,11 @@ def register_lambda_action_connector(
                 fn(actions, states, fetches),
             )
 
-        def to_config(self):
+        def to_state(self):
             return name, None
 
         @staticmethod
-        def from_config(ctx: ConnectorContext, params: List[Any]):
+        def from_state(ctx: ConnectorContext, params: List[Any]):
             return LambdaActionConnector(ctx)
 
     LambdaActionConnector.__name__ = name
@@ -62,18 +63,13 @@ def register_lambda_action_connector(
 
 
 # Convert actions and states into numpy arrays if necessary.
-ConvertToNumpyConnector = register_lambda_action_connector(
-    "ConvertToNumpyConnector",
-    lambda actions, states, fetches: (
-        convert_to_numpy(actions),
-        convert_to_numpy(states),
-        fetches,
+ConvertToNumpyConnector = PublicAPI(stability="alpha")(
+    register_lambda_action_connector(
+        "ConvertToNumpyConnector",
+        lambda actions, states, fetches: (
+            convert_to_numpy(actions),
+            convert_to_numpy(states),
+            fetches,
+        ),
     ),
-)
-
-
-# Split action-component batches into single action rows.
-UnbatchActionsConnector = register_lambda_action_connector(
-    "UnbatchActionsConnector",
-    lambda actions, states, fetches: (unbatch(actions), states, fetches),
 )

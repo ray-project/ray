@@ -3,15 +3,17 @@ Ray decorated classes and functions defined at top of file, importable with
 fully qualified name as import_path to test DAG building, artifact generation
 and structured deployment.
 """
+import asyncio
 from typing import TypeVar
 
-import ray
+from ray import serve
+from ray.actor import ActorHandle
 
 RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
 
 
-@ray.remote
+@serve.deployment
 class ClassHello:
     def __init__(self):
         pass
@@ -20,7 +22,7 @@ class ClassHello:
         return "hello"
 
 
-@ray.remote
+@serve.deployment
 class Model:
     def __init__(self, weight: int, ratio: float = None):
         self.weight = weight
@@ -34,7 +36,7 @@ class Model:
         return self.ratio * self.weight * input_data
 
 
-@ray.remote
+@serve.deployment
 class Combine:
     def __init__(
         self,
@@ -45,13 +47,18 @@ class Combine:
         self.m1 = m1
         self.m2 = m2.get(NESTED_HANDLE_KEY) if m2_nested else m2
 
-    def __call__(self, req):
-        r1_ref = self.m1.forward.remote(req)
-        r2_ref = self.m2.forward.remote(req)
-        return sum(ray.get([r1_ref, r2_ref]))
+    async def __call__(self, req):
+        if isinstance(self.m1, ActorHandle) and isinstance(self.m2, ActorHandle):
+            r1_ref = self.m1.forward.remote(req)
+            r2_ref = self.m2.forward.remote(req)
+        else:
+            r1_ref = await self.m1.forward.remote(req)
+            r2_ref = await self.m2.forward.remote(req)
+
+        return sum(await asyncio.gather(r1_ref, r2_ref))
 
 
-@ray.remote
+@serve.deployment
 class Counter:
     def __init__(self, val):
         self.val = val
@@ -63,17 +70,17 @@ class Counter:
         self.val += inc
 
 
-@ray.remote
+@serve.deployment
 def fn_hello():
     return "hello"
 
 
-@ray.remote
+@serve.deployment
 def fn(val, incr=0):
     return val + incr
 
 
-@ray.remote
+@serve.deployment
 def combine(m1_output, m2_output, kwargs_output=0):
     return m1_output + m2_output + kwargs_output
 

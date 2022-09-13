@@ -50,9 +50,20 @@ static bool RunRedisCommandWithRetries(
 }
 
 static int DoGetNextJobID(redisContext *context) {
+  // This is bad since duplicate logic lives in redis_client
+  // and redis_store_client.
+  // A refactoring is needed to make things clean.
+  // src/ray/gcs/store_client/redis_store_client.cc#L42
+  // TODO (iycheng): Unify the way redis key is formated.
+  static const std::string kTableSeparator = ":";
+  static const std::string kClusterSeparator = "@";
+  static std::string key = RayConfig::instance().external_storage_namespace() +
+                           kClusterSeparator + kTableSeparator + "JobCounter";
+  static std::string cmd = "INCR " + key;
+
   redisReply *reply = nullptr;
   bool under_retry_limit = RunRedisCommandWithRetries(
-      context, "INCR JobCounter", &reply, [](const redisReply *reply) {
+      context, cmd.c_str(), &reply, [](const redisReply *reply) {
         return reply != nullptr && reply->type != REDIS_REPLY_NIL;
       });
   RAY_CHECK(reply);
@@ -130,7 +141,7 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
 
   RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_,
                                          options_.server_port_,
-                                         /*sharding=*/true,
+                                         /*sharding=*/options_.enable_sharding_conn_,
                                          /*password=*/options_.password_));
 
   if (options_.enable_sharding_conn_) {

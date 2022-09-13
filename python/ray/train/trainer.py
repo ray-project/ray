@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
 import ray
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
+from ray.air.config import CheckpointConfig
 from ray.train._internal.backend_executor import (
     BackendExecutor,
     InactiveWorkerGroupError,
@@ -42,12 +43,11 @@ from ray.train.constants import (
     TUNE_INSTALLED,
 )
 from ray.util.annotations import Deprecated, DeveloperAPI
-from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
 
 if TUNE_INSTALLED:
     from ray import tune
     from ray.tune import PlacementGroupFactory, Trainable
-    from ray.tune.function_runner import wrap_function
+    from ray.tune.trainable import wrap_function
 else:
     tune = PlacementGroupFactory = Trainable = object
 
@@ -293,7 +293,7 @@ class Trainer:
         callbacks: Optional[List[TrainingCallback]] = None,
         dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
         checkpoint: Optional[Union[Dict, str, Path]] = None,
-        checkpoint_strategy: Optional[CheckpointStrategy] = None,
+        checkpoint_strategy: Optional[CheckpointConfig] = None,
     ) -> List[T]:
         """Runs a training function in a distributed manner.
 
@@ -321,7 +321,7 @@ class Trainer:
                 or ``Path`` then the value is expected to be a path to a file
                 that contains a serialized checkpoint dict. If this is
                 ``None`` then no checkpoint will be loaded.
-            checkpoint_strategy (Optional[CheckpointStrategy]): The
+            checkpoint_strategy (Optional[CheckpointConfig]): The
                 configurations for saving checkpoints.
 
         Returns:
@@ -373,7 +373,7 @@ class Trainer:
         config: Optional[Dict[str, Any]] = None,
         dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
         checkpoint: Optional[Union[Dict, str, Path]] = None,
-        checkpoint_strategy: Optional[CheckpointStrategy] = None,
+        checkpoint_strategy: Optional[CheckpointConfig] = None,
     ) -> "TrainingIterator":
         """Same as ``run`` except returns an iterator over the results.
 
@@ -411,7 +411,7 @@ class Trainer:
                 ``str`` or ``Path`` then the value is expected to be a path
                 to a file that contains a serialized checkpoint dict. If this
                 is ``None`` then no checkpoint will be loaded.
-            checkpoint_strategy (Optional[CheckpointStrategy]): The
+            checkpoint_strategy (Optional[CheckpointConfig]): The
                 configurations for saving checkpoints.
 
         Returns:
@@ -462,7 +462,7 @@ class Trainer:
     def best_checkpoint_path(self) -> Optional[Path]:
         """Path to the best persisted checkpoint from the latest run.
 
-        "Best" is defined by the input ``CheckpointStrategy``.
+        "Best" is defined by the input ``CheckpointConfig``.
         Default behavior is to return the most recent checkpoint.
 
         Returns ``None`` if ``run()`` has not been called or if
@@ -486,7 +486,7 @@ class Trainer:
     def best_checkpoint(self) -> Optional[Dict]:
         """Best saved checkpoint from the latest run.
 
-        "Best" is defined by the input ``CheckpointStrategy``.
+        "Best" is defined by the input ``CheckpointConfig``.
         Default behavior is to return the most recent checkpoint.
 
         Returns ``None`` if ``run()`` has not been called or if
@@ -670,7 +670,7 @@ class TrainingIterator:
         dataset_spec: RayDatasetSpec,
         checkpoint_manager: CheckpointManager,
         checkpoint: Optional[Union[Dict, str, Path, Checkpoint]],
-        checkpoint_strategy: Optional[CheckpointStrategy],
+        checkpoint_strategy: Optional[CheckpointConfig],
         run_dir: Optional[Path] = None,
     ):
         self._backend_executor = backend_executor

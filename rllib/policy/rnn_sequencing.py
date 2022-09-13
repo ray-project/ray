@@ -161,7 +161,7 @@ def pad_batch_to_sequences_of_same_size(
 def add_time_dimension(
     padded_inputs: TensorType,
     *,
-    max_seq_len: int,
+    seq_lens: TensorType,
     framework: str = "tf",
     time_major: bool = False,
 ):
@@ -171,7 +171,8 @@ def add_time_dimension(
         padded_inputs: a padded batch of sequences. That is,
             for seq_lens=[1, 2, 2], then inputs=[A, *, B, B, C, C], where
             A, B, C are sequence elements and * denotes padding.
-        max_seq_len: The max. sequence length in padded_inputs.
+        seq_lens: A 1D tensor of sequence lengths, denoting the non-padded length
+            in timesteps of each rollout in the batch.
         framework: The framework string ("tf2", "tf", "tfe", "torch").
         time_major: Whether data should be returned in time-major (TxB)
             format or not (BxT).
@@ -187,11 +188,12 @@ def add_time_dimension(
         assert time_major is False, "time-major not supported yet for tf!"
         padded_batch_size = tf.shape(padded_inputs)[0]
         # Dynamically reshape the padded batch to introduce a time dimension.
-        new_batch_size = padded_batch_size // max_seq_len
+        new_batch_size = tf.shape(seq_lens)[0]
+        time_size = padded_batch_size // new_batch_size
         new_shape = tf.concat(
             [
                 tf.expand_dims(new_batch_size, axis=0),
-                tf.expand_dims(max_seq_len, axis=0),
+                tf.expand_dims(time_size, axis=0),
                 tf.shape(padded_inputs)[1:],
             ],
             axis=0,
@@ -202,8 +204,9 @@ def add_time_dimension(
         padded_batch_size = padded_inputs.shape[0]
 
         # Dynamically reshape the padded batch to introduce a time dimension.
-        new_batch_size = padded_batch_size // max_seq_len
-        batch_major_shape = (new_batch_size, max_seq_len) + padded_inputs.shape[1:]
+        new_batch_size = seq_lens.shape[0]
+        time_size = padded_batch_size // new_batch_size
+        batch_major_shape = (new_batch_size, time_size) + padded_inputs.shape[1:]
         padded_outputs = padded_inputs.view(batch_major_shape)
 
         if time_major:
@@ -233,7 +236,9 @@ def chop_into_sequences(
     Args:
         feature_columns: List of arrays containing features.
         state_columns: List of arrays containing LSTM state values.
-        max_seq_len: Max length of sequences before truncation.
+        max_seq_len: Max length of sequences. Sequences longer than max_seq_len
+            will be split into subsequences that span the batch dimension
+            and sum to max_seq_len.
         episode_ids (List[EpisodeID]): List of episode ids for each step.
         unroll_ids (List[UnrollID]): List of identifiers for the sample batch.
             This is used to make sure sequences are cut between sample batches.

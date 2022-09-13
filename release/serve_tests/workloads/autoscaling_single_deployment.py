@@ -66,7 +66,7 @@ DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 def deploy_replicas(min_replicas, max_replicas, max_batch_size):
     @serve.deployment(
         name="echo",
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": min_replicas,
             "max_replicas": max_replicas,

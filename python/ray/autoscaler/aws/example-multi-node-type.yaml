@@ -21,6 +21,7 @@ available_node_types:
     cpu_4_ondemand:
         node_config:
             InstanceType: m4.xlarge
+            ImageId: latest_dlami
         # For AWS instances, autoscaler will automatically add the available
         # CPUs/GPUs/accelerator_type ({"CPU": 4} for m4.xlarge) in "resources".
         # resources: {"CPU": 4}
@@ -29,6 +30,7 @@ available_node_types:
     cpu_16_spot:
         node_config:
             InstanceType: m4.4xlarge
+            ImageId: latest_dlami
             InstanceMarketOptions:
                 MarketType: spot
         # Autoscaler will auto fill the CPU resources below.
@@ -37,6 +39,7 @@ available_node_types:
     gpu_1_ondemand:
         node_config:
             InstanceType: p2.xlarge
+            ImageId: latest_dlami
         # Autoscaler will auto fill the CPU/GPU resources below.
         resources: {"Custom2": 2}
         max_workers: 4
@@ -45,6 +48,7 @@ available_node_types:
     gpu_8_ondemand:
         node_config:
             InstanceType: p3.8xlarge
+            ImageId: latest_dlami
         # Autoscaler autofills the "resources" below.
         # resources: {"CPU": 32, "GPU": 4, "accelerator_type:V100": 1}
         max_workers: 2
@@ -53,16 +57,6 @@ available_node_types:
 
 # Specify the node type of the head node (as configured above).
 head_node_type: cpu_4_ondemand
-
-# The default settings for the head node. This will be merged with the per-node
-# type configs given above.
-head_node:
-    ImageId: latest_dlami
-
-# The default settings for worker nodes. This will be merged with the per-node
-# type configs given above.
-worker_nodes:
-    ImageId: latest_dlami
 
 idle_timeout_minutes: 2
 

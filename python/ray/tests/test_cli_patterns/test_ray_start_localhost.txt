@@ -1,4 +1,4 @@
-Usage stats collection is enabled by default without user confirmation because this stdin is detected to be non-interactively\..+
+Usage stats collection is enabled by default without user confirmation because this terminal is detected to be non-interactive\..+
 
 Local node IP: .+
 

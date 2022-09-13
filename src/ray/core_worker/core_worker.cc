@@ -37,9 +37,6 @@ namespace ray {
 namespace core {
 namespace {
 
-// Duration between internal book-keeping heartbeats.
-const uint64_t kInternalHeartbeatMillis = 1000;
-
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
 
 JobID GetProcessJobID(const CoreWorkerOptions &options) {
@@ -163,12 +160,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   job_config_->ParseFromString(serialized_job_config);
   auto job_serialized_runtime_env =
       job_config_->runtime_env_info().serialized_runtime_env();
+  job_runtime_env_info_.reset(new rpc::RuntimeEnvInfo);
+  *job_runtime_env_info_ = job_config_->runtime_env_info();
   if (!IsRuntimeEnvEmpty(job_serialized_runtime_env)) {
-    job_runtime_env_.reset(new rpc::RuntimeEnv());
-    RAY_CHECK(google::protobuf::util::JsonStringToMessage(
-                  job_config_->runtime_env_info().serialized_runtime_env(),
-                  job_runtime_env_.get())
-                  .ok());
+    job_runtime_env_.reset(new json());
+    *job_runtime_env_ = json::parse(job_serialized_runtime_env);
   }
 
   // Start RPC server after all the task receivers are properly initialized and we have
@@ -452,10 +448,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       [this](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {
         RAY_LOG(DEBUG) << "Failed to recover object " << object_id << " due to "
                        << rpc::ErrorType_Name(reason);
-        RAY_CHECK_OK(Put(RayObject(reason),
-                         /*contained_object_ids=*/{},
-                         object_id,
-                         /*pin_object=*/pin_object));
+        // NOTE(swang): Failure here means the local raylet is probably dead.
+        // We do not assert failure though, because we should throw the object
+        // error to the application.
+        RAY_UNUSED(Put(RayObject(reason),
+                       /*contained_object_ids=*/{},
+                       object_id,
+                       /*pin_object=*/pin_object));
       });
 
   // Tell the raylet the port that we are listening on.
@@ -492,7 +491,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           // Keep :info_message: in sync with LOG_PREFIX_INFO_MESSAGE in ray_constants.py.
           RAY_LOG(ERROR) << ":info_message: Attempting to recover " << lost_objects.size()
                          << " lost objects by resubmitting their tasks. To disable "
-                         << "object reconstruction, set @ray.remote(max_tries=0).";
+                         << "object reconstruction, set @ray.remote(max_retries=0).";
           // Delete the objects from the in-memory store to indicate that they are not
           // available. The object recovery manager will guarantee that a new value
           // will eventually be stored for the objects (either an
@@ -509,8 +508,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       },
       100);
 
-  periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
-                                       kInternalHeartbeatMillis);
+  periodical_runner_.RunFnPeriodically(
+      [this] { InternalHeartbeat(); },
+      RayConfig::instance().core_worker_internal_heartbeat_ms());
 
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like
@@ -1293,7 +1293,8 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   // no longer reachable.
   memory_store_->Delete(object_ids);
   for (const auto &object_id : object_ids) {
-    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_DELETED), object_id));
+    RAY_LOG(DEBUG) << "Freeing object " << object_id;
+    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_FREED), object_id));
   }
 
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
@@ -1447,75 +1448,33 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
       });
 }
 
-rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
-    const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent) {
+json CoreWorker::OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent) {
   // By default, the child runtime env inherits non-specified options from the
   // parent. There is one exception to this:
   //     - The env_vars dictionaries are merged, so environment variables
   //       not specified by the child are still inherited from the parent.
-
-  // Override environment variables.
-  google::protobuf::Map<std::string, std::string> result_env_vars(parent->env_vars());
-  result_env_vars.insert(child.env_vars().begin(), child.env_vars().end());
-  // Inherit all other non-specified options from the parent.
-  rpc::RuntimeEnv result_runtime_env(*parent);
-  // TODO(SongGuyang): avoid dupliacated fields.
-  result_runtime_env.MergeFrom(child);
-  if (child.python_runtime_env().py_modules().size() > 0 &&
-      parent->python_runtime_env().py_modules().size() > 0) {
-    result_runtime_env.mutable_python_runtime_env()->clear_py_modules();
-    for (auto &module : child.python_runtime_env().py_modules()) {
-      result_runtime_env.mutable_python_runtime_env()->add_py_modules(module);
+  json result_runtime_env = *parent;
+  for (json::iterator it = child.begin(); it != child.end(); ++it) {
+    if (it.key() == "env_vars" && result_runtime_env.contains("env_vars")) {
+      json env_vars = it.value();
+      json merged_env_vars = result_runtime_env["env_vars"];
+      for (json::iterator nit = env_vars.begin(); nit != env_vars.end(); ++nit) {
+        merged_env_vars[nit.key()] = nit.value();
+      }
+      result_runtime_env["env_vars"] = merged_env_vars;
+    } else {
+      result_runtime_env[it.key()] = it.value();
     }
-    result_runtime_env.mutable_uris()->clear_py_modules_uris();
-    result_runtime_env.mutable_uris()->mutable_py_modules_uris()->CopyFrom(
-        child.uris().py_modules_uris());
-  }
-  if (child.python_runtime_env().has_pip_runtime_env() &&
-      parent->python_runtime_env().has_pip_runtime_env()) {
-    result_runtime_env.mutable_python_runtime_env()->clear_pip_runtime_env();
-    result_runtime_env.mutable_python_runtime_env()->mutable_pip_runtime_env()->CopyFrom(
-        child.python_runtime_env().pip_runtime_env());
-  }
-  if (!result_env_vars.empty()) {
-    result_runtime_env.mutable_env_vars()->insert(result_env_vars.begin(),
-                                                  result_env_vars.end());
   }
   return result_runtime_env;
-}
-
-static std::vector<std::string> GetUrisFromRuntimeEnv(
-    const rpc::RuntimeEnv *runtime_env) {
-  std::vector<std::string> result;
-  if (runtime_env == nullptr) {
-    return result;
-  }
-  if (!runtime_env->uris().working_dir_uri().empty()) {
-    const auto &uri = runtime_env->uris().working_dir_uri();
-    result.emplace_back(uri);
-  }
-  for (const auto &uri : runtime_env->uris().py_modules_uris()) {
-    result.emplace_back(uri);
-  }
-  if (!runtime_env->uris().conda_uri().empty()) {
-    const auto &uri = runtime_env->uris().conda_uri();
-    result.emplace_back(uri);
-  }
-  if (!runtime_env->uris().pip_uri().empty()) {
-    const auto &uri = runtime_env->uris().pip_uri();
-    result.emplace_back(uri);
-  }
-  for (const auto &uri : runtime_env->uris().plugin_uris()) {
-    result.emplace_back(uri);
-  }
-  return result;
 }
 
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
     const std::string &serialized_runtime_env_info) {
   // TODO(Catch-Bull,SongGuyang): task runtime env not support the field eager_install
   // yet, we will overwrite the filed eager_install when it did.
-  std::shared_ptr<rpc::RuntimeEnv> parent = nullptr;
+  std::shared_ptr<json> parent = nullptr;
+  std::shared_ptr<rpc::RuntimeEnvInfo> parent_runtime_env_info = nullptr;
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr;
   runtime_env_info.reset(new rpc::RuntimeEnvInfo());
 
@@ -1527,52 +1486,34 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
 
   if (options_.worker_type == WorkerType::DRIVER) {
     if (IsRuntimeEnvEmpty(runtime_env_info->serialized_runtime_env())) {
-      runtime_env_info->set_serialized_runtime_env(
-          job_config_->runtime_env_info().serialized_runtime_env());
-      runtime_env_info->clear_uris();
-      for (const std::string &uri : GetUrisFromRuntimeEnv(job_runtime_env_.get())) {
-        runtime_env_info->add_uris(uri);
-      }
-
-      return runtime_env_info;
+      return job_runtime_env_info_;
     }
     parent = job_runtime_env_;
+    parent_runtime_env_info = job_runtime_env_info_;
   } else {
     if (IsRuntimeEnvEmpty(runtime_env_info->serialized_runtime_env())) {
-      runtime_env_info->set_serialized_runtime_env(
-          worker_context_.GetCurrentSerializedRuntimeEnv());
-      runtime_env_info->clear_uris();
-      for (const std::string &uri :
-           GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get())) {
-        runtime_env_info->add_uris(uri);
-      }
-
-      return runtime_env_info;
+      return worker_context_.GetCurrentRuntimeEnvInfo();
     }
     parent = worker_context_.GetCurrentRuntimeEnv();
+    parent_runtime_env_info = worker_context_.GetCurrentRuntimeEnvInfo();
   }
   if (parent) {
     std::string serialized_runtime_env = runtime_env_info->serialized_runtime_env();
-    rpc::RuntimeEnv child_runtime_env;
-    if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env,
-                                                     &child_runtime_env)
-             .ok()) {
-      RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env
-                       << ". serialized runtime env info: "
-                       << serialized_runtime_env_info;
-      // TODO(SongGuyang): We pass the raw string here and the task will fail after an
-      // exception raised in runtime env agent. Actually, we can fail the task here.
-      return runtime_env_info;
-    }
+    json child_runtime_env = json::parse(serialized_runtime_env);
     auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
-    std::string serialized_override_runtime_env;
-    RAY_CHECK(google::protobuf::util::MessageToJsonString(
-                  override_runtime_env, &serialized_override_runtime_env)
-                  .ok());
+    auto serialized_override_runtime_env = override_runtime_env.dump();
     runtime_env_info->set_serialized_runtime_env(serialized_override_runtime_env);
-    runtime_env_info->clear_uris();
-    for (const std::string &uri : GetUrisFromRuntimeEnv(&override_runtime_env)) {
-      runtime_env_info->add_uris(uri);
+    if (runtime_env_info->uris().working_dir_uri().empty() &&
+        !parent_runtime_env_info->uris().working_dir_uri().empty()) {
+      runtime_env_info->mutable_uris()->set_working_dir_uri(
+          parent_runtime_env_info->uris().working_dir_uri());
+    }
+    if (runtime_env_info->uris().py_modules_uris().size() == 0 &&
+        parent_runtime_env_info->uris().py_modules_uris().size() != 0) {
+      runtime_env_info->mutable_uris()->clear_py_modules_uris();
+      for (const std::string &uri : parent_runtime_env_info->uris().py_modules_uris()) {
+        runtime_env_info->mutable_uris()->add_py_modules_uris(uri);
+      }
     }
     return runtime_env_info;
   } else {
@@ -1630,7 +1571,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     int max_retries,
     bool retry_exceptions,
     const rpc::SchedulingStrategy &scheduling_strategy,
-    const std::string &debugger_breakpoint) {
+    const std::string &debugger_breakpoint,
+    const std::string &serialized_retry_exception_allowlist) {
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -1664,7 +1606,10 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       debugger_breakpoint,
                       depth,
                       task_options.serialized_runtime_env_info);
-  builder.SetNormalTaskSpec(max_retries, retry_exceptions, scheduling_strategy);
+  builder.SetNormalTaskSpec(max_retries,
+                            retry_exceptions,
+                            serialized_retry_exception_allowlist,
+                            scheduling_strategy);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
@@ -1858,14 +1803,16 @@ Status CoreWorker::CreatePlacementGroup(
   }
   const PlacementGroupID placement_group_id = PlacementGroupID::Of(GetCurrentJobId());
   PlacementGroupSpecBuilder builder;
-  builder.SetPlacementGroupSpec(placement_group_id,
-                                placement_group_creation_options.name,
-                                placement_group_creation_options.bundles,
-                                placement_group_creation_options.strategy,
-                                placement_group_creation_options.is_detached,
-                                worker_context_.GetCurrentJobID(),
-                                worker_context_.GetCurrentActorID(),
-                                worker_context_.CurrentActorDetached());
+  builder.SetPlacementGroupSpec(
+      placement_group_id,
+      placement_group_creation_options.name,
+      placement_group_creation_options.bundles,
+      placement_group_creation_options.strategy,
+      placement_group_creation_options.is_detached,
+      placement_group_creation_options.max_cpu_fraction_per_node,
+      worker_context_.GetCurrentJobID(),
+      worker_context_.GetCurrentActorID(),
+      worker_context_.CurrentActorDetached());
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: " << placement_group_id;
@@ -2235,7 +2182,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects,
                                ReferenceCounter::ReferenceTableProto *borrowed_refs,
-                               bool *is_application_level_error) {
+                               bool *is_retryable_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
@@ -2319,9 +2266,10 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       arg_refs,
       return_ids,
       task_spec.GetDebuggerBreakpoint(),
+      task_spec.GetSerializedRetryExceptionAllowlist(),
       return_objects,
       creation_task_exception_pb_bytes,
-      is_application_level_error,
+      is_retryable_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute);
 
@@ -2492,12 +2440,9 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   }
   auto old_id = GetActorId();
   SetActorId(actor_id);
-  bool is_application_level_error;
-  RAY_UNUSED(ExecuteTask(task_spec,
-                         resource_ids,
-                         &return_objects,
-                         &borrowed_refs,
-                         &is_application_level_error));
+  bool is_retryable_error;
+  RAY_UNUSED(ExecuteTask(
+      task_spec, resource_ids, &return_objects, &borrowed_refs, &is_retryable_error));
   SetActorId(old_id);
   return returned_refs;
 }
@@ -3098,6 +3043,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
+  auto limit = request.has_limit() ? request.limit() : -1;
   auto stats = reply->mutable_core_worker_stats();
   // TODO(swang): Differentiate between tasks that are currently pending
   // execution and tasks that have finished but may be retried.
@@ -3134,13 +3080,13 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_used_object_store_memory(memory_store_stats.used_object_store_memory);
 
   if (request.include_memory_info()) {
-    reference_counter_->AddObjectRefStats(plasma_store_provider_->UsedObjectsList(),
-                                          stats);
+    reference_counter_->AddObjectRefStats(
+        plasma_store_provider_->UsedObjectsList(), stats, limit);
     task_manager_->AddTaskStatusInfo(stats);
   }
 
   if (request.include_task_info()) {
-    task_manager_->FillTaskInfo(reply);
+    task_manager_->FillTaskInfo(reply, limit);
     for (const auto &current_running_task : current_tasks_) {
       reply->add_running_task_ids(current_running_task.second.TaskId().Binary());
     }

@@ -51,11 +51,11 @@ class A3CConfig(AlgorithmConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "A3C",
         ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -180,13 +180,13 @@ class A3C(Algorithm):
 
             return A3CTorchPolicy
         elif config["framework"] == "tf":
-            from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CStaticGraphTFPolicy
+            from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTF1Policy
 
-            return A3CStaticGraphTFPolicy
+            return A3CTF1Policy
         else:
-            from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CEagerTFPolicy
+            from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTF2Policy
 
-            return A3CEagerTFPolicy
+            return A3CTF2Policy
 
     def training_step(self) -> ResultDict:
         # Shortcut.

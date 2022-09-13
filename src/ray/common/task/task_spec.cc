@@ -113,7 +113,13 @@ void TaskSpecification::ComputeResources() {
   if (!IsActorTask()) {
     // There is no need to compute `SchedulingClass` for actor tasks since
     // the actor tasks need not be scheduled.
-    const auto &resource_set = GetRequiredResources();
+    const bool is_actor_creation_task = IsActorCreationTask();
+    const bool should_report_placement_resources =
+        RayConfig::instance().report_actor_placement_resources();
+    const auto &resource_set =
+        (is_actor_creation_task && should_report_placement_resources)
+            ? GetRequiredPlacementResources()
+            : GetRequiredResources();
     const auto &function_descriptor = FunctionDescriptor();
     auto depth = GetDepth();
     auto sched_cls_desc = SchedulingClassDescriptor(
@@ -324,6 +330,10 @@ bool TaskSpecification::IsSpreadSchedulingStrategy() const {
          rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy;
 }
 
+const std::string TaskSpecification::GetSerializedRetryExceptionAllowlist() const {
+  return message_->serialized_retry_exception_allowlist();
+}
+
 // === Below are getter methods specific to actor creation tasks.
 
 ActorID TaskSpecification::ActorCreationId() const {
@@ -450,16 +460,23 @@ std::string TaskSpecification::DebugString() const {
     const auto &runtime_env_info = RuntimeEnvInfo();
     stream << ", serialized_runtime_env=" << SerializedRuntimeEnv();
     const auto &uris = runtime_env_info.uris();
-    if (uris.size() > 0) {
+    if (!uris.working_dir_uri().empty() || uris.py_modules_uris().size() > 0) {
       stream << ", runtime_env_uris=";
-      for (const auto &uri : uris) {
+      if (!uris.working_dir_uri().empty()) {
+        stream << uris.working_dir_uri() << ":";
+      }
+      for (const auto &uri : uris.py_modules_uris()) {
         stream << uri << ":";
       }
       // Erase the last ":"
       stream.seekp(-1, std::ios_base::end);
     }
-    stream << ", runtime_env_eager_install="
-           << runtime_env_info.runtime_env_eager_install();
+    if (runtime_env_info.has_runtime_env_config()) {
+      stream << ", eager_install="
+             << runtime_env_info.runtime_env_config().eager_install();
+      stream << ", setup_timeout_seconds="
+             << runtime_env_info.runtime_env_config().setup_timeout_seconds();
+    }
   }
 
   return stream.str();

@@ -21,7 +21,7 @@ import tarfile
 import numpy as np
 import re
 
-from ray import tune
+from ray import air, tune
 
 
 def tokenize(sent):
@@ -289,15 +289,19 @@ if __name__ == "__main__":
         },
     )
 
-    results = tune.run(
+    tuner = tune.Tuner(
         MemNNModel,
-        name="pbt_babi_memnn",
-        scheduler=pbt,
-        metric="mean_accuracy",
-        mode="max",
-        stop={"training_iteration": 4 if args.smoke_test else 100},
-        num_samples=2,
-        config={
+        run_config=air.RunConfig(
+            name="pbt_babi_memnn",
+            stop={"training_iteration": 4 if args.smoke_test else 100},
+        ),
+        tune_config=tune.TuneConfig(
+            scheduler=pbt,
+            metric="mean_accuracy",
+            mode="max",
+            num_samples=2,
+        ),
+        param_space={
             "finish_fast": args.smoke_test,
             "batch_size": 32,
             "epochs": 1,
@@ -306,3 +310,4 @@ if __name__ == "__main__":
             "rho": 0.9,
         },
     )
+    tuner.fit()

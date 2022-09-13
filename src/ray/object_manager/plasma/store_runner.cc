@@ -90,8 +90,24 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
     absl::MutexLock lock(&store_runner_mutex_);
     allocator_ = std::make_unique<PlasmaAllocator>(
         plasma_directory_, fallback_directory_, hugepages_enabled_, system_memory_);
+#ifndef _WIN32
+    std::vector<std::string> local_spilling_paths;
+    if (RayConfig::instance().is_external_storage_type_fs()) {
+      local_spilling_paths =
+          ray::ParseSpillingPaths(RayConfig::instance().object_spilling_config());
+    }
+    local_spilling_paths.push_back(fallback_directory_);
+    fs_monitor_ = std::make_unique<ray::FileSystemMonitor>(
+        local_spilling_paths,
+        RayConfig::instance().local_fs_capacity_threshold(),
+        RayConfig::instance().local_fs_monitor_interval_ms());
+#else
+    // Create noop monitor for Windows.
+    fs_monitor_ = std::make_unique<ray::FileSystemMonitor>();
+#endif
     store_.reset(new PlasmaStore(main_service_,
                                  *allocator_,
+                                 *fs_monitor_,
                                  socket_name_,
                                  RayConfig::instance().object_store_full_delay_ms(),
                                  RayConfig::instance().object_spilling_threshold(),

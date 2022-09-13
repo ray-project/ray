@@ -317,7 +317,7 @@ class _ReduceStageIterator:
             **self._ray_remote_args,
             **self._stage.get_merge_task_options(merge_idx),
             num_returns=2,
-        ).remote(*self._reduce_args, *reduce_arg_blocks)
+        ).remote(*self._reduce_args, *reduce_arg_blocks, partial_reduce=False)
         self._reduce_results.append((reduce_idx, block))
         return meta
 
@@ -380,6 +380,7 @@ class PushBasedShufflePlan(ShuffleOp):
         # during map-merge stage, by limiting how many partitions can be
         # processed concurrently.
         input_blocks_list = input_blocks.get_blocks()
+        owned_by_consumer = input_blocks._owned_by_consumer
         # Preemptively clear the blocks list since we will incrementally delete
         # the last remaining references as we submit the dependent map tasks
         # during the map-merge stage.
@@ -515,7 +516,14 @@ class PushBasedShufflePlan(ShuffleOp):
             "reduce": reduce_stage_metadata,
         }
 
-        return BlockList(list(new_blocks), list(reduce_stage_metadata)), stats
+        return (
+            BlockList(
+                list(new_blocks),
+                list(reduce_stage_metadata),
+                owned_by_consumer=owned_by_consumer,
+            ),
+            stats,
+        )
 
     @staticmethod
     def _map_partition(
@@ -562,7 +570,7 @@ class PushBasedShufflePlan(ShuffleOp):
         size_bytes = 0
         schema = None
         for i, mapper_outputs in enumerate(zip(*all_mapper_outputs)):
-            block, meta = reduce_fn(*reduce_args, *mapper_outputs)
+            block, meta = reduce_fn(*reduce_args, *mapper_outputs, partial_reduce=True)
             yield block
 
             block = BlockAccessor.for_block(block)

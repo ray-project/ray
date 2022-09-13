@@ -12,8 +12,8 @@ from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
+import ray._private.ray_constants
 import ray._private.services as services
-import ray.ray_constants
 from ray.autoscaler._private import constants
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.docker import validate_docker_config
@@ -222,6 +222,23 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     return with_defaults
 
 
+def translate_trivial_legacy_config(config: Dict[str, Any]):
+    """
+    Drop empty deprecated fields ("head_node" and "worker_node").
+    """
+
+    REMOVABLE_FIELDS = ["head_node", "worker_nodes"]
+
+    for field in REMOVABLE_FIELDS:
+        if field in config and not config[field]:
+            logger.warning(
+                f"Dropping the empty legacy field {field}. {field}"
+                "is not supported for ray>=2.0.0. It is recommended to remove"
+                f"{field} from the cluster config."
+            )
+            del config[field]
+
+
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = _get_default_config(config["provider"])
     defaults.update(config)
@@ -246,6 +263,8 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     # Take care of this here, in case a config does not specify any of head,
     # workers, node types, but does specify min workers:
     merged_config.pop("min_workers", None)
+
+    translate_trivial_legacy_config(merged_config)
 
     return merged_config
 
@@ -653,8 +672,30 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
 
     failure_lines = []
     for ip, node_type in autoscaler_summary.failed_nodes:
-        line = f" {ip}: {node_type}"
+        line = f" {node_type}: RayletUnexpectedlyDied (ip: {ip})"
         failure_lines.append(line)
+    if autoscaler_summary.node_availability_summary:
+        records = sorted(
+            autoscaler_summary.node_availability_summary.node_availabilities.values(),
+            key=lambda record: record.last_checked_timestamp,
+        )
+        for record in records:
+            if record.is_available:
+                continue
+            assert record.unavailable_node_information is not None
+            node_type = record.node_type
+            category = record.unavailable_node_information.category
+            attempted_time = datetime.fromtimestamp(record.last_checked_timestamp)
+            formatted_time = (
+                # This `:02d` funny business is python syntax for printing a 2
+                # digit number with a leading zero as padding if needed.
+                f"{attempted_time.hour:02d}:"
+                f"{attempted_time.minute:02d}:"
+                f"{attempted_time.second:02d}"
+            )
+            line = f" {node_type}: {category} (latest_attempt: {formatted_time})"
+            failure_lines.append(line)
+
     failure_lines = failure_lines[: -constants.AUTOSCALER_MAX_FAILURES_DISPLAYED : -1]
     failure_report = "Recent failures:\n"
     if failure_lines:
@@ -681,6 +722,7 @@ Usage:
 
 Demands:
 {demand_report}"""
+
     return formatted_output
 
 

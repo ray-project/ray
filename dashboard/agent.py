@@ -8,16 +8,20 @@ import os
 import sys
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
-import ray.ray_constants as ray_constants
 from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
-from ray._private.gcs_utils import GcsClient
+from ray._private.gcs_utils import GcsAioClient, GcsClient
 from ray._private.ray_logging import setup_component_logger
 from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc
+from ray.experimental.internal_kv import (
+    _initialize_internal_kv,
+    _internal_kv_initialized,
+)
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -53,17 +57,19 @@ class DashboardAgent:
         dashboard_agent_port,
         gcs_address,
         minimal,
-        temp_dir=None,
-        session_dir=None,
-        runtime_env_dir=None,
-        log_dir=None,
         metrics_export_port=None,
         node_manager_port=None,
-        listen_port=0,
-        object_store_name=None,
-        raylet_name=None,
-        logging_params=None,
+        listen_port=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         disable_metrics_collection: bool = False,
+        *,  # the following are required kwargs
+        object_store_name: str,
+        raylet_name: str,
+        log_dir: str,
+        temp_dir: str,
+        session_dir: str,
+        runtime_env_dir: str,
+        logging_params: dict,
+        agent_id: int,
     ):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
@@ -86,6 +92,7 @@ class DashboardAgent:
         self.logging_params = logging_params
         self.node_id = os.environ["RAY_NODE_ID"]
         self.metrics_collection_disabled = disable_metrics_collection
+        self.agent_id = agent_id
         # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
         # only used for fate-sharing with the raylet and we need a different
         # fate-sharing mechanism for Windows anyways.
@@ -125,7 +132,12 @@ class DashboardAgent:
         self.http_server = None
 
         # Used by the agent and sub-modules.
+        # TODO(architkulkarni): Remove gcs_client once the agent exclusively uses
+        # gcs_aio_client and not gcs_client.
         self.gcs_client = GcsClient(address=self.gcs_address)
+        _initialize_internal_kv(self.gcs_client)
+        assert _internal_kv_initialized()
+        self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
         self.publisher = GcsAioPublisher(address=self.gcs_address)
 
     async def _configure_http_server(self, modules):
@@ -263,7 +275,7 @@ class DashboardAgent:
 
         await raylet_stub.RegisterAgent(
             agent_manager_pb2.RegisterAgentRequest(
-                agent_pid=os.getpid(),
+                agent_id=self.agent_id,
                 agent_port=self.grpc_port,
                 agent_ip_address=self.ip,
             )
@@ -320,7 +332,7 @@ if __name__ == "__main__":
         "--listen-port",
         required=False,
         type=int,
-        default=0,
+        default=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         help="Port for HTTP server to listen on",
     )
     parser.add_argument(
@@ -414,6 +426,13 @@ if __name__ == "__main__":
         action="store_true",
         help=("If this arg is set, metrics report won't be enabled from the agent."),
     )
+    parser.add_argument(
+        "--agent-id",
+        required=True,
+        type=int,
+        help="ID to report when registering with raylet",
+        default=os.getpid(),
+    )
 
     args = parser.parse_args()
     try:
@@ -443,9 +462,8 @@ if __name__ == "__main__":
             raylet_name=args.raylet_name,
             logging_params=logging_params,
             disable_metrics_collection=args.disable_metrics_collection,
+            agent_id=args.agent_id,
         )
-        if os.environ.get("_RAY_AGENT_FAILING"):
-            raise Exception("Failure injection failure.")
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(agent.run())

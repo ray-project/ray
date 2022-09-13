@@ -13,7 +13,7 @@ from ray.rllib.execution.common import (
     _get_shared_metrics,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils.annotations import override
@@ -39,6 +39,7 @@ class MAMLConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.maml import MAMLConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = MAMLConfig()
         >>> # Print out some default values.
@@ -49,11 +50,11 @@ class MAMLConfig(AlgorithmConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "MAML",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -288,13 +289,13 @@ class MAML(Algorithm):
 
             return MAMLTorchPolicy
         elif config["framework"] == "tf":
-            from ray.rllib.algorithms.maml.maml_tf_policy import MAMLStaticGraphTFPolicy
+            from ray.rllib.algorithms.maml.maml_tf_policy import MAMLTF1Policy
 
-            return MAMLStaticGraphTFPolicy
+            return MAMLTF1Policy
         else:
-            from ray.rllib.algorithms.maml.maml_tf_policy import MAMLEagerTFPolicy
+            from ray.rllib.algorithms.maml.maml_tf_policy import MAMLTF2Policy
 
-            return MAMLEagerTFPolicy
+            return MAMLTF2Policy
 
     @staticmethod
     @override(Algorithm)
@@ -341,7 +342,7 @@ class MAML(Algorithm):
                 adapt_iter = len(split) - 1
                 metrics = post_process_metrics(adapt_iter, workers, metrics)
                 if len(split) > inner_steps:
-                    out = SampleBatch.concat_samples(buf)
+                    out = concat_samples(buf)
                     out["split"] = np.array(split)
                     buf = []
                     split = []

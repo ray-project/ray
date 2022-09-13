@@ -6,7 +6,7 @@ import time
 from typing import Dict
 
 from ray.tune.callback import Callback
-from ray.tune.trial import Trial
+from ray.tune.experiment import Trial
 
 logger = logging.getLogger(__name__)
 

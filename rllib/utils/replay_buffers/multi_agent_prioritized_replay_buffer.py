@@ -2,6 +2,7 @@ from typing import Dict
 import logging
 import numpy as np
 
+from ray.util.timer import _Timer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
@@ -16,7 +17,6 @@ from ray.rllib.utils.replay_buffers.replay_buffer import (
 )
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.timer import TimerStat
 from ray.util.debug import log_once
 from ray.util.annotations import DeveloperAPI
 from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
@@ -40,37 +40,35 @@ class MultiAgentPrioritizedReplayBuffer(
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         num_shards: int = 1,
-        learning_starts: int = 1000,
         replay_mode: str = "independent",
+        replay_sequence_override: bool = True,
         replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
         replay_zero_init_states: bool = True,
+        underlying_buffer_config: dict = None,
         prioritized_replay_alpha: float = 0.6,
         prioritized_replay_beta: float = 0.4,
         prioritized_replay_eps: float = 1e-6,
-        underlying_buffer_config: dict = None,
         **kwargs
     ):
         """Initializes a MultiAgentReplayBuffer instance.
 
         Args:
-            num_shards: The number of buffer shards that exist in total
-                (including this one).
+            capacity: The capacity of the buffer, measured in `storage_unit`.
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
                 If they are stored in episodes, replay_sequence_length is
                 ignored.
-            learning_starts: Number of timesteps after which a call to
-                `replay()` will yield samples (before that, `replay()` will
-                return None).
-            capacity: The capacity of the buffer, measured in `storage_unit`.
-            prioritized_replay_alpha: Alpha parameter for a prioritized
-                replay buffer. Use 0.0 for no prioritization.
-            prioritized_replay_beta: Beta parameter for a prioritized
-                replay buffer.
-            prioritized_replay_eps: Epsilon parameter for a prioritized
-                replay buffer.
+            num_shards: The number of buffer shards that exist in total
+                (including this one).
+            replay_mode: One of "independent" or "lockstep". Determines,
+                whether batches are sampled independently or to an equal
+                amount.
+            replay_sequence_override: If True, ignore sequences found in incoming
+                batches, slicing them into sequences as specified by
+                `replay_sequence_length` and `replay_sequence_burn_in`. This only has
+                an effect if storage_unit is `sequences`.
             replay_sequence_length: The sequence length (T) of a single
                 sample. If > 1, we will sample B x T from this buffer.
             replay_burn_in: The burn-in length in case
@@ -92,6 +90,12 @@ class MultiAgentPrioritizedReplayBuffer(
                 "capacity": 10, "storage_unit": "timesteps",
                 prioritized_replay_alpha: 0.5, prioritized_replay_beta: 0.5,
                 prioritized_replay_eps: 0.5}
+            prioritized_replay_alpha: Alpha parameter for a prioritized
+                replay buffer. Use 0.0 for no prioritization.
+            prioritized_replay_beta: Beta parameter for a prioritized
+                replay buffer.
+            prioritized_replay_eps: Epsilon parameter for a prioritized
+                replay buffer.
             ``**kwargs``: Forward compatibility kwargs.
         """
         if "replay_mode" in kwargs and (
@@ -125,19 +129,19 @@ class MultiAgentPrioritizedReplayBuffer(
         shard_capacity = capacity // num_shards
         MultiAgentReplayBuffer.__init__(
             self,
-            shard_capacity,
-            storage_unit,
-            **kwargs,
-            underlying_buffer_config=prioritized_replay_buffer_config,
-            learning_starts=learning_starts,
+            capacity=shard_capacity,
+            storage_unit=storage_unit,
+            replay_sequence_override=replay_sequence_override,
             replay_mode=replay_mode,
             replay_sequence_length=replay_sequence_length,
             replay_burn_in=replay_burn_in,
             replay_zero_init_states=replay_zero_init_states,
+            underlying_buffer_config=prioritized_replay_buffer_config,
+            **kwargs,
         )
 
         self.prioritized_replay_eps = prioritized_replay_eps
-        self.update_priorities_timer = TimerStat()
+        self.update_priorities_timer = _Timer()
 
     @DeveloperAPI
     @override(MultiAgentReplayBuffer)

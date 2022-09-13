@@ -1,8 +1,7 @@
-from typing import Optional, Type
+from typing import Callable, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -13,17 +12,22 @@ from ray.rllib.execution.train_ops import (
 from ray.rllib.offline.estimators import ImportanceSampling, WeightedImportanceSampling
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    deprecation_warning,
+)
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
-    WORKER_UPDATE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.typing import (
-    ResultDict,
     AlgorithmConfigDict,
+    EnvType,
+    ResultDict,
 )
-from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
+from ray.tune.logger import Logger
 
 
 class MARWILConfig(AlgorithmConfig):
@@ -55,10 +59,10 @@ class MARWILConfig(AlgorithmConfig):
         >>> config.environment(env="CartPole-v0")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "MARWIL",
-        ...     config=config.to_dict(),
-        ... )
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -72,21 +76,6 @@ class MARWILConfig(AlgorithmConfig):
         self.bc_logstd_coeff = 0.0
         self.moving_average_sqd_adv_norm_update_rate = 1e-8
         self.moving_average_sqd_adv_norm_start = 100.0
-        self.replay_buffer_config = {
-            "type": "MultiAgentPrioritizedReplayBuffer",
-            # Size of the replay buffer in (single and independent) timesteps.
-            # The buffer gets filled by reading from the input files line-by-line
-            # and adding all timesteps on one line at once. We then sample
-            # uniformly from the buffer (`train_batch_size` samples) for
-            # each training step.
-            "capacity": 10000,
-            # Specify prioritized replay by supplying a buffer type that supports
-            # prioritization
-            "prioritized_replay": DEPRECATED_VALUE,
-            # Number of steps to read before learning starts.
-            "learning_starts": 0,
-            "replay_sequence_length": 1
-        }
         self.use_gae = True
         self.vf_coeff = 1.0
         self.grad_clip = None
@@ -102,17 +91,20 @@ class MARWILConfig(AlgorithmConfig):
         # discounted returns. It is ok, though, to have multiple episodes in
         # the same line.
         self.input_ = "sampler"
-        # Use importance sampling estimators for reward.
-        self.off_policy_estimation_methods = {
-            "is": {"type": ImportanceSampling},
-            "wis": {"type": WeightedImportanceSampling},
-        }
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
         self.num_workers = 0
         # __sphinx_doc_end__
         # fmt: on
+
+        # TODO: Delete this and change off_policy_estimation_methods to {}
+        # Also remove the same section from BC
+        self.off_policy_estimation_methods = {
+            "is": {"type": ImportanceSampling},
+            "wis": {"type": WeightedImportanceSampling},
+        }
+        self._set_off_policy_estimation_methods = False
 
     @override(AlgorithmConfig)
     def training(
@@ -122,7 +114,6 @@ class MARWILConfig(AlgorithmConfig):
         bc_logstd_coeff: Optional[float] = None,
         moving_average_sqd_adv_norm_update_rate: Optional[float] = None,
         moving_average_sqd_adv_norm_start: Optional[float] = None,
-        replay_buffer_config: Optional[dict] = None,
         use_gae: Optional[bool] = True,
         vf_coeff: Optional[float] = None,
         grad_clip: Optional[float] = None,
@@ -138,40 +129,6 @@ class MARWILConfig(AlgorithmConfig):
                 entropy for exploration.
             moving_average_sqd_adv_norm_start: Starting value for the
                 squared moving average advantage norm (c^2).
-            replay_buffer_config: Replay buffer config.
-                Examples:
-                {
-                "_enable_replay_buffer_api": True,
-                "type": "MultiAgentReplayBuffer",
-                "learning_starts": 1000,
-                "capacity": 50000,
-                "replay_sequence_length": 1,
-                }
-                - OR -
-                {
-                "_enable_replay_buffer_api": True,
-                "type": "MultiAgentPrioritizedReplayBuffer",
-                "capacity": 50000,
-                "prioritized_replay_alpha": 0.6,
-                "prioritized_replay_beta": 0.4,
-                "prioritized_replay_eps": 1e-6,
-                "replay_sequence_length": 1,
-                }
-                - Where -
-                prioritized_replay_alpha: Alpha parameter controls the degree of
-                prioritization in the buffer. In other words, when a buffer sample has
-                a higher temporal-difference error, with how much more probability
-                should it drawn to use to update the parametrized Q-network. 0.0
-                corresponds to uniform probability. Setting much above 1.0 may quickly
-                result as the sampling distribution could become heavily “pointy” with
-                low entropy.
-                prioritized_replay_beta: Beta parameter controls the degree of
-                importance sampling which suppresses the influence of gradient updates
-                from samples that have higher probability of being sampled via alpha
-                parameter and the temporal-difference error.
-                prioritized_replay_eps: Epsilon parameter sets the baseline probability
-                for sampling so that when the temporal-difference error of a sample is
-                zero, there is still a chance of drawing the sample.
             use_gae: If true, use the Generalized Advantage Estimator (GAE)
                 with a value function, see https://arxiv.org/pdf/1506.02438.pdf in
                 case an input line ends with a non-terminal timestep.
@@ -195,8 +152,6 @@ class MARWILConfig(AlgorithmConfig):
             )
         if moving_average_sqd_adv_norm_start is not None:
             self.moving_average_sqd_adv_norm_start = moving_average_sqd_adv_norm_start
-        if replay_buffer_config is not None:
-            self.replay_buffer_config = replay_buffer_config
         if use_gae is not None:
             self.use_gae = use_gae
         if vf_coeff is not None:
@@ -204,6 +159,40 @@ class MARWILConfig(AlgorithmConfig):
         if grad_clip is not None:
             self.grad_clip = grad_clip
         return self
+
+    def evaluation(
+        self,
+        **kwargs,
+    ) -> "MARWILConfig":
+        """Sets the evaluation related configuration.
+
+        Returns:
+            This updated AlgorithmConfig object.
+        """
+        # Pass kwargs onto super's `evaluation()` method.
+        super().evaluation(**kwargs)
+
+        if "off_policy_estimation_methods" in kwargs:
+            # User specified their OPE methods.
+            self._set_off_policy_estimation_methods = True
+
+        return self
+
+    def build(
+        self,
+        env: Optional[Union[str, EnvType]] = None,
+        logger_creator: Optional[Callable[[], Logger]] = None,
+    ) -> "Algorithm":
+        if not self._set_off_policy_estimation_methods:
+            deprecation_warning(
+                old="MARWIL currently uses off_policy_estimation_methods: "
+                f"{self.off_policy_estimation_methods} by default. This will"
+                "change to off_policy_estimation_methods: {} in a future release."
+                "If you want to use an off-policy estimator, specify it in"
+                ".evaluation(off_policy_estimation_methods=...)",
+                error=False,
+            )
+        return super().build(env, logger_creator)
 
 
 class MARWIL(Algorithm):
@@ -217,8 +206,6 @@ class MARWIL(Algorithm):
         # Call super's validation method.
         super().validate_config(config)
 
-        # TODO: Move this to super()?
-        validate_buffer_config(config)
         if config["beta"] < 0.0 or config["beta"] > 1.0:
             raise ValueError("`beta` must be within 0.0 and 1.0!")
 
@@ -253,19 +240,11 @@ class MARWIL(Algorithm):
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
-        batch = synchronous_parallel_sample(worker_set=self.workers)
-        batch = batch.as_multi_agent()
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
-        self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
-        # Add batch to replay buffer.
-        self.local_replay_buffer.add(batch)
-
-        # Pull batch from replay buffer and train on it.
-        train_batch = sample_min_n_steps_from_buffer(
-            self.local_replay_buffer,
-            self.config["train_batch_size"],
-            count_by_agent_steps=self._by_agent_steps,
-        )
+        with self._timers[SAMPLE_TIMER]:
+            train_batch = synchronous_parallel_sample(worker_set=self.workers)
+        train_batch = train_batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
         # Train.
         if self.config["simple_optimizer"]:
             train_results = train_one_step(self, train_batch)
@@ -284,7 +263,7 @@ class MARWIL(Algorithm):
         # Update weights - after learning on the local worker - on all remote
         # workers.
         if self.workers.remote_workers():
-            with self._timers[WORKER_UPDATE_TIMER]:
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(global_vars=global_vars)
 
         # Update global vars on local worker as well.

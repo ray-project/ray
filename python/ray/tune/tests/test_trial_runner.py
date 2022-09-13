@@ -7,14 +7,14 @@ from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune import TuneError, register_trainable
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.resources import Resources
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
-from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.search import BasicVariantGenerator
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.mock import TrialStatusSnapshotTaker, TrialStatusSnapshot
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 class TrialRunnerTest(unittest.TestCase):

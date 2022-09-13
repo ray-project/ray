@@ -1,35 +1,79 @@
 import os
 import re
-import sys
-import time
-
-from unittest.mock import MagicMock
-from collections import defaultdict, Counter
-from pathlib import Path
 import subprocess
+import sys
 import tempfile
+import time
+from collections import Counter, defaultdict
+from pathlib import Path
+from unittest.mock import MagicMock
+
 import pytest
 
 import ray
-from ray.cross_language import java_actor_class
-from ray import ray_constants
-from ray._private.test_utils import (
-    get_log_batch,
-    wait_for_condition,
-    init_log_pubsub,
-    get_log_message,
-    run_string_as_driver,
-)
+from ray._private import ray_constants
 from ray._private.log_monitor import (
-    LogMonitor,
     LOG_NAME_UPDATE_INTERVAL_S,
     RAY_LOG_MONITOR_MANY_FILES_THRESHOLD,
+    LogFileInfo,
+    LogMonitor,
 )
+from ray._private.test_utils import (
+    get_log_batch,
+    get_log_message,
+    init_log_pubsub,
+    run_string_as_driver,
+    wait_for_condition,
+)
+from ray.cross_language import java_actor_class
 
 
 def set_logging_config(monkeypatch, max_bytes, backup_count):
     monkeypatch.setenv("RAY_ROTATION_MAX_BYTES", str(max_bytes))
     monkeypatch.setenv("RAY_ROTATION_BACKUP_COUNT", str(backup_count))
+
+
+def test_reopen_changed_inode(tmp_path):
+    """Make sure that when we reopen a file because the inode has changed, we
+    open to the right location."""
+
+    path1 = tmp_path / "file"
+    path2 = tmp_path / "changed_file"
+
+    with open(path1, "w") as f:
+        for i in range(1000):
+            print(f"{i}", file=f)
+
+    with open(path2, "w") as f:
+        for i in range(2000):
+            print(f"{i}", file=f)
+
+    file_info = LogFileInfo(
+        filename=path1,
+        size_when_last_opened=0,
+        file_position=0,
+        file_handle=None,
+        is_err_file=False,
+        job_id=None,
+        worker_pid=None,
+    )
+
+    file_info.reopen_if_necessary()
+    for _ in range(1000):
+        file_info.file_handle.readline()
+
+    orig_file_pos = file_info.file_handle.tell()
+    file_info.file_position = orig_file_pos
+
+    # NOTE: On windows, an open file can't be deleted.
+    file_info.file_handle.close()
+    os.remove(path1)
+    os.rename(path2, path1)
+
+    file_info.reopen_if_necessary()
+
+    assert file_info.file_position == orig_file_pos
+    assert file_info.file_handle.tell() == orig_file_pos
 
 
 def test_log_rotation_config(ray_start_cluster, monkeypatch):
@@ -58,7 +102,7 @@ def test_log_rotation(shutdown_only, monkeypatch):
     backup_count = 3
     set_logging_config(monkeypatch, max_bytes, backup_count)
     ray.init(num_cpus=1)
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
@@ -134,7 +178,7 @@ def test_periodic_event_stats(shutdown_only):
         num_cpus=1,
         _system_config={"event_stats_print_interval_ms": 100, "event_stats": True},
     )
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
@@ -171,7 +215,7 @@ def test_worker_id_names(shutdown_only):
         num_cpus=1,
         _system_config={"event_stats_print_interval_ms": 100, "event_stats": True},
     )
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
@@ -285,7 +329,7 @@ import ray
 os.environ["RAY_LOG_TO_STDERR"] = "1"
 ray.init()
 
-session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
 session_path = Path(session_dir)
 log_dir_path = session_path / "logs"
 
@@ -516,7 +560,7 @@ def test_log_monitor(tmp_path):
     assert not log_monitor.check_log_files_and_publish_updates()
 
     # Test max lines read == 99 is repsected.
-    lines = "1\n" * 150
+    lines = "1\n" * int(1.5 * ray_constants.LOG_MONITOR_NUM_LINES_TO_READ)
     with open(raylet_err_info.filename, "a") as f:
         # Write 150 more lines.
         f.write(lines)
@@ -528,7 +572,7 @@ def test_log_monitor(tmp_path):
             "pid": raylet_err_info.worker_pid,
             "job": raylet_err_info.job_id,
             "is_err": raylet_err_info.is_err_file,
-            "lines": ["1" for _ in range(100)],
+            "lines": ["1" for _ in range(ray_constants.LOG_MONITOR_NUM_LINES_TO_READ)],
             "actor_name": file_info.actor_name,
             "task_name": file_info.task_name,
         }
@@ -549,10 +593,11 @@ def test_log_monitor(tmp_path):
     # - dead pid out & err
     # alive worker is going to be newly opened.
     log_monitor.open_closed_files()
-    assert len(log_monitor.open_file_infos) == 4
+    assert len(log_monitor.open_file_infos) == 2
     assert log_monitor.can_open_more_files
     # Two dead workers are not tracked anymore, and they will be in the old folder.
-    assert len(log_monitor.closed_file_infos) == 0
+    # monitor.err and gcs_server.1.err have not been updated, so they remain closed.
+    assert len(log_monitor.closed_file_infos) == 2
     assert len(list((log_dir / "old").iterdir())) == 2
 
 

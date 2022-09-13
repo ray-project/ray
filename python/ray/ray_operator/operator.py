@@ -3,23 +3,20 @@ import logging
 import multiprocessing as mp
 import os
 import threading
-from typing import Any
-from typing import Callable
-from typing import Dict
-from typing import Tuple
-from typing import Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import kopf
 import yaml
 
 import ray.autoscaler._private.monitor as monitor
-from ray._private import services
+from ray._private import ray_constants, services
 from ray.autoscaler._private import commands
 from ray.ray_operator import operator_utils
-from ray.ray_operator.operator_utils import STATUS_AUTOSCALING_EXCEPTION
-from ray.ray_operator.operator_utils import STATUS_RUNNING
-from ray.ray_operator.operator_utils import STATUS_UPDATING
-from ray import ray_constants
+from ray.ray_operator.operator_utils import (
+    STATUS_AUTOSCALING_EXCEPTION,
+    STATUS_RUNNING,
+    STATUS_UPDATING,
+)
 
 logger = logging.getLogger(__name__)
 

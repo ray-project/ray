@@ -48,7 +48,7 @@ cdef class ObjectRef(BaseID):
         self.in_core_worker = False
         self.call_site_data = call_site_data
 
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         # TODO(edoakes): We should be able to remove the in_core_worker flag.
         # But there are still some dummy object refs being created outside the
         # context of a core worker.
@@ -60,7 +60,7 @@ cdef class ObjectRef(BaseID):
     def __dealloc__(self):
         if self.in_core_worker:
             try:
-                worker = ray.worker.global_worker
+                worker = ray._private.worker.global_worker
                 worker.core_worker.remove_object_ref_reference(self)
             except Exception as e:
                 # There is a strange error in rllib that causes the above to
@@ -151,6 +151,6 @@ cdef class ObjectRef(BaseID):
         The callback should take the result as the only argument. The result
         can be an exception object in case of task error.
         """
-        core_worker = ray.worker.global_worker.core_worker
+        core_worker = ray._private.worker.global_worker.core_worker
         core_worker.set_get_async_callback(self, py_callback)
         return self

@@ -1,5 +1,7 @@
 import ray
+from ray.dag.base import DAGNodeBase
 from ray.dag.py_obj_scanner import _PyObjScanner
+from ray.util.annotations import DeveloperAPI
 
 from typing import (
     Optional,
@@ -12,11 +14,13 @@ from typing import (
     Callable,
 )
 import uuid
+import asyncio
 
 T = TypeVar("T")
 
 
-class DAGNode:
+@DeveloperAPI
+class DAGNode(DAGNodeBase):
     """Abstract class for a node in a Ray task graph.
 
     A node has a type (e.g., FunctionNode), data (e.g., function options and
@@ -52,6 +56,8 @@ class DAGNode:
         )
         # UUID that is not changed over copies of this node.
         self._stable_uuid = uuid.uuid4().hex
+        # Cached values from last call to execute()
+        self.cache_from_last_execute = {}
 
     def get_args(self) -> Tuple[Any]:
         """Return the tuple of arguments for this node."""
@@ -79,9 +85,44 @@ class DAGNode:
         """
         return self._stable_uuid
 
-    def execute(self, *args, **kwargs) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
-        """Execute this DAG using the Ray default executor."""
-        return self.apply_recursive(lambda node: node._execute_impl(*args, **kwargs))
+    async def get_object_refs_from_last_execute(self) -> Dict[str, Any]:
+        """Gets cached object refs from the last call to execute().
+
+        After this DAG is executed through execute(), retrieves a map between node
+        UUID to a reference to the return value of the default executor on that node.
+        """
+        cache = {}
+        for node_uuid, value in self.cache_from_last_execute.items():
+            if isinstance(value, asyncio.Task):
+                cache[node_uuid] = await value
+            else:
+                cache[node_uuid] = value
+
+        return cache
+
+    def clear_cache(self):
+        self.cache_from_last_execute = {}
+
+    def execute(
+        self, *args, _ray_cache_refs: bool = False, **kwargs
+    ) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
+        """Execute this DAG using the Ray default executor _execute_impl().
+
+        Args:
+            _ray_cache_refs: If true, stores the the default executor's return values
+                on each node in this DAG in a cache. These should be a mix of:
+                - ray.ObjectRefs pointing to the outputs of method and function nodes
+                - Serve handles for class nodes
+                - resolved values representing user input at runtime
+        """
+
+        def executor(node):
+            return node._execute_impl(*args, **kwargs)
+
+        result = self.apply_recursive(executor)
+        if _ray_cache_refs:
+            self.cache_from_last_execute = executor.cache
+        return result
 
     def _get_toplevel_child_nodes(self) -> List["DAGNode"]:
         """Return the list of nodes specified as top-level args.
@@ -191,6 +232,7 @@ class DAGNode:
             def __init__(self, fn):
                 self.cache = {}
                 self.fn = fn
+                self.fn.cache = self.cache
                 self.input_node_uuid = None
 
             def __call__(self, node):

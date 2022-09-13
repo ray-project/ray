@@ -7,10 +7,12 @@ from ray.dag.constants import (
     PREV_CLASS_METHOD_CALL_KEY,
     DAGNODE_TYPE_KEY,
 )
+from ray.util.annotations import DeveloperAPI
 
 from typing import Any, Dict, List, Optional, Tuple
 
 
+@DeveloperAPI
 class ClassNode(DAGNode):
     """Represents an actor creation in a Ray task DAG."""
 
@@ -157,6 +159,7 @@ class _UnboundClassMethodNode(object):
         return self
 
 
+@DeveloperAPI
 class ClassMethodNode(DAGNode):
     """Represents an actor method invocation in a Ray function DAG."""
 

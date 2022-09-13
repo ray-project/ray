@@ -7,7 +7,7 @@ import unittest
 import ray
 from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.utils.framework import try_import_tf
-from ray.tune.trial import ExportFormat
+from ray.tune.experiment.trial import ExportFormat
 
 tf1, tf, tfv = try_import_tf()
 

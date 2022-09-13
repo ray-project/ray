@@ -1,4 +1,5 @@
 import os
+import logging
 import warnings
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
@@ -9,7 +10,7 @@ from gym.spaces import Discrete, MultiDiscrete
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.utils.annotations import Deprecated, PublicAPI
+from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
     from ray.rllib.policy.torch_policy import TorchPolicy
     from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
+logger = logging.getLogger(__name__)
 torch, nn = try_import_torch()
 
 # Limit values suitable for use as close to a -inf logit. These are useful
@@ -46,23 +48,31 @@ def apply_grad_clipping(
         An info dict containing the "grad_norm" key and the resulting clipped
         gradients.
     """
-    info = {}
-    if policy.config["grad_clip"]:
-        for param_group in optimizer.param_groups:
-            # Make sure we only pass params with grad != None into torch
-            # clip_grad_norm_. Would fail otherwise.
-            params = list(filter(lambda p: p.grad is not None, param_group["params"]))
-            if params:
-                # PyTorch clips gradients inplace and returns the norm before clipping
-                # We therefore need to compute grad_gnorm further down (fixes #4965)
-                clip_value = policy.config["grad_clip"]
-                global_norm = nn.utils.clip_grad_norm_(params, clip_value)
+    grad_gnorm = 0
+    if policy.config["grad_clip"] is not None:
+        clip_value = policy.config["grad_clip"]
+    else:
+        clip_value = np.inf
 
-                if isinstance(global_norm, torch.Tensor):
-                    global_norm = global_norm.cpu().numpy()
+    for param_group in optimizer.param_groups:
+        # Make sure we only pass params with grad != None into torch
+        # clip_grad_norm_. Would fail otherwise.
+        params = list(filter(lambda p: p.grad is not None, param_group["params"]))
+        if params:
+            # PyTorch clips gradients inplace and returns the norm before clipping
+            # We therefore need to compute grad_gnorm further down (fixes #4965)
+            global_norm = nn.utils.clip_grad_norm_(params, clip_value)
 
-                info["grad_gnorm"] = min(global_norm, clip_value)
-    return info
+            if isinstance(global_norm, torch.Tensor):
+                global_norm = global_norm.cpu().numpy()
+
+            grad_gnorm += min(global_norm, clip_value)
+
+    if grad_gnorm > 0:
+        return {"grad_gnorm": grad_gnorm}
+    else:
+        # No grads available
+        return {}
 
 
 @Deprecated(
@@ -141,21 +151,27 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
         to torch tensors.
 
     Returns:
-        Any: A new struct with the same structure as `stats`, but with all
+        Any: A new struct with the same structure as `x`, but with all
             values converted to torch Tensor types.
     """
 
     def mapping(item):
-        # Already torch tensor -> make sure it's on right device.
-        if torch.is_tensor(item):
-            return item if device is None else item.to(device)
+        if item is None:
+            # returns None with dtype=np.obj
+            return np.asarray(item)
+
         # Special handling of "Repeated" values.
-        elif isinstance(item, RepeatedValues):
+        if isinstance(item, RepeatedValues):
             return RepeatedValues(
                 tree.map_structure(mapping, item.values), item.lengths, item.max_len
             )
+
+        tensor = None
+        # Already torch tensor -> make sure it's on right device.
+        if torch.is_tensor(item):
+            tensor = item
         # Numpy arrays.
-        if isinstance(item, np.ndarray):
+        elif isinstance(item, np.ndarray):
             # Object type (e.g. info dicts in train batch): leave as-is.
             if item.dtype == object:
                 return item
@@ -170,9 +186,11 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
         # Everything else: Convert to numpy, then wrap as torch tensor.
         else:
             tensor = torch.from_numpy(np.asarray(item))
+
         # Floatify all float64 tensors.
-        if tensor.dtype == torch.double:
+        if tensor.is_floating_point():
             tensor = tensor.float()
+
         return tensor if device is None else tensor.to(device)
 
     return tree.map_structure(mapping, x)
@@ -193,6 +211,9 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
         The explained variance given a pair of labels and predictions.
     """
     y_var = torch.var(y, dim=[0])
+    if y_var == 0.0:
+        # Model case in which y does not vary with explained variance of -1
+        return torch.tensor(-1.0).to(pred.device)
     diff_var = torch.var(y - pred, dim=[0])
     min_ = torch.tensor([-1.0]).to(pred.device)
     return torch.max(min_, 1 - (diff_var / y_var))[0]
@@ -304,7 +325,10 @@ def get_device(config):
     # Figure out the number of GPUs to use on the local side (index=0) or on
     # the remote workers (index > 0).
     worker_idx = config.get("worker_index", 0)
-    if not config["_fake_gpus"] and ray.worker._mode() == ray.worker.LOCAL_MODE:
+    if (
+        not config["_fake_gpus"]
+        and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
+    ):
         num_gpus = 0
     elif worker_idx == 0:
         num_gpus = config["num_gpus"]
@@ -327,7 +351,7 @@ def get_device(config):
     else:
         # We are a remote worker (WORKER_MODE=1):
         # GPUs should be assigned to us by ray.
-        if ray.worker._mode() == ray.worker.WORKER_MODE:
+        if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
             gpu_ids = ray.get_gpu_ids()
 
         if len(gpu_ids) < num_gpus:
@@ -456,11 +480,13 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
     if isinstance(space, Discrete):
         return nn.functional.one_hot(x.long(), space.n)
     elif isinstance(space, MultiDiscrete):
+        if isinstance(space.nvec[0], np.ndarray):
+            nvec = np.ravel(space.nvec)
+            x = x.reshape(x.shape[0], -1)
+        else:
+            nvec = space.nvec
         return torch.cat(
-            [
-                nn.functional.one_hot(x[:, i].long(), n)
-                for i, n in enumerate(space.nvec)
-            ],
+            [nn.functional.one_hot(x[:, i].long(), n) for i, n in enumerate(nvec)],
             dim=-1,
         )
     else:
@@ -523,6 +549,22 @@ def sequence_mask(
     mask.type(dtype or torch.bool)
 
     return mask
+
+
+@DeveloperAPI
+def warn_if_infinite_kl_divergence(
+    policy: "TorchPolicy",
+    kl_divergence: TensorType,
+) -> None:
+    if policy.loss_initialized() and kl_divergence.isinf():
+        logger.warning(
+            "KL divergence is non-finite, this will likely destabilize your model and"
+            " the training process. Action(s) in a specific state have near-zero"
+            " probability. This can happen naturally in deterministic environments"
+            " where the optimal policy has zero mass for a specific action. To fix this"
+            " issue, consider setting the coefficient for the KL loss term to zero or"
+            " increasing policy entropy."
+        )
 
 
 @PublicAPI

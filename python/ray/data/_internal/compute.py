@@ -1,6 +1,6 @@
 import collections
 import logging
-from typing import Any, Callable, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 import ray
 from ray.data._internal.block_list import BlockList
@@ -8,11 +8,14 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
+    BatchUDF,
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
     BlockPartition,
+    CallableClass,
+    RowUDF,
 )
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -22,13 +25,30 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 U = TypeVar("U")
 
-# A class type that implements __call__.
-CallableClass = type
+# Block transform function applied by task and actor pools.
+BlockTransform = Union[
+    # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constrain block
+    # transform type.
+    # Callable[[Block, ...], Iterable[Block]]
+    # Callable[[Block, BatchUDF, ...], Iterable[Block]],
+    Callable[[Block], Iterable[Block]],
+    Callable[[Block, Union[BatchUDF, RowUDF]], Iterable[Block]],
+    Callable[..., Iterable[Block]],
+]
+
+# UDF on a batch or row.
+UDF = Union[BatchUDF, RowUDF]
 
 
 @DeveloperAPI
 class ComputeStrategy:
-    def _apply(self, fn: Any, blocks: BlockList, clear_input_blocks: bool) -> BlockList:
+    def _apply(
+        self,
+        block_fn: BlockTransform,
+        remote_args: dict,
+        blocks: BlockList,
+        clear_input_blocks: bool,
+    ) -> BlockList:
         raise NotImplementedError
 
 
@@ -36,12 +56,23 @@ class ComputeStrategy:
 class TaskPoolStrategy(ComputeStrategy):
     def _apply(
         self,
-        fn: Any,
+        block_fn: BlockTransform,
         remote_args: dict,
         block_list: BlockList,
         clear_input_blocks: bool,
         name: Optional[str] = None,
+        fn: Optional[UDF] = None,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
+        assert fn_constructor_args is None and fn_constructor_kwargs is None
+        if fn_args is None:
+            fn_args = tuple()
+        if fn_kwargs is None:
+            fn_kwargs = {}
+
         context = DatasetContext.get_current()
 
         # Handle empty datasets.
@@ -56,15 +87,22 @@ class TaskPoolStrategy(ComputeStrategy):
 
         if context.block_splitting_enabled:
             map_block = cached_remote_fn(_map_block_split).options(**remote_args)
-            refs = [map_block.remote(b, fn, m.input_files) for b, m in blocks]
+            refs = [
+                map_block.remote(b, block_fn, m.input_files, fn, *fn_args, **fn_kwargs)
+                for b, m in blocks
+            ]
         else:
             map_block = cached_remote_fn(_map_block_nosplit).options(
                 **dict(remote_args, num_returns=2)
             )
-            all_refs = [map_block.remote(b, fn, m.input_files) for b, m in blocks]
+            all_refs = [
+                map_block.remote(b, block_fn, m.input_files, fn, *fn_args, **fn_kwargs)
+                for b, m in blocks
+            ]
             data_refs = [r[0] for r in all_refs]
             refs = [r[1] for r in all_refs]
 
+        in_block_owned_by_consumer = block_list._owned_by_consumer
         # Release input block references.
         if clear_input_blocks:
             del blocks
@@ -97,7 +135,11 @@ class TaskPoolStrategy(ComputeStrategy):
             for block, metadata in zip(data_refs, results):
                 new_blocks.append(block)
                 new_metadata.append(metadata)
-        return BlockList(list(new_blocks), list(new_metadata))
+        return BlockList(
+            list(new_blocks),
+            list(new_metadata),
+            owned_by_consumer=in_block_owned_by_consumer,
+        )
 
 
 @PublicAPI
@@ -147,19 +189,36 @@ class ActorPoolStrategy(ComputeStrategy):
         self.min_size = min_size
         self.max_size = max_size or float("inf")
         self.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
+        self.num_workers = 0
+        self.ready_to_total_workers_ratio = 0.8
 
     def _apply(
         self,
-        fn: Any,
+        block_fn: BlockTransform,
         remote_args: dict,
         block_list: BlockList,
         clear_input_blocks: bool,
         name: Optional[str] = None,
+        fn: Optional[UDF] = None,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
         """Note: this is not part of the Dataset public API."""
+        if fn_args is None:
+            fn_args = tuple()
+        if fn_kwargs is None:
+            fn_kwargs = {}
+        if fn_constructor_args is None:
+            fn_constructor_args = tuple()
+        if fn_constructor_kwargs is None:
+            fn_constructor_kwargs = {}
+
         context = DatasetContext.get_current()
 
         blocks_in = block_list.get_blocks_with_metadata()
+        owned_by_consumer = block_list._owned_by_consumer
 
         # Early release block references.
         if clear_input_blocks:
@@ -173,21 +232,48 @@ class ActorPoolStrategy(ComputeStrategy):
         map_bar = ProgressBar(name, total=orig_num_blocks)
 
         class BlockWorker:
+            def __init__(
+                self,
+                *fn_constructor_args: Any,
+                **fn_constructor_kwargs: Any,
+            ):
+                if not isinstance(fn, CallableClass):
+                    if fn_constructor_args or fn_constructor_kwargs:
+                        raise ValueError(
+                            "fn_constructor_{kw}args only valid for CallableClass "
+                            f"UDFs, but got: {fn}"
+                        )
+                    self.fn = fn
+                else:
+                    self.fn = fn(*fn_constructor_args, **fn_constructor_kwargs)
+
             def ready(self):
                 return "ok"
 
             def map_block_split(
-                self, block: Block, input_files: List[str]
+                self,
+                block: Block,
+                input_files: List[str],
+                *fn_args,
+                **fn_kwargs,
             ) -> BlockPartition:
-                return _map_block_split(block, fn, input_files)
+                return _map_block_split(
+                    block, block_fn, input_files, self.fn, *fn_args, **fn_kwargs
+                )
 
             @ray.method(num_returns=2)
             def map_block_nosplit(
-                self, block: Block, input_files: List[str]
+                self,
+                block: Block,
+                input_files: List[str],
+                *fn_args,
+                **fn_kwargs,
             ) -> Tuple[Block, BlockMetadata]:
-                return _map_block_nosplit(block, fn, input_files)
+                return _map_block_nosplit(
+                    block, block_fn, input_files, self.fn, *fn_args, **fn_kwargs
+                )
 
-        if not remote_args:
+        if "num_cpus" not in remote_args:
             remote_args["num_cpus"] = 1
 
         if "scheduling_strategy" not in remote_args:
@@ -199,7 +285,10 @@ class ActorPoolStrategy(ComputeStrategy):
 
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
-        workers = [BlockWorker.remote() for _ in range(self.min_size)]
+        workers = [
+            BlockWorker.remote(*fn_constructor_args, **fn_constructor_kwargs)
+            for _ in range(self.min_size)
+        ]
         tasks = {w.ready.remote(): w for w in workers}
         tasks_in_flight = collections.defaultdict(int)
         metadata_mapping = {}
@@ -214,9 +303,12 @@ class ActorPoolStrategy(ComputeStrategy):
                 if not ready:
                     if (
                         len(workers) < self.max_size
-                        and len(ready_workers) / len(workers) > 0.8
+                        and len(ready_workers) / len(workers)
+                        > self.ready_to_total_workers_ratio
                     ):
-                        w = BlockWorker.remote()
+                        w = BlockWorker.remote(
+                            *fn_constructor_args, **fn_constructor_kwargs
+                        )
                         workers.append(w)
                         tasks[w.ready.remote()] = w
                         map_bar.set_description(
@@ -249,10 +341,18 @@ class ActorPoolStrategy(ComputeStrategy):
                 ):
                     block, meta = blocks_in.pop()
                     if context.block_splitting_enabled:
-                        ref = worker.map_block_split.remote(block, meta.input_files)
+                        ref = worker.map_block_split.remote(
+                            block,
+                            meta.input_files,
+                            *fn_args,
+                            **fn_kwargs,
+                        )
                     else:
                         ref, meta_ref = worker.map_block_nosplit.remote(
-                            block, meta.input_files
+                            block,
+                            meta.input_files,
+                            *fn_args,
+                            **fn_kwargs,
                         )
                         metadata_mapping[ref] = meta_ref
                     tasks[ref] = worker
@@ -260,6 +360,7 @@ class ActorPoolStrategy(ComputeStrategy):
                     tasks_in_flight[worker] += 1
 
             map_bar.close()
+            self.num_workers += len(workers)
             new_blocks, new_metadata = [], []
             # Put blocks in input order.
             results.sort(key=block_indices.get)
@@ -273,7 +374,9 @@ class ActorPoolStrategy(ComputeStrategy):
                     new_blocks.append(block)
                     new_metadata.append(metadata_mapping[block])
                 new_metadata = ray.get(new_metadata)
-            return BlockList(new_blocks, new_metadata)
+            return BlockList(
+                new_blocks, new_metadata, owned_by_consumer=owned_by_consumer
+            )
 
         except Exception as e:
             try:
@@ -283,43 +386,6 @@ class ActorPoolStrategy(ComputeStrategy):
                 logger.exception(f"Error killing workers: {err}")
             finally:
                 raise e
-
-
-def cache_wrapper(
-    fn: Union[CallableClass, Callable[[Any], Any]],
-    compute: Optional[Union[str, ComputeStrategy]],
-) -> Callable[[Any], Any]:
-    """Implements caching of stateful callables.
-
-    Args:
-        fn: Either a plain function or class of a stateful callable.
-
-    Returns:
-        A plain function with per-process initialization cached as needed.
-    """
-    if isinstance(fn, CallableClass):
-
-        if (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a callable class, and must "
-                "specify the actor compute strategy. "
-                'For example, use ``compute="actors"`` or '
-                "``compute=ActorPoolStrategy(min, max)``."
-            )
-
-        def _fn(item: Any) -> Any:
-            if ray.data._cached_fn is None or ray.data._cached_cls != fn:
-                ray.data._cached_cls = fn
-                ray.data._cached_fn = fn()
-            return ray.data._cached_fn(item)
-
-        return _fn
-    else:
-        return fn
 
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
@@ -341,10 +407,19 @@ def is_task_compute(compute_spec: Union[str, ComputeStrategy]) -> bool:
     )
 
 
-def _map_block_split(block: Block, fn: Any, input_files: List[str]) -> BlockPartition:
+def _map_block_split(
+    block: Block,
+    block_fn: BlockTransform,
+    input_files: List[str],
+    fn: Optional[UDF],
+    *fn_args,
+    **fn_kwargs,
+) -> BlockPartition:
     output = []
     stats = BlockExecStats.builder()
-    for new_block in fn(block):
+    if fn is not None:
+        fn_args = (fn,) + fn_args
+    for new_block in block_fn(block, *fn_args, **fn_kwargs):
         accessor = BlockAccessor.for_block(new_block)
         new_meta = BlockMetadata(
             num_rows=accessor.num_rows(),
@@ -360,11 +435,18 @@ def _map_block_split(block: Block, fn: Any, input_files: List[str]) -> BlockPart
 
 
 def _map_block_nosplit(
-    block: Block, fn: Any, input_files: List[str]
+    block: Block,
+    block_fn: BlockTransform,
+    input_files: List[str],
+    fn: Optional[UDF],
+    *fn_args,
+    **fn_kwargs,
 ) -> Tuple[Block, BlockMetadata]:
     stats = BlockExecStats.builder()
     builder = DelegatingBlockBuilder()
-    for new_block in fn(block):
+    if fn is not None:
+        fn_args = (fn,) + fn_args
+    for new_block in block_fn(block, *fn_args, **fn_kwargs):
         builder.add_block(new_block)
     new_block = builder.build()
     accessor = BlockAccessor.for_block(new_block)

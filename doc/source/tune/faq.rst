@@ -56,7 +56,7 @@ results per each added tree in GBDTs, etc.) using early stopping usually allows 
 more configurations, as unpromising trials are pruned before they run their full course.
 Please note that not all search algorithms can use information from pruned trials.
 Early stopping cannot be used without incremental results - in case of the functional API,
-that means that ``tune.report()`` has to be called more than once - usually in a loop.
+that means that ``session.report()`` has to be called more than once - usually in a loop.
 
 **If your model is small**, you can usually try to run many different configurations.
 A **random search** can be used to generate configurations. You can also grid search
@@ -171,7 +171,7 @@ the a and b variables and use them afterwards.
 How does early termination (e.g. Hyperband/ASHA) work?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Early termination algorithms look at the intermediately reported values,
-e.g. what is reported to them via ``tune.report()`` after each training
+e.g. what is reported to them via ``session.report()`` after each training
 epoch. After a certain number of steps, they then remove the worst
 performing trials and keep only the best performing trials. Goodness of a trial
 is determined by ordering them by the objective metric, for instance accuracy
@@ -188,8 +188,8 @@ Why are all my trials returning "1" iteration?
 
 **This is most likely applicable for the Tune function API.**
 
-Ray Tune counts iterations internally every time ``tune.report()`` is
-called. If you only call ``tune.report()`` once at the end of the training,
+Ray Tune counts iterations internally every time ``session.report()`` is
+called. If you only call ``session.report()`` once at the end of the training,
 the counter has only been incremented once. If you're using the class API,
 the counter is increased after calling ``step()``.
 
@@ -203,7 +203,7 @@ What are all these extra outputs?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You'll notice that Ray Tune not only reports hyperparameters (from the
-``config``) or metrics (passed to ``tune.report()``), but also some other
+``config``) or metrics (passed to ``session.report()``), but also some other
 outputs.
 
 .. code-block:: bash
@@ -233,8 +233,8 @@ See the :ref:`tune-autofilled-metrics` section for a glossary.
 How do I set resources?
 ~~~~~~~~~~~~~~~~~~~~~~~
 If you want to allocate specific resources to a trial, you can use the
-``resources_per_trial`` parameter of ``tune.run()``, to which you can pass
-a dict or a :class:`PlacementGroupFactory <ray.tune.utils.placement_groups.PlacementGroupFactory>` object:
+``tune.with_resources`` and wrap it around you trainable together with
+a dict or a :class:`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>` object:
 
 .. literalinclude:: doc_code/faq.py
     :dedent:
@@ -279,6 +279,24 @@ will try to schedule the actors on the same node, but allows them to be schedule
 on other nodes as well. Please refer to the
 :ref:`placement groups documentation <ray-placement-group-doc-ref>` to learn more
 about these placement strategies.
+
+You can also allocate specific resources to a trial based on a custom rule via lambda functions.
+For instance, if you want to allocate GPU resources to trials based on a setting in your config:
+
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __resources_lambda_start__
+    :end-before: __resources_lambda_end__
+
+You can also use the :ref:`ScalingConfig <train-config>` to specify your lambda function:
+
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __resources_scalingconfig_start__
+    :end-before: __resources_scalingconfig_end__
+
 
 Why is my training stuck and Ray reporting that pending actor or tasks cannot be scheduled?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -436,15 +454,11 @@ dictionary should only contain primitive types, like numbers or strings.
 **The Trial result is very large**
 
 This is the case if you return objects, data, or other large objects via the return value of ``step()`` in
-your class trainable or to ``tune.report()`` in your function trainable. The effect is the same as above:
+your class trainable or to ``session.report()`` in your function trainable. The effect is the same as above:
 The results are repeatedly serialized and written to disk, and this can take a long time.
 
-**Solution**: Usually you should be able to write data to the trial directory instead. You can then pass a
-filename back (or assume it is a known location). The trial dir is usually the current working directory. Class
-trainables have the ``Trainable.logdir`` property and function trainables the :func:`ray.tune.get_trial_dir`
-function to retrieve the logdir. If you really have to, you can also ``ray.put()`` an object to the Ray
-object store and retrieve it with ``ray.get()`` on the other side. Generally, your result dictionary
-should only contain primitive types, like numbers or strings.
+**Solution**: Use checkpoint by writing data to the trainable's current working directory instead. There are various ways
+to do that depending on whether you are using class or functional Trainable API. 
 
 **You are training a large number of trials on a cluster, or you are saving huge checkpoints**
 
@@ -607,6 +621,50 @@ Failing to do so would cause error messages like ``Error message (1): fatal erro
 For AWS set up, this involves adding an IamInstanceProfile configuration for worker nodes.
 Please :ref:`see here for more tips <aws-cluster-s3>`.
 
+How can I use the awscli or gsutil command line commands for syncing?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Some users reported to run into problems with the default pyarrow-based syncing.
+In this case, a custom syncer that invokes the respective command line tools
+for transferring files between nodes and cloud storage can be implemented.
+
+Here is an example for a syncer that uses string templates that will be run
+as a command:
+
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __custom_command_syncer_start__
+    :end-before: __custom_command_syncer_end__
+
+For different cloud services, these are example templates you can use with this syncer:
+
+AWS S3
+''''''
+
+.. code-block::
+
+    sync_up_template="aws s3 sync {source} {target} --exact-timestamps --only-show-errors"
+    sync_down_template="aws s3 sync {source} {target} --exact-timestamps --only-show-errors"
+    delete_template="aws s3 rm {target} --recursive --only-show-errors"
+
+Google cloud storage
+''''''''''''''''''''
+
+.. code-block::
+
+    sync_up_template="gsutil rsync -r {source} {target}"
+    sync_down_template="down": "gsutil rsync -r {source} {target}"
+    delete_template="delete": "gsutil rm -r {target}"
+
+HDFS
+''''
+
+.. code-block::
+
+    sync_up_template="hdfs dfs -put -f {source} {target}"
+    sync_down_template="down": "hdfs dfs -get -f {source} {target}"
+    delete_template="delete": "hdfs dfs -rm -r {target}"
+
 
 .. _tune-docker:
 
@@ -654,7 +712,7 @@ result in less overhead and provide naturally durable checkpoint storage.
 How do I configure search spaces?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can specify a grid search or sampling distribution via the dict passed into ``tune.run(config=...)``.
+You can specify a grid search or sampling distribution via the dict passed into ``Tuner(param_space=...)``.
 
 .. literalinclude:: doc_code/faq.py
     :dedent:
@@ -667,7 +725,7 @@ To take multiple random samples, add ``num_samples: N`` to the experiment config
 If `grid_search` is provided as an argument, the grid will be repeated ``num_samples`` of times.
 
 .. literalinclude:: doc_code/faq.py
-    :emphasize-lines: 13
+    :emphasize-lines: 16
     :language: python
     :start-after: __grid_search_2_start__
     :end-before: __grid_search_2_end__

@@ -61,7 +61,7 @@ class TuneController(dashboard_utils.DashboardHeadModule):
         experiment = req.query["experiment"]
         err, experiment = self.set_experiment(experiment)
         if err:
-            return rest_response(success=False, error=err)
+            return rest_response(success=False, message=err)
         return rest_response(
             success=True, message="Successfully set experiment", **experiment
         )

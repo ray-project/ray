@@ -88,15 +88,15 @@ DECLARE_stats(spill_manager_throughput_mb);
 DECLARE_stats(gcs_storage_operation_latency_ms);
 DECLARE_stats(gcs_storage_operation_count);
 
-/// GCS Resource Manager
-DECLARE_stats(gcs_new_resource_creation_latency_ms);
-
 /// Placement Group
 DECLARE_stats(gcs_placement_group_creation_latency_ms);
 DECLARE_stats(gcs_placement_group_scheduling_latency_ms);
 DECLARE_stats(gcs_placement_group_count);
 
 DECLARE_stats(gcs_actors_count);
+
+/// Memory Manager
+DECLARE_stats(memory_manager_worker_eviction_total);
 
 /// The below items are legacy implementation of metrics.
 /// TODO(sang): Use DEFINE_stats instead.

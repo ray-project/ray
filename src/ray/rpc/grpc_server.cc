@@ -59,6 +59,15 @@ void GrpcServer::Run() {
                              RayConfig::instance().grpc_keepalive_timeout_ms());
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
 
+  // NOTE(rickyyx): This argument changes how frequent the gRPC server expects a keepalive
+  // ping from the client. See https://github.com/grpc/grpc/blob/HEAD/doc/keepalive.md#faq
+  // We set this to 1min because GCS gRPC client currently sends keepalive every 1min:
+  // https://github.com/ray-project/ray/blob/releases/2.0.0/python/ray/_private/gcs_utils.py#L72
+  // Setting this value larger will trigger GOAWAY from the gRPC server to be sent to the
+  // client to back-off keepalive pings. (https://github.com/ray-project/ray/issues/25367)
+  builder.AddChannelArgument(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS,
+                             60000);
+
   if (RayConfig::instance().USE_TLS()) {
     // Create credentials from locations specified in config
     std::string rootcert = ReadCert(RayConfig::instance().TLS_CA_CERT());
@@ -107,11 +116,10 @@ void GrpcServer::Run() {
   // Create calls for all the server call factories.
   for (auto &entry : server_call_factories_) {
     for (int i = 0; i < num_threads_; i++) {
-      // When there is no max active RPC limit, a call will be added to the completetion
-      // queue before RPC processing starts. In this case, the buffer size only
-      // determines the number of tags in the completion queue, instead of the number of
-      // inflight RPCs being processed.
-      int buffer_size = 128;
+      // Create a buffer of 100 calls for each RPC handler.
+      // TODO(edoakes): a small buffer should be fine and seems to have better
+      // performance, but we don't currently handle backpressure on the client.
+      int buffer_size = 100;
       if (entry->GetMaxActiveRPCs() != -1) {
         buffer_size = entry->GetMaxActiveRPCs();
       }

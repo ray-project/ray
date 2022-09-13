@@ -6,9 +6,9 @@ import json
 
 import ray
 from ray.rllib import _register_all
-from ray.tune.trial import Trial, Resources
+from ray.tune.experiment.trial import Trial, Resources
 from ray.tune.web_server import TuneClient
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.execution.trial_runner import TrialRunner
 
 
 def get_valid_port():

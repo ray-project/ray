@@ -26,7 +26,7 @@ from open_spiel.python.rl_environment import Environment
 import sys
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.examples.policy.random_policy import RandomPolicy
@@ -217,26 +217,30 @@ if __name__ == "__main__":
     # Train the "main" policy to play really well using self-play.
     results = None
     if not args.from_checkpoint:
-        results = tune.run(
+        results = tune.Tuner(
             "PPO",
-            config=config,
-            stop=stop,
-            checkpoint_at_end=True,
-            checkpoint_freq=10,
-            verbose=2,
-            progress_reporter=CLIReporter(
-                metric_columns={
-                    "training_iteration": "iter",
-                    "time_total_s": "time_total_s",
-                    "timesteps_total": "ts",
-                    "episodes_this_iter": "train_episodes",
-                    "policy_reward_mean/main": "reward",
-                    "win_rate": "win_rate",
-                    "league_size": "league_size",
-                },
-                sort_by_metric=True,
+            param_space=config,
+            run_config=air.RunConfig(
+                stop=stop,
+                verbose=2,
+                progress_reporter=CLIReporter(
+                    metric_columns={
+                        "training_iteration": "iter",
+                        "time_total_s": "time_total_s",
+                        "timesteps_total": "ts",
+                        "episodes_this_iter": "train_episodes",
+                        "policy_reward_mean/main": "reward",
+                        "win_rate": "win_rate",
+                        "league_size": "league_size",
+                    },
+                    sort_by_metric=True,
+                ),
+                checkpoint_config=air.CheckpointConfig(
+                    checkpoint_at_end=True,
+                    checkpoint_frequency=10,
+                ),
             ),
-        )
+        ).fit()
 
     # Restore trained trainer (set to non-explore behavior) and play against
     # human on command line.
@@ -246,7 +250,7 @@ if __name__ == "__main__":
         if args.from_checkpoint:
             trainer.restore(args.from_checkpoint)
         else:
-            checkpoint = results.get_last_checkpoint()
+            checkpoint = results.get_best_result().checkpoint
             if not checkpoint:
                 raise ValueError("No last checkpoint found in results!")
             trainer.restore(checkpoint)

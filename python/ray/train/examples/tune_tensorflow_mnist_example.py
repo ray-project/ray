@@ -1,28 +1,35 @@
 import argparse
 
+from tensorflow_mnist_example import train_func
+
 import ray
 from ray import tune
-from ray.train import Trainer
-
-from tensorflow_mnist_example import train_func
+from ray.train.tensorflow import TensorflowTrainer
+from ray.air.config import ScalingConfig
+from ray.tune.tune_config import TuneConfig
+from ray.tune.tuner import Tuner
 
 
 def tune_tensorflow_mnist(num_workers, num_samples):
-    trainer = Trainer(backend="tensorflow", num_workers=num_workers)
-    Trainable = trainer.to_tune_trainable(train_func)
-    analysis = tune.run(
-        Trainable,
-        num_samples=num_samples,
-        config={
-            "lr": tune.loguniform(1e-4, 1e-1),
-            "batch_size": tune.choice([32, 64, 128]),
-            "epochs": 3,
-        },
+    trainer = TensorflowTrainer(
+        train_func, scaling_config=ScalingConfig(num_workers=num_workers)
     )
-    best_loss = analysis.get_best_config(metric="loss", mode="min")
-    best_accuracy = analysis.get_best_config(metric="accuracy", mode="max")
-    print(f"Best loss config: {best_loss}")
-    print(f"Best accuracy config: {best_accuracy}")
+    tuner = Tuner(
+        trainer,
+        param_space={
+            "train_loop_config": {
+                "lr": tune.loguniform(1e-4, 1e-1),
+                "batch_size": tune.choice([32, 64, 128]),
+                "epochs": 3,
+            },
+        },
+        tune_config=TuneConfig(num_samples=num_samples),
+    )
+    analysis = tuner.fit()
+    best_loss = analysis.get_best_result(metric="loss", mode="min")
+    best_accuracy = analysis.get_best_result(metric="accuracy", mode="max")
+    print(f"Best loss result: {best_loss}")
+    print(f"Best accuracy result: {best_accuracy}")
     return analysis
 
 

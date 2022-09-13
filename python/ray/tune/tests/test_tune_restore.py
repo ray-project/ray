@@ -1,8 +1,10 @@
 # coding: utf-8
 import signal
+import subprocess
 from collections import Counter
 import multiprocessing
 import os
+import pytest
 import shutil
 import tempfile
 import threading
@@ -12,15 +14,15 @@ import unittest
 
 import ray
 from ray import tune
-from ray._private.test_utils import recursive_fnmatch
+from ray._private.test_utils import recursive_fnmatch, run_string_as_driver
 from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.suggest.basic_variant import BasicVariantGenerator
-from ray.tune.suggest import Searcher
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.search.basic_variant import BasicVariantGenerator
+from ray.tune.search import Searcher
+from ray.tune.experiment import Trial
+from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils import validate_save_restore
 from ray.tune.utils.mock_trainable import MyTrainableClass
 
@@ -556,7 +558,7 @@ class ResourceExhaustedTest(unittest.TestCase):
         from sklearn.datasets import fetch_olivetti_faces
 
         a_large_array = []
-        for i in range(25):
+        for i in range(50):
             a_large_array.append(fetch_olivetti_faces())
 
         def training_func(config):
@@ -570,8 +572,22 @@ class ResourceExhaustedTest(unittest.TestCase):
             tune.run(training_func)
 
 
+def test_stacktrace():
+    """Test proper stacktrace is printed for RayTaskError."""
+    CMD = """
+from ray import tune
+
+def train(config):
+    raise Exception("Inducing exception for testing purposes.")
+
+tune.run(train, num_samples=1)
+    """
+    with pytest.raises(subprocess.CalledProcessError) as exc_info:
+        run_string_as_driver(CMD)
+    assert "Inducing exception for testing purposes." in exc_info.value.output.decode()
+
+
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

@@ -14,10 +14,10 @@ import os
 import numpy as np
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.tune import Trainable
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
-from ray.tune.suggest.bohb import TuneBOHB
+from ray.tune.search.bohb import TuneBOHB
 
 
 class MyTrainableClass(Trainable):
@@ -94,18 +94,20 @@ if __name__ == "__main__":
     bohb_search = TuneBOHB(
         # space=config_space,  # If you want to set the space manually
     )
-    bohb_search = tune.suggest.ConcurrencyLimiter(bohb_search, max_concurrent=4)
+    bohb_search = tune.search.ConcurrencyLimiter(bohb_search, max_concurrent=4)
 
-    analysis = tune.run(
+    tuner = tune.Tuner(
         MyTrainableClass,
-        name="bohb_test",
-        config=config,
-        scheduler=bohb_hyperband,
-        search_alg=bohb_search,
-        num_samples=10,
-        stop={"training_iteration": 100},
-        metric="episode_reward_mean",
-        mode="max",
+        run_config=air.RunConfig(name="bohb_test", stop={"training_iteration": 100}),
+        tune_config=tune.TuneConfig(
+            metric="episode_reward_mean",
+            mode="max",
+            scheduler=bohb_hyperband,
+            search_alg=bohb_search,
+            num_samples=10,
+        ),
+        param_space=config,
     )
+    results = tuner.fit()
 
-    print("Best hyperparameters found were: ", analysis.best_config)
+    print("Best hyperparameters found were: ", results.get_best_result().config)

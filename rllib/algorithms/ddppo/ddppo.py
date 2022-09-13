@@ -24,9 +24,6 @@ import ray
 from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.execution.common import (
-    STEPS_TRAINED_THIS_ITER_COUNTER,
-)
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -66,6 +63,7 @@ class DDPPOConfig(PPOConfig):
 
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = DDPPOConfig()
         >>> # Print out some default values.
@@ -76,11 +74,11 @@ class DDPPOConfig(PPOConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "DDPPO",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -297,10 +295,8 @@ class DDPPO(PPO):
         # - Update the worker's global_vars.
         # - Build info dict using a LearnerInfoBuilder object.
         learner_info_builder = LearnerInfoBuilder(num_devices=1)
-        steps_this_iter = 0
         for worker, results in sample_and_update_results.items():
             for result in results:
-                steps_this_iter += result["env_steps"]
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += result["agent_steps"]
                 self._counters[NUM_AGENT_STEPS_TRAINED] += result["agent_steps"]
                 self._counters[NUM_ENV_STEPS_SAMPLED] += result["env_steps"]
@@ -314,8 +310,6 @@ class DDPPO(PPO):
             global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
             for worker in self.workers.remote_workers():
                 worker.set_global_vars.remote(global_vars)
-
-        self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = steps_this_iter
 
         # Sync down the weights from 1st remote worker (only if we have received
         # some results from it).

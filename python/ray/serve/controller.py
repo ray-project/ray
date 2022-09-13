@@ -6,14 +6,16 @@ import pickle
 import time
 import traceback
 from collections import defaultdict
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
 from ray._private.utils import import_attr
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
-from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
-from ray.serve.common import (
+from ray._private.gcs_utils import GcsClient
+from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
+from ray.serve._private.common import (
     ApplicationStatus,
     ApplicationStatusInfo,
     DeploymentInfo,
@@ -24,20 +26,25 @@ from ray.serve.common import (
     StatusOverview,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
     SERVE_LOGGER_NAME,
+    CONTROLLER_MAX_CONCURRENCY,
     SERVE_ROOT_URL_ENV_KEY,
+    SERVE_NAMESPACE,
+    RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
 )
-from ray.serve.deployment_state import DeploymentStateManager, ReplicaState
-from ray.serve.endpoint_state import EndpointState
-from ray.serve.http_state import HTTPState
-from ray.serve.logging_utils import configure_component_logger
-from ray.serve.long_poll import LongPollHost
+from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
+from ray.serve._private.endpoint_state import EndpointState
+from ray.serve._private.http_state import HTTPState
+from ray.serve._private.logging_utils import configure_component_logger
+from ray.serve._private.long_poll import LongPollHost
 from ray.serve.schema import ServeApplicationSchema
-from ray.serve.storage.checkpoint_path import make_kv_store
-from ray.serve.storage.kv_store import RayInternalKVStore
-from ray.serve.utils import override_runtime_envs_except_env_vars
+from ray.serve._private.storage.kv_store import RayInternalKVStore
+from ray.serve._private.utils import (
+    override_runtime_envs_except_env_vars,
+    get_random_letters,
+)
 from ray.types import ObjectRef
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -79,8 +86,9 @@ class ServeController:
     async def __init__(
         self,
         controller_name: str,
+        *,
         http_config: HTTPOptions,
-        checkpoint_path: str,
+        head_node_id: str,
         detached: bool = False,
     ):
         configure_component_logger(
@@ -90,10 +98,10 @@ class ServeController:
         # Used to read/write checkpoints.
         self.ray_worker_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
-        self.checkpoint_path = checkpoint_path
+        gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
-        self.kv_store = make_kv_store(checkpoint_path, namespace=kv_store_namespace)
-        self.snapshot_store = RayInternalKVStore(namespace=kv_store_namespace)
+        self.kv_store = RayInternalKVStore(kv_store_namespace, gcs_client)
+        self.snapshot_store = RayInternalKVStore(kv_store_namespace, gcs_client)
 
         # Dictionary of deployment_name -> proxy_name -> queue length.
         self.deployment_stats = defaultdict(lambda: defaultdict(dict))
@@ -108,17 +116,26 @@ class ServeController:
             controller_name,
             detached,
             http_config,
+            head_node_id,
+            gcs_client,
         )
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
+
         # Fetch all running actors in current cluster as source of current
         # replica state for controller failure recovery
-        all_current_actor_names = ray.util.list_named_actors()
+        all_current_actors = ray.util.list_named_actors(all_namespaces=True)
+        all_serve_actor_names = [
+            actor["name"]
+            for actor in all_current_actors
+            if actor["namespace"] == SERVE_NAMESPACE
+        ]
+
         self.deployment_state_manager = DeploymentStateManager(
             controller_name,
             detached,
             self.kv_store,
             self.long_poll_host,
-            all_current_actor_names,
+            all_serve_actor_names,
         )
 
         # Reference to Ray task executing most recent deployment request
@@ -167,12 +184,34 @@ class ServeController:
         """
         return await (self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
 
-    def get_checkpoint_path(self) -> str:
-        return self.checkpoint_path
+    async def listen_for_change_java(self, keys_to_snapshot_ids_bytes: bytes):
+        """Proxy long pull client's listen request.
+
+        Args:
+            keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of
+              keys_to_snapshot_ids (Dict[str, int]).
+        """
+        return await (
+            self.long_poll_host.listen_for_change_java(keys_to_snapshot_ids_bytes)
+        )
 
     def get_all_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
         """Returns a dictionary of deployment name to config."""
         return self.endpoint_state.get_endpoints()
+
+    def get_all_endpoints_java(self) -> bytes:
+        """Returns a dictionary of deployment name to config."""
+        from ray.serve.generated.serve_pb2 import (
+            EndpointSet,
+            EndpointInfo as EndpointInfoProto,
+        )
+
+        endpoints = self.get_all_endpoints()
+        data = {
+            endpoint_tag: EndpointInfoProto(route=endppint_dict["route"])
+            for endpoint_tag, endppint_dict in endpoints.items()
+        }
+        return EndpointSet(endpoints=data).SerializeToString()
 
     def get_http_proxies(self) -> Dict[NodeId, ActorHandle]:
         """Returns a dictionary of node ID to http_proxy actor handles."""
@@ -256,7 +295,7 @@ class ServeController:
     def _recover_config_from_checkpoint(self):
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            self.deployment_timestamp, config = pickle.loads(checkpoint)
+            self.deployment_timestamp, config, _ = pickle.loads(checkpoint)
             self.deploy_app(ServeApplicationSchema.parse_obj(config), update_time=False)
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
@@ -294,7 +333,7 @@ class ServeController:
         deployment_config_proto_bytes: bytes,
         replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
-        deployer_job_id: "ray._raylet.JobID",
+        deployer_job_id: Union["ray._raylet.JobID", bytes],
     ) -> bool:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
@@ -303,26 +342,9 @@ class ServeController:
             deployment_config_proto_bytes
         )
         version = deployment_config.version
-        prev_version = deployment_config.prev_version
         replica_config = ReplicaConfig.from_proto_bytes(
-            replica_config_proto_bytes, deployment_config.deployment_language
+            replica_config_proto_bytes, deployment_config.needs_pickle()
         )
-
-        if prev_version is not None:
-            existing_deployment_info = self.deployment_state_manager.get_deployment(
-                name
-            )
-            if existing_deployment_info is None or not existing_deployment_info.version:
-                raise ValueError(
-                    f"prev_version '{prev_version}' is specified but "
-                    "there is no existing deployment."
-                )
-            if existing_deployment_info.version != prev_version:
-                raise ValueError(
-                    f"prev_version '{prev_version}' "
-                    "does not match with the existing "
-                    f"version '{existing_deployment_info.version}'."
-                )
 
         autoscaling_config = deployment_config.autoscaling_config
         if autoscaling_config is not None:
@@ -332,7 +354,10 @@ class ServeController:
             autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
         else:
             autoscaling_policy = None
-
+        if isinstance(deployer_job_id, bytes):
+            deployer_job_id = ray.JobID.from_int(
+                int.from_bytes(deployer_job_id, "little")
+            )
         deployment_info = DeploymentInfo(
             actor_name=name,
             version=version,
@@ -388,10 +413,26 @@ class ServeController:
             self.deployment_timestamp = time.time()
 
         config_dict = config.dict(exclude_unset=True)
+
+        # Compare new config options with old ones and set versions of new deployments
+        config_checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
+
+        if config_checkpoint is not None:
+            _, last_config_dict, last_version_dict = pickle.loads(config_checkpoint)
+            updated_version_dict = _generate_deployment_config_versions(
+                config_dict, last_config_dict, last_version_dict
+            )
+        else:
+            updated_version_dict = _generate_deployment_config_versions(config_dict)
+
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
-            pickle.dumps((self.deployment_timestamp, config_dict)),
+            pickle.dumps(
+                (self.deployment_timestamp, config_dict, updated_version_dict)
+            ),
         )
+
+        deployment_override_options = config_dict.get("deployments", [])
 
         if self.config_deployment_request_ref is not None:
             ray.cancel(self.config_deployment_request_ref)
@@ -400,13 +441,14 @@ class ServeController:
                 "previous request."
             )
 
-        deployment_override_options = config.dict(
-            by_alias=True, exclude_unset=True
-        ).get("deployments", [])
-
         self.config_deployment_request_ref = run_graph.options(
             runtime_env=config.runtime_env
-        ).remote(config.import_path, config.runtime_env, deployment_override_options)
+        ).remote(
+            config.import_path,
+            config.runtime_env,
+            deployment_override_options,
+            updated_version_dict,
+        )
 
     def delete_deployment(self, name: str):
         self.endpoint_state.delete_endpoint(name)
@@ -420,7 +462,7 @@ class ServeController:
         """Get the current information about a deployment.
 
         Args:
-            name(str): the name of the deployment.
+            name: the name of the deployment.
 
         Returns:
             DeploymentRoute's protobuf serialized bytes
@@ -447,7 +489,7 @@ class ServeController:
         """Gets the current information about all deployments.
 
         Args:
-            include_deleted(bool): Whether to include information about
+            include_deleted: Whether to include information about
                 deployments that have been deleted.
 
         Returns:
@@ -472,7 +514,7 @@ class ServeController:
         """Gets the current information about all deployments.
 
         Args:
-            include_deleted(bool): Whether to include information about
+            include_deleted: Whether to include information about
                 deployments that have been deleted.
 
         Returns:
@@ -529,21 +571,116 @@ class ServeController:
     def get_app_config(self) -> Dict:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is None:
-            return {
-                "import_path": "",
-                "runtime_env": "",
-                "deployments": [],
-            }
+            return ServeApplicationSchema.get_empty_schema_dict()
         else:
-            _, config = pickle.loads(checkpoint)
+            _, config, _ = pickle.loads(checkpoint)
             return config
 
 
-@ray.remote(max_calls=1)
+def _generate_deployment_config_versions(
+    new_config: Dict,
+    last_deployed_config: Dict = None,
+    last_deployed_versions: Dict = None,
+) -> Dict[str, str]:
+    """
+    This function determines whether each deployment's version should be changed based
+    on the newly deployed config.
+
+    When ``import_path`` or ``runtime_env`` is changed, the versions for all deployments
+    should be changed, so old replicas are torn down. When the options for a deployment
+    in ``deployments`` change, its version should generally change. The only deployment
+    options that can be changed without tearing down replicas (i.e. changing the
+    version) are:
+    * num_replicas
+    * user_config
+    * autoscaling_config
+
+    A deployment option is considered changed when:
+    * it was not specified in last_deployed_config and is specified in new_config
+    * it was specified in last_deployed_config and is not specified in new_config
+    * it is specified in both last_deployed_config and new_config but the specified
+      value has changed
+
+    Args:
+        new_config: Newly deployed config dict that follows ServeApplicationSchema
+        last_deployed_config: Last deployed config dict that follows
+            ServeApplicationSchema, which is an empty dictionary if there is no previous
+            deployment
+        last_deployed_versions: Dictionary of {deployment_name: str -> version: str}
+            tracking the versions of deployments listed in the last deployed config
+
+    Returns:
+        Dictionary of {deployment_name: str -> version: str} containing updated
+        versions for deployments listed in the new config
+    """
+    # If import_path or runtime_env is changed, it is considered a code change
+    if last_deployed_config is None:
+        last_deployed_config = {}
+    if last_deployed_versions is None:
+        last_deployed_versions = {}
+
+    if last_deployed_config.get("import_path") != new_config.get(
+        "import_path"
+    ) or last_deployed_config.get("runtime_env") != new_config.get("runtime_env"):
+        last_deployed_config, last_deployed_versions = {}, {}
+
+    new_deployments = {d["name"]: d for d in new_config.get("deployments", [])}
+    old_deployments = {
+        d["name"]: d for d in last_deployed_config.get("deployments", [])
+    }
+
+    def exclude_lightweight_update_options(dict):
+        # Exclude config options from dict that qualify for a lightweight config
+        # update. Changes in any other config options are considered a code change,
+        # and require a version change to trigger an update that tears
+        # down existing replicas and replaces them with updated ones.
+        lightweight_update_options = [
+            "num_replicas",
+            "user_config",
+            "autoscaling_config",
+        ]
+        return {
+            option: dict[option]
+            for option in dict
+            if option not in lightweight_update_options
+        }
+
+    updated_versions = {}
+    for name in new_deployments:
+        new_deployment = exclude_lightweight_update_options(new_deployments[name])
+        old_deployment = exclude_lightweight_update_options(
+            old_deployments.get(name, {})
+        )
+
+        # If config options haven't changed, version stays the same
+        # otherwise, generate a new random version
+        if old_deployment == new_deployment:
+            updated_versions[name] = last_deployed_versions[name]
+        else:
+            updated_versions[name] = get_random_letters()
+
+    return updated_versions
+
+
+@ray.remote(num_cpus=0, max_calls=1)
 def run_graph(
-    import_path: str, graph_env: dict, deployment_override_options: List[Dict]
+    import_path: str,
+    graph_env: Dict,
+    deployment_override_options: List[Dict],
+    deployment_versions: Dict,
 ):
-    """Deploys a Serve application to the controller's Ray cluster."""
+    """
+    Deploys a Serve application to the controller's Ray cluster.
+
+    Args:
+        import_path: Serve deployment graph's import path
+        graph_env: runtime env to run the deployment graph in
+        deployment_override_options: Dictionary of options that overrides
+            deployment options set in the graph's code itself.
+        deployment_versions: Versions of each deployment, each of which is
+            the same as the last deployment if it is a config update or
+            a new randomly generated version if it is a code update
+    """
     try:
         from ray import serve
         from ray.serve.api import build
@@ -573,13 +710,71 @@ def run_graph(
             ray_actor_options.update({"runtime_env": merged_env})
             options["ray_actor_options"] = ray_actor_options
 
+            options["version"] = deployment_versions[name]
+
             # Update the deployment's options
-            app.deployments[name].set_options(**options)
+            app.deployments[name].set_options(**options, _internal=True)
 
         # Run the graph locally on the cluster
-        serve.start()
         serve.run(app)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_app() is called.
         logger.debug("Existing config deployment request terminated.")
+
+
+@ray.remote(num_cpus=0)
+class ServeControllerAvatar:
+    """A hack that proxy the creation of async actors from Java.
+
+    To be removed after https://github.com/ray-project/ray/pull/26037
+
+    Java api can not support python async actor. If we use java api create
+    python async actor. The async init method won't be executed. The async
+    method will fail with pickle error. And the run_control_loop of controller
+    actor can't be executed too. We use this proxy actor create python async
+    actor to avoid the above problem.
+    """
+
+    def __init__(
+        self,
+        controller_name: str,
+        detached: bool = False,
+        dedicated_cpu: bool = False,
+        http_proxy_port: int = 8000,
+    ):
+        try:
+            self._controller = ray.get_actor(controller_name, namespace="serve")
+        except ValueError:
+            self._controller = None
+        if self._controller is None:
+            # Used for scheduling things to the head node explicitly.
+            head_node_id = ray.get_runtime_context().node_id.hex()
+            http_config = HTTPOptions()
+            http_config.port = http_proxy_port
+            self._controller = ServeController.options(
+                num_cpus=1 if dedicated_cpu else 0,
+                name=controller_name,
+                lifetime="detached" if detached else None,
+                max_restarts=-1,
+                max_task_retries=-1,
+                # Schedule the controller on the head node with a soft constraint. This
+                # prefers it to run on the head node in most cases, but allows it to be
+                # restarted on other nodes in an HA cluster.
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    head_node_id, soft=True
+                )
+                if RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE
+                else None,
+                namespace="serve",
+                max_concurrency=CONTROLLER_MAX_CONCURRENCY,
+            ).remote(
+                controller_name,
+                http_config=http_config,
+                head_node_id=head_node_id,
+                detached=detached,
+            )
+
+    def check_alive(self) -> None:
+        """No-op to check if this actor is alive."""
+        return

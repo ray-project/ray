@@ -1,26 +1,23 @@
 from typing import Any, List
 
 from ray.rllib.connectors.connector import (
-    ConnectorContext,
     ActionConnector,
+    ConnectorContext,
     register_connector,
 )
-from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.spaces.space_utils import (
-    clip_action,
-    get_base_struct_from_space,
-)
+from ray.rllib.utils.spaces.space_utils import clip_action, get_base_struct_from_space
 from ray.rllib.utils.typing import ActionConnectorDataType
+from ray.util.annotations import PublicAPI
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 class ClipActionsConnector(ActionConnector):
     def __init__(self, ctx: ConnectorContext):
         super().__init__(ctx)
 
         self._action_space_struct = get_base_struct_from_space(ctx.action_space)
 
-    def __call__(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
+    def transform(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
         assert isinstance(
             ac_data.output, tuple
         ), "Action connector requires PolicyOutputType data."
@@ -32,11 +29,11 @@ class ClipActionsConnector(ActionConnector):
             (clip_action(actions, self._action_space_struct), states, fetches),
         )
 
-    def to_config(self):
+    def to_state(self):
         return ClipActionsConnector.__name__, None
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: List[Any]):
         return ClipActionsConnector(ctx)
 
 

@@ -156,6 +156,20 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     }
 
     reference_counter_->UpdateResubmittedTaskReferences(return_ids, *task_deps);
+
+    for (const auto &task_dep : *task_deps) {
+      bool was_freed = reference_counter_->TryMarkFreedObjectInUseAgain(task_dep);
+      if (was_freed) {
+        RAY_LOG(DEBUG) << "Dependency " << task_dep << " of task " << task_id
+                       << " was freed";
+        // We do not keep around copies for objects that were freed, but now that
+        // they're needed for recovery, we need to generate and pin a new copy.
+        // Delete the old in-memory marker that indicated that the object was
+        // freed. Now workers that attempt to get the object will be able to get
+        // the reconstructed value.
+        in_memory_store_->Delete({task_dep});
+      }
+    }
     if (spec.IsActorTask()) {
       const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
       reference_counter_->UpdateResubmittedTaskReferences(return_ids,
@@ -386,12 +400,13 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
     std::ostringstream stream;
     auto num_retries_left_str =
         num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-    stream << num_retries_left_str << " retries left for task " << spec.TaskId()
-           << ", attempting to resubmit.";
-    RAY_LOG(INFO) << stream.str();
+    RAY_LOG(INFO) << num_retries_left_str << " retries left for task " << spec.TaskId()
+                  << ", attempting to resubmit.";
     retry_task_callback_(spec, /*delay=*/true);
     return true;
   } else {
+    RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()
+                  << ", not going to resubmit.";
     return false;
   }
 }
@@ -663,9 +678,17 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
   it->second.status = rpc::TaskStatus::WAITING_FOR_EXECUTION;
 }
 
-void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply) const {
+void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
+                               const int64_t limit) const {
   absl::MutexLock lock(&mu_);
+  auto total = submissible_tasks_.size();
+  auto count = 0;
   for (const auto &task_it : submissible_tasks_) {
+    if (limit != -1 && count >= limit) {
+      break;
+    }
+    count += 1;
+
     const auto &task_entry = task_it.second;
     auto entry = reply->add_owned_task_info_entries();
     const auto &task_spec = task_entry.spec;
@@ -692,6 +715,7 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply) const {
                                                 resources_map.end());
     entry->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
   }
+  reply->set_tasks_total(total);
 }
 
 }  // namespace core

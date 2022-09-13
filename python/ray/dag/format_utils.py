@@ -1,15 +1,36 @@
 from ray.dag import DAGNode
+from ray.util.annotations import DeveloperAPI
 
 
-def get_indentation(num_spaces=4):
+@DeveloperAPI
+def get_dag_node_str(
+    dag_node: DAGNode,
+    body_line,
+):
+    indent = _get_indentation()
+    other_args_to_resolve_lines = _get_other_args_to_resolve_lines(
+        dag_node._bound_other_args_to_resolve
+    )
+    return (
+        f"({dag_node.__class__.__name__}, {dag_node._stable_uuid})(\n"
+        f"{indent}body={body_line}\n"
+        f"{indent}args={_get_args_lines(dag_node._bound_args)}\n"
+        f"{indent}kwargs={_get_kwargs_lines(dag_node._bound_kwargs)}\n"
+        f"{indent}options={_get_options_lines(dag_node._bound_options)}\n"
+        f"{indent}other_args_to_resolve={other_args_to_resolve_lines}\n"
+        f")"
+    )
+
+
+def _get_indentation(num_spaces=4):
     return " " * num_spaces
 
 
-def get_args_lines(bound_args):
+def _get_args_lines(bound_args):
     """Pretty prints bounded args of a DAGNode, and recursively handle
     DAGNode in list / dict containers.
     """
-    indent = get_indentation()
+    indent = _get_indentation()
     lines = []
     for arg in bound_args:
         if isinstance(arg, DAGNode):
@@ -41,14 +62,14 @@ def get_args_lines(bound_args):
     return args_line
 
 
-def get_kwargs_lines(bound_kwargs):
+def _get_kwargs_lines(bound_kwargs):
     """Pretty prints bounded kwargs of a DAGNode, and recursively handle
     DAGNode in list / dict containers.
     """
     # TODO: (jiaodong) Nits, we're missing keys and indentation was a bit off.
     if not bound_kwargs:
         return "{}"
-    indent = get_indentation()
+    indent = _get_indentation()
     kwargs_lines = []
     for key, val in bound_kwargs.items():
         if isinstance(val, DAGNode):
@@ -86,11 +107,11 @@ def get_kwargs_lines(bound_kwargs):
     return kwargs_line
 
 
-def get_options_lines(bound_options):
+def _get_options_lines(bound_options):
     """Pretty prints .options() in DAGNode. Only prints non-empty values."""
     if not bound_options:
         return "{}"
-    indent = get_indentation()
+    indent = _get_indentation()
     options_lines = []
     for key, val in bound_options.items():
         if val:
@@ -103,10 +124,10 @@ def get_options_lines(bound_options):
     return options_line
 
 
-def get_other_args_to_resolve_lines(other_args_to_resolve):
+def _get_other_args_to_resolve_lines(other_args_to_resolve):
     if not other_args_to_resolve:
         return "{}"
-    indent = get_indentation()
+    indent = _get_indentation()
     other_args_to_resolve_lines = []
     for key, val in other_args_to_resolve.items():
         if isinstance(val, DAGNode):
@@ -132,22 +153,3 @@ def get_other_args_to_resolve_lines(other_args_to_resolve):
         other_args_to_resolve_line += f"\n{indent}{line}"
     other_args_to_resolve_line += f"\n{indent}}}"
     return other_args_to_resolve_line
-
-
-def get_dag_node_str(
-    dag_node: DAGNode,
-    body_line,
-):
-    indent = get_indentation()
-    other_args_to_resolve_lines = get_other_args_to_resolve_lines(
-        dag_node._bound_other_args_to_resolve
-    )
-    return (
-        f"({dag_node.__class__.__name__})(\n"
-        f"{indent}body={body_line}\n"
-        f"{indent}args={get_args_lines(dag_node._bound_args)}\n"
-        f"{indent}kwargs={get_kwargs_lines(dag_node._bound_kwargs)}\n"
-        f"{indent}options={get_options_lines(dag_node._bound_options)}\n"
-        f"{indent}other_args_to_resolve={other_args_to_resolve_lines}\n"
-        f")"
-    )

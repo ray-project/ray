@@ -4,10 +4,6 @@ from typing import Optional
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.a3c.a3c import A3CConfig, A3C
-from ray.rllib.execution.common import (
-    STEPS_TRAINED_COUNTER,
-    STEPS_TRAINED_THIS_ITER_COUNTER,
-)
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -18,8 +14,10 @@ from ray.rllib.utils.metrics import (
     APPLY_GRADS_TIMER,
     COMPUTE_GRADS_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
-    WORKER_UPDATE_TIMER,
+    NUM_ENV_STEPS_TRAINED,
+    SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
@@ -44,6 +42,8 @@ class A2CConfig(A3CConfig):
         >>> trainer.train()
 
     Example:
+        >>> import ray.air as air
+        >>> from ray import tune
         >>> config = A2CConfig()
         >>> # Print out some default values.
         >>> print(config.sample_async)
@@ -53,11 +53,11 @@ class A2CConfig(A3CConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "A2C",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self):
@@ -130,6 +130,38 @@ class A2C(A3C):
                     "Otherwise, microbatches of desired size won't be achievable."
                 )
 
+            if config["num_gpus"] > 1:
+                raise AttributeError(
+                    "A2C does not support multiple GPUs when micro-batching is set."
+                )
+        else:
+            sample_batch_size = (
+                config["rollout_fragment_length"]
+                * config["num_workers"]
+                * config["num_envs_per_worker"]
+            )
+            if config["train_batch_size"] < sample_batch_size:
+                logger.warning(
+                    f"`train_batch_size` ({config['train_batch_size']}) "
+                    "cannot be smaller than sample_batch_size "
+                    "(`rollout_fragment_length` x `num_workers` x "
+                    f"`num_envs_per_worker`) ({sample_batch_size}) when micro-batching"
+                    " is not set. This is to"
+                    " ensure that only on gradient update is applied to policy in every"
+                    " iteration on the entire collected batch. As a result of we do not"
+                    " change the policy too much before we sample again and stay on"
+                    " policy as much as possible. This will help the learning"
+                    " stability."
+                    f" Setting train_batch_size = {sample_batch_size}."
+                )
+                config["train_batch_size"] = sample_batch_size
+
+            if "sgd_minibatch_size" in config:
+                raise AttributeError(
+                    "A2C does not support sgd mini batching as it will instabilize the"
+                    " training. Use `train_batch_size` instead."
+                )
+
     @override(Algorithm)
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
@@ -146,6 +178,7 @@ class A2C(A3C):
 
     @override(A3C)
     def training_step(self) -> ResultDict:
+        # Fallback to Algorithm.training_step() and A3C policies (loss_fn etc).
         # W/o microbatching: Identical to Algorithm's default implementation.
         # Only difference to a default Algorithm being the value function loss term
         # and its value computations alongside each action.
@@ -188,8 +221,8 @@ class A2C(A3C):
         )
         if self._num_microbatches >= num_microbatches:
             # Update counters.
-            self._counters[STEPS_TRAINED_COUNTER] += self._microbatches_counts
-            self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = self._microbatches_counts
+            self._counters[NUM_ENV_STEPS_TRAINED] += self._microbatches_counts
+            self._counters[NUM_AGENT_STEPS_TRAINED] += self._microbatches_counts
 
             # Apply gradients.
             apply_timer = self._timers[APPLY_GRADS_TIMER]
@@ -206,7 +239,7 @@ class A2C(A3C):
             global_vars = {
                 "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
             }
-            with self._timers[WORKER_UPDATE_TIMER]:
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(
                     policies=self.workers.local_worker().get_policies_to_train(),
                     global_vars=global_vars,

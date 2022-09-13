@@ -1,12 +1,13 @@
-import pytest
 import sys
+import warnings
+
+import pytest
 
 import ray
 import ray.cluster_utils
-from ray._private.test_utils import (
-    placement_group_assert_no_leak,
-)
+from ray._private.test_utils import placement_group_assert_no_leak
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def are_pairwise_unique(g):
@@ -167,7 +168,7 @@ def test_placement_group_pack(
         ray.get(actor_2.value.remote())
 
         # Get all actors.
-        actor_infos = ray.state.actors()
+        actor_infos = ray._private.state.actors()
 
         # Make sure all actors in counter_list are collocated in one node.
         actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
@@ -223,7 +224,7 @@ def test_placement_group_strict_pack(ray_start_cluster, connect_to_client):
         ray.get(actor_2.value.remote())
 
         # Get all actors.
-        actor_infos = ray.state.actors()
+        actor_infos = ray._private.state.actors()
 
         # Make sure all actors in counter_list are collocated in one node.
         actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
@@ -283,7 +284,7 @@ def test_placement_group_spread(
         [ray.get(actor.value.remote()) for actor in actors]
 
         # Get all actors.
-        actor_infos = ray.state.actors()
+        actor_infos = ray._private.state.actors()
 
         # Make sure all actors in counter_list are located in separate nodes.
         actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
@@ -339,7 +340,7 @@ def test_placement_group_strict_spread(
         [ray.get(actor.value.remote()) for actor in actors]
 
         # Get all actors.
-        actor_infos = ray.state.actors()
+        actor_infos = ray._private.state.actors()
 
         # Make sure all actors in counter_list are located in separate nodes.
         actor_info_objs = [actor_infos.get(actor._actor_id.hex()) for actor in actors]
@@ -371,7 +372,7 @@ def test_placement_group_actor_resource_ids(ray_start_cluster, connect_to_client
     @ray.remote(num_cpus=1)
     class F:
         def f(self):
-            return ray.worker.get_resource_ids()
+            return ray.get_runtime_context().get_assigned_resources()
 
     cluster = ray_start_cluster
     num_nodes = 1
@@ -392,7 +393,7 @@ def test_placement_group_actor_resource_ids(ray_start_cluster, connect_to_client
 def test_placement_group_task_resource_ids(ray_start_cluster, connect_to_client):
     @ray.remote(num_cpus=1)
     def f():
-        return ray.worker.get_resource_ids()
+        return ray.get_runtime_context().get_assigned_resources()
 
     cluster = ray_start_cluster
     num_nodes = 1
@@ -424,7 +425,7 @@ def test_placement_group_task_resource_ids(ray_start_cluster, connect_to_client)
 def test_placement_group_hang(ray_start_cluster, connect_to_client):
     @ray.remote(num_cpus=1)
     def f():
-        return ray.worker.get_resource_ids()
+        return ray.get_runtime_context().get_assigned_resources()
 
     cluster = ray_start_cluster
     num_nodes = 1
@@ -446,6 +447,69 @@ def test_placement_group_hang(ray_start_cluster, connect_to_client):
         assert "CPU_group_" in list(resources.keys())[0], resources
 
         placement_group_assert_no_leak([g1])
+
+
+def test_placement_group_scheduling_warning(ray_start_regular_shared):
+    @ray.remote
+    class Foo:
+        def foo():
+            pass
+
+    pg = ray.util.placement_group(
+        name="bar",
+        strategy="PACK",
+        bundles=[
+            {"CPU": 1, "GPU": 0},
+        ],
+    )
+    ray.get(pg.ready())
+
+    # Warning on using deprecated parameters.
+    with warnings.catch_warnings(record=True) as w:
+        Foo.options(placement_group=pg, placement_group_bundle_index=0).remote()
+    assert any(
+        "placement_group parameter is deprecated" in str(warning.message)
+        for warning in w
+    )
+    assert any("docs.ray.io/en/master" in str(warning.message) for warning in w)
+
+    # Pointing to the same doc version as ray.__version__.
+    ray.__version__ = "1.13.0"
+    with warnings.catch_warnings(record=True) as w:
+        Foo.options(placement_group=pg, placement_group_bundle_index=0).remote()
+    assert any(
+        "docs.ray.io/en/releases-1.13.0" in str(warning.message) for warning in w
+    )
+
+    # No warning when scheduling_strategy is specified.
+    with warnings.catch_warnings(record=True) as w:
+        Foo.options(
+            placement_group_bundle_index=0,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
+        ).remote()
+    assert not w
+
+
+def test_object_store_memory_deprecation_warning(ray_start_regular_shared):
+    with warnings.catch_warnings(record=True) as w:
+
+        @ray.remote(object_store_memory=1)
+        class Actor:
+            pass
+
+        Actor.remote()
+    assert any(
+        "Setting 'object_store_memory' for actors is deprecated" in str(warning.message)
+        for warning in w
+    )
+
+    with warnings.catch_warnings(record=True) as w:
+        ray.util.placement_group([{"object_store_memory": 1}], strategy="STRICT_PACK")
+    assert any(
+        "Setting 'object_store_memory' for bundles is deprecated"
+        in str(warning.message)
+        for warning in w
+    )
 
 
 if __name__ == "__main__":

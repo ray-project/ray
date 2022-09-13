@@ -38,13 +38,14 @@ check_python_command_exist() {
 
 check_docstyle() {
     echo "Checking docstyle..."
-    violations=$(git ls-files | grep '.py$' | xargs grep -E '^[ a-z_]+ \([a-zA-Z]+\): ' || true)
+    violations=$(git ls-files | grep '.py$' | xargs grep -E '^[ ]+[a-z_]+ ?\([a-zA-Z]+\): ' | grep -v 'str(' | grep -v noqa || true)
     if [[ -n "$violations" ]]; then
         echo
         echo "=== Found Ray docstyle violations ==="
         echo "$violations"
         echo
         echo "Per the Google pydoc style, omit types from pydoc args as they are redundant: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#code-style "
+        echo "If this is a false positive, you can add a '# noqa' comment to the line to ignore."
         exit 1
     fi
     return 0
@@ -138,6 +139,7 @@ MYPY_FILES=(
     'autoscaler/sdk/__init__.py'
     'autoscaler/sdk/sdk.py'
     'autoscaler/_private/commands.py'
+    'autoscaler/_private/autoscaler.py'
     # TODO(dmitri) Fails with meaningless error, maybe due to a bug in the mypy version
     # in the CI. Type check once we get serious about type checking:
     #'ray_operator/operator.py'
@@ -161,6 +163,7 @@ GIT_LS_EXCLUDES=(
 
 JAVA_EXCLUDES=(
   'java/api/src/main/java/io/ray/api/ActorCall.java'
+  'java/api/src/main/java/io/ray/api/CppActorCall.java'
   'java/api/src/main/java/io/ray/api/PyActorCall.java'
   'java/api/src/main/java/io/ray/api/RayCall.java'
 )

@@ -3,6 +3,7 @@ import logging
 from enum import Enum
 from typing import Any, Dict, Optional
 
+from ray.util.timer import _Timer
 from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override
@@ -13,7 +14,6 @@ from ray.rllib.utils.replay_buffers.replay_buffer import (
     ReplayBuffer,
     StorageUnit,
 )
-from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -66,7 +66,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         num_shards: int = 1,
-        learning_starts: int = 1000,
         replay_mode: str = "independent",
         replay_sequence_override: bool = True,
         replay_sequence_length: int = 1,
@@ -78,22 +77,19 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         """Initializes a MultiAgentReplayBuffer instance.
 
         Args:
-            num_shards: The number of buffer shards that exist in total
-                (including this one).
+            capacity: The capacity of the buffer, measured in `storage_unit`.
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
-            learning_starts: Number of timesteps after which a call to
-                `sample()` will yield samples (before that, `sample()` will
-                return None).
-            capacity: The capacity of the buffer, measured in `storage_unit`.
+            num_shards: The number of buffer shards that exist in total
+                (including this one).
+            replay_mode: One of "independent" or "lockstep". Determines,
+                whether batches are sampled independently or to an equal
+                amount.
             replay_sequence_override: If True, ignore sequences found in incoming
                 batches, slicing them into sequences as specified by
                 `replay_sequence_length` and `replay_sequence_burn_in`. This only has
                 an effect if storage_unit is `sequences`.
-            replay_mode: One of "independent" or "lockstep". Determines,
-                whether batches are sampled independently or to an equal
-                amount.
             replay_sequence_length: The sequence length (T) of a single
                 sample. If > 1, we will sample B x T from this buffer. This
                 only has an effect if storage_unit is 'timesteps'.
@@ -121,7 +117,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         else:
             self.underlying_buffer_call_args = {}
         self.replay_sequence_override = replay_sequence_override
-        self.replay_starts = learning_starts // num_shards
         self.replay_mode = replay_mode
         self.replay_sequence_length = replay_sequence_length
         self.replay_burn_in = replay_burn_in
@@ -184,8 +179,8 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         self.replay_buffers = collections.defaultdict(new_buffer)
 
         # Metrics.
-        self.add_batch_timer = TimerStat()
-        self.replay_timer = TimerStat()
+        self.add_batch_timer = _Timer()
+        self.replay_timer = _Timer()
         self._num_added = 0
 
     def __len__(self) -> int:
@@ -318,8 +313,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         # Merge kwargs, overwriting standard call arguments
         kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
 
-        if self._num_added < self.replay_starts:
-            return MultiAgentBatch({}, 0)
         with self.replay_timer:
             # Lockstep mode: Sample from all policies at the same time an
             # equal amount of steps.
@@ -396,7 +389,4 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         if self.replay_mode == ReplayMode.LOCKSTEP:
             return {_ALL_POLICIES: batch}
         else:
-            return {
-                policy_id: sample_batch
-                for policy_id, sample_batch in batch.policy_batches.items()
-            }
+            return batch.policy_batches

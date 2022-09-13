@@ -32,10 +32,10 @@ class BCConfig(MARWILConfig):
         >>> config.environment(env="CartPole-v0")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "BC",
-        ...     config=config.to_dict(),
-        ... )
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -48,10 +48,12 @@ class BCConfig(MARWILConfig):
         # Advantages (calculated during postprocessing)
         # not important for behavioral cloning.
         self.postprocess_inputs = False
-        # No reward estimation.
-        self.off_policy_estimation_methods = {}
         # __sphinx_doc_end__
         # fmt: on
+        # TODO: Remove this when the off_polciy_estimation_methods
+        # default config is removed from MARWIL
+        # No off-policy estimation.
+        self.off_policy_estimation_methods = {}
 
 
 class BC(MARWIL):

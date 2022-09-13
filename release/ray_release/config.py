@@ -5,11 +5,10 @@ from typing import Dict, List, Optional, Tuple
 
 import jsonschema
 import yaml
-
 from ray_release.anyscale_util import find_cloud_by_name
-from ray_release.exception import ReleaseTestConfigError, ReleaseTestCLIError
+from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
-from ray_release.util import deep_update
+from ray_release.util import DeferredEnvVar, deep_update
 
 
 class Test(dict):
@@ -23,8 +22,14 @@ DEFAULT_CLUSTER_TIMEOUT = 1800
 DEFAULT_AUTOSUSPEND_MINS = 120
 DEFAULT_WAIT_FOR_NODES_TIMEOUT = 3000
 
-DEFAULT_CLOUD_ID = "cld_4F7k8814aZzGG8TNUGPKnc"
-
+DEFAULT_CLOUD_ID = DeferredEnvVar(
+    "RELEASE_DEFAULT_CLOUD_ID",
+    "cld_4F7k8814aZzGG8TNUGPKnc",
+)
+DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
+    "RELEASE_DEFAULT_PROJECT",
+    "prj_FKRmeV5pA6X72aVscFALNC32",
+)
 DEFAULT_PYTHON_VERSION = (3, 7)
 
 RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -127,5 +132,5 @@ def get_test_cloud_id(test: Test) -> str:
         if not cloud_id:
             raise RuntimeError(f"Couldn't find cloud with name `{cloud_name}`.")
     else:
-        cloud_id = cloud_id or DEFAULT_CLOUD_ID
+        cloud_id = cloud_id or str(DEFAULT_CLOUD_ID)
     return cloud_id

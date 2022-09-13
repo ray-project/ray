@@ -30,6 +30,15 @@ soon!).
         :type: ref
         :text: Processing NYC taxi data using Ray Datasets
         :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/ocr.jpg
+
+    +++
+    .. link-button:: ocr_example
+        :type: ref
+        :text: Optical character recognition using Ray Datasets
+        :classes: btn-link btn-block stretched-link
+
 
 Scaling Out Datasets Workloads
 ------------------------------

@@ -1,26 +1,27 @@
-import gym
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
     List,
-    NamedTuple,
     Optional,
     Tuple,
     Type,
     TypeVar,
-    TYPE_CHECKING,
     Union,
 )
 
-from ray.rllib.utils.annotations import DeveloperAPI
+import numpy as np
+import gym
+
+from ray.rllib.utils.annotations import ExperimentalAPI
 
 if TYPE_CHECKING:
     from ray.rllib.env.env_context import EnvContext
     from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
     from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
     from ray.rllib.policy.policy import PolicySpec
-    from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+    from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
     from ray.rllib.utils import try_import_tf, try_import_torch
 
@@ -29,7 +30,7 @@ if TYPE_CHECKING:
 
 # Represents a generic tensor type.
 # This could be an np.ndarray, tf.Tensor, or a torch.Tensor.
-TensorType = Any
+TensorType = Union[np.array, "tf.Tensor", "torch.Tensor"]
 
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
 TensorStructType = Union[TensorType, dict, tuple]
@@ -157,30 +158,78 @@ SpaceStruct = Union[gym.spaces.Space, dict, tuple]
 StateBatches = List[List[Any]]
 
 # Format of data output from policy forward pass.
+# __sphinx_doc_begin_policy_output_type__
 PolicyOutputType = Tuple[TensorStructType, StateBatches, Dict]
+# __sphinx_doc_end_policy_output_type__
 
-# Data type that is fed into and yielded from agent connectors.
-AgentConnectorDataType = DeveloperAPI(  # API stability declaration.
-    NamedTuple(
-        "AgentConnectorDataType", [("env_id", str), ("agent_id", str), ("data", Any)]
-    )
-)
 
-# Data type that is fed into and yielded from agent connectors.
-ActionConnectorDataType = DeveloperAPI(  # API stability declaration.
-    NamedTuple(
-        "ActionConnectorDataType",
-        [("env_id", str), ("agent_id", str), ("output", PolicyOutputType)],
-    )
-)
+# __sphinx_doc_begin_agent_connector_data_type__
+@ExperimentalAPI
+class AgentConnectorDataType:
+    """Data type that is fed into and yielded from agent connectors.
 
-# Final output data type of agent connectors.
-AgentConnectorsOutput = DeveloperAPI(  # API stability declaration.
-    NamedTuple(
-        "AgentConnectorsOut",
-        [("for_training", Dict[str, TensorStructType]), ("for_action", "SampleBatch")],
-    )
-)
+    Args:
+        env_id: ID of the environment.
+        agent_id: ID to help identify the agent from which the data is received.
+        data: A payload (``data``). With RLlib's default sampler, the payload
+            is a dictionary of arbitrary data columns (obs, rewards, dones, etc).
+    """
+
+    def __init__(self, env_id: str, agent_id: str, data: Any):
+        self.env_id = env_id
+        self.agent_id = agent_id
+        self.data = data
+
+
+# __sphinx_doc_end_agent_connector_data_type__
+
+
+# __sphinx_doc_begin_action_connector_output__
+@ExperimentalAPI
+class ActionConnectorDataType:
+    """Data type that is fed into and yielded from agent connectors.
+
+    Args:
+        env_id: ID of the environment.
+        agent_id: ID to help identify the agent from which the data is received.
+        output: An object of PolicyOutputType. It is is composed of the
+            action output, the internal state output, and additional data fetches.
+
+    """
+
+    def __init__(self, env_id: str, agent_id: str, output: PolicyOutputType):
+        self.env_id = env_id
+        self.agent_id = agent_id
+        self.output = output
+
+
+# __sphinx_doc_end_action_connector_output__
+
+
+# __sphinx_doc_begin_agent_connector_output__
+@ExperimentalAPI
+class AgentConnectorsOutput:
+    """Final output data type of agent connectors.
+
+    Args are populated depending on the AgentConnector settings.
+    The branching happens in ViewRequirementAgentConnector.
+
+    Args:
+        for_training: The raw input dictionary that sampler can use to
+            build episodes and training batches,
+        for_action: The SampleBatch that can be immediately used for
+            querying the policy for next action.
+    """
+
+    def __init__(
+        self, for_training: Dict[str, TensorStructType], for_action: "SampleBatch"
+    ):
+        self.for_training = for_training
+        self.for_action = for_action
+
+
+# __sphinx_doc_end_agent_connector_output__
+
 
 # Generic type var.
 T = TypeVar("T")

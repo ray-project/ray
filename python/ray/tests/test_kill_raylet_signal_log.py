@@ -1,11 +1,11 @@
 import signal
 import sys
-import pytest
-import ray
 
 # Import psutil after ray so the packaged version is used.
 import psutil
+import pytest
 
+import ray
 from ray._private.test_utils import wait_for_condition
 
 
@@ -20,7 +20,7 @@ def get_pid(name):
 
 def check_result(filename, num_signal, check_key):
     ray.init(num_cpus=1)
-    session_dir = ray.worker._global_node.get_session_dir_path()
+    session_dir = ray._private.worker._global_node.get_session_dir_path()
     raylet_out_path = filename.format(session_dir)
     pid = get_pid("raylet")
     assert pid > 0

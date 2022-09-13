@@ -2,6 +2,7 @@ import logging
 from six.moves import queue
 import threading
 
+from ray.util.timer import _Timer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -9,7 +10,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
-from ray.rllib.utils.timer import TimerStat
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 tf1, tf, tfv = try_import_tf()
@@ -192,8 +192,8 @@ class _MultiGPULoaderThread(threading.Thread):
             self.queue_timer = multi_gpu_learner_thread.queue_timer
             self.load_timer = multi_gpu_learner_thread.load_timer
         else:
-            self.queue_timer = TimerStat()
-            self.load_timer = TimerStat()
+            self.queue_timer = _Timer()
+            self.load_timer = _Timer()
 
     def run(self) -> None:
         while True:

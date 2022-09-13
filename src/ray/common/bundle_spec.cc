@@ -62,20 +62,6 @@ const ResourceRequest &BundleSpecification::GetRequiredResources() const {
   return *unit_resource_;
 }
 
-absl::flat_hash_map<std::string, double> BundleSpecification::GetWildcardResources()
-    const {
-  absl::flat_hash_map<std::string, double> wildcard_resources;
-  std::string pattern("_group_");
-  for (const auto &[name, capacity] : bundle_resource_labels_) {
-    auto idx = name.find(pattern);
-    if (idx != std::string::npos &&
-        name.find("_", idx + pattern.size()) == std::string::npos) {
-      wildcard_resources[name] = capacity;
-    }
-  }
-  return wildcard_resources;
-}
-
 BundleID BundleSpecification::BundleId() const {
   if (message_->bundle_id()
           .placement_group_id()
@@ -143,6 +129,19 @@ std::string GetOriginalResourceName(const std::string &resource) {
   auto idx = resource.find(kGroupKeyword);
   RAY_CHECK(idx >= 0) << "This isn't a placement group resource " << resource;
   return resource.substr(0, idx);
+}
+
+std::string GetOriginalResourceNameFromWildcardResource(const std::string &resource) {
+  static const std::regex wild_card_resource_pattern("^(.*)_group_([0-9a-f]+)$");
+  std::smatch match_groups;
+  if (!std::regex_match(resource, match_groups, wild_card_resource_pattern) ||
+      match_groups.size() != 3) {
+    return "";
+  }
+
+  // group 0: resource
+  // group 1: pg id
+  return match_groups[1].str();
 }
 
 std::string GetDebugStringForBundles(

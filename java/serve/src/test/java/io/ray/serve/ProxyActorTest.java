@@ -1,13 +1,21 @@
 package io.ray.serve;
 
-import com.google.common.collect.ImmutableMap;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
-import io.ray.serve.api.Serve;
-import io.ray.serve.generated.ActorSet;
+import io.ray.serve.common.Constants;
+import io.ray.serve.config.DeploymentConfig;
+import io.ray.serve.config.RayServeConfig;
+import io.ray.serve.deployment.DeploymentVersion;
+import io.ray.serve.deployment.DeploymentWrapper;
+import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.generated.EndpointSet;
+import io.ray.serve.proxy.HttpProxy;
+import io.ray.serve.proxy.ProxyActor;
+import io.ray.serve.replica.DummyReplica;
+import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.util.CommonUtil;
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -22,14 +30,10 @@ import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ProxyActorTest {
-
+public class ProxyActorTest extends BaseTest {
   @Test
   public void test() throws IOException {
-    boolean inited = Ray.isInitialized();
-    String previous_namespace = System.getProperty("ray.job.namespace");
-    System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
-    Ray.init();
+    init();
 
     try {
       String prefix = "ProxyActorTest";
@@ -41,40 +45,37 @@ public class ProxyActorTest {
       String endpointName = prefix;
       String route = "/route";
       String version = "v1";
+      Map<String, String> config = new HashMap<>();
+      config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
 
       // Controller
       ActorHandle<DummyServeController> controller =
-          Ray.actor(DummyServeController::new).setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
       Map<String, EndpointInfo> endpointInfos = new HashMap<>();
       endpointInfos.put(
           endpointName,
           EndpointInfo.newBuilder().setEndpointName(endpointName).setRoute(route).build());
-      controller.task(DummyServeController::setEndpoints, endpointInfos).remote();
+      EndpointSet endpointSet = EndpointSet.newBuilder().putAllEndpoints(endpointInfos).build();
+      controller.task(DummyServeController::setEndpoints, endpointSet.toByteArray()).remote();
 
       // Replica
-      DeploymentInfo deploymentInfo =
-          new DeploymentInfo()
+      DeploymentWrapper deploymentWrapper =
+          new DeploymentWrapper()
               .setName(deploymentName)
               .setDeploymentConfig(
-                  new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA.getNumber()))
+                  new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA))
               .setDeploymentVersion(new DeploymentVersion(version))
-              .setDeploymentDef(DummyReplica.class.getName());
+              .setDeploymentDef(DummyReplica.class.getName())
+              .setConfig(config);
 
       ActorHandle<RayServeWrappedReplica> replica =
-          Ray.actor(
-                  RayServeWrappedReplica::new,
-                  deploymentInfo,
-                  replicaTag,
-                  controllerName,
-                  new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))
+          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag, controllerName)
               .setName(replicaTag)
               .remote();
       Assert.assertTrue(replica.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // ProxyActor
-      ProxyActor proxyActor =
-          new ProxyActor(
-              controllerName, ImmutableMap.of(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
+      ProxyActor proxyActor = new ProxyActor(controllerName, config);
       Assert.assertTrue(proxyActor.ready());
 
       proxyActor.getProxyRouter().updateRoutes(endpointInfos);
@@ -84,7 +85,7 @@ public class ProxyActorTest {
           .get(endpointName)
           .getRouter()
           .getReplicaSet()
-          .updateWorkerReplicas(ActorSet.newBuilder().addNames(replicaTag).build());
+          .updateWorkerReplicas(ActorNameList.newBuilder().addNames(replicaTag).build());
 
       // Send request.
       HttpClient httpClient = HttpClientBuilder.create().build();
@@ -95,7 +96,6 @@ public class ProxyActorTest {
                   + route);
       try (CloseableHttpResponse httpResponse =
           (CloseableHttpResponse) httpClient.execute(httpPost)) {
-
         int status = httpResponse.getCode();
         Assert.assertEquals(status, HttpURLConnection.HTTP_OK);
         Object result =
@@ -107,16 +107,7 @@ public class ProxyActorTest {
       }
 
     } finally {
-      if (!inited) {
-        Ray.shutdown();
-      }
-      if (previous_namespace == null) {
-        System.clearProperty("ray.job.namespace");
-      } else {
-        System.setProperty("ray.job.namespace", previous_namespace);
-      }
-      Serve.setInternalReplicaContext(null);
-      Serve.setGlobalClient(null);
+      shutdown();
     }
   }
 }

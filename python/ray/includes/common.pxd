@@ -108,6 +108,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsUnknownError()
         c_bool IsNotImplemented()
         c_bool IsObjectStoreFull()
+        c_bool IsOutOfDisk()
         c_bool IsRedisError()
         c_bool IsTimedOut()
         c_bool IsInterrupted()
@@ -287,7 +288,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const c_string &name,
             CPlacementStrategy strategy,
             const c_vector[unordered_map[c_string, double]] &bundles,
-            c_bool is_detached
+            c_bool is_detached,
+            double max_cpu_fraction_per_node
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":

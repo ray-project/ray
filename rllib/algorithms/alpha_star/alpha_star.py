@@ -2,22 +2,20 @@
 A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 ================================================================
 """
-import gym
-import tree
 from typing import Any, Dict, Optional, Type
 
+import gym
+import tree
 
 import ray
+import ray.rllib.algorithms.appo.appo as appo
 from ray.actor import ActorHandle
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.alpha_star.distributed_learners import DistributedLearners
 from ray.rllib.algorithms.alpha_star.league_builder import AlphaStarLeagueBuilder
-from ray.rllib.algorithms.algorithm import Algorithm
-import ray.rllib.algorithms.appo.appo as appo
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.execution.parallel_requests import (
-    AsyncRequestsManager,
-)
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
+from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
@@ -36,13 +34,13 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     PartialAlgorithmConfigDict,
     PolicyID,
     PolicyState,
-    AlgorithmConfigDict,
     ResultDict,
 )
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.timer import _Timer
 
 
@@ -61,6 +59,7 @@ class AlphaStarConfig(appo.APPOConfig):
 
     Example:
         >>> from ray.rllib.algorithms.alpha_star import AlphaStarConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = AlphaStarConfig()
         >>> # Print out some default values.
@@ -71,11 +70,11 @@ class AlphaStarConfig(appo.APPOConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "AlphaStar",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -143,6 +142,11 @@ class AlphaStarConfig(appo.APPOConfig):
         self.min_time_s_per_iteration = 2
         # __sphinx_doc_end__
         # fmt: on
+
+        # TODO: IMPALA and APPO - for now - are back on the exec plan API
+        #  due to some buffer issues (fix in progress). AlphaStar is
+        #  not affected by this (never had an execution_plan implementation).
+        self._disable_execution_plan_api = True
 
     @override(appo.APPOConfig)
     def training(

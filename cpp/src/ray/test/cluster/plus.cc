@@ -34,6 +34,8 @@ std::vector<std::string> GetList(std::vector<std::string> list) { return list; }
 
 std::tuple<int, std::string> GetTuple(std::tuple<int, std::string> tp) { return tp; }
 
+std::string GetNamespaceInTask() { return ray::GetNamespace(); }
+
 Student GetStudent(Student student) { return student; }
 
 std::map<int, Student> GetStudents(std::map<int, Student> students) { return students; }
@@ -48,5 +50,6 @@ RAY_REMOTE(Return1,
            GetArray,
            GetList,
            GetTuple,
+           GetNamespaceInTask,
            GetStudent,
            GetStudents);

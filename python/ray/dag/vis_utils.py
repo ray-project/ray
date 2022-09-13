@@ -3,10 +3,42 @@ from ray.dag import DAGNode
 import os
 import tempfile
 
-from ray.dag.utils import DAGNodeNameGenerator
+from ray.dag.utils import _DAGNodeNameGenerator
+from ray.util.annotations import DeveloperAPI
 
 
-def check_pydot_and_graphviz():
+@DeveloperAPI
+def plot(dag: DAGNode, to_file=None):
+    if to_file is None:
+        tmp_file = tempfile.NamedTemporaryFile(suffix=".png")
+        to_file = tmp_file.name
+        extension = "png"
+    else:
+        _, extension = os.path.splitext(to_file)
+        if not extension:
+            extension = "png"
+        else:
+            extension = extension[1:]
+
+    graph = _dag_to_dot(dag)
+    graph.write(to_file, format=extension)
+
+    # Render the image directly if running inside a Jupyter notebook
+    try:
+        from IPython import display
+
+        return display.Image(filename=to_file)
+    except ImportError:
+        pass
+
+    # close temp file if needed
+    try:
+        tmp_file.close()
+    except NameError:
+        pass
+
+
+def _check_pydot_and_graphviz():
     """Check if pydot and graphviz are installed.
 
     pydot and graphviz are required for plotting. We check this
@@ -28,7 +60,7 @@ def check_pydot_and_graphviz():
         )
 
 
-def get_nodes_and_edges(dag: DAGNode):
+def _get_nodes_and_edges(dag: DAGNode):
     """Get all unique nodes and edges in the DAG.
 
     A basic dfs with memorization to get all unique nodes
@@ -37,20 +69,20 @@ def get_nodes_and_edges(dag: DAGNode):
     while edges will be used to construct the graph.
     """
 
-    def _dfs(node, res, visited):
-        if node not in visited:
-            visited.append(node)
-            for child_node in node._get_all_child_nodes():
-                res.append((child_node, node))
-                _dfs(child_node, res, visited)
-
     edges = []
     nodes = []
-    _dfs(dag, edges, nodes)
+
+    def _dfs(node):
+        nodes.append(node)
+        for child_node in node._get_all_child_nodes():
+            edges.append((child_node, node))
+        return node
+
+    dag.apply_recursive(_dfs)
     return nodes, edges
 
 
-def dag_to_dot(dag: DAGNode):
+def _dag_to_dot(dag: DAGNode):
     """Create a Dot graph from dag.
 
     TODO(lchu):
@@ -61,14 +93,14 @@ def dag_to_dot(dag: DAGNode):
 
     """
     # Step 0: check dependencies and init graph
-    check_pydot_and_graphviz()
+    _check_pydot_and_graphviz()
     import pydot
 
     graph = pydot.Dot(rankdir="LR")
 
     # Step 1: generate unique name for each node in dag
-    nodes, edges = get_nodes_and_edges(dag)
-    name_generator = DAGNodeNameGenerator()
+    nodes, edges = _get_nodes_and_edges(dag)
+    name_generator = _DAGNodeNameGenerator()
     node_names = {}
     for node in nodes:
         node_names[node] = name_generator.get_node_name(node)
@@ -81,33 +113,3 @@ def dag_to_dot(dag: DAGNode):
         graph.add_node(pydot.Node(node_names[nodes[0]]))
 
     return graph
-
-
-def plot(dag: DAGNode, to_file=None):
-    if to_file is None:
-        tmp_file = tempfile.NamedTemporaryFile(suffix=".png")
-        to_file = tmp_file.name
-        extension = "png"
-    else:
-        _, extension = os.path.splitext(to_file)
-        if not extension:
-            extension = "png"
-        else:
-            extension = extension[1:]
-
-    graph = dag_to_dot(dag)
-    graph.write(to_file, format=extension)
-
-    # Render the image directly if running inside a Jupyter notebook
-    try:
-        from IPython import display
-
-        return display.Image(filename=to_file)
-    except ImportError:
-        pass
-
-    # close temp file if needed
-    try:
-        tmp_file.close()
-    except NameError:
-        pass

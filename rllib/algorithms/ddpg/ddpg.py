@@ -3,7 +3,6 @@ from typing import List, Optional, Type
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
-from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import AlgorithmConfigDict
@@ -26,6 +25,7 @@ class DDPGConfig(SimpleQConfig):
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = DDPGConfig()
         >>> # Print out some default values.
@@ -37,11 +37,11 @@ class DDPGConfig(SimpleQConfig):
         >>> config.environment(env="Pendulum-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "DDPG",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -108,8 +108,6 @@ class DDPGConfig(SimpleQConfig):
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
-            # How many steps of the model to sample before learning starts.
-            "learning_starts": 1500,
             # Whether to compute priorities on workers.
             "worker_side_prioritization": False,
         }
@@ -118,6 +116,10 @@ class DDPGConfig(SimpleQConfig):
         self.grad_clip = None
         self.train_batch_size = 256
         self.target_network_update_freq = 0
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        self.num_steps_sampled_before_learning_starts = 1500
 
         # .rollouts()
         self.rollout_fragment_length = 1
@@ -266,8 +268,14 @@ class DDPG(SimpleQ):
             from ray.rllib.algorithms.ddpg.ddpg_torch_policy import DDPGTorchPolicy
 
             return DDPGTorchPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTF1Policy
+
+            return DDPGTF1Policy
         else:
-            return DDPGTFPolicy
+            from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTF2Policy
+
+            return DDPGTF2Policy
 
     @override(SimpleQ)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
