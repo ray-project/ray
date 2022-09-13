@@ -2937,24 +2937,18 @@ def test_ray_status_e2e(shutdown_only):
         head_resources={"CPU": 0},
         worker_node_types={
             "type-i": {
-                "resources": {
-                    "CPU": 1,
-                    "fun": 1
-                },
+                "resources": {"CPU": 1, "fun": 1},
                 "node_config": {},
                 "min_workers": 1,
                 "max_workers": 1,
             },
             "type-ii": {
-                "resources": {
-                    "CPU": 1,
-                    "fun": 100
-                },
+                "resources": {"CPU": 1, "fun": 100},
                 "node_config": {},
                 "min_workers": 1,
                 "max_workers": 1,
             },
-        }
+        },
     )
 
     try:
