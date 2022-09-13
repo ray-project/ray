@@ -516,7 +516,9 @@ class TestWorkerFailure(unittest.TestCase):
             )
 
             # Let's verify that our custom policy exists on both recovered workers.
-            has_test_policy = lambda w: "test_policy" in w.policy_map
+            def has_test_policy(w):
+                return "test_policy" in w.policy_map
+
             # Rollout worker has test policy.
             self.assertTrue(
                 all(
