@@ -10,8 +10,8 @@ import ray._private.ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
-    MEMORY_RESOURCE_UNIT_BYTES,
     AUTOSCALER_REPORT_PER_NODE_STATUS,
+    MEMORY_RESOURCE_UNIT_BYTES,
 )
 from ray.autoscaler._private.resource_demand_scheduler import NodeIP, ResourceDict
 from ray.autoscaler._private.util import DictCount, LoadMetricsSummary

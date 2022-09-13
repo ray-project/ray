@@ -3035,9 +3035,18 @@ def test_ray_status_e2e(shutdown_only):
         ray.get(actor.ping.remote())
 
         assert "Demands" in subprocess.check_output("ray status", shell=True).decode()
-        assert "Total Demands" not in subprocess.check_output("ray status", shell=True).decode()
-        assert "Total Demands" in subprocess.check_output("ray status -v", shell=True).decode()
-        assert "Total Demands" in subprocess.check_output("ray status --verbose", shell=True).decode()
+        assert (
+            "Total Demands"
+            not in subprocess.check_output("ray status", shell=True).decode()
+        )
+        assert (
+            "Total Demands"
+            in subprocess.check_output("ray status -v", shell=True).decode()
+        )
+        assert (
+            "Total Demands"
+            in subprocess.check_output("ray status --verbose", shell=True).decode()
+        )
     finally:
         cluster.shutdown()
 
