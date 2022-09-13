@@ -1,15 +1,18 @@
+from collections import defaultdict
 import concurrent
 import copy
+from datetime import datetime
 import functools
+import gym
+import importlib
 import logging
 import math
+import numpy as np
 import os
-import pickle
+from packaging import version
+import pkg_resources
 import tempfile
 import time
-import importlib
-from collections import defaultdict
-from datetime import datetime
 from typing import (
     Callable,
     Container,
@@ -22,11 +25,6 @@ from typing import (
     Type,
     Union,
 )
-
-import gym
-import numpy as np
-import pkg_resources
-from packaging import version
 
 import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -1957,8 +1955,8 @@ class Algorithm(Trainable):
         assert worker_set is not None
         # Broadcast the new policy weights to all evaluation workers.
         logger.info("Synchronizing weights to workers.")
-        weights = ray.put(self.workers.local_worker().save())
-        worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
+        weights = ray.put(self.workers.local_worker().get_state())
+        worker_set.foreach_worker(lambda w: w.set_state(ray.get(weights)))
 
     @classmethod
     @override(Trainable)
@@ -2491,7 +2489,7 @@ class Algorithm(Trainable):
     def __getstate__(self) -> dict:
         state = {}
         if hasattr(self, "workers"):
-            state["worker"] = self.workers.local_worker().save()
+            state["worker"] = self.workers.local_worker().get_state()
         # TODO: Experimental functionality: Store contents of replay buffer
         #  to checkpoint, only if user has configured this.
         if self.local_replay_buffer is not None and self.config.get(
@@ -2506,15 +2504,15 @@ class Algorithm(Trainable):
 
     def __setstate__(self, state: dict):
         if hasattr(self, "workers") and "worker" in state:
-            self.workers.local_worker().restore(state["worker"])
+            self.workers.local_worker().set_state(state["worker"])
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
-                r.restore.remote(remote_state)
+                r.set_state.remote(remote_state)
             if self.evaluation_workers:
                 # If evaluation workers are used, also restore the policies
                 # there in case they are used for evaluation purpose.
                 for r in self.evaluation_workers.remote_workers():
-                    r.restore.remote(remote_state)
+                    r.set_state.remote(remote_state)
         # If necessary, restore replay data as well.
         if self.local_replay_buffer is not None:
             # TODO: Experimental functionality: Restore contents of replay
