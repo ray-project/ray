@@ -21,6 +21,7 @@
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/strings/str_split.h"
+#include "nlohmann/json.hpp"
 
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
 
@@ -82,6 +83,8 @@ ABSL_FLAG(int,
           ray_runtime_env_hash,
           -1,
           "The computed hash of the runtime env for this worker.");
+
+using json = nlohmann::json;
 
 namespace ray {
 namespace internal {
@@ -204,6 +207,15 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   if (worker_type == WorkerType::DRIVER) {
     ray_namespace =
         config.ray_namespace.empty() ? GenerateUUIDV4() : config.ray_namespace;
+  }
+
+  auto job_config_json_string = std::getenv("RAY_JOB_CONFIG_JSON_ENV_VAR");
+  if (job_config_json_string) {
+    json job_config_json = json::parse(job_config_json_string);
+    runtime_env = RuntimeEnv::Deserialize(job_config_json.at("runtime_env").dump());
+    job_config_metadata = job_config_json.at("metadata")
+                              .get<std::unordered_map<std::string, std::string>>();
+    RAY_CHECK(job_config_json.size() == 2);
   }
 };
 
