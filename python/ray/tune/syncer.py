@@ -27,7 +27,6 @@ from ray.air._internal.remote_storage import (
 )
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.result import NODE_IP
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.widgets import Template
@@ -500,6 +499,7 @@ class SyncerCallback(Callback):
         self._sync_processes: Dict[str, _BackgroundProcess] = {}
         self._sync_times: Dict[str, float] = {}
         self._sync_period = sync_period
+        self._trial_ips = {}
 
     def _get_trial_sync_process(self, trial: "Trial"):
         return self._sync_processes.setdefault(
@@ -537,10 +537,7 @@ class SyncerCallback(Callback):
         if not force and (not self._should_sync(trial) or sync_process.is_running):
             return False
 
-        if NODE_IP in trial.last_result:
-            source_ip = trial.last_result[NODE_IP]
-        else:
-            source_ip = ray.get(trial.runner.get_current_ip.remote())
+        source_ip = self._trial_ips.setdefault(trial.trial_id, trial.get_runner_ip())
 
         try:
             sync_process.wait()
@@ -571,6 +568,11 @@ class SyncerCallback(Callback):
                 )
         return True
 
+    def on_trial_start(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
+        self._trial_ips.pop(trial.trial_id, None)
+
     def on_trial_result(
         self,
         iteration: int,
@@ -586,6 +588,13 @@ class SyncerCallback(Callback):
     ):
         self._sync_trial_dir(trial, force=True, wait=True)
         self._remove_trial_sync_process(trial)
+        self._trial_ips.pop(trial.trial_id, None)
+
+    def on_trial_error(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
+        self._remove_trial_sync_process(trial)
+        self._trial_ips.pop(trial.trial_id, None)
 
     def on_checkpoint(
         self,
