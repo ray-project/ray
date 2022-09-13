@@ -372,6 +372,11 @@ class RayTrialExecutorTest(unittest.TestCase):
                 time.sleep(4)
                 print("Cleanup done")
 
+        # Disable force cleanup
+        os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "0"
+        self.trial_executor = RayTrialExecutor()
+        os.environ.pop("TUNE_FORCE_TRIAL_CLEANUP_S")
+
         # First check if the trials terminate gracefully by default
         trials = self.generate_trials(
             {
@@ -403,12 +408,13 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = trials[0]
         os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "1"
         self.trial_executor = RayTrialExecutor()
-        os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "0"
+        os.environ.pop("TUNE_FORCE_TRIAL_CLEANUP_S")
         self._simulate_starting_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         # This should be enough time for `trial._default_result_or_future`
         # to return. Otherwise, PID won't show up in `trial.last_result`,
         # which is asserted down below.
+        print("Fetching last result", trial.last_result)
         time.sleep(2)
         print("Stop trial")
         self.trial_executor.stop_trial(trial)

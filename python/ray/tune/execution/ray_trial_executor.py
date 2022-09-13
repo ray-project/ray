@@ -85,13 +85,13 @@ class _LocalWrapper:
         return self._result
 
 
-def _post_stop_cleanup(future, pg):
+def _post_stop_cleanup(future, pg, timeout: Optional[float] = None):
     """Things to be done after a trial is stopped."""
     assert isinstance(pg, PlacementGroup)
     try:
         # Let's check one more time if the future resolved. If not,
         # we remove the PG which will terminate the actor.
-        ray.get(future, timeout=0.01)
+        ray.get(future, timeout=timeout)
     except GetTimeoutError:
         if log_once("tune_trial_cleanup_timeout"):
             logger.error(
@@ -123,11 +123,10 @@ class _TrialCleanup:
     def add(self, future):
         self._future_to_insert_time.append((future, time.time()))
 
-    def get_next(self, force: bool = False):
+    def get_next(self):
         """Get the next future that is eligible to be cleaned up forcibly."""
         if len(self._future_to_insert_time) > 0 and (
-            force
-            or self._future_to_insert_time[0][1] + self._force_cleanup < time.time()
+            self._future_to_insert_time[0][1] + self._force_cleanup < time.time()
         ):
             future, _time = self._future_to_insert_time.popleft()
             return future
@@ -711,15 +710,16 @@ class RayTrialExecutor:
 
         self._pg_manager.cleanup()
 
-    def _do_force_trial_cleanup(self, force: bool = False) -> None:
+    def _do_force_trial_cleanup(self) -> None:
         if self._trial_cleanup:
             while True:
-                next_future_to_clean = self._trial_cleanup.get_next(force=force)
+                next_future_to_clean = self._trial_cleanup.get_next()
                 if not next_future_to_clean:
                     break
                 if next_future_to_clean in self._futures:
                     _, pg = self._futures.pop(next_future_to_clean)
-                    _post_stop_cleanup(next_future_to_clean, pg)
+                    # Immediately clean this future
+                    _post_stop_cleanup(next_future_to_clean, pg, timeout=0.01)
                 else:
                     # This just means that before the deadline reaches,
                     # the future is already cleaned up.
@@ -838,19 +838,24 @@ class RayTrialExecutor:
         return self._resource_updater.get_num_gpus() > 0
 
     def cleanup(self, trials: List[Trial]) -> None:
-        while True:
-            if self._trial_cleanup and self._trial_cleanup.is_empty():
+        while self._futures:
+            if self._trial_cleanup and (self._trial_cleanup.is_empty()):
                 break
-            elif not self._trial_cleanup and len(self._futures) == 0:
-                break
-            self._do_force_trial_cleanup(force=True)
+
+            # Non-blocking trial cleanup futures
+            self._do_force_trial_cleanup()
+
+            # Deal with other futures
             ready, _ = ray.wait(list(self._futures.keys()), timeout=0)
             if not ready:
                 continue
             event_type, trial_or_pg = self._futures.pop(ready[0])
+
+            # It could be STOP future after all, if so, deal with it here.
             if event_type == _ExecutorEventType.STOP_RESULT:
                 pg = trial_or_pg
-                _post_stop_cleanup(ready[0], pg)
+                # Blocking here is ok as the future returned
+                _post_stop_cleanup(ready[0], pg, timeout=None)
 
         self._pg_manager.reconcile_placement_groups(trials)
         self._pg_manager.cleanup(force=True)
@@ -993,7 +998,8 @@ class RayTrialExecutor:
             result_type, trial_or_pg = self._futures.pop(ready_future)
             if result_type == _ExecutorEventType.STOP_RESULT:
                 pg = trial_or_pg
-                _post_stop_cleanup(ready_future, pg)
+                # This will block, which is ok as the stop future returned
+                _post_stop_cleanup(ready_future, pg, timeout=None)
             else:
                 trial = trial_or_pg
                 assert isinstance(trial, Trial)
