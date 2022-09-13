@@ -58,7 +58,8 @@ public class ActorRestartTest extends BaseTest {
         actor.task(Counter::checkWasCurrentActorRestartedInActorTask).remote().get());
 
     // Kill the actor process.
-    killActorProcess(actor);
+    int pid = actor.task(Counter::getPid).remote().get();
+    killActorProcess(pid);
 
     waitForActorAlive(actor);
     int value = actor.task(Counter::increase).remote().get();
@@ -70,7 +71,8 @@ public class ActorRestartTest extends BaseTest {
     Assert.assertTrue(actor.task(Counter::checkWasCurrentActorRestartedInActorTask).remote().get());
 
     // Kill the actor process again.
-    killActorProcess(actor);
+    pid = actor.task(Counter::getPid).remote().get();
+    killActorProcess(pid);
 
     // Try calling increase on this actor again and this should fail.
     Assert.assertThrows(
@@ -82,12 +84,13 @@ public class ActorRestartTest extends BaseTest {
         Ray.actor(Counter::new).setMaxRestarts(1).setMaxTaskRetries(1).remote();
     // Call increase 100 times.
     List<ObjectRef<Integer>> resultRefs = new ArrayList<>(100);
+    int pid = actor.task(Counter::getPid).remote().get();
     for (int i = 0; i < 100; i++) {
       resultRefs.add(actor.task(Counter::increase).remote());
     }
 
     // Kill the actor process.
-    killActorProcess(actor);
+    killActorProcess(pid);
 
     waitForActorAlive(actor);
     // Ensure all task finishes
@@ -106,7 +109,8 @@ public class ActorRestartTest extends BaseTest {
     Assert.assertEquals(result, results.get(99) + 1);
 
     // Kill the actor process again.
-    killActorProcess(actor);
+    pid = actor.task(Counter::getPid).remote().get();
+    killActorProcess(pid);
 
     // Try calling increase on this actor again and this should fail.
     Assert.assertThrows(
@@ -114,10 +118,8 @@ public class ActorRestartTest extends BaseTest {
   }
 
   /** The helper to kill a counter actor. */
-  private static void killActorProcess(ActorHandle<Counter> actor)
-      throws IOException, InterruptedException {
+  private static void killActorProcess(int pid) throws IOException, InterruptedException {
     // Kill the actor process.
-    int pid = actor.task(Counter::getPid).remote().get();
     Process p = Runtime.getRuntime().exec("kill -9 " + pid);
     // Wait for the actor to be killed.
     TimeUnit.SECONDS.sleep(1);
