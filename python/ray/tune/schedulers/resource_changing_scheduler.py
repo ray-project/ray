@@ -11,7 +11,7 @@ from ray.tune.execution import trial_runner
 from ray.tune.resources import Resources
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.experiment import Trial
-from ray.tune.execution.placement_groups import PlacementGroupFactory, sum_bundles
+from ray.tune.execution.placement_groups import PlacementGroupFactory, _sum_bundles
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ class DistributeResources:
         """Get total sums of resources in bundles"""
         if not bundles:
             return {"CPU": 0, "GPU": 0}
-        return sum_bundles(bundles)
+        return _sum_bundles(bundles)
 
     def _is_bundle_empty(self, bundle: Dict[str, float]) -> bool:
         return not (bundle.get("CPU", 0) or bundle.get("GPU", 0))

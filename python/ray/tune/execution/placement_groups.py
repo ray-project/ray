@@ -55,8 +55,7 @@ def _get_tune_pg_prefix():
     return _tune_pg_prefix
 
 
-@DeveloperAPI
-def sum_bundles(bundles: List[Dict[str, float]]) -> Dict[str, float]:
+def _sum_bundles(bundles: List[Dict[str, float]]) -> Dict[str, float]:
     """Sum all resources in a list of resource bundles.
 
     Args:
@@ -216,7 +215,7 @@ class PlacementGroupFactory:
     @property
     def required_resources(self) -> Dict[str, float]:
         """Returns a dict containing the sums of all resources"""
-        return sum_bundles(self._bundles)
+        return _sum_bundles(self._bundles)
 
     @property
     @DeveloperAPI
