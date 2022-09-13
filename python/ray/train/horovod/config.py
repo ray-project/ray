@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass
 
 import ray
+from ray.air._internal.torch_utils import contains_tensor
 from ray.train.backend import BackendConfig, Backend, EncodedData
 from ray.train._internal.utils import update_env_vars
 from ray.train._internal.worker_group import WorkerGroup, Worker
@@ -139,7 +140,7 @@ class _HorovodBackend(Backend):
         """
         # If torch is imported, we can use it to serialize the data dict
         # into bytes. This will prevent e.g. GPU deserialization errors.
-        if "torch" in sys.modules:
+        if "torch" in sys.modules and contains_tensor(data_dict):
             from ray.train.torch.config import _TorchBackend
 
             return _TorchBackend.encode_data(data_dict)
