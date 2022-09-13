@@ -266,13 +266,10 @@ class MockProcessRunner:
             if pattern is not None:
                 for cmd in self.command_history():
                     if ip in cmd:
-                        print(f"{ip} in {cmd}")
                         debug_output += cmd
                         debug_output += "\n"
-                    else:
-                        print(f"{ip} not in {cmd}")
-                    if re.search(pattern, cmd):
-                        return True
+                        if re.search(pattern, cmd):
+                            return True
                 else:
                     raise Exception(
                         f"Did not find [{pattern}] in [{debug_output}] for "
@@ -3049,8 +3046,8 @@ class AutoscalingTest(unittest.TestCase):
 
         # Check the node was indeed reused
         self.provider.terminate_node(1)
-        autoscaler.update()
         runner.clear_history()
+        autoscaler.update()
         self.waitForNodes(1, tag_filters=WORKER_FILTER)
         self.provider.finish_starting_nodes()
         autoscaler.update()
@@ -3068,11 +3065,10 @@ class AutoscalingTest(unittest.TestCase):
         # Check that run_init happens when file_mounts have updated
         self.provider.terminate_node(1)
         autoscaler.update()
-        self.waitForNodes(1, tag_filters=WORKER_FILTER)
         runner.clear_history()
+        self.waitForNodes(1, tag_filters=WORKER_FILTER)
         self.provider.finish_starting_nodes()
         autoscaler.update()
-        runner.clear_history()
         self.waitForNodes(
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
         )
