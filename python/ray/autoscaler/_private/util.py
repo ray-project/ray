@@ -692,8 +692,10 @@ def format_info_string(
         if gcs_request_time:
             header += f"GCS request time: {gcs_request_time:3f}s\n"
         if non_terminated_nodes_time:
-            header += ("Node Provider non_terminated_nodes time: "
-            f"{non_terminated_nodes_time:3f}s\n")
+            header += (
+                "Node Provider non_terminated_nodes time: "
+                f"{non_terminated_nodes_time:3f}s\n"
+            )
 
     available_node_report_lines = []
     for node_type, count in autoscaler_summary.active_nodes.items():
