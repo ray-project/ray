@@ -366,7 +366,7 @@ class Monitor:
                         status[
                             "non_terminated_nodes_time"
                         ] = (
-                            self.autoscaler.non_terminated_nodes.non_terminated_nodes_time  #  noqa: E501
+                            self.autoscaler.non_terminated_nodes.non_terminated_nodes_time  # noqa: E501
                         )
 
                     for msg in self.event_summarizer.summary():
