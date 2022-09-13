@@ -577,7 +577,7 @@ class TFPolicy(Policy):
                 try:
                     self.model.base_model.save(filepath=export_dir, save_format="tf")
                 except Exception:
-                    raise ValueError(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
+                    logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
         else:
             logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 

@@ -727,7 +727,10 @@ class EagerTFPolicyV2(Policy):
             and hasattr(self.model, "base_model")
             and isinstance(self.model.base_model, tf.keras.Model)
         ):
-            self.model.base_model.save(export_dir, save_format="tf")
+            try:
+                self.model.base_model.save(export_dir, save_format="tf")
+            except Exception:
+                logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
         else:
             logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 

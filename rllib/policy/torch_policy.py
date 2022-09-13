@@ -32,6 +32,7 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import NullContextManager, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -902,7 +903,10 @@ class TorchPolicy(Policy):
         # w/o access to the original (custom) Model or Policy code).
         else:
             filename = os.path.join(export_dir, "model.pt")
-            torch.save(self.model, f=filename)
+            try:
+                torch.save(self.model, f=filename)
+            except Exception:
+                logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 
     @override(Policy)
     @DeveloperAPI
