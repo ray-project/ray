@@ -281,7 +281,7 @@ def deployment(
     init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
     init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
     route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
-    ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
+    ray_actor_options: Default[Dict] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_concurrent_queries: Default[int] = DEFAULT.VALUE,
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
@@ -318,7 +318,7 @@ def deployment(
             to '/a/b', '/a/b/', and '/a/b/c' go to B. Routes must not end with
             a '/' unless they're the root (just '/'), which acts as a
             catch-all.
-        ray_actor_options (Default[Optional[Dict]]): Options to be passed to each
+        ray_actor_options (Default[Dict]): Options to be passed to each
             replica Ray actor's constructor, such as resource requirements.
         user_config (Default[Optional[Any]]): Config to pass to the
             reconfigure method of the deployment. This can be updated

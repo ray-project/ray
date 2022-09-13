@@ -173,7 +173,7 @@ class DeploymentSchema(
         ),
         gt=0,
     )
-    ray_actor_options: Optional[RayActorOptionsSchema] = Field(
+    ray_actor_options: RayActorOptionsSchema = Field(
         default=DEFAULT.VALUE, description="Options set for each replica actor."
     )
 

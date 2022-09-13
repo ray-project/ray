@@ -28,7 +28,6 @@ class TestDeploymentOptions:
         "route_prefix",
         "autoscaling_config",
         "user_config",
-        "ray_actor_options",
     ]
 
 
