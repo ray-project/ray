@@ -9,6 +9,7 @@ from typing import Optional, Tuple, Dict, Generator, Union, List
 import ray
 from ray.util.annotations import DeveloperAPI
 from ray.air._internal.filelock import TempFileLock
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 _DEFAULT_CHUNK_SIZE_BYTES = 500 * 1024 * 1024  # 500 MiB
@@ -114,7 +115,9 @@ def _sync_dir_on_same_node(
 
     """
     copy_on_node = _remote_copy_dir.options(
-        num_cpus=0, resources={f"node:{ip}": 0.01}, placement_group=None
+        num_cpus=0,
+        resources={f"node:{ip}": 0.01},
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None),
     )
     copy_future = copy_on_node.remote(
         source_dir=source_path, target_dir=target_path, exclude=exclude
@@ -163,17 +166,23 @@ def _sync_dir_between_different_nodes(
 
     """
     pack_actor_on_source_node = _PackActor.options(
-        num_cpus=0, resources={f"node:{source_ip}": 0.01}, placement_group=None
+        num_cpus=0,
+        resources={f"node:{source_ip}": 0.01},
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None),
     )
     unpack_on_target_node = _unpack_from_actor.options(
-        num_cpus=0, resources={f"node:{target_ip}": 0.01}, placement_group=None
+        num_cpus=0,
+        resources={f"node:{target_ip}": 0.01},
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None),
     )
 
     if force_all:
         files_stats = None
     else:
         files_stats = _remote_get_recursive_files_and_stats.options(
-            num_cpus=0, resources={f"node:{target_ip}": 0.01}, placement_group=None
+            num_cpus=0,
+            resources={f"node:{target_ip}": 0.01},
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None),
         ).remote(target_path)
 
     pack_actor = pack_actor_on_source_node.remote(
@@ -209,7 +218,9 @@ def delete_on_node(
         for scheduled delete task.
     """
     delete_task = _remote_delete_path.options(
-        num_cpus=0, resources={f"node:{node_ip}": 0.01}, placement_group=None
+        num_cpus=0,
+        resources={f"node:{node_ip}": 0.01},
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None),
     )
     future = delete_task.remote(path)
 

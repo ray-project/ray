@@ -27,6 +27,7 @@ from ray.train.constants import (
 from ray.train.tensorflow import TensorflowConfig
 from ray.train.torch import TorchConfig
 from ray.util.placement_group import get_current_placement_group
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 @pytest.fixture
@@ -406,8 +407,10 @@ def test_placement_group_parent(ray_4_node_4_cpu, placement_group_capture_child_
         return e.finish_training()
 
     results_future = test.options(
-        placement_group=placement_group,
-        placement_group_capture_child_tasks=placement_group_capture_child_tasks,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=placement_group,
+            placement_group_capture_child_tasks=placement_group_capture_child_tasks,
+        ),
     ).remote()
     results = ray.get(results_future)
     for worker_result in results:
