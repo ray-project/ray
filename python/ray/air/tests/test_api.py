@@ -139,10 +139,17 @@ def test_scaling_config_pgf_equivalance(
         use_gpu=use_gpu,
         placement_strategy=placement_strategy,
     )
-    pgf = scaling_config.as_placement_group_factory()
-    scaling_config_from_pgf = ScalingConfig.from_placement_group_factory(pgf)
-    assert scaling_config == scaling_config_from_pgf
-    assert scaling_config_from_pgf.as_placement_group_factory() == pgf
+    try:
+        pgf = scaling_config.as_placement_group_factory()
+        scaling_config_from_pgf = ScalingConfig.from_placement_group_factory(pgf)
+        assert scaling_config == scaling_config_from_pgf
+        assert scaling_config_from_pgf.as_placement_group_factory() == pgf
+    except ValueError as e:
+        # We do not have to test invalid placement group factories
+        assert str(e) == (
+            "Cannot initialize a PlacementGroupFactory with an empty head "
+            "and zero worker bundles."
+        )
 
 
 def test_datasets():
