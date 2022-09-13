@@ -89,6 +89,8 @@ def pandas_transform(df: pd.DataFrame) -> pd.DataFrame:
     # Filter rows.
     df = df[df["variety"] == "Versicolor"]
     # Add derived column.
+    # Notice here that `df["sepal.length"].max()` is only the max value of the column
+    # within a given batch (instead of globally)!!
     df["normalized.sepal.length"] = df["sepal.length"] / df["sepal.length"].max()
     # Drop column.
     df = df.drop(columns=["sepal.length"])
