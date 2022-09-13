@@ -82,6 +82,8 @@ class PGConfig(AlgorithmConfig):
         if lr_schedule is not None:
             self.lr_schedule = lr_schedule
 
+        return self
+
 
 class PG(Algorithm):
     """Policy Gradient (PG) Trainer.
