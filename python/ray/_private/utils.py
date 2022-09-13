@@ -18,7 +18,7 @@ import uuid
 import warnings
 from inspect import signature
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, List, Sequence, Tuple, Union
 
 import grpc
 import numpy as np
@@ -319,11 +319,11 @@ def compute_driver_id_from_job(job_id):
     return ray.WorkerID(driver_id_str)
 
 
-def get_cuda_visible_devices():
+def get_cuda_visible_devices() -> Optional[List[str]]:
     """Get the device IDs in the CUDA_VISIBLE_DEVICES environment variable.
 
     Returns:
-        devices (List[str]): If CUDA_VISIBLE_DEVICES is set, returns a
+        devices: If CUDA_VISIBLE_DEVICES is set, returns a
             list of strings representing the IDs of the visible GPUs.
             If it is not set or is set to NoDevFiles, returns empty list.
     """
