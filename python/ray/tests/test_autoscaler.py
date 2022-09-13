@@ -266,8 +266,11 @@ class MockProcessRunner:
             if pattern is not None:
                 for cmd in self.command_history():
                     if ip in cmd:
+                        print(f"{ip} in {cmd}")
                         debug_output += cmd
                         debug_output += "\n"
+                    else:
+                        print(f"{ip} not in {cmd}")
                     if re.search(pattern, cmd):
                         return True
                 else:
@@ -397,7 +400,6 @@ class MockProvider(NodeProvider):
         if self.fail_creates:
             return
         with self.lock:
-            print("Creating nodes", node_config, tags, count)
             if self.cache_stopped:
                 for node in self.mock_nodes.values():
                     if node.state == "stopped" and count > 0:
@@ -420,7 +422,6 @@ class MockProvider(NodeProvider):
 
     def terminate_node(self, node_id):
         with self.lock:
-            print("Terminating node", node_id)
             if self.cache_stopped:
                 self.mock_nodes[node_id].state = "stopped"
             else:
@@ -670,9 +671,7 @@ class AutoscalingTest(unittest.TestCase):
     def num_nodes(self, tag_filters=None):
         if tag_filters is None:
             tag_filters = {}
-        temp = self.provider.non_terminated_nodes(tag_filters)
-        print("~~~~~~~~~~~~~~~~~", temp)
-        return len(temp)
+        return len(self.provider.non_terminated_nodes(tag_filters))
 
     def waitForNodes(self, expected, comparison=None, tag_filters=None):
         if comparison is None:
@@ -1326,7 +1325,7 @@ class AutoscalingTest(unittest.TestCase):
             return_value=self.provider
         )
         ray.autoscaler._private.commands._bootstrap_config = Mock(
-            return_value=SMALL_CLUSTER
+            return_value=cluster_cfg
         )
         commands.rsync(
             config_path,
@@ -2031,7 +2030,6 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(3)
 
     def testUnmanagedNodes2(self):
-        config = copy.deepcopy(SMALL_CLUSTER)
         config = copy.deepcopy(SMALL_CLUSTER)
         config["available_node_types"]["worker"]["min_workers"] = 0
         config["available_node_types"]["worker"]["max_workers"] = 20
@@ -2982,25 +2980,28 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
         )
-        runner.assert_has_call("172.0.0.1", "init_cmd")
-        runner.assert_has_call("172.0.0.1", "setup_cmd")
-        runner.assert_has_call("172.0.0.1", "worker_setup_cmd")
-        runner.assert_has_call("172.0.0.1", "start_ray_worker")
+        worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
+        runner.assert_has_call(worker_ip, "init_cmd")
+        runner.assert_has_call(worker_ip, "setup_cmd")
+        runner.assert_has_call(worker_ip, "worker_setup_cmd")
+        runner.assert_has_call(worker_ip, "start_ray_worker")
 
         # Check the node was not reused
         self.provider.terminate_node(1)
         autoscaler.update()
-        self.waitForNodes(1, tag_filters=WORKER_FILTER)
         runner.clear_history()
+        self.waitForNodes(1, tag_filters=WORKER_FILTER)
         self.provider.finish_starting_nodes()
         autoscaler.update()
         self.waitForNodes(
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
         )
-        runner.assert_has_call("172.0.0.2", "init_cmd")
-        runner.assert_has_call("172.0.0.2", "setup_cmd")
-        runner.assert_has_call("172.0.0.2", "worker_setup_cmd")
-        runner.assert_has_call("172.0.0.2", "start_ray_worker")
+        new_worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
+        runner.assert_has_call(new_worker_ip, "init_cmd")
+        runner.assert_has_call(new_worker_ip, "setup_cmd")
+        runner.assert_has_call(new_worker_ip, "worker_setup_cmd")
+        runner.assert_has_call(new_worker_ip, "start_ray_worker")
+        assert worker_ip != new_worker_ip
 
     def testSetupCommandsWithStoppedNodeCachingNoDocker(self):
         file_mount_dir = tempfile.mkdtemp()
@@ -3040,25 +3041,26 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
         )
-        runner.assert_has_call("172.0.0.1", "init_cmd")
-        runner.assert_has_call("172.0.0.1", "setup_cmd")
-        runner.assert_has_call("172.0.0.1", "worker_setup_cmd")
-        runner.assert_has_call("172.0.0.1", "start_ray_worker")
+        worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
+        runner.assert_has_call(worker_ip, "init_cmd")
+        runner.assert_has_call(worker_ip, "setup_cmd")
+        runner.assert_has_call(worker_ip, "worker_setup_cmd")
+        runner.assert_has_call(worker_ip, "start_ray_worker")
 
         # Check the node was indeed reused
         self.provider.terminate_node(1)
         autoscaler.update()
-        self.waitForNodes(1, tag_filters=WORKER_FILTER)
         runner.clear_history()
+        self.waitForNodes(1, tag_filters=WORKER_FILTER)
         self.provider.finish_starting_nodes()
         autoscaler.update()
         self.waitForNodes(
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
         )
-        runner.assert_not_has_call("172.0.0.1", "init_cmd")
-        runner.assert_not_has_call("172.0.0.1", "setup_cmd")
-        runner.assert_not_has_call("172.0.0.1", "worker_setup_cmd")
-        runner.assert_has_call("172.0.0.1", "start_ray_worker")
+        runner.assert_not_has_call(worker_ip, "init_cmd")
+        runner.assert_not_has_call(worker_ip, "setup_cmd")
+        runner.assert_not_has_call(worker_ip, "worker_setup_cmd")
+        runner.assert_has_call(worker_ip, "start_ray_worker")
 
         with open(f"{file_mount_dir}/new_file", "w") as f:
             f.write("abcdefgh")
@@ -3070,20 +3072,22 @@ class AutoscalingTest(unittest.TestCase):
         runner.clear_history()
         self.provider.finish_starting_nodes()
         autoscaler.update()
+        runner.clear_history()
         self.waitForNodes(
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
         )
-        runner.assert_not_has_call("172.0.0.1", "init_cmd")
-        runner.assert_not_has_call("172.0.0.1", "setup_cmd")
-        runner.assert_not_has_call("172.0.0.1", "worker_setup_cmd")
-        runner.assert_has_call("172.0.0.1", "start_ray_worker")
+        runner.assert_not_has_call(worker_ip, "init_cmd")
+        runner.assert_not_has_call(worker_ip, "setup_cmd")
+        runner.assert_not_has_call(worker_ip, "worker_setup_cmd")
+        runner.assert_has_call(worker_ip, "start_ray_worker")
 
-        runner.clear_history()
         autoscaler.update()
-        runner.assert_not_has_call("172.0.0.1", "setup_cmd")
+        runner.assert_not_has_call(worker_ip, "setup_cmd")
 
         # We did not start any other nodes
-        runner.assert_not_has_call("172.0.0.2", " ")
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
+        )
 
     def testSetupCommandsWithStoppedNodeCachingDocker(self):
         # NOTE(ilr) Setup & Init commands **should** run with stopped nodes
@@ -3124,47 +3128,49 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
         )
-        runner.assert_has_call("172.0.0.1", "init_cmd")
-        runner.assert_has_call("172.0.0.1", "setup_cmd")
-        runner.assert_has_call("172.0.0.1", "worker_setup_cmd")
-        runner.assert_has_call("172.0.0.1", "start_ray_worker")
-        runner.assert_has_call("172.0.0.1", "docker run")
+        worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
+        runner.assert_has_call(worker_ip, "init_cmd")
+        runner.assert_has_call(worker_ip, "setup_cmd")
+        runner.assert_has_call(worker_ip, "worker_setup_cmd")
+        runner.assert_has_call(worker_ip, "start_ray_worker")
+        runner.assert_has_call(worker_ip, "docker run")
 
         # Check the node was indeed reused
         self.provider.terminate_node(1)
+        runner.clear_history()
         autoscaler.update()
         self.waitForNodes(1, tag_filters=WORKER_FILTER)
-        runner.clear_history()
         self.provider.finish_starting_nodes()
         autoscaler.update()
         self.waitForNodes(
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
         )
+        print(runner.command_history())
         # These all must happen when the node is stopped and resued
-        runner.assert_has_call("172.0.0.1", "init_cmd")
-        runner.assert_has_call("172.0.0.1", "setup_cmd")
-        runner.assert_has_call("172.0.0.1", "worker_setup_cmd")
-        runner.assert_has_call("172.0.0.1", "start_ray_worker")
-        runner.assert_has_call("172.0.0.1", "docker run")
+        runner.assert_has_call(worker_ip, "init_cmd")
+        runner.assert_has_call(worker_ip, "setup_cmd")
+        runner.assert_has_call(worker_ip, "worker_setup_cmd")
+        runner.assert_has_call(worker_ip, "start_ray_worker")
+        runner.assert_has_call(worker_ip, "docker run")
 
         with open(f"{file_mount_dir}/new_file", "w") as f:
             f.write("abcdefgh")
 
         # Check that run_init happens when file_mounts have updated
         self.provider.terminate_node(0)
+        runner.clear_history()
         autoscaler.update()
         self.waitForNodes(1, tag_filters=WORKER_FILTER)
-        runner.clear_history()
         self.provider.finish_starting_nodes()
         autoscaler.update()
         self.waitForNodes(
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
         )
-        runner.assert_has_call("172.0.0.1", "init_cmd")
-        runner.assert_has_call("172.0.0.1", "setup_cmd")
-        runner.assert_has_call("172.0.0.1", "worker_setup_cmd")
-        runner.assert_has_call("172.0.0.1", "start_ray_worker")
-        runner.assert_has_call("172.0.0.1", "docker run")
+        runner.assert_has_call(worker_ip, "init_cmd")
+        runner.assert_has_call(worker_ip, "setup_cmd")
+        runner.assert_has_call(worker_ip, "worker_setup_cmd")
+        runner.assert_has_call(worker_ip, "start_ray_worker")
+        runner.assert_has_call(worker_ip, "docker run")
 
         docker_run_cmd_indx = [
             i for i, cmd in enumerate(runner.command_history()) if "docker run" in cmd
@@ -3175,7 +3181,7 @@ class AutoscalingTest(unittest.TestCase):
         assert mkdir_cmd_indx < docker_run_cmd_indx
         runner.clear_history()
         autoscaler.update()
-        runner.assert_not_has_call("172.0.0.1", "setup_cmd")
+        runner.assert_not_has_call(worker_ip, "setup_cmd")
 
         # We did not start any other nodes
         runner.assert_not_has_call("172.0.0.2", " ")
