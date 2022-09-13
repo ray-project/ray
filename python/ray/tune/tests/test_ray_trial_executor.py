@@ -499,7 +499,7 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
 
         executor = RayTrialExecutor(reuse_actors=True)
         executor._pg_manager = pgm
-        executor.set_max_pending_trials(1)
+        executor.setup(max_pending_trials=1)
 
         def train(config):
             yield 1
@@ -547,6 +547,15 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         assert executor.has_resources_for_trial(trial1)
         assert executor.has_resources_for_trial(trial2)
         assert not executor.has_resources_for_trial(trial3)
+
+    def testEmptyPlacementGroupFactory(self):
+        # Empty bundles
+        with self.assertRaises(ValueError):
+            PlacementGroupFactory([])
+
+        # Empty head, empty workers
+        with self.assertRaises(ValueError):
+            PlacementGroupFactory([{}])
 
 
 class LocalModeExecutorTest(RayTrialExecutorTest):

@@ -91,7 +91,8 @@ class Checkpoint:
     be used to create checkpoint objects
     (e.g. ``Checkpoint.from_directory()``).
 
-    *Other implementation notes:*
+    **Other implementation notes:**
+
     When converting between different checkpoint formats, it is guaranteed
     that a full round trip of conversions (e.g. directory --> dict -->
     obj ref --> directory) will recover the original checkpoint data.
@@ -487,6 +488,8 @@ class Checkpoint:
         changing any data within it, as it might get deleted when exiting the context.
 
         Example:
+
+        .. code-block:: python
 
             with checkpoint.as_directory() as checkpoint_dir:
                 # Do some read-only processing of files within checkpoint_dir

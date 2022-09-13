@@ -49,7 +49,7 @@ First, follow the [quickstart guide](kuberay-quickstart) to create an autoscalin
 # Create the KubeRay operator.
 $ kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
 # Create an autoscaling Ray cluster.
-$ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/release-0.3/ray-operator/config/samples/ray-cluster.autoscaler.yaml
+$ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.autoscaler.yaml
 ```
 
 Now, we can run a Ray program on the head pod that uses [``request_resources``](ref-autoscaler-sdk) to scale the cluster to a total of 3 CPUs. The head and worker pods in our [example cluster config](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler.yaml) each have a capacity of 1 CPU, and we specified a minimum of 1 worker pod. Thus, the request should trigger upscaling of one additional worker pod.

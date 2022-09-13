@@ -213,6 +213,43 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
             )
 
     @OverrideToImplementCustomLogic
+    def on_evaluate_start(
+        self,
+        *,
+        algorithm: "Algorithm",
+        **kwargs,
+    ) -> None:
+        """Callback before evaluation starts.
+
+        This method gets called at the beginning of Algorithm.evaluate().
+
+        Args:
+            algorithm: Reference to the algorithm instance.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_evaluate_end(
+        self,
+        *,
+        algorithm: "Algorithm",
+        evaluation_metrics: dict,
+        **kwargs,
+    ) -> None:
+        """Runs when the evaluation is done.
+
+        Runs at the end of Algorithm.evaluate().
+
+        Args:
+            algorithm: Reference to the algorithm instance.
+            evaluation_metrics: Results dict to be returned from algorithm.evaluate().
+                You can mutate this object to add additional metrics.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
     def on_postprocess_trajectory(
         self,
         *,
@@ -514,6 +551,32 @@ class MultiCallbacks(DefaultCallbacks):
                 policies=policies,
                 episode=episode,
                 env_index=env_index,
+                **kwargs,
+            )
+
+    def on_evaluate_start(
+        self,
+        *,
+        algorithm: "Algorithm",
+        **kwargs,
+    ) -> None:
+        for callback in self._callback_list:
+            callback.on_evaluate_start(
+                algorithm=algorithm,
+                **kwargs,
+            )
+
+    def on_evaluate_end(
+        self,
+        *,
+        algorithm: "Algorithm",
+        evaluation_metrics: dict,
+        **kwargs,
+    ) -> None:
+        for callback in self._callback_list:
+            callback.on_evaluate_end(
+                algorithm=algorithm,
+                evaluation_metrics=evaluation_metrics,
                 **kwargs,
             )
 
