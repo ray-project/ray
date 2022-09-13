@@ -265,7 +265,9 @@ class TestWorkerFailure(unittest.TestCase):
         self._do_test_fault_fatal(PGConfig().training(optimizer={}))
 
     def test_async_grads(self):
-        self._do_test_fault_ignore(A3CConfig().training(optimizer={"grads_per_step": 1}))
+        self._do_test_fault_ignore(
+            A3CConfig().training(optimizer={"grads_per_step": 1})
+        )
 
     def test_async_replay(self):
         config = (
@@ -292,9 +294,9 @@ class TestWorkerFailure(unittest.TestCase):
         self._do_test_fault_ignore(ImpalaConfig().resources(num_gpus=0))
 
     def test_sync_replay(self):
-        self._do_test_fault_ignore(DQNConfig().reporting(
-            min_sample_timesteps_per_iteration=1
-        ))
+        self._do_test_fault_ignore(
+            DQNConfig().reporting(min_sample_timesteps_per_iteration=1)
+        )
 
     def test_multi_g_p_u(self):
         self._do_test_fault_ignore(
@@ -358,14 +360,17 @@ class TestWorkerFailure(unittest.TestCase):
             .training(
                 model={"fcnet_hiddens": [4]},
             )
-            .environment(env="fault_env", env_config={
-                # Make both worker idx=1 and 2 fail.
-                "bad_indices": [1, 2],
-                # Env throws error between steps 100 and 102.
-                "failure_start_count": 100,
-                "failure_stop_count": 102,
-                "counter": COUNTER_NAME,
-            })
+            .environment(
+                env="fault_env",
+                env_config={
+                    # Make both worker idx=1 and 2 fail.
+                    "bad_indices": [1, 2],
+                    # Env throws error between steps 100 and 102.
+                    "failure_start_count": 100,
+                    "failure_stop_count": 102,
+                    "counter": COUNTER_NAME,
+                },
+            )
         )
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
@@ -427,14 +432,17 @@ class TestWorkerFailure(unittest.TestCase):
             .training(
                 model={"fcnet_hiddens": [4]},
             )
-            .environment(env="multi-agent-fault_env", env_config={
-                # Make both worker idx=1 and 2 fail.
-                "bad_indices": [1, 2],
-                # Env throws error between steps 100 and 102.
-                "failure_start_count": 100,
-                "failure_stop_count": 102,
-                "counter": COUNTER_NAME,
-            })
+            .environment(
+                env="multi-agent-fault_env",
+                env_config={
+                    # Make both worker idx=1 and 2 fail.
+                    "bad_indices": [1, 2],
+                    # Env throws error between steps 100 and 102.
+                    "failure_start_count": 100,
+                    "failure_stop_count": 102,
+                    "counter": COUNTER_NAME,
+                },
+            )
             .evaluation(
                 evaluation_num_workers=1,
                 evaluation_interval=1,
@@ -542,7 +550,7 @@ class TestWorkerFailure(unittest.TestCase):
             PGConfig()
             .rollouts(
                 num_rollout_workers=2,
-                ignore_worker_failures=True,   # Ignore failure.
+                ignore_worker_failures=True,  # Ignore failure.
                 recreate_failed_workers=True,  # And recover
             )
             .training(
@@ -630,19 +638,22 @@ class TestWorkerFailure(unittest.TestCase):
             PGConfig()
             .rollouts(
                 num_rollout_workers=2,
-                ignore_worker_failures=True,   # Ignore failure.
+                ignore_worker_failures=True,  # Ignore failure.
                 recreate_failed_workers=True,  # And recover
             )
             .training(
                 model={"fcnet_hiddens": [4]},
             )
-            .environment(env="fault_env", env_config={
-                # Make both worker idx=1 and 2 fail.
-                "bad_indices": [1, 2],
-                # Env throws error before step 2.
-                "failure_stop_count": 2,
-                "counter": COUNTER_NAME,
-            })
+            .environment(
+                env="fault_env",
+                env_config={
+                    # Make both worker idx=1 and 2 fail.
+                    "bad_indices": [1, 2],
+                    # Env throws error before step 2.
+                    "failure_stop_count": 2,
+                    "counter": COUNTER_NAME,
+                },
+            )
             .evaluation(
                 evaluation_num_workers=2,
                 evaluation_interval=1,
@@ -797,7 +808,7 @@ class TestWorkerFailure(unittest.TestCase):
                 num_rollout_workers=1,
                 create_env_on_local_worker=False,
                 # Worker fault tolerance.
-                recreate_failed_workers=True,          # Restore failed workers.
+                recreate_failed_workers=True,  # Restore failed workers.
                 restart_failed_sub_environments=True,  # And create failed envs.
             )
             .training(
@@ -892,7 +903,7 @@ class TestWorkerFailure(unittest.TestCase):
             .rollouts(
                 num_rollout_workers=1,
                 # Worker fault tolerance.
-                recreate_failed_workers=False,         # Do not ignore.
+                recreate_failed_workers=False,  # Do not ignore.
                 restart_failed_sub_environments=True,  # But recover.
                 rollout_fragment_length=10,
                 # Use EMA PerfStat.
