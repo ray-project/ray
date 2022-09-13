@@ -666,7 +666,7 @@ def get_per_node_breakdown(lm_summary: LoadMetricsSummary):
 
     print(file=sio)
     for node_ip, usage in lm_summary.usage_by_node.items():
-        print(file=sio)
+        print(file=sio) # Print a newline.
         print(f"Node: {node_ip}", file=sio)
         print(" Usage:", file=sio)
         for line in parse_usage(usage):
