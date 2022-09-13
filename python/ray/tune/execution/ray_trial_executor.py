@@ -125,11 +125,11 @@ class _TrialCleanup:
     def add(self, future):
         self._future_to_insert_time.append((future, time.time()))
 
-    def get_next(self):
+    def get_next(self, force: bool = False):
         """Get the next future that is eligible to be cleaned up forcibly."""
-        if (
-            len(self._future_to_insert_time) > 0
-            and self._future_to_insert_time[0][1] + self._force_cleanup < time.time()
+        if len(self._future_to_insert_time) > 0 and (
+            force
+            or self._future_to_insert_time[0][1] + self._force_cleanup < time.time()
         ):
             future, _time = self._future_to_insert_time.popleft()
             return future
@@ -713,10 +713,10 @@ class RayTrialExecutor:
 
         self._pg_manager.cleanup()
 
-    def _do_force_trial_cleanup(self) -> None:
+    def _do_force_trial_cleanup(self, force: bool = False) -> None:
         if self._trial_cleanup:
             while True:
-                next_future_to_clean = self._trial_cleanup.get_next()
+                next_future_to_clean = self._trial_cleanup.get_next(force=force)
                 if not next_future_to_clean:
                     break
                 if next_future_to_clean in self._futures:
@@ -845,7 +845,7 @@ class RayTrialExecutor:
                 break
             elif not self._trial_cleanup and len(self._futures) == 0:
                 break
-            self._do_force_trial_cleanup()
+            self._do_force_trial_cleanup(force=True)
             ready, _ = ray.wait(list(self._futures.keys()), timeout=0)
             if not ready:
                 continue

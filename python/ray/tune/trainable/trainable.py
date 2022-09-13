@@ -1131,6 +1131,8 @@ class Trainable:
         If any Ray actors are launched in the Trainable (i.e., with a RLlib
         trainer), be sure to kill the Ray actor process here.
 
+        This process should be lightweight. Per default,
+
         You can kill a Ray actor by calling `ray.kill(actor)`
         on the actor.
 
