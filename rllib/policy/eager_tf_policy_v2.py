@@ -718,7 +718,7 @@ class EagerTFPolicyV2(Policy):
 
             model_proto, external_tensor_storage = tf2onnx.convert.from_keras(
                 self.model.base_model,
-                output_path=os.path.join(export_dir, "saved_model.onnx"),
+                output_path=os.path.join(export_dir, "model.onnx"),
             )
         # Save the tf.keras.Model (architecture and weights, so it can be retrieved
         # w/o access to the original (custom) Model or Policy code).

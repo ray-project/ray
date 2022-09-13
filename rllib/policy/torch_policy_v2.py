@@ -930,7 +930,6 @@ class TorchPolicyV2(Policy):
         os.makedirs(export_dir, exist_ok=True)
 
         if onnx:
-            seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
             self._lazy_tensor_dict(self._dummy_batch)
             # Provide dummy state inputs if not an RNN (torch cannot jit with
             # returned empty internal states list).
@@ -938,6 +937,7 @@ class TorchPolicyV2(Policy):
                 self._dummy_batch["state_in_0"] = self._dummy_batch[
                     SampleBatch.SEQ_LENS
                 ] = np.array([1.0])
+            seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
 
             state_ins = []
             i = 0

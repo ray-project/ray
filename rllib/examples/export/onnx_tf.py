@@ -48,7 +48,7 @@ if __name__ == "__main__":
 
     # Evaluate tensor to fetch numpy array.
     if args.framework == "tf":
-        with policy._sess.as_default():
+        with policy.get_session().as_default():
             result_tf = result_tf.eval()
 
     # This line will export the model to ONNX.
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     # algo.export_policy_model(outdir, onnx=11)
 
     # Import ONNX model.
-    exported_model_file = os.path.join(outdir, "saved_model.onnx")
+    exported_model_file = os.path.join(outdir, "model.onnx")
 
     # Start an inference session for the ONNX model
     session = onnxruntime.InferenceSession(exported_model_file, None)
@@ -65,7 +65,14 @@ if __name__ == "__main__":
     # Pass the same test batch to the ONNX model (rename to match tensor names)
     onnx_test_data = {f"default_policy/{k}:0": v for k, v in test_data.items()}
 
-    result_onnx = session.run(["default_policy/model/fc_out/BiasAdd:0"], onnx_test_data)
+    # Tf2 model stored differently from tf (static graph) model.
+    if args.framework == "tf2":
+        result_onnx = session.run(["fc_out"], {"observations": test_data["obs"]})
+    else:
+        result_onnx = session.run(
+            ["default_policy/model/fc_out/BiasAdd:0"],
+            onnx_test_data,
+        )
 
     # These results should be equal!
     print("TENSORFLOW", result_tf)

@@ -564,7 +564,7 @@ class TFPolicy(Policy):
 
                 model_proto = g.make_model("onnx_model")
                 tf2onnx.utils.save_onnx_model(
-                    export_dir, "saved_model", feed_dict={}, model_proto=model_proto
+                    export_dir, "model", feed_dict={}, model_proto=model_proto
                 )
         # Save the tf.keras.Model (architecture and weights, so it can be retrieved
         # w/o access to the original (custom) Model or Policy code).
