@@ -7,8 +7,6 @@ import io.ray.api.exception.RayActorException;
 import io.ray.api.exception.RayException;
 import io.ray.runtime.util.SystemUtil;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -31,6 +29,16 @@ public class ActorRestartTest extends BaseTest {
     }
 
     public int increase() {
+      value += 1;
+      return value;
+    }
+
+    public int increaseAfterTimeout(int timeout) {
+      try {
+        Thread.sleep(timeout);
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
       value += 1;
       return value;
     }
@@ -82,36 +90,27 @@ public class ActorRestartTest extends BaseTest {
   public void testActorRestartWithRetry() throws InterruptedException, IOException {
     ActorHandle<Counter> actor =
         Ray.actor(Counter::new).setMaxRestarts(1).setMaxTaskRetries(1).remote();
-    // Call increase 100 times.
-    List<ObjectRef<Integer>> resultRefs = new ArrayList<>(100);
-    int pid = actor.task(Counter::getPid).remote().get();
-    for (int i = 0; i < 100; i++) {
-      resultRefs.add(actor.task(Counter::increase).remote());
+    // Call increase 3 times.
+    for (int i = 0; i < 3; i++) {
+      int result = actor.task(Counter::increase).remote().get();
+      Assert.assertEquals(result, i + 1);
     }
-
+    // Need to call getPid before submitting the task to kill
+    int pid = actor.task(Counter::getPid).remote().get();
+    // Task to kill
+    ObjectRef<Integer> ref = actor.task(Counter::increaseAfterTimeout, 3000).remote();
     // Kill the actor process.
     killActorProcess(pid);
-
     waitForActorAlive(actor);
-    // Ensure all task finishes
-    List<Integer> results = Ray.get(resultRefs);
-    int failedTaskIndex = -1;
-    for (int i = 0; i < 100; i++) {
-      if (results.get(i) != i + 1) {
-        if (failedTaskIndex == -1) {
-          failedTaskIndex = i;
-        }
-        Assert.assertEquals(i + 1, failedTaskIndex + results.get(i));
-      }
-    }
+    // The task should fail and retry, so result is 1
+    int result = ref.get();
+    Assert.assertEquals(result, 1);
     // Check that we can still call the actor
-    int result = actor.task(Counter::increase).remote().get();
-    Assert.assertEquals(result, results.get(99) + 1);
-
+    result = actor.task(Counter::increase).remote().get();
+    Assert.assertEquals(result, 2);
     // Kill the actor process again.
     pid = actor.task(Counter::getPid).remote().get();
     killActorProcess(pid);
-
     // Try calling increase on this actor again and this should fail.
     Assert.assertThrows(
         RayActorException.class, () -> actor.task(Counter::increase).remote().get());
