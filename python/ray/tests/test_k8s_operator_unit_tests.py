@@ -134,6 +134,18 @@ def custom_resources():
 
 
 class OperatorTest(unittest.TestCase):
+    def test_env_var_configured(self):
+        cr, _ = custom_resources()
+        config = cr_to_config(cr)
+        for node_type in config["available_node_types"].values():
+            pod_config = node_type["node_config"]
+            expected_env = {
+                "key": "legacy_ray_operator",
+                "value": "1",
+            }
+            envs = pod_config["spec"]["containers"][0]["env"]
+            assert expected_env in envs
+
     def test_no_file_mounts_k8s_operator_cluster_launch(self):
         with patch.object(NodeUpdaterThread, START, mock_start), patch.object(
             NodeUpdaterThread, JOIN, mock_join
