@@ -652,23 +652,21 @@ class WorkerSet:
                 compress_columns=config["output_compress_columns"],
             )
 
-        if policy_specs:
-            policies = policy_specs
-        elif config["multiagent"]["policies"]:
-            # Make a copy so we don't modify the original multiagent config dict
-            # by accident.
-            ma_policies = config["multiagent"]["policies"].copy()
-            # Assert everything is correct in "multiagent" config dict (if given).
-            for policy_spec in ma_policies.values():
-                assert isinstance(policy_spec, PolicySpec)
-                # Class is None -> Use `policy_cls`.
-                if policy_spec.policy_class is None:
-                    policy_spec.policy_class = policy_cls
-            policies = ma_policies
-        # Create a policy_spec (MultiAgentPolicyConfigDict),
-        # even if no "multiagent" setup given by user.
-        else:
-            policies = policy_cls
+        if not policy_specs:
+            # Infer policy specs from multiagent.policies dict.
+            if config["multiagent"]["policies"]:
+                # Make a copy so we don't modify the original multiagent config dict
+                # by accident.
+                policy_specs = config["multiagent"]["policies"].copy()
+                # Assert everything is correct in "multiagent" config dict (if given).
+                for policy_spec in policy_specs.values():
+                    assert isinstance(policy_spec, PolicySpec)
+                    # Class is None -> Use `policy_cls`.
+                    if policy_spec.policy_class is None:
+                        policy_spec.policy_class = policy_cls
+            # Use the only policy class as policy specs.
+            else:
+                policy_specs = policy_cls
 
         if worker_index == 0:
             extra_python_environs = config.get("extra_python_environs_for_driver", None)
@@ -678,7 +676,7 @@ class WorkerSet:
         worker = cls(
             env_creator=env_creator,
             validate_env=validate_env,
-            policy_spec=policies,
+            policy_spec=policy_specs,
             policy_mapping_fn=config["multiagent"]["policy_mapping_fn"],
             policies_to_train=config["multiagent"]["policies_to_train"],
             tf_session_creator=(session_creator if config["tf_session_args"] else None),
