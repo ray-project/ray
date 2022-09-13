@@ -548,6 +548,15 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         assert executor.has_resources_for_trial(trial2)
         assert not executor.has_resources_for_trial(trial3)
 
+    def testEmptyPlacementGroupFactory(self):
+        # Empty bundles
+        with self.assertRaises(ValueError):
+            PlacementGroupFactory([])
+
+        # Empty head, empty workers
+        with self.assertRaises(ValueError):
+            PlacementGroupFactory([{}])
+
 
 class LocalModeExecutorTest(RayTrialExecutorTest):
     def setUp(self):

@@ -662,7 +662,7 @@ def equalize_helper(input_block_lists):
         for block_ref, _ in blocklist.get_blocks_with_metadata():
             block = ray.get(block_ref)
             block_accessor = BlockAccessor.for_block(block)
-            block_list.append(block_accessor.to_native())
+            block_list.append(block_accessor.to_default())
         result_block_lists.append(block_list)
     return result_block_lists
 
