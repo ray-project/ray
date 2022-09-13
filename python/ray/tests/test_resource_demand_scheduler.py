@@ -8,6 +8,7 @@ from dataclasses import asdict
 from datetime import datetime
 from time import sleep
 from unittest import mock
+import subprocess
 
 import pytest
 import yaml
@@ -59,6 +60,7 @@ from ray.tests.test_autoscaler import (
     fill_in_raylet_ids,
     mock_raylet_id,
 )
+from ray.cluster_utils import AutoscalingCluster
 
 GET_DEFAULT_METHOD = "ray.autoscaler._private.util._get_default_config"
 
@@ -2928,6 +2930,50 @@ Demands:
     )
     print(actual)
     assert expected.strip() == actual
+
+
+def test_ray_status_e2e(shutdown_only):
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "type-i": {
+                "resources": {
+                    "CPU": 1,
+                    "fun": 1
+                },
+                "node_config": {},
+                "min_workers": 1,
+                "max_workers": 1,
+            },
+            "type-ii": {
+                "resources": {
+                    "CPU": 1,
+                    "fun": 100
+                },
+                "node_config": {},
+                "min_workers": 1,
+                "max_workers": 1,
+            },
+        }
+    )
+
+    try:
+        cluster.start()
+        ray.init(address="auto")
+
+        @ray.remote(num_cpus=0, resources={"fun": 2})
+        class Actor:
+            def ping(self):
+                return None
+
+        actor = Actor.remote()
+        ray.get(actor.ping.remote())
+
+        subprocess.check_output("ray status", shell=True)
+        subprocess.check_output("ray status -v", shell=True)
+        subprocess.check_output("ray status -vv", shell=True)
+    finally:
+        cluster.shutdown()
 
 
 def test_placement_group_match_string():
