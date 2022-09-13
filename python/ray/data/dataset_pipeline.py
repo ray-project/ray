@@ -14,6 +14,7 @@ from typing import (
     Tuple,
     Union,
 )
+import warnings
 
 import ray
 from ray.data._internal import progress_bar
@@ -178,6 +179,12 @@ class DatasetPipeline(Generic[T]):
         Returns:
             An iterator over record batches.
         """
+        if batch_format == "native":
+            warnings.warn(
+                "The 'native' batch format has been renamed 'default'.",
+                DeprecationWarning,
+            )
+
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         time_start = time.perf_counter()

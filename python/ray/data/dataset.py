@@ -18,6 +18,7 @@ from typing import (
     Union,
 )
 from uuid import uuid4
+import warnings
 
 import numpy as np
 
@@ -401,6 +402,12 @@ class Dataset(Generic[T]):
         """
         import pandas as pd
         import pyarrow as pa
+
+        if batch_format == "native":
+            warnings.warn(
+                "The 'native' batch format has been renamed 'default'.",
+                DeprecationWarning,
+            )
 
         if batch_size is not None and batch_size < 1:
             raise ValueError("Batch size cannot be negative or 0")
@@ -2374,6 +2381,12 @@ class Dataset(Generic[T]):
         Returns:
             An iterator over record batches.
         """
+        if batch_format == "native":
+            warnings.warn(
+                "The 'native' batch format has been renamed 'default'.",
+                DeprecationWarning,
+            )
+
         blocks = self._plan.execute()
         stats = self._plan.stats()
 
