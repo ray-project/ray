@@ -340,6 +340,17 @@ def read_parquet(
         >>> # Read multiple local files.
         >>> ray.data.read_parquet(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
+        >>> # Specify a schema for the parquet file.
+        >>> import pyarrow as pa
+        >>> fields = [("sepal.length", pa.float64()),
+        ...           ("sepal.width", pa.float64()),
+        ...           ("petal.length", pa.float64()),
+        ...           ("petal.width", pa.float64()),
+        ...           ("variety", pa.string())]
+        >>> ray.data.read_parquet("example://iris.parquet",
+        ...     schema=pa.schema(fields))
+        Dataset(num_blocks=..., num_rows=150, schema={sepal.length: double, sepal.width: double, petal.length: double, petal.width: double, variety: string})
+
     Args:
         paths: A single file path or directory, or a list of file paths. Multiple
             directories are not supported.
