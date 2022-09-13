@@ -325,9 +325,10 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         .. tip::
-        For some standardized operations like imputing, encoding or normalization,
-        one may find directly using ``ray.data.preprocessors.Preprocessor`` to be
-        more convenient.
+
+            For some standardized operations like imputing, encoding or normalization,
+            one may find directly using ``ray.data.preprocessors.Preprocessor`` to be
+            more convenient.
 
         Examples:
             >>> import ray
