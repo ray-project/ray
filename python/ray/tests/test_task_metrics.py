@@ -20,6 +20,7 @@ METRIC_CONFIG = {
 
 def tasks_by_state(info) -> dict:
     metrics_page = "localhost:{}".format(info["metrics_export_port"])
+    print("Fetch metrics from", metrics_page)
     res = fetch_prometheus_metrics([metrics_page])
     if "ray_tasks" in res:
         states = defaultdict(int)
@@ -28,7 +29,6 @@ def tasks_by_state(info) -> dict:
         print("Tasks by state: {}".format(states))
         return states
     else:
-        print("No task metrics yet.")
         return {}
 
 
@@ -65,7 +65,7 @@ def test_task_wait_on_deps(shutdown_only):
         time.sleep(999)
 
     x = f.remote()
-    [g.remote(x) for _ in range(10)]
+    [g.remote(x) for _ in range(5)]
 
     expected = {
         "RUNNING": 1.0,

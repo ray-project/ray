@@ -28,22 +28,18 @@
 namespace ray {
 namespace core {
 
-// TODO(ekl) move to cc file
+/// This class tracks the number of tasks at a particular state for the
+/// purpose of emitting Prometheus metrics.
 class TaskStatusCounter {
  public:
-  void Swap(rpc::TaskStatus old_status, rpc::TaskStatus new_status) {
-    counters_[old_status] -= 1;
-    counters_[new_status] += 1;
-    RAY_CHECK(counters_[old_status] >= 0);
-    ray::stats::STATS_tasks.Record(counters_[old_status],
-                                   rpc::TaskStatus_Name(old_status));
-    ray::stats::STATS_tasks.Record(counters_[new_status],
-                                   rpc::TaskStatus_Name(new_status));
-  }
-  void Increment(rpc::TaskStatus status) {
-    counters_[status] += 1;
-    ray::stats::STATS_tasks.Record(counters_[status], rpc::TaskStatus_Name(status));
-  }
+  /// Construct a new TaskStatusCounter.
+  TaskStatusCounter();
+
+  /// Track the change of the status of a task from old to new status.
+  void Swap(rpc::TaskStatus old_status, rpc::TaskStatus new_status);
+
+  /// Increment the number of tasks at a specific status by one.
+  void Increment(rpc::TaskStatus status);
 
  private:
   int64_t counters_[rpc::TaskStatus_ARRAYSIZE] = {};

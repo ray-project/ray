@@ -28,6 +28,26 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
+TaskStatusCounter::TaskStatusCounter() {
+  // TODO(ekl): this isn't actually resetting OpenCensus properly
+  for (int i = 0; i < rpc::TaskStatus_ARRAYSIZE; i++) {
+    ray::stats::STATS_tasks.Record(0, rpc::TaskStatus_Name(i));
+  }
+}
+
+void TaskStatusCounter::Swap(rpc::TaskStatus old_status, rpc::TaskStatus new_status) {
+  counters_[old_status] -= 1;
+  counters_[new_status] += 1;
+  RAY_CHECK(counters_[old_status] >= 0);
+  ray::stats::STATS_tasks.Record(counters_[old_status], rpc::TaskStatus_Name(old_status));
+  ray::stats::STATS_tasks.Record(counters_[new_status], rpc::TaskStatus_Name(new_status));
+}
+
+void TaskStatusCounter::Increment(rpc::TaskStatus status) {
+  counters_[status] += 1;
+  ray::stats::STATS_tasks.Record(counters_[status], rpc::TaskStatus_Name(status));
+}
+
 std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     const rpc::Address &caller_address,
     const TaskSpecification &spec,
