@@ -452,11 +452,11 @@ class Trial:
         self._last_result = val
 
     def get_runner_ip(self) -> Optional[str]:
-        if not self.runner:
-            return None
-
         if self.location.hostname:
             return self.location.hostname
+
+        if not self.runner:
+            return None
 
         hostname, pid = ray.get(self.runner.get_current_ip_pid.remote())
         self.location = _Location(hostname, pid)

@@ -537,7 +537,16 @@ class SyncerCallback(Callback):
         if not force and (not self._should_sync(trial) or sync_process.is_running):
             return False
 
-        source_ip = self._trial_ips.setdefault(trial.trial_id, trial.get_runner_ip())
+        source_ip = self._trial_ips.get(trial.trial_id, None)
+
+        if not source_ip:
+            source_ip = trial.get_runner_ip()
+
+            # If it still does not exist, the runner is terminated.
+            if not source_ip:
+                return False
+
+        self._trial_ips[trial.trial_id] = source_ip
 
         try:
             sync_process.wait()
