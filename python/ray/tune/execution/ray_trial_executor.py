@@ -839,7 +839,7 @@ class RayTrialExecutor:
 
     def cleanup(self, trials: List[Trial]) -> None:
         while self._futures:
-            if self._trial_cleanup and (self._trial_cleanup.is_empty()):
+            if self._trial_cleanup and self._trial_cleanup.is_empty():
                 break
 
             # Non-blocking trial cleanup futures
