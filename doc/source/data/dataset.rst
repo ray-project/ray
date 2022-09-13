@@ -204,7 +204,7 @@ Supported Input Formats
      - :func:`ray.data.read_binary_files()`
      - ✅
    * - TFRecord Files
-     - :func:`ray.data.read_tf_records()`
+     - :func:`ray.data.read_tfrecords()`
      - 🚧
    * - Python Objects
      - :func:`ray.data.from_items()`

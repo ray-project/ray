@@ -3275,7 +3275,7 @@ def test_read_s3_file_error(ray_start_regular_shared, s3_path):
     assert error_message in str(e.value)
 
 
-def test_read_tf_records(ray_start_regular_shared, tmp_path):
+def test_read_tfrecords(ray_start_regular_shared, tmp_path):
     import tensorflow as tf
 
     features = tf.train.Features(
@@ -3297,7 +3297,7 @@ def test_read_tf_records(ray_start_regular_shared, tmp_path):
     example = tf.train.Example(features=features)
     path = os.path.join(tmp_path, "data.tfrecords")
     with tf.io.TFRecordWriter(path=path) as writer:
-        writer.write(example.SerializeToString())
+        writer.write(features.SerializeToString())
 
     ds = ray.data.read_tfrecords(path)
 

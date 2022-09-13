@@ -751,8 +751,34 @@ def read_tfrecords(
 ) -> Dataset[PandasRow]:
     """Create a dataset from TFRecord files that contain ``tf.train.Example`` messages.
 
+    .. warning::
+        This function exclusively supports ``tf.train.Example`` messages. If your
+        TFRecord files contain messages of other types, this function will error.
+
     Examples:
-        # TODO
+        >>> import os
+        >>> import tempfile
+        >>> import tensorflow as tf
+        >>> features = tf.train.Features(
+        ...     feature={
+        ...         "length": tf.train.Feature(float_list=tf.train.FloatList(value=[5.1])),
+        ...         "width": tf.train.Feature(float_list=tf.train.FloatList(value=[3.5])),
+        ...         "species": tf.train.Feature(bytes_list=tf.train.BytesList(value=[b"setosa"])),
+        ...     }
+        ... )
+        >>> example = tf.train.Example(features=features)
+        >>> path = os.path.join(tempfile.gettempdir(), "data.tfrecords")
+        >>> with tf.io.TFRecordWriter(path=path) as writer:
+        ...     writer.write(example.SerializeToString())
+
+        This function reads ``tf.train.Example`` messages into a tabular
+        :class:`~ray.data.Dataset`.
+
+        >>> import ray
+        >>> ds = ray.data.read_tfrecords(path)
+        >>> ds.to_pandas()
+           length  width    species
+        0     5.1    3.5  b'setosa'
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.

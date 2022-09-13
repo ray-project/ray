@@ -1,3 +1,4 @@
+from multiprocessing.sharedctypes import Value
 import tempfile
 from typing import Dict, List, Union
 
@@ -15,21 +16,32 @@ class TFRecordDatasource(FileBasedDatasource):
     _FILE_EXTENSION = "tfrecords"
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Block:
+        from google.protobuf.message import DecodeError
+
         with tempfile.NamedTemporaryFile() as temporary_file:
             # TensorFlow doesn't expose a function for reading TFRecords with a file
             # handle; you can only read TFRecords with a file path. So, if the TFRecord
             # doesn't exist locally (e.g., because it's stored in S3), we have to
             # download a copy.
-            if not os.path.exists(path):
+            local_path = path
+            if not os.path.exists(local_path):
                 f.write(temporary_file)
-                path = temporary_file.name
+                local_path = temporary_file.name
 
-            dataset = tf.data.TFRecordDataset([path])
+            dataset = tf.data.TFRecordDataset([local_path])
 
             data = []
             for record in dataset:
                 example = tf.train.Example()
-                example.ParseFromString(record.numpy())
+                try:
+                    example.ParseFromString(record.numpy())
+                except DecodeError:
+                    raise ValueError(
+                        "`TFRecordDatasource` failed to parse `tf.train.Example` "
+                        f"record in '{path}'. This error can occur if your TFRecord "
+                        "file contains a message type other than `tf.train.Example`."
+                    )
+
                 data.append(_convert_example_to_dict(example))
 
             return pd.DataFrame.from_records(data)
