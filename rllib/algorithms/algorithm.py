@@ -231,7 +231,12 @@ class Algorithm(Trainable):
             if not os.path.isfile(state_file):
                 raise ValueError(
                     "Given checkpoint does not seem to be valid! No file "
-                    "with the name `state.pkl` found."
+                    "with the name `state.pkl` found. It's possible that you have "
+                    "passed an older checkpoint version. In this case, do the "
+                    "following:\n"
+                    "1) Create a new Algorithm object using the original config.\n"
+                    "2) Call the `restore()` method of this algo object passing it"
+                    " your older checkpoint dir."
                 )
             state = pickle.load(open(os.path.join(tmp_dir, state_file), "rb"))
 
