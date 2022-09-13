@@ -668,7 +668,7 @@ def get_per_node_breakdown(lm_summary: LoadMetricsSummary):
     for node_ip, usage in lm_summary.usage_by_node.items():
         print(file=sio)
         print(f"Node: {node_ip}", file=sio)
-        print(f" Usage:", file=sio)
+        print(" Usage:", file=sio)
         for line in parse_usage(usage):
             print(f"  {line}", file=sio)
 
@@ -692,7 +692,8 @@ def format_info_string(
         if gcs_request_time:
             header += f"GCS request time: {gcs_request_time:3f}s\n"
         if non_terminated_nodes_time:
-            header += f"Node Provider non_terminated_nodes time: {non_terminated_nodes_time:3f}s\n"
+            header += ("Node Provider non_terminated_nodes time: "
+            f"{non_terminated_nodes_time:3f}s\n")
 
     available_node_report_lines = []
     for node_type, count in autoscaler_summary.active_nodes.items():
