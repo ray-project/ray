@@ -143,10 +143,6 @@ class ImpalaConfig(AlgorithmConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-        # TODO: IMPALA/APPO had to be rolled-back to old execution-plan API due
-        #  to issues with the MixIn Buffer (in process of being fixed atm).
-        self._disable_execution_plan_api = False
-
         # Deprecated value.
         self.num_data_loader_buffers = DEPRECATED_VALUE
 
