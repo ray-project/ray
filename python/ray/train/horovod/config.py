@@ -1,10 +1,12 @@
-from typing import Optional, Set
+import sys
+from typing import Optional, Set, Dict
 
 import os
 from dataclasses import dataclass
 
 import ray
-from ray.train.backend import BackendConfig, Backend
+from ray.air._internal.torch_utils import contains_tensor
+from ray.train.backend import BackendConfig, Backend, EncodedData
 from ray.train._internal.utils import update_env_vars
 from ray.train._internal.worker_group import WorkerGroup, Worker
 
@@ -128,6 +130,37 @@ class _HorovodBackend(Backend):
         coordinator_envs.update(nics_to_env_var(nics))
 
         worker_group.execute(update_env_vars, coordinator_envs)
+
+    @staticmethod
+    def encode_data(data_dict: Dict) -> EncodedData:
+        """Logic to encode a data dict before sending to the driver.
+
+        This function will be called on the workers for any data that is
+        sent to the driver via ``session.report()``.
+        """
+        # If torch is imported, we can use it to serialize the data dict
+        # into bytes. This will prevent e.g. GPU deserialization errors.
+        if "torch" in sys.modules and contains_tensor(data_dict):
+            from ray.train.torch.config import _TorchBackend
+
+            return _TorchBackend.encode_data(data_dict)
+
+        return data_dict
+
+    @staticmethod
+    def decode_data(encoded_data: EncodedData) -> Dict:
+        """Logic to decode an encoded data dict.
+
+        This function will be called on the driver after receiving the
+        encoded data dict from the worker.
+        """
+        # See encode_data
+        if "torch" in sys.modules and isinstance(encoded_data, bytes):
+            from ray.train.torch.config import _TorchBackend
+
+            return _TorchBackend.decode_data(encoded_data)
+
+        return encoded_data
 
 
 def _init_env_vars(world_rank: int, world_size: int, node_id: str):
