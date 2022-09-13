@@ -861,8 +861,8 @@ class TorchPolicy(Policy):
         """
         os.makedirs(export_dir, exist_ok=True)
 
-        seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
         if onnx:
+            seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
             self._lazy_tensor_dict(self._dummy_batch)
             # Provide dummy state inputs if not an RNN (torch cannot jit with
             # returned empty internal states list).
@@ -906,6 +906,8 @@ class TorchPolicy(Policy):
             try:
                 torch.save(self.model, f=filename)
             except Exception:
+                if os.path.exists(filename):
+                    os.remove(filename)
                 logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 
     @override(Policy)

@@ -68,6 +68,8 @@ CONFIGS = {
 def export_test(alg_name, framework="tf", multi_agent=False):
     cls, config = get_algorithm_class(alg_name, return_config=True)
     config["framework"] = framework
+    # Switch on saving native DL-framework (tf, torch) model files.
+    config["checkpoints_contain_native_model_files"] = True
     if "DDPG" in alg_name or "SAC" in alg_name:
         algo = cls(config=config, env="Pendulum-v1")
         test_obs = np.array([[0.1, 0.2, 0.3]])
@@ -114,7 +116,7 @@ def export_test(alg_name, framework="tf", multi_agent=False):
 
         # Test loading exported model and perform forward pass.
         if framework == "torch":
-            model = torch.load(os.path.join(export_dir, "model.pickle"))
+            model = torch.load(os.path.join(export_dir, "model.pt"))
             assert model
             results = model(
                 input_dict={"obs": torch.from_numpy(test_obs)},
@@ -125,7 +127,7 @@ def export_test(alg_name, framework="tf", multi_agent=False):
             assert len(results) == 2
             assert results[0].shape == (1, 2)
             assert results[1] == [torch.tensor(0)]  # dummy
-        else:
+        elif os.path.exists(os.path.join(export_dir, "saved_model.pb")):
             model = tf.saved_model.load(export_dir)
             assert model
             results = model(tf.convert_to_tensor(test_obs, dtype=tf.float32))
@@ -142,36 +144,34 @@ def export_test(alg_name, framework="tf", multi_agent=False):
     # Expect an error due to not being able to identify, which exact keras
     # base_model to export (e.g. SACTfModel has two keras.Models in it:
     # self.q_net.base_model and self.action_model.base_model).
-    error = False
-    try:
-        if multi_agent:
-            algo.export_policy_model(export_dir, policy_id="pol1")
-            algo.export_policy_model(export_dir + "_2", policy_id="pol2")
-        else:
-            algo.export_policy_model(export_dir, policy_id=DEFAULT_POLICY_ID)
-    except ValueError:
-        error = True
+    if multi_agent:
+        algo.export_policy_model(export_dir, policy_id="pol1")
+        algo.export_policy_model(export_dir + "_2", policy_id="pol2")
+    else:
+        algo.export_policy_model(export_dir, policy_id=DEFAULT_POLICY_ID)
 
     # Test loading exported model and perform forward pass.
     if framework == "torch":
-        model = torch.load(os.path.join(export_dir, "model.pt"))
-        assert model
-        results = model(
-            input_dict={"obs": torch.from_numpy(test_obs)},
-            # TODO (sven): Make non-RNN models NOT expect these args at all.
-            state=[torch.tensor(0)],  # dummy value
-            seq_lens=torch.tensor(0),  # dummy value
-        )
-        assert len(results) == 2
-        assert results[0].shape in [(1, 2), (1, 3), (1, 256)]
-        assert results[1] == [torch.tensor(0)]  # dummy
+        filename = os.path.join(export_dir, "model.pt")
+        if os.path.exists(filename):
+            model = torch.load(filename)
+            assert model
+            results = model(
+                input_dict={"obs": torch.from_numpy(test_obs)},
+                # TODO (sven): Make non-RNN models NOT expect these args at all.
+                state=[torch.tensor(0)],  # dummy value
+                seq_lens=torch.tensor(0),  # dummy value
+            )
+            assert len(results) == 2
+            assert results[0].shape in [(1, 2), (1, 3), (1, 256)]
+            assert results[1] == [torch.tensor(0)]  # dummy
 
     # Only if keras model gets properly saved by the Policy's export_model() method.
     # NOTE: This is not the case (yet) for TF Policies like SAC, which use ModelV2s
     # that have more than one keras "base_model" properties in them. For example,
     # SACTfModel contains `q_net` and `action_model`, both of which have their own
     # `base_model`.
-    elif not error:
+    elif os.path.exists(os.path.join(export_dir, "saved_model.pb")):
         model = tf.saved_model.load(export_dir)
         assert model
         results = model(tf.convert_to_tensor(test_obs, dtype=tf.float32))
@@ -180,7 +180,7 @@ def export_test(alg_name, framework="tf", multi_agent=False):
         # TODO (sven): Make non-RNN models NOT return states (empty list).
         assert results[1].shape == (1, 1)  # dummy state-out
 
-    if not error:
+    if os.path.exists(export_dir):
         shutil.rmtree(export_dir)
         if multi_agent:
             shutil.rmtree(export_dir + "_2")
@@ -207,7 +207,7 @@ class TestExportModel(unittest.TestCase):
 
     def test_export_ddpg(self):
         # NOTE: DDPGTorchModel cannot be pickled due to a Lambda layer being used in it.
-        for fw in framework_iterator(frameworks=("tf", "tf2")):
+        for fw in framework_iterator():
             export_test("DDPG", fw)
 
     def test_export_dqn(self):

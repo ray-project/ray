@@ -974,6 +974,8 @@ class TorchPolicyV2(Policy):
             try:
                 torch.save(self.model, f=filename)
             except Exception:
+                if os.path.exists(filename):
+                    os.remove(filename)
                 logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 
     @override(Policy)
