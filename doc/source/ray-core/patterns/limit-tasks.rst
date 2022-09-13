@@ -28,8 +28,6 @@ Code example
     :language: python
     :start-after: __without_backpressure_start__
     :end-before: __without_backpressure_end__
-    :start-after: __with_backpressure_start__
-    :end-before: __with_backpressure_end__
 
 **With backpressure:**
 
@@ -37,7 +35,3 @@ Code example
     :language: python
     :start-after: __with_backpressure_start__
     :end-before: __with_backpressure_end__
-.. literalinclude:: ../doc_code/limit_tasks.py
-    :language: python
-    :start-after: __without_backpressure_start__
-    :end-before: __without_backpressure_end__
