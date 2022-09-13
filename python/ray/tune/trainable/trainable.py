@@ -1134,7 +1134,8 @@ class Trainable:
         This process should be lightweight. Per default,
 
         You can kill a Ray actor by calling `ray.kill(actor)`
-        on the actor.
+        on the actor or removing all references to it and waiting for garbage
+        collection
 
         .. versionadded:: 0.8.7
         """
