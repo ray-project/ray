@@ -2963,9 +2963,10 @@ def test_ray_status_e2e(shutdown_only):
         actor = Actor.remote()
         ray.get(actor.ping.remote())
 
-        subprocess.check_output("ray status", shell=True)
-        subprocess.check_output("ray status -v", shell=True)
-        subprocess.check_output("ray status -vv", shell=True)
+        "Demands" in subprocess.check_output("ray status", shell=True)
+        "Total Demands" not in subprocess.check_output("ray status", shell=True)
+        "Total Demands" in subprocess.check_output("ray status -v", shell=True)
+        "Total Demands" in subprocess.check_output("ray status --verbose", shell=True)
     finally:
         cluster.shutdown()
 
