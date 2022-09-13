@@ -631,3 +631,9 @@ class SyncerCallback(Callback):
                 f"At least one trial failed to sync down when waiting for all "
                 f"trials to sync: \n{sync_str}"
             )
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        for remove in ["_sync_times", "_sync_processes", "_trial_ips"]:
+            state.pop(remove, None)
+        return state
