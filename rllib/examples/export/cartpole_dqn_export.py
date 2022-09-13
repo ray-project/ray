@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import numpy as np
 import os
 import ray
 
@@ -12,8 +13,10 @@ ray.init(num_cpus=10)
 
 
 def train_and_export(algo_name, num_steps, model_dir, ckpt_dir):
-    cls = get_algorithm_class(algo_name)
-    alg = cls(config={}, env="CartPole-v0")
+    cls, config = get_algorithm_class(algo_name, return_config=True)
+    # Set exporting native (DL-framework) model files to True.
+    config["checkpoints_contain_native_model_files"] = True
+    alg = cls(config=config, env="CartPole-v0")
     for _ in range(num_steps):
         alg.train()
 
@@ -41,21 +44,23 @@ def restore_saved_model(export_dir):
 
 
 def restore_checkpoint(export_dir):
-    sess = tf1.Session()
-    saver = tf1.train.import_meta_graph(os.path.join(export_dir, meta_file))
-    saver.restore(sess, os.path.join(export_dir, prefix))
-    print("Checkpoint restored!")
-    print("Variables Information:")
-    for v in tf1.trainable_variables():
-        value = sess.run(v)
-        print(v.name, value)
+    # Load the model from the checkpoint.
+    model = tf.saved_model.load(export_dir)
+    # Perform a dummy (CartPole) forward pass.
+    test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
+    results = model(tf.convert_to_tensor(test_obs, dtype=tf.float32))
+    # Check results for correctness.
+    assert len(results) == 2
+    assert results[0].shape == (1, 2)
+    # TODO (sven): Make non-RNN models NOT return states (empty list).
+    assert results[1].shape == (1, 1)  # dummy state-out
 
 
 if __name__ == "__main__":
-    algo = "DQN"
+    algo = "PPO"
     model_dir = os.path.join(ray._private.utils.get_user_temp_dir(), "model_export_dir")
     ckpt_dir = os.path.join(ray._private.utils.get_user_temp_dir(), "ckpt_export_dir")
-    num_steps = 3
+    num_steps = 1
     train_and_export(algo, num_steps, model_dir, ckpt_dir)
     restore_saved_model(model_dir)
     restore_checkpoint(ckpt_dir)
