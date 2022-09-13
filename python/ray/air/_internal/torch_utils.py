@@ -1,10 +1,13 @@
 from typing import Dict, List, Optional, Union
 
+import logging
 import numpy as np
 import pandas as pd
 import torch
 
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
+
+logger = logging.getLogger(__name__)
 
 
 def convert_pandas_to_torch_tensor(
@@ -168,11 +171,16 @@ def load_torch_model(
 ) -> torch.nn.Module:
     """Loads a PyTorch model from the provided ``saved_model``.
 
-    If ``saved_model`` is a torch Module, then return it directly. If ``saved_model`` is
-    a torch state dict, then load it in the ``model_definition`` and return the loaded
-    model.
+    ``model_definition`` is used and only used when ``saved_model`` is
+    a torch state dict, which will be loaded into ``model_definition``.
+    Otherwise, ``model_definition`` is discarded.
     """
     if isinstance(saved_model, torch.nn.Module):
+        if model_definition:
+            logger.warning(
+                "TorchCheckpoint already contains all information needed. "
+                "Discarding provided `model_definition`. "
+            )
         return saved_model
     elif isinstance(saved_model, dict):
         if not model_definition:

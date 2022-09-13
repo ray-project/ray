@@ -103,7 +103,7 @@ class TorchCheckpoint(Checkpoint):
         Args:
             model: If the checkpoint contains a model state dict, and not
                 the model itself, then the state dict will be loaded to this
-                ``model``.
+                ``model``. Otherwise, the model will be discarded.
         """
         saved_model, _ = _load_checkpoint(self, "TorchTrainer")
         model = load_torch_model(saved_model=saved_model, model_definition=model)
