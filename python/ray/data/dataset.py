@@ -320,7 +320,7 @@ class Dataset(Generic[T]):
     ) -> "Dataset[Any]":
         """Apply the given function to batches of data.
 
-        Batches are represented as dataframes, arrays, or lists. The default batch
+        Batches are represented as dataframes, ndarrays, or lists. The default batch
         type is determined by your dataset's schema. To determine the default batch
         type, call :meth:`~Dataset.native_batch_format`. Alternatively, set the batch
         type with ``batch_format``.
@@ -333,7 +333,8 @@ class Dataset(Generic[T]):
             :math:`n` is the dataset size and :math:`p` is the parallelism.
 
         .. tip::
-            Consider using :class:`~ray.data.preprocessors.BatchMapper`. It's more
+            If you're using :ref:`Ray AIR <air>` for training or batch inference,
+            consider using :class:`~ray.data.preprocessors.BatchMapper`. It's more
             performant and easier to use.
 
         Examples:
@@ -341,8 +342,8 @@ class Dataset(Generic[T]):
             >>> import pandas as pd
             >>> import ray
             >>> df = pd.DataFrame({
-            ...     "name": ["?", "Grace Hopper", "Rafael Nadal"],
-            ...     "age": ["22", "85", "36"]
+            ...     "name": ["Luna", "Rory", "Scout"],
+            ...     "age": [4, 14, 9]
             ... })
             >>> ds = ray.data.from_pandas(df)
             >>> ds
@@ -358,11 +359,11 @@ class Dataset(Generic[T]):
             of data. :meth:`~Dataset.map_batches` applies the function in parallel.
 
             >>> def map_fn(batch: pd.DataFrame) -> pd.DataFrame:
-            ...     batch["age"] = batch["age"].astype(int)
+            ...     batch["age_in_dog_years"] = 7 * batch["age"]
             ...     return batch
             >>> ds = ds.map_batches(map_fn)
             >>> ds
-            Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64})
+            Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64, age_in_dog_years: int64})
 
             Your ``fn`` can return a different type than the input type. To learn more
             about supported output types, read
@@ -370,7 +371,7 @@ class Dataset(Generic[T]):
 
             >>> from typing import List
             >>> def map_fn(batch: pd.DataFrame) -> List[int]:
-            ...     return list(batch["age"])
+            ...     return list(batch["age_in_dog_years"])
             >>> ds = ds.map_batches(map_fn)
             >>> ds
             Dataset(num_blocks=1, num_rows=3, schema=<class 'int'>)
