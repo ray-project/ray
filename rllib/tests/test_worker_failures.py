@@ -10,6 +10,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.a3c import A3CConfig
 from ray.rllib.algorithms.apex_dqn import ApexDQNConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.algorithms.pg import PG, PGConfig
 from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
@@ -19,8 +20,6 @@ from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import register_env
-
-from rllib.algorithms.dqn.dqn import DQNConfig
 
 
 @ray.remote
