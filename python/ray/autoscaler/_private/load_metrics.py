@@ -6,7 +6,6 @@ from typing import Dict, List
 
 import numpy as np
 
-import ray._private.ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 from ray.autoscaler._private.resource_demand_scheduler import NodeIP, ResourceDict
@@ -49,7 +48,7 @@ def freq_of_dicts(
             is a tuple containing a unique entry from `dicts` and its
             corresponding frequency count.
     """
-    freqs = Counter(map(lambda d: serializer(d), dicts))
+    freqs = Counter(serializer(d) for d in dicts)
     as_list = []
     for as_set, count in freqs.items():
         as_list.append((deserializer(as_set), count))
