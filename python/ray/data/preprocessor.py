@@ -196,10 +196,7 @@ class Preprocessor(abc.ABC):
         * Implementation is defined as overriding the method in a sub-class.
         """
 
-        assert data_format in ("pandas", "arrow", "numpy")
-        has_transform_arrow = (
-            self.__class__._transform_arrow != Preprocessor._transform_arrow
-        )
+        assert data_format in ("pandas", "arrow")
         has_transform_pandas = (
             self.__class__._transform_pandas != Preprocessor._transform_pandas
         )
@@ -210,18 +207,12 @@ class Preprocessor(abc.ABC):
         # Prioritize native transformation type to minimize data conversion cost.
         if data_format == "pandas" and has_transform_pandas:
             transform_type = "pandas"
-        elif data_format == "arrow" and has_transform_arrow:
-            transform_type = "arrow"
-        elif data_format == "numpy" and has_transform_numpy:
-            transform_type = "numpy"
-        # Conversion is inevitable. Later on we should add support for picking
-        # the fastest conversion path.
-        elif has_transform_pandas:
-            transform_type = "pandas"
-        elif has_transform_arrow:
-            transform_type = "arrow"
-        elif has_transform_numpy:
-            transform_type = "numpy"
+        elif data_format == "arrow":
+            # Prioritize arrow->numpy for faster conversion.
+            if has_transform_numpy:
+                transform_type = "numpy"
+            elif has_transform_pandas:
+                transform_type = "pandas"
         else:
             raise NotImplementedError(
                 "None of `_transform_arrow`, `_transform_pandas` or "
@@ -233,21 +224,19 @@ class Preprocessor(abc.ABC):
         # TODO(matt): Expose `batch_size` or similar configurability.
         # The default may be too small for some datasets and too large for others.
 
-        # TODO(jiaodong): Numpy is not applicable yet unless we have a numpy
-        # dataset format
         dataset_format = dataset._dataset_format()
-        if dataset_format not in ("pandas", "arrow", "numpy"):
+        if dataset_format not in ("pandas", "arrow"):
             raise ValueError(
-                f"Unsupported Dataset format: '{dataset_format}'. Only 'pandas', "
-                "'arrow' and 'numpy' Dataset formats are supported."
+                f"Unsupported Dataset format: '{dataset_format}'. Only 'pandas' "
+                "and 'arrow' Dataset formats are supported."
             )
 
         transform_type = self._determine_transform_to_use(dataset_format)
 
+        # Our user facing batch format should only be pandas or numpy, other
+        # formats {arrow, simple} are internal.
         if transform_type == "pandas":
             return dataset.map_batches(self._transform_pandas, batch_format="pandas")
-        elif transform_type == "arrow":
-            return dataset.map_batches(self._transform_arrow, batch_format="pyarrow")
         elif transform_type == "numpy":
             return dataset.map_batches(self._transform_numpy, batch_format="numpy")
         else:
