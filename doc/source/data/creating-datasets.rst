@@ -180,7 +180,7 @@ Supported File Formats
 
 .. tabbed:: TFRecords
 
-  Call :func:`~ray.data.read_tfrecords` to read TFRecord files a tabular
+  Call :func:`~ray.data.read_tfrecords` to read TFRecord files into a tabular
   :class:`~ray.data.Dataset`.
 
   .. warning::
