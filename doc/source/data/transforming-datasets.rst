@@ -4,10 +4,11 @@
 Transforming Datasets
 =====================
 
-Datasets transformations take in datasets and produce new datasets.
-For example, *map* is a transformation that applies a user-defined function (UDF)
-on each dataset record and returns a new dataset as the result. Datasets
-transformations can be composed to express a chain of computations.
+Datasets transformations take in datasets and produce new datasets. For example, *map*
+is a transformation that applies a
+:ref:`user-defined function <transform_datasets_writing_udfs>` on each dataset record
+and returns a new dataset as the result. Datasets transformations can be composed to
+express a chain of computations.
 
 .. _transform_datasets_transformations:
 
@@ -32,7 +33,7 @@ Here is a table listing some common transformations supported by Ray Datasets.
      - Description
    * - :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
      - One-to-one
-     - Apply a given function to batches of records of this dataset. 
+     - Apply a given function to batches of records of this dataset.
    * - :meth:`ds.add_column() <ray.data.Dataset.add_column>`
      - One-to-one
      - Apply a given function to batches of records to create a new column.
