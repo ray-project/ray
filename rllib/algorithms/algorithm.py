@@ -1830,10 +1830,15 @@ class Algorithm(Trainable):
         state_file = os.path.join(checkpoint_dir, "state.pkl")
         pickle.dump(state, open(state_file, "wb"))
         # Write all native models to disk.
-        for pid, policy in self.workers.local_worker().policy_map.items():
-            policy_dir = os.path.join(checkpoint_dir, "models", pid)
-            os.makedirs(policy_dir, exist_ok=True)
-            policy.export_model(export_dir=policy_dir)
+        if (
+            hasattr(self, "workers")
+            and isinstance(self.workers, WorkerSet)
+            and self.config["checkpoints_contain_native_model_files"]
+        ):
+            for pid, policy in self.workers.local_worker().policy_map.items():
+                policy_dir = os.path.join(checkpoint_dir, "models", pid)
+                os.makedirs(policy_dir, exist_ok=True)
+                policy.export_model(export_dir=policy_dir)
         return checkpoint_dir
 
     @override(Trainable)

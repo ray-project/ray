@@ -107,13 +107,12 @@ def learn_test_plus_evaluate(algo, env="CartPole-v0"):
             "ls {}/default/*/checkpoint_*/state.pkl".format(tmp_dir)
         ).read()[:-1]
         checkpoints = [
-            cp
-            for cp in checkpoint_path.split("\n")
-            if re.match(r"^.+state.pkl$", cp)
+            cp for cp in checkpoint_path.split("\n") if re.match(r"^.+state.pkl$", cp)
         ]
         # Sort by number and pick last (which should be the best checkpoint).
         last_checkpoint = sorted(
-            checkpoints, key=lambda x: int(re.match(r".+checkpoint_(\d+).+", x).group(1))
+            checkpoints,
+            key=lambda x: int(re.match(r".+checkpoint_(\d+).+", x).group(1)),
         )[-1]
         assert re.match(r"^.+checkpoint_\d+/state.pkl$", last_checkpoint)
         if not os.path.exists(last_checkpoint):

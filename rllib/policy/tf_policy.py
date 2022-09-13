@@ -572,6 +572,7 @@ class TFPolicy(Policy):
             hasattr(self, "model")
             and hasattr(self.model, "base_model")
             and isinstance(self.model.base_model, tf.keras.Model)
+            and self.config["checkpoints_contain_native_model_files"]
         ):
             with self.get_session().graph.as_default():
                 try:

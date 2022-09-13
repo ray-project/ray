@@ -969,7 +969,7 @@ class TorchPolicyV2(Policy):
             )
         # Save the torch.Model (architecture and weights, so it can be retrieved
         # w/o access to the original (custom) Model or Policy code).
-        else:
+        elif self.config["checkpoints_contain_native_model_files"]:
             filename = os.path.join(export_dir, "model.pt")
             try:
                 torch.save(self.model, f=filename)
