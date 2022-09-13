@@ -38,7 +38,7 @@ class TFRecordDatasource(FileBasedDatasource):
                 except DecodeError:
                     warnings.warn(
                         "`TFRecordDatasource` failed to parse `tf.train.Example` "
-                        f"record in '{path}'. This error can occur if your TFRecord "
+                        f"message in '{path}'. This warning can occur if your TFRecord "
                         "file contains a message type other than `tf.train.Example`."
                     )
 
