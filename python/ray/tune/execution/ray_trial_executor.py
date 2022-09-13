@@ -40,6 +40,11 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_GET_TIMEOUT = 60.0  # seconds
 
+DEFAULT_ENV_VARS = {
+    # https://github.com/ray-project/ray/issues/28197
+    "PL_DISABLE_FORK": "1"
+}
+
 
 class _ActorClassCache:
     """Caches actor classes.
@@ -66,7 +71,10 @@ class _ActorClassCache:
 
     def get(self, trainable_cls):
         """Gets the wrapped trainable_cls, otherwise calls ray.remote."""
-        runtime_env = {"env_vars": {"TUNE_ORIG_WORKING_DIR": os.getcwd()}}
+        env_vars = DEFAULT_ENV_VARS.copy()
+        env_vars["TUNE_ORIG_WORKING_DIR"] = os.getcwd()
+
+        runtime_env = {"env_vars": env_vars}
         if trainable_cls not in self._cache:
             remote_cls = ray.remote(runtime_env=runtime_env)(trainable_cls)
             self._cache[trainable_cls] = remote_cls
