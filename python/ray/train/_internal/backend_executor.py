@@ -459,6 +459,7 @@ class BackendExecutor:
         results = self.get_with_failure_handling(futures)
         return results
 
+
     def get_with_failure_handling(self, remote_values):
         """Gets the remote values while handling for worker failures.
 
