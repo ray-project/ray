@@ -32,14 +32,14 @@ class TaskExecutionMetadata:
 class Task:
     """Data class for a workflow task."""
 
-    name: str
+    task_id: str
     options: WorkflowTaskRuntimeOptions
     user_metadata: Dict
     func_body: Optional[Callable]
 
     def to_dict(self) -> Dict:
         return {
-            "name": self.name,
+            "task_id": self.task_id,
             "task_options": self.options.to_dict(),
             "user_metadata": self.user_metadata,
         }
