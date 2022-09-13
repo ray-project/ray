@@ -11,6 +11,13 @@ from ray._private.test_utils import (
 )
 
 
+METRIC_CONFIG = {
+    "_system_config": {
+        "metrics_report_interval_ms": 100,
+    }
+}
+
+
 def tasks_by_state(info) -> dict:
     metrics_page = "localhost:{}".format(info["metrics_export_port"])
     res = fetch_prometheus_metrics([metrics_page])
@@ -26,7 +33,7 @@ def tasks_by_state(info) -> dict:
 
 
 def test_task_basic(shutdown_only):
-    info = ray.init(num_cpus=2)
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
     @ray.remote
     def f():
@@ -47,7 +54,7 @@ def test_task_basic(shutdown_only):
 
 
 def test_task_wait_on_deps(shutdown_only):
-    info = ray.init(num_cpus=2)
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
     @ray.remote
     def f():
@@ -72,12 +79,13 @@ def test_task_wait_on_deps(shutdown_only):
 
 
 def test_actor_tasks_queued(shutdown_only):
-    info = ray.init(num_cpus=2)
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
     @ray.remote
     class F:
         def f(self):
             time.sleep(999)
+
         def g(self):
             pass
 
@@ -100,7 +108,7 @@ def test_actor_tasks_queued(shutdown_only):
 
 
 def test_task_finish(shutdown_only):
-    info = ray.init(num_cpus=2)
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
     @ray.remote
     def f():
@@ -125,14 +133,14 @@ def test_task_finish(shutdown_only):
 
 
 def test_task_retry(shutdown_only):
-    info = ray.init(num_cpus=2)
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
     @ray.remote(retry_exceptions=True)
     def f():
         assert False
 
     f.remote()
-    time.sleep(2)  # Enough sleep so that retries have time to run.
+    time.sleep(1)  # Enough sleep so that retries have time to run.
 
     expected = {
         "RUNNING": 0.0,

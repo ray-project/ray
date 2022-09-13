@@ -295,7 +295,6 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
         for v_data in view_data:
             if v_data.tag_value_aggregation_data_map:
                 self.collector.add_view_data(v_data)
-                print("ADD VIEW DATA", v_data)
 
     def serve_http(self):
         """serve_http serves the Prometheus endpoint."""

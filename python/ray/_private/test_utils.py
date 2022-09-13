@@ -820,7 +820,15 @@ def fetch_prometheus(prom_addresses):
     return components_dict, metric_names, metric_samples
 
 
-def fetch_prometheus_metrics(prom_addresses):
+def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
+    """Return prometheus metrics from the given addresses.
+
+    Args:
+        prom_addresses: List of metrics_agent addresses to collect metrics from.
+
+    Returns:
+        Dict mapping from metric name to list of samples for the metric.
+    """
     _, _, samples = fetch_prometheus(prom_addresses)
     samples_by_name = defaultdict(list)
     for sample in samples:
