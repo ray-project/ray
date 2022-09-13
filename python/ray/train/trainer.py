@@ -43,6 +43,7 @@ from ray.train.utils import construct_path
 from ray.train.worker_group import WorkerGroup
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
+from ray.util.ml_utils.node import force_on_current_node
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -210,6 +211,8 @@ class Trainer:
         }
 
         remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
+        # Force BackendExecutor actor to be scheduled on the head node.
+        remote_executor = force_on_current_node(remote_executor)
 
         backend_executor_actor = remote_executor.options(
             runtime_env=runtime_env
