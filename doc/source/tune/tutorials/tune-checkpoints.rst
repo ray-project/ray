@@ -22,13 +22,16 @@ can be resumed from once it is interrupted or failed.
 It is also useful after a Tune experiment is done and one wants to load the Experiment checkpoint for
 post-analysis.
 
-Trial checkpoint is the per trial state that is directly saved by the trainable itself. Model and model
+Trial checkpoint is the per trial state that is directly saved by the trainable itself. Model or model
 state is the most common form of Trial checkpoint. This is useful mostly for two reasons:
 
 - Some HPO algorithms such as HyperBand and PBT requires this capability in order to constantly pause
   and restart certain trials.
 - This allows for training progress to be saved periodically so that a particular trial can be restarted
   from its latest checkpoint if the machine it is trained on dies.
+- The checkpoint can be later used for other downstream tasks like batch inference.
+
+Everything that is reported by `session.report()` is Trial checkpoint. See :ref:`Here <air-checkpoint-ref>`.
 
 .. _tune-checkpoint-syncing:
 
