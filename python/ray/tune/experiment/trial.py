@@ -458,7 +458,7 @@ class Trial:
         if self.location.hostname:
             return self.location.hostname
 
-        hostname, pid = ray.get(self.runner.get_current_ip_pid())
+        hostname, pid = ray.get(self.runner.get_current_ip_pid.remote())
         self.location = _Location(hostname, pid)
         return self.location.hostname
 
