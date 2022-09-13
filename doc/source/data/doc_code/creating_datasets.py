@@ -590,3 +590,13 @@ ds = ray.data.read_parquet(
 )
 # __read_parquet_az_end__
 # fmt: on
+
+# __read_tfrecords_begin__
+# Create a tabular Dataset by reading a TFRecord file.
+ds = ray.data.read_tfrecords(path)
+# -> Dataset(num_blocks=10, num_rows=150, schema={length: float64, width: float64, species: object})
+
+ds.show(1)
+# -> {'length': 5.099999904632568, 'width': 3.5, 'species': b'setosa'}
+
+# __read_tfrecords_end__

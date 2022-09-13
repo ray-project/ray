@@ -753,7 +753,7 @@ def read_tfrecords(
 
     .. warning::
         This function exclusively supports ``tf.train.Example`` messages. Messages that
-        aren't of type ``tf.train.Example`` are skipped.
+        aren't of type ``tf.train.Example`` are ignored.
 
     Examples:
         >>> import os

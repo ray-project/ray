@@ -180,8 +180,16 @@ Supported File Formats
 
 .. tabbed:: TFRecords
 
-  TODO
+  Call :func:`~ray.data.read_tfrecords` to read TFRecord files a tabular
+  :class:`~ray.data.Dataset`.
 
+  .. warning::
+      Messages that aren't of type ``tf.train.Example`` are ignored.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __read_tfrecords_begin__
+    :end-before: __read_tfrecords_end__
 
 .. _dataset_reading_remote_storage:
 
