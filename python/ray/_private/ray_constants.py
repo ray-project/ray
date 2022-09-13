@@ -1,7 +1,6 @@
 """Ray constants used in the Python code."""
 
 import logging
-import math
 import os
 
 logger = logging.getLogger(__name__)
