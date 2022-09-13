@@ -449,7 +449,7 @@ class PopulationBasedTraining(FIFOScheduler):
                     decision = TrialScheduler.PAUSE
                     break
             self._checkpoint_or_exploit(
-                trial, trial_runner.trial_executor, upper_quantile, lower_quantile
+                trial, trial_runner, upper_quantile, lower_quantile
             )
             return TrialScheduler.NOOP if trial.status == Trial.PAUSED else decision
         else:
@@ -476,7 +476,7 @@ class PopulationBasedTraining(FIFOScheduler):
                     logger.debug("Perturbing Trial {}".format(t))
                     self._trial_state[t].last_perturbation_time = time
                     self._checkpoint_or_exploit(
-                        t, trial_runner.trial_executor, upper_quantile, lower_quantile
+                        t, trial_runner, upper_quantile, lower_quantile
                     )
 
                 all_train_times = [
@@ -522,11 +522,12 @@ class PopulationBasedTraining(FIFOScheduler):
     def _checkpoint_or_exploit(
         self,
         trial: Trial,
-        trial_executor: "trial_runner.RayTrialExecutor",
+        trial_runner: "trial_runner.TrialRunner",
         upper_quantile: List[Trial],
         lower_quantile: List[Trial],
     ):
         """Checkpoint if in upper quantile, exploits if in lower."""
+        trial_executor = trial_runner.trial_executor
         state = self._trial_state[trial]
         if trial in upper_quantile:
             # The trial last result is only updated after the scheduler
@@ -554,7 +555,7 @@ class PopulationBasedTraining(FIFOScheduler):
                     " Skip exploit for Trial {}".format(trial)
                 )
                 return
-            self._exploit(trial_executor, trial, trial_to_clone)
+            self._exploit(trial_runner, trial, trial_to_clone)
 
     def _log_config_on_step(
         self,
@@ -605,7 +606,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def _exploit(
         self,
-        trial_executor: "trial_runner.RayTrialExecutor",
+        trial_runner: "trial_runner.TrialRunner",
         trial: Trial,
         trial_to_clone: Trial,
     ):
@@ -613,6 +614,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
         If specified, also logs the updated hyperparam state.
         """
+        trial_executor = trial_runner.trial_executor
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
         logger.info(
@@ -655,8 +657,7 @@ class PopulationBasedTraining(FIFOScheduler):
                     " please raise an issue on Ray Github."
                 )
         else:
-            trial_executor.stop_trial(trial)
-            trial_executor.set_status(trial, Trial.PAUSED)
+            trial_runner.pause_trial(trial, should_checkpoint=False)
         trial.set_experiment_tag(new_tag)
         trial.set_config(new_config)
         trial.on_checkpoint(new_state.last_checkpoint)

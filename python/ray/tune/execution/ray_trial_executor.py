@@ -606,12 +606,13 @@ class RayTrialExecutor:
             out = self._find_future(trial)
             for result_id in out:
                 self._futures.pop(result_id)
+        trial.saving_to = None
 
     def continue_training(self, trial: Trial) -> None:
         """Continues the training of this trial."""
         self._train(trial)
 
-    def pause_trial(self, trial: Trial) -> None:
+    def pause_trial(self, trial: Trial, should_checkpoint: bool = True) -> None:
         """Pauses the trial.
 
         We want to release resources (specifically GPUs) when pausing an
@@ -619,7 +620,8 @@ class RayTrialExecutor:
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
-            self.save(trial, CheckpointStorage.MEMORY)
+            if should_checkpoint:
+                self.save(trial, CheckpointStorage.MEMORY)
             self.stop_trial(trial)
             self.set_status(trial, Trial.PAUSED)
         except Exception:
