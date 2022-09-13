@@ -36,7 +36,8 @@ def test_generator_oom(ray_start_regular):
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
-def test_generator_returns(ray_start_regular, use_actors):
+@pytest.mark.parametrize("store_in_plasma", [False, True])
+def test_generator_returns(ray_start_regular, use_actors, store_in_plasma):
     remote_generator_fn = None
     if use_actors:
 
@@ -45,18 +46,24 @@ def test_generator_returns(ray_start_regular, use_actors):
             def __init__(self):
                 pass
 
-            def generator(self, num_returns):
+            def generator(self, num_returns, store_in_plasma):
                 for i in range(num_returns):
-                    yield i
+                    if store_in_plasma:
+                        yield np.ones(1_000_000, dtype=np.int8) * i
+                    else:
+                        yield [i]
 
         g = Generator.remote()
         remote_generator_fn = g.generator
     else:
 
         @ray.remote(max_retries=0)
-        def generator(num_returns):
+        def generator(num_returns, store_in_plasma):
             for i in range(num_returns):
-                yield i
+                if store_in_plasma:
+                    yield np.ones(1_000_000, dtype=np.int8) * i
+                else:
+                    yield [i]
 
         remote_generator_fn = generator
 
@@ -66,24 +73,43 @@ def test_generator_returns(ray_start_regular, use_actors):
 
     try:
         ray.get(
-            remote_generator_fn.options(num_returns=num_returns).remote(num_returns - 1)
+            remote_generator_fn.options(num_returns=num_returns).remote(
+                num_returns - 1, store_in_plasma
+            )
         )
         assert False
     except ray.exceptions.RayTaskError as e:
         assert isinstance(e.as_instanceof_cause(), ValueError)
 
-    try:
+    if store_in_plasma:
+        # TODO(swang): If there is an error after some values have already been
+        # yielded and stored in plasma, propagate the error correctly by
+        # replacing all successfully stored return values with the same error.
         ray.get(
-            remote_generator_fn.options(num_returns=num_returns).remote(num_returns + 1)
+            remote_generator_fn.options(num_returns=num_returns).remote(
+                num_returns + 1, store_in_plasma
+            )
         )
-        assert False
-    except ray.exceptions.RayTaskError as e:
-        assert isinstance(e.as_instanceof_cause(), ValueError)
+    else:
+        try:
+            ray.get(
+                remote_generator_fn.options(num_returns=num_returns).remote(
+                    num_returns + 1, store_in_plasma
+                )
+            )
+            assert False
+        except ray.exceptions.RayTaskError as e:
+            assert isinstance(e.as_instanceof_cause(), ValueError)
 
     # Check return values.
-    ray.get(
-        remote_generator_fn.options(num_returns=num_returns).remote(num_returns)
-    ) == list(range(num_returns))
+    [
+        x[0]
+        for x in ray.get(
+            remote_generator_fn.options(num_returns=num_returns).remote(
+                num_returns, store_in_plasma
+            )
+        )
+    ] == list(range(num_returns))
 
 
 def test_dynamic_generator(ray_start_regular):
@@ -130,6 +156,10 @@ def test_dynamic_generator_reconstruction(ray_start_cluster):
     @ray.remote(num_returns="dynamic")
     def dynamic_generator(num_returns):
         for i in range(num_returns):
+            # Random ray.put to make sure it's okay to interleave these with
+            # the dynamic returns.
+            if np.random.randint(2) == 1:
+                ray.put(np.ones(1_000_000, dtype=np.int8) * np.random.randint(100))
             yield np.ones(1_000_000, dtype=np.int8) * i
 
     @ray.remote
@@ -226,9 +256,6 @@ def test_dynamic_generator_reconstruction_nondeterministic(
 # - test exception when num_returns="dynamic" but not a generator, and vice versa
 # - check generator returns single value case.
 # - generator errors before yield
-# - generator calls ray.put, reconstruction
-# - ref counting, check for leaks
-# - passing ObjRefGenerator, passing generated ObjRefs
 
 if __name__ == "__main__":
     import os
