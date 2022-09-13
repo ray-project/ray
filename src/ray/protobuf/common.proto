@@ -199,6 +199,8 @@ enum ErrorType {
   // using the internal free() call. We will only recover this object if it is
   // needed for reconstruction of another downstream object.
   OBJECT_FREED = 21;
+  // We use this error for failure due to running out of memory.
+  OUT_OF_MEMORY = 22;
 }
 
 /// The information per ray error type.
@@ -219,6 +221,8 @@ message RayException {
   bytes serialized_exception = 2;
   // The formatted exception string.
   string formatted_exception_string = 3;
+  // The type of error that caused the exception.
+  optional ErrorType error_type = 4;
 }
 
 message ActorDeathCause {

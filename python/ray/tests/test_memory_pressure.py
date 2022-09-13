@@ -268,5 +268,24 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
     # TODO(clarng): verify log info once state api can dump log info
 
 
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+async def test_sanity(ray_with_memory_monitor):
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+        ray.get(
+            no_retry.remote(
+                allocate_bytes=bytes_to_alloc,
+                allocate_interval_s=0,
+                post_allocate_sleep_s=1000,
+            )
+        )
+
+
+# TODO: update & add tests
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

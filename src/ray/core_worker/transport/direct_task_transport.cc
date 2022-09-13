@@ -15,6 +15,7 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
 
 #include "ray/core_worker/transport/dependency_resolver.h"
+#include "ray/gcs/pb_util.h"
 
 namespace ray {
 namespace core {
@@ -126,11 +127,12 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
     const rpc::WorkerAddress &addr,
     std::shared_ptr<WorkerLeaseInterface> lease_client,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
-    const SchedulingKey &scheduling_key) {
+    const SchedulingKey &scheduling_key,
+    const TaskID &task_id) {
   client_cache_->GetOrConnect(addr.ToProto());
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
   LeaseEntry new_lease_entry =
-      LeaseEntry(std::move(lease_client), expiration, assigned_resources, scheduling_key);
+      LeaseEntry(std::move(lease_client), expiration, assigned_resources, scheduling_key, task_id);
   worker_to_lease_entry_.emplace(addr, new_lease_entry);
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -450,7 +452,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
               auto resources_copy = reply.resource_mapping();
 
               AddWorkerLeaseClient(
-                  addr, std::move(lease_client), resources_copy, scheduling_key);
+                  addr, std::move(lease_client), resources_copy, scheduling_key, task_id);
               RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
               OnWorkerIdle(addr,
                            scheduling_key,
@@ -580,7 +582,35 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           RAY_CHECK_GE(scheduling_key_entry.num_busy_workers, 1u);
           scheduling_key_entry.num_busy_workers--;
 
+          std::thread::id thread_used = std::this_thread::get_id();
           if (!status.ok() || !is_actor_creation || reply.worker_exiting()) {
+            RAY_LOG(DEBUG) << "Getting error from raylet for task " << task_id;
+            
+            auto callback =
+              [this, status, is_actor, task_id, thread_used, addr, reply](const Status &get_task_result_reply_status,
+                     const rpc::GetTaskResultReply &get_task_result_reply) {
+                std::thread::id callback_thread_id = std::this_thread::get_id();
+                RAY_CHECK(thread_used == callback_thread_id) << "Threading issue. Callback must be called on the original calling thread. Original thread id " << thread_used << " callback thread id " << callback_thread_id;
+                RAY_CHECK(!status.ok());
+                
+                rpc::ErrorType task_error_type = rpc::ErrorType::WORKER_DIED;
+                if (get_task_result_reply_status.ok()) {
+                  task_error_type = get_task_result_reply.failure_cause().error_type();
+                  RAY_LOG(DEBUG) << "Task failure cause " << ray::gcs::RayExceptionToString(get_task_result_reply.failure_cause());
+                } else {
+                  RAY_LOG(DEBUG) << "Failed to fetch task result with status " << get_task_result_reply_status.ToString();
+                  // TODO: It'd be nice to detect node failure here.
+                }
+
+                RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
+                    task_id,
+                    is_actor ? rpc::ErrorType::ACTOR_DIED : task_error_type,
+                    &status));              
+            };
+            auto &lease_entry = worker_to_lease_entry_[addr];
+            RAY_CHECK(lease_entry.lease_client);
+            lease_entry.lease_client->GetTaskResult(lease_entry.task_id, callback);
+
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr,
                          scheduling_key,
@@ -589,16 +619,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
                          assigned_resources);
           }
         }
-        if (!status.ok()) {
-          // TODO: It'd be nice to differentiate here between process vs node
-          // failure (e.g., by contacting the raylet). If it was a process
-          // failure, it may have been an application-level error and it may
-          // not make sense to retry the task.
-          RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-              task_id,
-              is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
-              &status));
-        } else {
+        if (status.ok()) {
           if (!task_spec.GetMessage().retry_exceptions() || !reply.is_retryable_error() ||
               !task_finisher_->RetryTaskIfPossible(task_id)) {
             task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());

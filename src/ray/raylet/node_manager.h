@@ -111,6 +111,11 @@ struct NodeManagerConfig {
   int64_t min_spilling_size;
 };
 
+struct TaskFailureEntry {
+  rpc::RayException ray_exception;
+  std::chrono::steady_clock creation_time;
+};
+
 class HeartbeatSender {
  public:
   /// Create a heartbeat sender.
@@ -614,17 +619,22 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::GetSystemConfigReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `HandleGetTasksInfo` request.
+  /// Handle a `GetTasksInfo` request.
   void HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
                           rpc::GetTasksInfoReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `HandleGetObjectsInfo` request.
+  /// Handle a `GetTaskResult` request.
+  void HandleGetTaskResult(const rpc::GetTaskResultRequest &request,
+                            rpc::GetTaskResultReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `GetObjectsInfo` request.
   void HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request,
                             rpc::GetObjectsInfoReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `HandleGCSRestart` request
+  /// Handle a `NotifyGCSRestart` request
   void HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &request,
                               rpc::NotifyGCSRestartReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
@@ -688,6 +698,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Creates the callback used in the memory monitor.
   MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
+
+  /// Stores the failure reason for the task. The entry will be cleaned up by a periodic function post TTL.
+  /// TODO: use task failure entry here to store the creation time
+  void SetTaskFailureReason(const TaskID &task_id, std::unique_ptr<rpc::RayException> failure_reason);
 
   /// ID of this node.
   NodeID self_node_id_;
@@ -764,9 +778,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Map of workers leased out to direct call clients.
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
 
-  /// Map from owner worker ID to a list of worker IDs that the owner has a
-  /// lease on.
-  absl::flat_hash_map<WorkerID, std::vector<WorkerID>> leased_workers_by_owner_;
+  /// Optional extra information about why the task failed.
+  absl::flat_hash_map<TaskID, std::unique_ptr<rpc::RayException>> task_failure_reasons_;
 
   /// Whether to trigger global GC in the next resource usage report. This will broadcast
   /// a global GC message to all raylets except for this one.

@@ -206,6 +206,12 @@ inline std::string GenErrorMessageFromDeathCause(
   }
 }
 
+inline std::string RayExceptionToString(const ray::rpc::RayException &exception) {
+  std::stringstream ss;
+  ss << "Error type " << exception.error_type() << " exception string " << exception.formatted_exception_string();
+  return ss.str();
+}
+
 }  // namespace gcs
 
 }  // namespace ray

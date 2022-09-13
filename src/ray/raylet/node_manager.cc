@@ -452,6 +452,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
       });
   worker_pool_.SetAgentManager(agent_manager_);
+
+  /// TODO: add periodic fn to gc expire task failure entries
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -812,6 +814,25 @@ void NodeManager::HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request
       /*include_task_info*/ false,
       /*limit*/ limit,
       /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
+}
+
+void NodeManager::HandleGetTaskResult(const rpc::GetTaskResultRequest &request,
+                          rpc::GetTaskResultReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) {
+  const TaskID task_id = TaskID::FromBinary(request.task_id());
+  RAY_LOG(DEBUG) << "Received a HandleGetTaskResult request for task " << task_id;
+  
+  auto it = task_failure_reasons_.find(task_id);
+  if (it != task_failure_reasons_.end()) {
+    auto exception = *it->second.get();
+    RAY_LOG(DEBUG) << "task " << task_id << " has failure cause " << ray::gcs::RayExceptionToString(exception);
+    reply->mutable_failure_cause()->CopyFrom(exception);
+  } else {
+    RAY_LOG(WARNING) << "didn't find failure cause for task " << task_id;
+  }
+
+  // reply->set_failure_cause()
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::QueryAllWorkerStates(
@@ -1439,7 +1460,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    const rpc::RayException *creation_task_exception) {
   RAY_LOG(INFO) << "NodeManager::DisconnectClient, disconnect_type=" << disconnect_type
                 << ", has creation task exception = "
-                << (creation_task_exception != nullptr);
+                << std::boolalpha
+                << bool(creation_task_exception == nullptr);
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1456,6 +1478,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       return;
     }
   }
+  RAY_CHECK(worker != nullptr);
   RAY_CHECK(!(is_worker && is_driver));
   // Clean up any open ray.get or ray.wait calls that the worker made.
   dependency_manager_.CancelGetRequest(worker->WorkerId());
@@ -2967,6 +2990,10 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           RAY_LOG(INFO) << "Latest 10 worker details:\n"
                         << this->WorkersDebugString(workers, max_to_print);
 
+          std::unique_ptr<rpc::RayException> task_failure_reason = std::make_unique<rpc::RayException>();
+          task_failure_reason->set_formatted_exception_string("out of memory!");
+          task_failure_reason->set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
+          SetTaskFailureReason(latest_worker->GetAssignedTaskId(), std::move(task_failure_reason));
           /// TODO: (clarng) right now destroy is called after the messages are created
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
@@ -2986,6 +3013,12 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
       }
     }
   };
+}
+
+void NodeManager::SetTaskFailureReason(const TaskID &task_id, std::unique_ptr<rpc::RayException> failure_reason) {
+  RAY_LOG(INFO) << "set failure reason for task " << task_id;
+  auto result = task_failure_reasons_.emplace(task_id, std::move(failure_reason));
+  RAY_CHECK(result.second) << "Trying to insert failure reason more than once for the same task, task id: " << task_id;
 }
 
 const std::vector<std::shared_ptr<WorkerInterface>>
