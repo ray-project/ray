@@ -325,14 +325,14 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             except Exception:
                 logger.exception(f"Error updating node stats of {node_id}.")
 
-        # Update stats (e.g., pending actor creation tasks) of gcs.
+        # Update scheduling stats (e.g., pending actor creation tasks) of gcs.
         try:
-            reply = await self._gcs_node_resource_info_stub.GetGcsStats(
-                gcs_service_pb2.GetGcsStatsRequest(),
+            reply = await self._gcs_node_resource_info_stub.GetGcsSchedulingStats(
+                gcs_service_pb2.GetGcsSchedulingStatsRequest(),
                 timeout=2,
             )
             if reply.status.code == 0:
-                DataSource.gcs_stats = gcs_stats_to_dict(reply)
+                DataSource.gcs_scheduling_stats = gcs_stats_to_dict(reply)
         except Exception:
             logger.exception("Error updating gcs stats.")
 

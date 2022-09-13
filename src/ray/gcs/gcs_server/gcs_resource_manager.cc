@@ -217,9 +217,10 @@ void GcsResourceManager::HandleGetAllResourceUsage(
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
 }
 
-void GcsResourceManager::HandleGetGcsStats(const rpc::GetGcsStatsRequest &request,
-                                           rpc::GetGcsStatsReply *reply,
-                                           rpc::SendReplyCallback send_reply_callback) {
+void GcsResourceManager::HandleGetGcsSchedulingStats(
+    const rpc::GetGcsSchedulingStatsRequest &request,
+    rpc::GetGcsSchedulingStatsReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   if (cluster_task_manager_) {
     // Fill pending (actor creation) tasks of gcs when gcs actor scheduler is enabled.
     rpc::GetNodeStatsReply gcs_stats;

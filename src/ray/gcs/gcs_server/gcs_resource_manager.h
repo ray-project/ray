@@ -83,10 +83,10 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
                                  rpc::GetAllResourceUsageReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle get gcs stats rpc request.
-  void HandleGetGcsStats(const rpc::GetGcsStatsRequest &request,
-                         rpc::GetGcsStatsReply *reply,
-                         rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle get gcs scheduling stats rpc request.
+  void HandleGetGcsSchedulingStats(const rpc::GetGcsSchedulingStatsRequest &request,
+                                   rpc::GetGcsSchedulingStatsReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a node registration.
   ///

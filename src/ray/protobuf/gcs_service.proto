@@ -230,9 +230,9 @@ message ReportResourceUsageReply {
   GcsStatus status = 1;
 }
 
-message GetGcsStatsRequest {}
+message GetGcsSchedulingStatsRequest {}
 
-message GetGcsStatsReply {
+message GetGcsSchedulingStatsReply {
   GcsStatus status = 1;
   repeated TaskSpec infeasible_tasks = 2;
   repeated TaskSpec ready_tasks = 3;
@@ -608,8 +608,8 @@ service NodeResourceInfoGcsService {
   rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
-  // Get current stats (e.g., pending tasks) of gcs server.
-  rpc GetGcsStats(GetGcsStatsRequest) returns (GetGcsStatsReply);
+  // Get current scheduling stats (e.g., pending tasks) of gcs server.
+  rpc GetGcsSchedulingStats(GetGcsSchedulingStatsRequest) returns (GetGcsSchedulingStatsReply);
 }
 
 message GcsStatus {
