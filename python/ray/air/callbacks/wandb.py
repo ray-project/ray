@@ -175,11 +175,13 @@ class _WandbLoggingProcess(Process):
         self.kwargs = kwargs
 
         self._trial_name = self.kwargs.get("name", "unknown")
+        self._logdir = logdir
 
     def run(self):
         # Since we're running in a separate process already, use threads.
         os.environ["WANDB_START_METHOD"] = "thread"
         run = wandb.init(*self.args, **self.kwargs)
+        run.config.trial_log_path = self._logdir
 
         # Run external hook to process information about wandb run
         if WANDB_PROCESS_RUN_INFO_HOOK in os.environ:
