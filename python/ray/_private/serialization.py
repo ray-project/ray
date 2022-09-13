@@ -124,10 +124,7 @@ class SerializationContext:
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
 
         def object_ref_generator_reducer(obj):
-            return ObjectRefGenerator, (
-                obj._generator_ref,
-                obj._refs,
-            )
+            return ObjectRefGenerator, (obj._refs,)
 
         self._register_cloudpickle_reducer(
             ObjectRefGenerator, object_ref_generator_reducer

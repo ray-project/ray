@@ -92,9 +92,20 @@ def test_dynamic_generator(ray_start_regular):
         for i in range(num_returns):
             yield np.ones(100_000_000, dtype=np.int8) * i
 
-    gen = dynamic_generator.remote(10)
+    @ray.remote
+    def read(gen):
+        for i, ref in enumerate(gen):
+            if ray.get(ref)[0] != i:
+                return False
+        return True
+
+    gen = ray.get(dynamic_generator.remote(10))
     for i, ref in enumerate(gen):
         assert ray.get(ref)[0] == i
+
+    gen = dynamic_generator.remote(10)
+    assert ray.get(read.remote(gen))
+    assert ray.get(read.remote(ray.get(gen)))
 
 
 def test_dynamic_generator_reconstruction(ray_start_cluster):
@@ -126,7 +137,7 @@ def test_dynamic_generator_reconstruction(ray_start_cluster):
         return x[0]
 
     # Test recovery of all dynamic objects through re-execution.
-    gen = dynamic_generator.remote(10)
+    gen = ray.get(dynamic_generator.remote(10))
     cluster.remove_node(node_to_kill, allow_graceful=False)
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
     refs = list(gen)
@@ -193,7 +204,7 @@ def test_dynamic_generator_reconstruction_nondeterministic(
         return
 
     exec_counter = ExecutionCounter.remote()
-    gen = dynamic_generator.remote(exec_counter)
+    gen = ray.get(dynamic_generator.remote(exec_counter))
     cluster.remove_node(node_to_kill, allow_graceful=False)
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
     refs = list(gen)
@@ -213,6 +224,7 @@ def test_dynamic_generator_reconstruction_nondeterministic(
 
 # TODO: Test cases:
 # - test exception when num_returns="dynamic" but not a generator, and vice versa
+# - check generator returns single value case.
 # - generator errors before yield
 # - generator calls ray.put, reconstruction
 # - ref counting, check for leaks

@@ -161,22 +161,17 @@ logger = logging.getLogger(__name__)
 
 
 class ObjectRefGenerator:
-    def __init__(self, generator_ref, refs=None):
+    def __init__(self, refs):
         # TODO(swang): As an optimization, can also store the generator
         # ObjectID so that we don't need to keep individual ref counts for the
         # inner ObjectRefs.
-        self._generator_ref = generator_ref
         self._refs = refs
 
     def __iter__(self):
-        if self._refs is None:
-            self._refs = ray.get(self._generator_ref)
         while self._refs:
             yield self._refs.pop(0)
 
     def __len__(self):
-        if self._refs is None:
-            self._refs = ray.get(self._generator_ref)
         return len(self._refs)
 
 
@@ -832,7 +827,7 @@ cdef execute_task(
                             caller_address.SerializeAsString(),
                         ))
                     # Swap out the generator for an ObjectRef generator.
-                    outputs = (dynamic_refs, )
+                    outputs = (ObjectRefGenerator(dynamic_refs), )
                 elif dynamic_returns != NULL:
                     assert not inspect.isgenerator(outputs)
                     raise ValueError(
@@ -2228,12 +2223,14 @@ cdef class CoreWorker:
                 returns[0][i].second = shared_ptr[CRayObject]()
             return_ptr = &returns[0][i].second
 
-            # Skip return values that we already created. This can occur if
-            # there were multiple return values, and we errored while trying to
-            # create one of them.
-            if return_ptr.get() != NULL:
-                # TODO(swang): This return object already has a value stored
-                # because we created it before the error triggered.  We should
+            # Skip return values that we already created and that were stored
+            # in plasma. This can occur if there were multiple return values,
+            # and we errored while trying to create one of them.
+            if (return_ptr.get() != NULL and return_ptr.get().GetData().get()
+                    != NULL and
+                    return_ptr.get().GetData().get().IsPlasmaBuffer()):
+                # TODO(swang): This return object already has a value stored in Plasma
+                # because we created it before the error triggered. We should
                 # try to delete the current value and store the same error
                 # instead here.
                 continue

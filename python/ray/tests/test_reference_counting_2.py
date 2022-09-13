@@ -752,7 +752,7 @@ def test_generators(one_worker_100MiB):
         for _ in range(3):
             yield np.zeros(10 * 1024 * 1024, dtype=np.uint8)
 
-    gen = remote_generator.remote()
+    gen = ray.get(remote_generator.remote())
     refs = list(gen)
     for r in refs:
         _fill_object_store_and_get(r)

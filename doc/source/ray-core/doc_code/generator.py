@@ -20,10 +20,12 @@ block_size = 1000
 # Returns an ObjectRef[ObjectRefGenerator].
 dynamic_ref = split.remote(array_ref, block_size)
 print(dynamic_ref)
+# ObjectRef(c8ef45ccd0112571ffffffffffffffffffffffff0100000001000000)
 
 i = -1
 ref_generator = ray.get(dynamic_ref)
 print(ref_generator)
+# <ray._raylet.ObjectRefGenerator object at 0x7f7e2116b290>
 for i, ref in enumerate(ref_generator):
     # Each ObjectRefGenerator iteration returns an ObjectRef.
     assert len(ray.get(ref)) <= block_size
@@ -32,6 +34,7 @@ array_size = len(ray.get(array_ref))
 assert array_size <= num_blocks_generated * block_size
 print(f"Split array of size {array_size} into {num_blocks_generated} blocks of "
       f"size {block_size} each.")
+# Split array of size 63153 into 64 blocks of size 1000 each.
 
 # NOTE: The dynamic_ref points to the generated ObjectRefs. Make sure that this
 # ObjectRef goes out of scope so that Ray can garbage-collect the internal
@@ -57,10 +60,12 @@ def get_size(ref_generator : ObjectRefGenerator):
 # Returns an ObjectRef[ObjectRefGenerator].
 dynamic_ref = split.remote(array_ref, block_size)
 assert array_size == ray.get(get_size.remote(dynamic_ref))
+# (get_size pid=1504184) <ray._raylet.ObjectRefGenerator object at 0x7f81c4250ad0>
 
 # This also works, but should be avoided because you have to call an additional
 # `ray.get`, which blocks the driver.
 ref_generator = ray.get(dynamic_ref)
 assert array_size == ray.get(get_size.remote(ref_generator))
+# (get_size pid=1504184) <ray._raylet.ObjectRefGenerator object at 0x7f81c4251b50>
 # __dynamic_generator_pass_end__
 # fmt: on
