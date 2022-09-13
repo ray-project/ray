@@ -805,16 +805,11 @@ cdef execute_task(
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
                 num_returns = returns[0].size()
-                if num_returns == 1 and inspect.isgenerator(outputs):
-                    if dynamic_returns == NULL:
+                if dynamic_returns != NULL:
+                    if not inspect.isgenerator(outputs):
                         raise ValueError(
-                                "Generator remote functions must specify "
-                                "num_returns > 1 or num_returns=\"dynamic\"")
-                    # If the task has a single return value and it is a
-                    # generator, first store all outputs yielded by the
-                    # generator. We will assign their ObjectIDs dynamically.
-                    # TODO(swang): Fix reconstruction case where generator
-                    # returned a single value.
+                                "Functions with @ray.remote(num_returns=\"dynamic\" "
+                                "must return a generator")
                     core_worker.store_task_outputs(
                         caller_address, worker, outputs,
                         True,  # is_dynamic
@@ -828,11 +823,6 @@ cdef execute_task(
                         ))
                     # Swap out the generator for an ObjectRef generator.
                     outputs = (ObjectRefGenerator(dynamic_refs), )
-                elif dynamic_returns != NULL:
-                    assert not inspect.isgenerator(outputs)
-                    raise ValueError(
-                            "Functions with @ray.remote(num_returns=\"dynamic\" "
-                            "must return a generator")
 
                 core_worker.store_task_outputs(
                     caller_address, worker, outputs,
@@ -2233,6 +2223,8 @@ cdef class CoreWorker:
                 # because we created it before the error triggered. We should
                 # try to delete the current value and store the same error
                 # instead here.
+                logger.error("Generator threw exception after returning partial "
+                             "values in the object store, error may be unhandled.")
                 continue
 
             context = worker.get_serialization_context()

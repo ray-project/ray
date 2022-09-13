@@ -82,8 +82,9 @@ def test_generator_returns(ray_start_regular, use_actors, store_in_plasma):
         assert isinstance(e.as_instanceof_cause(), ValueError)
 
     if store_in_plasma:
-        # TODO(swang): If there is an error after some values have already been
-        # yielded and stored in plasma, propagate the error correctly by
+        # TODO(swang): Currently there is a bug when a generator errors after
+        # already storing some values in plasma. The already stored values can
+        # be accessed and the error is lost.  Propagate the error correctly by
         # replacing all successfully stored return values with the same error.
         ray.get(
             remote_generator_fn.options(num_returns=num_returns).remote(
@@ -110,13 +111,53 @@ def test_generator_returns(ray_start_regular, use_actors, store_in_plasma):
             )
         )
     ] == list(range(num_returns))
+    # Works for num_returns=1 if generator returns a single value.
+    assert (
+        ray.get(remote_generator_fn.options(num_returns=1).remote(1, store_in_plasma))[
+            0
+        ]
+        == 0
+    )
 
 
-def test_dynamic_generator(ray_start_regular):
+@pytest.mark.parametrize("store_in_plasma", [False, True])
+def test_generator_errors(ray_start_regular, store_in_plasma):
+    @ray.remote(max_retries=0)
+    def generator(num_returns, store_in_plasma):
+        for i in range(num_returns - 2):
+            if store_in_plasma:
+                yield np.ones(1_000_000, dtype=np.int8) * i
+            else:
+                yield [i]
+        raise Exception("error")
+
+    ref1, ref2, ref3 = generator.options(num_returns=3).remote(3, store_in_plasma)
+    # TODO(swang): Currently there is a bug when a generator errors after
+    # already storing some values in plasma. The already stored values can
+    # be accessed and the error is lost.  Propagate the error correctly by
+    # replacing all successfully stored return values with the same error.
+    if not store_in_plasma:
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(ref1)
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(ref2)
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(ref3)
+
+    dynamic_ref = generator.options(num_returns="dynamic").remote(3, store_in_plasma)
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(dynamic_ref)
+
+
+@pytest.mark.parametrize("store_in_plasma", [False, True])
+def test_dynamic_generator(ray_start_regular, store_in_plasma):
     @ray.remote(num_returns="dynamic")
-    def dynamic_generator(num_returns):
+    def dynamic_generator(num_returns, store_in_plasma):
         for i in range(num_returns):
-            yield np.ones(100_000_000, dtype=np.int8) * i
+            if store_in_plasma:
+                yield np.ones(1_000_000, dtype=np.int8) * i
+            else:
+                yield [i]
 
     @ray.remote
     def read(gen):
@@ -125,13 +166,32 @@ def test_dynamic_generator(ray_start_regular):
                 return False
         return True
 
-    gen = ray.get(dynamic_generator.remote(10))
+    gen = ray.get(dynamic_generator.remote(10, store_in_plasma))
     for i, ref in enumerate(gen):
         assert ray.get(ref)[0] == i
 
-    gen = dynamic_generator.remote(10)
+    # Check that passing as task arg.
+    gen = dynamic_generator.remote(10, store_in_plasma)
     assert ray.get(read.remote(gen))
     assert ray.get(read.remote(ray.get(gen)))
+
+    # Generator remote functions with num_returns=1 error if they return more
+    # than 1 value.
+    # TODO(swang): Currently there is a bug when a generator errors after
+    # already storing some values in plasma. The already stored values can
+    # be accessed and the error is lost. Propagate the error correctly by
+    # replacing all successfully stored return values with the same error.
+    if not store_in_plasma:
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(dynamic_generator.options(num_returns=1).remote(3, store_in_plasma))
+
+    # Normal remote functions don't work with num_returns="dynamic".
+    @ray.remote(num_returns="dynamic")
+    def static(num_returns):
+        return list(range(num_returns))
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(static.remote(3))
 
 
 def test_dynamic_generator_reconstruction(ray_start_cluster):
@@ -251,11 +311,6 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     #     with pytest.raises(ray.exceptions.RayTaskError):
     #         ray.get(ref)
 
-
-# TODO: Test cases:
-# - test exception when num_returns="dynamic" but not a generator, and vice versa
-# - check generator returns single value case.
-# - generator errors before yield
 
 if __name__ == "__main__":
     import os
