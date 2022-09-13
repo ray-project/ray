@@ -140,7 +140,7 @@ class OperatorTest(unittest.TestCase):
         for node_type in config["available_node_types"].values():
             pod_config = node_type["node_config"]
             expected_env = {
-                "key": "legacy_ray_operator",
+                "key": "RAY_USAGE_STATS_LEGACY_OPERATOR_IN_USE",
                 "value": "1",
             }
             envs = pod_config["spec"]["containers"][0]["env"]
