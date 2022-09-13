@@ -14,6 +14,11 @@ public class PyActorCreator extends BaseActorCreator<PyActorCreator> {
     this.args = args;
   }
 
+  public PyActorCreator setAsync(boolean isAsync) {
+    builder.setAsync(isAsync);
+    return this;
+  }
+
   /**
    * Create a python actor remotely and return a handle to the created actor.
    *

@@ -26,13 +26,23 @@ By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you
    do_work.remote(2)
    #....
 
+When to use Ray Client
+----------------------
+
+Ray Client can be used when you want to connect an interactive Python shell to a **remote** cluster.
+
+* Use ``ray.init("ray://<head_node_host>:10001")`` (Ray Client) if you've set up a remote cluster at ``<head_node_host>`` and you want to do interactive work. This will connect your shell to the cluster. See the section on :ref:`using Ray Client<how-do-you-use-the-ray-client>` for more details on setting up your cluster.
+* Use ``ray.init()`` (non-client connection, no address specified) if you're developing locally and want to connect to an existing cluster (i.e. ``ray start --head`` has already been run), or automatically create a local cluster and attach directly to it. This can also be used for :ref:`Ray Job <jobs-overview>` submission.
+
+Ray Client is useful for developing interactively in a local Python shell. However, it requires a stable connection to the remote cluster and will terminate the workload if the connection is lost for :ref:`more than 30 seconds <client-disconnections>`. If you have a long running workload that you want to run on your cluster, we recommend using :ref:`Ray Jobs <jobs-overview>` instead.
+
 Client arguments
 ----------------
 
 Ray Client is used when the address passed into ``ray.init`` is prefixed with ``ray://``. Besides the address, Client mode currently accepts two other arguments:
 
 - ``namespace`` (optional): Sets the namespace for the session.
-- ``runtime_env`` (optional): Sets the `runtime environment <../ray-core/handling-dependencies.html#runtime-environments>`_ for the session, allowing you to dynamically specify environment variables, packages, local files, and more.
+- ``runtime_env`` (optional): Sets the :ref:`runtime environment <runtime-environments>` for the session, allowing you to dynamically specify environment variables, packages, local files, and more.
 
 .. code-block:: python
 
@@ -46,15 +56,6 @@ Ray Client is used when the address passed into ``ray.init`` is prefixed with ``
        runtime_env={"working_dir": "files/my_project", "pip": ["toolz", "requests"]},
    )
    #....
-
-When to use Ray Client
-----------------------
-
-Ray Client should be used when you want to connect a script or an interactive shell session to a **remote** cluster.
-
-* Use ``ray.init("ray://<head_node_host>:10001")`` (Ray Client) if you've set up a remote cluster at ``<head_node_host>`` and you want to do interactive work. This will connect your local script or shell to the cluster. See the section on :ref:`using Ray Client <how-do-you-use-the-ray-client>` for more details on setting up your cluster.
-* Use ``ray.init("localhost:<port>")`` (non-client connection, local address) if you're developing locally or on the head node of your cluster and you have already started the cluster (i.e. ``ray start --head`` has already been run)
-* Use ``ray.init()`` (non-client connection, no address specified) if you're developing locally and want to automatically create a local cluster and attach directly to it OR if you are using Ray Job submission.
 
 .. _how-do-you-use-the-ray-client:
 
@@ -214,10 +215,14 @@ When using Ray multi-client, there are some different behaviors to pay attention
 Things to know
 --------------
 
+.. _client-disconnections:
+
 Client disconnections
 ~~~~~~~~~~~~~~~~~~~~~
 
 When the client disconnects, any object or actor references held by the server on behalf of the client are dropped, as if directly disconnecting from the cluster.
+
+If the client disconnects unexpectedly, i.e. due to a network failure, the client will attempt to reconnect to the server for 30 seconds before all of the references are dropped. You can increase this time by setting the environment variable ``RAY_CLIENT_RECONNECT_GRACE_PERIOD=N``, where ``N`` is the number of seconds that the client should spend trying to reconnect before giving up.
 
 
 Versioning requirements
