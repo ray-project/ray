@@ -52,7 +52,7 @@ def freq_of_dicts(
             is a tuple containing a unique entry from `dicts` and its
             corresponding frequency count.
     """
-    freqs = Counter(map(lambda d: serializer(d), dicts))
+    freqs = Counter(serializer(d) for d in dicts)
     as_list = []
     for as_set, count in freqs.items():
         as_list.append((deserializer(as_set), count))
