@@ -25,3 +25,8 @@ Code example
 
 When calling ``ray.get()`` right after scheduling the remote work, the loop blocks until the result is received. We thus end up with sequential processing.
 Instead, we should first schedule all remote calls, which are then processed in parallel. After scheduling the work, we can then request all the results at once.
+
+Other ``ray.get()`` related anti-patterns are:
+
+- :doc:`unnecessary-ray-get`
+- :doc:`ray-get-submission-order`

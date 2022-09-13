@@ -40,6 +40,11 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_GET_TIMEOUT = 60.0  # seconds
 
+DEFAULT_ENV_VARS = {
+    # https://github.com/ray-project/ray/issues/28197
+    "PL_DISABLE_FORK": "1"
+}
+
 
 class _ActorClassCache:
     """Caches actor classes.
@@ -66,7 +71,10 @@ class _ActorClassCache:
 
     def get(self, trainable_cls):
         """Gets the wrapped trainable_cls, otherwise calls ray.remote."""
-        runtime_env = {"env_vars": {"TUNE_ORIG_WORKING_DIR": os.getcwd()}}
+        env_vars = DEFAULT_ENV_VARS.copy()
+        env_vars["TUNE_ORIG_WORKING_DIR"] = os.getcwd()
+
+        runtime_env = {"env_vars": env_vars}
         if trainable_cls not in self._cache:
             remote_cls = ray.remote(runtime_env=runtime_env)(trainable_cls)
             self._cache[trainable_cls] = remote_cls
@@ -217,7 +225,7 @@ class RayTrialExecutor:
 
         self._has_cleaned_up_pgs = False
         self._reuse_actors = reuse_actors
-        # The maxlen will be updated when `set_max_pending_trials()` is called
+        # The maxlen will be updated when `setup(max_pending_trials)` is called
         self._cached_actor_pg = deque(maxlen=1)
         self._pg_manager = _PlacementGroupManager(prefix=_get_tune_pg_prefix())
         self._staged_trials = set()
@@ -235,16 +243,20 @@ class RayTrialExecutor:
         self._buffer_max_time_s = float(
             os.getenv("TUNE_RESULT_BUFFER_MAX_TIME_S", 100.0)
         )
+        self._trainable_kwargs = {}
 
-    def set_max_pending_trials(self, max_pending: int) -> None:
+    def setup(
+        self, max_pending_trials: int, trainable_kwargs: Optional[Dict] = None
+    ) -> None:
         if len(self._cached_actor_pg) > 0:
             logger.warning(
                 "Cannot update maximum number of queued actors for reuse "
                 "during a run."
             )
         else:
-            self._cached_actor_pg = deque(maxlen=max_pending)
-        self._pg_manager.set_max_staging(max_pending)
+            self._cached_actor_pg = deque(maxlen=max_pending_trials)
+        self._pg_manager.set_max_staging(max_pending_trials)
+        self._trainable_kwargs = trainable_kwargs or {}
 
     def set_status(self, trial: Trial, status: str) -> None:
         """Sets status and checkpoints metadata if needed.
@@ -376,6 +388,9 @@ class RayTrialExecutor:
             # with trainables that don't provide these keyword arguments
             kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
             kwargs["custom_syncer"] = trial.custom_syncer
+
+            if self._trainable_kwargs:
+                kwargs.update(self._trainable_kwargs)
 
             # Throw a meaningful error if trainable does not use the
             # new API
