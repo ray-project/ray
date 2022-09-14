@@ -6,6 +6,7 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.proxy.HttpProxy;
 import io.ray.serve.proxy.ProxyRouter;
 import io.ray.serve.util.CommonUtil;
@@ -43,7 +44,8 @@ public class HttpProxyTest extends BaseTest {
       endpointInfos.put(
           endpointName,
           EndpointInfo.newBuilder().setEndpointName(endpointName).setRoute(route).build());
-      controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
+      EndpointSet endpointSet = EndpointSet.newBuilder().putAllEndpoints(endpointInfos).build();
+      controllerHandle.task(DummyServeController::setEndpoints, endpointSet.toByteArray()).remote();
 
       Serve.setInternalReplicaContext(null, null, controllerName, null, config);
 
