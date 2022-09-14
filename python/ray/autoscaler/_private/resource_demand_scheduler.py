@@ -673,7 +673,6 @@ def get_nodes_for(
     """
     nodes_to_add = collections.defaultdict(int)
 
-
     while resources and sum(nodes_to_add.values()) < max_to_add:
         # NOTE: There's a lot of subtelty in this loop. `node_types` is a
         # python dictionary which guarantees a consistent iteration order.
