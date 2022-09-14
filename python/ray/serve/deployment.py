@@ -159,7 +159,7 @@ class Deployment:
             # this deployment is not exposed over HTTP
             return None
 
-        return get_global_client().root_url
+        return get_global_client().root_url + self.route_prefix
 
     def __call__(self):
         raise RuntimeError(
@@ -279,7 +279,6 @@ class Deployment:
     def _get_handle(
         self,
         sync: Optional[bool] = True,
-        _internal_pickled_http_request: bool = False,
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Get a ServeHandle to this deployment to invoke it from Python.
 
@@ -297,7 +296,6 @@ class Deployment:
             self._name,
             missing_ok=True,
             sync=sync,
-            _internal_pickled_http_request=_internal_pickled_http_request,
         )
 
     @PublicAPI

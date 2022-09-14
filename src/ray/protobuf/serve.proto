@@ -211,7 +211,6 @@ message StatusOverview {
   DeploymentStatusInfoList deployment_statuses = 2;
 }
 
-
 // RPC Schema
 message PredictRequest {
   string model_name = 1;
