@@ -55,6 +55,7 @@ import ray._private.state
 import ray._private.storage as storage
 
 # Ray modules
+import ray.actor
 import ray.cloudpickle as pickle
 import ray.job_config
 import ray.remote_function
