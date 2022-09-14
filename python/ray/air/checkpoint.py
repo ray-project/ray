@@ -306,7 +306,7 @@ class Checkpoint:
 
     @Deprecated(
         message="To restore a checkpoint from a remote object ref, call "
-        "`ray.get(ckpt)`."
+        "`ray.get(obj_ref)` instead."
     )
     @classmethod
     def from_object_ref(cls, obj_ref: ray.ObjectRef) -> "Checkpoint":
@@ -327,7 +327,8 @@ class Checkpoint:
         return cls(obj_ref=obj_ref)
 
     @Deprecated(
-        message="To store the checkpoint in the Ray object store, call `ray.put(ckpt)`."
+        message="To store the checkpoint in the Ray object store, call `ray.put(ckpt)` "
+        "instead of `ckpt.to_object_ref()."
     )
     def to_object_ref(self) -> ray.ObjectRef:
         """Return checkpoint data as object reference.
