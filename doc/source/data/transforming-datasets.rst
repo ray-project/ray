@@ -121,9 +121,9 @@ Choose the *batch format* of the data given to UDFs
 by setting the ``batch_format`` option of :meth:`.map_batches() <ray.data.Dataset.map_batches>`.
 Here is an overview of the available batch formats:
 
-.. tabbed:: "native" (default)
+.. tabbed:: "default"
 
-  The "native" batch format presents data as follows for each Dataset type:
+  The "default" batch format presents data as follows for each Dataset type:
 
   * **Tabular Datasets**: Each batch will be a
     `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__.
