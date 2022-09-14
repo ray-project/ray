@@ -170,6 +170,10 @@ def test_dynamic_generator(ray_start_regular, store_in_plasma):
     for i, ref in enumerate(gen):
         assert ray.get(ref)[0] == i
 
+    # Test empty generator.
+    gen = ray.get(dynamic_generator.remote(0, store_in_plasma))
+    assert len(gen) == 0
+
     # Check that passing as task arg.
     gen = dynamic_generator.remote(10, store_in_plasma)
     assert ray.get(read.remote(gen))

@@ -215,8 +215,12 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
   absl::MutexLock lock(&mutex_);
   auto outer_it = object_id_refs_.find(generator_id);
   if (outer_it == object_id_refs_.end()) {
-    // Outer object already went out of scope before we could deserialize the
-    // inner one, so there can't be references to the inner one anymore.
+    // Outer object already went out of scope. Either:
+    // 1. The inner object was never deserialized and has already gone out of
+    // scope.
+    // 2. The inner object was deserialized and we already added it as a
+    // dynamic return.
+    // Either way, we shouldn't add the inner object to the ref count.
     return;
   }
   RAY_LOG(DEBUG) << "Adding dynamic return " << object_id

@@ -818,10 +818,9 @@ cdef execute_task(
                                 "Functions with @ray.remote(num_returns=\"dynamic\" "
                                 "must return a generator")
                     core_worker.store_task_outputs(
-                        caller_address, worker, outputs,
-                        True,  # is_dynamic
-                        returns[0][0].first,
-                        dynamic_returns)
+                        worker, outputs,
+                        dynamic_returns,
+                        returns[0][0].first)
                     dynamic_refs = []
                     for idx in range(dynamic_returns.size()):
                         dynamic_refs.append(ObjectRef(
@@ -832,9 +831,7 @@ cdef execute_task(
                     outputs = (ObjectRefGenerator(dynamic_refs), )
 
                 core_worker.store_task_outputs(
-                    caller_address, worker, outputs,
-                    False,  # is_dynamic
-                    CObjectID.Nil(),
+                    worker, outputs,
                     returns)
         except Exception as error:
             # If the debugger is enabled, drop into the remote pdb here.
@@ -860,9 +857,7 @@ cdef execute_task(
             for _ in range(returns[0].size()):
                 errors.append(failure_object)
             core_worker.store_task_outputs(
-                caller_address, worker, errors,
-                False,  # is_dynamic
-                CObjectID.Nil(),
+                worker, errors,
                 returns)
             if dynamic_returns != NULL:
                 # We generated dynamic objects during the first execution and
@@ -875,9 +870,7 @@ cdef execute_task(
                 # We pass is_dynamic=False because we have a fixed number of
                 # return objects to populate.
                 core_worker.store_task_outputs(
-                    caller_address, worker, dynamic_errors,
-                    False,  # is_dynamic,
-                    CObjectID.Nil(),
+                    worker, dynamic_errors,
                     dynamic_returns)
 
             ray._private.utils.push_error_to_driver(
@@ -2169,12 +2162,10 @@ cdef class CoreWorker:
             return success
 
     cdef store_task_outputs(self,
-                            const CAddress &caller_address,
                             worker, outputs,
-                            is_dynamic,
-                            const CObjectID &outer_id,
                             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]]
-                            *returns):
+                            *returns,
+                            CObjectID ref_generator_id=CObjectID.Nil()):
         cdef:
             CObjectID return_id
             size_t data_size
@@ -2183,7 +2174,7 @@ cdef class CoreWorker:
             int64_t task_output_inlined_bytes
             int64_t num_returns = -1
             shared_ptr[CRayObject] *return_ptr
-        if is_dynamic:
+        if not ref_generator_id.IsNil():
             # The task specified a dynamic number of return values. Determine
             # the expected number of return values.
             if returns[0].size() > 0:
@@ -2253,7 +2244,7 @@ cdef class CoreWorker:
 
             if not self.store_task_output(
                     serialized_object, return_id,
-                    outer_id,
+                    ref_generator_id,
                     data_size, metadata, contained_id,
                     &task_output_inlined_bytes, return_ptr):
                 # If the object already exists, but we fail to pin the copy, it
@@ -2261,7 +2252,7 @@ cdef class CoreWorker:
                 # create another copy.
                 self.store_task_output(
                         serialized_object, return_id,
-                        outer_id,
+                        ref_generator_id,
                         data_size, metadata,
                         contained_id, &task_output_inlined_bytes,
                         return_ptr)
