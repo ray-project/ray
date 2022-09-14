@@ -181,6 +181,7 @@ class TestDeploymentOptions:
     )
     def test_nullable_options(self, option: str):
         """Check that nullable options can be set to None."""
+
         deployment_options = {option: None}
 
         # One of "num_replicas" or "autoscaling_config" must be provided.
