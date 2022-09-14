@@ -1,3 +1,6 @@
+from typing import Optional
+
+
 def PublicAPI(*args, **kwargs):
     """Annotation for documenting public APIs.
 
@@ -107,17 +110,15 @@ def Deprecated(*args, **kwargs):
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return Deprecated()(args[0])
 
-    message = ""
-    if "message" in kwargs:
-        message = " " + kwargs["message"]
-        del kwargs["message"]
-
-    # NOTE: If you remove the trailing whitespace, the documentation doesn't render
-    # properly ＼(°ロ＼).
-    warning = (
-        "\n\n        .. warning::\n            **DEPRECATED:** This API is deprecated "
-        f"and may be removed in a future Ray release.{message}\n        "
+    deprecation_message = (
+        "**DEPRECATED:** This API is deprecated and may be removed in a future Ray"
+        "release."
     )
+
+    additional_info = None
+    if "message" in kwargs:
+        additional_info = kwargs["message"]
+        del kwargs["message"]
 
     if kwargs:
         raise ValueError("Unknown kwargs: {}".format(kwargs.keys()))
@@ -125,11 +126,68 @@ def Deprecated(*args, **kwargs):
     def inner(obj):
         if not obj.__doc__:
             obj.__doc__ = ""
-        obj.__doc__ += f"{warning}"
+
+        obj.__doc__ = obj.__doc__.rstrip()
+
+        indent = _get_indent(obj.__doc__)
+        obj.__doc__ += "\n\n"
+        obj.__doc__ += f"{' ' * indent}.. warning::\n"
+        obj.__doc__ += f"{' ' * (indent + 4)}{deprecation_message}"
+        if additional_info:
+            obj.__doc__ += f" {additional_info}"
+        obj.__doc__ += f"\n{' ' * indent}"
+
         _mark_annotated(obj)
         return obj
 
     return inner
+
+
+def _get_indent(docstring: Optional[str]) -> int:
+    """
+
+    Example:
+        >>> def f():
+        ...     '''Docstring summary.'''
+        >>> f.__doc__
+        'Docstring summary.'
+        >>> _get_indent(f.__doc__)
+        0
+
+        >>> def g(foo):
+        ...     '''Docstring summary.
+        ...
+        ...     Args:
+        ...         foo: Does bar.
+        ...     '''
+        >>> g.__doc__
+        'Docstring summary.\\n\\n    Args:\\n        foo: Does bar.\\n    '
+        >>> _get_indent(g.__doc__)
+        4
+
+        >>> class A:
+        ...     def h():
+        ...         '''Docstring summary.
+        ...
+        ...         Returns:
+        ...             None.
+        ...         '''
+        >>> A.h.__doc__
+        'Docstring summary.\\n\\n        Returns:\\n            None.\\n        '
+        >>> _get_indent(A.h.__doc__)
+        8
+    """
+    if not docstring:
+        return 0
+
+    non_empty_lines = list(filter(bool, docstring.splitlines()))
+    if len(non_empty_lines) == 1:
+        # Empty docstring or docstring contains summary only.
+        return 0
+
+    # The docstring summary isn't indented, so check the indentation of the second
+    # non-empty line.
+    return len(non_empty_lines[1]) - len(non_empty_lines[1].lstrip())
 
 
 def _mark_annotated(obj) -> None:
