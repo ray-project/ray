@@ -1160,6 +1160,12 @@ def stop(force, grace_period):
     default=False,
     help="If True, the usage stats collection will be disabled.",
 )
+@click.option(
+    "--wait-for-workers",
+    is_flag=True,
+    default=False,
+    help="If True, the command will block until there are no pending worker nodes.",
+)
 @add_click_logging_options
 @PublicAPI
 def up(
@@ -1174,6 +1180,7 @@ def up(
     redirect_command_output,
     use_login_shells,
     disable_usage_stats,
+    wait_for_workers,
 ):
     """Create or update a Ray cluster."""
     if disable_usage_stats:
@@ -1212,6 +1219,7 @@ def up(
         no_config_cache=no_config_cache,
         redirect_command_output=redirect_command_output,
         use_login_shells=use_login_shells,
+        wait_for_workers=wait_for_workers,
     )
 
 
