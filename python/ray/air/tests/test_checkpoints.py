@@ -32,7 +32,13 @@ def test_repr():
 
 
 class StubCheckpoint(Checkpoint):
-    pass
+
+    _SERIALIZED_ATTRS = ("foo",)
+
+    def __init__(self, *args, **kwargs):
+        self.foo = None
+        self.baz = None
+        super().__init__(*args, **kwargs)
 
 
 class CheckpointsConversionTest(unittest.TestCase):
@@ -67,17 +73,28 @@ class CheckpointsConversionTest(unittest.TestCase):
     def _prepare_dict_checkpoint(self) -> StubCheckpoint:
         # Create checkpoint from dict
         checkpoint = StubCheckpoint.from_dict(dict(self.checkpoint_dict_data))
+        # The `foo` attribute should be serialized.
+        self.assertTrue("foo" in StubCheckpoint._SERIALIZED_ATTRS)
+        checkpoint.foo = "bar"
+        # The `baz` attribute shouldn't be serialized.
+        self.assertFalse("baz" in StubCheckpoint._SERIALIZED_ATTRS)
+        checkpoint.baz = "qux"
+
         self.assertIsInstance(checkpoint, StubCheckpoint)
         self.assertTrue(checkpoint._data_dict)
         self.assertEqual(
             checkpoint._data_dict["metric"], self.checkpoint_dict_data["metric"]
         )
+
         return checkpoint
 
-    def _assert_dict_checkpoint(self, checkpoint):
+    def _assert_dict_checkpoint(self, checkpoint, check_state=True):
         # Convert into dict
         checkpoint_data = checkpoint.to_dict()
         self.assertIsInstance(checkpoint, StubCheckpoint)
+        if check_state:
+            self.assertEqual(checkpoint.foo, "bar")
+            self.assertEqual(checkpoint.baz, None)
         self.assertDictEqual(checkpoint_data, self.checkpoint_dict_data)
 
     def test_dict_checkpoint_bytes(self):
@@ -135,7 +152,7 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         # Create from dict
         checkpoint = ray.get(obj_ref)
-        self._assert_dict_checkpoint(checkpoint)
+        self._assert_dict_checkpoint(checkpoint, check_state=False)
 
     def test_dict_checkpoint_uri(self):
         """Test conversion from dict to cloud checkpoint and back."""
@@ -174,8 +191,13 @@ class CheckpointsConversionTest(unittest.TestCase):
     def _prepare_fs_checkpoint(self) -> StubCheckpoint:
         # Create checkpoint from fs
         checkpoint = StubCheckpoint.from_directory(self.checkpoint_dir)
+        # The `foo` attribute should be serialized.
+        self.assertTrue("foo" in StubCheckpoint._SERIALIZED_ATTRS)
+        checkpoint.foo = "bar"
+        # The `baz` attribute shouldn't be serialized.
+        self.assertFalse("baz" in StubCheckpoint._SERIALIZED_ATTRS)
+        checkpoint.baz = "qux"
 
-        self.assertIsInstance(checkpoint, StubCheckpoint)
         self.assertTrue(checkpoint._local_path, str)
         self.assertEqual(checkpoint._local_path, self.checkpoint_dir)
 
@@ -188,6 +210,8 @@ class CheckpointsConversionTest(unittest.TestCase):
         with open(os.path.join(local_dir, "test_data.pkl"), "rb") as fp:
             local_data = pickle.load(fp)
 
+        self.assertEqual(checkpoint.foo, "bar")
+        self.assertEqual(checkpoint.baz, None)
         self.assertIsInstance(checkpoint, StubCheckpoint)
         self.assertDictEqual(local_data, self.checkpoint_dir_data)
 

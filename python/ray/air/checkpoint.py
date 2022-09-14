@@ -1,4 +1,5 @@
 import contextlib
+from dataclasses import dataclass
 import io
 import logging
 import os
@@ -11,6 +12,7 @@ import platform
 from typing import Any, Dict, Iterator, Optional, Tuple, Type, Union, TYPE_CHECKING
 import uuid
 
+import ray
 from ray import cloudpickle as pickle
 from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.air._internal.filelock import TempFileLock
@@ -30,7 +32,7 @@ if TYPE_CHECKING:
 
 
 _DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
-_CHECKPOINT_TYPE_FILE_NAME = ".type.pkl"
+_CHECKPOINT_METADATA_FILE_NAME = ".metadata.pkl"
 _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY = "_ray_additional_checkpoint_files"
 _METADATA_CHECKPOINT_SUFFIX = ".meta.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
@@ -40,9 +42,16 @@ _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class CheckpointMetadata:
+    checkpoint_type: Type["Checkpoint"]
+    checkpoint_state: Dict[str, Any]
+    ray_version: str = ray.__version__
+
+
 class CheckpointDict(dict):
-    def __init__(self, *args, checkpoint_cls: Type["Checkpoint"], **kwargs):
-        self.checkpoint_cls = checkpoint_cls
+    def __init__(self, *args, metadata: CheckpointMetadata, **kwargs):
+        self.metadata = metadata
         super().__init__(*args, **kwargs)
 
 
@@ -129,6 +138,8 @@ class Checkpoint:
     on a shared file system like NFS).
     """
 
+    _SERIALIZED_ATTRS = ()
+
     @DeveloperAPI
     def __init__(
         self,
@@ -188,6 +199,16 @@ class Checkpoint:
         parameter, argument = self.get_internal_representation()
         return f"{self.__class__.__name__}({parameter}={argument})"
 
+    @DeveloperAPI
+    @property
+    def metadata(self) -> CheckpointMetadata:
+        return CheckpointMetadata(
+            checkpoint_type=self.__class__,
+            checkpoint_state={
+                attr: getattr(self, attr) for attr in self._SERIALIZED_ATTRS
+            },
+        )
+
     @classmethod
     def from_bytes(cls, data: bytes) -> "Checkpoint":
         """Create a checkpoint from the given byte string.
@@ -227,9 +248,15 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
+        state = {}
         if isinstance(data, CheckpointDict):
-            cls = data.checkpoint_cls
-        return cls(data_dict=data)
+            cls = data.metadata.checkpoint_type
+            state = data.metadata.checkpoint_state
+
+        checkpoint = cls(data_dict=data)
+        checkpoint.__dict__.update(state)
+
+        return checkpoint
 
     def to_dict(self) -> dict:
         """Return checkpoint data as dictionary.
@@ -265,7 +292,7 @@ class Checkpoint:
                             ".",
                             "..",
                             _DICT_CHECKPOINT_FILE_NAME,
-                            _CHECKPOINT_TYPE_FILE_NAME,
+                            _CHECKPOINT_METADATA_FILE_NAME,
                         ]:
                             continue
 
@@ -301,7 +328,7 @@ class Checkpoint:
         else:
             raise RuntimeError(f"Empty data for checkpoint {self}")
 
-        return CheckpointDict(checkpoint_data, checkpoint_cls=self.__class__)
+        return CheckpointDict(checkpoint_data, metadata=self.metadata)
 
     @classmethod
     def from_directory(cls, path: str) -> "Checkpoint":
@@ -315,12 +342,19 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
-        checkpoint_type_path = os.path.join(path, _CHECKPOINT_TYPE_FILE_NAME)
-        if os.path.exists(checkpoint_type_path):
-            with open(checkpoint_type_path, "rb") as file:
-                cls = pickle.load(file)
+        state = {}
 
-        return cls(local_path=path)
+        checkpoint_metadata_path = os.path.join(path, _CHECKPOINT_METADATA_FILE_NAME)
+        if os.path.exists(checkpoint_metadata_path):
+            with open(checkpoint_metadata_path, "rb") as file:
+                metadata = pickle.load(file)
+                cls = metadata.checkpoint_type
+                state = metadata.checkpoint_state
+
+        checkpoint = cls(local_path=path)
+        checkpoint.__dict__.update(state)
+
+        return checkpoint
 
     @classmethod
     def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
@@ -410,9 +444,9 @@ class Checkpoint:
                     f"No valid location found for checkpoint {self}: {self._uri}"
                 )
 
-        checkpoint_type_path = os.path.join(path, _CHECKPOINT_TYPE_FILE_NAME)
-        with open(checkpoint_type_path, "wb") as file:
-            pickle.dump(self.__class__, file)
+        checkpoint_metadata_path = os.path.join(path, _CHECKPOINT_METADATA_FILE_NAME)
+        with open(checkpoint_metadata_path, "wb") as file:
+            pickle.dump(self.metadata, file)
 
     def to_directory(self, path: Optional[str] = None) -> str:
         """Write checkpoint data to directory.
@@ -523,12 +557,19 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
+        state = {}
         try:
-            checkpoint_type_uri = os.path.join(uri, _CHECKPOINT_TYPE_FILE_NAME)
-            cls = pickle.loads(read_file_from_uri(checkpoint_type_uri))
+            checkpoint_metadata_uri = os.path.join(uri, _CHECKPOINT_METADATA_FILE_NAME)
+            metadata = pickle.loads(read_file_from_uri(checkpoint_metadata_uri))
+            cls = metadata.checkpoint_type
+            state = metadata.checkpoint_state
         except FileNotFoundError:
             pass
-        return cls(uri=uri)
+
+        checkpoint = cls(uri=uri)
+        checkpoint.__dict__.update(state)
+
+        return checkpoint
 
     def to_uri(self, uri: str) -> str:
         """Write checkpoint data to location URI (e.g. cloud storage).
@@ -551,9 +592,11 @@ class Checkpoint:
             )
 
         with self.as_directory() as local_path:
-            checkpoint_type_path = os.path.join(local_path, _CHECKPOINT_TYPE_FILE_NAME)
-            with open(checkpoint_type_path, "wb") as file:
-                pickle.dump(self.__class__, file)
+            checkpoint_metadata_path = os.path.join(
+                local_path, _CHECKPOINT_METADATA_FILE_NAME
+            )
+            with open(checkpoint_metadata_path, "wb") as file:
+                pickle.dump(self.metadata, file)
 
             upload_to_uri(local_path=local_path, uri=uri)
 
