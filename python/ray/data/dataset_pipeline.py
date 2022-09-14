@@ -15,6 +15,7 @@ from typing import (
     Tuple,
     Union,
 )
+import warnings
 
 import ray
 from ray.data._internal import progress_bar
@@ -143,7 +144,7 @@ class DatasetPipeline(Generic[T]):
         *,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: str = "native",
+        batch_format: str = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -166,10 +167,10 @@ class DatasetPipeline(Generic[T]):
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: The format in which to return each batch.
-                Specify "native" to use the current block format (promoting
+                Specify "default" to use the current block format (promoting
                 Arrow to pandas automatically), "pandas" to
                 select ``pandas.DataFrame`` or "pyarrow" to select
-                ``pyarrow.Table``. Default is "native".
+                ``pyarrow.Table``. Default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -184,6 +185,12 @@ class DatasetPipeline(Generic[T]):
         Returns:
             An iterator over record batches.
         """
+        if batch_format == "native":
+            warnings.warn(
+                "The 'native' batch format has been renamed 'default'.",
+                DeprecationWarning,
+            )
+
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         time_start = time.perf_counter()
@@ -727,7 +734,7 @@ class DatasetPipeline(Generic[T]):
         *,
         batch_size: Optional[int] = 4096,
         compute: Union[str, ComputeStrategy] = None,
-        batch_format: Literal["native", "pandas", "pyarrow", "numpy"] = "native",
+        batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -957,7 +964,7 @@ class DatasetPipeline(Generic[T]):
         *,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: str = "native",
+        batch_format: str = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -979,7 +986,7 @@ class DatasetPipeline(Generic[T]):
         *,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: str = "native",
+        batch_format: str = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
