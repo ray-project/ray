@@ -57,7 +57,7 @@ class _CheckpointManager(CommonCheckpointManager):
 
         self.forced = {
             CheckpointStorage.MEMORY: False,
-            CheckpointStorage.PERSISTENT: False
+            CheckpointStorage.PERSISTENT: False,
         }
 
         super().__init__(checkpoint_strategy=checkpoint_strategy, delete_fn=delete_fn)
