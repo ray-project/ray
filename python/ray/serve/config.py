@@ -188,7 +188,6 @@ class DeploymentConfig(BaseModel):
 
     def to_proto(self):
         data = self.dict()
-        print(data["user_configured_options"])
         if data.get("user_config") is not None:
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
@@ -197,7 +196,6 @@ class DeploymentConfig(BaseModel):
                 **data["autoscaling_config"]
             )
         data["user_configured_options"] = list(data["user_configured_options"])
-        # print(data, type(data["user_configured_options"]))
         return DeploymentConfigProto(**data)
 
     def to_proto_bytes(self):
