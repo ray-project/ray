@@ -1,3 +1,5 @@
+.. _pbt-guide-ref:
+
 A Guide to Population Based Training
 ====================================
 
