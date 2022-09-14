@@ -20,10 +20,10 @@
                  << " local_ref_count: " << it->second.local_ref_count             \
                  << " submitted_count: " << it->second.submitted_task_ref_count    \
                  << " contained_in_owned: "                                        \
-                 << it->second.nested().contained_in_owned.size()                  \
+                 << it->second.GetContainedInOwned().size()                        \
                  << " contained_in_borrowed: "                                     \
-                 << (it)->second.nested().contained_in_borrowed_ids.size()         \
-                 << " contains: " << it->second.nested().contains.size()           \
+                 << it->second.GetContainedInBorrowedIds().size()                    \
+                 << " contains: " << it->second.GetContains().size()               \
                  << " stored_in: " << it->second.borrow().stored_in_objects.size() \
                  << " lineage_ref_count: " << it->second.lineage_ref_count;
 
@@ -113,8 +113,11 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
       RAY_LOG(DEBUG) << "Setting borrowed inner ID " << object_id
                      << " contained_in_borrowed: " << outer_id;
       RAY_CHECK_NE(object_id, outer_id);
-      it->second.mutable_nested()->contained_in_borrowed_ids.insert(outer_id);
-      outer_it->second.mutable_nested()->contains.insert(object_id);
+      // it->second.mutable_nested()->contained_in_borrowed_ids.insert(outer_id);
+      // outer_it->second.mutable_nested()->contains.insert(object_id);
+      it->second.InsertContainedInBorrowedIds(outer_id);
+      outer_it->second.InsertContains(object_id);
+
       // The inner object ref is in use. We must report our ref to the object's
       // owner.
       if (it->second.RefCount() > 0) {
@@ -160,10 +163,13 @@ void ReferenceCounter::AddObjectRefStats(
         ref_proto->set_call_site(it->second.second);
       }
     }
-    for (const auto &obj_id : ref.second.nested().contained_in_owned) {
+    // for (const auto &obj_id : ref.second.nested().contained_in_owned) {
+    //   ref_proto->add_contained_in_owned(obj_id.Binary());
+    // }
+
+    for (const auto &obj_id : ref.second.GetContainedInOwned()) {
       ref_proto->add_contained_in_owned(obj_id.Binary());
     }
-
     if (ref.second.owned_by_us && !ref.second.pending_creation) {
       // For finished tasks only, we set the status here instead of in the
       // TaskManager in case the task spec has already been GCed.
@@ -265,8 +271,10 @@ void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
 }
 
 void ReferenceCounter::SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it) {
+  // for (const auto &contained_in_borrowed_id :
+  //      inner_ref_it->second.nested().contained_in_borrowed_ids) {
   for (const auto &contained_in_borrowed_id :
-       inner_ref_it->second.nested().contained_in_borrowed_ids) {
+      inner_ref_it->second.GetContainedInBorrowedIds()) {
     auto contained_in_it = object_id_refs_.find(contained_in_borrowed_id);
     RAY_CHECK(contained_in_it != object_id_refs_.end());
     if (!contained_in_it->second.has_nested_refs_to_report) {
@@ -558,7 +566,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 
   // Whether it is safe to unpin the value.
   if (it->second.OutOfScope(lineage_pinning_enabled_)) {
-    for (const auto &inner_id : it->second.nested().contains) {
+    for (const auto &inner_id : it->second.GetContains()) {
       auto inner_it = object_id_refs_.find(inner_id);
       if (inner_it != object_id_refs_.end()) {
         RAY_LOG(DEBUG) << "Try to delete inner object " << inner_id;
@@ -566,10 +574,13 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
           // If this object ID was nested in an owned object, make sure that
           // the outer object counted towards the ref count for the inner
           // object.
-          RAY_CHECK(inner_it->second.mutable_nested()->contained_in_owned.erase(id));
+          // RAY_CHECK(inner_it->second.mutable_nested()->contained_in_owned.erase(id));
+          RAY_CHECK(inner_it->second.EraseContainedInOwned(id));
         } else {
+          // RAY_CHECK(
+          //     inner_it->second.mutable_nested()->contained_in_borrowed_ids.erase(id));
           RAY_CHECK(
-              inner_it->second.mutable_nested()->contained_in_borrowed_ids.erase(id));
+              inner_it->second.EraseContainedInBorrowedIds(id));
         }
         // NOTE: a NestedReferenceCount struct is created after the first
         // mutable_nested() call, but the struct will not be deleted until the
@@ -857,7 +868,7 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
     }
   }
   // Attempt to pop children.
-  for (const auto &contained_id : it->second.nested().contains) {
+  for (const auto &contained_id : it->second.GetContains()) {
     GetAndClearLocalBorrowersInternal(
         contained_id, for_ref_removed, /*deduct_local_ref=*/false, borrowed_refs);
   }
@@ -881,7 +892,7 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
                  << ", local: " << borrower_ref.local_ref_count
                  << ", submitted: " << borrower_ref.submitted_task_ref_count
                  << ", contained_in_owned: "
-                 << borrower_ref.nested().contained_in_owned.size()
+                 << borrower_ref.GetContainedInOwned().size()
                  << ", stored_in_objects: "
                  << borrower_ref.borrow().stored_in_objects.size();
 
@@ -915,7 +926,7 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
   // This ref was nested inside another object. Copy this information to our
   // local table.
   for (const auto &contained_in_borrowed_id :
-       borrower_it->second.nested().contained_in_borrowed_ids) {
+       borrower_it->second.GetContainedInBorrowedIds()) {
     RAY_CHECK(borrower_ref.owner_address);
     AddBorrowedObjectInternal(object_id,
                               contained_in_borrowed_id,
@@ -944,7 +955,7 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
 
   // Recursively merge any references that were contained in this object, to
   // handle any borrowers of nested objects.
-  for (const auto &inner_id : borrower_ref.nested().contains) {
+  for (const auto &inner_id : borrower_ref.GetContains()) {
     MergeRemoteBorrowers(inner_id, worker_addr, borrowed_refs);
   }
   PRINT_REF_COUNT(it);
@@ -1041,7 +1052,8 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
       // contained in the outer object ID so we do not GC the inner objects
       // until the outer object goes out of scope.
       for (const auto &inner_id : inner_ids) {
-        it->second.mutable_nested()->contains.insert(inner_id);
+        // it->second.mutable_nested()->contains.insert(inner_id);
+        it->second.InsertContains(inner_id);
         RAY_LOG(DEBUG) << "Setting inner ID " << inner_id
                        << " contained_in_owned: " << object_id;
       }
@@ -1050,7 +1062,8 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
       for (const auto &inner_id : inner_ids) {
         auto inner_it = object_id_refs_.emplace(inner_id, Reference()).first;
         bool was_in_use = inner_it->second.RefCount() > 0;
-        inner_it->second.mutable_nested()->contained_in_owned.insert(object_id);
+        // inner_it->second.mutable_nested()->contained_in_owned.insert(object_id);
+        inner_it->second.InsertContainedInOwned(object_id);
         if (!was_in_use && inner_it->second.RefCount() > 0) {
           SetNestedRefInUseRecursive(inner_it);
         }
@@ -1477,12 +1490,16 @@ ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(
         object_id, rpc::WorkerAddress(object.owner_address()));
   }
   for (const auto &id : ref_count.contains()) {
-    ref.mutable_nested()->contains.insert(ObjectID::FromBinary(id));
+    // ref.mutable_nested()->contains.insert(ObjectID::FromBinary(id));
+    ref.InsertContains(ObjectID::FromBinary(id));
   }
   const auto contained_in_borrowed_ids =
       IdVectorFromProtobuf<ObjectID>(ref_count.contained_in_borrowed_ids());
-  ref.mutable_nested()->contained_in_borrowed_ids.insert(
-      contained_in_borrowed_ids.begin(), contained_in_borrowed_ids.end());
+  // ref.mutable_nested()->contained_in_borrowed_ids.insert(
+  //     contained_in_borrowed_ids.begin(), contained_in_borrowed_ids.end());
+  for(auto id : contained_in_borrowed_ids) {
+    ref.InsertContainedInBorrowedIds(id);
+  }
   return ref;
 }
 
@@ -1500,10 +1517,10 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
     ref_object->set_object_id(object.first.Binary());
     ref_object->mutable_owner_address()->CopyFrom(object.second.ToProto());
   }
-  for (const auto &contained_in_borrowed_id : nested().contained_in_borrowed_ids) {
+  for (const auto &contained_in_borrowed_id : GetContainedInBorrowedIds()) {
     ref->add_contained_in_borrowed_ids(contained_in_borrowed_id.Binary());
   }
-  for (const auto &contains_id : nested().contains) {
+  for (const auto &contains_id : GetContains()) {
     ref->add_contains(contains_id.Binary());
   }
 }

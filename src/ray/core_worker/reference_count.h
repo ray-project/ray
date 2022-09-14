@@ -536,6 +536,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
     absl::flat_hash_set<ObjectID> contains;
   };
 
+  struct OptNestedReferenceCount {
+    std::unique_ptr<ObjectID> first_contained_in_owned;
+    std::unique_ptr<ObjectID> first_contained_in_borrowed_ids;
+    std::unique_ptr<ObjectID> first_contains;
+    std::unique_ptr<absl::flat_hash_set<ObjectID>> extra_contained_in_owned;
+    std::unique_ptr<absl::flat_hash_set<ObjectID>> extra_contained_in_borrowed_ids;
+    std::unique_ptr<absl::flat_hash_set<ObjectID>> extra_contains;
+  };
+
   /// Contains information related to borrowing only.
   struct BorrowInfo {
     /// When a process that is borrowing an object ID stores the ID inside the
@@ -557,6 +566,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
     ///     borrowers. A borrower is removed from the list when it responds
     ///     that it is no longer using the reference.
     absl::flat_hash_set<rpc::WorkerAddress> borrowers;
+  };
+
+  struct OptBorrowInfo {
+    std::unique_ptr<std::pair<ObjectID, rpc::WorkerAddress>> first_stored_in_objects;
+    std::unique_ptr<absl::flat_hash_map<ObjectID, rpc::WorkerAddress>> extra_stored_in_objects;
+    std::unique_ptr<rpc::WorkerAddress> first_borrower;
+    std::unique_ptr<absl::flat_hash_set<rpc::WorkerAddress>> extra_borrowers;
   };
 
   struct Reference {
@@ -593,8 +609,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// - ObjectIDs containing this ObjectID that we own and that are still in
     /// scope.
     size_t RefCount() const {
-      return local_ref_count + submitted_task_ref_count +
-             nested().contained_in_owned.size();
+      return local_ref_count + submitted_task_ref_count + 
+             GetContainedInOwned().size();
     }
 
     /// Whether this reference is no longer in scope. A reference is in scope
@@ -605,7 +621,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// - We gave the reference to at least one other process.
     bool OutOfScope(bool lineage_pinning_enabled) const {
       bool in_scope = RefCount() > 0;
-      bool is_nested = nested().contained_in_borrowed_ids.size();
+      bool is_nested = GetContainedInBorrowedIds().size();
       bool has_borrowers = borrow().borrowers.size() > 0;
       bool was_stored_in_objects = borrow().stored_in_objects.size() > 0;
 
@@ -652,21 +668,113 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
     /// Access NestedReferenceCount without modifications.
     /// Returns the default value of the struct if it is not set.
-    const NestedReferenceCount &nested() const {
-      if (nested_reference_count == nullptr) {
-        static auto *default_refs = new NestedReferenceCount();
+    const OptNestedReferenceCount &nested() const {
+      if (opt_nested_reference_count == nullptr) {
+        static auto *default_refs = new OptNestedReferenceCount();
         return *default_refs;
       }
-      return *nested_reference_count;
+      return *opt_nested_reference_count;
     }
 
     /// Returns the containing references for updates.
     /// Creates the underlying field if it is not set.
-    NestedReferenceCount *mutable_nested() {
-      if (nested_reference_count == nullptr) {
-        nested_reference_count = std::make_unique<NestedReferenceCount>();
+    OptNestedReferenceCount *mutable_nested() {
+      if (opt_nested_reference_count == nullptr) {
+        opt_nested_reference_count = std::make_unique<OptNestedReferenceCount>();
       }
-      return nested_reference_count.get();
+      return opt_nested_reference_count.get();
+    }
+
+    int EraseContains(const ObjectID& id){
+      return EraseNestedRefCount(id, mutable_nested()->first_contains, mutable_nested()->extra_contains);
+    }
+    bool InsertContains(const ObjectID& id){
+      return InsertNestedRefCount(id, mutable_nested()->first_contains, mutable_nested()->extra_contains);
+    }
+    const absl::flat_hash_set<ObjectID> GetContains() const{
+      return GetNestedRefCount(nested().first_contains, nested().extra_contains);
+    }
+    int EraseContainedInOwned(const ObjectID& id){
+      return EraseNestedRefCount(id, mutable_nested()->first_contained_in_owned, mutable_nested()->extra_contained_in_owned);
+    }
+    bool InsertContainedInOwned(const ObjectID& id){
+      return InsertNestedRefCount(id, mutable_nested()->first_contained_in_owned, mutable_nested()->extra_contained_in_owned);
+    }
+    const absl::flat_hash_set<ObjectID> GetContainedInOwned() const{
+      return GetNestedRefCount(nested().first_contained_in_owned, nested().extra_contained_in_owned);
+    }
+    int EraseContainedInBorrowedIds(const ObjectID& id){
+      return EraseNestedRefCount(
+        id, 
+        mutable_nested()->first_contained_in_borrowed_ids, 
+        mutable_nested()->extra_contained_in_borrowed_ids);
+    }
+    bool InsertContainedInBorrowedIds(const ObjectID& id){
+      return InsertNestedRefCount(
+        id, 
+        mutable_nested()->first_contained_in_borrowed_ids, 
+        mutable_nested()->extra_contained_in_borrowed_ids);
+    }
+    const absl::flat_hash_set<ObjectID> GetContainedInBorrowedIds() const{
+      return GetNestedRefCount(
+        nested().first_contained_in_borrowed_ids, 
+        nested().extra_contained_in_borrowed_ids);
+    }
+
+    static int EraseNestedRefCount(
+        const ObjectID& id, 
+        std::unique_ptr<ObjectID>& first, 
+        std::unique_ptr<absl::flat_hash_set<ObjectID>> &extra) {
+      if (first == nullptr) {
+          return 0;
+      }
+      if (*first == id) {
+        first.reset();
+        // promote the first element in container to the independent pointer
+        if (extra != nullptr && !extra->empty()) {
+          first.reset(new ObjectID(*extra->begin()));
+          extra->erase(extra->begin());
+        }
+        return 1;
+      }
+      return extra->erase(id);
+    }
+
+    static bool InsertNestedRefCount(
+        const ObjectID& id, 
+        std::unique_ptr<ObjectID>& first, 
+        std::unique_ptr<absl::flat_hash_set<ObjectID>>& extra) {
+      // init and set the first
+      if(first == nullptr) {
+        first = std::make_unique<ObjectID>(id);
+        return true;
+      }
+
+      if(*first == id) {
+        // duplicate insert
+        return false;
+      }
+
+      // init and set extras
+      if (extra == nullptr) {
+        extra = std::make_unique<absl::flat_hash_set<ObjectID>>();
+      }
+      return extra->insert(id).second;
+    }
+
+    static const absl::flat_hash_set<ObjectID> 
+    GetNestedRefCount(const std::unique_ptr<ObjectID>& first, const std::unique_ptr<absl::flat_hash_set<ObjectID>>& extra) {
+      absl::flat_hash_set<ObjectID>* copied_extra;
+      if (extra == nullptr) {
+        copied_extra = new absl::flat_hash_set<ObjectID>();
+      } else {
+        copied_extra = new absl::flat_hash_set<ObjectID>(*extra);
+      }
+
+      if (first != nullptr) {
+        copied_extra->insert(*first);
+      }
+      return *copied_extra;
     }
 
     /// Description of the call site where the reference was created.
@@ -710,7 +818,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
     /// Metadata related to nesting, including references that contain this
     /// reference, and references contained by this reference.
-    std::unique_ptr<NestedReferenceCount> nested_reference_count;
+    // std::unique_ptr<NestedReferenceCount> nested_reference_count;
+
+    std::unique_ptr<OptNestedReferenceCount> opt_nested_reference_count;
 
     /// Metadata related to borrowing.
     std::unique_ptr<BorrowInfo> borrow_info;
