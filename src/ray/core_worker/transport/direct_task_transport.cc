@@ -591,21 +591,30 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
                      const rpc::GetTaskResultReply &get_task_result_reply) {
                 std::thread::id callback_thread_id = std::this_thread::get_id();
                 RAY_CHECK(thread_used == callback_thread_id) << "Threading issue. Callback must be called on the original calling thread. Original thread id " << thread_used << " callback thread id " << callback_thread_id;
-                RAY_CHECK(!status.ok());
-                
+                RAY_CHECK(!status.ok()) << "Tried to call GetTaskResult RPC to fetch the failure cause even though the task succeeded";
                 rpc::ErrorType task_error_type = rpc::ErrorType::WORKER_DIED;
+                std::unique_ptr<rpc::RayErrorInfo> error_info;
                 if (get_task_result_reply_status.ok()) {
                   task_error_type = get_task_result_reply.failure_cause().error_type();
                   RAY_LOG(DEBUG) << "Task failure cause " << ray::gcs::RayExceptionToString(get_task_result_reply.failure_cause());
+                  error_info = std::make_unique<rpc::RayErrorInfo>();
+                  error_info->mutable_exception()->CopyFrom(get_task_result_reply.failure_cause());
                 } else {
-                  RAY_LOG(DEBUG) << "Failed to fetch task result with status " << get_task_result_reply_status.ToString();
-                  // TODO: It'd be nice to detect node failure here.
+                  RAY_LOG(DEBUG) << "Failed to fetch task result with status " << get_task_result_reply_status.ToString() << " node id: " << addr.raylet_id << " ip: " << addr.ip_address;
+                  task_error_type = rpc::ErrorType::NODE_DIED;
+                  error_info = std::make_unique<rpc::RayErrorInfo>();
+                  rpc::RayException task_failure_reason;
+                  std::stringstream buffer;
+                  buffer << "Node died, node id: " << addr.raylet_id << " ip: " << addr.ip_address;
+                  task_failure_reason.set_formatted_exception_string(buffer.str());
+                  task_failure_reason.set_error_type(rpc::ErrorType::NODE_DIED);
+                  error_info->mutable_exception()->CopyFrom(task_failure_reason);
                 }
-
                 RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
                     task_id,
                     is_actor ? rpc::ErrorType::ACTOR_DIED : task_error_type,
-                    &status));              
+                    &status,
+                    error_info.get()));              
             };
             auto &lease_entry = worker_to_lease_entry_[addr];
             RAY_CHECK(lease_entry.lease_client);

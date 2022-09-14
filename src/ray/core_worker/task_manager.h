@@ -19,6 +19,7 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
+#include "ray/common/task/task_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -272,6 +273,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
   void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
 
+  /// Checks the expiry time of the task failures and garbage collect them.
+  void GCTaskFailureReason();
+
  private:
   struct TaskEntry {
     TaskEntry(const TaskSpecification &spec_arg,
@@ -387,6 +391,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// and tasks that finished execution but that may be retried again in the
   /// future.
   absl::flat_hash_map<TaskID, TaskEntry> submissible_tasks_ GUARDED_BY(mu_);
+
+  /// Optional extra information about why the task failed. The task would have been
+  /// submitted and ultimately failed. When that happens we put a record here.
+  absl::flat_hash_map<TaskID, ray::TaskFailureEntry> task_failure_reasons_; GUARDED_BY(mu_);
 
   /// Number of tasks that are pending. This is a count of all tasks in
   /// submissible_tasks_ that have been submitted and are currently pending

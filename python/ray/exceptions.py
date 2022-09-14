@@ -374,12 +374,24 @@ class OutOfMemoryError(RayError):
     This is raised if the node is low on memory and tasks or actors are being evicted to free up memory.
     """
 
-    def __str__(self):
-        return super(OutOfMemoryError, self).__str__() + (
-            "\n"
-            "Node is low on memory and utilization is over capacity"
-            "TODO: get message from protobuf"
-        )
+    def __str__(self, error_message):
+        if error_message:
+            message = "\n" + error_message
+        else:
+            message = "\nNode is running low on memory"
+        return super(OutOfMemoryError, self).__str__() + message
+
+
+@PublicAPI
+class NodeDiedError(RayError):
+    """Indicates that the node is either dead or unreachable."""
+
+    def __str__(self, error_message):
+        if error_message:
+            message = "\n" + error_message
+        else:
+            message = "\nNode is dead or unreachable."
+        return super(NodeDiedError, self).__str__() + message
 
 
 @PublicAPI

@@ -512,6 +512,12 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       [this] { InternalHeartbeat(); },
       RayConfig::instance().core_worker_internal_heartbeat_ms());
 
+  if (RayConfig::instance().task_failure_entry_gc_period_ms() > 0) {
+    periodical_runner_.RunFnPeriodically(
+      [this]() { GCTaskFailureReason(); },
+      RayConfig::instance().task_failure_entry_gc_period_ms());
+  }
+
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like
   // registering with Raylet can finish with higher priority.
@@ -3418,6 +3424,10 @@ std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
     return_ids[i] = ObjectID::FromIndex(task_id, i + 1);
   }
   return return_ids;
+}
+
+void CoreWorker::GCTaskFailureReason() {
+  task_manager_->GCTaskFailureReason();
 }
 
 }  // namespace core

@@ -84,6 +84,14 @@ RAY_CONFIG(float, memory_usage_threshold_fraction, 0.9)
 /// Monitor is disabled when this value is 0.
 RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 0)
 
+/// The interval between checking whether task failure entry
+/// should be garbage collected. Disabled when value is 0.
+RAY_CONFIG(uint64_t, task_failure_entry_gc_period_ms, 0)
+
+/// The TTL for when the task failure entry is considered
+/// eligble for garbage colletion.
+RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
+
 /// If the raylet fails to get agent info, we will retry after this interval.
 RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
 

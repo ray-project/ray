@@ -1245,6 +1245,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                       ObjectID object_id,
                       void *py_future);
 
+  /// Checks the expiry time of the task failures and garbage collect them.
+  void GCTaskFailureReason();
+
   /// we are shutting down and not running further tasks.
   /// when exiting_ is set to true HandlePushTask becomes no-op.
   std::atomic<bool> exiting_ = false;

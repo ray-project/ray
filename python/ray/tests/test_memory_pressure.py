@@ -13,6 +13,8 @@ from ray._private.test_utils import get_node_stats, wait_for_condition
 memory_usage_threshold_fraction = 0.7
 memory_monitor_interval_ms = 100
 expected_worker_eviction_message = "System memory low at node with IP"
+task_failure_entry_gc_period_ms = 2000
+task_failure_entry_ttl_ms = 2 * 60 * 1000
 
 
 @pytest.fixture
@@ -26,6 +28,8 @@ def ray_with_memory_monitor(shutdown_only):
             "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
             "memory_monitor_interval_ms": memory_monitor_interval_ms,
             "metrics_report_interval_ms": metrics_report_interval_ms,
+            "task_failure_entry_gc_period_ms": task_failure_entry_gc_period_ms,
+            "task_failure_entry_ttl_ms": task_failure_entry_ttl_ms,
         },
     ):
         yield
@@ -275,7 +279,7 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
 )
 async def test_sanity(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
-    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as ex:
         ray.get(
             no_retry.remote(
                 allocate_bytes=bytes_to_alloc,
@@ -283,6 +287,7 @@ async def test_sanity(ray_with_memory_monitor):
                 post_allocate_sleep_s=1000,
             )
         )
+    print(ex)
 
 
 # TODO: update & add tests

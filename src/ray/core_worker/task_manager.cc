@@ -433,6 +433,12 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 
+    if (ray_error_info != nullptr) {
+      TaskFailureEntry entry(ray_error_info->exception());
+      auto result = task_failure_reasons_.emplace(task_id, std::move(entry));
+      RAY_CHECK(result.second) << "Trying to insert failure reason more than once for the same task, task id: " << task_id;
+    }    
+
     // Throttled logging of task failure errors.
     auto debug_str = spec.DebugString();
     if (debug_str.find("__ray_terminate__") == std::string::npos &&
@@ -716,6 +722,17 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
     entry->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
   }
   reply->set_tasks_total(total);
+}
+
+void TaskManager::GCTaskFailureReason() {
+  absl::MutexLock lock(&mu_);
+  for (const auto &entry : task_failure_reasons_) {
+    auto duration = (uint64_t) std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - entry.second.creation_time).count();
+    if (duration > RayConfig::instance().task_failure_entry_ttl_ms()) {
+      RAY_LOG(INFO) << "Removing task failure reason since it expired, task: " << entry.first;
+      task_failure_reasons_.erase(entry.first);
+    }
+  }
 }
 
 }  // namespace core

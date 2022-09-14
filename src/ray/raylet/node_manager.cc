@@ -453,7 +453,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       });
   worker_pool_.SetAgentManager(agent_manager_);
 
-  /// TODO: add periodic fn to gc expire task failure entries
+  if (RayConfig::instance().task_failure_entry_gc_period_ms() > 0) {
+    periodical_runner_.RunFnPeriodically(
+      [this]() { GCTaskFailureReason(); },
+      RayConfig::instance().task_failure_entry_gc_period_ms());
+  }
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -824,9 +828,8 @@ void NodeManager::HandleGetTaskResult(const rpc::GetTaskResultRequest &request,
   
   auto it = task_failure_reasons_.find(task_id);
   if (it != task_failure_reasons_.end()) {
-    auto exception = *it->second.get();
-    RAY_LOG(DEBUG) << "task " << task_id << " has failure cause " << ray::gcs::RayExceptionToString(exception);
-    reply->mutable_failure_cause()->CopyFrom(exception);
+    RAY_LOG(DEBUG) << "task " << task_id << " has failure cause " << ray::gcs::RayExceptionToString(it->second.ray_exception);
+    reply->mutable_failure_cause()->CopyFrom(it->second.ray_exception);
   } else {
     RAY_LOG(WARNING) << "didn't find failure cause for task " << task_id;
   }
@@ -2990,9 +2993,9 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           RAY_LOG(INFO) << "Latest 10 worker details:\n"
                         << this->WorkersDebugString(workers, max_to_print);
 
-          std::unique_ptr<rpc::RayException> task_failure_reason = std::make_unique<rpc::RayException>();
-          task_failure_reason->set_formatted_exception_string("out of memory!");
-          task_failure_reason->set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
+          rpc::RayException task_failure_reason;
+          task_failure_reason.set_formatted_exception_string("out of memory!");
+          task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
           SetTaskFailureReason(latest_worker->GetAssignedTaskId(), std::move(task_failure_reason));
           /// TODO: (clarng) right now destroy is called after the messages are created
           /// since we print the process memory in the message. Destroy should be called
@@ -3015,10 +3018,21 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
   };
 }
 
-void NodeManager::SetTaskFailureReason(const TaskID &task_id, std::unique_ptr<rpc::RayException> failure_reason) {
+void NodeManager::SetTaskFailureReason(const TaskID &task_id, const rpc::RayException &failure_reason) {
   RAY_LOG(INFO) << "set failure reason for task " << task_id;
-  auto result = task_failure_reasons_.emplace(task_id, std::move(failure_reason));
+  ray::TaskFailureEntry entry(failure_reason);
+  auto result = task_failure_reasons_.emplace(task_id, std::move(entry));
   RAY_CHECK(result.second) << "Trying to insert failure reason more than once for the same task, task id: " << task_id;
+}
+
+void NodeManager::GCTaskFailureReason() {
+  for (const auto &entry : task_failure_reasons_) {
+    auto duration = (uint64_t) std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - entry.second.creation_time).count();
+    if (duration > RayConfig::instance().task_failure_entry_ttl_ms()) {
+      RAY_LOG(INFO) << "Removing task failure reason since it expired, task: " << entry.first;
+      task_failure_reasons_.erase(entry.first);
+    }
+  }
 }
 
 const std::vector<std::shared_ptr<WorkerInterface>>

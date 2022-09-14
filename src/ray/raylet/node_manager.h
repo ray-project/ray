@@ -25,6 +25,7 @@
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
+#include "ray/common/task/task_util.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/object_manager/object_manager.h"
@@ -109,11 +110,6 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The minimum object size that can be spilled by each spill operation.
   int64_t min_spilling_size;
-};
-
-struct TaskFailureEntry {
-  rpc::RayException ray_exception;
-  std::chrono::steady_clock creation_time;
 };
 
 class HeartbeatSender {
@@ -700,8 +696,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic function post TTL.
-  /// TODO: use task failure entry here to store the creation time
-  void SetTaskFailureReason(const TaskID &task_id, std::unique_ptr<rpc::RayException> failure_reason);
+  void SetTaskFailureReason(const TaskID &task_id, const rpc::RayException &failure_reason);
+
+  /// Checks the expiry time of the task failures and garbage collect them.
+  void GCTaskFailureReason();
 
   /// ID of this node.
   NodeID self_node_id_;
@@ -779,7 +777,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
 
   /// Optional extra information about why the task failed.
-  absl::flat_hash_map<TaskID, std::unique_ptr<rpc::RayException>> task_failure_reasons_;
+  absl::flat_hash_map<TaskID, ray::TaskFailureEntry> task_failure_reasons_;
 
   /// Whether to trigger global GC in the next resource usage report. This will broadcast
   /// a global GC message to all raylets except for this one.

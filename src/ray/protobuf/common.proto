@@ -201,6 +201,8 @@ enum ErrorType {
   OBJECT_FREED = 21;
   // We use this error for failure due to running out of memory.
   OUT_OF_MEMORY = 22;
+  // We use this error for failure due to node died unexpectedly.
+  NODE_DIED = 23;
 }
 
 /// The information per ray error type.
@@ -209,6 +211,7 @@ message RayErrorInfo {
     ActorDeathCause actor_died_error = 2;
     RuntimeEnvFailedContext runtime_env_setup_failed_error = 3;
     string error_message = 4;
+    RayException exception = 5;
   }
 }
 
