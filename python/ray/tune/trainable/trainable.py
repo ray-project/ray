@@ -1131,8 +1131,11 @@ class Trainable:
         If any Ray actors are launched in the Trainable (i.e., with a RLlib
         trainer), be sure to kill the Ray actor process here.
 
-        You can kill a Ray actor by calling `actor.__ray_terminate__.remote()`
-        on the actor.
+        This process should be lightweight. Per default,
+
+        You can kill a Ray actor by calling `ray.kill(actor)`
+        on the actor or removing all references to it and waiting for garbage
+        collection
 
         .. versionadded:: 0.8.7
         """
