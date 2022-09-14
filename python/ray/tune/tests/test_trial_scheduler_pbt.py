@@ -321,16 +321,6 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
             synch=True,
         )
 
-        class AnyStopper(tune.stopper.Stopper):
-            def __init__(self, *stoppers):
-                self.stoppers = stoppers
-
-            def __call__(self, trial_id, result):
-                return any([stopper(trial_id, result) for stopper in self.stoppers])
-
-            def stop_all(self):
-                return any([stopper.stop_all() for stopper in self.stoppers])
-
         class TimeoutExceptionStopper(tune.stopper.TimeoutStopper):
             def stop_all(self):
                 decision = super().stop_all()
@@ -358,7 +348,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
                 scheduler=scheduler,
             ),
             run_config=RunConfig(
-                stop=AnyStopper(
+                stop=tune.stopper.CombinedStopper(
                     tune.stopper.MaximumIterationStopper(5),
                     TimeoutExceptionStopper(timeout),
                 ),
