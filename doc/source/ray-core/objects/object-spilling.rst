@@ -55,7 +55,7 @@ usage across multiple physical devices if needed (e.g., SSD devices):
 
 .. note::
   
-To optimize the performance, it is recommended to use an SSD instead of an HDD when using object spilling for memory-intensive workloads.
+    To optimize the performance, it is recommended to use an SSD instead of an HDD when using object spilling for memory-intensive workloads.
 
 If you are using an HDD, it is recommended that you specify a large buffer size (> 1MB) to reduce IO requests during spilling.
 
