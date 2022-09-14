@@ -418,6 +418,9 @@ class GcsAioClient:
         self._job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
             self._channel.channel()
         )
+        self._actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
+            self._channel.channel()
+        )
 
     @_auto_reconnect
     async def check_alive(
@@ -530,6 +533,19 @@ class GcsAioClient:
     ) -> gcs_service_pb2.GetAllJobInfoReply:
         req = gcs_service_pb2.GetAllJobInfoRequest()
         reply = await self._job_info_stub.GetAllJobInfo(req, timeout=timeout)
+        return reply
+
+    @_auto_reconnect
+    async def get_named_actor_info(
+        self,
+        actor_name: str,
+        ray_namespace: str = "",
+        timeout: Optional[float] = None,
+    ) -> gcs_service_pb2.GetNamedActorInfoReply:
+        req = gcs_service_pb2.GetNamedActorInfoRequest(
+            name=actor_name, ray_namespace=ray_namespace
+        )
+        reply = await self._actor_info_stub.GetNamedActorInfo(req, timeout=timeout)
         return reply
 
 

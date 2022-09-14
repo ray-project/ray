@@ -40,8 +40,9 @@ class PredictorNotSerializableException(RuntimeError):
 class Predictor(abc.ABC):
     """Predictors load models from checkpoints to perform inference.
 
-    Note: The base ``Predictor`` class cannot be instantiated directly. Only one of
-    its subclasses can be used.
+    .. note::
+        The base ``Predictor`` class cannot be instantiated directly. Only one of
+        its subclasses can be used.
 
     **How does a Predictor work?**
 
@@ -50,27 +51,27 @@ class Predictor(abc.ABC):
 
     When the ``predict`` method is called the following occurs:
 
-        - The input batch is converted into a pandas DataFrame. Tensor input (like a
-          ``np.ndarray``) will be converted into a single column Pandas Dataframe.
-        - If there is a :ref:`Preprocessor <air-preprocessor-ref>` saved in the provided
-          :ref:`Checkpoint <air-checkpoint-ref>`, the preprocessor will be used to
-          transform the DataFrame.
-        - The transformed DataFrame will be passed to the model for inference (via the
-          ``predictor._predict_pandas`` method).
-        - The predictions will be outputted by ``predict`` in the same type as the
-          original input.
+    - The input batch is converted into a pandas DataFrame. Tensor input (like a
+      ``np.ndarray``) will be converted into a single column Pandas Dataframe.
+    - If there is a :ref:`Preprocessor <air-preprocessor-ref>` saved in the provided
+      :ref:`Checkpoint <air-checkpoint-ref>`, the preprocessor will be used to
+      transform the DataFrame.
+    - The transformed DataFrame will be passed to the model for inference (via the
+      ``predictor._predict_pandas`` method).
+    - The predictions will be outputted by ``predict`` in the same type as the
+      original input.
 
     **How do I create a new Predictor?**
 
     To implement a new Predictor for your particular framework, you should subclass
     the base ``Predictor`` and implement the following two methods:
 
-        1. ``_predict_pandas``: Given a pandas.DataFrame input, return a
-            pandas.DataFrame containing predictions.
-        2. ``from_checkpoint``: Logic for creating a Predictor from an
-           :ref:`AIR Checkpoint <air-checkpoint-ref>`.
-        3. Optionally ``_predict_arrow`` for better performance when working with
-           tensor data to avoid extra copies from Pandas conversions.
+    1. ``_predict_pandas``: Given a pandas.DataFrame input, return a
+       pandas.DataFrame containing predictions.
+    2. ``from_checkpoint``: Logic for creating a Predictor from an
+       :ref:`AIR Checkpoint <air-checkpoint-ref>`.
+    3. Optionally ``_predict_arrow`` for better performance when working with
+       tensor data to avoid extra copies from Pandas conversions.
     """
 
     def __init__(self, preprocessor: Optional[Preprocessor] = None):
@@ -141,8 +142,8 @@ class Predictor(abc.ABC):
             directly to ``_predict_pandas``.
 
         Returns:
-            DataBatchType: Prediction result. The return type will be the same as the
-                input type.
+            DataBatchType:
+                Prediction result. The return type will be the same as the input type.
         """
         data_df = convert_batch_type_to_pandas(data, self._cast_tensor_columns)
 

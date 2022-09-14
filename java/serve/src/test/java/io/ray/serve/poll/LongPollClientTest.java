@@ -1,6 +1,5 @@
 package io.ray.serve.poll;
 
-import com.google.common.collect.ImmutableMap;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
@@ -9,6 +8,9 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.generated.EndpointSet;
+import io.ray.serve.generated.LongPollResult;
+import io.ray.serve.generated.UpdatedObject;
 import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CommonUtil;
 import java.util.HashMap;
@@ -54,11 +56,13 @@ public class LongPollClientTest {
       // Init route table.
       String endpointName1 = "normalTest1";
       String endpointName2 = "normalTest2";
-      Map<String, EndpointInfo> endpoints = new HashMap<>();
-      endpoints.put(
-          endpointName1, EndpointInfo.newBuilder().setEndpointName(endpointName1).build());
-      endpoints.put(
-          endpointName2, EndpointInfo.newBuilder().setEndpointName(endpointName2).build());
+      EndpointSet endpointSet =
+          EndpointSet.newBuilder()
+              .putEndpoints(
+                  endpointName1, EndpointInfo.newBuilder().setEndpointName(endpointName1).build())
+              .putEndpoints(
+                  endpointName2, EndpointInfo.newBuilder().setEndpointName(endpointName2).build())
+              .build();
 
       // Construct a listener map.
       KeyType keyType = new KeyType(LongPollNamespace.ROUTE_TABLE, null);
@@ -76,15 +80,19 @@ public class LongPollClientTest {
 
       // Construct updated object.
       int snapshotId = 10;
-      UpdatedObject updatedObject = new UpdatedObject();
-      updatedObject.setSnapshotId(snapshotId);
-      updatedObject.setObjectSnapshot(endpoints);
+      UpdatedObject updatedObject =
+          UpdatedObject.newBuilder()
+              .setSnapshotId(snapshotId)
+              .setObjectSnapshot(endpointSet.toByteString())
+              .build();
 
       // Mock LongPollResult.
-      LongPollResult longPollResult = new LongPollResult();
-      longPollResult.setUpdatedObjects(ImmutableMap.of(keyType, updatedObject));
+      LongPollResult longPollResult =
+          LongPollResult.newBuilder().putUpdatedObjects(keyType.toString(), updatedObject).build();
       ObjectRef<Boolean> mockLongPollResult =
-          controllerHandle.task(DummyServeController::setLongPollResult, longPollResult).remote();
+          controllerHandle
+              .task(DummyServeController::setLongPollResult, longPollResult.toByteArray())
+              .remote();
       Assert.assertEquals(mockLongPollResult.get().booleanValue(), true);
 
       // Poll.
