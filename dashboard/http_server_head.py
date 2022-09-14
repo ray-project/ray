@@ -8,6 +8,8 @@ import sys
 from distutils.version import LooseVersion
 import time
 
+from ray.dashboard.consts import DASHBOARD_METRIC_PORT
+from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 
@@ -15,7 +17,13 @@ import ray.dashboard.utils as dashboard_utils
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import aiohttp, hdrs
-from ray.util.metrics import Counter, Histogram
+from ray.experimental.internal_kv import _initialize_internal_kv, _internal_kv_put
+
+try:
+    import prometheus_client
+except ImportError:
+    prometheus_client = None
+
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -48,11 +56,15 @@ def setup_static_dir():
 
 
 class HttpServerDashboardHead:
-    def __init__(self, ip, http_host, http_port, http_port_retries):
+    def __init__(
+        self, ip, http_host, http_port, http_port_retries, gcs_address, gcs_client
+    ):
         self.ip = ip
         self.http_host = http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
+        self.gcs_client = gcs_client
+        self.head_node_ip = gcs_address.split(":")[0]
 
         # Below attirubtes are filled after `run` API is invoked.
         self.runner = None
@@ -100,19 +112,20 @@ class HttpServerDashboardHead:
 
     async def metrics_middleware(self, app, handler):
         async def middleware_handler(request):
+            start_time = time.monotonic()
             try:
-                start_time = time.monotonic()
                 response = await handler(request)
-                resp_time = time.monotonic() - start_time
-                print("THIS HAPPENED!")
-                logger.warning("HELLO!!")
-                status_tag = f"{floor(response.status / 100)}xx"
-                request.app['metrics_request_latency'].observe(resp_time, {"endpoint": request.path, "http_status": status_tag})
-                request.app['metrics_request_count'].inc(tags={"method": request.method, "endpoint": request.path, "http_status": status_tag})
                 return response
-            except Exception as ex:
-                logger.exception("error with metrics")
-                raise
+            finally:
+                resp_time = time.monotonic() - start_time
+                status_tag = f"{floor(response.status / 100)}xx"
+                request.app["metrics"].metrics_request_duration.labels(
+                    endpoint=request.path, http_status=status_tag
+                ).observe(resp_time)
+                request.app["metrics"].metrics_request_count.labels(
+                    method=request.method, endpoint=request.path, http_status=status_tag
+                ).inc()
+
         return middleware_handler
 
     async def run(self, modules):
@@ -123,7 +136,7 @@ class HttpServerDashboardHead:
         # working_dir uploads for job submission can be up to 100MiB.
         app = aiohttp.web.Application(client_max_size=100 * 1024 ** 2)
         app.add_routes(routes=routes.bound_routes())
-        self.setup_metrics(app)
+        self._setup_metrics(app)
 
         self.runner = aiohttp.web.AppRunner(
             app,
@@ -162,11 +175,38 @@ class HttpServerDashboardHead:
             logger.info(r)
         logger.info("Registered %s routes.", len(dump_routes))
 
-    def setup_metrics(self, app):
-        app['metrics_request_count'] = Counter("dashboard_api_requests_count", description="Total requests count per endpoint", tag_keys=("method", "endpoint", "http_status"))
-        app['metrics_request_latency'] = Histogram("dashboard_api_requests_latency_seconds", description="Total latency in seconds per endpoint", boundaries=[0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10], tag_keys=("endpoint", "http_status"))
+    def _setup_metrics(self, app):
+        metrics = DashboardPrometheusMetrics()
+        app["metrics"] = metrics
         app.middlewares.insert(0, self.metrics_middleware)
 
+        # Setup prometheus metrics export server
+        _initialize_internal_kv(self.gcs_client)
+        address = f"{self.head_node_ip}:{DASHBOARD_METRIC_PORT}"
+        _internal_kv_put("DashboardMetricsAddress", address, True)
+        if prometheus_client:
+            try:
+                logger.info(
+                    "Starting dashboard metrics server on port {}".format(
+                        DASHBOARD_METRIC_PORT
+                    )
+                )
+                kwargs = (
+                    {"addr": "127.0.0.1"} if self.head_node_ip == "127.0.0.1" else {}
+                )
+                prometheus_client.start_http_server(
+                    port=DASHBOARD_METRIC_PORT,
+                    registry=metrics.registry,
+                    **kwargs,
+                )
+            except Exception:
+                logger.exception(
+                    "An exception occurred while starting the metrics server."
+                )
+        elif not prometheus_client:
+            logger.warning(
+                "`prometheus_client` not found, so metrics will not be exported."
+            )
 
     async def cleanup(self):
         # Wait for finish signal.
