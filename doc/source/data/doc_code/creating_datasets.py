@@ -597,5 +597,5 @@ ds = ray.data.read_tfrecords(path)
 # -> Dataset(num_blocks=10, num_rows=150, schema={length: float64, width: float64, species: object})
 
 ds.show(1)
-# -> {'length': 5.099999904632568, 'width': 3.5, 'species': b'setosa'}
+# -> {'length': 5.1, 'width': 3.5, 'species': b'setosa'}
 # __read_tfrecords_end__
