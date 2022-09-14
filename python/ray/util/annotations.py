@@ -182,7 +182,7 @@ def _get_indent(docstring: Optional[str]) -> int:
 
     non_empty_lines = list(filter(bool, docstring.splitlines()))
     if len(non_empty_lines) == 1:
-        # Empty docstring or docstring contains summary only.
+        # Docstring contains summary only.
         return 0
 
     # The docstring summary isn't indented, so check the indentation of the second
