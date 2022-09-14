@@ -1009,7 +1009,6 @@ class DeploymentState:
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
             self._name, DeploymentStatus.UPDATING
         )
-        self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
     def should_autoscale(self) -> bool:
         """
@@ -1665,6 +1664,7 @@ class DriverDeploymentState(DeploymentState):
         _save_checkpoint_func: Callable,
     ):
         super().__init__(name, controller_name, detached, None, _save_checkpoint_func)
+        self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
     def _deploy_driver(self):
         all_nodes = get_all_node_ids(self._gcs_client)
