@@ -119,7 +119,11 @@ class HttpServerDashboardHead:
             start_time = time.monotonic()
             try:
                 response = await handler(request)
+                status_tag = f"{floor(response.status / 100)}xx"
                 return response
+            except Exception:
+                status_tag = "5xx"
+                raise
             finally:
                 resp_time = time.monotonic() - start_time
                 status_tag = f"{floor(response.status / 100)}xx"
