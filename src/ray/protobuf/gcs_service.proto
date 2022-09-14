@@ -609,7 +609,8 @@ service NodeResourceInfoGcsService {
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
   // Get current scheduling stats (e.g., pending tasks) of gcs server.
-  rpc GetGcsSchedulingStats(GetGcsSchedulingStatsRequest) returns (GetGcsSchedulingStatsReply);
+  rpc GetGcsSchedulingStats(GetGcsSchedulingStatsRequest)
+      returns (GetGcsSchedulingStatsReply);
 }
 
 message GcsStatus {
