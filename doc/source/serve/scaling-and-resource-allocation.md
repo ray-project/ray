@@ -123,6 +123,17 @@ def func_2(*args):
 
 In this example, each replica of each deployment will be allocated 0.5 GPUs.  The same can be done to multiplex over CPUs, using `"num_cpus"`.
 
+### Custom Resources
+
+You can also specify [custom resources](custom-resources) in `ray_actor_options`, for example to ensure that a deployment is scheduled on a specific node.
+For example, if you have a deployment that requires 2 units of the `"custom_resource"` resource, you can specify it like this:
+
+```python
+@serve.deployment(ray_actor_options={"resources": {"custom_resource": 2}})
+def func(*args):
+    return do_something_with_my_custom_resource()
+```
+
 (serve-omp-num-threads)=
 
 ## Configuring Parallelism with OMP_NUM_THREADS
