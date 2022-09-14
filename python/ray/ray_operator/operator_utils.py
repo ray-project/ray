@@ -142,7 +142,7 @@ def get_node_types(
         env = node_type["node_config"]["spec"]["containers"][0].setdefault("env", [])
         env.append(
             {
-                "key": usage_constants.LEGACY_RAY_OPERATOR_ENV,
+                "name": usage_constants.LEGACY_RAY_OPERATOR_ENV,
                 "value": "1",
             }
         )
