@@ -32,7 +32,7 @@ _TUNER_FAILED_MSG = (
     "The Ray Tune run failed. Please inspect the previous error messages for a "
     "cause. After fixing the issue, you can restart the run from scratch or "
     "continue this run. To continue this run, you can use "
-    "`tuner = Tuner.restore(\"{path}\")`."
+    '`tuner = Tuner.restore("{path}")`.'
 )
 
 
