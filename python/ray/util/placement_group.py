@@ -174,6 +174,11 @@ def placement_group(
     if not isinstance(bundles, list):
         raise ValueError("The type of bundles must be list, got {}".format(bundles))
 
+    if not bundles:
+        raise ValueError(
+            "The placement group `bundles` argument cannot contain an empty list"
+        )
+
     assert _max_cpu_fraction_per_node is not None
 
     if _max_cpu_fraction_per_node <= 0 or _max_cpu_fraction_per_node > 1:
