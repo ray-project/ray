@@ -1,4 +1,5 @@
 from collections import defaultdict
+import asyncio
 import os
 import time
 
@@ -47,9 +48,8 @@ def test_task_basic(shutdown_only):
         "SCHEDULED": 8.0,
         "WAITING_FOR_DEPENDENCIES": 0.0,
     }
-    # TODO(ekl) optimize the reporting interval to be faster for testing
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
 
 
@@ -65,7 +65,7 @@ def test_task_wait_on_deps(shutdown_only):
         time.sleep(999)
 
     x = f.remote()
-    [g.remote(x) for _ in range(5)]
+    [g.remote(x) for _ in range(10)]
 
     expected = {
         "RUNNING": 1.0,
@@ -74,7 +74,7 @@ def test_task_wait_on_deps(shutdown_only):
         "WAITING_FOR_DEPENDENCIES": 10.0,
     }
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
 
 
@@ -103,7 +103,7 @@ def test_actor_tasks_queued(shutdown_only):
         "FINISHED": 11.0,
     }
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
 
 
@@ -128,7 +128,7 @@ def test_task_finish(shutdown_only):
         "FINISHED": 2.0,
     }
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
 
 
@@ -150,11 +150,31 @@ def test_task_retry(shutdown_only):
         "FINISHED": 1.0,  # Only recorded as finished once.
     }
     wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
 
 
-# TODO(ekl) test wait on object store transfer (??)
+def test_concurrent_actor_tasks(shutdown_only):
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+
+    @ray.remote(max_concurrency=30)
+    class A:
+        async def f(self):
+            await asyncio.sleep(300)
+
+    a = A.remote()
+    [a.f.remote() for _ in range(40)]
+
+    expected = {
+        "RUNNING": 30.0,
+        "WAITING_FOR_EXECUTION": 10.0,
+        "SCHEDULED": 0.0,
+        "WAITING_FOR_DEPENDENCIES": 0.0,
+        "FINISHED": 1.0,
+    }
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+    )
 
 
 if __name__ == "__main__":
