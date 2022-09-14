@@ -757,8 +757,17 @@ def get_cluster_config_to_report(
     except FileNotFoundError:
         # It's a manually started cluster or k8s cluster
         result = ClusterConfigToReport()
-        if "KUBERNETES_SERVICE_HOST" in os.environ:
-            result.cloud_provider = "kubernetes"
+        # Check if we're on Kubernetes
+        if usage_constant.KUBERNETES_SERVICE_HOST_ENV in os.environ:
+            # Check if we're using KubeRay >= 0.4.0.
+            if usage_constant.KUBERAY_ENV in os.environ:
+                result.cloud_provider = usage_constant.PROVIDER_KUBERAY
+            # Check if we're using the legacy Ray Operator with Ray >= 2.1.0.
+            elif usage_constant.LEGACY_RAY_OPERATOR_ENV in os.environ:
+                result.cloud_provider = usage_constant.PROVIDER_LEGACY_RAY_OPERATOR
+            # Else, we're on Kubernetes but not in either of the above categories.
+            else:
+                result.cloud_provider = usage_constant.PROVIDER_KUBERNETES_GENERIC
         return result
     except Exception as e:
         logger.info(f"Failed to get cluster config to report {e}")

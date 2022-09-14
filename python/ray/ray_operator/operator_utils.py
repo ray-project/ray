@@ -9,6 +9,7 @@ from kubernetes.client.rest import ApiException
 from kubernetes.watch import Watch
 
 from ray._private import ray_constants
+from ray._private.usage import usage_constants
 from ray.autoscaler._private._kubernetes import custom_objects_api
 from ray.autoscaler._private._kubernetes.node_provider import head_service_selector
 from ray.autoscaler._private.providers import _get_default_config
@@ -137,6 +138,14 @@ def get_node_types(
         if name == cluster_resource["spec"]["headPodType"]:
             if "labels" not in metadata:
                 metadata["labels"] = {}
+        # Insert env identifying legacy operator for telemetry.
+        env = node_type["node_config"]["spec"]["containers"][0].setdefault("env", [])
+        env.append(
+            {
+                "name": usage_constants.LEGACY_RAY_OPERATOR_ENV,
+                "value": "1",
+            }
+        )
         node_types[name] = node_type
     return node_types
 
