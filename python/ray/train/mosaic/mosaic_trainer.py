@@ -62,6 +62,8 @@ class MosaicTrainer(TorchTrainer):
     Example:
 
             .. code-block:: python
+            # Based on https://docs.mosaicml.com/en/v0.9.0/examples/getting_started.html
+            
             from typing import Tuple
             import pandas as pd
 
