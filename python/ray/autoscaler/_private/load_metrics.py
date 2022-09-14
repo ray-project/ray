@@ -11,7 +11,12 @@ from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
     AUTOSCALER_REPORT_PER_NODE_STATUS,
 )
-from ray.autoscaler._private.util import DictCount, LoadMetricsSummary, NodeIP, ResourceDict
+from ray.autoscaler._private.util import (
+    DictCount,
+    LoadMetricsSummary,
+    NodeIP,
+    ResourceDict,
+)
 from ray.core.generated.common_pb2 import PlacementStrategy
 
 logger = logging.getLogger(__name__)
