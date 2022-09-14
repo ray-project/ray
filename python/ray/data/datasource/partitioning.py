@@ -35,7 +35,7 @@ class PartitionStyle(str, Enum):
 
 
 @DeveloperAPI
-class PathPartitionScheme:
+class Partitioning:
     """Partition scheme used to describe path-based partitions.
 
     Path-based partition formats embed all partition keys and values directly in
@@ -167,21 +167,21 @@ class PathPartitionEncoder:
         Returns:
             The new partition path encoder.
         """
-        scheme = PathPartitionScheme(style, base_dir, field_names, filesystem)
+        scheme = Partitioning(style, base_dir, field_names, filesystem)
         return PathPartitionEncoder(scheme)
 
-    def __init__(self, path_partition_scheme: PathPartitionScheme):
+    def __init__(self, partitioning: Partitioning):
         """Creates a new partition path encoder.
 
         Args:
-            path_partition_scheme: The path-based partition scheme. All partition paths
+            partitioning: The path-based partition scheme. All partition paths
                 will be generated under this scheme's base directory. Field names are
                 required for HIVE partition paths, optional for DIRECTORY partition
                 paths. When non-empty, the order and length of partition key field
                 names must match the order and length of partition values.
         """
-        style = path_partition_scheme.style
-        field_names = path_partition_scheme.field_names
+        style = partitioning.style
+        field_names = partitioning.field_names
         if style == PartitionStyle.HIVE and not field_names:
             raise ValueError(
                 "Hive partition path generation requires a corresponding list of "
@@ -198,7 +198,7 @@ class PathPartitionEncoder:
                 f"Unsupported partition style: {style}. "
                 f"Supported styles: {generators.keys()}"
             )
-        self._scheme = path_partition_scheme
+        self._scheme = partitioning
 
     def __call__(self, partition_values: List[str]) -> str:
         """Returns the partition directory path for the given partition value strings.
@@ -219,8 +219,8 @@ class PathPartitionEncoder:
         return posixpath.join(self._scheme.normalized_base_dir, *partition_dirs)
 
     @property
-    def scheme(self) -> PathPartitionScheme:
-        """Returns the path partition scheme for this encoder."""
+    def scheme(self) -> Partitioning:
+        """Returns the partitioning for this encoder."""
         return self._scheme
 
     def _as_hive_partition_dirs(self, values: List[str]) -> List[str]:
@@ -299,14 +299,14 @@ class PathPartitionParser:
         Returns:
             The new path-based partition parser.
         """
-        scheme = PathPartitionScheme(style, base_dir, field_names, filesystem)
+        scheme = Partitioning(style, base_dir, field_names, filesystem)
         return PathPartitionParser(scheme)
 
-    def __init__(self, path_partition_scheme: PathPartitionScheme):
+    def __init__(self, partitioning: Partitioning):
         """Creates a path-based partition parser.
 
         Args:
-            path_partition_scheme: The path-based partition scheme. The parser starts
+            partitioning: The path-based partition scheme. The parser starts
                 searching for partitions from this scheme's base directory. File paths
                 outside the base directory will be considered unpartitioned. If the
                 base directory is `None` or an empty string then this will search for
@@ -315,8 +315,8 @@ class PathPartitionParser:
                 non-empty, the order and length of partition key field names must match
                 the order and length of partition directories discovered.
         """
-        style = path_partition_scheme.style
-        field_names = path_partition_scheme.field_names
+        style = partitioning.style
+        field_names = partitioning.field_names
         if style == PartitionStyle.DIRECTORY and not field_names:
             raise ValueError(
                 "Directory partitioning requires a corresponding list of "
@@ -333,7 +333,7 @@ class PathPartitionParser:
                 f"Unsupported partition style: {style}. "
                 f"Supported styles: {parsers.keys()}"
             )
-        self._scheme = path_partition_scheme
+        self._scheme = partitioning
 
     def __call__(self, path: str) -> Dict[str, str]:
         """Parses partition keys and values from a single file path.
@@ -350,8 +350,8 @@ class PathPartitionParser:
         return self._parser_fn(dir_path)
 
     @property
-    def scheme(self) -> PathPartitionScheme:
-        """Returns the path partition scheme for this parser."""
+    def scheme(self) -> Partitioning:
+        """Returns the partitioning for this parser."""
         return self._scheme
 
     def _dir_path_trim_base(self, path: str) -> Optional[str]:
@@ -402,7 +402,14 @@ class PathPartitionParser:
             f"Expected {len(field_names)} partition value(s) but found "
             f"{len(dirs)}: {dirs}."
         )
-        return {field_names[i]: d for i, d in enumerate(dirs)} if dirs else {}
+
+        if not dirs:
+            return {}
+        return {
+            field: directory
+            for field, directory in zip(field_names, dirs)
+            if field is not None
+        }
 
 
 @PublicAPI(stability="beta")
@@ -465,7 +472,7 @@ class PathPartitionFilter:
         Returns:
             The new path-based partition filter.
         """
-        scheme = PathPartitionScheme(style, base_dir, field_names, filesystem)
+        scheme = Partitioning(style, base_dir, field_names, filesystem)
         path_partition_parser = PathPartitionParser(scheme)
         return PathPartitionFilter(path_partition_parser, filter_fn)
 
