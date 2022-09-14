@@ -271,10 +271,10 @@ class PullManager {
           rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_SCHEDULING));
       ray::stats::STATS_tasks.Record(
           inactive_requests.size(),
-          rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_DATA_FETCH_START));
+          rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_DEP_FETCH_START));
       ray::stats::STATS_tasks.Record(
           active_requests.size(),
-          rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_DATA_FETCH_FINISH));
+          rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_DEP_FETCH_FINISH));
     }
 
     bool Empty() const { return requests.empty(); }
