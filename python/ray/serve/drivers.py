@@ -208,7 +208,7 @@ class ServegRPCIngress:
         await self.server.wait_for_termination()
 
 
-@serve.deployment(driver_deployment=True)
+@serve.deployment(driver_deployment=True, ray_actor_options={"num_cpus": 0})
 class gRPCDriver(ServegRPCIngress, serve_pb2_grpc.PredictAPIsServiceServicer):
     def __init__(self, dags: RayServeDAGHandle, port=DEFAULT_GRPC_PORT):
         self.dag = dags
