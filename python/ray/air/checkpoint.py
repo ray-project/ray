@@ -23,7 +23,7 @@ from ray.air._internal.remote_storage import (
     upload_to_uri,
 )
 from ray.air.constants import PREPROCESSOR_KEY
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
 if TYPE_CHECKING:
@@ -304,6 +304,10 @@ class Checkpoint:
         else:
             raise RuntimeError(f"Empty data for checkpoint {self}")
 
+    @Deprecated(
+        message="To restore a checkpoint from a remote object ref, call "
+        "`ray.get(ckpt)`."
+    )
     @classmethod
     def from_object_ref(cls, obj_ref: ray.ObjectRef) -> "Checkpoint":
         """Create checkpoint object from object reference.
@@ -315,12 +319,16 @@ class Checkpoint:
             Checkpoint: checkpoint object.
         """
         warnings.warn(
-            "`from_object_ref` is deprecated and will be removed in a future Ray version. To restore a Checkpoint from a remote object ref, call `ray.get(obj_ref)` ",
-            "instead.",
+            "`from_object_ref` is deprecated and will be removed in a future Ray "
+            "version. To restore a Checkpoint from a remote object ref, call "
+            "`ray.get(obj_ref)` instead.",
             DeprecationWarning,
         )
         return cls(obj_ref=obj_ref)
 
+    @Deprecated(
+        message="To store the checkpoint in the Ray object store, call `ray.put(ckpt)`."
+    )
     def to_object_ref(self) -> ray.ObjectRef:
         """Return checkpoint data as object reference.
 
@@ -328,8 +336,9 @@ class Checkpoint:
             ray.ObjectRef: ObjectRef pointing to checkpoint data.
         """
         warnings.warn(
-            "`to_object_ref` is deprecated and will be removed in a future Ray version. To store the checkpoint in the Ray object store, call `ray.put(ckpt)` ",
-            "instead of `ckpt.to_object_ref()`.",
+            "`to_object_ref` is deprecated and will be removed in a future Ray "
+            "version. To store the checkpoint in the Ray object store, call "
+            "`ray.put(ckpt)` instead of `ckpt.to_object_ref()`.",
             DeprecationWarning,
         )
         if self._obj_ref:
