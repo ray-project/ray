@@ -504,6 +504,13 @@ def test_placement_group_hang(ray_start_cluster, connect_to_client):
         placement_group_assert_no_leak([g1])
 
 
+@pytest.mark.parametrize("connect_to_client", [True, False])
+def test_placement_group_empty_bundle_error(ray_start_regular, connect_to_client):
+    with connect_to_client_or_not(connect_to_client):
+        with pytest.raises(ValueError):
+            ray.util.placement_group([])
+
+
 def test_placement_group_scheduling_warning(ray_start_regular_shared):
     @ray.remote
     class Foo:
