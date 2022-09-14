@@ -10,6 +10,7 @@ import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.job.common import (
     JobSubmitRequest,
     JobSubmitResponse,
+    JobStopResponse,
     JobLogsResponse,
 )
 from ray.dashboard.modules.job.job_manager import JobManager
@@ -63,6 +64,39 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
             text=json.dumps(dataclasses.asdict(resp)),
             content_type="application/json",
             status=aiohttp.web.HTTPOk.status_code,
+        )
+
+    @routes.post("/api/job_agent/jobs/{job_or_submission_id}/stop")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def stop_job(self, req: Request) -> Response:
+        job_or_submission_id = req.match_info["job_or_submission_id"]
+        job = await find_job_by_ids(
+            self._dashboard_agent.gcs_aio_client,
+            self.get_job_manager(),
+            job_or_submission_id,
+        )
+        if not job:
+            return Response(
+                text=f"Job {job_or_submission_id} does not exist",
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
+        if job.type is not JobType.SUBMISSION:
+            return Response(
+                text="Can only stop submission type jobs",
+                status=aiohttp.web.HTTPBadRequest.status_code,
+            )
+
+        try:
+            stopped = self.get_job_manager().stop_job(job.submission_id)
+            resp = JobStopResponse(stopped=stopped)
+        except Exception:
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
+
+        return Response(
+            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
         )
 
     @routes.get("/api/job_agent/jobs/{job_or_submission_id}")

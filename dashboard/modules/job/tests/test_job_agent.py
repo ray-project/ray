@@ -13,6 +13,7 @@ import yaml
 
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.packaging import Protocol, parse_uri
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.test_utils import (
     chdir,
@@ -316,6 +317,45 @@ async def test_runtime_env_setup_failure(job_sdk_client):
 
     data = await client.get_job_info(job_id)
     assert "Failed to set up runtime environment" in data.message
+
+
+@pytest.mark.asyncio
+async def test_stop_long_running_job(job_sdk_client):
+    """
+    Submit a job that runs for a while and stop it in the middle.
+    """
+    client = job_sdk_client
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        driver_script = """
+print('Hello !')
+import time
+time.sleep(300) # This should never finish
+raise RuntimeError('Intentionally failed.')
+        """
+        test_script_file = path / "test_script.py"
+        with open(test_script_file, "w+") as file:
+            file.write(driver_script)
+
+        runtime_env = {"working_dir": tmp_dir}
+        runtime_env = upload_working_dir_if_needed(runtime_env, tmp_dir, logger=logger)
+        runtime_env = RuntimeEnv(**runtime_env).to_dict()
+
+        request = validate_request_type(
+            {"runtime_env": runtime_env, "entrypoint": "python test_script.py"},
+            JobSubmitRequest,
+        )
+        submit_result = await client.submit_job_internal(request)
+        job_id = submit_result.submission_id
+
+        stopped = await client.stop_job(job_id)
+        assert stopped is True
+
+        check_result = await _check_job(
+            client=client, job_id=job_id, status=JobStatus.STOPPED, timeout=10
+        )
+        assert check_result
 
 
 @pytest.mark.asyncio
