@@ -2,7 +2,6 @@ from typing import Dict, List, Union, Iterable
 import warnings
 import struct
 
-import pandas as pd
 import pyarrow
 import tensorflow as tf
 
@@ -16,6 +15,7 @@ class TFRecordDatasource(FileBasedDatasource):
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Block:
         from google.protobuf.message import DecodeError
+        import pandas as pd
 
         data = []
         for record in _read_records(f):
