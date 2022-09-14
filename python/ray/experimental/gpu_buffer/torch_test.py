@@ -18,10 +18,10 @@ def download_dataset():
     testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
     return trainset, testset
 
-def train_epoch(net, criterion, optimizer, trainloader):
+def train_epoch(net, criterion, optimizer, trainloader, pinned):
     net.train()
     for i,data in enumerate(trainloader):
-        inputs, labels = data[0].to(device), data[1].to(device)
+        inputs, labels = data[0].to(device, non_blocking=pinned), data[1].to(device, non_blocking=pinned)
         optimizer.zero_grad()
         
         out = net(inputs)
@@ -29,13 +29,13 @@ def train_epoch(net, criterion, optimizer, trainloader):
         loss.backward()
         optimizer.step()
 
-def test(net, testloader):
+def test(net, testloader, pinned):
     net.eval()
     total = 0
     correct = 0
     with torch.no_grad():
         for data in testloader:
-            images, labels = data[0].to(device), data[1].to(device)
+            images, labels = data[0].to(device, non_blocking=pinned), data[1].to(device, non_blocking=pinned)
             outputs = net(images)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
@@ -69,7 +69,7 @@ def parse_args():
 if __name__ == '__main__':
     NUM_WORKERS = 0
     BATCH_SIZE = 4
-    EPOCHS = 3
+    EPOCHS = 1
 
     if not torch.cuda.is_available():
         raise Exception('No GPU detected, cannot perform benchmark')
@@ -87,14 +87,14 @@ if __name__ == '__main__':
     testloader = torch.utils.data.DataLoader(testset, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=args.pin)
     print('Dataset Loaded!')
 
-    print(f'Mode: {args.model}, Pin: {args.pin}')
+    print(f'Model: {args.model}, Pin: {args.pin}')
     net = torchvision.models.vgg11() if args.model == 'large' else SimpleCNN()
     net.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
     for epoch in range(EPOCHS):
-        train_epoch(net, criterion, optimizer, trainloader)
-        accuracy = test(net, testloader)
+        train_epoch(net, criterion, optimizer, trainloader, args.pin)
+        accuracy = test(net, testloader, args.pin)
         print(f"Accuracy after epoch {epoch + 1}: {accuracy*100}%")
     end_time = time.time()
     print(f'total time: {end_time - start_time}s')
