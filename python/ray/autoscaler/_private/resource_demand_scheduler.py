@@ -490,8 +490,7 @@ class ResourceDemandScheduler:
 
         """
         to_add = collections.defaultdict(int)
-        transformed = transform_node_types(self.node_types,
-                                           node_types)
+        transformed = transform_node_types(self.node_types, node_types)
         for bundles in strict_spreads:
             # Try to pack as many bundles of this group as possible on existing
             # nodes. The remaining will be allocated on new nodes.
@@ -638,8 +637,10 @@ def _add_min_workers_nodes(
     return node_resources, node_type_counts, total_nodes_to_add_dict
 
 
-def transform_node_types(all_nodes : Dict[NodeType, NodeTypeConfigDict], ordered_and_filtered : List[NodeType]):
-    return { node_type: all_nodes[node_type] for node_type in ordered_and_filtered }
+def transform_node_types(
+    all_nodes: Dict[NodeType, NodeTypeConfigDict], ordered_and_filtered: List[NodeType]
+):
+    return {node_type: all_nodes[node_type] for node_type in ordered_and_filtered}
 
 
 def get_nodes_for(
