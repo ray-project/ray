@@ -267,16 +267,18 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
             )
         )
 
-    def testStopSavingTrial(self):
-        """Tests a synch PBT failure mode where a trial misses its SAVING_RESULT event
+    def testExploitWhileSavingTrial(self):
+        """Tests a synch PBT failure mode where a trial misses its `SAVING_RESULT` event
         book-keeping due to being stopped by the PBT algorithm (to exploit another
         trial).
 
         Trials checkpoint ever N iterations, and the perturbation interval is every N
-        iterations.
+        iterations. (N = 2 in the test.)
+
+        Raises a `TimeoutError` if hanging for a specified `timeout`.
 
         1. Trial 0 comes in with training result
-        2. Trial 0 begins saving checkpoint (which may take a long time)
+        2. Trial 0 begins saving checkpoint (which may take a long time, 5s here)
         3. Trial 1 comes in with result
         4. Trial 1 forcefully stops Trial 0 via exploit, while trial_0.is_saving
         5. Trial 0 should resume training properly with Trial 1's checkpoint
@@ -288,9 +290,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
 
             def step(self):
                 time.sleep(self.training_time)
-                return {
-                    "score": self.score
-                }
+                return {"score": self.score}
 
             def save_checkpoint(self, checkpoint_dir):
                 checkpoint = Checkpoint.from_dict({"a": self.a})
@@ -338,6 +338,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
                     raise TimeoutError("Trials are hanging! Timeout reached...")
                 return decision
 
+        timeout = 30.0
         training_times = [0.1, 0.15]
         saving_times = [5.0, 0.1]
         tuner = tune.Tuner(
@@ -359,7 +360,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
             run_config=RunConfig(
                 stop=AnyStopper(
                     tune.stopper.MaximumIterationStopper(5),
-                    TimeoutExceptionStopper(30.0)
+                    TimeoutExceptionStopper(timeout),
                 ),
                 failure_config=FailureConfig(fail_fast=True),
                 checkpoint_config=CheckpointConfig(
