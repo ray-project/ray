@@ -7,7 +7,20 @@
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/ci.sh build
     - pip install -Ur ./python/requirements_ml_docker.txt
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only,-ray_air python/ray/train/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only,-ray_air,-torch_1_11 python/ray/train/...
+
+- label: ":tv: :steam_locomotive: Train GPU tests (PyTorch 1.11) "
+  conditions: ["RAY_CI_TRAIN_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - PYTHON=3.7 TRAIN_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+    # Because Python version changed, we need to re-install Ray here
+    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/ci.sh build
+    - pip install -Ur ./python/requirements_ml_docker.txt
+    - pip uninstall torch -y
+    - pip install -U torch==1.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=torch_1_11 python/ray/train/...
 
 - label: ":tv: :database: :steam_locomotive: Datasets Train Integration GPU Tests and Examples (Python 3.7)"
   conditions: ["RAY_CI_TRAIN_AFFECTED"]
