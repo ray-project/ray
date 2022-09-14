@@ -304,11 +304,11 @@ class Checkpoint:
         else:
             raise RuntimeError(f"Empty data for checkpoint {self}")
 
+    @classmethod
     @Deprecated(
         message="To restore a checkpoint from a remote object ref, call "
         "`ray.get(obj_ref)` instead."
     )
-    @classmethod
     def from_object_ref(cls, obj_ref: ray.ObjectRef) -> "Checkpoint":
         """Create checkpoint object from object reference.
 
