@@ -328,8 +328,8 @@ class Checkpoint:
             ray.ObjectRef: ObjectRef pointing to checkpoint data.
         """
         warnings.warn(
-            "`to_object_ref` is deprecated and will be removed. Call `ray.put` ",
-            "instead.",
+            "`to_object_ref` is deprecated and will be removed in a future Ray version. To store the checkpoint in the Ray object store, call `ray.put(ckpt)` ",
+            "instead of `ckpt.to_object_ref()`.",
             DeprecationWarning,
         )
         if self._obj_ref:
