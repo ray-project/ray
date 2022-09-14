@@ -464,6 +464,156 @@ def test_get_nodes_to_launch_limits():
     assert rem == [{"GPU": 8}] * 16
 
 
+def test_get_nodes_to_launch_ordering():
+    provider = MockProvider()
+    all_node_types = {
+        "head": {
+            "node_config": {},
+            "resources": {"CPU": 0},
+            "min_workers": 0,
+            "max_workers": 0,
+        },
+        "single": {
+            "node_config": {},
+            "resources": {"CPU": 1},
+            "min_workers": 0,
+            "max_workers": 2,
+        },
+        "double": {
+            "node_config": {},
+            "resources": {"CPU": 1},
+            "min_workers": 0,
+            "max_workers": 2,
+        },
+        "binary": {
+            "node_config": {},
+            "resources": {"CPU": 1},
+            "min_workers": 0,
+            "max_workers": 2,
+        },
+        "bigger": {
+            "node_config": {},
+            "resources": {"CPU": 3},
+            "min_workers": 0,
+            "max_workers": 2,
+        },
+    }
+    provider.create_node(
+        {},
+        {TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, TAG_RAY_USER_NODE_TYPE: "head"},
+        1,
+    )
+    head_ip = provider.non_terminated_node_ips({})[0]
+    scheduler = ResourceDemandScheduler(
+        provider, all_node_types, 999, head_node_type="head"
+    )
+
+
+    # to_launch, rem = scheduler.get_nodes_to_launch(
+    #     [0], {}, [{"CPU": 1}] * 3, {head_ip: {}}, [], {head_ip: {}}, node_types=["double", "single"]
+    # )
+    # assert to_launch == {"double": 2, "single": 1}
+    # assert not rem
+
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        [0], {}, [{"CPU": 1}] * 3, {head_ip: {}}, [], {head_ip: {}}, node_types=["double", "binary"]
+    )
+    assert to_launch == {"double": 2, "binary": 1}
+    assert not rem
+
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        [0], {}, [{"CPU": 1}] * 3, {head_ip: {}}, [], {head_ip: {}}, node_types=["binary", "double"]
+    )
+    assert to_launch == {"double": 1, "binary": 2}
+    assert not rem
+
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        [0], {}, [{"CPU": 1}] * 3, {head_ip: {}}, [], {head_ip: {}}, node_types=["binary", "double", "bigger"]
+    )
+    # TODO (Alex): Is this case actually desired behavior? One could argue this should result in 3 small nodes.
+    assert to_launch == {"bigger": 1}
+    # assert to_launch == {"double": 1, "binary": 2}
+    assert not rem
+
+    strict_spread = PlacementGroupTableData(
+        state=PlacementGroupTableData.PENDING,
+        strategy=PlacementStrategy.STRICT_SPREAD,
+        bundles=[
+            Bundle(unit_resources={"CPU": 1}),
+        ] * 3,
+    )
+    spread = PlacementGroupTableData(
+        state=PlacementGroupTableData.PENDING,
+        strategy=PlacementStrategy.SPREAD,
+        bundles=[
+            Bundle(unit_resources={"CPU": 1}),
+        ] * 3,
+    )
+    pack = PlacementGroupTableData(
+        state=PlacementGroupTableData.PENDING,
+        strategy=PlacementStrategy.PACK,
+        bundles=[
+            Bundle(unit_resources={"CPU": 1}),
+        ] * 3,
+    )
+    strict_pack = PlacementGroupTableData(
+        state=PlacementGroupTableData.PENDING,
+        strategy=PlacementStrategy.STRICT_PACK,
+        bundles=[
+            Bundle(unit_resources={"CPU": 1}),
+        ] * 3,
+    )
+
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        [0], {}, [], {head_ip: {}}, [strict_spread], {head_ip: {}}, node_types=["binary", "single"]
+    )
+    assert to_launch == {"binary": 2, "single": 1}
+    assert not rem
+
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        [0], {}, [], {head_ip: {}}, [strict_spread], {head_ip: {}}, node_types=["single", "binary"]
+    )
+    assert to_launch == {"binary": 1, "single": 2}
+    assert not rem
+
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        [0], {}, [], {head_ip: {}}, [spread], {head_ip: {}}, node_types=["binary", "single"]
+    )
+    assert to_launch == {"binary": 2, "single": 1}
+    assert not rem
+
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        [0], {}, [], {head_ip: {}}, [spread], {head_ip: {}}, node_types=["single", "binary"]
+    )
+    assert to_launch == {"binary": 1, "single": 2}
+    assert not rem
+
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        [0], {}, [], {head_ip: {}}, [pack], {head_ip: {}}, node_types=["binary", "single"]
+    )
+    assert to_launch == {"binary": 2, "single": 1}
+    assert not rem
+
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        [0], {}, [], {head_ip: {}}, [pack], {head_ip: {}}, node_types=["single", "binary"]
+    )
+    assert to_launch == {"binary": 1, "single": 2}
+    assert not rem
+
+    # The big node has been filtered so we can't launch anything.
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        [0], {}, [], {head_ip: {}}, [strict_pack], {head_ip: {}}, node_types=["binary", "single"]
+    )
+    assert to_launch == {}
+    assert rem
+
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        [0], {}, [], {head_ip: {}}, [strict_pack], {head_ip: {}}, node_types=["binary", "single", "bigger"]
+    )
+    assert to_launch == {"bigger": 1}
+    assert not rem
+
+
 def test_calculate_node_resources():
     provider = MockProvider()
     scheduler = ResourceDemandScheduler(

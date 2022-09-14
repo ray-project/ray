@@ -108,6 +108,7 @@ class ResourceDemandScheduler:
         pending_placement_groups: List[PlacementGroupTableData],
         max_resources_by_ip: Dict[NodeIP, ResourceDict],
         ensure_min_cluster_size: List[ResourceDict] = None,
+        node_types: List[str] = None,
     ) -> (Dict[NodeType, int], List[ResourceDict]):
         """Given resource demands, return node types to add to the cluster.
 
@@ -131,11 +132,15 @@ class ResourceDemandScheduler:
             ensure_min_cluster_size: Try to ensure the cluster can fit at least
                 this set of resources. This differs from resources_demands in
                 that we don't take into account existing usage.
+            node_types: List of node types and order to use.
 
         Returns:
             Dict of count to add for each node type, and residual of resources
             that still cannot be fulfilled.
         """
+        if node_types is None:
+            node_types = list(self.node_types.keys())
+
         self._update_node_resources_from_runtime(nodes, max_resources_by_ip)
 
         node_resources: List[ResourceDict]
@@ -195,7 +200,10 @@ class ResourceDemandScheduler:
             strict_spreads,
             node_resources,
             node_type_counts,
+            node_types,
         )
+
+        transformed = transform_node_types(self.node_types, node_types)
 
         # Calculate the nodes to add for bypassing max launch limit for
         # placement groups and spreads.
@@ -206,7 +214,7 @@ class ResourceDemandScheduler:
         # Add 1 to account for the head node.
         max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
         pg_demands_nodes_max_launch_limit, _ = get_nodes_for(
-            self.node_types,
+            transformed,
             node_type_counts,
             self.head_node_type,
             max_to_add,
@@ -224,7 +232,7 @@ class ResourceDemandScheduler:
         logger.debug("Resource demands: {}".format(resource_demands))
         logger.debug("Unfulfilled demands: {}".format(unfulfilled))
         nodes_to_add_based_on_demand, final_unfulfilled = get_nodes_for(
-            self.node_types,
+            transformed,
             node_type_counts,
             self.head_node_type,
             max_to_add,
@@ -461,6 +469,7 @@ class ResourceDemandScheduler:
         strict_spreads: List[List[ResourceDict]],
         node_resources: List[ResourceDict],
         node_type_counts: Dict[NodeType, int],
+        node_types: List[NodeType],
     ):
         """For each strict spread, attempt to reserve as much space as possible
         on the node, then allocate new nodes for the unfulfilled portion.
@@ -472,6 +481,7 @@ class ResourceDemandScheduler:
                 the cluster.
             node_type_counts (Dict[NodeType, int]): The amount of each type of
                 node pending or in the cluster.
+            node_types: An ordered list of node types to try.
 
         Returns:
             Dict[NodeType, int]: Nodes to add.
@@ -480,6 +490,8 @@ class ResourceDemandScheduler:
 
         """
         to_add = collections.defaultdict(int)
+        transformed = transform_node_types(self.node_types,
+                                           node_types)
         for bundles in strict_spreads:
             # Try to pack as many bundles of this group as possible on existing
             # nodes. The remaining will be allocated on new nodes.
@@ -489,7 +501,7 @@ class ResourceDemandScheduler:
             max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
             # Allocate new nodes for the remaining bundles that don't fit.
             to_launch, _ = get_nodes_for(
-                self.node_types,
+                transformed,
                 node_type_counts,
                 self.head_node_type,
                 max_to_add,
@@ -626,6 +638,10 @@ def _add_min_workers_nodes(
     return node_resources, node_type_counts, total_nodes_to_add_dict
 
 
+def transform_node_types(all_nodes : Dict[NodeType, NodeTypeConfigDict], ordered_and_filtered : List[NodeType]):
+    return { node_type: all_nodes[node_type] for node_type in ordered_and_filtered }
+
+
 def get_nodes_for(
     node_types: Dict[NodeType, NodeTypeConfigDict],
     existing_nodes: Dict[NodeType, int],
@@ -635,6 +651,10 @@ def get_nodes_for(
     strict_spread: bool = False,
 ) -> (Dict[NodeType, int], List[ResourceDict]):
     """Determine nodes to add given resource demands and constraints.
+
+    In the event that multiple nodes would result in the same utilization, ties
+    are guaranteed to be broken by picking the first element from `node_types`
+    (note that python dicts are ordered).
 
     Args:
         node_types: node types config.
@@ -648,10 +668,20 @@ def get_nodes_for(
     Returns:
         Dict of count to add for each node type, and residual of resources
         that still cannot be fulfilled.
+
     """
     nodes_to_add = collections.defaultdict(int)
 
+    # print(f"{max_to_add=} {strict_spread=} {node_types}")
+
     while resources and sum(nodes_to_add.values()) < max_to_add:
+        # print(f"{resources=} {nodes_to_add=}")
+        # NOTE: There's a lot of subtelty in this loop. `node_types` is a
+        # python dictionary which guarantees a consistent iteration order.
+        # Within the loop, we always append to the end of `utilization_scores`.
+        # Combined, this means that to break utilization score ties by
+        # preference of `node_types` we should select the first element of a
+        # given score in the list.
         utilization_scores = []
         for node_type in node_types:
             max_workers_of_node_type = node_types[node_type].get("max_workers", 0)
@@ -687,8 +717,10 @@ def get_nodes_for(
                 )
             break
 
-        utilization_scores = sorted(utilization_scores, reverse=True)
-        best_node_type = utilization_scores[0][1]
+        # The `max` function guarantees "If multiple items are minimal, the
+        # function returns the first one encountered".
+        # https://docs.python.org/3/library/functions.html#max
+        best_node_type = max(utilization_scores, key=lambda entry: entry[0])[1]
         nodes_to_add[best_node_type] += 1
         if strict_spread:
             resources = resources[1:]
@@ -697,13 +729,14 @@ def get_nodes_for(
             residual, _ = get_bin_pack_residual([allocated_resource], resources)
             assert len(residual) < len(resources), (resources, residual)
             resources = residual
+        # print(f"{utilization_scores=} {resources=}")
 
     return nodes_to_add, resources
 
 
 def _utilization_score(
     node_resources: ResourceDict, resources: List[ResourceDict]
-) -> Optional[float]:
+) -> Optional[Tuple[float, float, float]]:
     remaining = copy.deepcopy(node_resources)
     is_gpu_node = "GPU" in node_resources and node_resources["GPU"] > 0
     any_gpu_task = any("GPU" in r for r in resources)
