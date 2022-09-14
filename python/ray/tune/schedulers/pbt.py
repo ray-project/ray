@@ -614,7 +614,6 @@ class PopulationBasedTraining(FIFOScheduler):
 
         If specified, also logs the updated hyperparam state.
         """
-        trial_executor = trial_runner.trial_executor
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
         logger.info(
