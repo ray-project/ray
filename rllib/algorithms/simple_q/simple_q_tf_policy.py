@@ -163,7 +163,7 @@ def get_simple_q_tf_policy(
 
             # compute RHS of bellman equation
             q_t_selected_target = (
-                train_batch[SampleBatch.REWARDS]
+                tf.cast(train_batch[SampleBatch.REWARDS], tf.float32)
                 + self.config["gamma"] * q_tp1_best_masked
             )
 

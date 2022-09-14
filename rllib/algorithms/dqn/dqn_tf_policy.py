@@ -311,7 +311,7 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
         q_tp1_best,
         q_dist_tp1_best,
         train_batch[PRIO_WEIGHTS],
-        train_batch[SampleBatch.REWARDS],
+        tf.cast(train_batch[SampleBatch.REWARDS], tf.float32),
         tf.cast(train_batch[SampleBatch.DONES], tf.float32),
         config["gamma"],
         config["n_step"],
