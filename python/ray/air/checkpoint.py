@@ -315,7 +315,7 @@ class Checkpoint:
             Checkpoint: checkpoint object.
         """
         warnings.warn(
-            "`from_object_ref` is deprecated and will be removed. Call `ray.get` ",
+            "`from_object_ref` is deprecated and will be removed in a future Ray version. To restore a Checkpoint from a remote object ref, call `ray.get(obj_ref)` ",
             "instead.",
             DeprecationWarning,
         )
