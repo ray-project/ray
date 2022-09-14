@@ -107,13 +107,17 @@ def Deprecated(*args, **kwargs):
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return Deprecated()(args[0])
 
-    message = (
-        "\n    DEPRECATED: This API is deprecated and may be removed "
-        "in future Ray releases."
-    )
+    message = ""
     if "message" in kwargs:
-        message = message + " " + kwargs["message"]
+        message = " " + kwargs["message"]
         del kwargs["message"]
+
+    # NOTE: If you remove the trailing whitespace, the documentation doesn't render
+    # properly ＼(°ロ＼).
+    warning = (
+        "\n\n        .. warning::\n            **DEPRECATED:** This API is deprecated "
+        f"and may be removed in a future Ray release.{message}\n        "
+    )
 
     if kwargs:
         raise ValueError("Unknown kwargs: {}".format(kwargs.keys()))
@@ -121,7 +125,7 @@ def Deprecated(*args, **kwargs):
     def inner(obj):
         if not obj.__doc__:
             obj.__doc__ = ""
-        obj.__doc__ += f"{message}"
+        obj.__doc__ += f"{warning}"
         _mark_annotated(obj)
         return obj
 
