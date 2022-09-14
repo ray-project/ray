@@ -252,6 +252,7 @@ class Checkpoint:
         """
         state = {}
         if isinstance(data, CheckpointDict):
+            cls._check_type_compatability(data.metadata.checkpoint_type)
             cls = data.metadata.checkpoint_type
             state = data.metadata.checkpoint_state
 
@@ -350,6 +351,7 @@ class Checkpoint:
         if os.path.exists(checkpoint_metadata_path):
             with open(checkpoint_metadata_path, "rb") as file:
                 metadata = pickle.load(file)
+                cls._check_type_compatability(metadata.checkpoint_type)
                 cls = metadata.checkpoint_type
                 state = metadata.checkpoint_state
 
@@ -376,6 +378,15 @@ class Checkpoint:
             data_dict=other._data_dict,
             uri=other._uri,
         )
+
+    @classmethod
+    def _check_type_compatability(cls, serialized_type: Type["Checkpoint"]):
+        if not isinstance(serialized_type, cls):
+            raise ValueError(
+                "The checkpoint data you passed in was created by a "
+                f"`{serialized_type.__name__}` object, but "
+                f"`{serialized_type.__name__}` isn't compatible with {cls.__name__}`."
+            )
 
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir."""
@@ -563,6 +574,7 @@ class Checkpoint:
         try:
             checkpoint_metadata_uri = os.path.join(uri, _CHECKPOINT_METADATA_FILE_NAME)
             metadata = pickle.loads(read_file_from_uri(checkpoint_metadata_uri))
+            cls._check_type_compatability(metadata.checkpoint_type)
             cls = metadata.checkpoint_type
             state = metadata.checkpoint_state
         except FileNotFoundError:
