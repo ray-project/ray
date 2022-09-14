@@ -451,6 +451,17 @@ class Trial:
     def last_result(self, val: dict):
         self._last_result = val
 
+    def get_runner_ip(self) -> Optional[str]:
+        if self.location.hostname:
+            return self.location.hostname
+
+        if not self.runner:
+            return None
+
+        hostname, pid = ray.get(self.runner.get_current_ip_pid.remote())
+        self.location = _Location(hostname, pid)
+        return self.location.hostname
+
     @property
     def logdir(self):
         if not self.relative_logdir:
