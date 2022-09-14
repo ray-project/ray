@@ -121,7 +121,7 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
             response = requests.get(
                 "http://localhost:{}".format(metrics_export_port),
                 # Fail the request early on if connection timeout
-                timeout=0.01,
+                timeout=5.0,
             )
             return response.status_code == 200
 
