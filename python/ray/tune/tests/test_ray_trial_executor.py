@@ -632,6 +632,9 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
     def testTrialCleanup(self):
         self.skipTest("Skipping as trial cleanup is not applicable for local mode.")
 
+    def testTrialHangingCleanup(self):
+        self.skipTest("Skipping as trial cleanup is not applicable for local mode.")
+
 
 if __name__ == "__main__":
     import sys
