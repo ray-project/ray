@@ -845,7 +845,7 @@ class _MockTrial(Trial):
         self.custom_dirname = None
         self._default_result_or_future = None
 
-    def on_checkpoint(self, checkpoint):
+    def on_checkpoint(self, checkpoint, force: bool = False):
         if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             self.restored_checkpoint = checkpoint.dir_or_data["data"]
         else:
