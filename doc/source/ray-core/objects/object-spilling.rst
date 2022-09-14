@@ -143,7 +143,7 @@ Spilling to multiple remote storages is also supported.
                 {
                   "type": "smart_open", 
                   "params": {
-                    "uri": ["s3://bucket/path1", "s3://bucket/path2, "s3://bucket/path3"],
+                    "uri": ["s3://bucket/path1", "s3://bucket/path2", "s3://bucket/path3"],
                   },
                   "buffer_size": 100 * 1024 * 1024, # Use a 100MB buffer for writes
                 },
