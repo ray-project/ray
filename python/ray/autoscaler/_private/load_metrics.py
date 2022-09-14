@@ -7,9 +7,16 @@ from typing import Dict, List
 import numpy as np
 
 from ray._private.gcs_utils import PlacementGroupTableData
-from ray.autoscaler._private.constants import AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
-from ray.autoscaler._private.resource_demand_scheduler import NodeIP, ResourceDict
-from ray.autoscaler._private.util import DictCount, LoadMetricsSummary
+from ray.autoscaler._private.constants import (
+    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
+    AUTOSCALER_REPORT_PER_NODE_STATUS,
+)
+from ray.autoscaler._private.util import (
+    DictCount,
+    LoadMetricsSummary,
+    NodeIP,
+    ResourceDict,
+)
 from ray.core.generated.common_pb2 import PlacementStrategy
 
 logger = logging.getLogger(__name__)
@@ -313,12 +320,25 @@ class LoadMetrics:
         )
         nodes_summary = freq_of_dicts(self.static_resources_by_ip.values())
 
+        usage_by_node = None
+        if AUTOSCALER_REPORT_PER_NODE_STATUS:
+            usage_by_node = {}
+            for ip, totals in self.static_resources_by_ip.items():
+                available = self.dynamic_resources_by_ip.get(ip, {})
+                usage_by_node[ip] = {}
+                for resource, total in totals.items():
+                    usage_by_node[ip][resource] = (
+                        total - available.get(resource, 0),
+                        total,
+                    )
+
         return LoadMetricsSummary(
             usage=usage_dict,
             resource_demand=summarized_demand_vector,
             pg_demand=summarized_placement_groups,
             request_demand=summarized_resource_requests,
             node_types=nodes_summary,
+            usage_by_node=usage_by_node,
         )
 
     def set_resource_requests(self, requested_resources):
