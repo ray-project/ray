@@ -69,7 +69,7 @@ def parse_args():
 if __name__ == '__main__':
     NUM_WORKERS = 0
     BATCH_SIZE = 4
-    EPOCHS = 1
+    EPOCHS = 3
 
     if not torch.cuda.is_available():
         raise Exception('No GPU detected, cannot perform benchmark')
