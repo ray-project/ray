@@ -2489,7 +2489,6 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
     ref.set_object_id(task_spec.ReturnId(i).Binary());
     ref.mutable_owner_address()->CopyFrom(task_spec.CallerAddress());
     returned_refs.push_back(std::move(ref));
-    return_objects.push_back(std::make_pair<>(task_spec.ReturnId(i), nullptr));
   }
   auto old_id = GetActorId();
   SetActorId(actor_id);
