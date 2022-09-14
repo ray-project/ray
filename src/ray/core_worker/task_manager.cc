@@ -411,7 +411,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
     } else {
       RAY_CHECK(num_retries_left == 0 || num_retries_left == -1);
     }
-    it->second.SetStatus(rpc::TaskStatus::SCHEDULED);
+    it->second.SetStatus(rpc::TaskStatus::WAITING_FOR_SCHEDULING);
   }
 
   // We should not hold the lock during these calls because they may trigger
@@ -684,7 +684,7 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
     return;
   }
   if (it->second.GetStatus() == rpc::TaskStatus::WAITING_FOR_DEPENDENCIES) {
-    it->second.SetStatus(rpc::TaskStatus::SCHEDULED);
+    it->second.SetStatus(rpc::TaskStatus::WAITING_FOR_SCHEDULING);
   }
 }
 
@@ -694,7 +694,7 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
   if (it == submissible_tasks_.end()) {
     return;
   }
-  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::SCHEDULED);
+  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::WAITING_FOR_SCHEDULING);
   it->second.SetStatus(rpc::TaskStatus::WAITING_FOR_EXECUTION);
 }
 

@@ -2,6 +2,7 @@ from collections import defaultdict
 import os
 import time
 
+import numpy as np
 import pytest
 
 import ray
@@ -152,6 +153,31 @@ def test_task_retry(shutdown_only):
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
     )
+
+
+def test_waiting_for_transfer(shutdown_only):
+    cluster = ray.cluster_utils.Cluster()
+    cluster.add_node(num_cpus=4, resources={"head": 1}, **METRIC_CONFIG)
+    cluster.add_node(num_cpus=4, resources={"worker": 1})
+    cluster.wait_for_nodes()
+    info = ray.init(address=cluster.address)
+
+    @ray.remote(resources={"head": 0.1})
+    def gen():
+        return np.ones(1024 * 1024 * 100)
+
+    @ray.remote(resources={"worker": 0.1})
+    def recv(x):
+        return np.sum(x)
+
+    while True:
+        start = time.time()
+        refs = [recv.remote(gen.remote()) for _ in range(100)]
+        for _ in range(100):
+            print(tasks_by_state(info))
+            time.sleep(0.1)
+        ray.get(refs)
+        print("Time", time.time() - start)
 
 
 # TODO(ekl) test wait on object store transfer (??)

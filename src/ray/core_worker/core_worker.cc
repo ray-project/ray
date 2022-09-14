@@ -38,6 +38,22 @@ namespace ray {
 namespace core {
 namespace {
 
+class ScopedTaskStateSetter {
+ public:
+  ScopedTaskStateSetter(rpc::TaskStatus status) : status_(status) {
+    ray::stats::STATS_tasks.Record(0, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING));
+    ray::stats::STATS_tasks.Record(1, rpc::TaskStatus_Name(status_));
+  }
+
+  ~ScopedTaskStateSetter() {
+    ray::stats::STATS_tasks.Record(0, rpc::TaskStatus_Name(status_));
+    ray::stats::STATS_tasks.Record(1, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING));
+  }
+
+ private:
+  rpc::TaskStatus status_;
+};
+
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
 
 JobID GetProcessJobID(const CoreWorkerOptions &options) {
@@ -1096,6 +1112,8 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
+  ScopedTaskStateSetter state(rpc::TaskStatus::RUNNING_IN_RAY_GET);
+
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
@@ -1233,6 +1251,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
                         int64_t timeout_ms,
                         std::vector<bool> *results,
                         bool fetch_local) {
+  ScopedTaskStateSetter state(rpc::TaskStatus::RUNNING_IN_RAY_WAIT);
+
   results->resize(ids.size(), false);
 
   if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
@@ -2344,6 +2364,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     RAY_LOG(FATAL) << "Unexpected task status type : " << status;
   }
 
+  // TODO(ekl) unify this with task_state_counter_?
   ray::stats::STATS_tasks.Record(0, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING));
   ray::stats::STATS_tasks.Record(
       0, rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_EXECUTION));

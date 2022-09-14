@@ -265,6 +265,18 @@ class PullManager {
     std::set<uint64_t> active_requests;
     std::set<uint64_t> inactive_requests;
 
+    void RecordTaskMetrics() const {
+      ray::stats::STATS_tasks.Record(
+          -static_cast<int64_t>(requests.size()),
+          rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_SCHEDULING));
+      ray::stats::STATS_tasks.Record(
+          inactive_requests.size(),
+          rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_DATA_FETCH_START));
+      ray::stats::STATS_tasks.Record(
+          active_requests.size(),
+          rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_DATA_FETCH_FINISH));
+    }
+
     bool Empty() const { return requests.empty(); }
 
     // Add a request to the queue, the request will start with inactive or unpullable
