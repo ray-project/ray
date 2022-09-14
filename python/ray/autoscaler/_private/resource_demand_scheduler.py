@@ -673,10 +673,8 @@ def get_nodes_for(
     """
     nodes_to_add = collections.defaultdict(int)
 
-    # print(f"{max_to_add=} {strict_spread=} {node_types}")
 
     while resources and sum(nodes_to_add.values()) < max_to_add:
-        # print(f"{resources=} {nodes_to_add=}")
         # NOTE: There's a lot of subtelty in this loop. `node_types` is a
         # python dictionary which guarantees a consistent iteration order.
         # Within the loop, we always append to the end of `utilization_scores`.
@@ -730,7 +728,6 @@ def get_nodes_for(
             residual, _ = get_bin_pack_residual([allocated_resource], resources)
             assert len(residual) < len(resources), (resources, residual)
             resources = residual
-        # print(f"{utilization_scores=} {resources=}")
 
     return nodes_to_add, resources
 
