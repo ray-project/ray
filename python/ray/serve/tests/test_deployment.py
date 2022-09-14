@@ -96,14 +96,6 @@ class TestDeploymentOptions:
 
     deployment_option_combos = get_random_dict_combos(deployment_options, 1000)
 
-    # Options that can be None
-    nullable_options = [
-        "num_replicas",
-        "route_prefix",
-        "autoscaling_config",
-        "user_config",
-    ]
-
     @pytest.mark.parametrize("options", deployment_option_combos)
     def test_user_configured_options(self, options: Dict):
         """Check that user_configured_options tracks the correct options.
@@ -177,6 +169,34 @@ class TestDeploymentOptions:
         deserialized_config = DeploymentConfig.from_proto_bytes(serialized_config)
 
         assert deserialized_config.user_configured_options == set(options.keys())
+
+    @pytest.mark.parametrize(
+        "option",
+        [
+            "num_replicas",
+            "route_prefix",
+            "autoscaling_config",
+            "user_config",
+        ],
+    )
+    def test_nullable_options(self, option: str):
+        """Check that nullable options can be set to None."""
+        deployment_options = {option: None}
+
+        # One of "num_replicas" or "autoscaling_config" must be provided.
+        if option == "num_replicas":
+            deployment_options["autoscaling_config"] = {
+                "min_replicas": 1,
+                "max_replicas": 5,
+                "target_num_ongoing_requests_per_replica": 5,
+            }
+        elif option == "autoscaling_config":
+            deployment_options["num_replicas"] = 5
+
+        # Deployment should be created without error.
+        @serve.deployment(**deployment_options)
+        def f():
+            pass
 
 
 if __name__ == "__main__":
