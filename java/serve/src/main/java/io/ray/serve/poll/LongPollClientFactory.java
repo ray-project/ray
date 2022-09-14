@@ -209,12 +209,6 @@ public class LongPollClientFactory {
     }
   }
 
-  public static void clearAllCache() {
-    KEY_LISTENERS.clear();
-    OBJECT_SNAPSHOTS.clear();
-    SNAPSHOT_IDS.clear();
-  }
-
   public static void unregister(Set<KeyType> keys) {
     if (CollectionUtil.isEmpty(keys)) {
       return;
@@ -240,6 +234,11 @@ public class LongPollClientFactory {
       }
     }
     inited = false;
+
+    KEY_LISTENERS.clear();
+    OBJECT_SNAPSHOTS.clear();
+    SNAPSHOT_IDS.clear();
+
     LOGGER.info("LongPollClient was stopped.");
   }
 

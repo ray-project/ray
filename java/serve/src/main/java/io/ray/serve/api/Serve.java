@@ -145,7 +145,10 @@ public class Serve {
 
     client.shutdown();
     LongPollClientFactory.stop();
-    LongPollClientFactory.clearAllCache();
+    clearContext();
+  }
+
+  public static void clearContext() {
     setGlobalClient(null);
     setInternalReplicaContext(null);
   }
@@ -231,7 +234,7 @@ public class Serve {
     return getGlobalClient(false);
   }
 
-  public static void setGlobalClient(ServeControllerClient client) {
+  private static void setGlobalClient(ServeControllerClient client) {
     GLOBAL_CLIENT = client;
   }
 

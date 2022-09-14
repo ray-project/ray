@@ -1,8 +1,10 @@
-package io.ray.serve;
+package io.ray.serve.router;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.serve.BaseServeTest;
+import io.ray.serve.DummyServeController;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
@@ -11,8 +13,6 @@ import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.replica.ReplicaContext;
-import io.ray.serve.router.Query;
-import io.ray.serve.router.ReplicaSet;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -20,7 +20,7 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ReplicaSetTest extends BaseTest {
+public class ReplicaSetTest {
   private String deploymentName = "ReplicaSetTest";
 
   @Test
@@ -36,9 +36,9 @@ public class ReplicaSetTest extends BaseTest {
   @SuppressWarnings("unused")
   @Test
   public void assignReplicaTest() {
-    init();
-
     try {
+      BaseServeTest.initRay();
+
       String controllerName = deploymentName + "_controller";
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
@@ -85,7 +85,7 @@ public class ReplicaSetTest extends BaseTest {
 
       Assert.assertEquals((String) resultRef.get(), deploymentName);
     } finally {
-      shutdown();
+      BaseServeTest.shutdownRay();
     }
   }
 }

@@ -1,8 +1,10 @@
-package io.ray.serve;
+package io.ray.serve.proxy;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
+import io.ray.serve.BaseServeTest;
+import io.ray.serve.DummyServeController;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.RayServeConfig;
@@ -12,8 +14,6 @@ import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.EndpointSet;
-import io.ray.serve.proxy.HttpProxy;
-import io.ray.serve.proxy.ProxyActor;
 import io.ray.serve.replica.DummyReplica;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.util.CommonUtil;
@@ -30,12 +30,13 @@ import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ProxyActorTest extends BaseTest {
+public class ProxyActorTest {
   @Test
   public void test() throws IOException {
-    init();
 
     try {
+      BaseServeTest.initRay();
+
       String prefix = "ProxyActorTest";
       String controllerName =
           CommonUtil.formatActorName(
@@ -107,7 +108,7 @@ public class ProxyActorTest extends BaseTest {
       }
 
     } finally {
-      shutdown();
+      BaseServeTest.clearAndShutdownRay();
     }
   }
 }

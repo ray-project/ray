@@ -110,7 +110,6 @@ public class LongPollClientTest {
     } finally {
       Serve.setInternalReplicaContext(null);
       LongPollClientFactory.stop();
-      LongPollClientFactory.clearAllCache();
       if (!inited) {
         Ray.shutdown();
       }

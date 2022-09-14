@@ -1,6 +1,7 @@
-package io.ray.serve;
+package io.ray.serve.deployment;
 
 import io.ray.api.Ray;
+import io.ray.serve.BaseServeTest;
 import io.ray.serve.api.Serve;
 import io.ray.serve.config.AutoscalingConfig;
 import io.ray.serve.deployment.Deployment;

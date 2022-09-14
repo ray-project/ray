@@ -3,8 +3,9 @@ package io.ray.serve;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
 import io.ray.serve.api.ServeControllerClient;
+import io.ray.serve.common.Constants;
 import io.ray.serve.config.RayServeConfig;
-import java.lang.reflect.Method;
+import io.ray.serve.poll.LongPollClientFactory;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,16 +18,15 @@ public abstract class BaseServeTest {
   protected static ServeControllerClient client = null;
 
   @BeforeMethod(alwaysRun = true)
-  public void setUpBase(Method method) {
-    Ray.init();
+  public static void startServe() {
     Map<String, String> config = Maps.newHashMap();
-    // The default port 8000 is occupied by other processes on the ci platform
+    // The default port 8000 is occupied by other processes on the ci platform.
     config.put(RayServeConfig.PROXY_HTTP_PORT, "8341");
     client = Serve.start(true, false, config);
   }
 
   @AfterMethod(alwaysRun = true)
-  public void tearDownBase() {
+  public static void shutdownServe() {
     try {
       Serve.shutdown();
     } catch (Exception e) {
@@ -37,5 +37,42 @@ public abstract class BaseServeTest {
     } catch (Exception e) {
       LOGGER.error("ray shutdown error", e);
     }
+  }
+
+  private static boolean previousInited;
+
+  private static String previousNamespace;
+
+  public static void initRay() {
+    previousInited = Ray.isInitialized();
+    previousNamespace = System.getProperty("ray.job.namespace");
+
+    System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
+    Ray.init();
+  }
+
+  public static void shutdownRay() {
+    if (!previousInited) {
+      Ray.shutdown();
+    }
+    if (previousNamespace == null) {
+      System.clearProperty("ray.job.namespace");
+    } else {
+      System.setProperty("ray.job.namespace", previousNamespace);
+    }
+  }
+
+  public static void clearContext() {
+    Serve.clearContext();
+  }
+
+  public static void stopLongPoll() {
+    LongPollClientFactory.stop();
+  }
+
+  public static void clearAndShutdownRay() {
+    stopLongPoll();
+    shutdownRay();
+    clearContext();
   }
 }

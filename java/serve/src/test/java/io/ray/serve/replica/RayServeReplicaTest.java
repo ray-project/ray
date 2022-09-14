@@ -1,9 +1,11 @@
-package io.ray.serve;
+package io.ray.serve.replica;
 
 import com.google.common.collect.ImmutableMap;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.serve.BaseServeTest;
+import io.ray.serve.DummyServeController;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.RayServeConfig;
@@ -11,9 +13,6 @@ import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
-import io.ray.serve.generated.RequestWrapper;
-import io.ray.serve.replica.DummyReplica;
-import io.ray.serve.replica.RayServeWrappedReplica;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -21,13 +20,13 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class RayServeReplicaTest extends BaseTest {
-  @SuppressWarnings("unused")
+public class RayServeReplicaTest {
   @Test
   public void test() throws IOException {
-    init();
 
     try {
+      BaseServeTest.initRay();
+
       String controllerName = "RayServeReplicaTest";
       String deploymentName = "b_tag";
       String replicaTag = "r_tag";
@@ -35,8 +34,7 @@ public class RayServeReplicaTest extends BaseTest {
       Map<String, String> config = new HashMap<>();
       config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
 
-      ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
+      Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       DeploymentConfig deploymentConfig =
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
@@ -58,7 +56,6 @@ public class RayServeReplicaTest extends BaseTest {
       RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
       requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
       requestMetadata.setCallMethod(Constants.CALL_METHOD);
-      RequestWrapper.Builder requestWrapper = RequestWrapper.newBuilder();
 
       ObjectRef<Object> resultRef =
           replicHandle
@@ -109,7 +106,7 @@ public class RayServeReplicaTest extends BaseTest {
       Assert.assertTrue(shutdownRef.get());
 
     } finally {
-      shutdown();
+      BaseServeTest.shutdownRay();
     }
   }
 }

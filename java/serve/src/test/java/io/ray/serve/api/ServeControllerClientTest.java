@@ -16,7 +16,7 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ClientTest {
+public class ServeControllerClientTest {
   @Test
   public void getHandleTest() {
     boolean inited = Ray.isInitialized();
@@ -57,7 +57,6 @@ public class ClientTest {
       Assert.assertNotNull(rayServeHandle);
     } finally {
       LongPollClientFactory.stop();
-      LongPollClientFactory.clearAllCache();
       if (!inited) {
         Ray.shutdown();
       }
