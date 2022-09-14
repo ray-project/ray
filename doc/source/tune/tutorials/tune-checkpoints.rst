@@ -31,7 +31,7 @@ state is the most common form of Trial checkpoint. This is useful mostly for two
   from its latest checkpoint if the machine it is trained on dies.
 - The checkpoint can be later used for other downstream tasks like batch inference.
 
-Everything that is reported by `session.report()` is Trial checkpoint. See :ref:`Here <air-checkpoint-ref>`.
+Everything that is reported by ``session.report()`` is Trial checkpoint. See :ref:`Here <air-checkpoint-ref>`.
 
 .. _tune-checkpoint-syncing:
 
