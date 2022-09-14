@@ -42,6 +42,7 @@ _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 @dataclass
 class CheckpointMetadata:
     checkpoint_type: Type["Checkpoint"]
@@ -49,6 +50,7 @@ class CheckpointMetadata:
     ray_version: str = ray.__version__
 
 
+@DeveloperAPI
 class CheckpointDict(dict):
     def __init__(self, *args, metadata: CheckpointMetadata, **kwargs):
         self.metadata = metadata
