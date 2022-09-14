@@ -62,3 +62,4 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         tune.with_resources(my_train_fn, resources=resources), param_space=config
     )
+    tuner.fit()
