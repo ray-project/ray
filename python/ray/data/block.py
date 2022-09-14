@@ -142,7 +142,7 @@ BlockPartitionMetadata = "BlockMetadata"
 # by default. When block splitting is off, the type is a plain block.
 MaybeBlockPartition = Union[Block, BlockPartition]
 
-VALID_BATCH_FORMATS = ["native", "pandas", "pyarrow", "numpy"]
+VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy"]
 
 
 @DeveloperAPI
@@ -302,8 +302,8 @@ class BlockAccessor(Generic[T]):
         """Return the base block that this accessor wraps."""
         raise NotImplementedError
 
-    def to_native(self) -> Block:
-        """Return the native data format for this accessor."""
+    def to_default(self) -> Block:
+        """Return the default data format for this accessor."""
         return self.to_block()
 
     def to_batch_format(self, batch_format: str) -> DataBatch:
@@ -315,8 +315,8 @@ class BlockAccessor(Generic[T]):
         Returns:
             This block formatted as the provided batch format.
         """
-        if batch_format == "native":
-            return self.to_native()
+        if batch_format == "default" or batch_format == "native":
+            return self.to_default()
         elif batch_format == "pandas":
             return self.to_pandas()
         elif batch_format == "pyarrow":

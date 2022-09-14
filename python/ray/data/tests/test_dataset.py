@@ -1735,8 +1735,12 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert all(isinstance(col, np.ndarray) for col in batch.values())
         pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
 
-    # Native format.
+    # Native format (deprecated).
     for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="native"), dfs):
+        assert BlockAccessor.for_block(batch).to_pandas().equals(df)
+
+    # Default format.
+    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="default"), dfs):
         assert BlockAccessor.for_block(batch).to_pandas().equals(df)
 
     # Batch size.
