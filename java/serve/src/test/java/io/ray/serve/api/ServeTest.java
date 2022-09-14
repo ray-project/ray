@@ -55,10 +55,10 @@ public class ServeTest {
       Map<String, String> config = Maps.newHashMap();
       config.put(RayServeConfig.PROXY_HTTP_PORT, "8341");
       Serve.start(true, false, config);
-      
+
       Optional<PyActorHandle> controller = Ray.getActor(Constants.SERVE_CONTROLLER_NAME);
       Assert.assertTrue(controller.isPresent());
-      
+
       Serve.shutdown();
       controller = Ray.getActor(Constants.SERVE_CONTROLLER_NAME);
       Assert.assertFalse(controller.isPresent());

@@ -3,7 +3,6 @@ package io.ray.serve.deployment;
 import io.ray.api.Ray;
 import io.ray.serve.BaseServeTest;
 import io.ray.serve.api.Serve;
-import io.ray.serve.deployment.Deployment;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.handle.RayServeHandle;
 import java.io.File;

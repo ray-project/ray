@@ -4,8 +4,6 @@ import io.ray.api.Ray;
 import io.ray.serve.BaseServeTest;
 import io.ray.serve.api.Serve;
 import io.ray.serve.config.AutoscalingConfig;
-import io.ray.serve.deployment.Deployment;
-import io.ray.serve.deployment.DeploymentRoute;
 import io.ray.serve.util.ExampleEchoDeployment;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
