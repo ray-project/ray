@@ -55,6 +55,21 @@ def _get_tune_pg_prefix():
     return _tune_pg_prefix
 
 
+def _sum_bundles(bundles: List[Dict[str, float]]) -> Dict[str, float]:
+    """Sum all resources in a list of resource bundles.
+
+    Args:
+        bundles: List of resource bundles.
+
+    Returns: Dict containing all resources summed up.
+    """
+    resources = {}
+    for bundle in bundles:
+        for k, v in bundle.items():
+            resources[k] = resources.get(k, 0) + v
+    return resources
+
+
 @PublicAPI(stability="beta")
 class PlacementGroupFactory:
     """Wrapper class that creates placement groups for trials.
@@ -146,9 +161,10 @@ class PlacementGroupFactory:
         *args,
         **kwargs,
     ):
-        assert (
-            len(bundles) > 0
-        ), "Cannot initialize a PlacementGroupFactory with zero bundles."
+        if not bundles:
+            raise ValueError(
+                "Cannot initialize a PlacementGroupFactory with zero bundles."
+            )
 
         self._bundles = [
             {k: float(v) for k, v in bundle.items() if v != 0} for bundle in bundles
@@ -158,6 +174,12 @@ class PlacementGroupFactory:
             # This is when trainable itself doesn't need resources.
             self._head_bundle_is_empty = True
             self._bundles.pop(0)
+
+            if not self._bundles:
+                raise ValueError(
+                    "Cannot initialize a PlacementGroupFactory with an empty head "
+                    "and zero worker bundles."
+                )
         else:
             self._head_bundle_is_empty = False
 
@@ -193,11 +215,7 @@ class PlacementGroupFactory:
     @property
     def required_resources(self) -> Dict[str, float]:
         """Returns a dict containing the sums of all resources"""
-        resources = {}
-        for bundle in self._bundles:
-            for k, v in bundle.items():
-                resources[k] = resources.get(k, 0) + v
-        return resources
+        return _sum_bundles(self._bundles)
 
     @property
     @DeveloperAPI
