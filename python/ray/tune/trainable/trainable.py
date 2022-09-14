@@ -155,7 +155,7 @@ class Trainable:
         self._stderr_file = stderr_file
 
         start_time = time.time()
-        self._local_ip = self.get_current_ip()
+        self._local_ip = ray.util.get_node_ip_address()
         self.setup(copy.deepcopy(self.config))
         setup_time = time.time() - start_time
         if setup_time > SETUP_TIME_THRESHOLD:
@@ -218,9 +218,8 @@ class Trainable:
         """
         return ""
 
-    def get_current_ip(self):
-        self._local_ip = ray.util.get_node_ip_address()
-        return self._local_ip
+    def get_current_ip_pid(self):
+        return self._local_ip, os.getpid()
 
     def get_auto_filled_metrics(
         self,
@@ -684,7 +683,7 @@ class Trainable:
         self._restored = True
 
         logger.info(
-            "Restored on %s from checkpoint: %s", self.get_current_ip(), checkpoint_dir
+            "Restored on %s from checkpoint: %s", self._local_ip, checkpoint_dir
         )
         state = {
             "_iteration": self._iteration,
