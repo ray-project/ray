@@ -126,7 +126,6 @@ class HttpServerDashboardHead:
                 raise
             finally:
                 resp_time = time.monotonic() - start_time
-                status_tag = f"{floor(response.status / 100)}xx"
                 request.app["metrics"].metrics_request_duration.labels(
                     endpoint=request.path, http_status=status_tag
                 ).observe(resp_time)
