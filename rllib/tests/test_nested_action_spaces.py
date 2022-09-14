@@ -74,6 +74,9 @@ class NestedActionSpacesTest(unittest.TestCase):
         # Pretend actions in offline files are already normalized.
         config["actions_in_input_normalized"] = True
 
+        # Remove lr schedule from config, as it's not needed here, and not supported by BC.
+        del config["lr_schedule"]
+
         for _ in framework_iterator(config):
             for name, action_space in SPACES.items():
                 config["env_config"] = {
