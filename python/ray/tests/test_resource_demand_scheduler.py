@@ -509,8 +509,13 @@ def test_get_nodes_to_launch_ordering():
     )
 
     to_launch, rem = scheduler.get_nodes_to_launch(
-        [0], {}, [{"CPU": 1}] * 3, {head_ip: {}}, [],
-        {head_ip: {}}, node_types=["double", "single"]
+        [0],
+        {},
+        [{"CPU": 1}] * 3,
+        {head_ip: {}},
+        [],
+        {head_ip: {}},
+        node_types=["double", "single"],
     )
     assert to_launch == {"double": 2, "single": 1}
     assert not rem
