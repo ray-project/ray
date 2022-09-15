@@ -12,7 +12,7 @@ tf1, tf, tfv = try_import_tf()
 
 
 class NoisyLayer(tf.keras.layers.Layer if tf else object):
-    """A Layer that adds learnable Noise to some previous layer's outputs.
+    r"""A Layer that adds learnable Noise to some previous layer's outputs.
 
     Consists of:
     - a common dense layer: y = w^{T}x + b

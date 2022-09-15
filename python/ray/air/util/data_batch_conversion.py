@@ -214,6 +214,7 @@ def _cast_ndarray_columns_to_tensor_extension(df: pd.DataFrame) -> pd.DataFrame:
     # TODO(Clark): Once Pandas supports registering extension types for type
     # inference on construction, implement as much for NumPy ndarrays and remove
     # this. See https://github.com/pandas-dev/pandas/issues/41848
+    df = df.copy()
     for col_name, col in df.items():
         if column_needs_tensor_extension(col):
             try:
@@ -233,6 +234,7 @@ def _cast_tensor_columns_to_ndarrays(df: pd.DataFrame) -> pd.DataFrame:
     """Cast all tensor extension columns in df to NumPy ndarrays."""
     from ray.air.util.tensor_extensions.pandas import TensorDtype
 
+    df = df.copy()
     # Try to convert any tensor extension columns to ndarray columns.
     for col_name, col in df.items():
         if isinstance(col.dtype, TensorDtype):

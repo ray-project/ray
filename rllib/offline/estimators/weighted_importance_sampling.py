@@ -9,7 +9,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 
 @DeveloperAPI
 class WeightedImportanceSampling(OffPolicyEstimator):
-    """The step-wise WIS estimator.
+    r"""The step-wise WIS estimator.
 
     Let s_t, a_t, and r_t be the state, action, and reward at timestep t.
 

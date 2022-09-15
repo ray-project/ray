@@ -7,7 +7,7 @@ torch, nn = try_import_torch()
 
 
 class NoisyLayer(nn.Module):
-    """A Layer that adds learnable Noise to some previous layer's outputs.
+    r"""A Layer that adds learnable Noise to some previous layer's outputs.
 
     Consists of:
     - a common dense layer: y = w^{T}x + b
