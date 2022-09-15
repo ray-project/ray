@@ -3622,8 +3622,8 @@ class Dataset(Generic[T]):
             format is ``list``.
 
             >>> ds = ray.data.range(100)
-            >>> ds
-            Dataset(num_blocks=20, num_rows=100, schema=<class 'int'>)
+            >>> ds  # doctest: +SKIP
+            Dataset(num_blocks=17, num_rows=100, schema=<class 'int'>)
             >>> ds.default_batch_format()
             <class 'list'>
             >>> next(ds.iter_batches(batch_size=4))
@@ -3633,7 +3633,7 @@ class Dataset(Generic[T]):
             ``ArrowTensorType``, then the default batch format is ``ndarray``.
 
             >>> ds = ray.data.range_tensor(100)
-            >>> ds
+            >>> ds  # doctest: +SKIP
             Dataset(num_blocks=20, num_rows=100, schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})
             >>> ds.default_batch_format()
             <class 'numpy.ndarray'>
@@ -3649,7 +3649,7 @@ class Dataset(Generic[T]):
             >>> import pandas as pd
             >>> df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
             >>> ds = ray.data.from_pandas(df)
-            >>> ds
+            >>> ds  # doctest: +SKIP
             Dataset(num_blocks=1, num_rows=2, schema={foo: object, bar: int64})
             >>> ds.default_batch_format()
             <class 'pandas.core.frame.DataFrame'>
