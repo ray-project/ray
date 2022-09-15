@@ -1,13 +1,15 @@
-from typing import Dict, List, Union, Iterable
+from typing import TYPE_CHECKING, Dict, List, Union, Iterable
 import warnings
 import struct
 
-import pyarrow
 import tensorflow as tf
 
 from ray.util.annotations import PublicAPI
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+
+if TYPE_CHECKING:
+    import pyarrow
 
 
 @PublicAPI(stability="alpha")
