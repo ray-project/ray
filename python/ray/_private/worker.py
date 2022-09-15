@@ -2786,9 +2786,11 @@ def remote(
     This function can be used as a decorator with no arguments
     to define a remote function or actor as follows:
 
+    >>> import ray
+    >>>
     >>> @ray.remote
-    >>> def f(a, b, c):
-    >>>     return a + b + c
+    ... def f(a, b, c):
+    ...     return a + b + c
     >>>
     >>> object_ref = f.remote(1, 2, 3)
     >>> result = ray.get(object_ref)
