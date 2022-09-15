@@ -1,5 +1,4 @@
 from typing import TYPE_CHECKING, Dict, List, Union, Iterable
-import warnings
 import struct
 
 from ray.util.annotations import PublicAPI
@@ -8,6 +7,7 @@ from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
 if TYPE_CHECKING:
     import pyarrow
+    import tensorflow as tf
 
 
 @PublicAPI(stability="alpha")
@@ -26,9 +26,9 @@ class TFRecordDatasource(FileBasedDatasource):
             try:
                 example.ParseFromString(record)
             except DecodeError:
-                warnings.warn(
+                raise ValueError(
                     "`TFRecordDatasource` failed to parse `tf.train.Example` "
-                    f"message in '{path}'. This warning can occur if your TFRecord "
+                    f"record in '{path}'. This error can occur if your TFRecord "
                     "file contains a message type other than `tf.train.Example`."
                 )
 
@@ -38,7 +38,7 @@ class TFRecordDatasource(FileBasedDatasource):
 
 
 def _convert_example_to_dict(
-    example: tf.train.Example,
+    example: "tf.train.Example",
 ) -> Dict[str, Union[bytes, List[bytes], float, List[float], int, List[int]]]:
     record = {}
     for feature_name, feature in example.features.feature.items():
@@ -50,7 +50,7 @@ def _convert_example_to_dict(
 
 
 def _get_feature_value(
-    feature: tf.train.Feature,
+    feature: "tf.train.Feature",
 ) -> Union[List[bytes], List[float], List[int]]:
     values = (
         feature.bytes_list.value,
@@ -102,15 +102,15 @@ def _read_records(
         if num_length_bytes_read == 0:
             break
         elif num_length_bytes_read != 8:
-            raise RuntimeError("Failed to read the record size.")
+            raise ValueError("Failed to read the record size.")
         if file.readinto(crc_bytes) != 4:
-            raise RuntimeError("Failed to read the start token.")
+            raise ValueError("Failed to read the start token.")
         (length,) = struct.unpack("<Q", length_bytes)
         if length > len(datum_bytes):
             datum_bytes = datum_bytes.zfill(int(length * 1.5))
         datum_bytes_view = memoryview(datum_bytes)[:length]
         if file.readinto(datum_bytes_view) != length:
-            raise RuntimeError("Failed to read the record.")
+            raise ValueError("Failed to read the record.")
         if file.readinto(crc_bytes) != 4:
-            raise RuntimeError("Failed to read the end token.")
+            raise ValueError("Failed to read the end token.")
         yield datum_bytes_view
