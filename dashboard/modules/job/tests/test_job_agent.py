@@ -289,7 +289,7 @@ async def test_timeout(job_sdk_client):
         timeout=10,
     )
 
-    data = await agent_client.get_job_info(job_id)
+    data = head_client.get_job_info(job_id)
     assert "Failed to set up runtime environment" in data.message
     assert "Timeout" in data.message
     assert "consider increasing `setup_timeout_seconds`" in data.message
@@ -313,7 +313,7 @@ async def test_runtime_env_setup_failure(job_sdk_client):
         timeout=10,
     )
 
-    data = await agent_client.get_job_info(job_id)
+    data = head_client.get_job_info(job_id)
     assert "Failed to set up runtime environment" in data.message
 
 
@@ -322,7 +322,7 @@ async def test_stop_long_running_job(job_sdk_client):
     """
     Submit a job that runs for a while and stop it in the middle.
     """
-    client = job_sdk_client
+    agent_client, head_client = job_sdk_client
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         path = Path(tmp_dir)
@@ -344,16 +344,18 @@ raise RuntimeError('Intentionally failed.')
             {"runtime_env": runtime_env, "entrypoint": "python test_script.py"},
             JobSubmitRequest,
         )
-        submit_result = await client.submit_job_internal(request)
+        submit_result = await agent_client.submit_job_internal(request)
         job_id = submit_result.submission_id
 
-        stopped = await client.stop_job(job_id)
+        stopped = await agent_client.stop_job(job_id)
         assert stopped is True
 
-        check_result = await _check_job(
-            client=client, job_id=job_id, status=JobStatus.STOPPED, timeout=10
+        wait_for_condition(
+            partial(
+                _check_job, client=head_client, job_id=job_id, status=JobStatus.STOPPED
+            ),
+            timeout=10,
         )
-        assert check_result
 
 
 @pytest.mark.asyncio
