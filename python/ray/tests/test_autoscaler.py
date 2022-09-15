@@ -3790,9 +3790,15 @@ class AutoscalingTest(unittest.TestCase):
 
         assert AUTOSCALER_NODE_SELECTOR_PLUGIN_ENV_VAR not in os.environ
         try:
-            os.environ[AUTOSCALER_NODE_SELECTOR_PLUGIN_ENV_VAR] = "ray.tests.test_autoscaler.launch_nothing_node_selector_plugin"
+            os.environ[
+                AUTOSCALER_NODE_SELECTOR_PLUGIN_ENV_VAR
+            ] = "ray.tests.test_autoscaler.launch_nothing_node_selector_plugin"
 
-            with patch.object(ray.tests.test_autoscaler, "launch_nothing_node_selector_plugin", return_value=[]) as patched_selector:
+            with patch.object(
+                ray.tests.test_autoscaler,
+                "launch_nothing_node_selector_plugin",
+                return_value=[],
+            ) as patched_selector:
                 autoscaler.update()
                 patched_selector.assert_called_once()
         finally:
@@ -3801,8 +3807,8 @@ class AutoscalingTest(unittest.TestCase):
 
 
 def launch_nothing_node_selector_plugin(_) -> List[str]:
-    """ This method is a placeholder that only exists so that it can be patched
-    in individual tests. """
+    """This method is a placeholder that only exists so that it can be patched
+    in individual tests."""
     assert False
     return []
 

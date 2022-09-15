@@ -4,9 +4,10 @@ import json
 import logging
 import os
 from typing import Any, Dict
-from ray.autoscaler._private.loader import load_function_or_class
 
 import yaml
+
+from ray.autoscaler._private.loader import load_function_or_class
 
 logger = logging.getLogger(__name__)
 

@@ -17,10 +17,10 @@ from six.moves import queue
 
 from ray.autoscaler._private.constants import (
     AUTOSCALER_HEARTBEAT_TIMEOUT_S,
-    AUTOSCALER_NODE_SELECTOR_PLUGIN_ENV_VAR,
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     AUTOSCALER_MAX_LAUNCH_BATCH,
     AUTOSCALER_MAX_NUM_FAILURES,
+    AUTOSCALER_NODE_SELECTOR_PLUGIN_ENV_VAR,
     AUTOSCALER_UPDATE_INTERVAL_S,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
@@ -31,6 +31,7 @@ from ray.autoscaler._private.constants import (
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
 from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.loader import load_function_or_class
 from ray.autoscaler._private.local.node_provider import (
     LocalNodeProvider,
     record_local_head_state_if_needed,
@@ -62,7 +63,6 @@ from ray.autoscaler._private.util import (
     validate_config,
     with_head_node_ip,
 )
-from ray.autoscaler._private.loader import load_function_or_class
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
@@ -159,6 +159,7 @@ class NonTerminatedNodes:
 # terminate: should terminate the worker
 # decide_later: the worker can be terminated if needed
 KeepOrTerminate = Enum("KeepOrTerminate", "keep terminate decide_later")
+
 
 class StandardAutoscaler:
     """The autoscaling control loop for a Ray cluster.
@@ -1455,5 +1456,5 @@ class StandardAutoscaler:
         return "\n" + format_info_string(lm_summary, autoscaler_summary)
 
 
-def _prioritize_and_filter_nodes(autoscaler : StandardAutoscaler) -> List[NodeType]:
+def _prioritize_and_filter_nodes(autoscaler: StandardAutoscaler) -> List[NodeType]:
     return list(autoscaler.config.get("available_node_types", {}).keys())
