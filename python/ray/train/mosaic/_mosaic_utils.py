@@ -1,4 +1,3 @@
-from __future__ import annotations
 import math
 from typing import Any, Dict, Tuple, Union, Iterable
 
@@ -33,7 +32,7 @@ class RayDatasetMosaicIterable:
         self.total_samples = dataset.count()
 
     def __len__(self):
-        return math.ceil(self.dataset.count() / self.batch_size)
+        return math.ceil(self.total_samples / self.batch_size)
 
     def __iter__(self):
         return _mosaic_iterator(self.dataset, self.batch_size, self.labels)
