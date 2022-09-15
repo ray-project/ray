@@ -12,8 +12,8 @@ import pytest
 import yaml
 
 from ray._private.gcs_utils import GcsAioClient
-from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.test_utils import (
     chdir,
@@ -215,34 +215,9 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
 
     agent_client, head_client = job_sdk_client
 
-    need_upload = False
-    working_dir = runtime_env_option["runtime_env"].get("working_dir", None)
-    py_modules = runtime_env_option["runtime_env"].get("py_modules", [])
-
-    def _need_upload(path):
-        try:
-            protocol, _ = parse_uri(path)
-            if protocol == Protocol.GCS:
-                return True
-        except ValueError:
-            # local file, need upload
-            return True
-        return False
-
-    if working_dir:
-        need_upload = need_upload or _need_upload(working_dir)
-    if py_modules:
-        need_upload = need_upload or any(
-            [_need_upload(str(py_module)) for py_module in py_modules]
-        )
-
-    # TODO(Catch-Bull): delete this after we implemented
-    # `upload package` and `get package`
-    if need_upload:
-        # not implemented `upload package` yet.
-        print("Skip test, because of need upload")
-        return
-
+    runtime_env = runtime_env_option["runtime_env"]
+    runtime_env = upload_working_dir_if_needed(runtime_env, logger=logger)
+    runtime_env = upload_py_modules_if_needed(runtime_env, logger=logger)
     runtime_env = RuntimeEnv(**runtime_env_option["runtime_env"]).to_dict()
     request = validate_request_type(
         {"runtime_env": runtime_env, "entrypoint": runtime_env_option["entrypoint"]},
@@ -260,8 +235,8 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     )
 
     # There is only one node, so there is no need to replace the client of the JobAgent
-    logs = await agent_client.get_job_logs(job_id)
-    assert runtime_env_option["expected_logs"] in logs
+    resp = await agent_client.get_job_logs(job_id)
+    assert runtime_env_option["expected_logs"] in resp.logs
 
 
 @pytest.mark.asyncio
@@ -347,8 +322,8 @@ raise RuntimeError('Intentionally failed.')
         submit_result = await agent_client.submit_job_internal(request)
         job_id = submit_result.submission_id
 
-        stopped = await agent_client.stop_job(job_id)
-        assert stopped is True
+        resp = await agent_client.stop_job_internal(job_id)
+        assert resp.stopped is True
 
         wait_for_condition(
             partial(
@@ -491,8 +466,8 @@ async def test_job_log_in_multiple_node(
             agent_address = f"{ip}:{agent_port}"
             assert wait_until_server_available(agent_address)
             client = JobAgentSubmissionClient(format_web_url(agent_address))
-            logs = await client.get_job_logs(job_id)
-            assert result_log in logs, logs
+            resp = await client.get_job_logs(job_id)
+            assert result_log in resp.logs, resp.logs
 
             job_check_status[index] = True
         return True

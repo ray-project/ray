@@ -76,7 +76,7 @@ class JobAgentSubmissionClient:
             else:
                 await self._raise_error(resp)
 
-    async def stop_job(self, job_id: str) -> bool:
+    async def stop_job_internal(self, job_id: str) -> JobStopResponse:
 
         logger.debug(f"Stopping job with job_id={job_id}.")
 
@@ -86,27 +86,17 @@ class JobAgentSubmissionClient:
 
             if resp.status == 200:
                 result_json = await resp.json()
-                return JobStopResponse(**result_json).stopped
+                return JobStopResponse(**result_json)
             else:
                 self._raise_error(resp)
 
-    async def get_job_info(self, job_id: str) -> JobDetails:
-        async with self._session.get(
-            f"{self._agent_address}/api/job_agent/jobs/{job_id}"
-        ) as resp:
-            if resp.status == 200:
-                result_json = await resp.json()
-                return JobDetails(**result_json)
-            else:
-                await self._raise_error(resp)
-
-    async def get_job_logs(self, job_id: str) -> str:
+    async def get_job_logs(self, job_id: str) -> JobLogsResponse:
         async with self._session.get(
             f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs"
         ) as resp:
             if resp.status == 200:
                 result_json = await resp.json()
-                return JobLogsResponse(**result_json).logs
+                return JobLogsResponse(**result_json)
             else:
                 self._raise_error(resp)
 
