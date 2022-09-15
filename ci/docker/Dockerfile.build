@@ -1,5 +1,5 @@
 ARG DOCKER_IMAGE_BASE
-FROM DOCKER_IMAGE_BASE
+FROM $DOCKER_IMAGE_BASE
 
 # Delete stale data
 RUN rm -rf /ray
