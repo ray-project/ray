@@ -168,8 +168,6 @@ Common Parameters
     objects, which have the advantage of being type safe, allowing users to set different config settings within
     meaningful sub-categories (e.g. ``my_config.training(lr=0.0003)``), and offer the ability to
     construct an Algorithm instance from these config objects (via their ``build()`` method).
-    So far, this is only supported for some Algorithm classes, such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO`,
-    but we are rolling this out right now across all RLlib.
 
 The following is a list of the common algorithm hyper-parameters:
 
@@ -811,12 +809,12 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
         metric="episode_reward_mean", mode="max"
     )
 
-Loading and restoring a trained agent from a checkpoint is simple:
+Loading and restoring a trained algo from a checkpoint is simple:
 
 .. code-block:: python
 
-    agent = ppo.PPO(config=config, env=env_class)
-    agent.restore(checkpoint_path)
+    from ray.rllib.algorithms.algorithm import Algorithm
+    algo = Algorithm.from_checkpoint(checkpoint_path)
 
 
 Computing Actions

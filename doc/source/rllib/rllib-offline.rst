@@ -323,8 +323,6 @@ You can configure experience input for an agent using the following options:
     objects, which have the advantage of being type safe, allowing users to set different config settings within
     meaningful sub-categories (e.g. ``my_config.offline_data(input_=[xyz])``), and offer the ability to
     construct an Algorithm instance from these config objects (via their ``.build()`` method).
-    So far, this is only supported for some Algorithm classes, such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO`,
-    but we are rolling this out right now across all RLlib.
 
 
 .. code-block:: python
@@ -420,8 +418,6 @@ You can configure experience output for an agent using the following options:
     objects, which have the advantage of being type safe, allowing users to set different config settings within
     meaningful sub-categories (e.g. ``my_config.offline_data(input_=[xyz])``), and offer the ability to
     construct an Algorithm instance from these config objects (via their ``.build()`` method).
-    So far, this is only supported for some Algorithm classes, such as :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO`,
-    but we are rolling this out right now across all RLlib.
 
 .. code-block:: python
 
