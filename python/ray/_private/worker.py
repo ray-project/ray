@@ -2588,6 +2588,9 @@ def _mode(worker=global_worker):
 
 
 def _make_remote(function_or_class, options):
+    if not function_or_class.__module__:
+        function_or_class.__module__ = "global"
+
     if inspect.isfunction(function_or_class) or is_cython(function_or_class):
         ray_option_utils.validate_task_options(options, in_options=False)
         return ray.remote_function.RemoteFunction(
@@ -2797,7 +2800,7 @@ def remote(
     >>> assert result == (1 + 2 + 3)
     >>>
     >>> @ray.remote
-    >>> class Foo:
+    ... class Foo:
     ...     def __init__(self, arg):
     ...         self.x = arg
     ...
@@ -2812,7 +2815,7 @@ def remote(
     Equivalently, use a function call to create a remote function or actor.
 
     >>> def g(a, b, c):
-    >>>     return a + b + c
+    ...     return a + b + c
     >>>
     >>> remote_g = ray.remote(g)
     >>> object_ref = remote_g.remote(1, 2, 3)
@@ -2835,30 +2838,30 @@ def remote(
     It can also be used with specific keyword arguments as follows:
 
     >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-    >>> def f():
-    >>>     return 1, 2
+    ... def f():
+    ...     return 1, 2
     >>>
     >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-    >>> class Foo:
-    >>>     def method(self):
-    >>>         return 1
+    ... class Foo:
+    ...     def method(self):
+    ...         return 1
 
     Remote task and actor objects returned by @ray.remote can also be
     dynamically modified with the same arguments as above using
     ``.options()`` as follows:
 
     >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-    >>> def f():
-    >>>     return 1, 2
+    ... def f():
+    ...     return 1, 2
     >>>
     >>> f_with_2_gpus = f.options(num_gpus=2)
     >>> object_ref = f_with_2_gpus.remote()
     >>> assert ray.get(object_ref) == (1, 2)
 
     >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-    >>> class Foo:
-    >>>     def method(self):
-    >>>         return 1
+    ... class Foo:
+    ...     def method(self):
+    ...         return 1
     >>>
     >>> Foo_with_no_resources = Foo.options(num_cpus=1, resources=None)
     >>> foo_actor = Foo_with_no_resources.remote()
