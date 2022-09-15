@@ -2,8 +2,8 @@ ARG DOCKER_IMAGE_BASE
 FROM $DOCKER_IMAGE_BASE
 
 # Move out of working dir /ray
-RUN cd /
 # Delete stale data
+WORKDIR /
 RUN rm -rf /ray
 
 RUN mkdir /ray
