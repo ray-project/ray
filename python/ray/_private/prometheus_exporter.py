@@ -144,7 +144,7 @@ class Collector(object):
         metric_description = desc["documentation"]
         label_keys = desc["labels"]
         metric_units = desc["units"]
-        assert len(tag_values) == len(label_keys)
+        assert len(tag_values) == len(label_keys), (tag_values, label_keys)
         # Prometheus requires that all tag values be strings hence
         # the need to cast none to the empty string before exporting. See
         # https://github.com/census-instrumentation/opencensus-python/issues/480

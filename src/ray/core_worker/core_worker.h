@@ -1277,18 +1277,36 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
         GUARDED_BY(tasks_counter_mutex_);
     absl::flat_hash_map<std::string, int> finished_tasks_counter_map_
         GUARDED_BY(tasks_counter_mutex_);
+    int64_t running_total_ GUARDED_BY(tasks_counter_mutex_) = 0;
 
-    void Add(TaskStatusType type, const std::string &func_name, int value) {
-      tasks_counter_mutex_.AssertHeld();
-      if (type == kPending) {
-        pending_tasks_counter_map_[func_name] += value;
-      } else if (type == kRunning) {
-        running_tasks_counter_map_[func_name] += value;
-      } else if (type == kFinished) {
-        finished_tasks_counter_map_[func_name] += value;
-      } else {
-        RAY_CHECK(false) << "This line should not be reached.";
-      }
+    void IncPending(const std::string &func_name) {
+      absl::MutexLock l(&tasks_counter_mutex_);
+      pending_tasks_counter_map_[func_name] += 1;
+    }
+
+    void MovePendingToRunning(const std::string &func_name) {
+      absl::MutexLock l(&tasks_counter_mutex_);
+      pending_tasks_counter_map_[func_name] -= 1;
+      running_tasks_counter_map_[func_name] += 1;
+      running_total_ += 1;
+      UpdateStats();
+    }
+
+    void MoveRunningToFinished(const std::string &func_name) {
+      absl::MutexLock l(&tasks_counter_mutex_);
+      running_tasks_counter_map_[func_name] -= 1;
+      finished_tasks_counter_map_[func_name] += 1;
+      running_total_ -= 1;
+      UpdateStats();
+    }
+
+    void UpdateStats() EXCLUSIVE_LOCKS_REQUIRED(&tasks_counter_mutex_) {
+      ray::stats::STATS_tasks.Record(running_total_,
+                                     rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING));
+      // TODO(ekl) this conflicts with WAITING_FOR_EXECUTION recorded by task manager
+      // extract counter into a concrete structure
+      ray::stats::STATS_tasks.Record(
+          -running_total_, rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_EXECUTION));
     }
   };
   TaskCounter task_counter_;
