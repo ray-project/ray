@@ -35,7 +35,7 @@ def read_bytes(
     )
 
 
-class TestReadHivePartitionedFilesWithListBlocks:
+class TestReadHivePartitionedFiles:
     def test_read_single_file(self, tmp_path, ray_start_regular_shared):
         path = os.path.join(tmp_path, "year=1970", "country=fr", "data.bin")
         write_bytes(b"foo", path)
@@ -92,7 +92,7 @@ class TestReadHivePartitionedFilesWithListBlocks:
             read_bytes(path, partitioning=Partitioning("hive"))
 
 
-class TestReadUnpartitionedFilesWithTabularBlocks:
+class TestReadUnpartitionedFiles:
     @pytest.mark.parametrize(
         "relative_path", ["year=1970/country=fr/data.bin", "1970/fr/data.bin"]
     )
@@ -128,7 +128,7 @@ class TestReadUnpartitionedFilesWithTabularBlocks:
         read_bytes(paths, partitioning=None)
 
 
-class TestReadDirPartitionedFilesWithTabularBlocks:
+class TestReadDirPartitionedFiles:
     def test_read_single_file(self, tmp_path, ray_start_regular_shared):
         path = os.path.join(tmp_path, "1970", "fr", "data.bin")
         write_bytes(b"foo", path)

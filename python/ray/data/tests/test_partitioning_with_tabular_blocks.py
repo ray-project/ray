@@ -46,7 +46,7 @@ def read_csv(
 
 
 @pytest.mark.parametrize("block_type", [pd.DataFrame, pa.Table])
-class TestReadHivePartitionedFilesWithTabularBlocks:
+class TestReadHivePartitionedFiles:
     def test_read_single_file(self, tmp_path, block_type, ray_start_regular_shared):
         path = os.path.join(tmp_path, "year=1970", "country=fr", "data.csv")
         write_csv({"number": [1, 2, 3]}, path)
@@ -110,7 +110,7 @@ class TestReadHivePartitionedFilesWithTabularBlocks:
 
 
 @pytest.mark.parametrize("block_type", [pd.DataFrame, pa.Table])
-class TestReadUnpartitionedFilesWithTabularBlocks:
+class TestReadUnpartitionedFiles:
     @pytest.mark.parametrize(
         "relative_path", ["year=1970/country=fr/data.csv", "1970/fr/data.csv"]
     )
@@ -149,7 +149,7 @@ class TestReadUnpartitionedFilesWithTabularBlocks:
 
 
 @pytest.mark.parametrize("block_type", [pd.DataFrame, pa.Table])
-class TestReadDirPartitionedFilesWithTabularBlocks:
+class TestReadDirPartitionedFiles:
     def test_read_single_file(self, tmp_path, block_type, ray_start_regular_shared):
         path = os.path.join(tmp_path, "1970", "fr", "data.csv")
         write_csv({"number": [1, 2, 3]}, path)
