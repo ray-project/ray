@@ -320,9 +320,20 @@ def read_datasource(
 
 
 @PublicAPI
-def read_mongo(uri, database, collection, pipelines, schema, **kwargs) -> Dataset[ArrowRow]:
-    return read_datasource(MongoDatasource(), parallelism=len(pipelines),
-    uri=uri, database=database, collection=collection, pipelines=pipelines, schema=schema, kwargs=kwargs)
+def read_mongo(
+    uri, database, collection, pipelines, schema, **kwargs
+) -> Dataset[ArrowRow]:
+    return read_datasource(
+        MongoDatasource(),
+        parallelism=len(pipelines),
+        uri=uri,
+        database=database,
+        collection=collection,
+        pipelines=pipelines,
+        schema=schema,
+        kwargs=kwargs,
+    )
+
 
 @PublicAPI
 def read_parquet(
