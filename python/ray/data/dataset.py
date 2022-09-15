@@ -351,14 +351,14 @@ class Dataset(Generic[T]):
             >>> ds
             Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64})
 
-            Call :meth:`~Dataset.default_batch_format` to determine the default batch
+            Call :meth:`.default_batch_format` to determine the default batch
             type.
 
             >>> ds.default_batch_format()
             <class 'pandas.core.frame.DataFrame'>
 
             Once you know the batch type, define a function that transforms batches
-            of data. :meth:`~Dataset.map_batches` applies the function in parallel.
+            of data. ``ds.map_batches`` applies the function in parallel.
 
             >>> def map_fn(batch: pd.DataFrame) -> pd.DataFrame:
             ...     batch["age_in_dog_years"] = 7 * batch["age"]
@@ -383,8 +383,7 @@ class Dataset(Generic[T]):
             per worker instead of once per inference.
 
             To transform batches with :ref:`actors <actor-guide>`, pass a callable type
-            to ``fn`` and specify an
-            :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>`.
+            to ``fn`` and specify an :class:`~ray.data.ActorPoolStrategy>`.
 
             In the example below, ``CachedModel`` is called on an autoscaling pool of
             two to eight :ref:`actors <actor-guide>`, each allocated one GPU by Ray.
@@ -400,7 +399,7 @@ class Dataset(Generic[T]):
             ...     CachedModel, # doctest: +SKIP
             ...     batch_size=256, # doctest: +SKIP
             ...     compute=ActorPoolStrategy(2, 8), # doctest: +SKIP
-            ...     num_gpus=1
+            ...     num_gpus=1,
             ... ) # doctest: +SKIP
 
         Args:
