@@ -14,6 +14,7 @@ from ray._private.client_mode_hook import (
 from ray._private.ray_logging import setup_logger
 from ray.job_config import JobConfig
 from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -122,17 +123,26 @@ class _ClientContext:
 
     def _check_versions(self, conn_info: Dict[str, Any], ignore_version: bool) -> None:
         local_major_minor = f"{sys.version_info[0]}.{sys.version_info[1]}"
+        local_major_minor_patch = f"{local_major_minor}.{sys.version_info[2]}"
         if not conn_info["python_version"].startswith(local_major_minor):
-            version_str = f"{local_major_minor}.{sys.version_info[2]}"
             msg = (
                 "Python minor versions differ between client and server:"
-                + f" client is {version_str},"
+                + f" client is {local_major_minor_patch},"
                 + f" server is {conn_info['python_version']}"
             )
             if ignore_version or "RAY_IGNORE_VERSION_MISMATCH" in os.environ:
                 logger.warning(msg)
             else:
                 raise RuntimeError(msg)
+        if not conn_info["python_version"].startswith(local_major_minor):
+            msg = (
+                "Python patch version differs between client and server. This "
+                "may cause serialization errors when transferring objects to and "
+                f"from the cluster. Client is {local_major_minor_patch}, server is "
+                f"{conn_info['python_version']}"
+            )
+            if log_once("client_server_patch_mismatch"):
+                logger.warning(msg)
         if CURRENT_PROTOCOL_VERSION != conn_info["protocol_version"]:
             msg = (
                 "Client Ray installation incompatible with server:"
