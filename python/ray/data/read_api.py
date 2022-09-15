@@ -714,6 +714,7 @@ def read_numpy(
     partition_filter: Optional[
         PathPartitionFilter
     ] = NumpyDatasource.file_extension_filter(),
+    partitioning: Partitioning = Partitioning("hive"),
     **numpy_load_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from numpy files.
@@ -745,6 +746,7 @@ def read_numpy(
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
             match "*.npy*".
+        partitioning: TODO
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """
@@ -756,6 +758,7 @@ def read_numpy(
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        partitioning=partitioning,
         **numpy_load_args,
     )
 

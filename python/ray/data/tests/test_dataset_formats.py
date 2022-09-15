@@ -1291,6 +1291,17 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     assert [v.item() for v in ds.take(2)] == [0, 1]
 
 
+def test_numpy_read_partitioning(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "country=us", "data.npy")
+    os.mkdir(os.path.dirname(path))
+    np.save(path, np.arange(4).reshape([2, 2]))
+
+    ds = ray.data.read_numpy(path)
+
+    assert ds.schema().names == ["__value__", "country"]
+    assert ds.to_pandas()["country"] == ["us", "us"]
+
+
 def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_np_dir")
     os.mkdir(path)
