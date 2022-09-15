@@ -133,6 +133,17 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
         value=1.0,
     )
 
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_memory_pressure_kill_actor_2(ray_with_memory_monitor):
+    leaker = Leaker.remote()
+
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.6)
+    ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
+
+    time.sleep(1000)
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
@@ -140,7 +151,7 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
 )
 def test_memory_pressure_kill_task(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.95)
-    with pytest.raises(ray.exceptions.WorkerCrashedError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(no_retry.remote(bytes_to_alloc))
 
     wait_for_condition(
@@ -164,7 +175,7 @@ def test_memory_pressure_kill_newest_worker(ray_with_memory_monitor):
     actor_ref = Leaker.options(name="actor").remote()
     ray.get(actor_ref.allocate.remote(bytes_to_alloc))
 
-    with pytest.raises(ray.exceptions.WorkerCrashedError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(no_retry.remote(allocate_bytes=bytes_to_alloc))
 
     actors = ray.util.list_named_actors()
@@ -190,7 +201,7 @@ def test_memory_pressure_kill_task_if_actor_submitted_task_first(
     )
 
     ray.get(actor_ref.allocate.remote(bytes_to_alloc))
-    with pytest.raises(ray.exceptions.WorkerCrashedError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(task_ref)
 
     actors = ray.util.list_named_actors()
@@ -249,7 +260,7 @@ async def test_actor_oom_logs_error(ray_with_memory_monitor):
 )
 async def test_task_oom_logs_error(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
-    with pytest.raises(ray.exceptions.WorkerCrashedError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(
             no_retry.remote(
                 allocate_bytes=bytes_to_alloc,

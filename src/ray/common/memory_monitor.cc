@@ -113,9 +113,11 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
     std::ifstream mem_file(kCgroupsV1MemoryUsagePath, std::ios::in | std::ios::binary);
     mem_file >> used_bytes;
   }
+  /// This can be zero if the memory limit is not set for cgroup v2.
+  if (total_bytes == 0) {
+    total_bytes = kNull;
+  }
 
-  RAY_CHECK((total_bytes == kNull && used_bytes == kNull) ||
-            (total_bytes != kNull && used_bytes != kNull));
   if (total_bytes != kNull) {
     RAY_CHECK_GT(used_bytes, 0);
     RAY_CHECK_GT(total_bytes, used_bytes);
