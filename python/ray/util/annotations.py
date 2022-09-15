@@ -43,16 +43,15 @@ def PublicAPI(*args, **kwargs):
         stability = "stable"
 
     def wrap(obj):
-        if not obj.__doc__:
-            obj.__doc__ = ""
         if stability in ["alpha", "beta"]:
-            obj.__doc__ += (
-                f"\n    PublicAPI ({stability}): This API is in {stability} "
+            message = (
+                f"PublicAPI ({stability}): This API is in {stability} "
                 "and may change before becoming stable."
             )
         else:
-            obj.__doc__ += "\n    PublicAPI: This API is stable across Ray releases."
+            message = "PublicAPI: This API is stable across Ray releases."
 
+        _append_doc(obj, message=message)
         _mark_annotated(obj)
         return obj
 
@@ -76,10 +75,8 @@ def DeveloperAPI(*args, **kwargs):
         return DeveloperAPI()(args[0])
 
     def wrap(obj):
-        if not obj.__doc__:
-            obj.__doc__ = ""
-        obj.__doc__ += (
-            "\n    DeveloperAPI: This API may change across minor Ray releases."
+        _append_doc(
+            obj, message="DeveloperAPI: This API may change across minor Ray releases."
         )
         _mark_annotated(obj)
         return obj
@@ -124,26 +121,33 @@ def Deprecated(*args, **kwargs):
         raise ValueError("Unknown kwargs: {}".format(kwargs.keys()))
 
     def inner(obj):
-        if not obj.__doc__:
-            obj.__doc__ = ""
-
-        obj.__doc__ = obj.__doc__.rstrip()
-
-        indent = _get_indent(obj.__doc__)
-        obj.__doc__ += "\n\n"
-        obj.__doc__ += f"{' ' * indent}.. warning::\n"
-        obj.__doc__ += f"{' ' * (indent + 4)}{deprecation_message}"
+        message = deprecation_message
         if additional_info:
-            obj.__doc__ += f" {additional_info}"
-        obj.__doc__ += f"\n{' ' * indent}"
-
+            message += f" {additional_info}"
+        _append_doc(obj, message=message, directive="warning")
         _mark_annotated(obj)
         return obj
 
     return inner
 
 
-def _get_indent(docstring: Optional[str]) -> int:
+def _append_doc(obj, *, message: str, directive: Optional[str] = None) -> str:
+    if not obj.__doc__:
+        obj.__doc__ = ""
+
+    obj.__doc__ = obj.__doc__.rstrip()
+
+    indent = _get_indent(obj.__doc__)
+    obj.__doc__ += "\n\n"
+    if directive is not None:
+        obj.__doc__ += f"{' ' * indent}.. {directive}::\n"
+        obj.__doc__ += f"{' ' * (indent + 4)}{message}"
+    else:
+        obj.__doc__ += f"{' ' * indent}{message}\n"
+    obj.__doc__ += f"\n{' ' * indent}"
+
+
+def _get_indent(docstring: str) -> int:
     """
 
     Example:
