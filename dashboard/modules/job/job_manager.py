@@ -569,6 +569,10 @@ class JobManager:
             start_time=int(time.time() * 1000),
             metadata=metadata,
             runtime_env=runtime_env,
+            driver_agent_http_address="http://"
+            f"{ray.worker.global_worker.node.node_ip_address}:"
+            f"{ray.worker.global_worker.node.dashboard_agent_listen_port}",
+            driver_node_id=ray.worker.global_worker.current_node_id.hex(),
         )
         await self._job_info_client.put_info(submission_id, job_info)
 
@@ -619,6 +623,9 @@ class JobManager:
             return True
         else:
             return False
+
+    def job_info_client(self) -> JobInfoStorageClient:
+        return self._job_info_client
 
     async def get_job_status(self, job_id: str) -> Optional[JobStatus]:
         """Get latest status of a job."""

@@ -76,6 +76,10 @@ class JobInfo:
     metadata: Optional[Dict[str, str]] = None
     #: The runtime environment for the job.
     runtime_env: Optional[Dict[str, Any]] = None
+    #: Driver agent http address
+    driver_agent_http_address: Optional[str] = None
+    #: Driver node id
+    driver_node_id: Optional[str] = None
 
     def __post_init__(self):
         if self.message is None:

@@ -52,3 +52,8 @@ BAD_RUNTIME_ENV_CACHE_TTL_SECONDS = env_integer(
 # ray.dashboard.modules.snapshot.snapshot_head.RayActivityResponse.
 # Example: "your.module.ray_cluster_activity_hook".
 RAY_CLUSTER_ACTIVITY_HOOK = "RAY_CLUSTER_ACTIVITY_HOOK"
+
+# The number of candidate agents
+CANDIDATE_AGENT_NUMBER = max(env_integer("CANDIDATE_AGENT_NUMBER", 1), 1)
+WAIT_RAYLET_START_TIMEOUT_SECONDS = 10
+WAIT_RAYLET_START_INTERVAL_SECONDS = 0.1

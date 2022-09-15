@@ -72,7 +72,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
             self._dashboard_agent.gcs_aio_client,
-            self.get_job_manager(),
+            self.get_job_manager().job_info_client(),
             job_or_submission_id,
         )
         if not job:
@@ -105,7 +105,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
             self._dashboard_agent.gcs_aio_client,
-            self.get_job_manager(),
+            self.get_job_manager().job_info_client(),
             job_or_submission_id,
         )
         if not job:
@@ -133,7 +133,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
             self._dashboard_agent.gcs_aio_client,
-            self.get_job_manager(),
+            self.get_job_manager().job_info_client(),
             job_or_submission_id,
         )
         if not job:
