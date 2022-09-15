@@ -182,10 +182,10 @@ Built-in Datasources
 Partitioning API
 ----------------
 
-.. autoclass:: ray.data.datasource.PartitionStyle
+.. autoclass:: ray.data.datasource.Partitioning
     :members:
 
-.. autoclass:: ray.data.datasource.PathPartitionScheme
+.. autoclass:: ray.data.datasource.PartitionStyle
     :members:
 
 .. autoclass:: ray.data.datasource.PathPartitionEncoder
