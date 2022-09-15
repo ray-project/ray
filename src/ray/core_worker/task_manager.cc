@@ -734,5 +734,10 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
   reply->set_tasks_total(total);
 }
 
+void TaskManager::FillTaskGroupInfo(rpc::GetCoreWorkerStatsReply *reply,
+                               const int64_t limit) const {
+  RAY_LOG(ERROR) << "TODO FILL TASK GROUP INFO";
+}
+
 }  // namespace core
 }  // namespace ray

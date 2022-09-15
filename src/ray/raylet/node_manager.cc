@@ -775,6 +775,44 @@ void NodeManager::HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
       send_reply_callback,
       /*include_memory_info*/ false,
       /*include_task_info*/ true,
+      /*include_task_group_info*/ false,
+      /*limit*/ limit,
+      /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
+}
+
+void NodeManager::HandleGetTaskGroupsInfo(const rpc::GetTaskGroupsInfoRequest &request,
+                                     rpc::GetTaskGroupsInfoReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Received a HandleGetTaskGroupsInfo request";
+  auto total = std::make_shared<int>(0);
+  auto count = std::make_shared<int>(0);
+  auto limit = request.has_limit() ? request.limit() : -1;
+  // Each worker query will have limit as well.
+  // At the end there will be limit * num_workers entries returned at max.
+  QueryAllWorkerStates(
+      /*on_replied*/
+      [reply, total, limit, count](const ray::Status &status,
+                                   const rpc::GetCoreWorkerStatsReply &r) {
+        *total += r.tasks_total();
+        if (status.ok()) {
+          for (const auto &task_info : r.owned_task_info_entries()) {
+            if (limit != -1 && *count >= limit) {
+              break;
+            }
+            *count += 1;
+            reply->add_owned_task_info_entries()->CopyFrom(task_info);
+          }
+          for (const auto &running_task_id : r.running_task_ids()) {
+            reply->add_running_task_ids(running_task_id);
+          }
+        } else {
+          RAY_LOG(INFO) << "Failed to query task information from a worker.";
+        }
+      },
+      send_reply_callback,
+      /*include_memory_info*/ false,
+      /*include_task_info*/ false,
+      /*include_task_group_info*/ true,
       /*limit*/ limit,
       /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
 }
@@ -810,6 +848,7 @@ void NodeManager::HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request
       send_reply_callback,
       /*include_memory_info*/ true,
       /*include_task_info*/ false,
+      /*include_task_group_info*/ false,
       /*limit*/ limit,
       /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
 }
@@ -820,6 +859,7 @@ void NodeManager::QueryAllWorkerStates(
     rpc::SendReplyCallback &send_reply_callback,
     bool include_memory_info,
     bool include_task_info,
+    bool include_task_group_info,
     int64_t limit,
     const std::function<void()> &on_all_replied) {
   auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
@@ -858,6 +898,7 @@ void NodeManager::QueryAllWorkerStates(
     request.set_intended_worker_id(worker->WorkerId().Binary());
     request.set_include_memory_info(include_memory_info);
     request.set_include_task_info(include_task_info);
+    request.set_include_task_group_info(include_task_group_info);
     request.set_limit(limit);
     // TODO(sang): Add timeout to the RPC call.
     worker->rpc_client()->GetCoreWorkerStats(

@@ -269,9 +269,11 @@ message GetCoreWorkerStatsRequest {
   // Whether to include task information. This could be large since it
   // includes metadata for all live tasks.
   bool include_task_info = 3;
+  // Whether to include task group information.
+  bool include_task_group_info = 4;
   // Maximum number of entries to return.
   // If not specified, return the whole entries without truncation.
-  optional int64 limit = 4;
+  optional int64 limit = 5;
 }
 
 message GetCoreWorkerStatsReply {

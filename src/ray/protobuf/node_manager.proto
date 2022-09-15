@@ -313,6 +313,16 @@ message GetTasksInfoReply {
   // actor). We should handle this better.
 }
 
+message GetTaskGroupsInfoRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
+}
+
+message GetTaskGroupsInfoReply {
+  // TODO
+}
+
 message GetObjectsInfoRequest {
   // Maximum number of entries to return.
   // If not specified, return the whole entries without truncation.
@@ -396,6 +406,8 @@ service NodeManagerService {
   rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
   // [State API] Get the all task information of the node.
   rpc GetTasksInfo(GetTasksInfoRequest) returns (GetTasksInfoReply);
+  // [State API] Get the all task group information of the node.
+  rpc GetTaskGroupsInfo(GetTaskGroupsInfoRequest) returns (GetTaskGroupsInfoReply);
   // [State API] Get the all object information of the node.
   rpc GetObjectsInfo(GetObjectsInfoRequest) returns (GetObjectsInfoReply);
 }

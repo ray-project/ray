@@ -294,6 +294,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
   void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
 
+  /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
+  void FillTaskGroupInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
+
  private:
   struct TaskEntry {
     TaskEntry(const TaskSpecification &spec_arg,

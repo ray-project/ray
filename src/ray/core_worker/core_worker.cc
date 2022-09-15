@@ -3080,6 +3080,10 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
     }
   }
 
+  if (request.include_task_group_info()) {
+    task_manager_->FillTaskGroupInfo(reply, limit);
+  }
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

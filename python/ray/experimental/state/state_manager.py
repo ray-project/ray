@@ -25,6 +25,8 @@ from ray.core.generated.gcs_service_pb2 import (
 from ray.core.generated.node_manager_pb2 import (
     GetObjectsInfoReply,
     GetObjectsInfoRequest,
+    GetTaskGroupsInfoReply,
+    GetTaskGroupsInfoRequest,
     GetTasksInfoReply,
     GetTasksInfoRequest,
 )
@@ -288,6 +290,22 @@ class StateDataSourceClient:
 
         reply = await stub.GetTasksInfo(
             GetTasksInfoRequest(limit=limit), timeout=timeout
+        )
+        return reply
+
+    @handle_grpc_network_errors
+    async def get_task_group_info(
+        self, node_id: str, timeout: int = None, limit: int = None
+    ) -> Optional[GetTaskGroupsInfoReply]:
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+
+        stub = self._raylet_stubs.get(node_id)
+        if not stub:
+            raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
+
+        reply = await stub.GetTaskGroupsInfo(
+            GetTaskGroupsInfoRequest(limit=limit), timeout=timeout
         )
         return reply
 
