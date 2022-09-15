@@ -2,8 +2,6 @@ from typing import TYPE_CHECKING, Dict, List, Union, Iterable
 import warnings
 import struct
 
-import tensorflow as tf
-
 from ray.util.annotations import PublicAPI
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
@@ -20,6 +18,7 @@ class TFRecordDatasource(FileBasedDatasource):
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Block:
         from google.protobuf.message import DecodeError
         import pandas as pd
+        import tensorflow as tf
 
         data = []
         for record in _read_records(f):
