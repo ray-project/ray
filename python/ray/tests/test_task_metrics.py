@@ -25,12 +25,9 @@ def tasks_by_state(info) -> dict:
     res = fetch_prometheus_metrics([metrics_page])
     if "ray_tasks" in res:
         states = defaultdict(int)
-        states_raw = defaultdict(list)
         for sample in res["ray_tasks"]:
             states[sample.labels["State"]] += sample.value
-            states_raw[(sample.labels["State"], sample.labels["WorkerId"])].append(sample.value)
         print("Tasks by state: {}".format(states))
-        print("Tasks by state raw: {}".format(states_raw))
         return states
     else:
         return {}
@@ -91,7 +88,7 @@ ray.get(w)
     proc = run_string_as_driver_nonblocking(driver)
 
     expected = {
-        "RUNNING": 2.0,
+        "RUNNING": 3.0,
         "WAITING_FOR_EXECUTION": 0.0,
         "SCHEDULED": 8.0,
         "WAITING_FOR_DEPENDENCIES": 0.0,
