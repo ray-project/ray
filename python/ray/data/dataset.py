@@ -349,7 +349,7 @@ class Dataset(Generic[T]):
             ... })
             >>> ds = ray.data.from_pandas(df)
             >>> ds
-            Dataset(num_blocks=1, num_rows=3, schema={name: object, age: object})
+            Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64})
 
             Call :meth:`~Dataset.default_batch_format` to determine the default batch
             type.
