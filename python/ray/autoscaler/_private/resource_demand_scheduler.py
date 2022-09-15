@@ -640,7 +640,9 @@ def _add_min_workers_nodes(
 def transform_node_types(
     all_nodes: Dict[NodeType, NodeTypeConfigDict], ordered_and_filtered: List[NodeType]
 ):
-    return collections.OrderedDict((node_type, all_nodes[node_type]) for node_type in ordered_and_filtered)
+    return collections.OrderedDict(
+        (node_type, all_nodes[node_type]) for node_type in ordered_and_filtered
+    )
     # return {node_type: all_nodes[node_type] for node_type in ordered_and_filtered}
 
 
