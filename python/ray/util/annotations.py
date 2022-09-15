@@ -108,8 +108,8 @@ def Deprecated(*args, **kwargs):
         return Deprecated()(args[0])
 
     message = (
-        "**DEPRECATED:** This API is deprecated and may be removed in a future Ray"
-        "release."
+        "**DEPRECATED:** This API is deprecated and may be removed in a future "
+        "Ray release."
     )
 
     if "message" in kwargs:
