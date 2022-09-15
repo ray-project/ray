@@ -451,6 +451,7 @@ class Deployment:
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
         _internal: bool = False,
+        driver_deployment: bool = False,
     ) -> None:
         """Overwrite this deployment's options. Mutates the deployment.
 
@@ -475,6 +476,7 @@ class Deployment:
             health_check_period_s=health_check_period_s,
             health_check_timeout_s=health_check_timeout_s,
             _internal=_internal,
+            driver_deployment=driver_deployment,
         )
 
         self._func_or_class = validated._func_or_class
