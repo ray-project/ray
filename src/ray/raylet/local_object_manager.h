@@ -90,7 +90,7 @@ class LocalObjectManager {
   void PinObjectsAndWaitForFree(const std::vector<ObjectID> &object_ids,
                                 std::vector<std::unique_ptr<RayObject>> &&objects,
                                 const rpc::Address &owner_address,
-                                const ObjectID &generator_id);
+                                const ObjectID &generator_id = ObjectID::Nil());
 
   /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///
