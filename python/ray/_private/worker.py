@@ -2809,27 +2809,25 @@ def remote(
 
     Equivalently, use a function call to create a remote function or actor.
 
-    Example:
+    >>> def g(a, b, c):
+    >>>     return a + b + c
+    >>>
+    >>> remote_g = ray.remote(g)
+    >>> object_ref = remote_g.remote(1, 2, 3)
+    >>> assert ray.get(object_ref) == (1 + 2 + 3)
 
-        >>> def g(a, b, c):
-        >>>     return a + b + c
-        >>>
-        >>> remote_g = ray.remote(g)
-        >>> object_ref = remote_g.remote(1, 2, 3)
-        >>> assert ray.get(object_ref) == (1 + 2 + 3)
-
-        >>> class Bar:
-        ...     def __init__(self, arg):
-        ...         self.x = arg
-        ...
-        ...     def method(self, a):
-        ...         return self.x + a
-        >>>
-        >>> RemoteBar = ray.remote(Bar)
-        >>> actor_handle = RemoteBar.remote(123)
-        >>> object_ref = actor_handle.method.remote(321)
-        >>> result = ray.get(object_ref)
-        >>> assert result == (123 + 321)
+    >>> class Bar:
+    ...     def __init__(self, arg):
+    ...         self.x = arg
+    ...
+    ...     def method(self, a):
+    ...         return self.x + a
+    >>>
+    >>> RemoteBar = ray.remote(Bar)
+    >>> actor_handle = RemoteBar.remote(123)
+    >>> object_ref = actor_handle.method.remote(321)
+    >>> result = ray.get(object_ref)
+    >>> assert result == (123 + 321)
 
 
     It can also be used with specific keyword arguments as follows:
