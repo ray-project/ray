@@ -77,7 +77,7 @@ the Iris dataset.
 .. _transform_datasets_writing_udfs:
 
 -------------------------------------
-Writing User-defined functions (UDFs)
+Writing User-defined Functions (UDFs)
 -------------------------------------
 
 User-defined functions (UDFs) are routines that apply on one row (e.g.
@@ -132,8 +132,8 @@ Here is an overview of the available batch formats:
 
   .. literalinclude:: ./doc_code/transforming_datasets.py
     :language: python
-    :start-after: __writing_native_udfs_tabular_begin__
-    :end-before: __writing_native_udfs_tabular_end__
+    :start-after: __writing_default_udfs_tabular_begin__
+    :end-before: __writing_default_udfs_tabular_end__
 
   * **Tensor Datasets** (single-column): Each batch will be a single
     `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
@@ -141,15 +141,15 @@ Here is an overview of the available batch formats:
 
   .. literalinclude:: ./doc_code/transforming_datasets.py
     :language: python
-    :start-after: __writing_native_udfs_tensor_begin__
-    :end-before: __writing_native_udfs_tensor_end__
+    :start-after: __writing_default_udfs_tensor_begin__
+    :end-before: __writing_default_udfs_tensor_end__
 
-  * **List Datasets**: Each batch will be a Python list.
+  * **Simple Datasets**: Each batch will be a Python list.
 
   .. literalinclude:: ./doc_code/transforming_datasets.py
     :language: python
-    :start-after: __writing_native_udfs_list_begin__
-    :end-before: __writing_native_udfs_list_end__
+    :start-after: __writing_default_udfs_list_begin__
+    :end-before: __writing_default_udfs_list_end__
 
 .. tabbed:: "pandas"
 

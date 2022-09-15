@@ -77,7 +77,7 @@ ds.groupby("variety").count().show()
 # fmt: on
 
 # fmt: off
-# __writing_native_udfs_tabular_begin__
+# __writing_default_udfs_tabular_begin__
 import ray
 import pandas as pd
 
@@ -101,22 +101,21 @@ ds.map_batches(pandas_transform).show(2)
 #     'variety': 'Versicolor', 'normalized.sepal.length': 1.0}
 # -> {'sepal.width': 3.2, 'petal.length': 4.5, 'petal.width': 1.5,
 #     'variety': 'Versicolor', 'normalized.sepal.length': 0.9142857142857144}
-# __writing_native_udfs_tabular_end__
+# __writing_default_udfs_tabular_end__
 # fmt: on
 
 # fmt: off
-# __writing_native_udfs_tensor_begin__
+# __writing_default_udfs_tensor_begin__
 import ray
 import numpy as np
 
 # Load dataset.
 ds = ray.data.range_tensor(1000, shape=(2, 2))
 
-# UDF as a function on Pandas DataFrame batches.
+# UDF as a function on NumPy ndarray batches.
 def tensor_transform(arr: np.ndarray) -> np.ndarray:
-    # Notice here that the ndarray is of shape
-    # (batch_size, 2, 2)
-    # Multiple each element in the ndarray by a factor of 2
+    # Notice here that the ndarray is of shape (batch_size, 2, 2)
+    # Multiply each element in the ndarray by a factor of 2
     return arr * 2
 
 ds.map_batches(tensor_transform).show(2)
@@ -125,31 +124,31 @@ ds.map_batches(tensor_transform).show(2)
 # array([[2, 2],
 #         [2, 2]])]
 
-# __writing_native_udfs_tensor_end__
+# __writing_default_udfs_tensor_end__
 # fmt: on
 
 # fmt: off
-# __writing_native_udfs_list_begin__
+# __writing_default_udfs_list_begin__
 import ray
 
 # Load dataset.
 ds = ray.data.range(1000)
 
-# UDF as a function on Pandas DataFrame batches.
+# UDF as a function on Python list batches.
 def list_transform(list) -> list:
     # Notice here that the list is of length batch_size
-    # Multiple each element in the ndarray by a factor of 2
+    # Multiply each element in the list by a factor of 2
     return [x * 2 for x in list]
 
 ds.map_batches(list_transform).show(2)
 # 0
 # 2
 
-# __writing_native_udfs_list_end__
+# __writing_default_udfs_list_end__
 # fmt: on
 
 # fmt: off
-# __writing_pandas_udfs_begin__
+# __writing_default_udfs_begin__
 import ray
 import pandas as pd
 
