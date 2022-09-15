@@ -139,7 +139,7 @@ def _append_doc(obj, *, message: str, directive: Optional[str] = None) -> str:
         obj.__doc__ += f"{' ' * indent}.. {directive}::\n"
         obj.__doc__ += f"{' ' * (indent + 4)}{message}"
     else:
-        obj.__doc__ += f"{' ' * indent}{message}\n"
+        obj.__doc__ += f"{' ' * indent}{message}"
     obj.__doc__ += f"\n{' ' * indent}"
 
 
