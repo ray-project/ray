@@ -107,23 +107,19 @@ def Deprecated(*args, **kwargs):
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return Deprecated()(args[0])
 
-    deprecation_message = (
+    message = (
         "**DEPRECATED:** This API is deprecated and may be removed in a future Ray"
         "release."
     )
 
-    additional_info = None
     if "message" in kwargs:
-        additional_info = kwargs["message"]
+        message += " " + kwargs["message"]
         del kwargs["message"]
 
     if kwargs:
         raise ValueError("Unknown kwargs: {}".format(kwargs.keys()))
 
     def inner(obj):
-        message = deprecation_message
-        if additional_info:
-            message += f" {additional_info}"
         _append_doc(obj, message=message, directive="warning")
         _mark_annotated(obj)
         return obj
