@@ -2786,93 +2786,86 @@ def remote(
     This function can be used as a decorator with no arguments
     to define a remote function or actor as follows:
 
-    .. code-block:: python
-
-        @ray.remote
-        def f(a, b, c):
-            return a + b + c
-
-        object_ref = f.remote(1, 2, 3)
-        result = ray.get(object_ref)
-        assert result == (1 + 2 + 3)
-
-        @ray.remote
-        class Foo:
-            def __init__(self, arg):
-                self.x = arg
-
-            def method(self, a):
-                return self.x + a
-
-        actor_handle = Foo.remote(123)
-        object_ref = actor_handle.method.remote(321)
-        result = ray.get(object_ref)
-        assert result == (123 + 321)
+    >>> @ray.remote
+    >>> def f(a, b, c):
+    >>>     return a + b + c
+    >>>
+    >>> object_ref = f.remote(1, 2, 3)
+    >>> result = ray.get(object_ref)
+    >>> assert result == (1 + 2 + 3)
+    >>>
+    >>> @ray.remote
+    >>> class Foo:
+    >>>     def __init__(self, arg):
+    >>>         self.x = arg
+    >>>
+    >>>     def method(self, a):
+    >>>         return self.x + a
+    >>>
+    >>> actor_handle = Foo.remote(123)
+    >>> object_ref = actor_handle.method.remote(321)
+    >>> result = ray.get(object_ref)
+    >>> assert result == (123 + 321)
 
     Equivalently, use a function call to create a remote function or actor.
 
-    .. code-block:: python
+    Example:
 
-        def g(a, b, c):
-            return a + b + c
+        >>> def g(a, b, c):
+        >>>     return a + b + c
+        >>>
+        >>> remote_g = ray.remote(g)
+        >>> object_ref = remote_g.remote(1, 2, 3)
+        >>> assert ray.get(object_ref) == (1 + 2 + 3)
 
-        remote_g = ray.remote(g)
-        object_ref = remote_g.remote(1, 2, 3)
-        assert ray.get(object_ref) == (1 + 2 + 3)
-
-        class Bar:
-            def __init__(self, arg):
-                self.x = arg
-
-            def method(self, a):
-                return self.x + a
-
-        RemoteBar = ray.remote(Bar)
-        actor_handle = RemoteBar.remote(123)
-        object_ref = actor_handle.method.remote(321)
-        result = ray.get(object_ref)
-        assert result == (123 + 321)
+        >>> class Bar:
+        >>>     def __init__(self, arg):
+        >>>         self.x = arg
+        >>>
+        >>>     def method(self, a):
+        >>>         return self.x + a
+        >>>
+        >>> RemoteBar = ray.remote(Bar)
+        >>> actor_handle = RemoteBar.remote(123)
+        >>> object_ref = actor_handle.method.remote(321)
+        >>> result = ray.get(object_ref)
+        >>> assert result == (123 + 321)
 
 
     It can also be used with specific keyword arguments as follows:
 
-    .. code-block:: python
-
-        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-        def f():
-            return 1, 2
-
-        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-        class Foo:
-            def method(self):
-                return 1
+    >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+    >>> def f():
+    >>>     return 1, 2
+    >>>
+    >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+    >>> class Foo:
+    >>>     def method(self):
+    >>>         return 1
 
     Remote task and actor objects returned by @ray.remote can also be
     dynamically modified with the same arguments as above using
     ``.options()`` as follows:
 
-    .. code-block:: python
+    >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+    >>> def f():
+    >>>     return 1, 2
+    >>>
+    >>> f_with_2_gpus = f.options(num_gpus=2)
+    >>> object_ref = f_with_2_gpus.remote()
+    >>> assert ray.get(object_ref) == (1, 2)
 
-        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-        def f():
-            return 1, 2
-
-        f_with_2_gpus = f.options(num_gpus=2)
-        object_ref = f_with_2_gpus.remote()
-        assert ray.get(object_ref) == (1, 2)
-
-
-        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-        class Foo:
-            def method(self):
-                return 1
-
-        Foo_with_no_resources = Foo.options(num_cpus=1, resources=None)
-        foo_actor = Foo_with_no_resources.remote()
-        assert ray.get(foo_actor.method.remote()) == 1
+    >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+    >>> class Foo:
+    >>>     def method(self):
+    >>>         return 1
+    >>>
+    >>> Foo_with_no_resources = Foo.options(num_cpus=1, resources=None)
+    >>> foo_actor = Foo_with_no_resources.remote()
+    >>> assert ray.get(foo_actor.method.remote()) == 1
 
 
-    Running remote actors will be terminated when the actor handle to them
+    A remote actor will be terminated when all actor handle to it
     in Python is deleted, which will cause them to complete any outstanding
     work and then shut down. If you only have 1 reference to an actor handle,
     calling ``del actor`` *could* trigger actor deletion. Note that your program
@@ -2888,17 +2881,7 @@ def remote(
 
         Instead, use ray.put to create a copy of the object in the object store.
 
-        .. code-block:: python
-
-            import numpy as np
-            a = np.zeros((5000, 5000))
-
-            # This is NOT GOOD
-            result_ids = [no_work.remote(a) for x in range(10)]
-
-            # This is GOOD
-            a_objref = ray.put(a)
-            result_ids = [no_work.remote(a_objref) for x in range(10)]
+        See :ref:`more info here <tip-delay-get>`.
 
     Args:
         num_returns: This is only for *remote functions*. It specifies

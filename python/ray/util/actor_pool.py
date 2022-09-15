@@ -1,7 +1,7 @@
 from typing import List, Callable, Any
 
 import ray
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import Deprecated
 from ray._private.utils import get_ray_doc_version
 
 
