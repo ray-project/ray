@@ -640,7 +640,8 @@ def _add_min_workers_nodes(
 def transform_node_types(
     all_nodes: Dict[NodeType, NodeTypeConfigDict], ordered_and_filtered: List[NodeType]
 ):
-    return {node_type: all_nodes[node_type] for node_type in ordered_and_filtered}
+    return collections.OrderedDict((node_type, all_nodes[node_type]) for node_type in ordered_and_filtered)
+    # return {node_type: all_nodes[node_type] for node_type in ordered_and_filtered}
 
 
 def get_nodes_for(
@@ -654,8 +655,8 @@ def get_nodes_for(
     """Determine nodes to add given resource demands and constraints.
 
     In the event that multiple nodes would result in the same utilization, ties
-    are guaranteed to be broken by picking the first element from `node_types`
-    (note that python dicts are ordered).
+    are guaranteed to be broken by picking the first element from `node_types`,
+    based on interation order over the dictionary.
 
     Args:
         node_types: node types config.
@@ -674,12 +675,12 @@ def get_nodes_for(
     nodes_to_add = collections.defaultdict(int)
 
     while resources and sum(nodes_to_add.values()) < max_to_add:
-        # NOTE: There's a lot of subtelty in this loop. `node_types` is a
-        # python dictionary which guarantees a consistent iteration order.
-        # Within the loop, we always append to the end of `utilization_scores`.
-        # Combined, this means that to break utilization score ties by
-        # preference of `node_types` we should select the first element of a
-        # given score in the list.
+        # NOTE: There's a lot of subtelty in this loop. If `node_types` is an
+        # OrderedDict which guarantees a consistent iteration order, within the
+        # loop, we always append to the end of `utilization_scores`. Combined,
+        # this means that to break utilization score ties by preference of
+        # `node_types` we should select the first element of a given score in
+        # the list.
         utilization_scores = []
         for node_type in node_types:
             max_workers_of_node_type = node_types[node_type].get("max_workers", 0)
