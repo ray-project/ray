@@ -87,7 +87,7 @@ class TestReadHivePartitionedFiles:
         path = os.path.join(tmp_path, "bytes=baz", "data.bin")
         write_bytes(b"foo", path)
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             # `read_bytes` should error because `bytes` is both a partition key and the
             # name of the column where data is stored.
             read_bytes(path, partitioning=Partitioning("hive"))
@@ -199,7 +199,7 @@ class TestReadDirPartitionedFiles:
         path = os.path.join(tmp_path, "bar", "data.bin")
         write_bytes(b"foo", path)
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             # `read_bytes` should error because `bytes` is both a partition key and the
             # name of the column where data is stored.
             read_bytes(

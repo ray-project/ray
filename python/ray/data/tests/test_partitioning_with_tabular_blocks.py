@@ -103,7 +103,7 @@ class TestReadHivePartitionedFiles:
         path = os.path.join(tmp_path, "country=fr", "data.csv")
         write_csv({"country": ["ir", "ir", "ir"]}, path)
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             # `read_csv` should error because `country` is a field in both the CSV and
             # the path.
             read_csv(path, partitioning=Partitioning("hive"), block_type=block_type)
@@ -227,7 +227,7 @@ class TestReadDirPartitionedFiles:
         path = os.path.join(tmp_path, "fr", "data.csv")
         write_csv({"country": ["ir", "ir", "ir"]}, path)
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             # `read_csv` should error because `country` is a field in both the CSV and
             # the path.
             read_csv(
