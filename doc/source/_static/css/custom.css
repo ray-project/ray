@@ -1,4 +1,3 @@
-/* The Algolia search box will flow-over horizontally into main content because it's position:absolute and its parents are position:inherit */
 #site-navigation {
   overflow-y: auto;
   position: inherit;

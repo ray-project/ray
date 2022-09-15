@@ -26,11 +26,11 @@ class Stopper(abc.ABC):
                 return False
 
             def stop_all(self):
-                return time.time() - self._start > self.deadline
+                return time.time() - self._start > self._deadline
 
         tuner = Tuner(
             Trainable,
-            tune_config=tune.TunConfig(num_samples=200),
+            tune_config=tune.TuneConfig(num_samples=200),
             run_config=air.RunConfig(stop=TimeStopper())
         )
         tuner.fit()

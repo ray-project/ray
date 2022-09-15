@@ -5,15 +5,15 @@ from ray.rllib.connectors.connector import Connector, ConnectorPipeline
 
 class TestConnectorPipeline(unittest.TestCase):
     class Tom(Connector):
-        def to_config():
+        def to_state():
             return "tom"
 
     class Bob(Connector):
-        def to_config():
+        def to_state():
             return "bob"
 
     class Mary(Connector):
-        def to_config():
+        def to_state():
             return "mary"
 
     class MockConnectorPipeline(ConnectorPipeline):
@@ -50,6 +50,10 @@ class TestConnectorPipeline(unittest.TestCase):
         self.assertEqual(len(m.connectors), 2)
         self.assertEqual(m.connectors[0].__class__.__name__, "Tom")
         self.assertEqual(m.connectors[1].__class__.__name__, "Mary")
+
+        self.assertEqual(m["Tom"], [m.connectors[0]])
+        self.assertEqual(m[0], [m.connectors[0]])
+        self.assertEqual(m[m.connectors[1].__class__], [m.connectors[1]])
 
 
 if __name__ == "__main__":

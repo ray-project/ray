@@ -1,5 +1,6 @@
 import logging
 import logging.handlers
+import os
 import sys
 import urllib
 import urllib.request
@@ -117,6 +118,9 @@ def make_typing_mock(module, name):
 
 
 def mock_modules():
+    if os.environ.get("RAY_MOCK_MODULES", "1") == "0":
+        return
+
     for mod_name in MOCK_MODULES:
         mock_module = mock.MagicMock()
         mock_module.__spec__ = mock.MagicMock()
@@ -127,14 +131,7 @@ def mock_modules():
 
 # Add doc files from external repositories to be downloaded during build here
 # (repo, ref, path to get, path to save on disk)
-EXTERNAL_MARKDOWN_FILES = [
-    (
-        "ray-project/ray_lightning",
-        "6aed848f757a03c03166c1a9bddfeea5153e7b90",
-        "README.md",
-        "ray-more-libs/ray-lightning.md",
-    ),
-]
+EXTERNAL_MARKDOWN_FILES = []
 
 
 class DownloadAndPreprocessEcosystemDocs:

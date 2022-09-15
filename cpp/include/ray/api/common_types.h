@@ -42,5 +42,15 @@ struct TaskArg {
   std::string_view meta_str;
 };
 
+using ArgsBuffer = msgpack::sbuffer;
+using ArgsBufferList = std::vector<ArgsBuffer>;
+
+using RemoteFunction = std::function<msgpack::sbuffer(const ArgsBufferList &)>;
+using RemoteFunctionMap_t = std::unordered_map<std::string, RemoteFunction>;
+
+using RemoteMemberFunction =
+    std::function<msgpack::sbuffer(msgpack::sbuffer *, const ArgsBufferList &)>;
+using RemoteMemberFunctionMap_t = std::unordered_map<std::string, RemoteMemberFunction>;
+
 }  // namespace internal
 }  // namespace ray

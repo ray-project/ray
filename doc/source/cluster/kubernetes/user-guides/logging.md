@@ -6,7 +6,7 @@ This page provides tips on how to collect logs from
 Ray clusters running on Kubernetes.
 
 :::{tip}
-Skip to {ref}`the deployment instructions<kuberay-logging-tldr>`
+Skip to {ref}`the deployment instructions <kuberay-logging-tldr>`
 for a sample configuration showing how to extract logs from a Ray pod.
 :::
 
@@ -26,7 +26,7 @@ We mention two strategies for collecting logs written to a pod's filesystem,
 patterns in the [Kubernetes documentation][KubDoc].
 
 ### Sidecar containers
-We will provide an {ref}`example<kuberay-fluentbit>` of the sidecar strategy in this guide.
+We will provide an {ref}`example <kuberay-fluentbit>` of the sidecar strategy in this guide.
 You can process logs by configuring a log-processing sidecar
 for each Ray pod. Ray containers should be configured to share the `/tmp/ray`
 directory with the logging sidecar via a volume mount.
@@ -116,16 +116,13 @@ for a single-pod RayCluster will a log-processing sidecar.
 Now, we will see how to deploy the configuration described above.
 
 Deploy the KubeRay Operator if you haven't yet.
-Refer to the {ref}`Getting Started guide<kuberay-operator-deploy>`
+Refer to the {ref}`Getting Started guide <kuberay-operator-deploy>`
 for instructions on this step.
 
 Now, run the following commands to deploy the Fluent Bit ConfigMap and a single-pod RayCluster with
 a Fluent Bit sidecar.
 ```shell
-# Starting from the parent of cloned Ray master.
-pushd ray/doc/source/cluster/kubernetes/configs/
-kubectl apply -f ray-cluster.log.yaml
-popd
+kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/releases/2.0.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml
 ```
 
 Determine the Ray pod's name with
@@ -145,6 +142,4 @@ kubectl logs raycluster-complete-logs-head-xxxxx -c fluentbit
 [Fluentd]: https://docs.fluentd.org/
 [Promtail]: https://grafana.com/docs/loki/latest/clients/promtail/
 [KubDoc]: https://kubernetes.io/docs/concepts/cluster-administration/logging/
-<!-- TODO: fix this -->
-[ConfigLink]:  https://github.com/ray-project/ray/tree/master/doc/source/cluster/
-<!-- [ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/779e9f7c5733ef9a471ad2bb61723158ff942e92/doc/source/cluster/ray-clusters-on-kubernetes/configs/ray-cluster.log.yaml -->
+[ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/releases/2.0.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml

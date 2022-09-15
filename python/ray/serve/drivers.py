@@ -87,6 +87,7 @@ class SimpleSchemaIngress:
 @PublicAPI(stability="beta")
 @serve.deployment(route_prefix="/")
 class DAGDriver:
+    """A driver implementation that accepts HTTP requests."""
 
     MATCH_ALL_ROUTE_PREFIX = "/{path:path}"
 
@@ -95,6 +96,13 @@ class DAGDriver:
         dags: Union[RayServeDAGHandle, Dict[str, RayServeDAGHandle]],
         http_adapter: Optional[Union[str, Callable]] = None,
     ):
+        """Create a DAGDriver.
+
+        Args:
+            dags: a handle to a Ray Serve DAG or a dictionary of handles.
+            http_adapter: a callable function or import string to convert
+                HTTP requests to Ray Serve input.
+        """
         install_serve_encoders_to_fastapi()
         http_adapter = _load_http_adapter(http_adapter)
         self.app = FastAPI()
@@ -132,10 +140,12 @@ class DAGDriver:
         await self.app(request.scope, receive=request.receive, send=sender)
         return sender.build_asgi_response()
 
-    async def predict(self, *args, **kwargs):
+    async def predict(self, *args, _ray_cache_refs: bool = False, **kwargs):
         """Perform inference directly without HTTP."""
         return await (
-            await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(*args, **kwargs)
+            await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(
+                *args, _ray_cache_refs=_ray_cache_refs, **kwargs
+            )
         )
 
     async def predict_with_route(self, route_path, *args, **kwargs):
@@ -143,3 +153,24 @@ class DAGDriver:
         if route_path not in self.dags:
             raise RayServeException(f"{route_path} does not exist in dags routes")
         return await (await self.dags[route_path].remote(*args, **kwargs))
+
+    async def get_intermediate_object_refs(self) -> Dict[str, Any]:
+        """Gets latest cached object refs from latest call to predict().
+
+        Gets the latest cached references to the results of the default executors on
+        each node in the DAG found at self.MATCH_ALL_ROUTE_PREFIX. Should be called
+        after predict() has been called with _cache_refs set to True.
+        """
+        dag_handle = self.dags[self.MATCH_ALL_ROUTE_PREFIX]
+        root_dag_node = dag_handle.dag_node
+
+        if root_dag_node is None:
+            raise AssertionError(
+                "Predict has not been called. Cannot retrieve intermediate object refs."
+            )
+
+        return await root_dag_node.get_object_refs_from_last_execute()
+
+    async def get_dag_node_json(self) -> str:
+        """Returns the json serialized root dag node"""
+        return self.dags[self.MATCH_ALL_ROUTE_PREFIX].dag_node_json
