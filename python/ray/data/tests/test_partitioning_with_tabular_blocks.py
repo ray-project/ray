@@ -1,13 +1,11 @@
-from typing import Union
+from typing import List, Union
 import os
-from re import I
 import pandas as pd
 import pytest
 from typing import Any, Dict
 import pyarrow as pa
 
 import ray
-from ray.data import block
 from ray.data.block import Block
 from ray.data.dataset import Dataset
 from ray.data.datasource import FileBasedDatasource
