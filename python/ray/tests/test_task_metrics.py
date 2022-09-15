@@ -6,8 +6,10 @@ import time
 import pytest
 
 import ray
+
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
+    run_string_as_driver_nonblocking,
     wait_for_condition,
 )
 
@@ -36,11 +38,19 @@ def tasks_by_state(info) -> dict:
 def test_task_basic(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
-    @ray.remote
-    def f():
-        time.sleep(999)
+    driver = """
+import ray
+import time
 
-    [f.remote() for _ in range(10)]
+ray.init("auto")
+
+@ray.remote
+def f():
+    time.sleep(999)
+a = [f.remote() for _ in range(10)]
+ray.get(a)
+"""
+    proc = run_string_as_driver_nonblocking(driver)
 
     expected = {
         "RUNNING": 2.0,
@@ -48,53 +58,71 @@ def test_task_basic(shutdown_only):
         "SCHEDULED": 8.0,
         "WAITING_FOR_DEPENDENCIES": 0.0,
     }
+    # TODO(ekl) optimize the reporting interval to be faster for testing
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
+    proc.kill()
 
 
 def test_task_wait_on_deps(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
-    @ray.remote
-    def f():
-        time.sleep(999)
+    driver = """
+import ray
+import time
 
-    @ray.remote
-    def g(x):
-        time.sleep(999)
+ray.init("auto")
 
-    x = f.remote()
-    [g.remote(x) for _ in range(10)]
+@ray.remote
+def f():
+    time.sleep(999)
 
+@ray.remote
+def g(x):
+    time.sleep(999)
+
+x = f.remote()
+a = [g.remote(x) for _ in range(5)]
+ray.get(a)
+"""
+    proc = run_string_as_driver_nonblocking(driver)
     expected = {
         "RUNNING": 1.0,
         "WAITING_FOR_EXECUTION": 0.0,
         "SCHEDULED": 0.0,
-        "WAITING_FOR_DEPENDENCIES": 10.0,
+        "WAITING_FOR_DEPENDENCIES": 5.0,
     }
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
+    proc.kill()
 
 
 def test_actor_tasks_queued(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
-    @ray.remote
-    class F:
-        def f(self):
-            time.sleep(999)
+    driver = """
+import ray
+import time
 
-        def g(self):
-            pass
+ray.init()
 
-    a = F.remote()
-    [a.g.remote() for _ in range(10)]
-    [a.f.remote() for _ in range(1)]  # Further tasks should be blocked on this one.
-    [a.g.remote() for _ in range(9)]
-    # TODO: add actor vs task type label and name label?
+@ray.remote
+class F:
+    def f(self):
+        time.sleep(999)
 
+    def g(self):
+        pass
+
+a = F.remote()
+[a.g.remote() for _ in range(10)]
+[a.f.remote() for _ in range(1)]  # Further tasks should be blocked on this one.
+z = [a.g.remote() for _ in range(9)]
+ray.get(z)
+"""
+    proc = run_string_as_driver_nonblocking(driver)
     expected = {
         "RUNNING": 1.0,
         "WAITING_FOR_EXECUTION": 9.0,
@@ -105,6 +133,7 @@ def test_actor_tasks_queued(shutdown_only):
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
+    proc.kill()
 
 
 def test_task_finish(shutdown_only):

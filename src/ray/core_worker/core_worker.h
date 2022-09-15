@@ -1303,6 +1303,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     void UpdateStats() {
       ray::stats::STATS_tasks.Record(running_total_,
                                      rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING));
+      // TODO(ekl) this conflicts with WAITING_FOR_EXECUTION recorded by task manager
+      // extract counter into a concrete structure
       ray::stats::STATS_tasks.Record(
           -running_total_, rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_EXECUTION));
     }

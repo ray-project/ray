@@ -34,6 +34,7 @@ void TaskStatusCounter::Swap(rpc::TaskStatus old_status, rpc::TaskStatus new_sta
   counters_[old_status] -= 1;
   counters_[new_status] += 1;
   RAY_CHECK(counters_[old_status] >= 0);
+  // TODO(ekl) there's a conflict 
   ray::stats::STATS_tasks.Record(counters_[old_status], rpc::TaskStatus_Name(old_status));
   ray::stats::STATS_tasks.Record(counters_[new_status], rpc::TaskStatus_Name(new_status));
 }
