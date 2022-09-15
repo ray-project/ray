@@ -46,7 +46,7 @@ of your original tuning run:
 What's happening under the hood?
 --------------------------------
 
-:ref:`Here <_tune-two-types-of-ckpt>` we talked about two types of Tune checkpoints.
+:ref:`Here <tune-two-types-of-ckpt>` we talked about two types of Tune checkpoints.
 Both checkpoints come into play when resuming a Tune run.
 
 When resuming an interrupted/errored Tune run, Tune first looks at Experiment checkpoint to
