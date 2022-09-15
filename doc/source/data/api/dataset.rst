@@ -104,7 +104,7 @@ Dataset API
 
     ray.data.Dataset.count
     ray.data.Dataset.schema
-    ray.data.Dataset.native_batch_format
+    ray.data.Dataset.default_batch_format
     ray.data.Dataset.num_blocks
     ray.data.Dataset.size_bytes
     ray.data.Dataset.input_files
@@ -257,7 +257,7 @@ Inspecting Metadata
 
 .. automethod:: ray.data.Dataset.schema
 
-.. automethod:: ray.data.Dataset.native_batch_format
+.. automethod:: ray.data.Dataset.default_batch_format
 
 .. automethod:: ray.data.Dataset.num_blocks
 
