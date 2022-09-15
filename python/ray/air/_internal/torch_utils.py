@@ -1,13 +1,11 @@
 from typing import Dict, List, Optional, Union
 
-import logging
 import numpy as np
 import pandas as pd
 import torch
+import warnings
 
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
-
-logger = logging.getLogger(__name__)
 
 
 def convert_pandas_to_torch_tensor(
@@ -177,9 +175,15 @@ def load_torch_model(
     """
     if isinstance(saved_model, torch.nn.Module):
         if model_definition:
-            logger.warning(
+            warnings.warn(
                 "TorchCheckpoint already contains all information needed. "
-                "Discarding provided `model_definition`. "
+                "Discarding provided `model_definition`. This means: "
+                "If you are using BatchPredictor, you should do "
+                "`BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)` by"
+                "removing kwargs `model=`. "
+                "If you are using TorchPredictor directly, you should do "
+                "`TorchPredictor.from_checkpoint(checkpoint)` by removing kwargs "
+                "`model=`."
             )
         return saved_model
     elif isinstance(saved_model, dict):
