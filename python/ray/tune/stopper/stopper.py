@@ -54,23 +54,22 @@ class CombinedStopper(Stopper):
     Args:
         *stoppers: Stoppers to be combined.
 
-    Example:
+    Examples:
 
-    .. code-block:: python
-
-        from ray.tune.stopper import CombinedStopper, \
-            MaximumIterationStopper, TrialPlateauStopper
-
-        stopper = CombinedStopper(
-            MaximumIterationStopper(max_iter=20),
-            TrialPlateauStopper(metric="my_metric")
-        )
-
-        tuner = Tuner(
-            Trainable,
-            run_config=air.RunConfig(stop=stopper)
-        )
-        tuner.fit()
+        >>> from ray.tune.stopper import (CombinedStopper,
+        ...     MaximumIterationStopper, TrialPlateauStopper)
+        >>>
+        >>> stopper = CombinedStopper(
+        ...     MaximumIterationStopper(max_iter=20),
+        ...     TrialPlateauStopper(metric="my_metric")
+        ... )
+        >>>
+        >>> tuner = tune.Tuner(
+        ...     tune.Trainable,
+        ...     run_config=air.RunConfig(stop=stopper)
+        ... )
+        >>> tuner.fit()
+        == Status ==...
 
     """
 
