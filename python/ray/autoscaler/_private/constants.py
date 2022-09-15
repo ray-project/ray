@@ -63,6 +63,8 @@ AUTOSCALER_REPORT_PER_NODE_STATUS = (
     env_integer("AUTOSCALER_REPORT_PER_NODE_STATUS", 1) == 1
 )
 
+AUTOSCALER_NODE_SELECTOR_PLUGIN_ENV_VAR = "RAY_AUTOSCALER_NODE_SELECTOR_PLUGIN"
+
 # The maximum allowed resource demand vector size to guarantee the resource
 # demand scheduler bin packing algorithm takes a reasonable amount of time
 # to run.

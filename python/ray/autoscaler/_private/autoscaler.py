@@ -17,6 +17,7 @@ from six.moves import queue
 
 from ray.autoscaler._private.constants import (
     AUTOSCALER_HEARTBEAT_TIMEOUT_S,
+    AUTOSCALER_NODE_SELECTOR_PLUGIN_ENV_VAR,
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     AUTOSCALER_MAX_LAUNCH_BATCH,
     AUTOSCALER_MAX_NUM_FAILURES,
@@ -61,6 +62,7 @@ from ray.autoscaler._private.util import (
     validate_config,
     with_head_node_ip,
 )
+from ray.autoscaler._private.loader import load_function_or_class
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
@@ -157,7 +159,6 @@ class NonTerminatedNodes:
 # terminate: should terminate the worker
 # decide_later: the worker can be terminated if needed
 KeepOrTerminate = Enum("KeepOrTerminate", "keep terminate decide_later")
-
 
 class StandardAutoscaler:
     """The autoscaling control loop for a Ray cluster.
@@ -420,6 +421,13 @@ class StandardAutoscaler:
                     self.attempt_to_recover_unhealthy_nodes(now)
                 self.set_prometheus_updater_data()
 
+        node_selector = load_function_or_class(
+            os.environ.get(
+                AUTOSCALER_NODE_SELECTOR_PLUGIN_ENV_VAR,
+                "ray.autoscaler._private.autoscaler._prioritize_and_filter_nodes",
+            )
+        )
+
         # Dict[NodeType, int], List[ResourceDict]
         to_launch, unfulfilled = self.resource_demand_scheduler.get_nodes_to_launch(
             self.non_terminated_nodes.all_node_ids,
@@ -429,6 +437,7 @@ class StandardAutoscaler:
             self.load_metrics.get_pending_placement_groups(),
             self.load_metrics.get_static_node_resources_by_ip(),
             ensure_min_cluster_size=self.load_metrics.get_resource_requests(),
+            node_types=node_selector(self),
         )
         self._report_pending_infeasible(unfulfilled)
 
@@ -1444,3 +1453,7 @@ class StandardAutoscaler:
         autoscaler_summary = self.summary()
         assert autoscaler_summary
         return "\n" + format_info_string(lm_summary, autoscaler_summary)
+
+
+def _prioritize_and_filter_nodes(autoscaler : StandardAutoscaler) -> List[NodeType]:
+    return list(autoscaler.config.get("available_node_types", {}).keys())

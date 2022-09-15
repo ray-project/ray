@@ -22,12 +22,16 @@ import pytest
 import yaml
 from jsonschema.exceptions import ValidationError
 
+from unittest.mock import patch
+
 import ray
+import ray.tests.test_autoscaler
 from ray._private.test_utils import RayTestTimeoutException
 from ray.autoscaler._private import commands
 from ray.autoscaler._private.autoscaler import NonTerminatedNodes, StandardAutoscaler
 from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.constants import (
+    AUTOSCALER_NODE_SELECTOR_PLUGIN_ENV_VAR,
     FOREGROUND_NODE_LAUNCH_KEY,
     WORKER_LIVENESS_CHECK_KEY,
     WORKER_RPC_DRAIN_KEY,
@@ -3737,6 +3741,70 @@ class AutoscalingTest(unittest.TestCase):
             request_resources(bundles=[{"foo": "bar"}])
         with self.assertRaises(TypeError):
             request_resources(bundles=[{"foo": 1}, {"bar": "baz"}])
+
+    def testNodeSelectorPlugin(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["available_node_types"]["worker"]["min_workers"] = 0
+        config["available_node_types"]["worker"]["max_workers"] = 20
+        config["max_workers"] = 20
+        config_path = self.write_config(config)
+
+        self.provider = MockProvider()
+        self.provider.create_node(
+            {},
+            {
+                TAG_RAY_NODE_KIND: "head",
+                TAG_RAY_USER_NODE_TYPE: "head",
+                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+            },
+            1,
+        )
+        head_ip = self.provider.non_terminated_node_ips(
+            tag_filters={TAG_RAY_NODE_KIND: "head"},
+        )[0]
+
+        runner = MockProcessRunner()
+
+        lm = LoadMetrics()
+        lm.local_ip = head_ip
+
+        autoscaler = MockAutoscaler(
+            config_path,
+            lm,
+            MockNodeInfoStub(),
+            max_launch_batch=5,
+            max_concurrent_launches=5,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+        )
+
+        lm.update(
+            head_ip,
+            mock_raylet_id(),
+            {"CPU": 0},
+            {"CPU": 0},
+            {},
+            waiting_bundles=[{"CPU": 1}],
+        )
+
+        assert AUTOSCALER_NODE_SELECTOR_PLUGIN_ENV_VAR not in os.environ
+        try:
+            os.environ[AUTOSCALER_NODE_SELECTOR_PLUGIN_ENV_VAR] = "ray.tests.test_autoscaler.launch_nothing_node_selector_plugin"
+
+            with patch.object(ray.tests.test_autoscaler, "launch_nothing_node_selector_plugin", return_value=[]) as patched_selector:
+                autoscaler.update()
+                patched_selector.assert_called_once()
+        finally:
+            del os.environ[AUTOSCALER_NODE_SELECTOR_PLUGIN_ENV_VAR]
+        self.waitForNodes(1)
+
+
+def launch_nothing_node_selector_plugin(_) -> List[str]:
+    """ This method is a placeholder that only exists so that it can be patched
+    in individual tests. """
+    assert False
+    return []
 
 
 def test_import():
