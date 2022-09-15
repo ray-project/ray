@@ -19,7 +19,7 @@ def run_h2oai(benchmark: Benchmark):
         ("s3://air-example-data/h2oai_benchmark/G1_1e7_1e2_0_0.csv", "h2oai-500M")
     ]
     for path, test_name in test_input:
-        input_ds = ray.data.read_csv(path).fully_executed()
+        input_ds = ray.data.read_csv(path).repartition(10).fully_executed()
 
         q_list = [
             (h2oai_q1, "q1"),
