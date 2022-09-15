@@ -270,53 +270,54 @@ class Algorithm(Trainable):
 
             state = pickle.load(open(state_file, "rb"))
 
-        # Olf style: Create algo first, then call its `restore()` method.
-        if v0_checkpoint_file:
-            # Worker state used to be pickled ("v0"), now it's just another sub-dict
-            # within the state.
-            local_worker_state = pickle.loads(state["worker"])
-            config = local_worker_state["policy_config"]
-            # Hack: Try to infer Algorithm class from Policy class.
-            # Only works for single agent (otherwise, gets too complicated as we would
-            # be possibly lacking the actual original algo config).
-            if DEFAULT_POLICY_ID not in local_worker_state["policy_specs"]:
-                raise ValueError(
-                    "Cannot restore a v0 multi-agent checkpoint using "
-                    "`Algorithm.from_checkpoint()`!"
-                    "In this case, do the following:\n"
-                    "1) Create a new Algorithm object using the original config.\n"
-                    "2) Call the `restore()` method of this algo object passing it"
-                    " your checkpoint dir."
-                )
-            algo_class_name = local_worker_state["policy_specs"][DEFAULT_POLICY_ID].policy_class.__name__
-            algo_class_name = re.sub("^(\\w+)(TF2|TF1|Torch)Policy$", "\\1", algo_class_name)
-            algo_class = get_algorithm_class(algo_class_name)
-            algo: "Algorithm" = algo_class(config=config)
-            algo.restore(v0_checkpoint_file)
-            return algo
-        else:
-            # TODO: Remove filters once they are part of policies (via connectors).
-            policies = policies if policies is not None else state["filters"].keys()
-
-            state["worker"] = {
-                # The policies' states will go into this dict.
-                "state": {},
-                # TODO: Remove filters once they are part of policies (via connectors).
-                "filters": state.pop("filters"),
-            }
-
-            for pid in policies:
-                policy_state_file = os.path.join(tmp_dir, "policies", pid, "policy_state.pkl")
-                if not os.path.isfile(policy_state_file):
+            # Olf style: Create algo first, then call its `restore()` method.
+            if v0_checkpoint_file:
+                # Worker state used to be pickled ("v0"), now it's just another sub-dict
+                # within the state.
+                local_worker_state = pickle.loads(state["worker"])
+                config = local_worker_state["policy_config"]
+                # Hack: Try to infer Algorithm class from Policy class.
+                # Only works for single agent (otherwise, gets too complicated as we would
+                # be possibly lacking the actual original algo config).
+                if DEFAULT_POLICY_ID not in local_worker_state["policy_specs"]:
                     raise ValueError(
-                        "Given checkpoint does not seem to be valid! No policy state "
-                        f"file found for PID={pid}. "
-                        f"The file not found is: {policy_state_file}."
+                        "Cannot restore a v0 multi-agent checkpoint using "
+                        "`Algorithm.from_checkpoint()`!"
+                        "In this case, do the following:\n"
+                        "1) Create a new Algorithm object using the original config.\n"
+                        "2) Call the `restore()` method of this algo object passing it"
+                        " your checkpoint dir."
                     )
+                algo_class_name = local_worker_state["policy_specs"][DEFAULT_POLICY_ID].policy_class.__name__
+                algo_class_name = re.sub("^(\\w+)(TF2|TF1|Torch)Policy$", "\\1", algo_class_name)
+                algo_class = get_algorithm_class(algo_class_name)
+                algo: "Algorithm" = algo_class(config=config)
+                algo.restore(v0_checkpoint_file)
+                return algo
+            else:
+                # TODO: Remove filters once they are part of policies (via connectors).
+                policies = policies if policies is not None else state["filters"].keys()
 
-                state["worker"]["state"][pid] = pickle.load(open(policy_state_file, "rb"))
+                # Prepare local `worker` state to add policies' states into it read from
+                # separate policy checkpoint files.
+                state["worker"] = {
+                    # The policies' states will go into this dict.
+                    "state": {},
+                    # TODO: Remove filters once they are part of policies (via connectors).
+                    "filters": state.pop("filters"),
+                }
+                for pid in policies:
+                    policy_state_file = os.path.join(tmp_dir, "policies", pid, "policy_state.pkl")
+                    if not os.path.isfile(policy_state_file):
+                        raise ValueError(
+                            "Given checkpoint does not seem to be valid! No policy state "
+                            f"file found for PID={pid}. "
+                            f"The file not found is: {policy_state_file}."
+                        )
 
-            return Algorithm.from_state(state)
+                    state["worker"]["state"][pid] = pickle.load(open(policy_state_file, "rb"))
+
+                return Algorithm.from_state(state)
 
     @staticmethod
     def from_state(state: Dict) -> "Algorithm":
@@ -340,7 +341,10 @@ class Algorithm(Trainable):
                 "new Algorithm."
             )
         # Create the new algo.
-        new_algo = algo_class(config=state.get("config"))
+        config = state.get("config")
+        if not config:
+            raise ValueError("No `config` found in given Algorithm state!")
+        new_algo = algo_class(config=config)
         # Set the new algo's state.
         new_algo.__setstate__(state)
         # Return the new algo.
@@ -616,12 +620,6 @@ class Algorithm(Trainable):
 
         # Update with evaluation settings:
         user_eval_config = copy.deepcopy(self.config["evaluation_config"])
-
-        # Assert that user has not unset "in_evaluation".
-        assert (
-            "in_evaluation" not in user_eval_config
-            or user_eval_config["in_evaluation"] is True
-        )
 
         # Merge user-provided eval config with the base config. This makes sure
         # the eval config is always complete, no matter whether we have eval
