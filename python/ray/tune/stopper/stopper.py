@@ -11,29 +11,30 @@ class Stopper(abc.ABC):
     default, this class does not stop any trials. Subclasses need to
     implement ``__call__`` and ``stop_all``.
 
-    .. code-block:: python
+    Examples:
 
-        import time
-        from ray import air, tune
-        from ray.tune import Stopper
-
-        class TimeStopper(Stopper):
-            def __init__(self):
-                self._start = time.time()
-                self._deadline = 300
-
-            def __call__(self, trial_id, result):
-                return False
-
-            def stop_all(self):
-                return time.time() - self._start > self._deadline
-
-        tuner = Tuner(
-            Trainable,
-            tune_config=tune.TuneConfig(num_samples=200),
-            run_config=air.RunConfig(stop=TimeStopper())
-        )
-        tuner.fit()
+        >>> import time
+        >>> from ray import air, tune
+        >>> from ray.tune import Stopper
+        >>>
+        >>> class TimeStopper(Stopper):
+        ...     def __init__(self):
+        ...         self._start = time.time()
+        ...         self._deadline = 5
+        ...
+        ...     def __call__(self, trial_id, result):
+        ...         return False
+        ...
+        ...     def stop_all(self):
+        ...         return time.time() - self._start > self._deadline
+        >>>
+        >>> tuner = tune.Tuner(
+        ...     tune.Trainable,
+        ...     tune_config=tune.TuneConfig(num_samples=200),
+        ...     run_config=air.RunConfig(stop=TimeStopper())
+        ... )
+        >>> tuner.fit()
+        == Status ==...
 
     """
 
