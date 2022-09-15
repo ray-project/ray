@@ -1,4 +1,5 @@
-FROM [Dockerfile.base image]
+ARG DOCKER_IMAGE_BASE
+FROM DOCKER_IMAGE_BASE
 
 # Delete stale data
 RUN rm -rf /ray
@@ -10,7 +11,7 @@ WORKDIR /ray
 COPY . .
 
 # init also calls install-dependencies.sh
-RUN ./ci/ci.sh init
+RUN NO_DL=1 ./ci/ci.sh init
 RUN bash --login -i ./ci/ci.sh build
 
 # Run determine test to run

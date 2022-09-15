@@ -4,7 +4,7 @@ ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST
 ARG BUILDKITE_COMMIT
 ARG BUILDKITE_PULL_REQUEST_BASE_BRANCH
-ARG PYTHON=3.6
+ARG PYTHON=3.7
 ARG INSTALL_DEPENDENCIES
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -63,4 +63,4 @@ WORKDIR /ray
 # Below should be re-run each time
 COPY . .
 # init also calls install-dependencies.sh
-RUN ./ci/ci.sh init
+RUN NO_DL=1 ./ci/ci.sh init
