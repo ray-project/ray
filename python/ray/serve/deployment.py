@@ -155,7 +155,7 @@ class Deployment:
     @property
     def url(self) -> Optional[str]:
         """Full HTTP url for this deployment."""
-        if self._route_prefix is None:
+        if self._route_prefix is None or self._driver_deployment:
             # this deployment is not exposed over HTTP
             return None
 
