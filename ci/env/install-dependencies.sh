@@ -285,23 +285,7 @@ download_mnist() {
   unzip "${HOME}/data/mnist.zip" -d "${HOME}/data"
 }
 
-install_dependencies() {
-
-  install_bazel
-  install_base
-  install_toolchains
-
-  install_upgrade_pip
-  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ] || [ "${MINIMAL_INSTALL-}" = "1" ]; then
-    install_miniconda
-    # Upgrade the miniconda pip.
-    install_upgrade_pip
-  fi
-
-  install_nvm
-  if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
-    install_node
-  fi
+install_pip_packages() {
 
   # Install modules needed in all jobs.
   alias pip="python -m pip"
@@ -429,6 +413,30 @@ install_dependencies() {
   fi
 
   CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+}
+
+install_dependencies() {
+  install_bazel
+
+  if [ "${NO_BUILD-}" != "1" ]; then
+    install_base
+    install_toolchains
+  fi
+
+  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ] || [ "${MINIMAL_INSTALL-}" = "1" ]; then
+    install_miniconda
+  fi
+
+  install_upgrade_pip
+
+  if [ "${NO_BUILD-}" != "1" ]; then
+    install_nvm
+    if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
+      install_node
+    fi
+  fi
+
+  install_pip_packages
 }
 
 install_dependencies "$@"
