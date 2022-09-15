@@ -193,7 +193,6 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     """
 
     _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
-    _COLUMN_NAME: Optional[str] = "value"
 
     def _open_input_source(
         self,
@@ -239,6 +238,26 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         """
         raise NotImplementedError(
             "Subclasses of FileBasedDatasource must implement _read_file()."
+        )
+
+    def _convert_block_to_tabular_block(
+        self, block: Block
+    ) -> Union["pyarrow.Table", "pd.DataFrame"]:
+        """Convert block returned by `_read_file` or `_read_stream` to a tabular block.
+
+        If your `_read_file` or `_read_stream` implementation returns a list,
+        then you need to implement this method. Otherwise, `FileBasedDatasource` won't
+        be able to include partition data.
+        """
+        import pandas as pd
+        import pyarrow as pa
+
+        if isinstance(block, (pd.DataFrame, pa.Table)):
+            return block
+
+        raise NotImplementedError(
+            "If your `_read_file` or `_read_stream` implementation returns a list, "
+            "then you need to implement `_convert_block_to_tabular_block."
         )
 
     def do_write(
@@ -388,7 +407,7 @@ class _FileBasedDatasourceReader(Reader):
 
         paths, file_sizes = self._paths, self._file_sizes
         read_stream = self._delegate._read_stream
-        column_name = self._delegate._COLUMN_NAME
+        convert_block_to_tabular_block = self._delegate._convert_block_to_tabular_block
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
         read_options = reader_args.get("read_options")
         parse_options = reader_args.get("parse_options")
@@ -454,9 +473,7 @@ class _FileBasedDatasourceReader(Reader):
                 with open_input_source(fs, read_path, **open_stream_args) as f:
                     for data in read_stream(f, read_path, **reader_args):
                         if partitions:
-                            data = _convert_block_to_tabular(
-                                data, column_name=column_name
-                            )
+                            data = convert_block_to_tabular_block(data)
                             data = _add_partitions(data, partitions)
 
                         output_buffer.add_block(data)
@@ -488,17 +505,6 @@ class _FileBasedDatasourceReader(Reader):
             read_tasks.append(read_task)
 
         return read_tasks
-
-
-def _convert_block_to_tabular(
-    data: Block, *, column_name: str
-) -> Union["pyarrow.Table", "pd.DataFrame"]:
-    import pandas as pd
-    import pyarrow as pa
-
-    if isinstance(data, (pa.Table, pd.DataFrame)):
-        return data
-    return pd.DataFrame({column_name: data})
 
 
 def _add_partitions(

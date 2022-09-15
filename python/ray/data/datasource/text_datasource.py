@@ -1,0 +1,39 @@
+from io import BytesIO
+from typing import TYPE_CHECKING, List, Union, Tuple
+
+if TYPE_CHECKING:
+    import pyarrow
+
+from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.util.annotations import PublicAPI
+
+from ray.data.datasource.binary_datasource import BinaryDatasource
+
+
+@PublicAPI
+class TextDatasource(BinaryDatasource):
+    """Text datasource, for reading and writing text files."""
+
+    _COLUMN_NAME = "text"
+
+    def _read_file(
+        self, f: "pyarrow.NativeFile", path: str, **reader_args
+    ) -> List[str]:
+        block = super()._read_file(f, path, **reader_args)
+        assert len(block) == 1
+        data = block[0]
+
+        lines = data.decode(reader_args["encoding"]).split("\n")
+        if reader_args["drop_empty_lines"]:
+            lines = [line for line in lines if line.strip() != ""]
+        return lines
+
+    def _convert_block_to_tabular_block(
+        self, block: List[Union[bytes, Tuple[bytes, str]]]
+    ) -> "pyarrow.Table":
+        import pyarrow as pa
+
+        return pa.Table.from_pydict({self._COLUMN_NAME: block})
+
+    def _rows_per_file(self):
+        return None

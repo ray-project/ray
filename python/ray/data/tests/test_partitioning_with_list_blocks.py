@@ -1,5 +1,6 @@
 from typing import List, Union
 import os
+import pandas as pd
 import pytest
 import pyarrow as pa
 
@@ -12,11 +13,11 @@ from ray.tests.conftest import *  # noqa
 
 
 class BinaryDatasource(FileBasedDatasource):
-
-    _COLUMN_NAME = "bytes"
-
     def _read_file(self, f: pa.NativeFile, path: str, **reader_args) -> Block:
         return [f.readall()]
+
+    def _convert_block_to_tabular_block(self, block: List[bytes]) -> pd.DataFrame:
+        return pd.DataFrame({"bytes": block})
 
 
 def write_bytes(data: bytes, path: str) -> None:
