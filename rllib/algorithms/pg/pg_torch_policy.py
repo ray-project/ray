@@ -17,6 +17,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.torch_mixins import LearningRateSchedule
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
 
@@ -25,7 +26,7 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-class PGTorchPolicy(TorchPolicyV2):
+class PGTorchPolicy(LearningRateSchedule, TorchPolicyV2):
     """PyTorch policy class used with PGTrainer."""
 
     def __init__(self, observation_space, action_space, config):
@@ -39,6 +40,8 @@ class PGTorchPolicy(TorchPolicyV2):
             config,
             max_seq_len=config["model"]["max_seq_len"],
         )
+
+        LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
 
         # TODO: Don't require users to call this manually.
         self._initialize_loss_from_dummy_batch()
@@ -100,6 +103,7 @@ class PGTorchPolicy(TorchPolicyV2):
                 "policy_loss": torch.mean(
                     torch.stack(self.get_tower_stats("policy_loss"))
                 ),
+                "cur_lr": self.cur_lr,
             }
         )
 
