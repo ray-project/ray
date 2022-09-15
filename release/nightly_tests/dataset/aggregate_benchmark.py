@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import List, Tuple
 
 import ray
 from ray.data.aggregate import _AggregateOnKeyBase, Max, Mean, Min, Sum
@@ -23,11 +23,11 @@ def run_h2oai(benchmark: Benchmark):
 
         q_list = [
             (h2oai_q1, "q1"),
-            (h2oai_q1, "q3"),
-            (h2oai_q1, "q4"),
-            (h2oai_q1, "q5"),
-            (h2oai_q1, "q7"),
-            (h2oai_q1, "q8"),
+            (h2oai_q3, "q3"),
+            (h2oai_q4, "q4"),
+            (h2oai_q5, "q5"),
+            (h2oai_q7, "q7"),
+            (h2oai_q8, "q8"),
         ]
 
         for q, name in q_list:
@@ -72,8 +72,9 @@ def h2oai_q8(ds: Dataset) -> Dataset:
     def accumulate_block(agg: Tuple[float, float], block: Block) -> Tuple[float, float]:
         column = block["v3"]
         top_k_indices = pac.top_k_unstable(column, k=2)
-        top_k_result = pac.take(column, top_k_indices)
-        top_k_result = (top_k_result[0].as_py(), top_k_result[1].as_py())
+        top_k_result = pac.take(column, top_k_indices).to_pylist()
+        top_k_result.extend([float("-inf")] * (2 - len(top_k_result)))
+        top_k_result = (top_k_result[0], top_k_result[1])
         return merge(agg, top_k_result)
 
     def merge(
