@@ -1164,7 +1164,10 @@ def stop(force, grace_period):
     "--wait-for-workers",
     required=False,
     type=int,
-    help="If set, the command will block until the specified number of workers nodes have launched.",
+    help=(
+        "If set, the command will block until the specified number "
+        "of workers nodes have launched."
+    ),
 )
 @add_click_logging_options
 @PublicAPI
