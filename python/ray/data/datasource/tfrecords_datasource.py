@@ -5,10 +5,12 @@ import struct
 import pyarrow
 import tensorflow as tf
 
+from ray.util.annotations import PublicAPI
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
 
+@PublicAPI(stability="alpha")
 class TFRecordDatasource(FileBasedDatasource):
 
     _FILE_EXTENSION = "tfrecords"

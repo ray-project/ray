@@ -776,7 +776,7 @@ def read_tfrecords(
 
         >>> import ray
         >>> ds = ray.data.read_tfrecords(path)
-        >>> ds.to_pandas()
+        >>> ds.to_pandas()  # doctest: +SKIP
            length  width    species
         0     5.1    3.5  b'setosa'
 
