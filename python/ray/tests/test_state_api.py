@@ -1,6 +1,7 @@
 import time
 import json
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from typing import List, Tuple
 from unittest.mock import MagicMock
@@ -1598,6 +1599,29 @@ def test_list_get_actors(shutdown_only):
 
     wait_for_condition(verify)
     print(list_actors())
+
+
+def test_list_actors_namespace(shutdown_only):
+    """Check that list_actors returns namespaces."""
+
+    ray.init()
+
+    @ray.remote
+    class A:
+        pass
+
+    A.options(namespace="x").remote()
+    A.options(namespace="y").remote()
+
+    actors = list_actors()
+    namespaces = Counter([actor["ray_namespace"] for actor in actors])
+    assert namespaces["x"] == 1
+    assert namespaces["y"] == 1
+
+    # Check that we can filter by namespace
+    x_actors = list_actors(filters=("ray_namespace", "=", "x"))
+    assert len(x_actors) == 1
+    assert x_actors[0]["ray_namespace"] == "x"
 
 
 @pytest.mark.skipif(
