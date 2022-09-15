@@ -1,1 +1,12 @@
-FROM ubuntu:focal
+ARG DOCKER_IMAGE_TEST_BASE
+FROM $DOCKER_IMAGE_TEST_BASE
+
+# Move out of working dir /ray
+# Delete stale data
+WORKDIR /
+RUN rm -rf /ray
+
+RUN mkdir /ray
+WORKDIR /ray
+
+RUN NO_DL=1 NO_BUILD=1 ./env/install-dependencies.sh init
