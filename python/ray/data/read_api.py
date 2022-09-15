@@ -35,6 +35,7 @@ from ray.data.datasource import (
     PathPartitionFilter,
     RangeDatasource,
     ReadTask,
+    TextDatasource,
 )
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
@@ -502,6 +503,7 @@ def read_json(
     partition_filter: Optional[
         PathPartitionFilter
     ] = JSONDatasource.file_extension_filter(),
+    partitioning: Partitioning = Partitioning("hive"),
     **arrow_json_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from json files.
@@ -534,6 +536,7 @@ def read_json(
             By default, this filters out any file paths whose file extension does not
             match "*.json*".
         arrow_json_args: Other json read options to pass to pyarrow.
+        partitioning: TODO
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -547,6 +550,7 @@ def read_json(
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        partitioning=partitioning,
         **arrow_json_args,
     )
 
@@ -648,6 +652,7 @@ def read_text(
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = Partitioning("hive"),
 ) -> Dataset[str]:
     """Create a dataset from lines stored in text files.
 
@@ -676,28 +681,26 @@ def read_text(
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
             By default, this does not filter out any files.
-            If wishing to filter out all file paths except those whose file extensionar
+            If wishing to filter out all file paths except those whose file extension
             matches e.g. "*.txt*", a ``FileXtensionFilter("txt")`` can be provided.
+        partitioning: TODO
 
     Returns:
         Dataset holding lines of text read from the specified paths.
     """
-
-    def to_text(s):
-        lines = s.decode(encoding).split("\n")
-        if drop_empty_lines:
-            lines = [line for line in lines if line.strip() != ""]
-        return lines
-
-    return read_binary_files(
-        paths,
-        filesystem=filesystem,
+    return read_datasource(
+        TextDatasource(),
         parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
         ray_remote_args=ray_remote_args,
-        arrow_open_stream_args=arrow_open_stream_args,
+        open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
-    ).flat_map(to_text, **(ray_remote_args or {}))
+        partitioning=partitioning,
+        drop_empty_lines=drop_empty_lines,
+        encoding=encoding,
+    )
 
 
 @PublicAPI
@@ -768,6 +771,7 @@ def read_binary_files(
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = Partitioning("hive"),
 ) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 
@@ -796,6 +800,7 @@ def read_binary_files(
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
             By default, this does not filter out any files.
+        partitioning: TODO
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -808,9 +813,9 @@ def read_binary_files(
         filesystem=filesystem,
         ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
-        schema=bytes,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        partitioning=partitioning,
     )
 
 
