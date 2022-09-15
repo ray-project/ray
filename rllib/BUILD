@@ -1905,7 +1905,7 @@ py_test(
 py_test(
     name = "test_errors",
     tags = ["team:rllib", "utils"],
-    size = "small",
+    size = "medium",
     srcs = ["utils/tests/test_errors.py"]
 )
 

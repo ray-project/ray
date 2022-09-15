@@ -32,6 +32,7 @@ from ray.data.extensions.tensor_extension import (
 from ray.data.row import TableRow
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def maybe_pipeline(ds, enabled):
@@ -141,7 +142,9 @@ def test_avoid_placement_group_capture(shutdown_only, pipelined):
     pg = ray.util.placement_group([{"CPU": 1}])
     ray.get(
         run.options(
-            placement_group=pg, placement_group_capture_child_tasks=True
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_capture_child_tasks=True
+            )
         ).remote()
     )
 
@@ -1732,8 +1735,12 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert all(isinstance(col, np.ndarray) for col in batch.values())
         pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
 
-    # Native format.
+    # Native format (deprecated).
     for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="native"), dfs):
+        assert BlockAccessor.for_block(batch).to_pandas().equals(df)
+
+    # Default format.
+    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="default"), dfs):
         assert BlockAccessor.for_block(batch).to_pandas().equals(df)
 
     # Batch size.
