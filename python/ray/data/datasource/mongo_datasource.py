@@ -2,7 +2,7 @@ import logging
 from typing import List, Optional
 
 import pymongo
-import pymongoarrow
+from pymongoarrow.api import aggregate_arrow_all
 
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask
 from ray.data.block import (
@@ -29,7 +29,7 @@ class _MongoDatasourceReader(Reader):
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         def make_block(uri, database, collection, pipeline, schema, kwargs) -> Block:
             client = pymongo.MongoClient(uri)
-            return pymongoarrow.api.aggregate_arrow_all(
+            return aggregate_arrow_all(
                 client[database][collection], pipeline, schema=schema, **kwargs
             )
 
