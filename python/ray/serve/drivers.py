@@ -181,8 +181,12 @@ class DAGDriver:
         return self.dags[self.MATCH_ALL_ROUTE_PREFIX].dag_node_json
 
 
+@PublicAPI(stability="alpha")
 class ServegRPCIngress:
-    # servicer is from schema generated code
+    """
+    gRPC Ingress that starts gRPC server and accept gRPC requests
+    """
+
     def __init__(self, port):
         self.server = grpc.aio.server()
         self.port = port
