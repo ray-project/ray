@@ -22,8 +22,6 @@ import pytest
 import yaml
 from jsonschema.exceptions import ValidationError
 
-from unittest.mock import patch
-
 import ray
 import ray.tests.test_autoscaler
 from ray._private.test_utils import RayTestTimeoutException
