@@ -539,7 +539,6 @@ void CoreWorker::Shutdown() {
   }
 
   RAY_LOG(INFO) << "Shutting down a core worker.";
-
   is_shutdown_ = true;
   if (options_.worker_type == WorkerType::WORKER) {
     // Running in a main thread.
@@ -591,9 +590,8 @@ void CoreWorker::Disconnect(
     const rpc::WorkerExitType &exit_type,
     const std::string &exit_detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
-  RAY_LOG(ERROR) << "Forcing export now [Disconnect]";
+  // Force stats export before exiting the worker.
   opencensus::stats::StatsExporter::ExportNow();
-  RAY_LOG(ERROR) << "Export now, done";
   if (connected_) {
     RAY_LOG(INFO) << "Disconnecting to the raylet.";
     connected_ = false;
