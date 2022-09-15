@@ -1,7 +1,5 @@
 from collections import defaultdict
-import asyncio
 import os
-import time
 
 import pytest
 
@@ -35,6 +33,8 @@ def tasks_by_state(info) -> dict:
         return {}
 
 
+# TODO(ekl) in all these tests, we use run_string_as_driver_nonblocking to work around
+# stats reporting issues if Ray is repeatedly restarted in unit tests.
 def test_task_basic(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
@@ -106,7 +106,7 @@ def test_actor_tasks_queued(shutdown_only):
 import ray
 import time
 
-ray.init()
+ray.init("auto")
 
 @ray.remote
 class F:
@@ -139,16 +139,26 @@ ray.get(z)
 def test_task_finish(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
-    @ray.remote
-    def f():
-        return "ok"
+    driver = """
+import ray
+import time
 
-    @ray.remote
-    def g():
-        assert False
+ray.init("auto")
 
-    (f.remote(), g.remote())
+@ray.remote
+def f():
+    return "ok"
 
+@ray.remote
+def g():
+    assert False
+
+f.remote()
+g.remote()
+time.sleep(999)
+"""
+
+    proc = run_string_as_driver_nonblocking(driver)
     expected = {
         "RUNNING": 0.0,
         "WAITING_FOR_EXECUTION": 0.0,
@@ -159,18 +169,27 @@ def test_task_finish(shutdown_only):
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
+    proc.kill()
 
 
 def test_task_retry(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
-    @ray.remote(retry_exceptions=True)
-    def f():
-        assert False
+    driver = """
+import ray
+import time
 
-    f.remote()
-    time.sleep(1)  # Enough sleep so that retries have time to run.
+ray.init("auto")
 
+@ray.remote(retry_exceptions=True)
+def f():
+    assert False
+
+f.remote()
+time.sleep(999)
+"""
+
+    proc = run_string_as_driver_nonblocking(driver)
     expected = {
         "RUNNING": 0.0,
         "WAITING_FOR_EXECUTION": 0.0,
@@ -181,19 +200,28 @@ def test_task_retry(shutdown_only):
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
+    proc.kill()
 
 
 def test_concurrent_actor_tasks(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
-    @ray.remote(max_concurrency=30)
-    class A:
-        async def f(self):
-            await asyncio.sleep(300)
+    driver = """
+import ray
+import asyncio
 
-    a = A.remote()
-    [a.f.remote() for _ in range(40)]
+ray.init("auto")
 
+@ray.remote(max_concurrency=30)
+class A:
+    async def f(self):
+        await asyncio.sleep(300)
+
+a = A.remote()
+ray.get([a.f.remote() for _ in range(40)])
+"""
+
+    proc = run_string_as_driver_nonblocking(driver)
     expected = {
         "RUNNING": 30.0,
         "WAITING_FOR_EXECUTION": 10.0,
@@ -204,6 +232,7 @@ def test_concurrent_actor_tasks(shutdown_only):
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
+    proc.kill()
 
 
 if __name__ == "__main__":
