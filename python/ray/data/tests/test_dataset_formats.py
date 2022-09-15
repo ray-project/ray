@@ -1,9 +1,9 @@
-from genericpath import exists
 import os
 import shutil
 from distutils.version import LooseVersion
 from functools import partial
 from io import BytesIO
+import json
 from typing import Any, Dict, List, Union
 
 import numpy as np

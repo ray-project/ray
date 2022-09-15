@@ -1,13 +1,11 @@
-from io import BytesIO
 from typing import TYPE_CHECKING, List, Union, Tuple
+
+from ray.data.datasource.binary_datasource import BinaryDatasource
+from ray.util.annotations import PublicAPI
+
 
 if TYPE_CHECKING:
     import pyarrow
-
-from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.util.annotations import PublicAPI
-
-from ray.data.datasource.binary_datasource import BinaryDatasource
 
 
 @PublicAPI
