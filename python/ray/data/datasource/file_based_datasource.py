@@ -41,6 +41,7 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
+    import pandas as pd
     import pyarrow
 
 
@@ -192,6 +193,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     """
 
     _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
+    _COLUMN_NAME: Optional[str] = "value"
 
     def _open_input_source(
         self,
@@ -237,7 +239,6 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         self,
         f: "pyarrow.NativeFile",
         path: str,
-        partitioning: Optional[Partitioning],
         **reader_args,
     ) -> Block:
         """Reads a single file, passing all kwargs to the reader.
@@ -395,6 +396,7 @@ class _FileBasedDatasourceReader(Reader):
 
         paths, file_sizes = self._paths, self._file_sizes
         read_stream = self._delegate._read_stream
+        column_name = self._delegate._COLUMN_NAME
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
         read_options = reader_args.get("read_options")
         parse_options = reader_args.get("parse_options")
@@ -459,7 +461,12 @@ class _FileBasedDatasourceReader(Reader):
 
                 with open_input_source(fs, read_path, **open_stream_args) as f:
                     for data in read_stream(f, read_path, **reader_args):
-                        data = _add_partitions(data, partitions)
+                        if partitions:
+                            data = _convert_block_to_tabular(
+                                data, column_name=column_name
+                            )
+                            data = _add_partitions(data, partitions)
+
                         output_buffer.add_block(data)
                         if output_buffer.has_next():
                             yield output_buffer.next()
@@ -491,19 +498,34 @@ class _FileBasedDatasourceReader(Reader):
         return read_tasks
 
 
-def _add_partitions(data: Block, partitions: Dict[str, Any]) -> Block:
-    import pyarrow
+def _convert_block_to_tabular(
+    data: Block, *, column_name: str
+) -> Union["pyarrow.Table", "pd.DataFrame"]:
+    import pandas as pd
+    import pyarrow as pa
 
-    if isinstance(data, pyarrow.Table):
+    if isinstance(data, (pa.Table, pd.DataFrame)):
+        return data
+    return pd.DataFrame({column_name: data})
+
+
+def _add_partitions(
+    data: Union["pyarrow.Table", "pd.DataFrame"], partitions: Dict[str, Any]
+) -> Union["pyarrow.Table", "pd.DataFrame"]:
+    import pandas as pd
+    import pyarrow as pa
+
+    assert isinstance(data, (pa.Table, pd.DataFrame))
+    if isinstance(data, pa.Table):
         return _add_partitions_to_table(data, partitions)
-    raise NotImplementedError("TODO")
+    if isinstance(data, pd.DataFrame):
+        return _add_partitions_to_dataframe(data, partitions)
 
 
 def _add_partitions_to_table(
     table: "pyarrow.Table", partitions: Dict[str, Any]
 ) -> "pyarrow.Table":
-    if any(field in table.column_names for field in partitions):
-        raise ValueError("TODO")
+    assert not any(field in table.column_names for field in partitions)
 
     num_columns = table.num_columns
     for i, (field, value) in enumerate(partitions.items()):
@@ -511,6 +533,19 @@ def _add_partitions_to_table(
         table = table.add_column(num_columns + i, field, column)
 
     return table
+
+
+def _add_partitions_to_dataframe(
+    df: "pd.DataFrame", partitions: Dict[str, Any]
+) -> "pd.DataFrame":
+    import pandas as pd
+
+    assert not any(field in df.columns for field in partitions)
+
+    partitions = pd.DataFrame(
+        {key: [value] * len(df) for key, value in partitions.items()}
+    )
+    return pd.concat([df, partitions], axis=1)
 
 
 # TODO(Clark): Add unit test coverage of _resolve_paths_and_filesystem and
