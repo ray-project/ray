@@ -338,6 +338,8 @@ class ServeController:
             self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
             self.deployment_state_manager.shutdown()
             self.endpoint_state.shutdown()
+            if self.http_state:
+                self.http_state.shutdown()
 
     def deploy(
         self,
