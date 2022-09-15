@@ -4912,16 +4912,16 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
     ), "Number of actors is out of the expected bound"
 
 
-def test_native_batch_format(shutdown_only):
+def test_default_batch_format(shutdown_only):
     ds = ray.data.range(100)
-    assert ds.native_batch_format() == list
+    assert ds.default_batch_format() == list
 
     ds = ray.data.range_tensor(100)
-    assert ds.native_batch_format() == np.ndarray
+    assert ds.default_batch_format() == np.ndarray
 
     df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
     ds = ray.data.from_pandas(df)
-    assert ds.native_batch_format() == pd.DataFrame
+    assert ds.default_batch_format() == pd.DataFrame
 
 
 if __name__ == "__main__":
