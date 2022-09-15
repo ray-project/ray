@@ -328,7 +328,7 @@ class Checkpoint:
 
     @Deprecated(
         message="To store the checkpoint in the Ray object store, call `ray.put(ckpt)` "
-        "instead of `ckpt.to_object_ref()."
+        "instead of `ckpt.to_object_ref()`."
     )
     def to_object_ref(self) -> ray.ObjectRef:
         """Return checkpoint data as object reference.
