@@ -18,7 +18,5 @@ You may also be interested in visiting the design patterns section for :ref:`act
     limit-tasks
     closure-capture
     global-variables
-    submission-order
     too-many-results
     redefine-task-actor-loop
-    unnecessary-ray-get

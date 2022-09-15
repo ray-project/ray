@@ -92,7 +92,7 @@ def configure_aws():
 
     # moto (boto3 mock) only allows a hardcoded set of AMIs
     dlami = (
-        moto.ec2.ec2_backends["us-west-2"]
+        moto.ec2.models.ec2_backends["us-west-2"]["us-west-2"]
         .describe_images(filters={"name": "Deep Learning AMI Ubuntu*"})[0]
         .id
     )
