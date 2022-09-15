@@ -1153,7 +1153,7 @@ def _get_read_tasks(
     cur_pg: Optional[PlacementGroup],
     parallelism: int,
     kwargs: dict,
-) -> (int, int, List[ReadTask]):
+) -> Tuple[int, int, List[ReadTask]]:
     """Generates read tasks.
 
     Args:
