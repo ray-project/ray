@@ -65,7 +65,7 @@ public class RayServeReplicaTest extends BaseTest {
               .task(
                   RayServeWrappedReplica::handleRequest,
                   requestMetadata.build().toByteArray(),
-                  requestWrapper.build().toByteArray())
+                  new Object[0])
               .remote();
       Assert.assertEquals((String) resultRef.get(), "1");
 
@@ -81,7 +81,7 @@ public class RayServeReplicaTest extends BaseTest {
               .task(
                   RayServeWrappedReplica::handleRequest,
                   requestMetadata.build().toByteArray(),
-                  requestWrapper.build().toByteArray())
+                  new Object[0])
               .remote();
       Assert.assertEquals((String) resultRef.get(), "1");
 
@@ -94,7 +94,7 @@ public class RayServeReplicaTest extends BaseTest {
               .task(
                   RayServeWrappedReplica::handleRequest,
                   requestMetadata.build().toByteArray(),
-                  requestWrapper.build().toByteArray())
+                  new Object[0])
               .remote();
       Assert.assertEquals((String) resultRef.get(), "101");
 
