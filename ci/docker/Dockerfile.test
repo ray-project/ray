@@ -12,4 +12,4 @@ WORKDIR /ray
 # Copy new ray files
 COPY . .
 
-RUN NO_DL=1 NO_BUILD=1 ./ci/env/install-dependencies.sh init
+RUN NO_DL=1 NO_BUILD=1 ./ci/env/install-dependencies.sh
