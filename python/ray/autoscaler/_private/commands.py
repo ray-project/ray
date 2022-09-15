@@ -66,7 +66,6 @@ from ray.autoscaler.tags import (
     NODE_KIND_WORKER,
     STATUS_UNINITIALIZED,
     STATUS_UP_TO_DATE,
-    STATUS_UPDATE_FAILED,
     TAG_RAY_LAUNCH_CONFIG,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_NAME,
@@ -162,18 +161,18 @@ def debug_status(status, error) -> str:
     return status
 
 
-def get_pending_workers(provider: NodeProvider) -> List[str]:
-    """Get a list of pending worker nodes."""
-    pending_workers = []
+def get_healthy_workers(provider: NodeProvider) -> List[str]:
+    """Get a list of healthy worker nodes."""
+    healthy_workers = []
     nodes = provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
     for node_id in nodes:
         ip = provider.internal_ip(node_id)
         node_tags = provider.node_tags(node_id)
 
         status = node_tags[TAG_RAY_NODE_STATUS]
-        if status not in (STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED):
-            pending_workers.append(ip)
-    return pending_workers
+        if status == STATUS_UP_TO_DATE:
+            healthy_workers.append(ip)
+    return healthy_workers
 
 
 def request_resources(
@@ -216,7 +215,7 @@ def create_or_update_cluster(
     redirect_command_output: Optional[bool] = False,
     use_login_shells: bool = True,
     no_monitor_on_head: bool = False,
-    wait_for_workers: bool = False,
+    wait_for_workers: int = 0,
 ) -> Dict[str, Any]:
     """Creates or updates an autoscaling Ray cluster from a config json."""
     # no_monitor_on_head is an internal flag used by the Ray K8s operator.
@@ -311,28 +310,37 @@ def create_or_update_cluster(
         no_monitor_on_head,
     )
 
-    if wait_for_workers:
+    if wait_for_workers > 0:
         WAIT_FOR_WORKERS_DELAY = 10
-        provider = _get_node_provider(config["provider"], config["cluster_name"])
+        WAIT_FOR_WORKERS_TIMEOUT = 600  # 10 min
 
-        # Wait for worker nodes to launch
-        time.sleep(WAIT_FOR_WORKERS_DELAY)
-        pending_workers = get_pending_workers(provider)
+        provider = _get_node_provider(config["provider"], config["cluster_name"])
 
         cli_logger.print(
             "\nWaiting for {} worker nodes to launch..." + cf.dimmed("(due to {})"),
-            len(pending_workers),
+            wait_for_workers,
             cf.bold("--wait-for-workers"),
         )
 
-        while pending_workers:
+        start_time = time.monotonic()
+        timeout_at = start_time + WAIT_FOR_WORKERS_TIMEOUT
+        healthy_workers = get_healthy_workers(provider)
+        while len(healthy_workers) < wait_for_workers:
             provider = _get_node_provider(
                 config["provider"], config["cluster_name"], use_cache=False
             )
-            pending_workers = get_pending_workers(provider)
+            healthy_workers = get_healthy_workers(provider)
+
+            if time.monotonic() > timeout_at:
+                cli_logger.warning(
+                    "Timed out waiting for {} worker nodes to launch. ",
+                    wait_for_workers,
+                )
+                return config
+
             time.sleep(WAIT_FOR_WORKERS_DELAY)
 
-        cli_logger.print("No remaining pending worker nodes")
+        cli_logger.print("{} worker nodes launched", wait_for_workers)
 
     return config
 

@@ -1162,9 +1162,9 @@ def stop(force, grace_period):
 )
 @click.option(
     "--wait-for-workers",
-    is_flag=True,
-    default=False,
-    help="If True, the command will block until there are no pending worker nodes.",
+    required=False,
+    type=int,
+    help="If set, the command will block until the specified number of workers nodes have launched.",
 )
 @add_click_logging_options
 @PublicAPI
