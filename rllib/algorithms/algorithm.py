@@ -237,11 +237,12 @@ class Algorithm(Trainable):
         # `checkpoint` is a str: Could be checkpoint file or directory.
         if isinstance(checkpoint, str):
             if os.path.isdir(checkpoint):
-                checkpoint = Checkpoint.from_directory(checkpoint)
-                for f in os.listdir():
-                    if os.path.isfile(f) and re.match("checkpoint-\\d+", f):
-                        v0_checkpoint_file = f
+                for file in os.listdir(checkpoint):
+                    path_file = os.path.join(checkpoint, file)
+                    if os.path.isfile(path_file) and re.match("checkpoint-\\d+", file):
+                        v0_checkpoint_file = path_file
                         break
+                checkpoint = Checkpoint.from_directory(checkpoint)
             elif os.path.isfile(checkpoint):
                 v0_checkpoint_file = checkpoint
                 checkpoint = Checkpoint.from_directory(os.path.dirname(checkpoint))
@@ -254,7 +255,7 @@ class Algorithm(Trainable):
         # Open main state file of checkpoint (or v0_checkpoint_file itself).
         with tempfile.TemporaryDirectory() as tmp_dir:
             checkpoint.to_directory(tmp_dir)
-            state_file = os.path.join(tmp_dir, v0_checkpoint_file or "state.pkl")
+            state_file = v0_checkpoint_file or os.path.join(tmp_dir, "state.pkl")
 
             if not os.path.isfile(state_file):
                 raise ValueError(
@@ -273,13 +274,23 @@ class Algorithm(Trainable):
         if v0_checkpoint_file:
             # Worker state used to be pickled ("v0"), now it's just another sub-dict
             # within the state.
-            local_worker_state = (
-                pickle.loads(state["worker"]) if v0_checkpoint_file
-                else state["worker"]
-            )
+            local_worker_state = pickle.loads(state["worker"])
             config = local_worker_state["policy_config"]
             # Hack: Try to infer Algorithm class from Policy class.
-            algo_class = get_algorithm_class(local_worker_state["policy_spec"])
+            # Only works for single agent (otherwise, gets too complicated as we would
+            # be possibly lacking the actual original algo config).
+            if DEFAULT_POLICY_ID not in local_worker_state["policy_specs"]:
+                raise ValueError(
+                    "Cannot restore a v0 multi-agent checkpoint using "
+                    "`Algorithm.from_checkpoint()`!"
+                    "In this case, do the following:\n"
+                    "1) Create a new Algorithm object using the original config.\n"
+                    "2) Call the `restore()` method of this algo object passing it"
+                    " your checkpoint dir."
+                )
+            algo_class_name = local_worker_state["policy_specs"][DEFAULT_POLICY_ID].policy_class.__name__
+            algo_class_name = re.sub("^(\\w+)(TF2|TF1|Torch)Policy$", "\\1", algo_class_name)
+            algo_class = get_algorithm_class(algo_class_name)
             algo: "Algorithm" = algo_class(config=config)
             algo.restore(v0_checkpoint_file)
             return algo

@@ -59,8 +59,8 @@ class TestBackwardCompatibility(unittest.TestCase):
 
     def test_old_checkpoint_formats(self):
         """Tests, whether we remain backward compatible (>=2.0.0) wrt checkpoints."""
-        for fw in framework_iterator():
-            for version in ["v0", "v1"]:
+        for version in ["v0", "v1"]:
+            for fw in framework_iterator():
                 path_to_checkpoint = os.path.join(
                     str(Path.cwd()),
                     "checkpoints",

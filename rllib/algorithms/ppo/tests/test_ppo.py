@@ -104,12 +104,6 @@ class TestPPO(unittest.TestCase):
                 entropy_coeff=100.0,
                 entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],
                 train_batch_size=128,
-                model=dict(
-                    # Settings in case we use an LSTM.
-                    lstm_cell_size=10,
-                    max_seq_len=20,
-                    fcnet_hiddens=[10]#TODO
-                ),
             )
             .rollouts(
                 num_rollout_workers=1,
@@ -122,7 +116,7 @@ class TestPPO(unittest.TestCase):
         num_iterations = 2
 
         for fw in framework_iterator(config, with_eager_tracing=True):
-            for env in ["FrozenLake-v1"]:#, "MsPacmanNoFrameskip-v4"]:
+            for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
                 for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
@@ -131,6 +125,8 @@ class TestPPO(unittest.TestCase):
                             use_lstm=lstm,
                             lstm_use_prev_action=lstm,
                             lstm_use_prev_reward=lstm,
+                            lstm_cell_size=10,
+                            max_seq_len=20,
                         )
                     )
 
