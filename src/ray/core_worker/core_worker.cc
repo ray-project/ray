@@ -2204,20 +2204,13 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                std::vector<std::shared_ptr<RayObject>> *return_objects,
                                ReferenceCounter::ReferenceTableProto *borrowed_refs,
                                bool *is_retryable_error) {
-  ray::stats::STATS_tasks.Record(1, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING));
-  ray::stats::STATS_tasks.Record(
-      -1, rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_EXECUTION));
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
   // Modify the worker's per function counters.
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
-  {
-    absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
-    task_counter_.Add(TaskCounter::kPending, func_name, -1);
-    task_counter_.Add(TaskCounter::kRunning, func_name, 1);
-  }
+  task_counter_.MovePendingToRunning(func_name);
 
   if (!options_.is_local_mode) {
     worker_context_.SetCurrentTask(task_spec);
@@ -2333,13 +2326,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     }
   }
 
-  // Modify the worker's per function counters.
-  {
-    absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
-    task_counter_.Add(TaskCounter::kRunning, func_name, -1);
-    task_counter_.Add(TaskCounter::kFinished, func_name, 1);
-  }
-
+  task_counter_.MoveRunningToFinished(func_name);
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
                  << ", status=" << status;
 
@@ -2363,11 +2350,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   } else if (!status.ok()) {
     RAY_LOG(FATAL) << "Unexpected task status type : " << status;
   }
-
-  // TODO(ekl) unify this with task_state_counter_?
-  ray::stats::STATS_tasks.Record(0, rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING));
-  ray::stats::STATS_tasks.Record(
-      0, rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_EXECUTION));
   return status;
 }
 
@@ -2581,10 +2563,7 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
   std::string func_name =
       FunctionDescriptorBuilder::FromProto(request.task_spec().function_descriptor())
           ->CallString();
-  {
-    absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
-    task_counter_.Add(TaskCounter::kPending, func_name, 1);
-  }
+  task_counter_.IncPending(func_name);
 
   // For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.

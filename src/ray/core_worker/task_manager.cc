@@ -28,12 +28,7 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
-TaskStatusCounter::TaskStatusCounter() {
-  // TODO(ekl): this isn't actually resetting OpenCensus properly
-  for (int i = 0; i < rpc::TaskStatus_ARRAYSIZE; i++) {
-    ray::stats::STATS_tasks.Record(0, rpc::TaskStatus_Name(i));
-  }
-}
+TaskStatusCounter::TaskStatusCounter() {}
 
 void TaskStatusCounter::Swap(rpc::TaskStatus old_status, rpc::TaskStatus new_status) {
   counters_[old_status] -= 1;
