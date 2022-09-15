@@ -33,7 +33,7 @@ def get_conda_activate_commands(conda_env_name: str) -> List[str]:
             # Use bash command syntax
             return ["source %s %s 1>&2" % (activate_path, conda_env_name)]
         else:
-            return ["conda activate %s" % (conda_env_name)]
+            return ["conda", "activate", conda_env_name, "&&"]
     return activate_conda_env
 
 

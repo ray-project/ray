@@ -6,7 +6,7 @@ import os
 import shutil
 import sys
 import tempfile
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 from ray._private.async_compat import asynccontextmanager, create_task, get_running_loop
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -58,10 +58,10 @@ class _PathHelper:
             return os.path.join(virtualenv_path, "bin", "python")
 
     @classmethod
-    def get_virtualenv_activate_command(cls, target_dir: str) -> str:
+    def get_virtualenv_activate_command(cls, target_dir: str) -> Union[str, List[str]]:
         virtualenv_path = cls.get_virtualenv_path(target_dir)
         if _WIN32:
-            return "%s 1>&2" % (os.path.join(virtualenv_path, "Scripts", "activate"))
+            return [os.path.join(virtualenv_path, "Scripts", "activate"), "1>&2", '&&']
         else:
             return "source %s 1>&2" % (os.path.join(virtualenv_path, "bin/activate"))
 
@@ -493,6 +493,9 @@ class PipPlugin(RuntimeEnvPlugin):
                 "installing the runtime_env `pip` packages."
             )
         context.py_executable = virtualenv_python
-        context.command_prefix += [
-            _PathHelper.get_virtualenv_activate_command(target_dir)
-        ]
+        if _WIN32:
+            context.command_prefix += _PathHelper.get_virtualenv_activate_command(target_dir)
+        else:
+            context.command_prefix += [
+                _PathHelper.get_virtualenv_activate_command(target_dir)
+            ]
