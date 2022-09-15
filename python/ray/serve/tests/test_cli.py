@@ -12,6 +12,7 @@ import yaml
 
 import ray
 from ray import serve
+from ray.experimental.state.api import list_actors
 from ray._private.test_utils import wait_for_condition
 from ray.serve.schema import ServeApplicationSchema, ServeStatusSchema
 from ray.serve._private.constants import SERVE_NAMESPACE
@@ -33,9 +34,9 @@ def ping_endpoint(endpoint: str, params: str = ""):
 def assert_deployments_live(names: List[str]):
     """Checks if all deployments named in names have at least 1 living replica."""
 
-    running_actor_names = [
-        actor["name"] for actor in ray.util.list_named_actors(all_namespaces=True)
-    ]
+    ray_address = ray.get_runtime_context()["address"]
+
+    running_actor_names = [actor["name"] for actor in list_actors(address=ray_address)]
 
     all_deployments_live, nonliving_deployment = True, ""
     for deployment_name in names:
@@ -528,10 +529,10 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
 
-    ray.init(address="auto", namespace=SERVE_NAMESPACE)
+    ray_context = ray.init(address="auto", namespace=SERVE_NAMESPACE)
     serve.start(detached=True)
     wait_for_condition(
-        lambda: len(ray.util.list_named_actors(all_namespaces=True)) == 4, timeout=15
+        lambda: len(list_actors(address=ray_context["address"])) == 4, timeout=15
     )
 
     # Kill controller
@@ -551,7 +552,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     # Restore testing controller
     serve.start(detached=True)
     wait_for_condition(
-        lambda: len(ray.util.list_named_actors(all_namespaces=True)) == 4, timeout=15
+        lambda: len(list_actors(address=ray_context["address"])) == 4, timeout=15
     )
     serve.shutdown()
     ray.shutdown()
