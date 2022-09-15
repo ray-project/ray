@@ -11,7 +11,7 @@ WORKDIR /ray
 COPY . .
 
 # init also calls install-dependencies.sh
-RUN bash --login -i NO_DL=1 ./ci/ci.sh init
+RUN NO_DL=1 ./ci/ci.sh init
 RUN bash --login -i ./ci/ci.sh build
 
 # Run determine test to run
