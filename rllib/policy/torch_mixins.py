@@ -1,14 +1,9 @@
-from typing import Dict, List, Union
-
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
-from ray.rllib.utils.typing import (
-    TensorType,
-)
 
 torch, nn = try_import_torch()
 
@@ -99,14 +94,14 @@ class KLCoeffMixin:
         return self.kl_coeff
 
     @override(TorchPolicy)
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_state(self) -> PolicyState:
         state = super().get_state()
         # Add current kl-coeff value.
         state["current_kl_coeff"] = self.kl_coeff
         return state
 
     @override(TorchPolicy)
-    def set_state(self, state: dict) -> None:
+    def set_state(self, state: PolicyState) -> None:
         # Set current kl-coeff value first.
         self.kl_coeff = state.pop("current_kl_coeff", self.config["kl_coeff"])
         # Call super's set_state with rest of the state dict.
