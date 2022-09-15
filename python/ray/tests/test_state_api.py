@@ -1619,7 +1619,7 @@ def test_list_actors_namespace(shutdown_only):
     assert namespaces["y"] == 1
 
     # Check that we can filter by namespace
-    x_actors = list_actors(filters=("ray_namespace", "=", "x"))
+    x_actors = list_actors(filters=[("ray_namespace", "=", "x")])
     assert len(x_actors) == 1
     assert x_actors[0]["ray_namespace"] == "x"
 
