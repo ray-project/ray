@@ -1,14 +1,17 @@
 FROM [Dockerfile.base image]
 
+# Delete stale data
+RUN rm -rf /ray
+
 RUN mkdir /ray
 WORKDIR /ray
 
 # Below should be re-run each time
 COPY . .
+
+# init also calls install-dependencies.sh
 RUN ./ci/ci.sh init
 RUN bash --login -i ./ci/ci.sh build
-
-RUN (if [ "${INSTALL_DEPENDENCIES}" = "ML" ]; then RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 bash --login -i ./ci/env/install-dependencies.sh; fi)
 
 # Run determine test to run
 RUN bash --login -i -c "python ./ci/pipeline/determine_tests_to_run.py --output=json > affected_set.json"
