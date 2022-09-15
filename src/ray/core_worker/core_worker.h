@@ -1277,7 +1277,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
         GUARDED_BY(tasks_counter_mutex_);
     absl::flat_hash_map<std::string, int> finished_tasks_counter_map_
         GUARDED_BY(tasks_counter_mutex_);
-    int64_t running_total_ = 0 GUARDED_BY(tasks_counter_mutex_);
+    int64_t running_total_ GUARDED_BY(tasks_counter_mutex_) = 0;
 
     void IncPending(const std::string &func_name) {
       absl::MutexLock l(&tasks_counter_mutex_);
