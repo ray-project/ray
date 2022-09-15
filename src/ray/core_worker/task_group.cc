@@ -17,15 +17,28 @@
 namespace ray {
 namespace core {
 
+void TaskGroup::AddPendingTask(const TaskSpecification &spec) {
+  auto name = spec.GetName();
+  tasks_by_name_[name] += 1;
+}
+
 void TaskGroupManager::FillTaskGroupInfo(std::vector<TaskGroup> *output) {
-  absl::MutexLock lock(&mu_);
-  for (const auto &group : groups_) {
-    output->push_back(group);
-  }
+  // TODO
 }
 
 void TaskGroupManager::AddPendingTask(const TaskSpecification &spec) {
-  absl::MutexLock lock(&mu_);
+  auto group = GetOrCreateCurrentTaskGroup();
+  group.AddPendingTask(spec);
+}
+
+TaskGroup &TaskGroupManager::GetOrCreateCurrentTaskGroup() {
+  // TODO(ekl) also check if task id has changed, then also create a new task group
+  if (groups_.size() == 0) {
+    // TODO(ekl) bound groups size
+    groups_.push_back(std::make_unique<TaskGroup>(worker_context_.GetCurrentTask()));
+  }
+  RAY_CHECK(groups_.size() >= 1);
+  return *groups_.back();
 }
 
 }  // namespace core

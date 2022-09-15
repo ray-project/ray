@@ -106,18 +106,18 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
-              std::shared_ptr<TaskGroupManager> task_group_manager,
+              WorkerContext &context,
               PutInLocalPlasmaCallback put_in_local_plasma_callback,
               RetryTaskCallback retry_task_callback,
               PushErrorCallback push_error_callback,
               int64_t max_lineage_bytes)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
-        task_group_manager_(task_group_manager),
         put_in_local_plasma_callback_(put_in_local_plasma_callback),
         retry_task_callback_(retry_task_callback),
         push_error_callback_(push_error_callback),
-        max_lineage_bytes_(max_lineage_bytes) {
+        max_lineage_bytes_(max_lineage_bytes),
+        task_group_manager_(context) {
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
           return RemoveLineageReference(object_id, ids_to_release);
@@ -393,9 +393,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// submitted tasks (dependencies and return objects).
   std::shared_ptr<ReferenceCounter> reference_counter_;
 
-  /// Reference to the task groups tracker for this core worker process.
-  std::shared_ptr<TaskGroupManager> task_group_manager_;
-
   /// Callback to store objects in plasma. This is used for objects that were
   /// originally stored in plasma. During reconstruction, we ensure that these
   /// objects get stored in plasma again so that any reference holders can
@@ -421,6 +418,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Tracks per-task-state counters for metric purposes.
   TaskStatusCounter task_counter_ GUARDED_BY(mu_);
+
+  /// Tracks task group state for metric purposes.
+  TaskGroupManager task_group_manager_ GUARDED_BY(mu_);
 
   /// This map contains one entry per task that may be submitted for
   /// execution. This includes both tasks that are currently pending execution

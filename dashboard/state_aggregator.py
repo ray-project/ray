@@ -423,6 +423,61 @@ class StateAPIManager:
             num_filtered=num_filtered,
         )
 
+    async def list_task_groups(self, *, option: ListApiOptions) -> ListApiResponse:
+        """List all task group information from the cluster.
+
+        Returns:
+            {task_id -> task_data_in_dict}
+            task_data_in_dict's schema is in TaskState
+        """
+        raylet_ids = self._client.get_all_registered_raylet_ids()
+        replies = await asyncio.gather(
+            *[
+                self._client.get_task_group_info(node_id, timeout=option.timeout)
+                for node_id in raylet_ids
+            ],
+            return_exceptions=True,
+        )
+
+        unresponsive_nodes = 0
+        successful_replies = []
+        for reply in replies:
+            if isinstance(reply, DataSourceUnavailable):
+                unresponsive_nodes += 1
+                continue
+            elif isinstance(reply, Exception):
+                raise reply
+            successful_replies.append(reply)
+
+        partial_failure_warning = None
+        if len(raylet_ids) > 0 and unresponsive_nodes > 0:
+            warning_msg = NODE_QUERY_FAILURE_WARNING.format(
+                type="raylet",
+                total=len(raylet_ids),
+                network_failures=unresponsive_nodes,
+                log_command="raylet.out",
+            )
+            if unresponsive_nodes == len(raylet_ids):
+                raise DataSourceUnavailable(warning_msg)
+            partial_failure_warning = (
+                f"The returned data may contain incomplete result. {warning_msg}"
+            )
+
+        result = []
+        for reply in successful_replies:
+            assert not isinstance(reply, Exception)
+            tasks = reply.owned_task_info_entries
+            for task in tasks:
+                data = self._message_to_dict(
+                    message=task,
+                )
+                result.append(data)
+        result = list(islice(result, option.limit))
+        return ListApiResponse(
+            result=result,
+            partial_failure_warning=partial_failure_warning,
+        )
+
     async def list_objects(self, *, option: ListApiOptions) -> ListApiResponse:
         """List all object information from the cluster.
 

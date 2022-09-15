@@ -60,6 +60,7 @@ class StateResource(Enum):
     TASKS = "tasks"
     OBJECTS = "objects"
     RUNTIME_ENVS = "runtime_envs"
+    TASK_GROUPS = "task_groups"
 
 
 @unique

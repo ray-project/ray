@@ -18,26 +18,36 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
+#include "ray/core_worker/context.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 namespace core {
 
-class TaskGroup {};
+class TaskGroup {
+ public:
+  TaskGroup(std::shared_ptr<const TaskSpecification> task_spec) : task_spec_(task_spec){};
+  void AddPendingTask(const TaskSpecification &spec);
 
-// This class is thread-safe.
+ private:
+  std::shared_ptr<const TaskSpecification> task_spec_;
+  absl::flat_hash_map<std::string, int64_t> tasks_by_name_;
+};
+
+// This class is NOT thread-safe.
 class TaskGroupManager {
   // TODO: add enabled config flag
  public:
+  TaskGroupManager(WorkerContext &ctx);
   void FillTaskGroupInfo(std::vector<TaskGroup> *);
   void AddPendingTask(const TaskSpecification &spec);
 
  private:
-  absl::Mutex mu_;
+  TaskGroup &GetOrCreateCurrentTaskGroup();
 
-  std::deque<TaskGroup> groups_ GUARDED_BY(mu_);
+  WorkerContext &worker_context_;
 
-  bool has_current_task_group GUARDED_BY(mu_) = false;
+  std::deque<std::unique_ptr<TaskGroup>> groups_;
 };
 
 }  // namespace core

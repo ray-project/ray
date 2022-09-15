@@ -1145,9 +1145,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Fields related to task submission.
   ///
 
-  /// Tracks groups of tasks processed on this worker for metrics reporting.
-  std::shared_ptr<TaskGroupManager> task_group_manager_;
-
   // Tracks the currently pending tasks.
   std::shared_ptr<TaskManager> task_manager_;
 

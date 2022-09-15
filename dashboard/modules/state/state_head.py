@@ -298,6 +298,11 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     async def list_tasks(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_list_api(self._state_api.list_tasks, req)
 
+    @routes.get("/api/v0/task_groups")
+    @RateLimitedModule.enforce_max_concurrent_calls
+    async def list_task_groups(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        return await self._handle_list_api(self._state_api.list_task_groups, req)
+
     @routes.get("/api/v0/objects")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_objects(self, req: aiohttp.web.Request) -> aiohttp.web.Response:

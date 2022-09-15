@@ -983,6 +983,47 @@ def list_tasks(
     )
 
 
+def list_task_groups(
+    address: Optional[str] = None,
+    limit: int = DEFAULT_LIMIT,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    detail: bool = False,
+    raise_on_missing_output: bool = True,
+    _explain: bool = False,
+) -> List[Dict]:
+    """List task groups in the cluster.
+
+    Args:
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        limit: Max number of entries returned by the state backend.
+        timeout: Max timeout value for the state APIs requests made.
+        detail: When True, more details info (specified in `WorkerState`)
+            will be queried and returned. See
+            :ref:`WorkerState <state-api-schema-worker>`.
+        raise_on_missing_output: When True, exceptions will be raised if
+            there is missing data due to truncation/data source unavailable.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        List of dictionarified
+        :ref:`WorkerState <state-api-schema-worker>`.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            failed to query the data.
+    """
+    return StateApiClient(address=address).list(
+        StateResource.TASK_GROUPS,
+        options=ListApiOptions(
+            limit=limit, timeout=timeout, filters=filters, detail=detail
+        ),
+        raise_on_missing_output=raise_on_missing_output,
+        _explain=_explain,
+    )
+
+
 def list_objects(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
