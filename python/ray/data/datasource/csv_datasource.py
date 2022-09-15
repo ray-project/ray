@@ -27,10 +27,7 @@ class CSVDatasource(FileBasedDatasource):
     _FILE_EXTENSION = "csv"
 
     def _read_stream(
-        self,
-        f: "pyarrow.NativeFile",
-        path: str,
-        **reader_args,
+        self, f: "pyarrow.NativeFile", path: str, **reader_args
     ) -> Iterator[Block]:
         import pyarrow
         from pyarrow import csv
@@ -47,14 +44,12 @@ class CSVDatasource(FileBasedDatasource):
             f, read_options=read_options, parse_options=parse_options, **reader_args
         )
         schema = None
-
         while True:
             try:
                 batch = reader.read_next_batch()
                 table = pyarrow.Table.from_batches([batch], schema=schema)
                 if schema is None:
                     schema = table.schema
-
                 yield table
             except StopIteration:
                 return
