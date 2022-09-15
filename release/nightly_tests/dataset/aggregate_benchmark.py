@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Tuple
 
 import ray
 from ray.data.aggregate import _AggregateOnKeyBase, Max, Mean, Min, Sum
