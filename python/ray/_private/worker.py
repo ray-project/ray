@@ -2796,11 +2796,11 @@ def remote(
     >>>
     >>> @ray.remote
     >>> class Foo:
-    >>>     def __init__(self, arg):
-    >>>         self.x = arg
-    >>>
-    >>>     def method(self, a):
-    >>>         return self.x + a
+    ...     def __init__(self, arg):
+    ...         self.x = arg
+    ...
+    ...     def method(self, a):
+    ...         return self.x + a
     >>>
     >>> actor_handle = Foo.remote(123)
     >>> object_ref = actor_handle.method.remote(321)
@@ -2819,11 +2819,11 @@ def remote(
         >>> assert ray.get(object_ref) == (1 + 2 + 3)
 
         >>> class Bar:
-        >>>     def __init__(self, arg):
-        >>>         self.x = arg
-        >>>
-        >>>     def method(self, a):
-        >>>         return self.x + a
+        ...     def __init__(self, arg):
+        ...         self.x = arg
+        ...
+        ...     def method(self, a):
+        ...         return self.x + a
         >>>
         >>> RemoteBar = ray.remote(Bar)
         >>> actor_handle = RemoteBar.remote(123)
