@@ -201,8 +201,8 @@ class Checkpoint:
         parameter, argument = self.get_internal_representation()
         return f"{self.__class__.__name__}({parameter}={argument})"
 
-    @DeveloperAPI
     @property
+    @DeveloperAPI
     def metadata(self) -> CheckpointMetadata:
         return CheckpointMetadata(
             checkpoint_type=self.__class__,
@@ -381,11 +381,11 @@ class Checkpoint:
 
     @classmethod
     def _check_type_compatability(cls, serialized_type: Type["Checkpoint"]):
-        if not isinstance(serialized_type, cls):
+        if not issubclass(serialized_type, cls):
             raise ValueError(
                 "The checkpoint data you passed in was created by a "
                 f"`{serialized_type.__name__}` object, but "
-                f"`{serialized_type.__name__}` isn't compatible with {cls.__name__}`."
+                f"`{serialized_type.__name__}` isn't compatible with `{cls.__name__}`."
             )
 
     def _get_temporary_checkpoint_dir(self) -> str:
