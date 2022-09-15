@@ -34,6 +34,7 @@ from ray.data.datasource import (
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
+    MongoDatasource,
     ReadTask,
 )
 from ray.data.datasource.file_based_datasource import (
@@ -317,6 +318,11 @@ def read_datasource(
         False,
     )
 
+
+@PublicAPI
+def read_mongo(uri, database, collection, pipelines, schema, **kwargs) -> Dataset[ArrowRow]:
+    return read_datasource(MongoDatasource(), parallelism=len(pipelines),
+    uri=uri, database=database, collection=collection, pipelines=pipelines, schema=schema, kwargs=kwargs)
 
 @PublicAPI
 def read_parquet(
