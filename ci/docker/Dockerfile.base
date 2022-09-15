@@ -63,4 +63,4 @@ WORKDIR /ray
 # Below should be re-run each time
 COPY . .
 # init also calls install-dependencies.sh
-RUN NO_DL=1 ./ci/ci.sh init
+RUN bash --login -i NO_DL=1 ./ci/ci.sh init
