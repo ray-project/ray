@@ -324,7 +324,7 @@ class Dataset(Generic[T]):
 
         Batches are represented as dataframes, ndarrays, or lists. The default batch
         type is determined by your dataset's schema. To determine the default batch
-        type, call :meth:`~Dataset.native_batch_format`. Alternatively, set the batch
+        type, call :meth:`~Dataset.default_batch_format`. Alternatively, set the batch
         type with ``batch_format``.
 
         To learn more about writing functions for :meth:`~Dataset.map_batches`, read
@@ -351,10 +351,10 @@ class Dataset(Generic[T]):
             >>> ds
             Dataset(num_blocks=1, num_rows=3, schema={name: object, age: object})
 
-            Call :meth:`~Dataset.native_batch_format` to determine the default batch
+            Call :meth:`~Dataset.default_batch_format` to determine the default batch
             type.
 
-            >>> ds.native_batch_format()
+            >>> ds.default_batch_format()
             <class 'pandas.core.frame.DataFrame'>
 
             Once you know the batch type, define a function that transforms batches
@@ -440,7 +440,7 @@ class Dataset(Generic[T]):
             :meth:`~Dataset.iter_batches`
                 Call this function to iterate over batches of data.
 
-            :meth:`~Dataset.native_batch_format`
+            :meth:`~Dataset.default_batch_format`
                 Call this function to determine the default batch type.
         """  # noqa: E501
         import pandas as pd
