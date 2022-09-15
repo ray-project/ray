@@ -304,6 +304,8 @@ class GetLogOptions:
             )
 
 
+# See the ActorTableData message in gcs.proto for all potential options that
+# can be included in this class.
 # TODO(sang): Replace it with Pydantic or gRPC schema (once interface is finalized).
 @dataclass(init=True)
 class ActorState(StateSchema):
