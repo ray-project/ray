@@ -1,9 +1,8 @@
+from collections import deque
+import gym
 import os
 import threading
-from collections import deque
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Set, Type
-
-import gym
 
 import ray.cloudpickle as pickle
 from ray.rllib.policy.policy import PolicySpec

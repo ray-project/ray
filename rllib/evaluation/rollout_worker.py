@@ -1488,7 +1488,6 @@ class RolloutWorker(ParallelIteratorWorker):
         return {
             "filters": filters,
             "state": state,
-            #"policy_config": self.policy_config,
         }
 
     @DeveloperAPI

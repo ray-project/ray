@@ -14,7 +14,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-def export_test(alg_name, framework="tf", multi_agent=False):
+def save_test(alg_name, framework="tf", multi_agent=False):
     cls, config = get_algorithm_class(alg_name, return_config=True)
     config["framework"] = framework
     # Switch on saving native DL-framework (tf, torch) model files.
@@ -89,13 +89,13 @@ class TestAlgorithmSave(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_export_appo_multi_agent(self):
+    def test_save_appo_multi_agent(self):
         for fw in framework_iterator():
-            export_test("APPO", fw, multi_agent=True)
+            save_test("APPO", fw, multi_agent=True)
 
-    def test_export_ppo(self):
+    def test_save_ppo(self):
         for fw in framework_iterator():
-            export_test("PPO", fw)
+            save_test("PPO", fw)
 
 
 if __name__ == "__main__":

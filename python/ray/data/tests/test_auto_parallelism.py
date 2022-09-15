@@ -4,6 +4,7 @@ from dataclasses import dataclass, astuple
 import ray
 from ray.data.context import DatasetContext
 from ray.data._internal.util import _autodetect_parallelism
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.tests.conftest import *  # noqa
 
 
@@ -123,17 +124,29 @@ def test_auto_parallelism_placement_group(shutdown_only):
 
     # 1/16 * 4 * 16 = 4
     pg = ray.util.placement_group([{"CPU": 1}])
-    num_blocks = ray.get(run.options(placement_group=pg).remote())
+    num_blocks = ray.get(
+        run.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
+    )
     assert num_blocks == 4, num_blocks
 
     # 2/16 * 4 * 16 = 8
     pg = ray.util.placement_group([{"CPU": 2}])
-    num_blocks = ray.get(run.options(placement_group=pg).remote())
+    num_blocks = ray.get(
+        run.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
+    )
     assert num_blocks == 8, num_blocks
 
     # 1/8 * 4 * 16 = 8
     pg = ray.util.placement_group([{"CPU": 1, "GPU": 1}])
-    num_blocks = ray.get(run.options(placement_group=pg).remote())
+    num_blocks = ray.get(
+        run.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
+    )
     assert num_blocks == 8, num_blocks
 
 
