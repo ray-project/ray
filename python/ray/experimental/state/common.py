@@ -333,6 +333,8 @@ class ActorState(StateSchema):
     name: Optional[str] = state_column(filterable=True)
     #: The pid of the actor. 0 if it is not created yet.
     pid: int = state_column(filterable=True)
+    #: The namespace of the actor.
+    ray_namespace: str = state_column(filterable=True)
     #: The runtime environment information of the actor.
     serialized_runtime_env: str = state_column(filterable=False, detail=True)
     #: The resource requirement of the actor.
