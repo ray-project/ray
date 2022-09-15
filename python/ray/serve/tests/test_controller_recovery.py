@@ -59,7 +59,7 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     # 'SERVE_CONTROLLER_ACTOR',
     # 'TransientConstructorFailureDeployment#NosHNA',
     # 'SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-node:192.168.86.165-0']
-    actor_infos = list_actors(address=ray.get_runtime_context()["address"])
+    actor_infos = list_actors()
     replica_names = [
         actor_info["name"]
         for actor_info in actor_infos
@@ -81,7 +81,7 @@ def test_recover_start_from_replica_actor_names(serve_instance):
         assert response.text == "hii"
 
     # Ensure recovered replica names are the same
-    recovered_actor_infos = list_actors(address=ray.get_runtime_context()["address"])
+    recovered_actor_infos = list_actors()
     recovered_replica_names = [
         actor_info["name"]
         for actor_info in recovered_actor_infos

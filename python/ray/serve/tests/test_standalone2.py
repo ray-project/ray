@@ -392,7 +392,7 @@ class TestDeployApp:
             == "9 pizzas please!"
         )
 
-        actors = list_actors(address=ray.get_runtime_context()["address"])
+        actors = list_actors()
 
         config = self.get_test_config()
         config["deployments"] = [
@@ -431,7 +431,7 @@ class TestDeployApp:
             timeout=15,
         )
 
-        updated_actors = list_actors(address=ray.get_runtime_context()["address"])
+        updated_actors = list_actors()
         assert len(updated_actors) == len(actors) + 3
 
     def test_deploy_app_update_timestamp(self, client: ServeControllerClient):

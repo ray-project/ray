@@ -34,9 +34,7 @@ def ping_endpoint(endpoint: str, params: str = ""):
 def assert_deployments_live(names: List[str]):
     """Checks if all deployments named in names have at least 1 living replica."""
 
-    ray_address = ray.get_runtime_context()["address"]
-
-    running_actor_names = [actor["name"] for actor in list_actors(address=ray_address)]
+    running_actor_names = [actor["name"] for actor in list_actors()]
 
     all_deployments_live, nonliving_deployment = True, ""
     for deployment_name in names:
