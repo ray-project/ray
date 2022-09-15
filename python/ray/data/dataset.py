@@ -2502,7 +2502,7 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> for batch in ray.data.range( # doctest: +SKIP
             ...     12,
-            ... ).iter_torch_batches(batch_size=4):
+            ... ).iter_tf_batches(batch_size=4):
             ...     print(batch.shape) # doctest: +SKIP
             (4, 1)
             (4, 1)
