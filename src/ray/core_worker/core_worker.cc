@@ -275,9 +275,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                     double timestamp) {
     return PushError(job_id, type, error_message, timestamp);
   };
+  task_group_manager_.reset(new TaskGroupManager());
   task_manager_.reset(new TaskManager(
       memory_store_,
       reference_counter_,
+      task_group_manager_,
       /*put_in_local_plasma_callback=*/
       [this](const RayObject &object, const ObjectID &object_id) {
         RAY_CHECK_OK(PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));

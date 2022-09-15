@@ -32,6 +32,7 @@
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
+#include "ray/core_worker/task_group.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
@@ -1143,6 +1144,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// Fields related to task submission.
   ///
+
+  /// Tracks groups of tasks processed on this worker for metrics reporting.
+  std::shared_ptr<TaskGroupManager> task_group_manager_;
 
   // Tracks the currently pending tasks.
   std::shared_ptr<TaskManager> task_manager_;

@@ -50,6 +50,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
                  << " retries";
+  task_group_manager_->AddPendingTask(spec);
 
   // Add references for the dependencies to the task.
   std::vector<ObjectID> task_deps;
