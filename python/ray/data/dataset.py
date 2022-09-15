@@ -376,12 +376,16 @@ class Dataset(Generic[T]):
             >>> ds
             Dataset(num_blocks=1, num_rows=3, schema=<class 'int'>)
 
-            Shared state can improve the performance of some workloads. To persist state
-            across function invocations, pass a callable type to ``fn`` and specify an
+            :ref:`Actors <actor-guide>` can improve the performance of some workloads.
+            For example, you can use :ref:`actors <actor-guide>` to load a model once
+            per worker instead of once per inference.
+
+            To transform batches with :ref:`actors <actor-guide>`, pass a callable type
+            to ``fn`` and specify an
             :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>`.
 
             In the example below, ``CachedModel`` is called on an autoscaling pool of
-            two to eight :ref:`Ray actors <actor-guide>`, each allocated one GPU by Ray.
+            two to eight :ref:`actors <actor-guide>`, each allocated one GPU by Ray.
 
             >>> from ray.data import ActorPoolStrategy
             >>> init_large_model = ... # doctest: +SKIP
