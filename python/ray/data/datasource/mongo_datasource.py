@@ -4,8 +4,7 @@ from typing import List, Optional
 import pymongo
 import pymongoarrow
 
-from ray.data.datasource import Datasource
-from ray.data.datasource.datasource import Reader, ReadTask
+from ray.data.datasource.datasource import Datasource, Reader, ReadTask
 from ray.data.block import (
     Block,
     BlockMetadata,
