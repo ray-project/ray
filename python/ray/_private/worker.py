@@ -2856,7 +2856,7 @@ def remote(
     >>>
     >>> f_with_2_gpus = f.options(num_gpus=2)
     >>> object_ref = f_with_2_gpus.remote()
-    >>> assert ray.get(object_ref) == (1, 2)
+    >>> assert ray.get(object_ref) == (1, 2) # doctest: +SKIP
 
     >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
     ... class Foo:
