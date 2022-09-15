@@ -9,11 +9,11 @@ import torch.nn as nn
 
 from models import SimpleCNN
 
-
-def download_dataset():
-    transform = transforms.Compose(
-    [transforms.ToTensor(),
-     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+def download_dataset(imgsize):
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Resize((imgsize, imgsize)),
+    ])
     trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
     testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
     return trainset, testset
@@ -62,13 +62,20 @@ def parse_args():
         default='large',
         required=False,
     )
+    parser.add_argument(
+        '--size',
+        help='Width/height to scale the images to. Only applies to CIFAR10 dataset. Prefer a power of 2.',
+        type=int,
+        default=32,
+        required=False,
+    )
     args = parser.parse_args()
     return args
 
 
 if __name__ == '__main__':
-    NUM_WORKERS = 0
-    BATCH_SIZE = 4
+    NUM_WORKERS = 8
+    BATCH_SIZE = 100
     EPOCHS = 1
 
     if not torch.cuda.is_available():
@@ -77,7 +84,7 @@ if __name__ == '__main__':
     print('Using device:', device)
 
     args = parse_args()
-    trainset, testset = download_dataset()
+    trainset, testset = download_dataset(args.size)
     print('Dataset Downloaded!')
     if args.download_only:
         exit()
@@ -87,8 +94,8 @@ if __name__ == '__main__':
     testloader = torch.utils.data.DataLoader(testset, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=args.pin)
     print('Dataset Loaded!')
 
-    print(f'Model: {args.model}, Pin: {args.pin}')
-    net = torchvision.models.vgg11() if args.model == 'large' else SimpleCNN()
+    print(f'Model: {args.model}, Pinned: {args.pin}, Size: {args.size}')
+    net = torchvision.models.vgg11() if args.model == 'large' else SimpleCNN(args.size)
     net.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
