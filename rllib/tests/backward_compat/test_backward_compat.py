@@ -3,6 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+import ray
 import ray.cloudpickle as pickle
 from ray.air.checkpoint import Checkpoint
 from ray.rllib.algorithms.algorithm import Algorithm
@@ -12,6 +13,14 @@ from ray.rllib.utils.test_utils import framework_iterator
 
 
 class TestBackwardCompatibility(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def test_register_all(self):
         """Tests the old (1.10) way of registering all Trainers.
 
@@ -51,7 +60,7 @@ class TestBackwardCompatibility(unittest.TestCase):
     def test_old_checkpoint_formats(self):
         """Tests, whether we remain backward compatible (>=2.0.0) wrt checkpoints."""
         for fw in framework_iterator():
-            for version in ["2.0.0"]:
+            for version in ["v0", "v1"]:
                 path_to_checkpoint = os.path.join(
                     str(Path.cwd()),
                     "checkpoints",
@@ -59,22 +68,9 @@ class TestBackwardCompatibility(unittest.TestCase):
                     "ppo_frozenlake_" + fw,
                 )
 
-                # Old version: Need to create algo first, then call `restore()`.
-                if version == "2.0.0":
-                    checkpoint = Checkpoint.from_directory(path_to_checkpoint)
-                    # Analyze version of checkpoint.
-                    with tempfile.TemporaryDirectory() as tmp_dir:
-                        checkpoint.to_directory(tmp_dir)
-                        state_file = os.path.join(tmp_dir, "checkpoint-2")
-                        state = pickle.load(open(state_file, "rb"))
-                        local_worker_state = pickle.loads(state["worker"])
-                        config = local_worker_state["policy_config"]
-                        config["callbacks"] = DefaultCallbacks
-                    algo = PPO(config=config)
-                    algo.restore(path_to_checkpoint)
-                # New version: Simply use new Algorithm.from_checkpoint staticmethod.
-                else:
-                    algo = Algorithm.from_checkpoint(path_to_checkpoint)
+                # Should work for both old ("v0") and newer versions of checkpoints:
+                # Simply use new Algorithm.from_checkpoint staticmethod.
+                algo = Algorithm.from_checkpoint(path_to_checkpoint)
 
                 print(algo.train())
                 algo.stop()

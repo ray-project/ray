@@ -1474,7 +1474,7 @@ class RolloutWorker(ParallelIteratorWorker):
         return return_filters
 
     @DeveloperAPI
-    def get_state(self) -> bytes:
+    def get_state(self) -> dict:
         """Serializes this RolloutWorker's current state and returns it.
 
         Returns:
@@ -1485,35 +1485,40 @@ class RolloutWorker(ParallelIteratorWorker):
         state = {}
         for pid in self.policy_map:
             state[pid] = self.policy_map[pid].get_state()
-        return pickle.dumps(
-            {
-                "filters": filters,
-                "state": state,
-                "policy_config": self.policy_config,
-            }
-        )
+        return {
+            "filters": filters,
+            "state": state,
+            #"policy_config": self.policy_config,
+        }
 
     @DeveloperAPI
-    def set_state(self, objs: bytes) -> None:
-        """Restores this RolloutWorker's state from a sequence of bytes.
+    def set_state(self, state: dict) -> None:
+        """Restores this RolloutWorker's state from a state dict.
 
         Args:
-            objs: The byte sequence to restore this worker's state from.
+            state: The state dict to restore this worker's state from.
 
         Examples:
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> # Create a RolloutWorker.
             >>> worker = ... # doctest: +SKIP
-            >>> state = worker.save() # doctest: +SKIP
+            >>> state = worker.get_state() # doctest: +SKIP
             >>> new_worker = RolloutWorker(...) # doctest: +SKIP
-            >>> new_worker.restore(state) # doctest: +SKIP
+            >>> new_worker.set_state(state) # doctest: +SKIP
         """
-        objs = pickle.loads(objs)
-        self.sync_filters(objs["filters"])
+        # Backward compatibility (old checkpoints' states would have the local
+        # worker state as a bytes object, not a dict).
+        if isinstance(state, bytes):
+            state = pickle.loads(state)
+
+        # TODO: Once filters are handled by connectors, get rid of the "filters"
+        #  key in `state` entirely.
+        self.sync_filters(state["filters"])
+
         connector_enabled = self.policy_config.get("enable_connectors", False)
-        for pid, state in objs["state"].items():
+        for pid, policy_state in state["state"].items():
             if pid not in self.policy_map:
-                spec = state.get("policy_spec", None)
+                spec = policy_state.get("policy_spec", None)
                 if spec is None:
                     logger.warning(
                         f"PolicyID '{pid}' was probably added on-the-fly (not"
@@ -1533,7 +1538,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         config=policy_spec.config,
                     )
             if pid in self.policy_map:
-                self.policy_map[pid].set_state(state)
+                self.policy_map[pid].set_state(policy_state)
 
     @DeveloperAPI
     def get_weights(
@@ -1925,13 +1930,15 @@ class RolloutWorker(ParallelIteratorWorker):
     def foreach_trainable_policy(self, func, **kwargs):
         return self.foreach_policy_to_train(func, **kwargs)
 
-    @Deprecated(new="RolloutWorker.get_state()", error=False)
-    def save(self, *args, **kwargs):
-        return self.get_state(*args, **kwargs)
+    @Deprecated(new="state_dict = RolloutWorker.get_state()", error=False)
+    def save(self):
+        state = self.get_state()
+        return pickle.dumps(state)
 
-    @Deprecated(new="RolloutWorker.set_state([state])", error=False)
-    def restore(self, *args, **kwargs):
-        return self.set_state(*args, **kwargs)
+    @Deprecated(new="RolloutWorker.set_state([state_dict])", error=False)
+    def restore(self, objs):
+        state_dict = pickle.loads(objs)
+        self.set_state(state_dict)
 
 
 def _determine_spaces_for_multi_agent_dict(

@@ -132,8 +132,7 @@ class TestAlgorithm(unittest.TestCase):
 
                 # Test restoring from the checkpoint (which has more policies
                 # than what's defined in the config dict).
-                test = pg.PG(config=config)
-                test.restore(checkpoint)
+                test = pg.PG.from_checkpoint(checkpoint)
 
                 # Make sure evaluation worker also got the restored, added policy.
                 def _has_policies(w):

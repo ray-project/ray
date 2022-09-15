@@ -929,8 +929,8 @@ class Policy(metaclass=ABCMeta):
         )
         state = self.get_state()
         os.makedirs(export_dir, exist_ok=True)
-        pickle.dump(state, open(os.path.join(export_dir, "state.pkl"), "w+b"))
-        self.export_model(export_dir)
+        pickle.dump(state, open(os.path.join(export_dir, "policy_state.pkl"), "w+b"))
+        self.export_model(os.path.join(export_dir, "model"))
         checkpoint = Checkpoint.from_directory(export_dir)
         return checkpoint
 

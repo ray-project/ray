@@ -6,11 +6,10 @@ import shutil
 import unittest
 
 import ray
-from ray.air.checkpoint import Checkpoint
 from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.files import dict_contents_to_dir
+from ray.rllib.utils.files import dict_contents_to_dir, dir_contents_to_dict
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -65,7 +64,12 @@ CONFIGS = {
 }
 
 
-def export_test(alg_name, framework="tf", multi_agent=False):
+def export_test(
+    alg_name,
+    framework="tf",
+    multi_agent=False,
+    tf_expected_to_work=True,
+):
     cls, config = get_algorithm_class(alg_name, return_config=True)
     config["framework"] = framework
     # Switch on saving native DL-framework (tf, torch) model files.
@@ -99,46 +103,39 @@ def export_test(alg_name, framework="tf", multi_agent=False):
     print("Exporting policy checkpoint", alg_name, export_dir)
     if multi_agent:
         algo.export_policy_checkpoint(export_dir, policy_id="pol1")
-        algo.export_policy_checkpoint(export_dir + "_2", policy_id="pol2")
 
     else:
         algo.export_policy_checkpoint(export_dir, policy_id=DEFAULT_POLICY_ID)
-    checkpoint = Checkpoint.from_directory(export_dir)
 
-    checkpoint_dict = checkpoint.to_dict()
     # Only if keras model gets properly saved by the Policy's get_state() method.
     # NOTE: This is not the case (yet) for TF Policies like SAC or DQN, which use
     # ModelV2s that have more than one keras "base_model" properties in them. For
     # example, SACTfModel contains `q_net` and `action_model`, both of which have
     # their own `base_model`.
-    if "model" in checkpoint_dict:
-        dict_contents_to_dir(checkpoint_dict["model"], export_dir)
 
-        # Test loading exported model and perform forward pass.
-        if framework == "torch":
-            model = torch.load(os.path.join(export_dir, "model.pt"))
-            assert model
-            results = model(
-                input_dict={"obs": torch.from_numpy(test_obs)},
-                # TODO (sven): Make non-RNN models NOT expect these args at all.
-                state=[torch.tensor(0)],  # dummy value
-                seq_lens=torch.tensor(0),  # dummy value
-            )
-            assert len(results) == 2
-            assert results[0].shape == (1, 2)
-            assert results[1] == [torch.tensor(0)]  # dummy
-        elif os.path.exists(os.path.join(export_dir, "saved_model.pb")):
-            model = tf.saved_model.load(export_dir)
-            assert model
-            results = model(tf.convert_to_tensor(test_obs, dtype=tf.float32))
-            assert len(results) == 2
-            assert results[0].shape == (1, 2)
-            # TODO (sven): Make non-RNN models NOT return states (empty list).
-            assert results[1].shape == (1, 1)  # dummy state-out
+    # Test loading exported model and perform forward pass.
+    if framework == "torch":
+        model = torch.load(os.path.join(export_dir, "model", "model.pt"))
+        assert model
+        results = model(
+            input_dict={"obs": torch.from_numpy(test_obs)},
+            # TODO (sven): Make non-RNN models NOT expect these args at all.
+            state=[torch.tensor(0)],  # dummy value
+            seq_lens=torch.tensor(0),  # dummy value
+        )
+        assert len(results) == 2
+        assert results[0].shape in [(1, 2), (1, 3), (1, 256)], results[0].shape
+        assert results[1] == [torch.tensor(0)]  # dummy
+    elif tf_expected_to_work:
+        model = tf.saved_model.load(os.path.join(export_dir, "model"))
+        assert model
+        results = model(tf.convert_to_tensor(test_obs, dtype=tf.float32))
+        assert len(results) == 2
+        assert results[0].shape in [(1, 2), (1, 3), (1, 256)], results[0].shape
+        # TODO (sven): Make non-RNN models NOT return states (empty list).
+        assert results[1].shape == (1, 1), results[1].shape  # dummy state-out
 
     shutil.rmtree(export_dir)
-    if multi_agent:
-        shutil.rmtree(export_dir + "_2")
 
     print("Exporting policy (`default_policy`) model ", alg_name, export_dir)
     # Expect an error due to not being able to identify, which exact keras
@@ -153,32 +150,31 @@ def export_test(alg_name, framework="tf", multi_agent=False):
     # Test loading exported model and perform forward pass.
     if framework == "torch":
         filename = os.path.join(export_dir, "model.pt")
-        if os.path.exists(filename):
-            model = torch.load(filename)
-            assert model
-            results = model(
-                input_dict={"obs": torch.from_numpy(test_obs)},
-                # TODO (sven): Make non-RNN models NOT expect these args at all.
-                state=[torch.tensor(0)],  # dummy value
-                seq_lens=torch.tensor(0),  # dummy value
-            )
-            assert len(results) == 2
-            assert results[0].shape in [(1, 2), (1, 3), (1, 256)]
-            assert results[1] == [torch.tensor(0)]  # dummy
+        model = torch.load(filename)
+        assert model
+        results = model(
+            input_dict={"obs": torch.from_numpy(test_obs)},
+            # TODO (sven): Make non-RNN models NOT expect these args at all.
+            state=[torch.tensor(0)],  # dummy value
+            seq_lens=torch.tensor(0),  # dummy value
+        )
+        assert len(results) == 2
+        assert results[0].shape in [(1, 2), (1, 3), (1, 256)], results[0].shape
+        assert results[1] == [torch.tensor(0)]  # dummy
 
     # Only if keras model gets properly saved by the Policy's export_model() method.
     # NOTE: This is not the case (yet) for TF Policies like SAC, which use ModelV2s
     # that have more than one keras "base_model" properties in them. For example,
     # SACTfModel contains `q_net` and `action_model`, both of which have their own
     # `base_model`.
-    elif os.path.exists(os.path.join(export_dir, "saved_model.pb")):
+    elif tf_expected_to_work:
         model = tf.saved_model.load(export_dir)
         assert model
         results = model(tf.convert_to_tensor(test_obs, dtype=tf.float32))
         assert len(results) == 2
-        assert results[0].shape in [(1, 2), (1, 3), (1, 256)]
+        assert results[0].shape in [(1, 2), (1, 3), (1, 256)], results[0].shape
         # TODO (sven): Make non-RNN models NOT return states (empty list).
-        assert results[1].shape == (1, 1)  # dummy state-out
+        assert results[1].shape == (1, 1), results[1].shape  # dummy state-out
 
     if os.path.exists(export_dir):
         shutil.rmtree(export_dir)
@@ -205,15 +201,6 @@ class TestExportModel(unittest.TestCase):
         for fw in framework_iterator():
             export_test("APPO", fw)
 
-    def test_export_ddpg(self):
-        # NOTE: DDPGTorchModel cannot be pickled due to a Lambda layer being used in it.
-        for fw in framework_iterator():
-            export_test("DDPG", fw)
-
-    def test_export_dqn(self):
-        for fw in framework_iterator():
-            export_test("DQN", fw)
-
     def test_export_ppo(self):
         for fw in framework_iterator():
             export_test("PPO", fw)
@@ -224,7 +211,7 @@ class TestExportModel(unittest.TestCase):
 
     def test_export_sac(self):
         for fw in framework_iterator():
-            export_test("SAC", fw)
+            export_test("SAC", fw, tf_expected_to_work=False)
 
 
 if __name__ == "__main__":

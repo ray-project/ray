@@ -52,6 +52,11 @@ ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL = """Could not save keras model under 
        variables not being properly initialized.
 """
 
+ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL = """Could not save torch model under self[TorchPolicy].model!
+    This is most likely due to the fact that you are using an Algorithm that 
+    uses a Catalog-generated TorchModelV2 subclass, which is torch.save() cannot pickle.
+"""
+
 # -------
 # HOWTO_ strings can be added to any error/warning/into message
 # to eplain to the user, how to actually fix the encountered problem.

@@ -49,8 +49,9 @@ def export_test(alg_name, framework="tf", multi_agent=False):
     export_dir = algo.save(export_dir)
     model_dir = os.path.join(
         export_dir,
-        "models",
+        "policies",
         "pol1" if multi_agent else DEFAULT_POLICY_ID,
+        "model",
     )
 
     # Test loading exported model and perform forward pass.
