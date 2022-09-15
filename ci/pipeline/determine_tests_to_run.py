@@ -25,7 +25,7 @@ def list_changed_files(commit_range):
         list: List of changed files within the commit range
     """
 
-    command = ["git", "diff", "--name-only", commit_range, "--"]
+    command = ["git", "diff", "--name-only", "--", commit_range]
     out = subprocess.check_output(command)
     return [s.strip() for s in out.decode().splitlines() if s is not None]
 
