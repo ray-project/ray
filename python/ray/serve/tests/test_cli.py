@@ -532,7 +532,8 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     ray_context = ray.init(address="auto", namespace=SERVE_NAMESPACE)
     serve.start(detached=True)
     wait_for_condition(
-        lambda: len(list_actors(address=ray_context["address"])) == 4, timeout=15
+        lambda: len(list_actors(address=ray_context.address_info["address"])) == 4,
+        timeout=15,
     )
 
     # Kill controller
@@ -552,7 +553,8 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     # Restore testing controller
     serve.start(detached=True)
     wait_for_condition(
-        lambda: len(list_actors(address=ray_context["address"])) == 4, timeout=15
+        lambda: len(list_actors(address=ray_context.address_info["address"])) == 4,
+        timeout=15,
     )
     serve.shutdown()
     ray.shutdown()
