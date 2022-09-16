@@ -62,4 +62,4 @@ WORKDIR /ray
 # Below should be re-run each time
 COPY . .
 
-RUN NO_DL=1 NO_BUILD=1 ./ci/env/install-dependencies.sh init
+RUN ./ci/env/install-dependencies.sh init

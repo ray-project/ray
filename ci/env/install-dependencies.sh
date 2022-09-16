@@ -296,7 +296,7 @@ install_pip_packages() {
 
   if [ -n "${PYTHON-}" ] && [ "${MINIMAL_INSTALL-}" != 1 ]; then
     # Remove this entire section once Serve dependencies are fixed.
-    if [ "${NO_DL-}" != 1 ] && [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
+    if ([ -z "${BUILDKITE-}" ] || [ "${DL-}" = "1" ]) && [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
       # We want to install the CPU version only.
       pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_dl.txt
     fi
@@ -430,7 +430,8 @@ install_pip_packages() {
 install_dependencies() {
   install_bazel
 
-  if [ "${NO_BUILD-}" != "1" ]; then
+  # Only install on buildkite if requested
+  if [ -z "${BUILDKITE-}" ] || [ "${BUILD-}" = "1" ]; then
     install_base
     install_toolchains
   fi
@@ -441,7 +442,8 @@ install_dependencies() {
 
   install_upgrade_pip
 
-  if [ "${NO_BUILD-}" != "1" ]; then
+  # Only install on buildkite if requested
+  if [ -z "${BUILDKITE-}" ] || [ "${BUILD-}" = "1" ]; then
     install_nvm
     if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
       install_node
