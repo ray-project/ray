@@ -11,3 +11,5 @@ WORKDIR /ray
 
 # Copy new ray files
 COPY . .
+
+RUN RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
