@@ -133,17 +133,17 @@ class HttpServerDashboardHead:
                 method=request.method, endpoint=request.path, http_status=status_tag
             ).inc()
 
-
     async def run(self, modules):
         # Bind http routes of each module.
         for c in modules:
             dashboard_optional_utils.ClassMethodRouteTable.bind(c)
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
-        app = aiohttp.web.Application(client_max_size=100 * 1024 ** 2, middlewares=[self.metrics_middleware])
+        app = aiohttp.web.Application(
+            client_max_size=100 * 1024 ** 2, middlewares=[self.metrics_middleware]
+        )
         app["metrics"] = self._setup_metrics()
         app.add_routes(routes=routes.bound_routes())
-        
 
         self.runner = aiohttp.web.AppRunner(
             app,
@@ -187,7 +187,7 @@ class HttpServerDashboardHead:
 
         # Setup prometheus metrics export server
         _initialize_internal_kv(self.gcs_client)
-        address = f"{self.http_host}:{DASHBOARD_METRIC_PORT}"
+        address = f"{self.head_node_ip}:{DASHBOARD_METRIC_PORT}"
         _internal_kv_put("DashboardMetricsAddress", address, True)
         if prometheus_client:
             try:
@@ -212,7 +212,7 @@ class HttpServerDashboardHead:
             logger.warning(
                 "`prometheus_client` not found, so metrics will not be exported."
             )
-        
+
         return metrics
 
     async def cleanup(self):

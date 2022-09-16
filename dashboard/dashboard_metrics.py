@@ -23,7 +23,8 @@ try:
     class DashboardPrometheusMetrics:
         def __init__(self, registry: Optional[CollectorRegistry] = None):
             self.registry: CollectorRegistry = registry or CollectorRegistry(
-                auto_describe=True)
+                auto_describe=True
+            )
             # Buckets: 5ms, 10ms, 25ms, 50ms, 75ms
             #          100ms, 250ms, 500ms, 750ms
             #          1s, 2.5s, 5s, 7.5s, 10s
