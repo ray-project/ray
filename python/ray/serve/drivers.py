@@ -18,8 +18,7 @@ from ray import serve
 import sys
 import asyncio
 import grpc
-from ray.serve.generated.serve_pb2 import PredictResponse
-from ray.serve.generated.serve_pb2_grpc import PredictAPIsServiceServicer
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve._private.constants import DEFAULT_GRPC_PORT
 
 import mock
@@ -214,7 +213,7 @@ class ServegRPCIngress:
         await self.server.wait_for_termination()
 
 
-if isinstance(PredictAPIsServiceServicer, mock.MagicMock):
+if isinstance(serve_pb2_grpc.PredictAPIsServiceServicer, mock.MagicMock):
     # The reason we have this fake Driver class is that sphinx-build is to mock
     # PredictAPIsServiceServicer and it will cause the metaclass conflict issue
     # from multiple inheritance
@@ -226,7 +225,7 @@ if isinstance(PredictAPIsServiceServicer, mock.MagicMock):
 else:
 
     @serve.deployment(driver_deployment=True, ray_actor_options={"num_cpus": 0})
-    class gRPCDriver(ServegRPCIngress, PredictAPIsServiceServicer):
+    class gRPCDriver(ServegRPCIngress, serve_pb2_grpc.PredictAPIsServiceServicer):
         """
         gRPC Driver that responsible for redirecting the gRPC requests
         and hold dag handle
@@ -252,4 +251,4 @@ else:
             """
             res = await (await self.dag.remote(dict(request.input)))
 
-            return PredictResponse(prediction=res)
+            return serve_pb2.PredictResponse(prediction=res)
