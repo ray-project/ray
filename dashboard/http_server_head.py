@@ -114,26 +114,25 @@ class HttpServerDashboardHead:
         assert self.http_host and self.http_port
         return self.http_host, self.http_port
 
-    async def metrics_middleware(self, app, handler):
-        async def middleware_handler(request):
-            start_time = time.monotonic()
-            try:
-                response = await handler(request)
-                status_tag = f"{floor(response.status / 100)}xx"
-                return response
-            except Exception:
-                status_tag = "5xx"
-                raise
-            finally:
-                resp_time = time.monotonic() - start_time
-                request.app["metrics"].metrics_request_duration.labels(
-                    endpoint=request.path, http_status=status_tag
-                ).observe(resp_time)
-                request.app["metrics"].metrics_request_count.labels(
-                    method=request.method, endpoint=request.path, http_status=status_tag
-                ).inc()
+    @aiohttp.web.middleware
+    async def metrics_middleware(self, request, handler):
+        start_time = time.monotonic()
+        try:
+            response = await handler(request)
+            status_tag = f"{floor(response.status / 100)}xx"
+            return response
+        except Exception:
+            status_tag = "5xx"
+            raise
+        finally:
+            resp_time = time.monotonic() - start_time
+            request.app["metrics"].metrics_request_duration.labels(
+                endpoint=request.path, http_status=status_tag
+            ).observe(resp_time)
+            request.app["metrics"].metrics_request_count.labels(
+                method=request.method, endpoint=request.path, http_status=status_tag
+            ).inc()
 
-        return middleware_handler
 
     async def run(self, modules):
         # Bind http routes of each module.
@@ -141,9 +140,10 @@ class HttpServerDashboardHead:
             dashboard_optional_utils.ClassMethodRouteTable.bind(c)
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
-        app = aiohttp.web.Application(client_max_size=100 * 1024 ** 2)
+        app = aiohttp.web.Application(client_max_size=100 * 1024 ** 2, middlewares=[self.metrics_middleware])
+        app["metrics"] = self._setup_metrics()
         app.add_routes(routes=routes.bound_routes())
-        self._setup_metrics(app)
+        
 
         self.runner = aiohttp.web.AppRunner(
             app,
@@ -182,14 +182,12 @@ class HttpServerDashboardHead:
             logger.info(r)
         logger.info("Registered %s routes.", len(dump_routes))
 
-    def _setup_metrics(self, app):
+    def _setup_metrics(self):
         metrics = DashboardPrometheusMetrics()
-        app["metrics"] = metrics
-        app.middlewares.insert(0, self.metrics_middleware)
 
         # Setup prometheus metrics export server
         _initialize_internal_kv(self.gcs_client)
-        address = f"{self.head_node_ip}:{DASHBOARD_METRIC_PORT}"
+        address = f"{self.http_host}:{DASHBOARD_METRIC_PORT}"
         _internal_kv_put("DashboardMetricsAddress", address, True)
         if prometheus_client:
             try:
@@ -214,6 +212,8 @@ class HttpServerDashboardHead:
             logger.warning(
                 "`prometheus_client` not found, so metrics will not be exported."
             )
+        
+        return metrics
 
     async def cleanup(self):
         # Wait for finish signal.
