@@ -371,7 +371,7 @@ def get_maml_tf_policy(name: str, base: type) -> type:
     class MAMLTFPolicy(KLCoeffMixin, ValueNetworkMixin, base):
         def __init__(
             self,
-            obs_space,
+            observation_space,
             action_space,
             config,
             existing_model=None,
@@ -386,7 +386,7 @@ def get_maml_tf_policy(name: str, base: type) -> type:
             # Initialize base class.
             base.__init__(
                 self,
-                obs_space,
+                observation_space,
                 action_space,
                 config,
                 existing_inputs=existing_inputs,

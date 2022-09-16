@@ -336,10 +336,13 @@ class Monitor:
             try:
                 if self.stop_event and self.stop_event.is_set():
                     break
+                gcs_request_start_time = time.time()
                 self.update_load_metrics()
+                gcs_request_time = time.time() - gcs_request_start_time
                 self.update_resource_requests()
                 self.update_event_summary()
                 status = {
+                    "gcs_request_time": gcs_request_time,
                     "load_metrics_report": asdict(self.load_metrics.summary()),
                     "time": time.time(),
                     "monitor_pid": os.getpid(),
@@ -360,6 +363,11 @@ class Monitor:
                     autoscaler_summary = self.autoscaler.summary()
                     if autoscaler_summary:
                         status["autoscaler_report"] = asdict(autoscaler_summary)
+                        status[
+                            "non_terminated_nodes_time"
+                        ] = (
+                            self.autoscaler.non_terminated_nodes.non_terminated_nodes_time  # noqa: E501
+                        )
 
                     for msg in self.event_summarizer.summary():
                         # Need to prefix each line of the message for the lines to
