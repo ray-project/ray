@@ -1093,6 +1093,17 @@ class SearchSpaceTest(unittest.TestCase):
 
             self.assertIn(config["domain_nested"], ["M", "N", "O", "P"])
 
+    def testConvertHyperOptConstant(self):
+        from ray.tune.search.hyperopt import HyperOptSearch
+
+        config = {"a": 4}
+
+        searcher = HyperOptSearch()
+        with self.assertRaisesRegex(
+            RuntimeError, "This issue can also come up with HyperOpt"
+        ):
+            searcher.set_search_properties(metric="a", mode="max", config=config)
+
     def testSampleBoundsHyperopt(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 
