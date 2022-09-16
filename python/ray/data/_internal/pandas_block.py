@@ -152,6 +152,14 @@ class PandasBlockAccessor(TableBlockAccessor):
         table = self._table.take(indices)
         table.reset_index(drop=True, inplace=True)
         return table
+    
+    def select(self, keys: List[KeyFn]) -> "pandas.DataFrame":
+        if not all(isinstance(key, str) for key in keys):
+            raise ValueError(
+                "keys must be a list of strings when aggregating on Pandas blocks, "
+                f"but got: {type(keys)}."
+            )
+        return self._table[keys]
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pandas.DataFrame":
         table = self._table.sample(frac=1, random_state=random_seed)

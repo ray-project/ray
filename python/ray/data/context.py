@@ -63,7 +63,7 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
 DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
 
 # Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
-DEFAULT_USE_POLARS = False
+DEFAULT_USE_POLARS = True
 
 # Whether to estimate in-memory decoding data size for data source.
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
