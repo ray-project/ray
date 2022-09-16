@@ -190,7 +190,8 @@ Supported File Formats
 
   Read binary files into a ``Dataset``. Each binary file will be treated as a single row
   of opaque bytes. These bytes can be decoded into tensor, tabular, text, or any other
-  kind of data using ``ds.map()`` to apply a per-row decoding UDF.
+  kind of data using :meth:`~ray.data.Dataset.map_batches` to apply a per-row decoding
+  :ref:`user-defined function <transform_datasets_writing_udfs>`.
 
   Although this simple example demonstrates reading a single file, note that Datasets
   can also read directories of binary files, with one bytes block created per file.
@@ -548,7 +549,7 @@ converts it into a Ray Dataset directly.
 Custom Datasources
 ------------------
 
-Datasets can read and write in parallel to `custom datasources <package-ref.html#custom-datasource-api>`__ defined in Python.
+Datasets can read and write in parallel to :ref:`custom datasources <data_source_api>` defined in Python.
 Once you have implemented `YourCustomDataSource`, you can use it like any other source in Ray Data:
 
 .. code-block:: python

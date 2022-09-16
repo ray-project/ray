@@ -6,6 +6,7 @@ import os
 import random
 import string
 import subprocess
+import sys
 import time
 import traceback
 from asyncio.tasks import FIRST_COMPLETED
@@ -20,6 +21,8 @@ from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
+    JOB_ACTOR_NAME_TEMPLATE,
+    SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfo,
     JobInfoStorageClient,
 )
@@ -35,6 +38,21 @@ try:
     create_task = asyncio.create_task
 except AttributeError:
     create_task = asyncio.ensure_future
+
+# Windows requires additional packages for proper process control.
+if sys.platform == "win32":
+    try:
+        import win32api
+        import win32con
+        import win32job
+    except (ModuleNotFoundError, ImportError) as e:
+        win32api = None
+        win32con = None
+        win32job = None
+        logger.warning(
+            "Failed to Import win32api. For best usage experience run "
+            f"'conda install pywin32'. Import error: {e}"
+        )
 
 
 def generate_job_id() -> str:
@@ -140,6 +158,9 @@ class JobSupervisor:
         # fire and forget call from outer job manager to this actor
         self._stop_event = asyncio.Event()
 
+        # Windows Job Object used to handle stopping the child processes.
+        self._win32_job_object = None
+
     def _get_driver_runtime_env(self) -> Dict[str, Any]:
         # Get the runtime_env set for the supervisor actor.
         curr_runtime_env = dict(ray.get_runtime_context().runtime_env)
@@ -159,9 +180,13 @@ class JobSupervisor:
         Runs the entrypoint command as a child process, streaming stderr &
         stdout to given log files.
 
+        Unix systems:
         Meanwhile we start a demon process and group driver
         subprocess in same pgid, such that if job actor dies, entire process
         group also fate share with it.
+
+        Windows systems:
+        A jobObject is created to enable fate sharing for the entire process group.
 
         Args:
             logs_path: File path on head node's local disk to store driver
@@ -179,20 +204,47 @@ class JobSupervisor:
                 stderr=subprocess.STDOUT,
             )
             parent_pid = os.getpid()
-            # Create new pgid with new subprocess to execute driver command
             child_pid = child_process.pid
-            child_pgid = os.getpgid(child_pid)
+            # Create new pgid with new subprocess to execute driver command
 
-            # Open a new subprocess to kill the child process when the parent
-            # process dies kill -s 0 parent_pid will succeed if the parent is
-            # alive. If it fails, SIGKILL the child process group and exit
-            subprocess.Popen(
-                f"while kill -s 0 {parent_pid}; do sleep 1; done; kill -9 -{child_pgid}",  # noqa: E501
-                shell=True,
-                # Suppress output
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            if sys.platform != "win32":
+                child_pgid = os.getpgid(child_pid)
+
+                # Open a new subprocess to kill the child process when the parent
+                # process dies kill -s 0 parent_pid will succeed if the parent is
+                # alive. If it fails, SIGKILL the child process group and exit
+                subprocess.Popen(
+                    f"while kill -s 0 {parent_pid}; do sleep 1; done; kill -9 -{child_pgid}",  # noqa: E501
+                    shell=True,
+                    # Suppress output
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+            elif sys.platform == "win32" and win32api:
+                # Create a JobObject to which the child process (and its children)
+                # will be connected. This job object can be used to kill the child
+                # processes explicitly or when the jobObject gets deleted during
+                # garbage collection.
+                self._win32_job_object = win32job.CreateJobObject(None, "")
+                win32_job_info = win32job.QueryInformationJobObject(
+                    self._win32_job_object, win32job.JobObjectExtendedLimitInformation
+                )
+                win32_job_info["BasicLimitInformation"][
+                    "LimitFlags"
+                ] = win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                win32job.SetInformationJobObject(
+                    self._win32_job_object,
+                    win32job.JobObjectExtendedLimitInformation,
+                    win32_job_info,
+                )
+                child_handle = win32api.OpenProcess(
+                    win32con.PROCESS_TERMINATE | win32con.PROCESS_SET_QUOTA,
+                    False,
+                    child_pid,
+                )
+                win32job.AssignProcessToJobObject(self._win32_job_object, child_handle)
+
             return child_process
 
     def _get_driver_env_vars(self) -> Dict[str, str]:
@@ -278,8 +330,11 @@ class JobSupervisor:
 
             if self._stop_event.is_set():
                 polling_task.cancel()
-                # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
-                child_process.kill()
+                if sys.platform == "win32" and self._win32_job_object:
+                    win32job.TerminateJobObject(self._win32_job_object, -1)
+                elif sys.platform != "win32":
+                    # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
+                    child_process.kill()
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
@@ -325,9 +380,6 @@ class JobManager:
     goes down.
     """
 
-    JOB_ACTOR_NAME_TEMPLATE = (
-        f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_id}"
-    )
     # Time that we will sleep while tailing logs if no new log line is
     # available.
     LOG_TAIL_SLEEP_S = 1
@@ -355,7 +407,10 @@ class JobManager:
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
-            return ray.get_actor(self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id))
+            return ray.get_actor(
+                JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id),
+                namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
+            )
         except ValueError:  # Ray returns ValueError for nonexistent actor.
             return None
 
@@ -531,10 +586,11 @@ class JobManager:
                 )
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
-                name=self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
+                name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=0,
                 scheduling_strategy=scheduling_strategy,
                 runtime_env=self._get_supervisor_runtime_env(runtime_env),
+                namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
             ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)
             supervisor.run.remote(_start_signal_actor=_start_signal_actor)
 

@@ -341,10 +341,25 @@ def read_parquet(
         >>> # Read multiple local files.
         >>> ray.data.read_parquet(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
+        >>> # Specify a schema for the parquet file.
+        >>> import pyarrow as pa
+        >>> fields = [("sepal.length", pa.float64()),
+        ...           ("sepal.width", pa.float64()),
+        ...           ("petal.length", pa.float64()),
+        ...           ("petal.width", pa.float64()),
+        ...           ("variety", pa.string())]
+        >>> ray.data.read_parquet("example://iris.parquet",
+        ...     schema=pa.schema(fields))
+        Dataset(num_blocks=..., num_rows=150, schema={sepal.length: double, ...})
+
+        For further arguments you can pass to pyarrow as a keyword argument, see
+        https://arrow.apache.org/docs/python/generated/pyarrow.parquet.read_table.html
+
     Args:
         paths: A single file path or directory, or a list of file paths. Multiple
             directories are not supported.
-        filesystem: The filesystem implementation to read from.
+        filesystem: The filesystem implementation to read from. These are specified in
+            https://arrow.apache.org/docs/python/api/filesystems.html#filesystem-implementations.
         columns: A list of column names to read.
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the number of files of the dataset.
@@ -357,7 +372,8 @@ def read_parquet(
             `arr.tobytes()`).
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
-        arrow_parquet_args: Other parquet read options to pass to pyarrow.
+        arrow_parquet_args: Other parquet read options to pass to pyarrow, see
+            https://arrow.apache.org/docs/python/generated/pyarrow.parquet.read_table.html
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -1221,7 +1237,7 @@ def _get_read_tasks(
     cur_pg: Optional[PlacementGroup],
     parallelism: int,
     kwargs: dict,
-) -> (int, int, List[ReadTask]):
+) -> Tuple[int, int, List[ReadTask]]:
     """Generates read tasks.
 
     Args:

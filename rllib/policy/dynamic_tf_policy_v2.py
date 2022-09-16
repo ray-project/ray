@@ -1,10 +1,9 @@
+from collections import OrderedDict
+import gym
 import logging
 import re
-from collections import OrderedDict
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
-
-import gym
 import tree  # pip install dm_tree
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -712,7 +711,10 @@ class DynamicTFPolicyV2(TFPolicy):
                 logger.info("Adding extra-action-fetch `{}` to view-reqs.".format(key))
                 self.view_requirements[key] = ViewRequirement(
                     space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype.name
+                        -1.0,
+                        1.0,
+                        shape=value.shape.as_list()[1:],
+                        dtype=value.dtype.name,
                     ),
                     used_for_compute_actions=False,
                 )
