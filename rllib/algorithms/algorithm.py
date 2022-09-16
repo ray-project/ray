@@ -1907,17 +1907,20 @@ class Algorithm(Trainable):
         if local_worker_state:
             policies = local_worker_state.pop("state", {})
 
-        # Write state (w/o policies or filters) to disk.
-        state_file = os.path.join(checkpoint_dir, "state.pkl")
-
         # TODO: Once filters have been outsourced into connectors,
         #  we should remove this hack.
         state["filters"] = local_worker_state.get("filters", {})
 
-        # Add checkpoint version.
+        # Add RLlib checkpoint version.
         state["__version__"] = "v1"
 
+        # Write state (w/o policies or filters) to disk.
+        state_file = os.path.join(checkpoint_dir, "state.pkl")
         pickle.dump(state, open(state_file, "wb"))
+        # Write checkpoint version separately. This file will NOT be used
+        # by RLlib anywhere, it is solely for the user's convenience.
+        with open(os.path.join(checkpoint_dir, "checkpoint_version.txt"), "w") as f:
+            f.write(state["__version__"])
 
         # Write individual policies to disk.
         if (
