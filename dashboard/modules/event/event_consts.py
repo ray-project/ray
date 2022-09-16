@@ -16,7 +16,10 @@ EVENT_AGENT_REPORT_INTERVAL_SECONDS = 0.1
 EVENT_AGENT_RETRY_TIMES = 10
 EVENT_AGENT_CACHE_SIZE = 10240
 # Event sources
-EVENT_HEAD_MONITOR_SOURCE_TYPES = [event_pb2.Event.SourceType.Name(event_pb2.Event.GCS)]
+EVENT_HEAD_MONITOR_SOURCE_TYPES = [
+    event_pb2.Event.SourceType.Name(event_pb2.Event.GCS),
+    "MONITOR",
+]
 EVENT_AGENT_MONITOR_SOURCE_TYPES = list(
     set(event_pb2.Event.SourceType.keys()) - set(EVENT_HEAD_MONITOR_SOURCE_TYPES)
 )

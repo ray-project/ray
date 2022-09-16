@@ -22,6 +22,8 @@ from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.util.debug import log_once
+from ray._private.event_logger import EventLogger
+
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +248,7 @@ class ReporterAgent(
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
         )
+        self.event_logger = EventLogger("MONITOR", "/tmp/ray/")
 
     async def GetProfilingStats(self, request, context):
         pid = request.pid
@@ -794,6 +797,12 @@ class ReporterAgent(
                 )
 
                 stats = self._get_all_stats()
+                # mem_perc = stats["mem"][2]
+                # if mem_perc > 0.1:
+                #     self.event_logger.emit(
+                #         type="RESOURCE_PRESSURE",
+                #         message=f"High memory usage {mem_perc}%"
+                #     )
                 # Report stats only when metrics collection is enabled.
                 if not self._metrics_collection_disabled:
                     cluster_stats = (

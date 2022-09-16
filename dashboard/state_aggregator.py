@@ -30,6 +30,7 @@ from ray.experimental.state.common import (
     StateSummary,
     ActorSummaries,
     ObjectSummaries,
+    ClusterEventState,
     filter_fields,
     PredicateType,
 )
@@ -39,6 +40,7 @@ from ray.experimental.state.state_manager import (
 )
 from ray.runtime_env import RuntimeEnv
 from ray.experimental.state.util import convert_string_to_type
+from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
 
@@ -591,6 +593,26 @@ class StateAPIManager:
             result=result,
             partial_failure_warning=partial_failure_warning,
             total=total_runtime_envs,
+            num_after_truncation=num_after_truncation,
+            num_filtered=num_filtered,
+        )
+
+    async def list_cluster_events(self, *, option: ListApiOptions) -> ListApiResponse:
+        result = []
+        for _, events in DataSource.events.items():
+            for _, event in events.items():
+                logger.info(event)
+                result.append(event)
+
+        num_after_truncation = len(result)
+        result = self._filter(result, option.filters, ClusterEventState, option.detail)
+        num_filtered = len(result)
+        # Sort to make the output deterministic.
+        result.sort(key=lambda entry: entry["timestamp"])
+        result = list(islice(result, option.limit))
+        return ListApiResponse(
+            result=result,
+            total=len(result),
             num_after_truncation=num_after_truncation,
             num_filtered=num_filtered,
         )

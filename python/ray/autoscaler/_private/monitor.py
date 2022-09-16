@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, Optional, Union
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
+from ray._private.event_logger import EventLogger
 from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.gcs_utils import GcsClient
 from ray._private.ray_logging import setup_component_logger
@@ -136,6 +137,7 @@ class Monitor:
         self,
         address: str,
         autoscaling_config: Union[str, Callable[[], Dict[str, Any]]],
+        logs_dir: str,
         redis_password: Optional[str] = None,
         prefix_cluster_info: bool = False,
         monitor_ip: Optional[str] = None,
@@ -184,6 +186,8 @@ class Monitor:
         # If set, we are in a manually created cluster (non-autoscaling) and
         # simply mirroring what the GCS tells us the cluster node types are.
         self.readonly_config = None
+        self.event_logger = EventLogger("MONITOR", logs_dir)
+        self.event_logger.emit(type="AUTOSCALER_STARTED", message="Autoscaler started")
 
         self.prom_metrics = AutoscalerPrometheusMetrics()
         if monitor_ip and prometheus_client:
@@ -378,6 +382,13 @@ class Monitor:
                                     ray_constants.LOG_PREFIX_EVENT_SUMMARY, line
                                 )
                             )
+                            self.event_logger.emit(
+                                type="AUTOSCALER_EVENT",
+                                message="{}{}".format(
+                                    ray_constants.LOG_PREFIX_EVENT_SUMMARY, line
+                                ),
+                            )
+
                     self.event_summarizer.clear()
 
                 as_json = json.dumps(status)
@@ -609,6 +620,7 @@ if __name__ == "__main__":
     monitor = Monitor(
         bootstrap_address,
         autoscaling_config,
+        args.logs_dir,
         redis_password=args.redis_password,
         monitor_ip=args.monitor_ip,
     )

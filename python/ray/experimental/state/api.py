@@ -1071,6 +1071,25 @@ def list_runtime_envs(
     )
 
 
+def list_cluster_events(
+    address: Optional[str] = None,
+    filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
+    limit: int = DEFAULT_LIMIT,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    detail: bool = False,
+    raise_on_missing_output: bool = True,
+    _explain: bool = False,
+) -> List[Dict]:
+    return StateApiClient(address=address).list(
+        StateResource.CLUSTER_EVENTS,
+        options=ListApiOptions(
+            limit=limit, timeout=timeout, filters=filters, detail=detail
+        ),
+        raise_on_missing_output=raise_on_missing_output,
+        _explain=_explain,
+    )
+
+
 """
 Log APIs
 """

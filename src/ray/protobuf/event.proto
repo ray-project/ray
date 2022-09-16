@@ -26,6 +26,7 @@ message Event {
     CORE_WORKER = 1;
     GCS = 2;
     RAYLET = 3;
+    MONITOR = 4;
   }
 
   enum Severity {

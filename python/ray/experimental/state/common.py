@@ -60,6 +60,7 @@ class StateResource(Enum):
     TASKS = "tasks"
     OBJECTS = "objects"
     RUNTIME_ENVS = "runtime_envs"
+    CLUSTER_EVENTS = "cluster_events"
 
 
 @unique
@@ -438,6 +439,14 @@ class WorkerState(StateSchema):
     pid: str = state_column(filterable=True)
     #: The exit detail of the worker if the worker is dead.
     exit_detail: Optional[str] = state_column(detail=True, filterable=False)
+
+
+@dataclass(init=True)
+class ClusterEventState(StateSchema):
+    timestamp: int = state_column(filterable=False)
+    message: str = state_column(filterable=False)
+    type: str = state_column(filterable=True)
+    event_id: int = state_column(filterable=True)
 
 
 @dataclass(init=True)
@@ -899,6 +908,8 @@ def resource_to_schema(resource: StateResource) -> StateSchema:
         return TaskState
     elif resource == StateResource.WORKERS:
         return WorkerState
+    elif resource == StateResource.CLUSTER_EVENTS:
+        return ClusterEventState
     else:
         assert False, "Unreachable"
 
