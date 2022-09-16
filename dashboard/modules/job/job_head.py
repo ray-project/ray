@@ -90,7 +90,7 @@ class JobAgentSubmissionClient:
             else:
                 self._raise_error(resp)
 
-    async def get_job_logs(self, job_id: str) -> JobLogsResponse:
+    async def get_job_logs_internal(self, job_id: str) -> JobLogsResponse:
         async with self._session.get(
             f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs"
         ) as resp:
