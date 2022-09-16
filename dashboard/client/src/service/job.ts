@@ -1,4 +1,4 @@
-import { JobDetailRsp, JobListRsp } from "../type/job";
+import { JobDetailRsp, JobListRsp, JobProgressRsp } from "../type/job";
 import { get } from "./requestHandlers";
 
 export const getJobList = () => {
@@ -7,4 +7,8 @@ export const getJobList = () => {
 
 export const getJobDetail = (id: string) => {
   return get<JobDetailRsp>(`jobs/${id}`);
+};
+
+export const getJobProgress = () => {
+  return get<JobProgressRsp>("api/progress");
 };

@@ -27,8 +27,16 @@ const basicTheme = {
 export const lightTheme = createMuiTheme({
   ...basicTheme,
   palette: {
-    primary: blue,
+    primary: {
+      main: "#538DF9",
+    },
     secondary: lightBlue,
+    success: {
+      main: "#43A047",
+    },
+    error: {
+      main: "#D32F2F",
+    },
     text: {
       primary: grey[900],
       secondary: grey[800],
@@ -45,8 +53,16 @@ export const lightTheme = createMuiTheme({
 export const darkTheme = createMuiTheme({
   ...basicTheme,
   palette: {
-    primary: blue,
+    primary: {
+      main: "#538DF9",
+    },
     secondary: lightBlue,
+    success: {
+      main: "#43A047",
+    },
+    error: {
+      main: "#D32F2F",
+    },
     text: {
       primary: blueGrey[50],
       secondary: blueGrey[100],

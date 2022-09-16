@@ -13,9 +13,12 @@ import dayjs from "dayjs";
 import React from "react";
 import { Link } from "react-router-dom";
 import Loading from "../../components/Loading";
+import { ProgressBar } from "../../components/ProgressBar";
 import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
 import { useJobList } from "./hook/useJobList";
+import { useJobProgress } from "./hook/useJobProgress";
+import { TaskProgressBar } from "./TaskProgressBar";
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -47,6 +50,8 @@ const JobList = () => {
     ipLogMap,
   } = useJobList();
 
+  const { progress, onSwitchChange: onProgressSwitchChange } = useJobProgress();
+
   return (
     <div className={classes.root}>
       <Loading loading={msg.startsWith("Loading")} />
@@ -54,12 +59,18 @@ const JobList = () => {
         Auto Refresh:
         <Switch
           checked={isRefreshing}
-          onChange={onSwitchChange}
+          onChange={(event) => {
+            onSwitchChange(event);
+            onProgressSwitchChange(event);
+          }}
           name="refresh"
           inputProps={{ "aria-label": "secondary checkbox" }}
         />
         <br />
         Request Status: {msg}
+      </TitleCard>
+      <TitleCard title="Progress">
+        <TaskProgressBar {...progress} />
       </TitleCard>
       <TitleCard title="Job List">
         <TableContainer>
