@@ -29,11 +29,13 @@ class TaskGroup {
  public:
   TaskGroup(std::shared_ptr<const TaskSpecification> task_spec) : task_spec_(task_spec){};
   void AddPendingTask(const TaskSpecification &spec);
+  void FinishTask(const TaskSpecification &spec);
   void FillTaskGroup(rpc::TaskGroupInfoEntry *entry);
 
  private:
   std::shared_ptr<const TaskSpecification> task_spec_;
   absl::flat_hash_map<std::string, int64_t> tasks_by_name_;
+  absl::flat_hash_map<std::string, int64_t> finished_tasks_by_name_;
   RAY_DISALLOW_COPY_AND_ASSIGN(TaskGroup);
 };
 
@@ -42,9 +44,9 @@ class TaskGroupManager {
   // TODO: add enabled config flag
  public:
   TaskGroupManager(WorkerContext &ctx) : worker_context_(ctx){};
-  void FillTaskGroupInfo(rpc::GetCoreWorkerStatsReply *reply,
-                                      const int64_t limit) const;
+  void FillTaskGroupInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
   void AddPendingTask(const TaskSpecification &spec);
+  void FinishTask(const TaskSpecification &spec);
 
  private:
   TaskGroup &GetOrCreateCurrentTaskGroup();

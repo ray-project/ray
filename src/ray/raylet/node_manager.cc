@@ -794,7 +794,7 @@ void NodeManager::HandleGetTaskGroupsInfo(const rpc::GetTaskGroupsInfoRequest &r
       [reply, total, limit, count](const ray::Status &status,
                                    const rpc::GetCoreWorkerStatsReply &r) {
         if (status.ok()) {
-          for (auto i=0; i < r.task_group_infos_size(); i++) {
+          for (auto i = 0; i < r.task_group_infos_size(); i++) {
             reply->add_task_group_infos()->CopyFrom(r.task_group_infos(i));
           }
         } else {

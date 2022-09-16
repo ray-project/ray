@@ -468,10 +468,13 @@ class StateAPIManager:
             assert not isinstance(reply, Exception)
             for group in reply.task_group_infos:
                 for child_group in group.child_group:
-                    result.append({
-                        "name": child_group.name,
-                        "count": child_group.count,
-                    })
+                    result.append(
+                        {
+                            "name": child_group.name,
+                            "count": child_group.count,
+                            "finished_count": child_group.finished_count,
+                        }
+                    )
         result = list(islice(result, option.limit))
         return ListApiResponse(
             result=result,

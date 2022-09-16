@@ -356,6 +356,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     it->second.num_successful_executions++;
 
     it->second.SetStatus(rpc::TaskStatus::FINISHED);
+    task_group_manager_.FinishTask(spec);
     num_pending_tasks_--;
 
     // A finished task can only be re-executed if it has some number of

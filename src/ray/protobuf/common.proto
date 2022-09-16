@@ -691,7 +691,7 @@ message NamedActorInfo {
 message ChildTaskGroup {
   string name = 1;
   int64 count = 2;
-  int64 completed = 3;
+  int64 finished_count = 3;
 }
 
 message TaskGroupInfoEntry {

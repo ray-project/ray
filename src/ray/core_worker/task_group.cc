@@ -20,31 +20,42 @@ namespace core {
 void TaskGroup::AddPendingTask(const TaskSpecification &spec) {
   auto name = spec.GetName();
   tasks_by_name_[name] += 1;
-  RAY_LOG(ERROR) << "TASKS_BY_NAME " << name << " " << tasks_by_name_[name];
+}
+
+void TaskGroup::FinishTask(const TaskSpecification &spec) {
+  auto name = spec.GetName();
+  finished_tasks_by_name_[name] += 1;
 }
 
 void TaskGroup::FillTaskGroup(rpc::TaskGroupInfoEntry *entry) {
   if (task_spec_ != nullptr) {
     entry->set_name(task_spec_->GetName());
   }
-  for (const auto& pair : tasks_by_name_) {
-    auto child_group =  entry->add_child_group();
+  for (const auto &pair : tasks_by_name_) {
+    auto child_group = entry->add_child_group();
     child_group->set_name(pair.first);
     child_group->set_count(pair.second);
+    child_group->set_finished_count(finished_tasks_by_name_[pair.first]);
   }
 }
 
 void TaskGroupManager::FillTaskGroupInfo(rpc::GetCoreWorkerStatsReply *reply,
-                                    const int64_t limit) const {
-  for (const auto& group_data : groups_) {
+                                         const int64_t limit) const {
+  for (const auto &group_data : groups_) {
     auto group = reply->add_task_group_infos();
     group_data->FillTaskGroup(group);
   }
 }
 
 void TaskGroupManager::AddPendingTask(const TaskSpecification &spec) {
-  auto& group = GetOrCreateCurrentTaskGroup();
+  auto &group = GetOrCreateCurrentTaskGroup();
   group.AddPendingTask(spec);
+}
+
+void TaskGroupManager::FinishTask(const TaskSpecification &spec) {
+  // TODO(ekl) tasks should be finished in their starting task group?
+  auto &group = GetOrCreateCurrentTaskGroup();
+  group.FinishTask(spec);
 }
 
 TaskGroup &TaskGroupManager::GetOrCreateCurrentTaskGroup() {
