@@ -692,9 +692,13 @@ message ChildTaskGroup {
   string name = 1;
   int64 count = 2;
   int64 finished_count = 3;
+  int64 creation_time_nanos = 4;
 }
 
 message TaskGroupInfoEntry {
   string name = 1;
-  repeated ChildTaskGroup child_group = 2;
+  bytes task_id = 2;
+  bytes parent_task_id = 3;
+  repeated ChildTaskGroup child_group = 4;
+  int64 depth = 5;
 }

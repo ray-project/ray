@@ -14,6 +14,12 @@ def progress_bar():
     keep_going = True
     while keep_going:
         task_groups = ray.experimental.state.api.list_task_groups()
+        print()
+        print(task_groups)
+        print()
+        task_groups = sorted(
+            task_groups, key=lambda group: group["creation_time_nanos"]
+        )
         keep_going = False
         for g in task_groups:
             if g["name"] not in bars:
@@ -28,7 +34,7 @@ def progress_bar():
             bar.last_update = g["finished_count"]
             if g["count"] != g["finished_count"]:
                 keep_going = True
-        time.sleep(.2)
+        time.sleep(0.2)
     for bar in bars.values():
         bar.close()
     print("All current tasks completed, exiting progress bar.")

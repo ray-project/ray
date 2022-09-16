@@ -473,6 +473,10 @@ class StateAPIManager:
                             "name": child_group.name,
                             "count": child_group.count,
                             "finished_count": child_group.finished_count,
+                            "creation_time_nanos": child_group.creation_time_nanos,
+                            "group_task_id": group.task_id,
+                            "group_parent_task_id": group.parent_task_id,
+                            "group_depth": group.depth,
                         }
                     )
         result = list(islice(result, option.limit))

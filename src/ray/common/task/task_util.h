@@ -121,6 +121,7 @@ class TaskSpecBuilder {
     message_->set_job_id(job_id.Binary());
     message_->set_task_id(task_id.Binary());
     message_->set_parent_task_id(parent_task_id.Binary());
+    RAY_LOG(ERROR) << "SetParentTaskId" << parent_task_id;
     message_->set_parent_counter(parent_counter);
     message_->set_caller_id(caller_id.Binary());
     message_->mutable_caller_address()->CopyFrom(caller_address);

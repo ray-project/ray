@@ -1,16 +1,35 @@
-import ray
 import time
 
-@ray.remote
-def f():
-    import time
-    time.sleep(.2)
+import ray
+
 
 @ray.remote
-def g(x):
-    import time
-    time.sleep(.2)
+def inc():
+    time.sleep(0.1)
+    return 1
 
-[g.remote(f.remote()) for _ in range(100)]
+
+@ray.remote
+def add(x):
+    time.sleep(0.1)
+    return x + 1
+
+
+@ray.remote
+def dec(x):
+    time.sleep(0.1)
+    return x - 1
+
+
+@ray.remote
+def sum(*x):
+    s = 0
+    for v in x:
+        s += v
+    return s
+
+
+result = sum.remote(*[dec.remote(add.remote(inc.remote())) for _ in range(100)])
 
 ray.progress_bar()
+print(ray.get(result))

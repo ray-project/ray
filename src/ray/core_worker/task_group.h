@@ -27,15 +27,29 @@ namespace core {
 
 class TaskGroup {
  public:
-  TaskGroup(std::shared_ptr<const TaskSpecification> task_spec) : task_spec_(task_spec){};
+  TaskGroup(std::shared_ptr<const TaskSpecification> task_spec, TaskID current_task_id)
+      : task_spec_(task_spec), current_task_id_(current_task_id){};
   void AddPendingTask(const TaskSpecification &spec);
   void FinishTask(const TaskSpecification &spec);
   void FillTaskGroup(rpc::TaskGroupInfoEntry *entry);
 
+  TaskID TaskId() const {
+    if (task_spec_ == nullptr) {
+      return TaskID::Nil();
+    } else {
+      return task_spec_->TaskId();
+    }
+  };
+
  private:
+  // Note: nullable.
   std::shared_ptr<const TaskSpecification> task_spec_;
+  TaskID current_task_id_;
   absl::flat_hash_map<std::string, int64_t> tasks_by_name_;
+  // TODO: revisit the task state strategy. We need executor workers to provide
+  // additional task state info that we merge with the group infos (e.g., RUNNING).
   absl::flat_hash_map<std::string, int64_t> finished_tasks_by_name_;
+  absl::flat_hash_map<std::string, int64_t> creation_time_by_name_;
   RAY_DISALLOW_COPY_AND_ASSIGN(TaskGroup);
 };
 

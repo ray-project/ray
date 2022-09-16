@@ -14,11 +14,16 @@
 
 #include "ray/core_worker/task_group.h"
 
+#include "absl/time/time.h"
+
 namespace ray {
 namespace core {
 
 void TaskGroup::AddPendingTask(const TaskSpecification &spec) {
   auto name = spec.GetName();
+  if (creation_time_by_name_.find(name) == creation_time_by_name_.end()) {
+    creation_time_by_name_[name] = absl::GetCurrentTimeNanos();
+  }
   tasks_by_name_[name] += 1;
 }
 
@@ -30,12 +35,16 @@ void TaskGroup::FinishTask(const TaskSpecification &spec) {
 void TaskGroup::FillTaskGroup(rpc::TaskGroupInfoEntry *entry) {
   if (task_spec_ != nullptr) {
     entry->set_name(task_spec_->GetName());
+    entry->set_task_id(current_task_id_.Binary());
+    entry->set_parent_task_id(task_spec_->ParentTaskId().Binary());
+    entry->set_depth(task_spec_->GetDepth());
   }
   for (const auto &pair : tasks_by_name_) {
     auto child_group = entry->add_child_group();
     child_group->set_name(pair.first);
     child_group->set_count(pair.second);
     child_group->set_finished_count(finished_tasks_by_name_[pair.first]);
+    child_group->set_creation_time_nanos(creation_time_by_name_[pair.first]);
   }
 }
 
@@ -59,11 +68,13 @@ void TaskGroupManager::FinishTask(const TaskSpecification &spec) {
 }
 
 TaskGroup &TaskGroupManager::GetOrCreateCurrentTaskGroup() {
-  // TODO(ekl) also check if task id has changed, then also create a new task group
-  if (groups_.size() == 0) {
+  auto cur_task = worker_context_.GetCurrentTask();
+  if (groups_.size() == 0 ||
+      (cur_task != nullptr && groups_.back()->TaskId() != cur_task->TaskId())) {
+    RAY_LOG(ERROR) << "New task group ";
+    groups_.push_back(
+        std::make_unique<TaskGroup>(cur_task, worker_context_.GetCurrentTaskId()));
     // TODO(ekl) bound groups size
-    groups_.push_back(std::make_unique<TaskGroup>(worker_context_.GetCurrentTask()));
-    RAY_LOG(ERROR) << "Create new task group";
   }
   RAY_CHECK(groups_.size() >= 1);
   return *groups_.back();
