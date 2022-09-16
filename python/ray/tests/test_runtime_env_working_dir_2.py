@@ -22,7 +22,6 @@ from ray.exceptions import GetTimeoutError, RuntimeEnvSetupError
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_inheritance(start_cluster, option: str):
     """Tests that child tasks/actors inherit URIs properly."""
@@ -72,11 +71,13 @@ def test_inheritance(start_cluster, option: str):
             EnvGetter.options(runtime_env=env).remote()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-def test_large_file_boundary(shutdown_only, option: str):
+def test_large_file_boundary(shutdown_only, tmp_path, option: str):
     """Check that packages just under the max size work as expected."""
-    with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
+    # To support Windows we do not use 'with tempfile' as that results in a recursion
+    # error (See: https://bugs.python.org/issue42796). Instead we use the tmp_path fixture
+    # that will clean up the files at a later time.
+    with chdir(tmp_path):
         size = GCS_STORAGE_MAX_SIZE - 1024 * 1024
         with open("test_file", "wb") as f:
             f.write(os.urandom(size))
@@ -96,10 +97,9 @@ def test_large_file_boundary(shutdown_only, option: str):
         assert ray.get(t.get_size.remote()) == size
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-def test_large_file_error(shutdown_only, option: str):
-    with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
+def test_large_file_error(shutdown_only, tmp_path, option: str):
+    with chdir(tmp_path):
         # Write to two separate files, each of which is below the threshold to
         # make sure the error is for the full package size.
         size = GCS_STORAGE_MAX_SIZE // 2 + 1
@@ -116,12 +116,15 @@ def test_large_file_error(shutdown_only, option: str):
                 ray.init(runtime_env={"py_modules": ["."]})
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_large_dir_upload_message(start_cluster, option):
     cluster, address = start_cluster
     with tempfile.TemporaryDirectory() as tmp_dir:
         filepath = os.path.join(tmp_dir, "test_file.txt")
+
+        # Turn slashes around to prevent escapes in the text passed to stdin (for Windows)
+        tmp_dir = str(Path(tmp_dir).as_posix())
+
         if option == "working_dir":
             driver_script = f"""
 import ray
@@ -237,7 +240,6 @@ def test_ray_worker_dev_flow(start_cluster):
 
 # TODO(architkulkarni): Deflake and reenable this test.
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on Mac. Issue #27562")
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize("source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
 def test_default_large_cache(start_cluster, option: str, source: str):
@@ -331,7 +333,6 @@ def test_default_large_cache(start_cluster, option: str, source: str):
 )
 # TODO(architkulkarni): Deflake and reenable this test.
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on Mac. Issue #27562")
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option):
     """Tests that task-level working_dir is GC'd when the worker exits."""
