@@ -3,6 +3,7 @@ import shutil
 from distutils.version import LooseVersion
 from functools import partial
 from io import BytesIO
+import json
 from typing import Any, Dict, List, Union
 
 import numpy as np
@@ -1290,6 +1291,17 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     assert [v.item() for v in ds.take(2)] == [0, 1]
 
 
+def test_numpy_read_partitioning(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "country=us", "data.npy")
+    os.mkdir(os.path.dirname(path))
+    np.save(path, np.arange(4).reshape([2, 2]))
+
+    ds = ray.data.read_numpy(path)
+
+    assert ds.schema().names == ["__value__", "country"]
+    assert ds.to_pandas()["country"] == ["us", "us"]
+
+
 def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_np_dir")
     os.mkdir(path)
@@ -1448,6 +1460,21 @@ def test_read_binary_files(ray_start_regular_shared):
         assert "bytes" in str(ds), ds
 
 
+def test_read_binary_files_partitioning(ray_start_regular_shared, tmp_path):
+    os.mkdir(os.path.join(tmp_path, "country=us"))
+    path = os.path.join(tmp_path, "country=us", "file.bin")
+    with open(path, "wb") as f:
+        f.write(b"foo")
+
+    ds = ray.data.read_binary_files(path)
+
+    assert ds.take() == [{"bytes": b"foo", "country": "us"}]
+
+    ds = ray.data.read_binary_files(path, include_paths=True)
+
+    assert ds.take() == [{"bytes": b"foo", "path": path, "country": "us"}]
+
+
 def test_read_binary_files_with_fs(ray_start_regular_shared):
     with util.gen_bin_files(10) as (tempdir, paths):
         # All the paths are absolute, so we want the root file system.
@@ -1493,6 +1520,20 @@ def test_read_text(ray_start_regular_shared, tmp_path):
     assert sorted(ds.take()) == ["goodbye", "hello", "ray", "world"]
     ds = ray.data.read_text(path, drop_empty_lines=False)
     assert ds.count() == 5
+
+
+def test_read_text_partitioning(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "country=us")
+    os.mkdir(path)
+    with open(os.path.join(path, "file.txt"), "w") as f:
+        f.write("foo\nbar\nbaz")
+
+    ds = ray.data.read_text(path)
+
+    df = ds.to_pandas()
+    assert list(df.columns) == ["text", "country"]
+    assert sorted(df["text"]) == ["bar", "baz", "foo"]
+    assert list(df["country"]) == ["us", "us", "us"]
 
 
 def test_read_text_meta_provider(
@@ -1862,6 +1903,22 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         shutil.rmtree(path)
     else:
         fs.delete_dir(_unwrap_protocol(path))
+
+
+def test_json_read_partitioning(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "country=us")
+    os.mkdir(path)
+    with open(os.path.join(path, "file1.json"), "w") as file:
+        json.dump({"number": 0, "string": "foo"}, file)
+    with open(os.path.join(path, "file2.json"), "w") as file:
+        json.dump({"number": 1, "string": "bar"}, file)
+
+    ds = ray.data.read_json(path)
+
+    assert ds.take() == [
+        {"number": 0, "string": "foo", "country": "us"},
+        {"number": 1, "string": "bar", "country": "us"},
+    ]
 
 
 def test_zipped_json_read(ray_start_regular_shared, tmp_path):
@@ -2405,6 +2462,21 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         shutil.rmtree(path)
     else:
         fs.delete_dir(_unwrap_protocol(path))
+
+
+def test_csv_read_partitioning(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "country=us", "file.csv")
+    os.mkdir(os.path.dirname(path))
+    df = pd.DataFrame({"numbers": [1, 2, 3], "letters": ["a", "b", "c"]})
+    df.to_csv(path, index=False)
+
+    ds = ray.data.read_csv(path)
+
+    assert ds.take() == [
+        {"numbers": 1, "letters": "a", "country": "us"},
+        {"numbers": 2, "letters": "b", "country": "us"},
+        {"numbers": 3, "letters": "c", "country": "us"},
+    ]
 
 
 @pytest.mark.parametrize(
