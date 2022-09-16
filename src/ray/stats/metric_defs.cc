@@ -34,7 +34,7 @@ namespace stats {
 /// Scheduler
 DEFINE_stats(tasks,
              "Current number of tasks currently in a particular state.",
-             ("State"),
+             ("State", "Source"),
              (),
              ray::stats::GAUGE);
 
