@@ -476,7 +476,7 @@ class StateAPIManager:
                 f.write(str(running_tasks) + "\n")
             for group in reply.task_group_infos:
                 for child_group in group.child_group:
-                    key = (group.task_id, child_group.name)
+                    key = (group.group_task_id, child_group.name)
                     result.append(
                         {
                             "name": child_group.name,
