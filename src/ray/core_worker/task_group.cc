@@ -71,6 +71,8 @@ TaskGroup &TaskGroupManager::GetOrCreateCurrentTaskGroup() {
   auto cur_task = worker_context_.GetCurrentTask();
   if (groups_.size() == 0 ||
       (cur_task != nullptr && groups_.back()->TaskId() != cur_task->TaskId())) {
+    // TODO(ekl) we should use actor id as the task id when in an actor, to avoid
+    // creating a new task group for each actor task.
     RAY_LOG(INFO) << "New task group " << worker_context_.GetCurrentTaskID();
     groups_.push_back(
         std::make_unique<TaskGroup>(cur_task, worker_context_.GetCurrentTaskID()));
