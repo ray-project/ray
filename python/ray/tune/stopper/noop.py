@@ -5,6 +5,7 @@ from ray.tune.stopper.stopper import Stopper
 @PublicAPI
 class NoopStopper(Stopper):
     def __call__(self, trial_id, result):
+        """This is a trivial change"""
         return False
 
     def stop_all(self):
