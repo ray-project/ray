@@ -19,6 +19,12 @@ METRIC_CONFIG = {
     }
 }
 
+SLOW_METRIC_CONFIG = {
+    "_system_config": {
+        "metrics_report_interval_ms": 3000,
+    }
+}
+
 
 def tasks_by_state(info) -> dict:
     metrics_page = "localhost:{}".format(info["metrics_export_port"])
@@ -66,7 +72,7 @@ ray.get(a)
 
 
 def test_metrics_export_now(shutdown_only):
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+    info = ray.init(num_cpus=2, **SLOW_METRIC_CONFIG)
 
     driver = """
 import ray
@@ -83,8 +89,10 @@ ray.get(a)
 
     # If force export at process death is broken, we won't see the recently completed
     # tasks from the drivers.
-    for _ in range(10):
+    for i in range(10):
+        print("Run job", i)
         run_string_as_driver(driver)
+        tasks_by_state(info)
 
     expected = {
         "RUNNING": 0.0,
