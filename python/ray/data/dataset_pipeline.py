@@ -1,5 +1,6 @@
 import itertools
 import logging
+import sys
 import time
 from typing import (
     TYPE_CHECKING,
@@ -39,6 +40,11 @@ from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 if TYPE_CHECKING:
     import pandas
@@ -727,8 +733,8 @@ class DatasetPipeline(Generic[T]):
         fn: BatchUDF,
         *,
         batch_size: Optional[int] = 4096,
-        compute: Union[str, ComputeStrategy] = None,
-        batch_format: str = "default",
+        compute: Optional[Union[str, ComputeStrategy]] = None,
+        batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
