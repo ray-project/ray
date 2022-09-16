@@ -18,8 +18,11 @@ from ray import serve
 import sys
 import asyncio
 import grpc
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.generated.serve_pb2 import PredictResponse
+from ray.serve.generated.serve_pb2_grpc import PredictAPIsServiceServicer
 from ray.serve._private.constants import DEFAULT_GRPC_PORT
+
+import mock
 
 DEFAULT_HTTP_ADAPTER = "ray.serve.http_adapters.starlette_request"
 HTTPAdapterFn = Callable[[Any], Any]
@@ -184,7 +187,7 @@ class DAGDriver:
 @PublicAPI(stability="alpha")
 class ServegRPCIngress:
     """
-    gRPC Ingress that starts gRPC server and accept gRPC requests
+    gRPC Ingress that starts gRPC server based on the port
     """
 
     def __init__(self, port):
@@ -205,22 +208,48 @@ class ServegRPCIngress:
         self.running_task = asyncio.get_event_loop().create_task(self.run())
 
     async def run(self):
-        # can be configured
         self.server.add_insecure_port("[::]:{}".format(self.port))
         self.setup_complete.set()
         await self.server.start()
         await self.server.wait_for_termination()
 
 
-@serve.deployment(driver_deployment=True, ray_actor_options={"num_cpus": 0})
-class gRPCDriver(ServegRPCIngress, serve_pb2_grpc.PredictAPIsServiceServicer):
-    def __init__(self, dags: RayServeDAGHandle, port=DEFAULT_GRPC_PORT):
-        self.dag = dags
-        ServegRPCIngress.__init__(self, port)
+if isinstance(PredictAPIsServiceServicer, mock.MagicMock):
+    # The reason we have this fake Driver class is that sphinx-build is to mock
+    # PredictAPIsServiceServicer and it will cause the metaclass conflict issue
+    # from multiple inheritance
+    @serve.deployment
+    class gRPCDriver:
+        def __init__(self):
+            raise Exception("gRPC driver Placeholder, it is not expected to be used")
 
-    async def Predict(self, request, context):
-        # add a customized serializer for protobuf
-        res = await (await self.dag.remote(dict(request.input)))
+else:
 
-        # res must be 'bytes' type
-        return serve_pb2.PredictResponse(prediction=res)
+    @serve.deployment(driver_deployment=True, ray_actor_options={"num_cpus": 0})
+    class gRPCDriver(ServegRPCIngress, serve_pb2_grpc.PredictAPIsServiceServicer):
+        """
+        gRPC Driver that responsible for redirecting the gRPC requests
+        and hold dag handle
+        """
+
+        def __init__(self, dags: RayServeDAGHandle, port=DEFAULT_GRPC_PORT):
+            """Create a gRPCDriver.
+
+            Args:
+                dags: a handle to a Ray Serve DAG or a dictionary of handles.
+                http_adapter: a callable function or import string to convert
+                    HTTP requests to Ray Serve input.
+                port: Port to use to listen to receive the request
+            """
+            self.dag = dags
+            # TODO(Sihan) we will add a gRPCOption class
+            # once we have more options to use
+            ServegRPCIngress.__init__(self, port)
+
+        async def Predict(self, request, context):
+            """
+            gRPC Predict function implementation
+            """
+            res = await (await self.dag.remote(dict(request.input)))
+
+            return PredictResponse(prediction=res)
