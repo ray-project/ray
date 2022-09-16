@@ -148,6 +148,7 @@ install_miniconda() {
     (
       set +x
       echo "Resetting Anaconda Python ${python_version}..."
+      pip freeze | grep -v conda | xargs -n 1 pip uninstall
       "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y --rev 0
     )
   fi
