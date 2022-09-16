@@ -2241,6 +2241,7 @@ class Dataset(Generic[T]):
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
         )
+
     def write_mongo(self, uri, database, collection) -> None:
         self.write_datasource(
             MongoDatasource(), uri=uri, database=database, collection=collection

@@ -69,7 +69,7 @@ class MongoDatasource(Datasource):
         ray_remote_args: Optional[Dict[str, Any]],
         uri,
         database,
-        collection
+        collection,
     ) -> List[ObjectRef[Any]]:
         def write_block(uri, database, collection, block: Block):
             client = pymongo.MongoClient(uri)
