@@ -31,10 +31,9 @@ BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
 
-PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 
-CLEANABLE_SUBDIRS = [PICKLE5_SUBDIR, THIRDPARTY_SUBDIR]
+CLEANABLE_SUBDIRS = [THIRDPARTY_SUBDIR]
 
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
@@ -47,11 +46,6 @@ exe_suffix = ".exe" if sys.platform == "win32" else ""
 # .pyd is the extension Python requires on Windows for shared libraries.
 # https://docs.python.org/3/faq/windows.html#is-a-pyd-file-the-same-as-a-dll
 pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
-
-pickle5_url = (
-    "https://github.com/pitrou/pickle5-backport/archive/"
-    "e6117502435aba2901585cc6c692fb9582545f08.tar.gz"
-)
 
 
 def find_version(*filepath):
@@ -264,7 +258,6 @@ if setup_spec.type == SetupType.RAY:
         "scikit-image",
         "pyyaml",
         "scipy",
-        "pickle5",
     ]
 
     setup_spec.extras["train"] = setup_spec.extras["tune"]
@@ -299,6 +292,7 @@ if setup_spec.type == SetupType.RAY:
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
         "packaging; python_version >= '3.10'",
+        "pickle5; python_version < 3.8.2",
         "protobuf >= 3.15.3, < 4.0.0",
         "pyyaml",
         "aiosignal",
@@ -356,30 +350,6 @@ def download(url):
         curl_args = ["curl", "-s", "-L", "-f", "-o", "-", url]
         result = subprocess.check_output(curl_args)
     return result
-
-
-# Installs pickle5-backport into the local subdirectory.
-def download_pickle5(pickle5_dir):
-    pickle5_file = urllib.parse.unquote(urllib.parse.urlparse(pickle5_url).path)
-    pickle5_name = re.sub("\\.tar\\.gz$", ".tgz", pickle5_file, flags=re.I)
-    url_path_parts = os.path.splitext(pickle5_name)[0].split("/")
-    (project, commit) = (url_path_parts[2], url_path_parts[4])
-    pickle5_archive = download(pickle5_url)
-    with tempfile.TemporaryDirectory() as work_dir:
-        tf = tarfile.open(None, "r", io.BytesIO(pickle5_archive))
-        try:
-            tf.extractall(work_dir)
-        finally:
-            tf.close()
-        src_dir = os.path.join(work_dir, project + "-" + commit)
-        args = [sys.executable, "setup.py", "-q", "bdist_wheel"]
-        subprocess.check_call(args, cwd=src_dir)
-        for wheel in glob.glob(os.path.join(src_dir, "dist", "*.whl")):
-            wzf = zipfile.ZipFile(wheel, "r")
-            try:
-                wzf.extractall(pickle5_dir)
-            finally:
-                wzf.close()
 
 
 def patch_isdir():
@@ -503,19 +473,6 @@ def build(build_python, build_java, build_cpp):
                 " environment variable for Bazel."
             ).format(name="BAZEL_SH")
             raise RuntimeError(msg)
-
-    # Check if the current Python already has pickle5 (either comes with newer
-    # Python versions, or has been installed by us before).
-    pickle5 = None
-    if sys.version_info >= (3, 8, 2):
-        import pickle as pickle5
-    else:
-        try:
-            import pickle5
-        except ImportError:
-            pass
-    if not pickle5:
-        download_pickle5(os.path.join(ROOT_DIR, PICKLE5_SUBDIR))
 
     # Note: We are passing in sys.executable so that we use the same
     # version of Python to build packages inside the build.sh script. Note
