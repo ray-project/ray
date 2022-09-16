@@ -20,6 +20,10 @@ from ray.data.preprocessors.concatenator import Concatenator
 from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
+from ray.data.preprocessors.discretizer import (
+    CustomKBinsDiscretizer,
+    UniformKBinsDiscretizer,
+)
 
 __all__ = [
     "BatchMapper",
@@ -41,4 +45,6 @@ __all__ = [
     "StandardScaler",
     "Concatenator",
     "Tokenizer",
+    "CustomKBinsDiscretizer",
+    "UniformKBinsDiscretizer",
 ]
