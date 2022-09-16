@@ -125,7 +125,7 @@ class SearchSpaceTest(unittest.TestCase):
 
             if "qrandint_q1" not in ignore:
                 self.assertGreaterEqual(out["qrandint_q1"], 1)
-                self.assertLess(out["qrandint_q1"], 5)
+                self.assertLessEqual(out["qrandint_q1"], 5)
                 self.assertEqual(out["qrandint_q1"] % 1, 0)
                 self.assertTrue(isinstance(out["qrandint_q1"], int))
 
@@ -551,6 +551,8 @@ class SearchSpaceTest(unittest.TestCase):
             "quniform",
             "qloguniform",
             "qrandint",
+            "qrandint_q1",
+            "qrandint_q3",
             "qlograndint",
         ]
 
@@ -660,6 +662,8 @@ class SearchSpaceTest(unittest.TestCase):
             "quniform",
             "qloguniform",
             "qrandint",
+            "qrandint_q1",
+            "qrandint_q3",
             "qlograndint",
         ]
 
@@ -856,6 +860,8 @@ class SearchSpaceTest(unittest.TestCase):
             "quniform",
             "qloguniform",
             "qrandint",
+            "qrandint_q1",
+            "qrandint_q3",
             "qlograndint",
         ]
 
@@ -938,6 +944,8 @@ class SearchSpaceTest(unittest.TestCase):
             "quniform",
             "qloguniform",
             "qrandint",
+            "qrandint_q1",
+            "qrandint_q3",
             "qlograndint",
         ]
 
@@ -1107,8 +1115,11 @@ class SearchSpaceTest(unittest.TestCase):
     def testSampleBoundsHyperopt(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 
+        # Todo: Hyperopt actually suffers from the same problem as we did before
+        # https://github.com/ray-project/ray/pull/28187
         ignore = [
             "func",
+            "qrandint_q3",
         ]
 
         config = self.config.copy()
@@ -1208,6 +1219,8 @@ class SearchSpaceTest(unittest.TestCase):
             "quniform",
             "qloguniform",
             "qrandint",
+            "qrandint_q1",
+            "qrandint_q3",
             "qlograndint",
         ]
 
@@ -1410,7 +1423,15 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.search.optuna import OptunaSearch
 
         # Quantization and log does not seem to work with Optuna
-        ignore = ["func", "randn", "qrandn", "qloguniform", "qlograndint"]
+        # Also, qrandint works differently in Optuna (it moves the boundaries)
+        ignore = [
+            "func",
+            "randn",
+            "qrandn",
+            "qloguniform",
+            "qlograndint",
+            "qrandint_q3",
+        ]
 
         config = self.config.copy()
         for k in ignore:
@@ -1490,6 +1511,8 @@ class SearchSpaceTest(unittest.TestCase):
             "qlograndint",
             "quniform",
             "qrandint",
+            "qrandint_q1",
+            "qrandint_q3",
         ]
 
         config = self.config.copy()
@@ -1607,6 +1630,8 @@ class SearchSpaceTest(unittest.TestCase):
             "qlograndint",
             "quniform",
             "qrandint",
+            "qrandint_q1",
+            "qrandint_q3",
             "loguniform",
             "lograndint",
         ]
