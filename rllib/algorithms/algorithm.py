@@ -2508,7 +2508,7 @@ class Algorithm(Trainable):
 
     def __setstate__(self, state: dict):
         # Restore counters.
-        global_vars = {}
+        global_vars = {"timestep": 0}
         if "counters" in state:
             # Don't recreate `self._counters` (it's already a defaultdict),
             # just set its values.
@@ -2517,20 +2517,18 @@ class Algorithm(Trainable):
 
             # Set global vars.
             if hasattr(self, "workers"):
-                global_vars = {
-                    "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]
-                }
+                global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
 
         if hasattr(self, "workers") and "worker" in state:
             self.workers.local_worker().set_state(state["worker"])
-            remote_state = ray.put(state["worker"])
-            for r in self.workers.remote_workers():
-                r.set_state.remote(remote_state)
+            self.workers.sync_weights(global_vars=global_vars)
             if self.evaluation_workers:
                 # If evaluation workers are used, also restore the policies
                 # there in case they are used for evaluation purpose.
-                for r in self.evaluation_workers.remote_workers():
-                    r.set_state.remote(remote_state)
+                self.evaluation_workers.sync_weights(
+                    from_worker=self.workers.local_worker(),
+                    global_vars=global_vars,
+                )
 
         # If necessary, restore replay data as well.
         if self.local_replay_buffer is not None:
