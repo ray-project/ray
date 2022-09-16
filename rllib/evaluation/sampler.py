@@ -1091,11 +1091,13 @@ def _process_observations(
                 del active_episodes[env_id]
 
                 # Call custom `before_sub_environment_reset` callback.
-                callbacks.before_sub_environment_reset(
-                    worker=worker,
-                    sub_environment=base_env.get_sub_environments(as_dict=True)[env_id],
-                    env_index=env_id,
-                )
+                sub_envs = base_env.get_sub_environments(as_dict=True)
+                if env_id in sub_envs:
+                    callbacks.before_sub_environment_reset(
+                        worker=worker,
+                        sub_environment=sub_envs[env_id],
+                        env_index=env_id,
+                    )
 
                 # TODO(jungong) : This will allow a single faulty env to
                 # take out the entire RolloutWorker indefinitely. Revisit.
