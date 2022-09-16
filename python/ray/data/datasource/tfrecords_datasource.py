@@ -25,11 +25,11 @@ class TFRecordDatasource(FileBasedDatasource):
             example = tf.train.Example()
             try:
                 example.ParseFromString(record)
-            except DecodeError:
+            except DecodeError as e:
                 raise ValueError(
                     "`TFRecordDatasource` failed to parse `tf.train.Example` "
                     f"record in '{path}'. This error can occur if your TFRecord "
-                    "file contains a message type other than `tf.train.Example`."
+                    f"file contains a message type other than `tf.train.Example`: {e}."
                 )
 
             data.append(_convert_example_to_dict(example))

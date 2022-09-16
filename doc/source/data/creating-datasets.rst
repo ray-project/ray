@@ -184,7 +184,8 @@ Supported File Formats
   :class:`~ray.data.Dataset`.
 
   .. warning::
-      Messages that aren't of type ``tf.train.Example`` are ignored.
+      Only `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
+      records are supported.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python

@@ -749,7 +749,9 @@ def read_tfrecords(
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[PathPartitionFilter] = None,
 ) -> Dataset[PandasRow]:
-    """Create a dataset from TFRecord files that contain ``tf.train.Example`` messages.
+    """Create a dataset from TFRecord files that contain
+    `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
+    messages.
 
     .. warning::
         This function exclusively supports ``tf.train.Example`` messages. If a file
