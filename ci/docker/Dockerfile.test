@@ -12,4 +12,7 @@ WORKDIR /ray
 # Copy new ray files
 COPY . .
 
+# Create egg.link
+RUN echo /ray/python > /opt/miniconda/lib/python3.7/site-packages/ray.egg-link
+
 RUN NO_DL=1 NO_BUILD=1 ./ci/env/install-dependencies.sh
