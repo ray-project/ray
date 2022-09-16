@@ -809,12 +809,22 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
         metric="episode_reward_mean", mode="max"
     )
 
-Loading and restoring a trained algo from a checkpoint is simple:
+Loading and restoring a trained algorithm from a checkpoint is simple.
+For RLlib checkpoint versions of "v1" or higher, do:
 
 .. code-block:: python
 
     from ray.rllib.algorithms.algorithm import Algorithm
     algo = Algorithm.from_checkpoint(checkpoint_path)
+
+
+For older RLlib checkpoint versions ("v0" and earlier), you can still restore an algorithm via:
+
+.. code-block:: python
+
+    algo = ppo.PPO(config=config, env=env_class)
+    algo.restore(checkpoint_path)
+
 
 
 Computing Actions
