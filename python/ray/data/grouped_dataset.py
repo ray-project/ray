@@ -1,4 +1,4 @@
-from typing import Any, Callable, Generic, List, Tuple, Union, Optional
+from typing import Any, Callable, Generic, List, Tuple, Union
 
 from ray.data._internal import sort
 from ray.data._internal.compute import CallableClass, ComputeStrategy
