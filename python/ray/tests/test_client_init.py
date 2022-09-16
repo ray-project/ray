@@ -5,7 +5,7 @@ import time
 import random
 import sys
 import subprocess
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import ray.util.client.server.server as ray_client_server
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -178,6 +178,37 @@ def test_python_version(init_and_serve):
     info3 = ray.connect("localhost:50051", ignore_version=True)
     assert info3["num_clients"] == 1, info3
     ray.disconnect()
+
+
+def test_python_patch_version(init_and_serve, monkeypatch):
+    # Note: caplog is difficult to use in this test because
+    # ray._private.ray_logging breaks it. Mock the logger directly instead.
+    logger_mock = Mock()
+    monkeypatch.setattr("ray.util.client.logger", logger_mock)
+
+    server_handle = init_and_serve
+    mock_python_version = f"{sys.version_info[0]}.{sys.version_info[1]}.98765"
+
+    def mock_connection_response():
+        return ray_client_pb2.ConnectionInfoResponse(
+            num_clients=1,
+            python_version=mock_python_version,
+            ray_version="",
+            ray_commit="",
+            protocol_version=CURRENT_PROTOCOL_VERSION,
+        )
+
+    # inject mock connection function
+    server_handle.data_servicer._build_connection_response = mock_connection_response
+
+    ray = _ClientContext()
+    _ = ray.connect("localhost:50051")
+    ray.disconnect()
+
+    for call_args in logger_mock.warning.call_args_list:
+        if f"server is {mock_python_version}" in call_args.args[0]:
+            return
+    raise RuntimeError("Patch version warning was not found")
 
 
 def test_protocol_version(init_and_serve):

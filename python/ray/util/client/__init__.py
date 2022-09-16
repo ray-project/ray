@@ -134,7 +134,7 @@ class _ClientContext:
                 logger.warning(msg)
             else:
                 raise RuntimeError(msg)
-        if not conn_info["python_version"].startswith(local_major_minor):
+        elif not conn_info["python_version"].startswith(local_major_minor_patch):
             msg = (
                 "Python patch version differs between client and server. This "
                 "may cause serialization errors when transferring objects to and "
