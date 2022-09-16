@@ -259,7 +259,8 @@ def test_snapshot_timeout(monkeypatch, ray_start_cluster):
 
         # Verifies timeout will work.
         response = requests.get(f"http://{webui_url}/api/snapshot?timeout=1")
-        response.raise_for_status()
+        assert response.json()["result"] is False
+        assert "Deadline Exceeded" in response.json()["msg"]
 
 
 @pytest.mark.parametrize("ray_start_with_dashboard", [{"num_cpus": 4}], indirect=True)
