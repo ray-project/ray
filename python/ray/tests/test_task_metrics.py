@@ -1,5 +1,7 @@
 from collections import defaultdict
 import os
+import time
+import asyncio
 
 import pytest
 
@@ -7,7 +9,6 @@ import ray
 
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
-    run_string_as_driver_nonblocking,
     wait_for_condition,
 )
 
@@ -38,19 +39,11 @@ def tasks_by_state(info) -> dict:
 def test_task_basic(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
-    driver = """
-import ray
-import time
+    @ray.remote
+    def f():
+        time.sleep(999)
 
-ray.init("auto")
-
-@ray.remote
-def f():
-    time.sleep(999)
-a = [f.remote() for _ in range(10)]
-ray.get(a)
-"""
-    proc = run_string_as_driver_nonblocking(driver)
+    [f.remote() for _ in range(10)]
 
     expected = {
         "RUNNING": 2.0,
@@ -62,30 +55,46 @@ ray.get(a)
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
-    proc.kill()
+
+
+def test_task_wait_on_deps(shutdown_only):
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+
+    @ray.remote
+    def f():
+        time.sleep(999)
+
+    @ray.remote
+    def g(x):
+        time.sleep(999)
+
+    x = f.remote()
+    [g.remote(x) for _ in range(5)]
+
+    expected = {
+        "RUNNING": 1.0,
+        "WAITING_FOR_EXECUTION": 0.0,
+        "SCHEDULED": 0.0,
+        "WAITING_FOR_DEPENDENCIES": 5.0,
+    }
+
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+    )
 
 
 def test_task_nested(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
-    driver = """
-import ray
-import time
+    @ray.remote(num_cpus=0)
+    def wrapper():
+        @ray.remote
+        def f():
+            time.sleep(999)
 
-ray.init("auto")
+        ray.get([f.remote() for _ in range(10)])
 
-@ray.remote(num_cpus=0)
-def wrapper():
-    @ray.remote
-    def f():
-        time.sleep(999)
-
-    ray.get([f.remote() for _ in range(10)])
-
-w = wrapper.remote()
-ray.get(w)
-"""
-    proc = run_string_as_driver_nonblocking(driver)
+    w = wrapper.remote()
 
     expected = {
         "RUNNING": 3.0,
@@ -97,67 +106,24 @@ ray.get(w)
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
     )
-    proc.kill()
-
-
-def test_task_wait_on_deps(shutdown_only):
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
-
-    driver = """
-import ray
-import time
-
-ray.init("auto")
-
-@ray.remote
-def f():
-    time.sleep(999)
-
-@ray.remote
-def g(x):
-    time.sleep(999)
-
-x = f.remote()
-a = [g.remote(x) for _ in range(5)]
-ray.get(a)
-"""
-    proc = run_string_as_driver_nonblocking(driver)
-    expected = {
-        "RUNNING": 1.0,
-        "WAITING_FOR_EXECUTION": 0.0,
-        "SCHEDULED": 0.0,
-        "WAITING_FOR_DEPENDENCIES": 5.0,
-    }
-    wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
-    )
-    proc.kill()
 
 
 def test_actor_tasks_queued(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
-    driver = """
-import ray
-import time
+    @ray.remote
+    class F:
+        def f(self):
+            time.sleep(999)
 
-ray.init("auto")
+        def g(self):
+            pass
 
-@ray.remote
-class F:
-    def f(self):
-        time.sleep(999)
+    a = F.remote()
+    [a.g.remote() for _ in range(10)]
+    [a.f.remote() for _ in range(1)]  # Further tasks should be blocked on this one.
+    [a.g.remote() for _ in range(9)]
 
-    def g(self):
-        pass
-
-a = F.remote()
-[a.g.remote() for _ in range(10)]
-[a.f.remote() for _ in range(1)]  # Further tasks should be blocked on this one.
-z = [a.g.remote() for _ in range(9)]
-ray.get(z)
-"""
-    proc = run_string_as_driver_nonblocking(driver)
     expected = {
         "RUNNING": 1.0,
         "WAITING_FOR_EXECUTION": 9.0,
@@ -168,32 +134,22 @@ ray.get(z)
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
-    proc.kill()
 
 
 def test_task_finish(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
-    driver = """
-import ray
-import time
+    @ray.remote
+    def f():
+        return "ok"
 
-ray.init("auto")
+    @ray.remote
+    def g():
+        assert False
 
-@ray.remote
-def f():
-    return "ok"
+    f.remote()
+    g.remote()
 
-@ray.remote
-def g():
-    assert False
-
-f.remote()
-g.remote()
-time.sleep(999)
-"""
-
-    proc = run_string_as_driver_nonblocking(driver)
     expected = {
         "RUNNING": 0.0,
         "WAITING_FOR_EXECUTION": 0.0,
@@ -204,27 +160,17 @@ time.sleep(999)
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
-    proc.kill()
 
 
 def test_task_retry(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
-    driver = """
-import ray
-import time
+    @ray.remote(retry_exceptions=True)
+    def f():
+        assert False
 
-ray.init("auto")
+    f.remote()
 
-@ray.remote(retry_exceptions=True)
-def f():
-    assert False
-
-f.remote()
-time.sleep(999)
-"""
-
-    proc = run_string_as_driver_nonblocking(driver)
     expected = {
         "RUNNING": 0.0,
         "WAITING_FOR_EXECUTION": 0.0,
@@ -235,28 +181,19 @@ time.sleep(999)
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
-    proc.kill()
 
 
 def test_concurrent_actor_tasks(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
-    driver = """
-import ray
-import asyncio
+    @ray.remote(max_concurrency=30)
+    class A:
+        async def f(self):
+            await asyncio.sleep(300)
 
-ray.init("auto")
+    a = A.remote()
+    [a.f.remote() for _ in range(40)]
 
-@ray.remote(max_concurrency=30)
-class A:
-    async def f(self):
-        await asyncio.sleep(300)
-
-a = A.remote()
-ray.get([a.f.remote() for _ in range(40)])
-"""
-
-    proc = run_string_as_driver_nonblocking(driver)
     expected = {
         "RUNNING": 30.0,
         "WAITING_FOR_EXECUTION": 10.0,
@@ -267,7 +204,6 @@ ray.get([a.f.remote() for _ in range(40)])
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
-    proc.kill()
 
 
 if __name__ == "__main__":
