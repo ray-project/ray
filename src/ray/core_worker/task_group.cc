@@ -35,10 +35,10 @@ void TaskGroup::FinishTask(const TaskSpecification &spec) {
 void TaskGroup::FillTaskGroup(rpc::TaskGroupInfoEntry *entry) {
   if (task_spec_ != nullptr) {
     entry->set_name(task_spec_->GetName());
-    entry->set_parent_task_id(task_spec_->ParentTaskId().Binary());
+    entry->set_group_parent_task_id(task_spec_->ParentTaskId().Binary());
     entry->set_depth(task_spec_->GetDepth());
   }
-  entry->set_task_id(current_task_id_.Binary());
+  entry->set_group_task_id(current_task_id_.Binary());
   for (const auto &pair : tasks_by_name_) {
     auto child_group = entry->add_child_group();
     child_group->set_name(pair.first);

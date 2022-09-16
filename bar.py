@@ -5,19 +5,19 @@ import ray
 
 @ray.remote
 def inc():
-    time.sleep(0.1)
+    time.sleep(0.2)
     return 1
 
 
 @ray.remote
 def add(x):
-    time.sleep(0.1)
+    time.sleep(0.2)
     return x + 1
 
 
 @ray.remote
 def dec(x):
-    time.sleep(0.1)
+    time.sleep(0.2)
     return x - 1
 
 

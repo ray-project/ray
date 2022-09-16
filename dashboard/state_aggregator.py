@@ -484,8 +484,8 @@ class StateAPIManager:
                             "finished_count": child_group.finished_count,
                             "running_count": running_tasks[key],
                             "creation_time_nanos": child_group.creation_time_nanos,
-                            "group_task_id": group.task_id,
-                            "group_parent_task_id": group.parent_task_id,
+                            "group_task_id": group.group_task_id,
+                            "group_parent_task_id": group.group_parent_task_id,
                             "group_depth": group.depth,
                         }
                     )
