@@ -34,6 +34,7 @@ from ray.data.datasource import (
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
+    SQLDatasource,
     ReadTask,
 )
 from ray.data.datasource.file_based_datasource import (
@@ -315,6 +316,17 @@ def read_datasource(
         ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
         0,
         False,
+    )
+
+
+@PublicAPI
+def read_sql(url, queries, **kwargs):
+    return read_datasource(
+        SQLDatasource(),
+        parallelism=len(queries),
+        url=url,
+        queries=queries,
+        kwargs=kwargs,
     )
 
 

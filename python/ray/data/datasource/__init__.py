@@ -1,5 +1,6 @@
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
+from ray.data.datasource.sql_datasource import SQLDatasource
 from ray.data.datasource.datasource import (
     Datasource,
     DummyOutputDatasource,
@@ -56,6 +57,7 @@ __all__ = [
     "ImageFolderDatasource",
     "JSONDatasource",
     "NumpyDatasource",
+    "SQLDatasource",
     "ParquetBaseDatasource",
     "ParquetDatasource",
     "ParquetMetadataProvider",

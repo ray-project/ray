@@ -84,6 +84,7 @@ from ray.data.datasource import (
     JSONDatasource,
     NumpyDatasource,
     ParquetDatasource,
+    SQLDatasource,
     ReadTask,
     WriteResult,
 )
@@ -2240,6 +2241,9 @@ class Dataset(Generic[T]):
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
         )
+
+    def write_sql(self, url, table, **kwargs) -> None:
+        self.write_datasource(SQLDatasource(), url=url, table=table, kwargs=kwargs)
 
     def write_datasource(
         self,
