@@ -12,6 +12,13 @@ def model():
 def subproc():
     time.sleep(0.1)
 
-result = [model.remote() for _ in range(5)]
+
+@ray.remote
+def main():
+    result = [model.remote() for _ in range(5)]
+    ray.get(result)
+
+
+m = main.remote()
 ray.progress_bar()
-ray.get(result)
+ray.get(m)
