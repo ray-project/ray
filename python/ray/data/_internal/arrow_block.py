@@ -616,7 +616,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             ctx.use_polars
             and not ctx.use_push_based_shuffle
             and all(isinstance(agg, (PolarsAggregation, WithPolars)) for agg in aggs)
-            and all(not block._has_extension_column() for block in blocks)
+            # and all(not block._has_extension_column() for block in blocks)
             and finalize
         ):
             aggs = [
