@@ -180,8 +180,8 @@
   commands:
     - export LINT=1
     - echo "--- Setting up Python 3.7 environment."
-    - PYTHON=3.7 ./ci/env/install-dependencies.sh
-    # Specifying PYTHON=3.7 above somehow messes up the Ray install.
+    - ./ci/env/install-dependencies.sh
+    # Specifying above somehow messes up the Ray install.
     # Uninstall and re-install Ray so that we can use Ray Client
     # (remove thirdparty_files to sidestep an issue with psutil).
     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
@@ -308,8 +308,8 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - echo "--- Setting up Python 3.7 environment."
-    - PYTHON=3.7 TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
-    # Specifying PYTHON=3.7 above somehow messes up the Ray install.
+    - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
+    # Specifying above somehow messes up the Ray install.
     # Uninstall and re-install Ray so that we can use Ray Client.
     # (Remove thirdparty_files to sidestep an issue with psutil.)
     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
@@ -535,8 +535,8 @@
       }
       trap cleanup EXIT
     - echo "--- Setting up Python 3.7 environment."
-    - PYTHON=3.7 ./ci/env/install-dependencies.sh
-    # Specifying PYTHON=3.7 above somehow messes up the Ray install.
+    - ./ci/env/install-dependencies.sh
+    # Specifying above somehow messes up the Ray install.
     # Uninstall and re-install Ray so that we can use Ray Client.
     # (Remove thirdparty_files to sidestep an issue with psutil.)
     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files

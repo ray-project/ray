@@ -12,7 +12,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
@@ -24,7 +24,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
@@ -36,7 +36,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
@@ -48,7 +48,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
@@ -60,7 +60,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
@@ -72,7 +72,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
@@ -84,7 +84,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
@@ -97,7 +97,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
@@ -109,7 +109,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
@@ -121,7 +121,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
@@ -133,7 +133,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
       --test_tag_filters=quick_train,-multi_gpu
@@ -144,7 +144,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     # Test all tests in the `algorithms` dir:
     - bazel test --config=ci $(./ci/run/bazel_export_options)
@@ -157,7 +157,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     # Test all tests in the `algorithms` dir:
     - bazel test --config=ci $(./ci/run/bazel_export_options)
@@ -170,7 +170,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     # Test everything that does not have any of the "main" labels:
     # "learning_tests|quick_train|examples|tests_dir".
@@ -184,7 +184,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_A,examples_B,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
@@ -193,7 +193,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_C_AtoT,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
@@ -202,7 +202,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_C_UtoZ,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
@@ -211,7 +211,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_D,examples_E,examples_F,examples_G,examples_H,examples_I,examples_J,examples_K,examples_L,examples_M,examples_N,examples_O,examples_P,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
@@ -221,7 +221,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_Q,examples_R,examples_S,examples_T,examples_U,examples_V,examples_W,examples_X,examples_Y,examples_Z,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
@@ -231,7 +231,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I,tests_dir_J,tests_dir_K,tests_dir_L --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
@@ -241,7 +241,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
@@ -250,7 +250,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=tests_dir_R,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
@@ -260,7 +260,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=documentation --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
@@ -270,7 +270,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I,tests_dir_J,tests_dir_K,tests_dir_L,tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_R,-example,-py37,-soft_imports,-gpu_only,-rllib
@@ -280,7 +280,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - python ./ci/env/setup_credentials.py sigopt
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
@@ -292,7 +292,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=example,-tf,-pytorch,-py37,-soft_imports,-gpu_only,-rllib python/ray/tune/...
 
@@ -300,7 +300,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-soft_imports,-gpu_only,-rllib python/ray/tune/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-soft_imports,-gpu_only,-rllib python/ray/tune/...
@@ -309,7 +309,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-gpu_only,rllib python/ray/tune/...
 
@@ -333,7 +333,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+    - TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=py37,-client python/ray/tune/...
 
@@ -341,7 +341,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+    - TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/xgboost/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/horovod/...
@@ -352,14 +352,14 @@
 #  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
 #  commands:
 #    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-#    - PYTHON=3.7 INSTALL_LUDWIG=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+#    - INSTALL_LUDWIG=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
 #    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/ludwig/...
 
 - label: ":tropical_fish: ML Libraries w/ Ray Client Examples (Python 3.7)."
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+    - TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client --test_env=RAY_CLIENT_MODE=1 python/ray/util/dask/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client python/ray/tune/...
@@ -368,7 +368,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DATA_PROCESSING_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/modin/...
     # Dask tests and examples.
@@ -378,7 +378,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DATA_PROCESSING_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-ray_air python/ray/data/...
 
@@ -386,7 +386,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DATA_PROCESSING_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/workflow/...
 
@@ -395,7 +395,7 @@
     ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_ML_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DOC_TESTING=1 INSTALL_HOROVOD=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - DOC_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-ray_air,-gpu,-py37,-post_wheel_build doc/...
 
@@ -404,7 +404,7 @@
     ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_ML_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DOC_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - DOC_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-needs_credentials,-gpu,-py37,-post_wheel_build doc/...
 
@@ -413,7 +413,7 @@
   commands:
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DOC_TESTING=1 PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - DOC_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - python ./ci/env/setup_credentials.py wandb comet_ml
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=needs_credentials,-gpu,-py37,-post_wheel_build doc/...
