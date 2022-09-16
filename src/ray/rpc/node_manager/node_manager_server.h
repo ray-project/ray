@@ -152,9 +152,8 @@ class NodeManagerServiceHandler {
                                   SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetTaskGroupsInfo(const GetTaskGroupsInfoRequest &request,
-                                  GetTaskGroupsInfoReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-
+                                       GetTaskGroupsInfoReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetObjectsInfo(const GetObjectsInfoRequest &request,
                                     GetObjectsInfoReply *reply,

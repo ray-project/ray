@@ -1016,9 +1016,7 @@ def list_task_groups(
     """
     return StateApiClient(address=address).list(
         StateResource.TASK_GROUPS,
-        options=ListApiOptions(
-            limit=limit, timeout=timeout, detail=detail
-        ),
+        options=ListApiOptions(limit=limit, timeout=timeout, detail=detail),
         raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )

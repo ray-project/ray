@@ -486,6 +486,16 @@ class TaskState(StateSchema):
 
 
 @dataclass(init=True)
+class TaskGroupState(StateSchema):
+    """Task Group State"""
+
+    #: The id of the task.
+    task_id: str = state_column(filterable=True)
+    #: The name of the task if it is given by the name argument.
+    name: str = state_column(filterable=True)
+
+
+@dataclass(init=True)
 class ObjectState(StateSchema):
     """Object State"""
 
@@ -898,6 +908,8 @@ def resource_to_schema(resource: StateResource) -> StateSchema:
         return RuntimeEnvState
     elif resource == StateResource.TASKS:
         return TaskState
+    elif resource == StateResource.TASK_GROUPS:
+        return TaskGroupState
     elif resource == StateResource.WORKERS:
         return WorkerState
     else:

@@ -38,7 +38,7 @@ class TaskGroup {
 class TaskGroupManager {
   // TODO: add enabled config flag
  public:
-  TaskGroupManager(WorkerContext &ctx) : worker_context_(ctx) {};
+  TaskGroupManager(WorkerContext &ctx) : worker_context_(ctx){};
   void FillTaskGroupInfo(std::vector<TaskGroup> *);
   void AddPendingTask(const TaskSpecification &spec);
 

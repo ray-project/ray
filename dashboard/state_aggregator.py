@@ -466,16 +466,16 @@ class StateAPIManager:
         result = []
         for reply in successful_replies:
             assert not isinstance(reply, Exception)
-            tasks = reply.owned_task_info_entries
-            for task in tasks:
-                data = self._message_to_dict(
-                    message=task,
-                )
-                result.append(data)
+            print("REPLY", reply)
+            result.append({"task_id": "123", "name": "group"})
         result = list(islice(result, option.limit))
         return ListApiResponse(
             result=result,
             partial_failure_warning=partial_failure_warning,
+            total=len(result),
+            num_after_truncation=0,
+            num_filtered=0,
+            warnings=[],
         )
 
     async def list_objects(self, *, option: ListApiOptions) -> ListApiResponse:

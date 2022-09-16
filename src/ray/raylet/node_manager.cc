@@ -781,8 +781,8 @@ void NodeManager::HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
 }
 
 void NodeManager::HandleGetTaskGroupsInfo(const rpc::GetTaskGroupsInfoRequest &request,
-                                     rpc::GetTaskGroupsInfoReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) {
+                                          rpc::GetTaskGroupsInfoReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Received a HandleGetTaskGroupsInfo request";
   auto total = std::make_shared<int>(0);
   auto count = std::make_shared<int>(0);
@@ -793,18 +793,8 @@ void NodeManager::HandleGetTaskGroupsInfo(const rpc::GetTaskGroupsInfoRequest &r
       /*on_replied*/
       [reply, total, limit, count](const ray::Status &status,
                                    const rpc::GetCoreWorkerStatsReply &r) {
-        *total += r.tasks_total();
         if (status.ok()) {
-          for (const auto &task_info : r.owned_task_info_entries()) {
-            if (limit != -1 && *count >= limit) {
-              break;
-            }
-            *count += 1;
-            reply->add_owned_task_info_entries()->CopyFrom(task_info);
-          }
-          for (const auto &running_task_id : r.running_task_ids()) {
-            reply->add_running_task_ids(running_task_id);
-          }
+          RAY_LOG(ERROR) << "IGNORING CORE WORKER RESPONSE";
         } else {
           RAY_LOG(INFO) << "Failed to query task information from a worker.";
         }
@@ -814,7 +804,7 @@ void NodeManager::HandleGetTaskGroupsInfo(const rpc::GetTaskGroupsInfoRequest &r
       /*include_task_info*/ false,
       /*include_task_group_info*/ true,
       /*limit*/ limit,
-      /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
+      /*on_all_replied*/ [total, reply]() {});
 }
 
 void NodeManager::HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request,

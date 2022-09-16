@@ -622,6 +622,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                           rpc::GetTasksInfoReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `HandleGetTaskGroupsInfo` request.
+  void HandleGetTaskGroupsInfo(const rpc::GetTaskGroupsInfoRequest &request,
+                               rpc::GetTaskGroupsInfoReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `HandleGetObjectsInfo` request.
   void HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request,
                             rpc::GetObjectsInfoReply *reply,
