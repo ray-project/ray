@@ -253,6 +253,12 @@ class Monitor:
 
         mirror_node_types = {}
         cluster_full = False
+        if (
+            hasattr(response, "cluster_full_of_actors_detected_by_gcs")
+            and response.cluster_full_of_actors_detected_by_gcs
+        ):
+            # GCS has detected the cluster full of actors.
+            cluster_full = True
         for resource_message in resources_batch_data.batch:
             node_id = resource_message.node_id
             # Generate node type config based on GCS reported node list.
@@ -271,7 +277,7 @@ class Monitor:
                 hasattr(resource_message, "cluster_full_of_actors_detected")
                 and resource_message.cluster_full_of_actors_detected
             ):
-                # Aggregate this flag across all batches.
+                # A worker node has detected the cluster full of actors.
                 cluster_full = True
             resource_load = dict(resource_message.resource_load)
             total_resources = dict(resource_message.resources_total)
