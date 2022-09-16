@@ -32,7 +32,7 @@ def ray_cluster():
     cluster.shutdown()
 
 
-async def test_controller_basic(serve_start_shutdown):
+async def test_deploy_basic(serve_start_shutdown):
     @serve.deployment
     class D1:
         def __call__(self, input):

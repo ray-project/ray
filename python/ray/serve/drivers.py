@@ -226,7 +226,7 @@ if isinstance(PredictAPIsServiceServicer, mock.MagicMock):
 else:
 
     @serve.deployment(driver_deployment=True, ray_actor_options={"num_cpus": 0})
-    class gRPCDriver(ServegRPCIngress, serve_pb2_grpc.PredictAPIsServiceServicer):
+    class gRPCDriver(ServegRPCIngress, PredictAPIsServiceServicer):
         """
         gRPC Driver that responsible for redirecting the gRPC requests
         and hold dag handle
