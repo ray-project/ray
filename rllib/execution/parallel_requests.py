@@ -13,7 +13,7 @@ class AsyncRequestsManager:
 
     Args:
         workers: A list of ray remote workers to operate on. These workers must have an
-            `apply` method which takes a function and a list of arguments to that
+            ``apply`` method which takes a function and a list of arguments to that
             function.
         max_remote_requests_in_flight_per_worker: The maximum number of remote
             requests that can be in flight per actor. Any requests made to the pool
@@ -25,28 +25,28 @@ class AsyncRequestsManager:
             AsyncRequestsManager.get_ready_results().
 
     Example:
-        >>> import time
-        >>> import ray
-        >>> from ray.rllib.execution.parallel_requests import AsyncRequestsManager
+        >>> import time # doctest: +SKIP
+        >>> import ray # doctest: +SKIP
+        >>> from ray.rllib.execution.parallel_requests import AsyncRequestsManager # doctest: +SKIP # noqa
         >>>
-        >>> @ray.remote
-        ... class MyActor:
-        ...    def apply(self, fn, *args: List[Any], **kwargs: Dict[str, Any]) -> Any:
-        ...        return fn(*args, **kwargs)
+        >>> @ray.remote # doctest: +SKIP
+        ... class MyActor: # doctest: +SKIP
+        ...    def apply(self, fn, *args: List[Any], **kwargs: Dict[str, Any]) -> Any: # doctest: +SKIP # noqa
+        ...        return fn(*args, **kwargs) # doctest: +SKIP
         ...
-        ...    def task(self, a: int, b: int) -> Any:
-        ...        time.sleep(0.5)
-        ...        return a + b
+        ...    def task(self, a: int, b: int) -> Any: # doctest: +SKIP
+        ...        time.sleep(0.5) # doctest: +SKIP
+        ...        return a + b # doctest: +SKIP
         >>>
-        >>> workers = [MyActor.remote() for _ in range(3)]
-        >>> manager = AsyncRequestsManager(workers,
-        ...                                max_remote_requests_in_flight_per_worker=2)
-        >>> manager.call(lambda worker, a, b: worker.task(a, b), fn_args=[1, 2])
-        >>> print(manager.get_ready())
-        >>> manager.call(lambda worker, a, b: worker.task(a, b),
-        ...                fn_kwargs={"a": 1, "b": 2})
-        >>> time.sleep(2) # Wait for the tasks to finish.
-        >>> print(manager.get_ready())
+        >>> workers = [MyActor.remote() for _ in range(3)] # doctest: +SKIP
+        >>> manager = AsyncRequestsManager(workers, # doctest: +SKIP
+        ...                                max_remote_requests_in_flight_per_worker=2) # doctest: +SKIP # noqa
+        >>> manager.call(lambda worker, a, b: worker.task(a, b), fn_args=[1, 2]) # doctest: +SKIP # noqa
+        >>> print(manager.get_ready()) # doctest: +SKIP
+        >>> manager.call(lambda worker, a, b: worker.task(a, b), # doctest: +SKIP
+        ...                fn_kwargs={"a": 1, "b": 2}) # doctest: +SKIP
+        >>> time.sleep(2) # Wait for the tasks to finish. # doctest: +SKIP
+        >>> print(manager.get_ready()) # doctest: +SKIP
     """
 
     def __init__(
@@ -79,7 +79,8 @@ class AsyncRequestsManager:
         """Call remote function on any available Actor or - if provided - on `actor`.
 
         Args:
-            remote_fn: The remote function to call.
+            remote_fn: The remote function to call. The function must have a signature
+                of: [RolloutWorker, args, kwargs] and return Any.
             actor: The actor to call the remote function on.
             fn_args: The arguments to pass to the remote function.
             fn_kwargs: The keyword arguments to pass to the remote function.
@@ -136,12 +137,17 @@ class AsyncRequestsManager:
         fn_args: List[Any] = None,
         fn_kwargs: Dict[str, Any] = None,
     ) -> int:
-        """ "Call remote_fn on all available workers
+        """Call `remote_fn` on all available workers.
+
+        Available workers are those that have less than the maximum requests currently
+        in-flight. The max. requests is set via the constructor's
+        `max_remote_requests_in_flight_per_worker` argument.
 
         Args:
-            remote_fn: The remote function to call
-            fn_args: The arguments to pass to the remote function
-            fn_kwargs: The keyword arguments to pass to the remote function
+            remote_fn: The remote function to call. The function must have a signature
+                of: [RolloutWorker, args, kwargs] and return Any.
+            fn_args: The arguments to pass to the remote function.
+            fn_kwargs: The keyword arguments to pass to the remote function.
 
         Returns:
             The number of remote calls of remote_fn that were able to be launched.
@@ -173,12 +179,13 @@ class AsyncRequestsManager:
             objs = ray.get(ready_requests)
         else:
             objs = ready_requests
+
         for req, obj in zip(ready_requests, objs):
             actor = self._pending_to_actor[req]
             self._remote_requests_in_flight[actor].remove(req)
             ready_requests_dict[actor].append(obj)
             del self._pending_to_actor[req]
-        del ready_requests
+
         return dict(ready_requests_dict)
 
     def add_workers(self, new_workers: Union[List[ActorHandle], ActorHandle]) -> None:

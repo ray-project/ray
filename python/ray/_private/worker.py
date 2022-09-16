@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 import traceback
+import urllib
 import warnings
 from abc import ABCMeta, abstractmethod
 from collections.abc import Mapping
@@ -30,6 +31,7 @@ from typing import (
     Union,
     overload,
 )
+from urllib.parse import urlparse
 
 import colorama
 import setproctitle
@@ -595,11 +597,9 @@ class Worker:
         # Make sure that the value is not an object ref.
         if isinstance(value, ObjectRef):
             raise TypeError(
-                "Calling 'put' on an ray.ObjectRef is not allowed "
-                "(similarly, returning an ray.ObjectRef from a remote "
-                "function is not allowed). If you really want to "
-                "do this, you can wrap the ray.ObjectRef in a list and "
-                "call 'put' on it (or return it)."
+                "Calling 'put' on an ray.ObjectRef is not allowed. "
+                "If you really want to do this, you can wrap the "
+                "ray.ObjectRef in a list and call 'put' on it."
             )
 
         if self.mode == LOCAL_MODE:
@@ -880,7 +880,7 @@ def get_resource_ids():
     return global_worker.core_worker.resource_ids()
 
 
-@Deprecated(message="Use ray.init()['webui_url'] instead.")
+@Deprecated(message="Use ray.init().address_info['webui_url'] instead.")
 def get_dashboard_url():
     """Get the URL to access the Ray dashboard.
 
@@ -889,9 +889,28 @@ def get_dashboard_url():
     Returns:
         The URL of the dashboard as a string.
     """
-    worker = global_worker
-    worker.check_connected()
-    return _global_node.webui_url
+    if ray_constants.RAY_OVERRIDE_DASHBOARD_URL in os.environ:
+        return _remove_protocol_from_url(
+            os.environ.get(ray_constants.RAY_OVERRIDE_DASHBOARD_URL)
+        )
+    else:
+        worker = global_worker
+        worker.check_connected()
+        return _global_node.webui_url
+
+
+def _remove_protocol_from_url(url: Optional[str]) -> str:
+    """
+    Helper function to remove protocol from URL if it exists.
+    """
+    if not url:
+        return url
+    parsed_url = urllib.parse.urlparse(url)
+    if parsed_url.scheme:
+        # Construct URL without protocol
+        scheme = f"{parsed_url.scheme}://"
+        return parsed_url.geturl().replace(scheme, "", 1)
+    return url
 
 
 class BaseContext(metaclass=ABCMeta):
@@ -1053,7 +1072,7 @@ def init(
         ray.init(address="ray://123.45.67.89:10001")
 
     More details for starting and connecting to a remote cluster can be found
-    here: https://docs.ray.io/en/master/cluster/ray-client.html
+    here: https://docs.ray.io/en/master/cluster/getting-started.html
 
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
@@ -1471,7 +1490,15 @@ def init(
 
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
-    dashboard_url = _global_node.address_info["webui_url"]
+    if ray_constants.RAY_OVERRIDE_DASHBOARD_URL in os.environ:
+        dashboard_url = os.environ.get(ray_constants.RAY_OVERRIDE_DASHBOARD_URL)
+    else:
+        dashboard_url = _global_node.webui_url
+    # Add http protocol to dashboard URL if it doesn't
+    # already contain a protocol.
+    if dashboard_url and not urlparse(dashboard_url).scheme:
+        dashboard_url = "http://" + dashboard_url
+
     # We logged the address before attempting the connection, so we don't need
     # to log it again.
     info_str = "Connected to Ray cluster."
@@ -1479,7 +1506,7 @@ def init(
         info_str = "Started a local Ray instance."
     if dashboard_url:
         logger.info(
-            info_str + " View the dashboard at %s%shttp://%s%s%s.",
+            info_str + " View the dashboard at %s%s%s %s%s",
             colorama.Style.BRIGHT,
             colorama.Fore.GREEN,
             dashboard_url,
@@ -1517,7 +1544,9 @@ def init(
         hook()
 
     node_id = global_worker.core_worker.get_current_node_id()
-    return RayContext(dict(_global_node.address_info, node_id=node_id.hex()))
+    global_node_address_info = _global_node.address_info.copy()
+    global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
+    return RayContext(dict(global_node_address_info, node_id=node_id.hex()))
 
 
 # Functions to run as callback after a successful ray init.
@@ -2036,10 +2065,15 @@ def connect(
         # are the same.
         # When using an interactive shell, there is no script directory.
         if not interactive_mode:
-            script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
-            worker.run_function_on_all_workers(
-                lambda worker_info: sys.path.insert(1, script_directory)
-            )
+            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
+            # If driver's sys.path doesn't include the script directory
+            # (e.g driver is started via `python -m`,
+            # see https://peps.python.org/pep-0338/),
+            # then we shouldn't add it to the workers.
+            if script_directory in sys.path:
+                worker.run_function_on_all_workers(
+                    lambda worker_info: sys.path.insert(1, script_directory)
+                )
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
         if not job_config.client_job and not job_config.runtime_env_has_working_dir():
@@ -2447,6 +2481,10 @@ def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHan
     have been created with Actor.options(name="name").remote(). This
     works for both detached & non-detached actors.
 
+    This method is a sync call and it'll timeout after 60s. This can be modified
+    by setting OS env RAY_gcs_server_request_timeout_seconds before starting
+    the cluster.
+
     Args:
         name: The name of the actor.
         namespace: The namespace of the actor, or None to specify the current
@@ -2838,9 +2876,9 @@ def remote(*args, **kwargs):
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation. This API is
             in beta and may change before becoming stable.
-        retry_exceptions: Only for *remote functions*. This specifies
-            whether application-level errors should be retried
-            up to max_retries times.
+        retry_exceptions: Only for *remote functions*. This specifies whether
+            application-level errors should be retried up to max_retries times.
+            This can be a boolean or a list of exceptions that should be retried.
         scheduling_strategy: Strategy about how to
             schedule a remote function or actor. Possible values are
             None: ray will figure out the scheduling strategy to use, it

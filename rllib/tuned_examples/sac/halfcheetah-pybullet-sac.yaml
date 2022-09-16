@@ -24,7 +24,7 @@ halfcheetah-pybullet-sac:
         min_sample_timesteps_per_iteration: 1000
         replay_buffer_config:
           type: MultiAgentPrioritizedReplayBuffer
-          learning_starts: 10000
+        num_steps_sampled_before_learning_starts: 10000
         optimization:
           actor_learning_rate: 0.0003
           critic_learning_rate: 0.0003

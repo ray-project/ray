@@ -30,6 +30,7 @@ from ray.tune.callback import Callback
 from ray.tune.result import NODE_IP
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.widgets import Template
 
 if TYPE_CHECKING:
     from ray.tune.experiment import Trial
@@ -38,6 +39,9 @@ logger = logging.getLogger(__name__)
 
 # Syncing period for syncing checkpoints between nodes or to cloud.
 DEFAULT_SYNC_PERIOD = 300
+
+# Default sync timeout after which syncing processes are aborted
+DEFAULT_SYNC_TIMEOUT = 1800
 
 _EXCLUDE_FROM_SYNC = [
     "./checkpoint_-00001",
@@ -84,6 +88,8 @@ class SyncConfig:
             is asynchronous and best-effort. This does not affect persistent
             storage syncing. Defaults to True.
         sync_period: Syncing period for syncing between nodes.
+        sync_timeout: Timeout after which running sync processes are aborted.
+            Currently only affects trial-to-cloud syncing.
 
     """
 
@@ -92,6 +98,42 @@ class SyncConfig:
 
     sync_on_checkpoint: bool = True
     sync_period: int = DEFAULT_SYNC_PERIOD
+    sync_timeout: int = DEFAULT_SYNC_TIMEOUT
+
+    def _repr_html_(self) -> str:
+        """Generate an HTML representation of the SyncConfig.
+
+        Note that self.syncer is omitted here; seems to have some overlap
+        with existing configuration settings here in the SyncConfig class.
+        """
+        try:
+            from tabulate import tabulate
+        except ImportError:
+            return (
+                "Tabulate isn't installed. Run "
+                "`pip install tabulate` for rich notebook output."
+            )
+
+        return Template("scrollableTable.html.j2").render(
+            table=tabulate(
+                {
+                    "Setting": [
+                        "Upload directory",
+                        "Sync on checkpoint",
+                        "Sync period",
+                    ],
+                    "Value": [
+                        self.upload_dir,
+                        self.sync_on_checkpoint,
+                        self.sync_period,
+                    ],
+                },
+                tablefmt="html",
+                showindex=False,
+                headers="keys",
+            ),
+            max_height="none",
+        )
 
 
 class _BackgroundProcess:
@@ -146,8 +188,8 @@ class Syncer(abc.ABC):
     This class handles data transfer for two cases:
 
     1. Synchronizing data from the driver to external storage. This affects
-      experiment-level checkpoints and trial-level checkpoints if no cloud storage
-      is used.
+       experiment-level checkpoints and trial-level checkpoints if no cloud storage
+       is used.
     2. Synchronizing data from remote trainables to external storage.
 
     Synchronizing tasks are usually asynchronous and can be awaited using ``wait()``.
@@ -307,6 +349,9 @@ class Syncer(abc.ABC):
 
     def close(self):
         pass
+
+    def _repr_html_(self) -> str:
+        return
 
 
 class _BackgroundSyncer(Syncer):

@@ -34,6 +34,11 @@ provider:
     resource_group: ray-cluster
     # set subscription id otherwise the default from az cli will be used
     # subscription_id: 00000000-0000-0000-0000-000000000000
+    # set unique subnet mask or a random mask will be used
+    # subnet_mask: 10.0.0.0/16
+    # set unique id for resources in this cluster
+    # if not set a default id will be generated based on the resource group and cluster name
+    # unique_id: RAY1
 
 # How Ray will authenticate with newly launched nodes.
 auth:

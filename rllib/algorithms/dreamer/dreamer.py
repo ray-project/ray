@@ -23,10 +23,10 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
-    SampleBatchType,
     AlgorithmConfigDict,
     ResultDict,
 )
+from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,7 @@ class DreamerConfig(AlgorithmConfig):
         >>> trainer.train()
 
     Example:
+        >>> from ray import air
         >>> from ray import tune
         >>> from ray.rllib.algorithms.dreamer import DreamerConfig
         >>> config = DreamerConfig()
@@ -56,11 +57,11 @@ class DreamerConfig(AlgorithmConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "Dreamer",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self):
@@ -106,6 +107,10 @@ class DreamerConfig(AlgorithmConfig):
 
         # .training()
         self.gamma = 0.99
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        self.num_steps_sampled_before_learning_starts = 0
 
         # .environment()
         self.env_config = {
@@ -134,6 +139,7 @@ class DreamerConfig(AlgorithmConfig):
         prefill_timesteps: Optional[int] = None,
         explore_noise: Optional[float] = None,
         dreamer_model: Optional[dict] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "DreamerConfig":
         """
@@ -153,6 +159,10 @@ class DreamerConfig(AlgorithmConfig):
             prefill_timesteps: Prefill timesteps.
             explore_noise: Exploration Gaussian noise.
             dreamer_model: Custom model config.
+            num_steps_sampled_before_learning_starts: Number of timesteps to collect
+                from rollout workers before we start sampling from replay buffers for
+                learning. Whether we count this in agent steps  or environment steps
+                depends on config["multiagent"]["count_steps_by"].
 
         Returns:
 
@@ -189,6 +199,10 @@ class DreamerConfig(AlgorithmConfig):
             self.explore_noise = explore_noise
         if dreamer_model is not None:
             self.dreamer_model = dreamer_model
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
 
         return self
 
@@ -201,52 +215,31 @@ def _postprocess_gif(gif: np.ndarray):
     return frames
 
 
-class EpisodicBuffer(object):
-    def __init__(self, max_length: int = 1000, length: int = 50):
-        """Stores episodes and samples chunks of size ``length`` from episodes.
+class EpisodeSequenceBuffer(ReplayBuffer):
+    def __init__(self, capacity: int = 1000, replay_sequence_length: int = 50):
+        """Stores episodes and samples sequences of size `replay_sequence_length`.
 
         Args:
-            max_length: Maximum episodes it can store
-            length: Episode chunking length in sample()
+            capacity: Maximum number of episodes this buffer can store
+            replay_sequence_length: Episode chunking length in sample()
         """
+        super().__init__(capacity=capacity, storage_unit=StorageUnit.EPISODES)
+        self.replay_sequence_length = replay_sequence_length
 
-        # Stores all episodes into a list: List[SampleBatchType]
-        self.episodes = []
-        self.max_length = max_length
-        self.timesteps = 0
-        self.length = length
-
-    def add(self, batch: SampleBatchType):
-        """Splits a SampleBatch into episodes and adds episodes to the episode buffer.
-
-        Args:
-            batch: SampleBatch to be added
-        """
-
-        self.timesteps += batch.count
-        episodes = batch.split_by_episode()
-        self.episodes.extend(episodes)
-
-        if len(self.episodes) > self.max_length:
-            delta = len(self.episodes) - self.max_length
-            # Drop oldest episodes
-            self.episodes = self.episodes[delta:]
-
-    def sample(self, batch_size: int):
+    def sample(self, num_items: int):
         """Samples [batch_size, length] from the list of episodes
 
         Args:
-            batch_size: batch_size to be sampled
+            num_items: batch_size to be sampled
         """
         episodes_buffer = []
-        while len(episodes_buffer) < batch_size:
-            rand_index = random.randint(0, len(self.episodes) - 1)
-            episode = self.episodes[rand_index]
-            if episode.count < self.length:
+        while len(episodes_buffer) < num_items:
+            episode = super().sample(1)
+            if episode.count < self.replay_sequence_length:
                 continue
-            available = episode.count - self.length
+            available = episode.count - self.replay_sequence_length
             index = int(random.randint(0, available))
-            episodes_buffer.append(episode[index : index + self.length])
+            episodes_buffer.append(episode[index : index + self.replay_sequence_length])
 
         return concat_samples(episodes_buffer)
 
@@ -266,13 +259,20 @@ class DreamerIteration:
         self.batch_size = batch_size
 
     def __call__(self, samples):
-        # Dreamer training loop.
-        for n in range(self.dreamer_train_iters):
-            print(f"sub-iteration={n}/{self.dreamer_train_iters}")
-            batch = self.episode_buffer.sample(self.batch_size)
-            # if n == self.dreamer_train_iters - 1:
-            #     batch["log_gif"] = True
-            fetches = self.worker.learn_on_batch(batch)
+
+        # Update target network every `target_network_update_freq` sample steps.
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+        ]
+
+        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+            # Dreamer training loop.
+            for n in range(self.dreamer_train_iters):
+                print(f"sub-iteration={n}/{self.dreamer_train_iters}")
+                batch = self.episode_buffer.sample(self.batch_size)
+                fetches = self.worker.learn_on_batch(batch)
+        else:
+            fetches = {}
 
         # Custom Logging
         policy_fetches = fetches[DEFAULT_POLICY_ID]["learner_stats"]
@@ -337,7 +337,9 @@ class Dreamer(Algorithm):
         # `training_iteration` implementation: Setup buffer in `setup`, not
         # in `execution_plan` (deprecated).
         if self.config["_disable_execution_plan_api"] is True:
-            self.local_replay_buffer = EpisodicBuffer(length=config["batch_length"])
+            self.local_replay_buffer = EpisodeSequenceBuffer(
+                replay_sequence_length=config["batch_length"]
+            )
 
             # Prefill episode buffer with initial exploration (uniform sampling)
             while (
@@ -355,7 +357,9 @@ class Dreamer(Algorithm):
         ), "Dreamer execution_plan does NOT take any additional parameters"
 
         # Special replay buffer for Dreamer agent.
-        episode_buffer = EpisodicBuffer(length=config["batch_length"])
+        episode_buffer = EpisodeSequenceBuffer(
+            replay_sequence_length=config["batch_length"]
+        )
 
         local_worker = workers.local_worker()
 
@@ -395,19 +399,25 @@ class Dreamer(Algorithm):
 
         fetches = {}
 
-        # Dreamer training loop.
-        # Run multiple sub-iterations for each training iteration.
-        for n in range(dreamer_train_iters):
-            print(f"sub-iteration={n}/{dreamer_train_iters}")
-            batch = self.local_replay_buffer.sample(batch_size)
-            fetches = local_worker.learn_on_batch(batch)
+        # Update target network every `target_network_update_freq` sample steps.
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+        ]
 
-        if fetches:
-            # Custom logging.
-            policy_fetches = fetches[DEFAULT_POLICY_ID]["learner_stats"]
-            if "log_gif" in policy_fetches:
-                gif = policy_fetches["log_gif"]
-                policy_fetches["log_gif"] = self._postprocess_gif(gif)
+        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+            # Dreamer training loop.
+            # Run multiple sub-iterations for each training iteration.
+            for n in range(dreamer_train_iters):
+                print(f"sub-iteration={n}/{dreamer_train_iters}")
+                batch = self.local_replay_buffer.sample(batch_size)
+                fetches = local_worker.learn_on_batch(batch)
+
+            if fetches:
+                # Custom logging.
+                policy_fetches = fetches[DEFAULT_POLICY_ID]["learner_stats"]
+                if "log_gif" in policy_fetches:
+                    gif = policy_fetches["log_gif"]
+                    policy_fetches["log_gif"] = self._postprocess_gif(gif)
 
         self.local_replay_buffer.add(batch)
 

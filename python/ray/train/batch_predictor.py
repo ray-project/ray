@@ -1,4 +1,5 @@
 import inspect
+import logging
 from typing import Any, Dict, Optional, List, Type, Union, Callable
 import pandas as pd
 
@@ -11,8 +12,10 @@ from ray.data.preprocessors import BatchMapper
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
+logger = logging.getLogger(__name__)
 
-@PublicAPI(stability="alpha")
+
+@PublicAPI(stability="beta")
 class BatchPredictor:
     """Batch predictor class.
 
@@ -166,8 +169,14 @@ class BatchPredictor:
         # explicit GPU resources
         if (
             "use_gpu" in inspect.signature(predictor_cls.from_checkpoint).parameters
+            and "use_gpu" not in predictor_kwargs
             and num_gpus_per_worker > 0
         ):
+            logger.info(
+                "`num_gpus_per_worker` is set for `BatchPreditor`."
+                "Automatically enabling GPU prediction for this predictor. To "
+                "disable set `use_gpu` to `False` in `BatchPredictor.predict`."
+            )
             predictor_kwargs["use_gpu"] = True
 
         ctx = DatasetContext.get_current()
@@ -213,7 +222,8 @@ class BatchPredictor:
                 # Set the in-predictor preprocessing to a no-op when using a separate
                 # GPU stage. Otherwise, the preprocessing will be applied twice.
                 override_prep = BatchMapper(lambda x: x)
-                data = preprocessor.transform(data)
+                batch_fn = preprocessor._transform_batch
+                data = data.map_batches(batch_fn, batch_format="pandas")
 
         prediction_results = data.map_batches(
             ScoringWrapper,

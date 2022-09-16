@@ -33,6 +33,7 @@ from ray.exceptions import (
     RaySystemError,
     RayTaskError,
     ReferenceCountingAssertionError,
+    ObjectFreedError,
     RuntimeEnvSetupError,
     TaskCancelledError,
     TaskPlacementGroupRemoved,
@@ -283,6 +284,10 @@ class SerializationContext:
                 )
             elif error_type == ErrorType.Value("OBJECT_DELETED"):
                 return ReferenceCountingAssertionError(
+                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
+                )
+            elif error_type == ErrorType.Value("OBJECT_FREED"):
+                return ObjectFreedError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
             elif error_type == ErrorType.Value("OWNER_DIED"):

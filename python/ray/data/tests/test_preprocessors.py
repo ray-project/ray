@@ -1223,14 +1223,14 @@ def test_concatenator():
     df = pd.DataFrame(
         {
             "a": [1, 2, 3, 4],
-            "b": [1, 2, 3, 4],
+            "b": [5, 6, 7, 8],
         }
     )
     ds = ray.data.from_pandas(df)
     prep = Concatenator(output_column_name="c")
     new_ds = prep.transform(ds)
     for i, row in enumerate(new_ds.take()):
-        assert np.array_equal(row["c"], np.array([i + 1, i + 1]))
+        assert np.array_equal(row["c"], np.array([i + 1, i + 5]))
 
     df = pd.DataFrame({"a": [1, 2, 3, 4]})
     ds = ray.data.from_pandas(df)
@@ -1302,33 +1302,29 @@ def test_tokenizer():
 
 def test_feature_hasher():
     """Tests basic FeatureHasher functionality."""
-
-    col_a = [0, "a", "b"]
-    col_b = [0, "a", "c"]
-    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
-    ds = ray.data.from_pandas(in_df)
-
-    hasher = FeatureHasher(["A", "B"], num_features=5)
-    transformed = hasher.transform(ds)
-    out_df = transformed.to_pandas()
-
-    processed_col_0 = [0, 0, 1]
-    processed_col_1 = [0, 0, 1]
-    processed_col_2 = [0, 2, 0]
-    processed_col_3 = [2, 0, 0]
-    processed_col_4 = [0, 0, 0]
-
-    expected_df = pd.DataFrame.from_dict(
-        {
-            "hash_A_B_0": processed_col_0,
-            "hash_A_B_1": processed_col_1,
-            "hash_A_B_2": processed_col_2,
-            "hash_A_B_3": processed_col_3,
-            "hash_A_B_4": processed_col_4,
-        }
+    # This dataframe represents the counts from the documents "I like Python" and "I
+    # dislike Python".
+    token_counts = pd.DataFrame(
+        {"I": [1, 1], "like": [1, 0], "dislike": [0, 1], "Python": [1, 1]}
     )
 
-    assert out_df.equals(expected_df)
+    hasher = FeatureHasher(["I", "like", "dislike", "Python"], num_features=256)
+    document_term_matrix = hasher.fit_transform(
+        ray.data.from_pandas(token_counts)
+    ).to_pandas()
+
+    # Document-term matrix should have shape (# documents, # features)
+    assert document_term_matrix.shape == (2, 256)
+
+    # The tokens tokens "I", "like", and "Python" should be hashed to distinct indices
+    # for adequately large `num_features`.
+    assert document_term_matrix.iloc[0].sum() == 3
+    assert all(document_term_matrix.iloc[0] <= 1)
+
+    # The tokens tokens "I", "dislike", and "Python" should be hashed to distinct
+    # indices for adequately large `num_features`.
+    assert document_term_matrix.iloc[1].sum() == 3
+    assert all(document_term_matrix.iloc[1] <= 1)
 
 
 def test_hashing_vectorizer():

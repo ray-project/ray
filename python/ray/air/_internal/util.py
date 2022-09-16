@@ -1,5 +1,7 @@
+import os
 import socket
 from contextlib import closing
+from typing import Optional
 
 import numpy as np
 
@@ -17,3 +19,28 @@ def is_nan(value):
 
 def is_nan_or_inf(value):
     return is_nan(value) or np.isinf(value)
+
+
+class StartTraceback(Exception):
+    """These exceptions (and their tracebacks) can be skipped with `skip_exceptions`"""
+
+    pass
+
+
+def skip_exceptions(exc: Optional[Exception]) -> Exception:
+    """Skip all contained `StartTracebacks` to reduce traceback output"""
+    should_not_shorten = bool(int(os.environ.get("RAY_AIR_FULL_TRACEBACKS", "0")))
+
+    if should_not_shorten:
+        return exc
+
+    if isinstance(exc, StartTraceback):
+        # If this is a StartTraceback, skip
+        return skip_exceptions(exc.__cause__)
+
+    # Else, make sure nested exceptions are properly skipped
+    cause = getattr(exc, "__cause__", None)
+    if cause:
+        exc.__cause__ = skip_exceptions(cause)
+
+    return exc

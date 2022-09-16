@@ -1,7 +1,13 @@
 (serve-api)=
 # Ray Serve API
 
+(core-apis)=
+
 ## Core APIs
+
+```{eval-rst}
+.. autofunction:: ray.serve.run
+```
 
 ```{eval-rst}
 .. autofunction:: ray.serve.start
@@ -9,14 +15,6 @@
 
 ```{eval-rst}
 .. autofunction:: ray.serve.deployment
-```
-
-```{eval-rst}
-.. autofunction:: ray.serve.list_deployments
-```
-
-```{eval-rst}
-.. autofunction:: ray.serve.get_deployment
 ```
 
 ```{eval-rst}
@@ -29,7 +27,7 @@
 
 ```{eval-rst}
 .. autoclass:: ray.serve.deployment.Deployment
-    :members: deploy, delete, options, get_handle
+    :members: deploy, delete, options, get_handle, bind
 ```
 
 (servehandle-api)=
@@ -47,169 +45,27 @@
 .. autofunction:: ray.serve.batch(max_batch_size=10, batch_wait_timeout_s=0.0)
 ```
 
-## Serve REST API
+## Serve CLI and REST API
 
-### REST API
+Check out the [CLI](serve-cli) and [REST API](serve-rest-api) for running, debugging, inspecting, and deploying Serve applications in production:
 
-#### `GET "/api/serve/deployments/"`
+```{toctree}
+:maxdepth: 1
+:name: serve-non-python-api
 
-Gets latest config that Serve has received. This config represents the current goal state for the Serve application. Starts a Serve application on the Ray cluster if it's not already running. See the [config schema](serve-rest-api-config-schema) for the response's JSON schema.
-
-**Example Request**:
-
-```
-GET /api/serve/deployments/ HTTP 1.1
-Host: http://localhost:8265/
-Accept: application/json
+serve_cli
+rest_api
 ```
 
-**Example Response**:
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{
-    "import_path": "fruit.deployment_graph",
-    "runtime_env": {
-        "working_dir": "https://github.com/ray-project/serve_config_examples/archive/HEAD.zip"
-    },
-    "deployments": [
-        {"name": "MangoStand", "user_config": {"price": 1}},
-        {"name": "OrangeStand", "user_config": {"price": 2}},
-        {"name": "PearStand", "user_config": {"price": 3}}
-    ]
-}
-```
-
-#### `PUT "/api/serve/deployments/"`
-
-Declaratively deploys the Serve application. Starts Serve on the Ray cluster if it's not already running. See the [config schema](serve-rest-api-config-schema) for the request's JSON schema.
-
-**Example Request**:
-
-```
-PUT /api/serve/deployments/ HTTP 1.1
-Host: http://localhost:8265/
-Accept: application/json
-
-{
-    "import_path": "fruit.deployment_graph",
-    "runtime_env": {
-        "working_dir": "https://github.com/ray-project/serve_config_examples/archive/HEAD.zip"
-    },
-    "deployments": [
-        {"name": "MangoStand", "user_config": {"price": 1}},
-        {"name": "OrangeStand", "user_config": {"price": 2}},
-        {"name": "PearStand", "user_config": {"price": 3}}
-    ]
-}
-```
-
-**Example Response**
-
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-```
-
-#### `GET "/api/serve/deployments/status"`
-
-Gets the Serve application's current status, including all the deployment statuses. This config represents the current goal state for the Serve application. Starts a Serve application on the Ray cluster if it's not already running. See the [status schema](serve-rest-api-status-schema) for the response's JSON schema.
-
-**Example Request**:
-
-```
-GET /api/serve/deployments/ HTTP 1.1
-Host: http://localhost:8265/
-Accept: application/json
-```
-
-**Example Response**
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{
-    "app_status": {
-        "status": "RUNNING",
-        "message": "",
-        "deployment_timestamp": 1855994527.146304
-    },
-    "deployment_statuses": [
-        {
-            "name": "MangoStand",
-            "status": "HEALTHY",
-            "message": ""
-        },
-        {
-            "name": "OrangeStand",
-            "status": "HEALTHY",
-            "message": ""
-        },
-        {
-            "name": "PearStand",
-            "status": "HEALTHY",
-            "message": ""
-        },
-        {
-            "name": "FruitMarket",
-            "status": "HEALTHY",
-            "message": ""
-        },
-        {
-            "name": "DAGDriver",
-            "status": "HEALTHY",
-            "message": ""
-        }
-    ]
-}
-```
-
-#### `DELETE "/api/serve/deployments/"`
-
-Shuts down the Serve application running on the Ray cluster. Has no
-effect if Serve is not running on the Ray cluster.
-    
-**Example Request**:
-
-```
-DELETE /api/serve/deployments/ HTTP 1.1
-Host: http://localhost:8265/
-Accept: application/json
-```
-
-**Example Response**
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-```
-
-(serve-rest-api-config-schema)=
-
-### Config Schema
+## Deployment Graph APIs
 
 ```{eval-rst}
-.. autopydantic_model:: ray.serve.schema.ServeApplicationSchema
-
+.. autofunction:: ray.serve.api.build
 ```
 
-(serve-rest-api-status-schema)=
-
-### Status Schema
-
-```{eval-rst}
-.. autopydantic_model:: ray.serve.schema.ServeStatusSchema
-
-```
-
-## Serve CLI
-
-```{eval-rst}
-.. click:: ray.serve.scripts:cli
-   :prog: serve
-   :show-nested:
-```
+% TODO(architkulkarni): This just compiles to "alias of Deployment(name=DAGDriver,version=None,route_prefix=/)"
+% in the docs, find out how to make Sphinx correctly autodocument this class.
+% ```{eval-rst}
+% .. autoclass:: ray.serve.drivers.DAGDriver
+%     :members: predict, predict_with_route
+% ```

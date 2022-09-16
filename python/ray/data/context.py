@@ -66,7 +66,7 @@ DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
 DEFAULT_USE_POLARS = False
 
 # Whether to estimate in-memory decoding data size for data source.
-DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = False
+DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
 # Whether to automatically cast NumPy ndarray columns in Pandas DataFrames to tensor
 # extension columns.
