@@ -3082,6 +3082,12 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
 
   if (request.include_task_group_info()) {
     task_manager_->FillTaskGroupInfo(reply, limit);
+    // TODO: unify with running task ids above.
+    for (const auto &current_running_task : current_tasks_) {
+      auto task = reply->add_running_tasks();
+      task->set_name(current_running_task.second.GetName());
+      task->set_parent_task_id(current_running_task.second.ParentTaskId().Binary());
+    }
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);

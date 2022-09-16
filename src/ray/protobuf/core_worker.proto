@@ -296,6 +296,8 @@ message GetCoreWorkerStatsReply {
   int64 tasks_total = 4;
   // Optional list of task groups tracked by this worker.
   repeated TaskGroupInfoEntry task_group_infos = 5;
+  // TODO: unify with running_task_ids above.
+  repeated RunningTaskInfo running_tasks = 6;
 }
 
 message LocalGCRequest {

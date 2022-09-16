@@ -1,4 +1,5 @@
 import asyncio
+import collections
 import logging
 
 from dataclasses import asdict, fields
@@ -466,19 +467,30 @@ class StateAPIManager:
         result = []
         for reply in successful_replies:
             assert not isinstance(reply, Exception)
+            # (parent_id, name) -> count
+            running_tasks = collections.defaultdict(int)
+            for running_task in reply.running_tasks:
+                key = (running_task.parent_task_id, running_task.name)
+                running_tasks[key] += 1
+            with open("/tmp/run", "a") as f:
+                f.write(str(running_tasks) + "\n")
             for group in reply.task_group_infos:
                 for child_group in group.child_group:
+                    key = (group.task_id, child_group.name)
                     result.append(
                         {
                             "name": child_group.name,
                             "count": child_group.count,
                             "finished_count": child_group.finished_count,
+                            "running_count": running_tasks[key],
                             "creation_time_nanos": child_group.creation_time_nanos,
                             "group_task_id": group.task_id,
                             "group_parent_task_id": group.parent_task_id,
                             "group_depth": group.depth,
                         }
                     )
+        with open("/tmp/groups", "a") as f:
+            f.write(str(result) + "\n")
         result = list(islice(result, option.limit))
         return ListApiResponse(
             result=result,

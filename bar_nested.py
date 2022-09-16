@@ -10,7 +10,7 @@ def model():
 
 @ray.remote
 def subproc():
-    time.sleep(0.1)
+    time.sleep(1)
 
 
 @ray.remote

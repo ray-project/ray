@@ -19,12 +19,18 @@ def progress_bar():
         )
         keep_going = False
         for g in task_groups:
-            name = (".." * g["group_depth"]) + g["name"]
-            if name not in bars:
+            d = g["group_depth"]
+            name = ("  " * max(0, d - 1)) + ("\-" * min(1, d)) + g["name"]
+            key = (name, g["group_task_id"])
+            if key not in bars:
                 bar = tqdm.tqdm(total=g["count"], position=len(bars))
-                bar.set_description(name)
-                bars[name] = bar
-            bar = bars[name]
+                bars[key] = bar
+            bar = bars[key]
+            if g["count"] != g["finished_count"]:
+                bar_name = name + ", {} running".format(g["running_count"])
+            else:
+                bar_name = name
+            bar.set_description(bar_name)
             delta = g["finished_count"] - bar.n
             if delta > 0:
                 bar.update(delta)

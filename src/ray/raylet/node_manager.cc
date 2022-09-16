@@ -797,6 +797,9 @@ void NodeManager::HandleGetTaskGroupsInfo(const rpc::GetTaskGroupsInfoRequest &r
           for (auto i = 0; i < r.task_group_infos_size(); i++) {
             reply->add_task_group_infos()->CopyFrom(r.task_group_infos(i));
           }
+          for (auto i = 0; i < r.running_tasks_size(); i++) {
+            reply->add_running_tasks()->CopyFrom(r.running_tasks(i));
+          }
         } else {
           RAY_LOG(INFO) << "Failed to query task information from a worker.";
         }

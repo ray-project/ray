@@ -702,3 +702,8 @@ message TaskGroupInfoEntry {
   repeated ChildTaskGroup child_group = 4;
   int64 depth = 5;
 }
+
+message RunningTaskInfo {
+  string name = 1;
+  bytes parent_task_id = 2;
+}

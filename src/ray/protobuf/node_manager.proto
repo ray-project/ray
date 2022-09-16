@@ -321,6 +321,7 @@ message GetTaskGroupsInfoRequest {
 
 message GetTaskGroupsInfoReply {
   repeated TaskGroupInfoEntry task_group_infos = 1;
+  repeated RunningTaskInfo running_tasks = 2;
 }
 
 message GetObjectsInfoRequest {
