@@ -83,6 +83,7 @@ from ray.data.datasource import (
     DefaultBlockWritePathProvider,
     JSONDatasource,
     NumpyDatasource,
+    MongoDatasource,
     ParquetDatasource,
     ReadTask,
     WriteResult,
@@ -2239,6 +2240,10 @@ class Dataset(Generic[T]):
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
+        )
+    def write_mongo(self, uri, database, collection) -> None:
+        self.write_datasource(
+            MongoDatasource(), uri=uri, database=database, collection=collection
         )
 
     def write_datasource(

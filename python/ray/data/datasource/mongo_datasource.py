@@ -1,14 +1,15 @@
 import logging
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import pymongo
-from pymongoarrow.api import aggregate_arrow_all
-
+from pymongoarrow.api import aggregate_arrow_all, write
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask
 from ray.data.block import (
     Block,
     BlockMetadata,
 )
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -60,3 +61,26 @@ class MongoDatasource(Datasource):
         return _MongoDatasourceReader(
             uri, database, collection, pipelines, schema, kwargs
         )
+
+    def do_write(
+        self,
+        blocks: List[ObjectRef[Block]],
+        metadata: List[BlockMetadata],
+        ray_remote_args: Optional[Dict[str, Any]],
+        uri,
+        database,
+        collection
+    ) -> List[ObjectRef[Any]]:
+        def write_block(uri, database, collection, block: Block):
+            client = pymongo.MongoClient(uri)
+            write(client[database][collection], block)
+
+        if ray_remote_args is None:
+            ray_remote_args = {}
+
+        write_block = cached_remote_fn(write_block).options(**ray_remote_args)
+        write_tasks = []
+        for block in blocks:
+            write_task = write_block.remote(uri, database, collection, block)
+            write_tasks.append(write_task)
+        return write_tasks
