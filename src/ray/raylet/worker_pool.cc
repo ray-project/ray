@@ -740,9 +740,6 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
     it->second.alive_started_workers.insert(worker);
     // We may have slots to start more workers now.
     TryStartIOWorkers(worker->GetLanguage());
-    if (worker_type == rpc::WorkerType::WORKER) {
-      TryPendingPopWorkerRequests(worker->GetLanguage());
-    }
   }
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
@@ -973,6 +970,10 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
       // TODO(SongGuyang): This worker will not be used forever. We should kill it.
       state.idle_dedicated_workers[task_id] = worker;
     }
+    // We either have an idle worker or a slot to start a new worker.
+    if (worker->GetWorkerType() == rpc::WorkerType::WORKER) {
+      TryPendingPopWorkerRequests(worker->GetLanguage());
+    }
     return;
   }
 
@@ -990,9 +991,10 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     int64_t now = get_time_();
     idle_of_all_languages_.emplace_back(worker, now);
     idle_of_all_languages_map_[worker] = now;
-    if (worker->GetWorkerType() == rpc::WorkerType::WORKER) {
-      TryPendingPopWorkerRequests(worker->GetLanguage());
-    }
+  }
+  // We either have an idle worker or a slot to start a new worker.
+  if (worker->GetWorkerType() == rpc::WorkerType::WORKER) {
+    TryPendingPopWorkerRequests(worker->GetLanguage());
   }
 }
 
