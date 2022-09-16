@@ -1,5 +1,7 @@
-Stopping and Resuming Tune run
-==============================
+Stopping and resuming a Ray Tune run
+====================================
+
+Ray Tune periodically checkpoints the run state so that it can be restarted when it fails or stops.
 
 If you send a SIGINT signal to the process running ``Tuner.fit()`` (which is
 usually what happens when you press Ctrl+C in the console), Ray Tune shuts
@@ -49,11 +51,13 @@ What's happening under the hood?
 :ref:`Here <tune-two-types-of-ckpt>` we talked about two types of Tune checkpoints.
 Both checkpoints come into play when resuming a Tune run.
 
-When resuming an interrupted/errored Tune run, Tune first looks at Experiment checkpoint to
-identify a list of trials in different state at the time of interruption or error out.
-Tune then locates the Trial checkpoint of each trial. Depending on the user's options
-("resume_unfinished", "resume_errored", "restart_errored"), Tune then decides whether to
-restore a given non-finished trial from its latest checkpoint available or start from fresh.
+When resuming an interrupted/errored Tune run, Tune first looks at the experiment-level checkpoint
+to find the list of trials at the time of the interruption. Ray Tune then locates the trial-level
+checkpoint of each trial.
+
+Depending on the specified resume option
+("resume_unfinished", "resume_errored", "restart_errored"), Ray Tune then decides whether to
+restore a given non-finished trial from its latest available checkpoint or start from scratch.
 
 .. _tune-stopping-ref:
 

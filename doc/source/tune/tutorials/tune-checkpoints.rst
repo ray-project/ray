@@ -6,32 +6,34 @@ A Guide To Using Checkpoints
 Two different types of Tune checkpoints
 ---------------------------------------
 
-There are mainly two types of checkpoints that Tune maintains: Experiment checkpoint and Trial
-checkpoint.
-Experiment checkpoint saves experiment state - this includes Searcher/Scheduler state,
-the trials that belong to each trial state category (PENDING, RUNNING, TERMINATED, ERROR) and the
-metadata that is pertained to each trial (hyperparameter configuration, trial logdir etc).
+There are mainly two types of checkpoints that Tune maintains: Experiment-level checkpoints and Trial-level
+checkpoints.
+Experiment-level checkpoints save the experiment state. This includes the state of the searcher/scheduler,
+the list of trials with their statuses (PENDING, RUNNING, TERMINATED, ERROR), and the
+metadata that is pertained to each trial (hyperparameter configuration, trial logdir, etc).
 
-Experiment checkpoint is done by the driver. The frequency at which it is conducted is automatically
+The experiment-level checkpoint is saved by the driver.
+The frequency at which it is conducted is automatically
 adjusted so that at least 95% of the time is used for handling training results and scheduling.
-It can also be configured. Please see TUNE_GLOBAL_CHECKPOINT_S at
-:ref:`Ray Tune env var <tune-env-vars>`.
+This time can also be adjusted with the
+:ref:`TUNE_GLOBAL_CHECKPOINT_S <tune-env-vars> environment variable`.
 
-The purpose of Experiment checkpoint is to maintain a global state from which the whole Tune experiment
-can be resumed from once it is interrupted or failed.
-It is also useful after a Tune experiment is done and one wants to load the Experiment checkpoint for
-post-analysis.
+The purpose of the experiment checkpoint is to maintain a global state from which the whole Ray Tune experiment
+can be resumed from if it is interrupted or failed.
+It can also be used to analysis tuning results after a Ray Tune finished.
 
-Trial checkpoint is the per trial state that is directly saved by the trainable itself. Model or model
-state is the most common form of Trial checkpoint. This is useful mostly for two reasons:
+Trial-level checkpoints capture the per-trial state. They are saved by the trainable itself.
+Commonly, this includes the model and optimizer states. This is useful mostly for three reasons:
 
-- Some HPO algorithms such as HyperBand and PBT requires this capability in order to constantly pause
-  and restart certain trials.
-- This allows for training progress to be saved periodically so that a particular trial can be restarted
-  from its latest checkpoint if the machine it is trained on dies.
+- If the trial is interrupted for some reason (e.g. on spot instances), it can be resumed from the
+  last state. No training time is lost.
+- Some searchers/schedulers pause trials to free resources so that other trials can train in
+  the meantime. This only makes sense if the trials can then continue training from the latest state.
 - The checkpoint can be later used for other downstream tasks like batch inference.
 
-Everything that is reported by ``session.report()`` is Trial checkpoint. See :ref:`Here <air-checkpoint-ref>`.
+
+Everything that is reported by ``session.report()`` is a trial-level checkpoint.
+See :ref:`here for more information on saving checkpoints <air-checkpoint-ref>`.
 
 .. _tune-checkpoint-syncing:
 
