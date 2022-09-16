@@ -13,7 +13,7 @@ import pytest
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 from ray.data.datasource.image_folder_datasource import (
     IMAGE_EXTENSIONS,
-    _ImageFolderDatasourceReader,
+    _ImageDatasourceReader,
 )
 import requests
 import snappy
@@ -32,7 +32,7 @@ from ray.data.datasource import (
     DefaultParquetMetadataProvider,
     DummyOutputDatasource,
     FastFileMetadataProvider,
-    ImageFolderDatasource,
+    ImageDatasource,
     PartitionStyle,
     PathPartitionEncoder,
     PathPartitionFilter,
@@ -3023,8 +3023,8 @@ def test_image_folder_reader_estimate_data_size(
         data_size >= expected_size and data_size <= expected_size * 1.5
     ), "actual data size is out of expected bound"
 
-    reader = _ImageFolderDatasourceReader(
-        delegate=ImageFolderDatasource(),
+    reader = _ImageDatasourceReader(
+        delegate=ImageDatasource(),
         paths=[root],
         filesystem=LocalFileSystem(),
         partition_filter=FileExtensionFilter(file_extensions=IMAGE_EXTENSIONS),

@@ -13,8 +13,6 @@ from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
     _FileBasedDatasourceReader,
     FileBasedDatasource,
-    _resolve_paths_and_filesystem,
-    FileExtensionFilter,
 )
 from ray.data.datasource.file_meta_provider import DefaultFileMetadataProvider
 from ray.data.datasource.partitioning import PathPartitionFilter
@@ -39,16 +37,15 @@ IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 
 
 @DeveloperAPI
-class ImageFolderDatasource(BinaryDatasource):
-    """A datasource that lets you read datasets like ImageNet."""
+class ImageDatasource(BinaryDatasource):
+    """A datasource that lets you read images."""
 
     def create_reader(
         self,
-        root: str,
         size: Optional[Tuple[int, int]] = None,
         mode: Optional[str] = None,
+        **kwargs,
     ) -> "Reader[T]":
-        """Return a :py:class:`~ray.data.datasource.Reader` that reads images."""
         if size is not None and len(size) != 2:
             raise ValueError(
                 "Expected `size` to contain 2 integers for height and width, "
@@ -62,35 +59,20 @@ class ImageFolderDatasource(BinaryDatasource):
         _check_import(self, module="PIL", package="Pillow")
         _check_import(self, module="pandas", package="pandas")
 
-        # We call `_resolve_paths_and_filesystem` so that the dataset root is formatted
-        # in the same way as the paths passed to `_get_class_from_path`.
-        paths, filesystem = _resolve_paths_and_filesystem([root])
-        root = paths[0]
-
-        return _ImageFolderDatasourceReader(
-            delegate=self,
-            paths=paths,
-            filesystem=filesystem,
-            partition_filter=FileExtensionFilter(file_extensions=IMAGE_EXTENSIONS),
-            root=root,
-            size=size,
-            mode=mode,
-        )
+        return _ImageDatasourceReader(self, size=size, mode=mode, **kwargs)
 
     def _read_file(
         self,
         f: "pyarrow.NativeFile",
         path: str,
-        root: str,
         size: Optional[Tuple[int, int]],
         mode: Optional[str],
-    ) -> Block:
-        import pandas as pd
+    ) -> List[np.ndarray]:
         from PIL import Image
 
-        records = super()._read_file(f, path, include_paths=True)
+        records = super()._read_file(f, path, include_paths=False)
         assert len(records) == 1
-        path, data = records[0]
+        data = records[0]
 
         image = Image.open(io.BytesIO(data))
         if size is not None:
@@ -99,14 +81,7 @@ class ImageFolderDatasource(BinaryDatasource):
         if mode is not None:
             image = image.convert(mode)
 
-        label = _get_class_from_path(path, root)
-
-        return pd.DataFrame(
-            {
-                "image": [np.array(image)],
-                "label": [label],
-            }
-        )
+        return [np.array(image)]
 
 
 class _ImageFileMetadataProvider(DefaultFileMetadataProvider):
@@ -130,7 +105,7 @@ class _ImageFileMetadataProvider(DefaultFileMetadataProvider):
         return metadata
 
 
-class _ImageFolderDatasourceReader(_FileBasedDatasourceReader):
+class _ImageDatasourceReader(_FileBasedDatasourceReader):
     def __init__(
         self,
         delegate: FileBasedDatasource,
@@ -204,13 +179,3 @@ class _ImageFolderDatasourceReader(_FileBasedDatasourceReader):
             )
         logger.debug(f"Estimated image encoding ratio from sampling is {ratio}.")
         return max(ratio, IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
-
-
-def _get_class_from_path(path: str, root: str) -> str:
-    # The class is the name of the first directory after the root. For example, if
-    # the root is "/data/imagenet/train" and the path is
-    # "/data/imagenet/train/n01443537/images/n01443537_0.JPEG", then the class is
-    # "n01443537".
-    path, root = pathlib.PurePath(path), pathlib.PurePath(root)
-    assert root in path.parents
-    return path.parts[len(root.parts) :][0]

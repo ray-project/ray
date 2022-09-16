@@ -27,7 +27,7 @@ from ray.data.datasource import (
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
-    ImageFolderDatasource,
+    ImageDatasource,
     JSONDatasource,
     NumpyDatasource,
     ParquetBaseDatasource,
@@ -380,29 +380,17 @@ def read_parquet(
 
 @PublicAPI(stability="alpha")
 def read_images(
-    root: str, size: Optional[Tuple[int, int]] = None, mode: Optional[str] = None
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    partition_filter: Optional[
+        PathPartitionFilter
+    ] = ImageDatasource.file_extension_filter(),
+    size: Optional[Tuple[int, int]] = None,
+    mode: Optional[str] = None,
 ):
-    """Read datasets like `ImageNet <https://www.image-net.org/>`_.
-
-    This function works with any directory where images are arranged in this way:
-
-    .. code-block::
-
-        root/dog/xxx.png
-        root/dog/xxy.png
-        root/dog/[...]/xxz.png
-
-        root/cat/123.png
-        root/cat/nsdf3.png
-        root/cat/[...]/asd932_.png
-
-    Datasets read with this function contain two columns: ``'image'`` and ``'label'``.
-
-    * The ``'image'`` column is of type
-      :py:class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`. The shape of the
-      tensors are :math:`(H, W)` if the images are grayscale and :math:`(H, W, C)`
-      otherwise.
-    * The ``'label'`` column contains strings representing class names (e.g., 'cat').
+    """Read the images at the specified paths.
 
     .. warning::
         If your dataset contains images of varying sizes and you don't specify
@@ -411,25 +399,42 @@ def read_images(
 
     Examples:
         >>> import ray
-        >>> ds = ray.data.read_images("/data/imagenet/train", size=(224, 224))
-        >>> sample = ds.take(1)[0]  # doctest: +SKIP
-        >>> sample["image"].to_numpy().shape  # doctest: +SKIP
-        (224, 224, 3)
-        >>> sample["label"]  # doctest: +SKIP
-        'n01443537'
+        >>> path = "s3://air-example-data2/movie-image-small-filesize-1GB"
+        >>> ds = ray.data.read_images(path, size=(224, 224))
+        >>> ds
 
-        To convert class labels to integer-valued targets, use
-        :class:`~ray.data.preprocessors.OrdinalEncoder`.
+        If yours images are arranged like:
 
-        >>> from ray.data.preprocessors import OrdinalEncoder
-        >>> oe = OrdinalEncoder(columns=["label"])  # doctest: +SKIP
-        >>> ds = oe.fit_transform(ds)  # doctest: +SKIP
-        >>> sample = ds.take(1)[0]  # doctest: +SKIP
-        >>> sample["label"]  # doctest: +SKIP
-        71
+        .. code::
+
+            root/dog/xxx.png
+            root/dog/xxy.png
+            root/dog/[...]/xxz.png
+
+            root/cat/123.png
+            root/cat/nsdf3.png
+            root/cat/[...]/asd932_.png
+
+        Then you can include the labels by specifying a partitioning scheme.
+
+        >>> import ray
+        >>> path = "s3://balajis-tiny-imagenet/train"
+        >>> partitioning = Partitioning("dir", field_names=["label", None], base_dir=path)
+        >>> ds = ray.data.read_images(path, size=(224, 224), partitioning=partitioning)
+        >>> ds
 
     Args:
-        root: Path to the dataset root.
+         paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The filesystem implementation to read from.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files of the dataset.
+        meta_provider: File metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
+        partition_filter: Path-based partition filter, if any. Can be used
+            with a custom callback to read only selected partitions of a dataset.
+            By default, this filters out any file paths whose file extension does not
+            match ``*.png``, ``*.jpg``, ``*.jpeg``, ``*.tiff``, ``*.bmp``, or ``*.gif``.
         size: The desired height and width of loaded images. If unspecified, images
             retain their original shape.
         mode: A `Pillow mode <https://pillow.readthedocs.io/en/stable/handbook/concepts.html#modes>`_
@@ -438,13 +443,22 @@ def read_images(
             `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
 
     Returns:
-        A :class:`~ray.data.Dataset` containing image and label columns.
+        A :class:`~ray.data.Dataset` containing ``np.ndarray`` objects constructed from
+        the images at the specified paths.
 
     Raises:
         ValueError: if ``size`` contains non-positive numbers.
         ValueError: if ``mode`` is unsupported.
     """  # noqa: E501
-    return read_datasource(ImageFolderDatasource(), root=root, size=size, mode=mode)
+    return read_datasource(
+        ImageDatasource(),
+        paths=paths,
+        filesystem=filesystem,
+        parallelism=parallelism,
+        partition_filter=partition_filter,
+        size=size,
+        mode=mode,
+    )
 
 
 @PublicAPI
