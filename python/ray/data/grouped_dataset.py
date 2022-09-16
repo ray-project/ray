@@ -44,7 +44,7 @@ class _GroupbyOp(ShuffleOp):
         """Partition the block and combine rows with the same key."""
         stats = BlockExecStats.builder()
 
-        block = _GroupbyOp._pruneUnusedColumns(block, key, aggs)
+        block = _GroupbyOp._prune_unused_columns(block, key, aggs)
 
         if key is None:
             partitions = [block]
@@ -73,7 +73,7 @@ class _GroupbyOp(ShuffleOp):
         )
 
     @staticmethod
-    def _pruneUnusedColumns(
+    def _prune_unused_columns(
         block: Block,
         key: KeyFn,
         aggs: Tuple[AggregateFn],
