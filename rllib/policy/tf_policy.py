@@ -1,6 +1,5 @@
 import logging
 import math
-import os
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import gym
@@ -17,6 +16,7 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -495,6 +495,7 @@ class TFPolicy(Policy):
     def get_state(self) -> PolicyState:
         # For tf Policies, return Policy weights and optimizer var values.
         state = super().get_state()
+
         if len(self._optimizer_variables.variables) > 0:
             state["_optimizer_variables"] = self.get_session().run(
                 self._optimizer_variables.variables
@@ -521,18 +522,6 @@ class TFPolicy(Policy):
 
         # Then the Policy's (NN) weights and connectors.
         super().set_state(state)
-
-    @override(Policy)
-    @DeveloperAPI
-    def export_checkpoint(
-        self, export_dir: str, filename_prefix: str = "model"
-    ) -> None:
-        """Export tensorflow checkpoint to export_dir."""
-        os.makedirs(export_dir, exist_ok=True)
-        save_path = os.path.join(export_dir, filename_prefix)
-        with self.get_session().graph.as_default():
-            saver = tf1.train.Saver()
-            saver.save(self.get_session(), save_path)
 
     @override(Policy)
     @DeveloperAPI
@@ -575,21 +564,25 @@ class TFPolicy(Policy):
 
                 model_proto = g.make_model("onnx_model")
                 tf2onnx.utils.save_onnx_model(
-                    export_dir, "saved_model", feed_dict={}, model_proto=model_proto
+                    export_dir, "model", feed_dict={}, model_proto=model_proto
                 )
+        # Save the tf.keras.Model (architecture and weights, so it can be retrieved
+        # w/o access to the original (custom) Model or Policy code).
+        elif (
+            hasattr(self, "model")
+            and hasattr(self.model, "base_model")
+            and isinstance(self.model.base_model, tf.keras.Model)
+        ):
+            if self.config["checkpoints_contain_native_model_files"]:
+                with self.get_session().graph.as_default():
+                    try:
+                        self.model.base_model.save(
+                            filepath=export_dir, save_format="tf"
+                        )
+                    except Exception:
+                        logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
         else:
-            with self.get_session().graph.as_default():
-                signature_def_map = self._build_signature_def()
-                builder = tf1.saved_model.builder.SavedModelBuilder(export_dir)
-                builder.add_meta_graph_and_variables(
-                    self.get_session(),
-                    [tf1.saved_model.tag_constants.SERVING],
-                    signature_def_map=signature_def_map,
-                    saver=tf1.summary.FileWriter(export_dir).add_graph(
-                        graph=self.get_session().graph
-                    ),
-                )
-                builder.save()
+            logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 
     @override(Policy)
     @DeveloperAPI

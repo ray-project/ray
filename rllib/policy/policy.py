@@ -3,6 +3,7 @@ import gym
 from gym.spaces import Box
 import logging
 import numpy as np
+import os
 import platform
 import tree  # pip install dm_tree
 from typing import (
@@ -19,6 +20,8 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
+from ray.air.checkpoint import Checkpoint
+import ray.cloudpickle as pickle
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -170,6 +173,40 @@ class Policy(metaclass=ABCMeta):
     `rllib.policy.policy_template::build_policy_class` (PyTorch) or
     `rllib.policy.tf_policy_template::build_tf_policy_class` (TF).
     """
+
+    @staticmethod
+    def from_state(state: PolicyState) -> "Policy":
+        """Recovers a Policy from a state object.
+
+        The `state` of an instantiated Policy can be retrieved by calling its
+        `get_state` method. This only works for the V2 Policy classes (EagerTFPolicyV2,
+        SynamicTFPolicyV2, and TorchPolicyV2). It contains all information necessary
+        to create the Policy. No access to the original code (e.g. configs, knowledge of
+        the policy's class, etc..) is needed.
+
+        Args:
+            state: The state to recover a new Policy instance from.
+
+        Returns:
+            A new Policy instance.
+        """
+        pol_spec: PolicySpec = state.get("policy_spec")
+        if pol_spec is None:
+            raise ValueError(
+                "No `policy_spec` key was found in given `state`! Cannot create "
+                "new Policy."
+            )
+        # Create the new policy.
+        new_policy = pol_spec.policy_class(
+            observation_space=pol_spec.observation_space,
+            action_space=pol_spec.action_space,
+            config=pol_spec.config,
+        )
+        # Set the new policy's state (weights, optimizer vars, exploration state,
+        # etc..).
+        new_policy.set_state(state)
+        # Return the new policy.
+        return new_policy
 
     @DeveloperAPI
     def __init__(
@@ -764,7 +801,18 @@ class Policy(metaclass=ABCMeta):
             # The current global timestep.
             "global_timestep": self.global_timestep,
         }
+
+        # Add this Policy's spec so it can be retreived w/o access to the original
+        # code.
+        policy_spec = PolicySpec(
+            policy_class=type(self),
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            config=self.config,
+        )
+
         if self.config.get("enable_connectors", False):
+            state["policy_spec"] = policy_spec.serialize()
             # Checkpoint connectors state as well if enabled.
             connector_configs = {}
             if self.agent_connectors:
@@ -772,6 +820,9 @@ class Policy(metaclass=ABCMeta):
             if self.action_connectors:
                 connector_configs["action"] = self.action_connectors.to_state()
             state["connector_configs"] = connector_configs
+        else:
+            state["policy_spec"] = policy_spec
+
         return state
 
     @PublicAPI(stability="alpha")
@@ -857,13 +908,31 @@ class Policy(metaclass=ABCMeta):
             self.global_timestep = global_vars["timestep"]
 
     @DeveloperAPI
-    def export_checkpoint(self, export_dir: str) -> None:
-        """Export Policy checkpoint to local directory.
+    def export_checkpoint(
+        self, export_dir: str, filename_prefix: str = "model"
+    ) -> Checkpoint:
+        """Exports Policy checkpoint to a local directory and returns an AIR Checkpoint.
 
         Args:
             export_dir: Local writable directory.
+            filename_prefix: String to use as filename for the saved model.
+                Note that this argument is deprecated and should no longer be used as
+                some policies produce more than one file.
+
+        Returns:
+            The AIR Checkpoint instance created (in addition to writing the given
+            directory).
         """
-        raise NotImplementedError
+        assert filename_prefix == "model", (
+            "The arg `filename_prefix` for `Policy.export_checkpoint()` is "
+            "deprecated and should not be set!"
+        )
+        state = self.get_state()
+        os.makedirs(export_dir, exist_ok=True)
+        pickle.dump(state, open(os.path.join(export_dir, "policy_state.pkl"), "w+b"))
+        self.export_model(os.path.join(export_dir, "model"))
+        checkpoint = Checkpoint.from_directory(export_dir)
+        return checkpoint
 
     @DeveloperAPI
     def export_model(self, export_dir: str, onnx: Optional[int] = None) -> None:
@@ -877,6 +946,10 @@ class Policy(metaclass=ABCMeta):
             export_dir: Local writable directory.
             onnx: If given, will export model in ONNX format. The
                 value of this parameter set the ONNX OpSet version to use.
+
+        Raises:
+            ValueError: If a native DL-framework based model (e.g. a keras Model)
+            cannot be saved to disk for various reasons.
         """
         raise NotImplementedError
 

@@ -4,6 +4,7 @@ It supports both traced and non-traced eager execution modes."""
 
 import functools
 import logging
+import os
 import threading
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple
@@ -17,6 +18,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -697,7 +699,9 @@ def _build_eager_tf_policy(
 
         @override(Policy)
         def get_state(self) -> PolicyState:
+            # Legacy Policy state (w/o keras model and w/o PolicySpec).
             state = super().get_state()
+
             state["global_timestep"] = state["global_timestep"].numpy()
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()
@@ -729,12 +733,35 @@ def _build_eager_tf_policy(
             super().set_state(state)
 
         @override(Policy)
-        def export_checkpoint(self, export_dir):
-            raise NotImplementedError  # TODO: implement this
+        def export_model(self, export_dir, onnx: Optional[int] = None) -> None:
+            if onnx:
+                try:
+                    import tf2onnx
+                except ImportError as e:
+                    raise RuntimeError(
+                        "Converting a TensorFlow model to ONNX requires "
+                        "`tf2onnx` to be installed. Install with "
+                        "`pip install tf2onnx`."
+                    ) from e
 
-        @override(Policy)
-        def export_model(self, export_dir):
-            raise NotImplementedError  # TODO: implement this
+                model_proto, external_tensor_storage = tf2onnx.convert.from_keras(
+                    self.model.base_model,
+                    output_path=os.path.join(export_dir, "model.onnx"),
+                )
+            # Save the tf.keras.Model (architecture and weights, so it can be retrieved
+            # w/o access to the original (custom) Model or Policy code).
+            elif (
+                hasattr(self, "model")
+                and hasattr(self.model, "base_model")
+                and isinstance(self.model.base_model, tf.keras.Model)
+            ):
+                if self.config["checkpoints_contain_native_model_files"]:
+                    try:
+                        self.model.base_model.save(export_dir, save_format="tf")
+                    except Exception:
+                        logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
+            else:
+                logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 
         def variables(self):
             """Return the list of all savable variables for this policy."""

@@ -1,7 +1,26 @@
+import os
+from pathlib import Path
+import tempfile
 import unittest
+
+import ray
+import ray.cloudpickle as pickle
+from ray.air.checkpoint import Checkpoint
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.utils.test_utils import framework_iterator
 
 
 class TestBackwardCompatibility(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def test_register_all(self):
         """Tests the old (1.10) way of registering all Trainers.
 
@@ -37,6 +56,24 @@ class TestBackwardCompatibility(unittest.TestCase):
         trainer = PPOTrainer(config=config, env="CartPole-v0")
         trainer.train()
         trainer.stop()
+
+    def test_old_checkpoint_formats(self):
+        """Tests, whether we remain backward compatible (>=2.0.0) wrt checkpoints."""
+        for version in ["v0", "v1"]:
+            for fw in framework_iterator():
+                path_to_checkpoint = os.path.join(
+                    str(Path.cwd()),
+                    "checkpoints",
+                    version,
+                    "ppo_frozenlake_" + fw,
+                )
+
+                # Should work for both old ("v0") and newer versions of checkpoints:
+                # Simply use new Algorithm.from_checkpoint staticmethod.
+                algo = Algorithm.from_checkpoint(path_to_checkpoint)
+
+                print(algo.train())
+                algo.stop()
 
 
 if __name__ == "__main__":

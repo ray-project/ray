@@ -104,18 +104,17 @@ def learn_test_plus_evaluate(algo, env="CartPole-v0"):
 
         # Find last checkpoint and use that for the rollout.
         checkpoint_path = os.popen(
-            "ls {}/default/*/checkpoint_*/checkpoint-*".format(tmp_dir)
+            "ls {}/default/*/checkpoint_*/state.pkl".format(tmp_dir)
         ).read()[:-1]
         checkpoints = [
-            cp
-            for cp in checkpoint_path.split("\n")
-            if re.match(r"^.+checkpoint-\d+$", cp)
+            cp for cp in checkpoint_path.split("\n") if re.match(r"^.+state.pkl$", cp)
         ]
         # Sort by number and pick last (which should be the best checkpoint).
         last_checkpoint = sorted(
-            checkpoints, key=lambda x: int(re.match(r".+checkpoint-(\d+)", x).group(1))
+            checkpoints,
+            key=lambda x: int(re.match(r".+checkpoint_(\d+).+", x).group(1)),
         )[-1]
-        assert re.match(r"^.+checkpoint_\d+/checkpoint-\d+$", last_checkpoint)
+        assert re.match(r"^.+checkpoint_\d+/state.pkl$", last_checkpoint)
         if not os.path.exists(last_checkpoint):
             sys.exit(1)
         print("Best checkpoint={} (exists)".format(last_checkpoint))
@@ -176,7 +175,7 @@ def learn_test_multi_agent_plus_evaluate(algo):
             },
         }
         stop = {"episode_reward_mean": 100.0}
-        tune.Tuner(
+        results = tune.Tuner(
             algo,
             param_space=config,
             run_config=air.RunConfig(
@@ -190,22 +189,7 @@ def learn_test_multi_agent_plus_evaluate(algo):
         ).fit()
 
         # Find last checkpoint and use that for the rollout.
-        checkpoint_path = os.popen(
-            "ls {}/PPO/*/checkpoint_*/checkpoint-*".format(tmp_dir)
-        ).read()[:-1]
-        checkpoint_paths = checkpoint_path.split("\n")
-        assert len(checkpoint_paths) > 0
-        checkpoints = [
-            cp for cp in checkpoint_paths if re.match(r"^.+checkpoint-\d+$", cp)
-        ]
-        # Sort by number and pick last (which should be the best checkpoint).
-        last_checkpoint = sorted(
-            checkpoints, key=lambda x: int(re.match(r".+checkpoint-(\d+)", x).group(1))
-        )[-1]
-        assert re.match(r"^.+checkpoint_\d+/checkpoint-\d+$", last_checkpoint)
-        if not os.path.exists(last_checkpoint):
-            sys.exit(1)
-        print("Best checkpoint={} (exists)".format(last_checkpoint))
+        best_checkpoint = results.get_best_result().checkpoint
 
         ray.shutdown()
 
@@ -214,7 +198,7 @@ def learn_test_multi_agent_plus_evaluate(algo):
             "python {}/evaluate.py --run={} "
             "--steps=400 "
             '--out="{}/rollouts_n_steps.pkl" "{}"'.format(
-                rllib_dir, algo, tmp_dir, last_checkpoint
+                rllib_dir, algo, tmp_dir, best_checkpoint._local_path
             )
         ).read()[:-1]
         if not os.path.exists(tmp_dir + "/rollouts_n_steps.pkl"):

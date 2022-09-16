@@ -104,11 +104,6 @@ class TestPPO(unittest.TestCase):
                 entropy_coeff=100.0,
                 entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],
                 train_batch_size=128,
-                model=dict(
-                    # Settings in case we use an LSTM.
-                    lstm_cell_size=10,
-                    max_seq_len=20,
-                ),
             )
             .rollouts(
                 num_rollout_workers=1,
@@ -130,6 +125,8 @@ class TestPPO(unittest.TestCase):
                             use_lstm=lstm,
                             lstm_use_prev_action=lstm,
                             lstm_use_prev_reward=lstm,
+                            lstm_cell_size=10,
+                            max_seq_len=20,
                         )
                     )
 

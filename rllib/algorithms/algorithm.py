@@ -11,6 +11,7 @@ import numpy as np
 import os
 from packaging import version
 import pkg_resources
+import re
 import tempfile
 import time
 from typing import (
@@ -27,13 +28,17 @@ from typing import (
 )
 
 import ray
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
+from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.exceptions import GetTimeoutError, RayActorError, RayError
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
+from ray.rllib.algorithms.registry import (
+    ALGORITHMS as ALL_ALGORITHMS,
+    get_algorithm_class,
+)
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
@@ -206,6 +211,144 @@ class Algorithm(Trainable):
         "num_env_steps_sampled",
         "num_env_steps_trained",
     ]
+
+    @staticmethod
+    def from_checkpoint(
+        checkpoint: Union[str, Checkpoint],
+        policies: Optional[Container[PolicyID]] = None,
+    ) -> "Algorithm":
+        """Creates a new algorithm instance from a given checkpoint.
+
+        Note: This method must remain backward compatible from 2.0.0 on.
+
+        Args:
+            checkpoint: The path (str) to the checkpoint directory to use
+                or an AIR Checkpoint instance to restore from.
+            policies: Optional list of PolicyIDs to recover. This allows users to
+                restore an Algorithm with only a subset of the originally present
+                Policies.
+
+        Returns:
+            The instantiated Algorithm.
+        """
+        # Do we have an old ("v0") single checkpoint file?
+        v0_checkpoint_file = None
+
+        # `checkpoint` is a str: Could be checkpoint file or directory.
+        if isinstance(checkpoint, str):
+            if os.path.isdir(checkpoint):
+                for file in os.listdir(checkpoint):
+                    path_file = os.path.join(checkpoint, file)
+                    if os.path.isfile(path_file) and re.match("checkpoint-\\d+", file):
+                        v0_checkpoint_file = path_file
+                        break
+                checkpoint = Checkpoint.from_directory(checkpoint)
+            elif os.path.isfile(checkpoint):
+                v0_checkpoint_file = checkpoint
+                checkpoint = Checkpoint.from_directory(os.path.dirname(checkpoint))
+            else:
+                raise ValueError(
+                    f"Given checkpoint ({checkpoint}) not found! Must be a "
+                    "checkpoint directory (or file for older checkpoint versions)."
+                )
+
+        # Open main state file of checkpoint (or v0_checkpoint_file itself).
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            checkpoint.to_directory(tmp_dir)
+            state_file = v0_checkpoint_file or os.path.join(tmp_dir, "state.pkl")
+
+            if not os.path.isfile(state_file):
+                raise ValueError(
+                    "Given checkpoint does not seem to be valid! No file "
+                    "with the name `state.pkl` (or `checkpoint-[0-9]+`) found. "
+                    "It's possible that you have passed an older checkpoint version. "
+                    "In this case, do the following:\n"
+                    "1) Create a new Algorithm object using the original config.\n"
+                    "2) Call the `restore()` method of this algo object passing it"
+                    " your older checkpoint dir."
+                )
+
+            state = pickle.load(open(state_file, "rb"))
+
+            # Olf style: Create algo first, then call its `restore()` method.
+            if v0_checkpoint_file:
+                # Worker state used to be pickled ("v0"), now it's just another sub-dict
+                # within the state.
+                local_worker_state = pickle.loads(state["worker"])
+                config = local_worker_state["policy_config"]
+                # Hack: Try to infer Algorithm class from Policy class.
+                # Only works for single agent (otherwise, gets too complicated as we would
+                # be possibly lacking the actual original algo config).
+                if DEFAULT_POLICY_ID not in local_worker_state["policy_specs"]:
+                    raise ValueError(
+                        "Cannot restore a v0 multi-agent checkpoint using "
+                        "`Algorithm.from_checkpoint()`!"
+                        "In this case, do the following:\n"
+                        "1) Create a new Algorithm object using the original config.\n"
+                        "2) Call the `restore()` method of this algo object passing it"
+                        " your checkpoint dir."
+                    )
+                algo_class_name = local_worker_state["policy_specs"][DEFAULT_POLICY_ID].policy_class.__name__
+                algo_class_name = re.sub("^(\\w+)(TF2|TF1|Torch)Policy$", "\\1", algo_class_name)
+                algo_class = get_algorithm_class(algo_class_name)
+                algo: "Algorithm" = algo_class(config=config)
+                algo.restore(v0_checkpoint_file)
+                return algo
+            else:
+                # TODO: Remove filters once they are part of policies (via connectors).
+                policies = policies if policies is not None else state["filters"].keys()
+
+                # Prepare local `worker` state to add policies' states into it read from
+                # separate policy checkpoint files.
+                state["worker"] = {
+                    # The policies' states will go into this dict.
+                    "state": {},
+                    # TODO: Remove filters once they are part of policies (via connectors).
+                    "filters": state.pop("filters"),
+                }
+                for pid in policies:
+                    policy_state_file = os.path.join(tmp_dir, "policies", pid, "policy_state.pkl")
+                    if not os.path.isfile(policy_state_file):
+                        raise ValueError(
+                            "Given checkpoint does not seem to be valid! No policy state "
+                            f"file found for PID={pid}. "
+                            f"The file not found is: {policy_state_file}."
+                        )
+
+                    state["worker"]["state"][pid] = pickle.load(open(policy_state_file, "rb"))
+
+                return Algorithm.from_state(state)
+
+    @staticmethod
+    def from_state(state: Dict) -> "Algorithm":
+        """Recovers an Algorithm from a state object.
+
+        The `state` of an instantiated Algorithm can be retrieved by calling its
+        `get_state` method. It contains all information necessary
+        to create the Algorithm from scratch. No access to the original code (e.g.
+        configs, knowledge of the Algorithm's class, etc..) is needed.
+
+        Args:
+            state: The state to recover a new Algorithm instance from.
+
+        Returns:
+            A new Algorithm instance.
+        """
+        algo_class: Type[Algorithm] = state.get("algorithm_class")
+        if algo_class is None:
+            raise ValueError(
+                "No `algorithm_class` key was found in given `state`! Cannot create "
+                "new Algorithm."
+            )
+        # Create the new algo.
+        config = state.get("config")
+        if not config:
+            raise ValueError("No `config` found in given Algorithm state!")
+        new_algo = algo_class(config=config)
+        # Set the new algo's state.
+        new_algo.__setstate__(state)
+        # Return the new algo.
+        return new_algo
 
     @PublicAPI
     def __init__(
@@ -477,12 +620,6 @@ class Algorithm(Trainable):
 
         # Update with evaluation settings:
         user_eval_config = copy.deepcopy(self.config["evaluation_config"])
-
-        # Assert that user has not unset "in_evaluation".
-        assert (
-            "in_evaluation" not in user_eval_config
-            or user_eval_config["in_evaluation"] is True
-        )
 
         # Merge user-provided eval config with the base config. This makes sure
         # the eval config is always complete, no matter whether we have eval
@@ -1708,7 +1845,7 @@ class Algorithm(Trainable):
         export_dir: str,
         filename_prefix: str = "model",
         policy_id: PolicyID = DEFAULT_POLICY_ID,
-    ) -> None:
+    ) -> Checkpoint:
         """Exports policy model checkpoint to a local directory.
 
         Args:
@@ -1724,7 +1861,8 @@ class Algorithm(Trainable):
             >>>     trainer.train() # doctest: +SKIP
             >>> trainer.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
         """
-        self.get_policy(policy_id).export_checkpoint(export_dir, filename_prefix)
+        policy = self.get_policy(policy_id)
+        return policy.export_checkpoint(export_dir, filename_prefix)
 
     @DeveloperAPI
     def import_policy_model_from_h5(
@@ -1750,18 +1888,71 @@ class Algorithm(Trainable):
         self._sync_weights_to_workers(worker_set=self.workers)
 
     @override(Trainable)
-    def save_checkpoint(self, checkpoint_dir: str) -> str:
-        checkpoint_path = os.path.join(
-            checkpoint_dir, "checkpoint-{}".format(self.iteration)
-        )
-        pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
+    def save_checkpoint(self, checkpoint_dir: str) -> Optional[Union[str, Dict]]:
+        """Returns a dict with all checkpoint information in it.
 
-        return checkpoint_path
+        Args:
+            checkpoint_dir: The directory where the checkpoint
+                file must be stored. This is handled entirely by Tune and not used here
+                b/c we return a dict instead.
+
+        Returns:
+            A dict that will be automatically serialized by Tune and
+            passed to ``Trainable.load_checkpoint()``.
+        """
+        state = self.__getstate__()
+
+        local_worker_state = state.pop("worker")
+        policies = {}
+        if local_worker_state:
+            policies = local_worker_state.pop("state", {})
+
+        # Write state (w/o policies or filters) to disk.
+        state_file = os.path.join(checkpoint_dir, "state.pkl")
+
+        # TODO: Once filters have been outsourced into connectors,
+        #  we should remove this hack.
+        state["filters"] = local_worker_state.get("filters", {})
+
+        # Add checkpoint version.
+        state["__version__"] = "v1"
+
+        pickle.dump(state, open(state_file, "wb"))
+
+        # Write individual policies to disk.
+        if (
+            hasattr(self, "workers")
+            and isinstance(self.workers, WorkerSet)
+        ):
+            for pid, policy in self.workers.local_worker().policy_map.items():
+                policy_dir = os.path.join(checkpoint_dir, "policies", pid)
+                os.makedirs(policy_dir, exist_ok=True)
+                # Write policy state.
+                policy_state_file = os.path.join(policy_dir, "policy_state.pkl")
+                pickle.dump(policies[pid], open(policy_state_file, "wb"))
+                # Write model files, if required.
+                if self.config["checkpoints_contain_native_model_files"]:
+                    model_dir = os.path.join(policy_dir, "model")
+                    os.makedirs(model_dir, exist_ok=True)
+                    policy.export_model(export_dir=model_dir)
+
+        return checkpoint_dir
 
     @override(Trainable)
-    def load_checkpoint(self, checkpoint_path: str) -> None:
-        extra_data = pickle.load(open(checkpoint_path, "rb"))
-        self.__setstate__(extra_data)
+    def load_checkpoint(self, checkpoint: Union[Dict, str]) -> None:
+        # Checkpoint is provided as a directory name.
+        # Restore from the checkpoint file or dir.
+        if isinstance(checkpoint, str):
+            # Just in case the actual file is provided (old style checkpoints).
+            if os.path.isfile(checkpoint):
+                filename = checkpoint
+            # Normal case: User provides checkpoint dir (not file).
+            else:
+                filename = os.path.join(checkpoint, "state.pkl")
+            checkpoint_data = pickle.load(open(filename, "rb"))
+        else:
+            checkpoint_data = checkpoint
+        self.__setstate__(checkpoint_data)
 
     @override(Trainable)
     def log_result(self, result: ResultDict) -> None:
@@ -2487,8 +2678,20 @@ class Algorithm(Trainable):
         else:
             return self.import_policy_model_from_h5(import_file)
 
-    def __getstate__(self) -> dict:
-        state = {}
+    @PublicAPI
+    def __getstate__(self) -> Dict:
+        """Returns current state of Algorithm, sufficient to restore it from scratch.
+
+        Returns:
+            The current state dict of this Algorithm, which can be used to sufficiently
+            restore the algorithm from scratch without any other information.
+        """
+        # Add config to state so complete Algorithm can be reproduced w/o.
+        state = {
+            "algorithm_class": type(self),
+            "config": self.config,
+        }
+
         if hasattr(self, "workers"):
             state["worker"] = self.workers.local_worker().get_state()
         # TODO: Experimental functionality: Store contents of replay buffer
@@ -2503,7 +2706,18 @@ class Algorithm(Trainable):
 
         return state
 
-    def __setstate__(self, state: dict):
+    @PublicAPI
+    def __setstate__(self, state) -> None:
+        """Sets the algorithm to the provided state.
+
+        Args:
+            state: The state dict to restore this Algorithm instance to. `state` may
+                have been returned by a call to an Algorithm's `get_state()` method.
+        """
+
+        # TODO (sven): Validate that our config and the config in state are compatible.
+        #  For example, the model architectures may differ.
+
         if hasattr(self, "workers") and "worker" in state:
             self.workers.local_worker().set_state(state["worker"])
             remote_state = ray.put(state["worker"])
