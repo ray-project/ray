@@ -687,3 +687,14 @@ message NamedActorInfo {
   string ray_namespace = 1;
   string name = 2;
 }
+
+message ChildTaskGroup {
+  string name = 1;
+  int64 count = 2;
+  int64 completed = 3;
+}
+
+message TaskGroupInfoEntry {
+  string name = 1;
+  repeated ChildTaskGroup child_group = 2;
+}

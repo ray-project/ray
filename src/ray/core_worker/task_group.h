@@ -19,6 +19,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/core_worker/context.h"
+#include "ray/util/macros.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
@@ -28,10 +29,12 @@ class TaskGroup {
  public:
   TaskGroup(std::shared_ptr<const TaskSpecification> task_spec) : task_spec_(task_spec){};
   void AddPendingTask(const TaskSpecification &spec);
+  void FillTaskGroup(rpc::TaskGroupInfoEntry *entry);
 
  private:
   std::shared_ptr<const TaskSpecification> task_spec_;
   absl::flat_hash_map<std::string, int64_t> tasks_by_name_;
+  RAY_DISALLOW_COPY_AND_ASSIGN(TaskGroup);
 };
 
 // This class is NOT thread-safe.
@@ -39,7 +42,8 @@ class TaskGroupManager {
   // TODO: add enabled config flag
  public:
   TaskGroupManager(WorkerContext &ctx) : worker_context_(ctx){};
-  void FillTaskGroupInfo(std::vector<TaskGroup> *);
+  void FillTaskGroupInfo(rpc::GetCoreWorkerStatsReply *reply,
+                                      const int64_t limit) const;
   void AddPendingTask(const TaskSpecification &spec);
 
  private:

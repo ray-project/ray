@@ -794,7 +794,9 @@ void NodeManager::HandleGetTaskGroupsInfo(const rpc::GetTaskGroupsInfoRequest &r
       [reply, total, limit, count](const ray::Status &status,
                                    const rpc::GetCoreWorkerStatsReply &r) {
         if (status.ok()) {
-          RAY_LOG(ERROR) << "IGNORING CORE WORKER RESPONSE";
+          for (auto i=0; i < r.task_group_infos_size(); i++) {
+            reply->add_task_group_infos()->CopyFrom(r.task_group_infos(i));
+          }
         } else {
           RAY_LOG(INFO) << "Failed to query task information from a worker.";
         }

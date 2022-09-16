@@ -736,7 +736,7 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 
 void TaskManager::FillTaskGroupInfo(rpc::GetCoreWorkerStatsReply *reply,
                                     const int64_t limit) const {
-  RAY_LOG(ERROR) << "TODO FILL TASK GROUP INFO";
+  task_group_manager_.FillTaskGroupInfo(reply, limit);
 }
 
 }  // namespace core

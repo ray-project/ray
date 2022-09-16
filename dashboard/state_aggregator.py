@@ -466,14 +466,18 @@ class StateAPIManager:
         result = []
         for reply in successful_replies:
             assert not isinstance(reply, Exception)
-            print("REPLY", reply)
-            result.append({"task_id": "123", "name": "group"})
+            for group in reply.task_group_infos:
+                for child_group in group.child_group:
+                    result.append({
+                        "name": child_group.name,
+                        "count": child_group.count,
+                    })
         result = list(islice(result, option.limit))
         return ListApiResponse(
             result=result,
             partial_failure_warning=partial_failure_warning,
             total=len(result),
-            num_after_truncation=0,
+            num_after_truncation=len(result),
             num_filtered=0,
             warnings=[],
         )

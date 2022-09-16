@@ -320,7 +320,7 @@ message GetTaskGroupsInfoRequest {
 }
 
 message GetTaskGroupsInfoReply {
-  // TODO
+  repeated TaskGroupInfoEntry task_group_infos = 1;
 }
 
 message GetObjectsInfoRequest {

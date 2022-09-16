@@ -294,6 +294,8 @@ message GetCoreWorkerStatsReply {
   repeated bytes running_task_ids = 3;
   // Length of the number of tasks without truncation.
   int64 tasks_total = 4;
+  // Optional list of task groups tracked by this worker.
+  repeated TaskGroupInfoEntry task_group_infos = 5;
 }
 
 message LocalGCRequest {
