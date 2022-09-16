@@ -520,6 +520,15 @@ def read_json(
         >>> ray.data.read_json( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
+        By default, ``read_json`` parses
+        `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_
+        from file paths. If your data adheres to a different partitioning scheme, set
+        the ``partitioning`` parameter.
+
+        >>> ds = ray.data.read_json("example://year=2022/month=09/sales.json")  # doctest: + SKIP
+        >>> ds.take(1)  # doctest: + SKIP
+        [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}
+
     Args:
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
@@ -604,6 +613,15 @@ def read_csv(
         ...     "example://dow_jones_index.csv",
         ...     convert_options=convert_options)
 
+        By default, ``read_csv`` parses
+        `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_
+        from file paths. If your data adheres to a different partitioning scheme, set
+        the ``partitioning`` parameter.
+
+        >>> ds = ray.data.read_csv("example://year=2022/month=09/sales.csv")  # doctest: + SKIP
+        >>> ds.take(1)  # doctest: + SKIP
+        [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}
+
     Args:
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
@@ -619,7 +637,9 @@ def read_csv(
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
             match "*.csv*".
-        partitioning: TODO
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. By default, this function parses
+            `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_.
         arrow_csv_args: Other csv read options to pass to pyarrow.
 
     Returns:
@@ -663,6 +683,15 @@ def read_text(
 
         >>> # Read multiple local files.
         >>> ray.data.read_text(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
+
+        By default, ``read_json`` parses
+        `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_
+        from file paths. If your data adheres to a different partitioning scheme, set
+        the ``partitioning`` parameter.
+
+        >>> ds = ray.data.read_json("example://year=2022/month=09/sales.json")  # doctest: + SKIP
+        >>> ds.take(1)  # doctest: + SKIP
+        [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}
 
     Args:
         paths: A single file path or a list of file paths (or directories).
