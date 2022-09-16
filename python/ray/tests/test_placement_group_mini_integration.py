@@ -13,6 +13,7 @@ import ray
 import ray.cluster_utils
 from ray._private.test_utils import wait_for_condition
 from ray.util.placement_group import placement_group, remove_placement_group
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def run_mini_integration_test(cluster, pg_removal=True, num_pgs=999):
@@ -75,7 +76,9 @@ def run_mini_integration_test(cluster, pg_removal=True, num_pgs=999):
             for i in range(num_nodes):
                 tasks.append(
                     mock_task.options(
-                        placement_group=pg, placement_group_bundle_index=i
+                        scheduling_strategy=PlacementGroupSchedulingStrategy(
+                            placement_group=pg, placement_group_bundle_index=i
+                        )
                     ).remote()
                 )
         # Remove the rest of placement groups.

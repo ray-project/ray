@@ -1252,6 +1252,16 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.filters[policy_id] = get_filter(self.observation_filter, filter_shape)
 
+        if (
+            self.policy_config.get("enable_connectors")
+            and policy_id in self.policy_map
+            and not (
+                self.policy_map[policy_id].agent_connectors
+                or self.policy_map[policy_id].action_connectors
+            )
+        ):
+            create_connectors_for_policy(self.policy_map[policy_id], self.policy_config)
+
         self.set_policy_mapping_fn(policy_mapping_fn)
         if policies_to_train is not None:
             self.set_is_policy_to_train(policies_to_train)
@@ -1464,7 +1474,7 @@ class RolloutWorker(ParallelIteratorWorker):
         return return_filters
 
     @DeveloperAPI
-    def save(self) -> bytes:
+    def get_state(self) -> bytes:
         """Serializes this RolloutWorker's current state and returns it.
 
         Returns:
@@ -1493,7 +1503,7 @@ class RolloutWorker(ParallelIteratorWorker):
         )
 
     @DeveloperAPI
-    def restore(self, objs: bytes) -> None:
+    def set_state(self, objs: bytes) -> None:
         """Restores this RolloutWorker's state from a sequence of bytes.
 
         Args:
@@ -1923,6 +1933,14 @@ class RolloutWorker(ParallelIteratorWorker):
     @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=False)
     def foreach_trainable_policy(self, func, **kwargs):
         return self.foreach_policy_to_train(func, **kwargs)
+
+    @Deprecated(new="RolloutWorker.get_state()", error=False)
+    def save(self, *args, **kwargs):
+        return self.get_state(*args, **kwargs)
+
+    @Deprecated(new="RolloutWorker.set_state([state])", error=False)
+    def restore(self, *args, **kwargs):
+        return self.set_state(*args, **kwargs)
 
 
 def _determine_spaces_for_multi_agent_dict(
