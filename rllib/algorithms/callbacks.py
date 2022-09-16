@@ -119,7 +119,8 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         """Callback run before a sub-environment is reset.
 
         This method gets called before every `try_reset()` is called by RLlib
-        on a sub-environment (usually a gym.Env).
+        on a sub-environment (usually a gym.Env). This includes the very first (initial)
+        reset performed on each sub-environment.
 
         Args:
             worker: Reference to the current rollout worker.
