@@ -284,6 +284,8 @@ class Preprocessor(abc.ABC):
             if data_format == "numpy":
                 return self._transform_numpy(data)
             elif data_format == "arrow":
+                import ipdb
+                ipdb.set_trace()
                 if len(data.column_names) == 1:
                     # If just a single column, return as a single numpy array.
                     return self._transform_numpy(data[0].to_numpy())
@@ -292,7 +294,7 @@ class Preprocessor(abc.ABC):
                     for col_name in data.column_names:
                         output_dict[col_name] = data[col_name].to_numpy()
                 return self._transform_numpy(output_dict)
-            else:  # Pandas
+            elif data_format == "pandas":
                 if len(data.columns) == 1:
                     # If just a single column, return as a single numpy array.
                     return self._transform_numpy(data.iloc[:, 0].to_numpy())

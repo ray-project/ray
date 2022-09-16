@@ -22,7 +22,7 @@ def test_ds_pandas_format():
 
 
 @pytest.fixture
-def test_ds_arrow_format():
+def test_ds_multi_column_arrow_format():
     old_column = [1, 2, 3, 4]
     to_be_modified = [1, -1, 1, -1]
     ds = ray.data.from_arrow(
@@ -34,6 +34,12 @@ def test_ds_arrow_format():
         )
     )
     yield ds, old_column
+
+
+@pytest.fixture
+def test_ds_range_table_arrow_format():
+    ds = ray.data.range_table(10)
+    yield ds
 
 
 def test_batch_mapper_pandas(test_ds_pandas_format):

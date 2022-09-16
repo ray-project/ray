@@ -13,7 +13,7 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 
 @pytest.fixture
 def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
+    address_info = ray.init(num_cpus=4, log_to_driver=True)
     yield address_info
     ray.shutdown()
 
@@ -163,8 +163,12 @@ def test_fit_transform_config(ray_start_4_cpus):
     ds = ray.data.range_table(10)
 
     def drop_odd(rows):
-        key = list(rows)[0]
-        return rows[(rows[key] % 2 == 0)]
+        val = rows[0]
+        if val % 2 == 0:
+            return rows
+        else:
+            return rows
+        # return rows[(rows[key] % 2 == 0)]
 
     prep = BatchMapper(drop_odd)
 
