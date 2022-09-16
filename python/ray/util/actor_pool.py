@@ -1,7 +1,7 @@
 from typing import List, Callable, Any
 
 import ray
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import Deprecated
 from ray._private.utils import get_ray_doc_version
 
 
@@ -12,7 +12,6 @@ from ray._private.utils import get_ray_doc_version
     "Datasets.map_batches(compute=ActorPoolStrategy, ...), see details in "
     f"https://docs.ray.io/en/{get_ray_doc_version()}/data/api/dataset.html#ray.data.Dataset.map_batches."  # noqa: E501
 )
-@PublicAPI(stability="beta")
 class ActorPool:
     """Utility class to operate on a fixed pool of actors.
 
