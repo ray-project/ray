@@ -5,6 +5,35 @@ import os
 logger = logging.getLogger(__name__)
 
 
+def progress_bar():
+    import time
+    import tqdm
+    import ray.experimental.state.api
+
+    bars = {}
+    keep_going = True
+    while keep_going:
+        task_groups = ray.experimental.state.api.list_task_groups()
+        keep_going = False
+        for g in task_groups:
+            if g["name"] not in bars:
+                bar = tqdm.tqdm(total=g["count"], position=len(bars))
+                bar.set_description(g["name"])
+                bars[g["name"]] = bar
+                bar.last_update = 0
+            bar = bars[g["name"]]
+            delta = g["finished_count"] - bar.last_update
+            if delta > 0:
+                bar.update(delta)
+            bar.last_update = g["finished_count"]
+            if g["count"] != g["finished_count"]:
+                keep_going = True
+        time.sleep(.2)
+    for bar in bars.values():
+        bar.close()
+    print("All current tasks completed, exiting progress bar.")
+
+
 def _configure_system():
     import os
     import platform
