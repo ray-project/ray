@@ -88,7 +88,7 @@ class Episode:
         self.batch_builder: "MultiAgentSampleBatchBuilder" = batch_builder_factory()
         self.total_reward: float = 0.0
         self.length: int = 0
-        self.episode_id: int = random.randrange(1e19)
+        self.episode_id: int = random.randrange(2e9)
         self.env_id = env_id
         self.worker = worker
         self.agent_rewards: Dict[Tuple[AgentID, PolicyID], float] = defaultdict(float)
@@ -123,7 +123,7 @@ class Episode:
         same env (i.e., if `soft_horizon` is set).
         """
         self.length = 0
-        self.episode_id = random.randrange(1e19)
+        self.episode_id = random.randrange(2e9)
         self.total_reward = 0.0
         self.agent_rewards = defaultdict(float)
         self._agent_reward_history = defaultdict(list)
