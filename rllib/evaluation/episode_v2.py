@@ -43,7 +43,7 @@ class EpisodeV2:
             worker: The RolloutWorker instance, in which this episode runs.
         """
         # Unique id identifying this trajectory.
-        self.episode_id: int = random.randrange(2e9)
+        self.episode_id: int = random.randrange(1e19)
         # ID of the environment this episode is tracking.
         self.env_id = env_id
         # Summed reward across all agents in this episode.
