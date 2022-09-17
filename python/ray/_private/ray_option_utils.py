@@ -123,7 +123,7 @@ _task_only_options = {
     "num_returns": Option(
         (int, str, type(None)),
         lambda x: x is None or x == "dynamic" or x >= 0,
-        "The keyword num_returns only accepts None, a non-negative integer, or "
+        "The keyword 'num_returns' only accepts None, a non-negative integer, or "
         '"dynamic" (for generators)',
         default_value=1,
     ),
