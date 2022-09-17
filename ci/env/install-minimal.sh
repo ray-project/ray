@@ -2,7 +2,7 @@
 
 # Python version can be specified as 3.7, 3.8, 3.9, etc..
 if [ -z "$1" ]; then
-    PYTHON_VERSION=${PYTHON-3.7}
+    PYTHON_VERSION="$1"
 else
     if [ "$1" = "3.6" ]; then
         PYTHON_VERSION=${PYTHON-3.6}

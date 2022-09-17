@@ -148,8 +148,10 @@ install_miniconda() {
     (
       set +x
       echo "Resetting Anaconda Python ${python_version}..."
-      "${WORKSPACE_DIR}"/ci/suppress_output conda create -q -y -n minimal python==3.7 pip
+      source /opt/miniconda/etc/profile.d/conda.sh
+      "${WORKSPACE_DIR}"/ci/suppress_output conda create -q -y -n minimal python==${PYTHON} pip
       "${WORKSPACE_DIR}"/ci/suppress_output conda activate minimal
+      echo "source /opt/miniconda/etc/profile.d/conda.sh" >> "$HOME/.bashrc"
       echo "conda activate minimal" >> "$HOME/.bashrc"
     )
   fi
@@ -296,7 +298,7 @@ install_pip_packages() {
     pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
   fi
 
-  if [ -n "${PYTHON-}" ] && [ "${MINIMAL_INSTALL-}" != 1 ]; then
+  if ([ -n "${PYTHON-}" ] && [ "${MINIMAL_INSTALL-}" != 1 ]) || [ "${DL-}" = "1" ]; then
     # Remove this entire section once Serve dependencies are fixed.
     if ([ -z "${BUILDKITE-}" ] || [ "${DL-}" = "1" ]) && [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
       # We want to install the CPU version only.
