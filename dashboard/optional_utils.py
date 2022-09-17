@@ -275,7 +275,6 @@ def init_ray_and_catch_exceptions() -> Callable:
                     except Exception as e:
                         ray.shutdown()
                         raise e from None
-
                 return await f(self, *args, **kwargs)
             except Exception as e:
                 logger.exception(f"Unexpected error in handler: {e}")
