@@ -68,9 +68,15 @@ def disable_temporary_uri_pinning():
 def check_internal_kv_gced():
     return len(kv._internal_kv_list("gcs://")) == 0
 
+def get_local_file_whitelist(cluster, option):
+    # On Windows the runtime directory itself is not deleted due to it being in use
+    # therefore whitelist it for the tests.
+    if sys.platform == "win32" and option != "py_modules":
+        runtime_dir = Path(cluster.list_all_nodes()[0].get_runtime_env_dir_path()) / "working_dir_files"
+        return {list(Path(runtime_dir).iterdir())[0].name}
+    return {}
 
 class TestGC:
-    @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     @pytest.mark.parametrize(
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
@@ -162,10 +168,11 @@ class TestGC:
         wait_for_condition(check_internal_kv_gced)
         print("check_internal_kv_gced passed wait_for_condition block.")
 
-        wait_for_condition(lambda: check_local_files_gced(cluster))
+        whitelist = get_local_file_whitelist(cluster, option)
+        wait_for_condition(lambda: check_local_files_gced(cluster, whitelist=whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     def test_actor_level_gc(
         self,
@@ -223,10 +230,11 @@ class TestGC:
             ray.kill(actors[i])
             print(f"Issued ray.kill for actor {i}.")
 
-        wait_for_condition(lambda: check_local_files_gced(cluster))
+        whitelist = get_local_file_whitelist(cluster, option)
+        wait_for_condition(lambda: check_local_files_gced(cluster, whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     @pytest.mark.parametrize(
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
@@ -321,10 +329,10 @@ class TestGC:
         wait_for_condition(check_internal_kv_gced)
         print("check_internal_kv_gced passed wait_for_condition block.")
 
-        wait_for_condition(lambda: check_local_files_gced(cluster))
+        whitelist = get_local_file_whitelist(cluster, option)
+        wait_for_condition(lambda: check_local_files_gced(cluster, whitelist=whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     def test_hit_cache_size_limit(
         self, start_cluster, URI_cache_10_MB, disable_temporary_uri_pinning
     ):
