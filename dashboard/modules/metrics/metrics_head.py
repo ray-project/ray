@@ -14,16 +14,18 @@ PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 
 METRICS_PATH = "/tmp/ray/metrics"
-GRAFANA_CONFIG_OUTPUT_PATH = f"{METRICS_PATH}/grafana"
-GRAFANA_CONFIG_INPUT_PATH = os.path.join(os.path.dirname(__file__), "grafana")
+METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
 
-PROMETHEUS_CONFIG_OUTPUT_PATH = f"{METRICS_PATH}/prometheus/prometheus.yml"
+GRAFANA_CONFIG_OUTPUT_PATH = os.path.join(METRICS_PATH, "grafana")
+GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
+
+PROMETHEUS_CONFIG_OUTPUT_PATH = os.path.join(METRICS_PATH, "prometheus", "prometheus.yml")
 PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
-    os.path.dirname(__file__), "prometheus", "prometheus.yml"
+    METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
 )
 
-USER_CUSTOM_METRIC_CONFIG_PATH = f"{METRICS_PATH}/custom"
-USER_CUSTOM_GRAFANA_CONFIG_PATH = f"{USER_CUSTOM_METRIC_CONFIG_PATH}/grafana-dashboards"
+USER_CUSTOM_METRIC_CONFIG_PATH = os.path.join(METRICS_PATH,"custom")
+USER_CUSTOM_GRAFANA_CONFIG_PATH = os.path.join(USER_CUSTOM_METRIC_CONFIG_PATH, "grafana-dashboards")
 
 
 class MetricsHead(dashboard_utils.DashboardHeadModule):
