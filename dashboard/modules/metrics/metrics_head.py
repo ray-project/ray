@@ -19,13 +19,17 @@ METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
 GRAFANA_CONFIG_OUTPUT_PATH = os.path.join(METRICS_PATH, "grafana")
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
 
-PROMETHEUS_CONFIG_OUTPUT_PATH = os.path.join(METRICS_PATH, "prometheus", "prometheus.yml")
+PROMETHEUS_CONFIG_OUTPUT_PATH = os.path.join(
+    METRICS_PATH, "prometheus", "prometheus.yml"
+)
 PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
     METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
 )
 
-USER_CUSTOM_METRIC_CONFIG_PATH = os.path.join(METRICS_PATH,"custom")
-USER_CUSTOM_GRAFANA_CONFIG_PATH = os.path.join(USER_CUSTOM_METRIC_CONFIG_PATH, "grafana-dashboards")
+USER_CUSTOM_METRIC_CONFIG_PATH = os.path.join(METRICS_PATH, "custom")
+USER_CUSTOM_GRAFANA_CONFIG_PATH = os.path.join(
+    USER_CUSTOM_METRIC_CONFIG_PATH, "grafana-dashboards"
+)
 
 
 class MetricsHead(dashboard_utils.DashboardHeadModule):
@@ -53,7 +57,9 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
-        data_sources_path = os.path.join(GRAFANA_CONFIG_OUTPUT_PATH, "provisioning", "datasources")
+        data_sources_path = os.path.join(
+            GRAFANA_CONFIG_OUTPUT_PATH, "provisioning", "datasources"
+        )
         os.makedirs(
             data_sources_path,
             exist_ok=True,
@@ -66,7 +72,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             "w",
         ) as f:
             f.write(GRAFANA_DATASOURCE_TEMPLATE.format(prometheus_host=prometheus_host))
-        
+
     def _create_default_prometheus_configs(self):
         """
         Creates the prometheus configurations that are by default provided by Ray.
@@ -82,7 +88,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
     def _create_custom_config_folders(self):
         """
         Creates folder for custom metric configurations if it doesn't exist.
-        
+
         Currently, only custom grafana dashboards are supported at
         `/tmp/ray/metrics/custom/grafana-dashboards`
         """
@@ -90,10 +96,11 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         # grafana
         os.makedirs(USER_CUSTOM_GRAFANA_CONFIG_PATH, exist_ok=True)
 
-
     async def run(self, server):
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
         self._create_custom_config_folders()
 
-        logger.info(f"Generated prometheus and grafana configurations in: {METRICS_PATH}")
+        logger.info(
+            f"Generated prometheus and grafana configurations in: {METRICS_PATH}"
+        )
