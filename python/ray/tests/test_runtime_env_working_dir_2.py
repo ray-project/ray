@@ -375,8 +375,10 @@ def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option)
 
     # Start a task with runtime env
     if worker_register_timeout:
+        obj_ref = f.options(runtime_env=runtime_env).remote()
         with pytest.raises(GetTimeoutError):
-            ray.get(f.options(runtime_env=runtime_env).remote(), timeout=get_timeout)
+            ray.get(obj_ref, timeout=get_timeout)
+        ray.cancel(obj_ref)
     else:
         ray.get(f.options(runtime_env=runtime_env).remote())
     if soft_limit_zero or worker_register_timeout:
@@ -391,11 +393,8 @@ def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option)
     if worker_register_timeout:
         with pytest.raises(GetTimeoutError):
             ray.get(actor.check.remote(), timeout=get_timeout)
-        # Wait for worker exited and local files gced
-        wait_for_condition(lambda: check_local_files_gced(cluster))
     else:
         ray.get(actor.check.remote())
-        assert not check_local_files_gced(cluster)
 
     # Kill actor
     ray.kill(actor)
@@ -408,8 +407,10 @@ def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option)
 
     # Start a task with runtime env
     if worker_register_timeout:
+        obj_ref = f.options(runtime_env=runtime_env).remote()
         with pytest.raises(GetTimeoutError):
-            ray.get(f.options(runtime_env=runtime_env).remote(), timeout=get_timeout)
+            ray.get(obj_ref, timeout=get_timeout)
+        ray.cancel(obj_ref)
     else:
         ray.get(f.options(runtime_env=runtime_env).remote())
     if soft_limit_zero or worker_register_timeout:
