@@ -2,6 +2,8 @@
 
 # __start_graph__
 # File name: graph.py
+from starlette.requests import Request
+
 import ray
 from ray import serve
 
@@ -40,7 +42,7 @@ class Summarizer:
 
         return summary
 
-    async def __call__(self, http_request) -> str:
+    async def __call__(self, http_request: Request) -> str:
         english_text: str = await http_request.json()
         summary = self.summarize(english_text)
 

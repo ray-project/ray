@@ -99,6 +99,8 @@ ray.method
 
 .. autofunction:: ray.method
 
+.. _ray-actor-pool-ref:
+
 ray.util.ActorPool
 ~~~~~~~~~~~~~~~~~~
 
@@ -234,101 +236,9 @@ Debugging APIs
 
 .. autofunction:: ray.util.inspect_serializability
 
-.. _ray-cli:
+.. toctree::
+    :maxdepth: 2
 
-The Ray Command Line API
-------------------------
-
-.. _ray-start-doc:
-
-.. click:: ray.scripts.scripts:start
-   :prog: ray start
-   :show-nested:
-
-.. _ray-stop-doc:
-
-.. click:: ray.scripts.scripts:stop
-   :prog: ray stop
-   :show-nested:
-
-.. _ray-up-doc:
-
-.. click:: ray.scripts.scripts:up
-   :prog: ray up
-   :show-nested:
-
-.. _ray-down-doc:
-
-.. click:: ray.scripts.scripts:down
-   :prog: ray down
-   :show-nested:
-
-.. _ray-exec-doc:
-
-.. click:: ray.scripts.scripts:exec
-   :prog: ray exec
-   :show-nested:
-
-.. _ray-submit-doc:
-
-.. click:: ray.scripts.scripts:submit
-   :prog: ray submit
-   :show-nested:
-
-.. _ray-attach-doc:
-
-.. click:: ray.scripts.scripts:attach
-   :prog: ray attach
-   :show-nested:
-
-.. _ray-get_head_ip-doc:
-
-.. click:: ray.scripts.scripts:get_head_ip
-   :prog: ray get_head_ip
-   :show-nested:
-
-.. _ray-stack-doc:
-
-.. click:: ray.scripts.scripts:stack
-   :prog: ray stack
-   :show-nested:
-
-.. _ray-memory-doc:
-
-.. click:: ray.scripts.scripts:memory
-   :prog: ray memory
-   :show-nested:
-
-.. _ray-timeline-doc:
-
-.. click:: ray.scripts.scripts:timeline
-   :prog: ray timeline
-   :show-nested:
-
-.. _ray-status-doc:
-
-.. click:: ray.scripts.scripts:status
-   :prog: ray status
-   :show-nested:
-
-.. _ray-monitor-doc:
-
-.. click:: ray.scripts.scripts:monitor
-   :prog: ray monitor
-   :show-nested:
-
-.. click:: ray.scripts.scripts:debug
-   :prog: ray debug
-   :show-nested:
-
-.. _ray-disable-usage-stats-doc:
-
-.. click:: ray.scripts.scripts:disable_usage_stats
-   :prog: ray disable-usage-stats
-   :show-nested:
-
-.. _ray-enable-usage-stats-doc:
-
-.. click:: ray.scripts.scripts:enable_usage_stats
-   :prog: ray enable-usage-stats
-   :show-nested:
+    cli.rst
+    ../ray-observability/state/cli.rst
+    ../ray-observability/state/ray-state-api-reference.rst

@@ -2,169 +2,159 @@
 
 Ray Train API
 =============
+This page covers framework specific integrations with Ray Train and Ray Train Developer APIs.
 
-This page covers advanced configurations for specific frameworks using Train.
+For core Ray AIR APIs, take a look at the :ref:`AIR Trainer package reference <air-trainer-ref>`.
 
-For different high level trainers and their usage, take a look at the :ref:`AIR Trainer package reference <air-trainer-ref>`.
+.. _train-integration-api:
 
-.. _train-api-backend-config:
+Trainer and Predictor Integrations
+----------------------------------
 
-Backend Configurations
-----------------------
+XGBoost
+~~~~~~~
 
-.. _train-api-torch-config:
+.. autoclass:: ray.train.xgboost.XGBoostTrainer
+    :members:
+    :show-inheritance:
 
-TorchConfig
+    .. automethod:: __init__
+
+
+.. automodule:: ray.train.xgboost
+    :members:
+    :exclude-members: XGBoostTrainer
+    :show-inheritance:
+
+LightGBM
+~~~~~~~~
+
+.. autoclass:: ray.train.lightgbm.LightGBMTrainer
+    :members:
+    :show-inheritance:
+
+    .. automethod:: __init__
+
+
+.. automodule:: ray.train.lightgbm
+    :members:
+    :exclude-members: LightGBMTrainer
+    :show-inheritance:
+
+TensorFlow
+~~~~~~~~~~
+
+.. autoclass:: ray.train.tensorflow.TensorflowTrainer
+    :members:
+    :show-inheritance:
+
+    .. automethod:: __init__
+
+
+.. automodule:: ray.train.tensorflow
+    :members:
+    :exclude-members: TensorflowTrainer
+    :show-inheritance:
+
+PyTorch
+~~~~~~~
+
+.. autoclass:: ray.train.torch.TorchTrainer
+    :members:
+    :show-inheritance:
+
+    .. automethod:: __init__
+
+
+.. automodule:: ray.train.torch
+    :members:
+    :exclude-members: TorchTrainer
+    :show-inheritance:
+
+Horovod
+~~~~~~~
+
+.. autoclass:: ray.train.horovod.HorovodTrainer
+    :members:
+    :show-inheritance:
+
+    .. automethod:: __init__
+
+
+.. automodule:: ray.train.horovod
+    :members:
+    :exclude-members: HorovodTrainer
+    :show-inheritance:
+
+HuggingFace
 ~~~~~~~~~~~
 
-.. autoclass:: ray.train.torch.TorchConfig
-    :noindex:
+.. autoclass:: ray.train.huggingface.HuggingFaceTrainer
+    :members:
+    :show-inheritance:
 
-.. _train-api-tensorflow-config:
-
-TensorflowConfig
-~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.train.tensorflow.TensorflowConfig
-    :noindex:
-
-.. _train-api-horovod-config:
-
-HorovodConfig
-~~~~~~~~~~~~~
-
-.. autoclass:: ray.train.horovod.HorovodConfig
-    :noindex:
-
-.. _train-api-backend-interfaces:
-
-Backend interfaces (for developers only)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Backend
-+++++++
-
-.. autoclass:: ray.train.backend.Backend
-
-BackendConfig
-+++++++++++++
-
-.. autoclass:: ray.train.backend.BackendConfig
+    .. automethod:: __init__
 
 
-.. _train-api-func-utils:
+.. automodule:: ray.train.huggingface
+    :members:
+    :exclude-members: HuggingFaceTrainer
+    :show-inheritance:
 
-Training Function Utilities
----------------------------
-
-train.report
+Scikit-Learn
 ~~~~~~~~~~~~
 
-.. autofunction::  ray.train.report
+.. autoclass:: ray.train.sklearn.SklearnTrainer
+    :members:
+    :show-inheritance:
 
-train.load_checkpoint
-~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction::  ray.train.load_checkpoint
-
-train.save_checkpoint
-~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction::  ray.train.save_checkpoint
-
-train.get_dataset_shard
-~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction::  ray.train.get_dataset_shard
-
-train.world_rank
-~~~~~~~~~~~~~~~~
-
-.. autofunction::  ray.train.world_rank
-
-train.local_rank
-~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.train.local_rank
-
-train.world_size
-~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.train.world_size
-
-.. _train-api-torch-utils:
-
-PyTorch Training Function Utilities
------------------------------------
-
-.. _train-api-torch-prepare-model:
-
-train.torch.prepare_model
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.train.torch.prepare_model
-    :noindex:
-
-.. _train-api-torch-prepare-data-loader:
-
-train.torch.prepare_data_loader
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.train.torch.prepare_data_loader
-    :noindex:
-
-train.torch.prepare_optimizer
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.train.torch.prepare_optimizer
-    :noindex:
+    .. automethod:: __init__
 
 
-train.torch.backward
-~~~~~~~~~~~~~~~~~~~~
+.. automodule:: ray.train.sklearn
+    :members:
+    :exclude-members: SklearnTrainer
+    :show-inheritance:
 
-.. autofunction:: ray.train.torch.backward
-    :noindex:
 
-.. _train-api-torch-get-device:
+Reinforcement Learning (RLlib)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-train.torch.get_device
-~~~~~~~~~~~~~~~~~~~~~~
+.. automodule:: ray.train.rl
+    :members:
+    :show-inheritance:
 
-.. autofunction:: ray.train.torch.get_device
-    :noindex:
 
-train.torch.enable_reproducibility
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.train.torch.enable_reproducibility
-    :noindex:
-
-.. _train-api-torch-worker-profiler:
-
-train.torch.accelerate
-~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.train.torch.accelerate
-    :noindex:
-
-train.torch.TorchWorkerProfiler
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.train.torch.TorchWorkerProfiler
+Base Classes (Developer APIs)
+-----------------------------
+.. autoclass:: ray.train.trainer.BaseTrainer
     :members:
     :noindex:
 
-.. _train-api-tensorflow-utils:
+    .. automethod:: __init__
+        :noindex:
 
-TensorFlow Training Function Utilities
---------------------------------------
-
-train.tensorflow.prepare_dataset_shard
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.train.tensorflow.prepare_dataset_shard
+.. autoclass:: ray.train.data_parallel_trainer.DataParallelTrainer
+    :members:
+    :show-inheritance:
     :noindex:
+
+    .. automethod:: __init__
+        :noindex:
+
+.. autoclass:: ray.train.gbdt_trainer.GBDTTrainer
+    :members:
+    :show-inheritance:
+    :noindex:
+
+    .. automethod:: __init__
+        :noindex:
+
+.. autoclass:: ray.train.backend.Backend
+    :members:
+
+.. autoclass:: ray.train.backend.BackendConfig
+    :members:
 
 
 Deprecated APIs

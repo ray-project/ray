@@ -6,7 +6,6 @@ import tensorflow as tf
 
 from ray.util import log_once
 from ray.train.predictor import DataBatchType
-from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.air.checkpoint import Checkpoint
 from ray.air._internal.tensorflow_utils import convert_ndarray_batch_to_tf_tensor_batch
 from ray.train._internal.dl_predictor import DLPredictor
@@ -56,20 +55,16 @@ class TensorflowPredictor(DLPredictor):
                 self._model = self.model_definition()
         else:
             self._model = self.model_definition()
-
-        if (
-            not use_gpu
-            and len(get_tf_gpu_devices()) > 0
-            and log_once("tf_predictor_not_using_gpu")
-        ):
-            logger.warning(
-                "You have `use_gpu` as False but there are "
-                f"{len(get_tf_gpu_devices())} GPUs detected on host where "
-                "prediction will only use CPU. Please consider explicitly "
-                "setting `TensorflowPredictor(use_gpu=True)` or "
-                "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
-                "enable GPU prediction."
-            )
+            gpu_devices = tf.config.list_physical_devices("GPU")
+            if len(gpu_devices) > 0 and log_once("tf_predictor_not_using_gpu"):
+                logger.warning(
+                    "You have `use_gpu` as False but there are "
+                    f"{len(gpu_devices)} GPUs detected on host where "
+                    "prediction will only use CPU. Please consider explicitly "
+                    "setting `TensorflowPredictor(use_gpu=True)` or "
+                    "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
+                    "enable GPU prediction."
+                )
 
         if model_weights is not None:
             self._model.set_weights(model_weights)
@@ -183,44 +178,44 @@ class TensorflowPredictor(DLPredictor):
 
         Examples:
 
-        .. code-block:: python
+            >>> import numpy as np
+            >>> import tensorflow as tf
+            >>> from ray.train.tensorflow import TensorflowPredictor
+            >>>
+            >>> def build_model():
+            ...     return tf.keras.Sequential(
+            ...         [
+            ...             tf.keras.layers.InputLayer(input_shape=()),
+            ...             tf.keras.layers.Flatten(),
+            ...             tf.keras.layers.Dense(1),
+            ...         ]
+            ...     )
+            >>>
+            >>> weights = [np.array([[2.0]]), np.array([0.0])]
+            >>> predictor = TensorflowPredictor(
+            ...     model_definition=build_model, model_weights=weights)
+            >>>
+            >>> data = np.asarray([1, 2, 3])
+            >>> predictions = predictor.predict(data) # doctest: +SKIP
 
-            import numpy as np
-            import tensorflow as tf
-            from ray.train.predictors.tensorflow import TensorflowPredictor
-
-            def build_model(self):
-                return tf.keras.Sequential(
-                    [
-                        tf.keras.layers.InputLayer(input_shape=(2,)),
-                        tf.keras.layers.Dense(1),
-                    ]
-                )
-
-            predictor = TensorflowPredictor(model_definition=build_model)
-
-            data = np.array([[1, 2], [3, 4]])
-            predictions = predictor.predict(data)
-
-        .. code-block:: python
-
-            import pandas as pd
-            import tensorflow as tf
-            from ray.train.predictors.tensorflow import TensorflowPredictor
-
-            def build_model(self):
-                input1 = tf.keras.layers.Input(shape=(1,), name="A")
-                input2 = tf.keras.layers.Input(shape=(1,), name="B")
-                merged = keras.layers.Concatenate(axis=1)([input1, input2])
-                output = keras.layers.Dense(2, input_dim=2)(merged)
-                return keras.models.Model(inputs=[input1, input2], output=output)
-
-            predictor = TensorflowPredictor(model_definition=build_model)
-
-            # Pandas dataframe.
-            data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
-
-            predictions = predictor.predict(data)
+            >>> import pandas as pd
+            >>> import tensorflow as tf
+            >>> from ray.train.tensorflow import TensorflowPredictor
+            >>>
+            >>> def build_model():
+            ...     input1 = tf.keras.layers.Input(shape=(1,), name="A")
+            ...     input2 = tf.keras.layers.Input(shape=(1,), name="B")
+            ...     merged = tf.keras.layers.Concatenate(axis=1)([input1, input2])
+            ...     output = tf.keras.layers.Dense(2, input_dim=2)(merged)
+            ...     return tf.keras.models.Model(
+            ...         inputs=[input1, input2], outputs=output)
+            >>>
+            >>> predictor = TensorflowPredictor(model_definition=build_model)
+            >>>
+            >>> # Pandas dataframe.
+            >>> data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
+            >>>
+            >>> predictions = predictor.predict(data) # doctest: +SKIP
 
         Returns:
             DataBatchType: Prediction result. The return type will be the same as the

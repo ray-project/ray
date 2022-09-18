@@ -15,13 +15,13 @@ from pathlib import Path
 from tempfile import gettempdir
 from typing import List, Tuple
 from unittest import mock
-import signal
 
 import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
 import ray.util.client.server.server as ray_client_server
+from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env.pip import PipProcessor
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.services import (
@@ -205,19 +205,10 @@ def _ray_start(**kwargs):
     init_kwargs.update(kwargs)
     # Start the Ray processes.
     address_info = ray.init("local", **init_kwargs)
-    agent_pids = []
-    for node in ray.nodes():
-        agent_pids.append(int(node["AgentInfo"]["Pid"]))
 
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
-    # Make sure the agent process is dead.
-    for pid in agent_pids:
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except Exception:
-            pass
     # Delete the cluster address just in case.
     ray._private.utils.reset_ray_address()
 

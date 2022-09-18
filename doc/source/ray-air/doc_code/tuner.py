@@ -176,7 +176,6 @@ config = TuneConfig(
 # __tune_optimization_end__
 
 # __result_grid_inspection_start__
-from ray.air.config import RunConfig
 from ray.tune import Tuner, TuneConfig
 
 tuner = Tuner(
@@ -201,7 +200,11 @@ best_checkpoint = best_result.checkpoint
 # And the best metrics
 best_metric = best_result.metrics
 
-# Inspect all results
+# Or a dataframe for further analysis
+results_df = result_grid.get_dataframe()
+print("Shortest training time:", results_df["time_total_s"].min())
+
+# Iterate over results
 for result in result_grid:
     if result.error:
         print("The trial had an error:", result.error)

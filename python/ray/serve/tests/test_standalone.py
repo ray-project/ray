@@ -28,6 +28,7 @@ from ray.serve._private.constants import (
     SERVE_PROXY_NAME,
     SERVE_ROOT_URL_ENV_KEY,
 )
+from ray._private.gcs_utils import GcsClient
 from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
@@ -38,6 +39,8 @@ from ray.serve._private.utils import (
     get_all_node_ids,
 )
 from ray.serve.schema import ServeApplicationSchema
+
+from ray.experimental.state.api import list_actors
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
@@ -87,6 +90,7 @@ def lower_slow_startup_threshold_and_reset():
 def test_shutdown(ray_shutdown):
     ray.init(num_cpus=16)
     serve.start(http_options=dict(port=8003))
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
     @serve.deployment
     def f():
@@ -100,7 +104,7 @@ def test_shutdown(ray_shutdown):
         format_actor_name(
             SERVE_PROXY_NAME,
             serve.context._global_client._controller_name,
-            get_all_node_ids()[0][0],
+            get_all_node_ids(gcs_client)[0][0],
         ),
     ]
 
@@ -239,10 +243,11 @@ def test_multiple_routers(ray_cluster):
     node_ids = ray._private.state.node_ids()
     assert len(node_ids) == 2
     serve.start(http_options=dict(port=8005, location="EveryNode"))
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
     def get_proxy_names():
         proxy_names = []
-        for node_id, _ in get_all_node_ids():
+        for node_id, _ in get_all_node_ids(gcs_client):
             proxy_names.append(
                 format_actor_name(
                     SERVE_PROXY_NAME,
@@ -646,7 +651,8 @@ def test_serve_start_different_http_checkpoint_options_warning(caplog):
 
 def test_recovering_controller_no_redeploy():
     """Ensure controller doesn't redeploy running deployments when recovering."""
-    ray.init(namespace="x")
+    ray_context = ray.init(namespace="x")
+    address = ray_context.address_info["address"]
     client = serve.start(detached=True)
 
     @serve.deployment
@@ -655,17 +661,19 @@ def test_recovering_controller_no_redeploy():
 
     serve.run(f.bind())
 
-    num_actors = len(ray.util.list_named_actors(all_namespaces=True))
+    num_actors = len(list_actors(address))
+    assert num_actors > 0
+
     pid = ray.get(client._controller.get_pid.remote())
 
     ray.kill(client._controller, no_restart=False)
 
     wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != pid)
 
-    # Confirm that no new deployment is deployed over the next 10 seconds
+    # Confirm that no new deployment is deployed over the next 5 seconds
     with pytest.raises(RuntimeError):
         wait_for_condition(
-            lambda: len(ray.util.list_named_actors(all_namespaces=True)) > num_actors,
+            lambda: len(list_actors(address)) > num_actors,
             timeout=5,
         )
 

@@ -29,7 +29,8 @@ This section shows how to create single and multi-column Tensor datasets.
 
 .. tabbed:: Pandas UDF
 
-  Create tensor datasets by returning ``List[np.ndarray]`` columns from a Pandas UDF.
+  Create tensor datasets by returning ``List[np.ndarray]`` columns from a Pandas
+  :ref:`user-defined function <transform_datasets_writing_udfs>`.
 
   **Single-column**:
 
@@ -58,9 +59,11 @@ This section shows how to create single and multi-column Tensor datasets.
 
 .. tabbed:: Parquet
 
-  There are two ways to construct a parquet Tensor dataset: (1) loading a previously-saved Tensor
-  dataset, or (2) casting non-Tensor parquet columns to Tensor type. When casting data, a tensor
-  schema or deserialization UDF must be provided. The following are examples for each method.
+  There are two ways to construct a parquet Tensor dataset: (1) loading a
+  previously-saved Tensor dataset, or (2) casting non-Tensor parquet columns to Tensor
+  type. When casting data, a tensor schema or deserialization
+  :ref:`user-defined function <transform_datasets_writing_udfs>`  must be provided. The
+  following are examples for each method.
 
   **Previously-saved Tensor datasets**:
 
@@ -80,7 +83,9 @@ This section shows how to create single and multi-column Tensor datasets.
 
   **Cast from data stored in custom formats**:
 
-  For tensors stored in other formats (e.g., pickled), you can specify a deserializer UDF that returns TensorArray columns:
+  For tensors stored in other formats (e.g., pickled), you can specify a deserializer
+  :ref:`user-defined function <transform_datasets_writing_udfs>` that returns
+  TensorArray columns:
 
   .. literalinclude:: ./doc_code/tensor.py
     :language: python
@@ -108,7 +113,7 @@ Transforming / Consuming Tensor Data
 
 Like any other Dataset, Datasets with tensor columns can be consumed / transformed in batches via the :meth:`ds.iter_batches(batch_format=\<format\>) <ray.data.Dataset.iter_batches>` and :meth:`ds.map_batches(fn, batch_format=\<format\>) <ray.data.Dataset.map_batches>` APIs. This section shows the available batch formats and their behavior:
 
-.. tabbed:: "native" (default)
+.. tabbed:: "default"
 
   **Single-column**:
 
@@ -194,7 +199,7 @@ Because Tensor datasets rely on Datasets-specific extension types, they can only
 .. _disable_tensor_extension_casting:
 
 Disabling Tensor Extension Casting
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+----------------------------------
 
 To disable automatic casting of Pandas and Arrow arrays to
 :class:`TensorArray <ray.data.extensions.tensor_extension.TensorArray>`, run the code

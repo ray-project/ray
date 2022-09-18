@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import re
 import time
@@ -6,6 +7,7 @@ import time
 import aiohttp.web
 
 import ray._private.utils
+import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
@@ -34,6 +36,21 @@ def gcs_node_info_to_dict(message):
     return dashboard_utils.message_to_dict(
         message, {"nodeId"}, including_default_value_fields=True
     )
+
+
+def gcs_stats_to_dict(message):
+    decode_keys = {
+        "actorId",
+        "jobId",
+        "taskId",
+        "parentTaskId",
+        "sourceActorId",
+        "callerId",
+        "rayletId",
+        "workerId",
+        "placementGroupId",
+    }
+    return dashboard_utils.message_to_dict(message, decode_keys)
 
 
 def node_stats_to_dict(message):
@@ -69,6 +86,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         self._stubs = {}
         # NodeInfoGcsService
         self._gcs_node_info_stub = None
+        # NodeResourceInfoGcsService
+        self._gcs_node_resource_info_sub = None
         self._collect_memory_info = False
         DataSource.nodes.signal.append(self._update_stubs)
         # Total number of node updates happened.
@@ -78,6 +97,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # The time it takes until the head node is registered. None means
         # head node hasn't been registered.
         self._head_node_registration_time_s = None
+        self._gcs_aio_client = dashboard_head.gcs_aio_client
 
     async def _update_stubs(self, change):
         if change.old:
@@ -129,9 +149,10 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             try:
                 nodes = await self._get_nodes()
 
+                alive_node_ids = []
+                alive_node_infos = []
                 node_id_to_ip = {}
                 node_id_to_hostname = {}
-                agents = dict(DataSource.agents)
                 for node in nodes.values():
                     node_id = node["nodeId"]
                     ip = node["nodeManagerAddress"]
@@ -147,10 +168,20 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                     node_id_to_hostname[node_id] = hostname
                     assert node["state"] in ["ALIVE", "DEAD"]
                     if node["state"] == "ALIVE":
-                        agents[node_id] = [
-                            node["agentInfo"]["httpPort"],
-                            node["agentInfo"]["grpcPort"],
-                        ]
+                        alive_node_ids.append(node_id)
+                        alive_node_infos.append(node)
+
+                agents = dict(DataSource.agents)
+                for node_id in alive_node_ids:
+                    key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}" f"{node_id}"
+                    # TODO: Use async version if performance is an issue
+                    agent_port = ray.experimental.internal_kv._internal_kv_get(
+                        key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
+                    )
+                    if agent_port:
+                        agents[node_id] = json.loads(agent_port)
+                for node_id in agents.keys() - set(alive_node_ids):
+                    agents.pop(node_id, None)
 
                 DataSource.node_id_to_ip.reset(node_id_to_ip)
                 DataSource.node_id_to_hostname.reset(node_id_to_hostname)
@@ -294,6 +325,17 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             except Exception:
                 logger.exception(f"Error updating node stats of {node_id}.")
 
+        # Update scheduling stats (e.g., pending actor creation tasks) of gcs.
+        try:
+            reply = await self._gcs_node_resource_info_stub.GetGcsSchedulingStats(
+                gcs_service_pb2.GetGcsSchedulingStatsRequest(),
+                timeout=2,
+            )
+            if reply.status.code == 0:
+                DataSource.gcs_scheduling_stats = gcs_stats_to_dict(reply)
+        except Exception:
+            logger.exception("Error updating gcs stats.")
+
     async def _update_log_info(self):
         if ray_constants.DISABLE_DASHBOARD_LOG_INFO:
             return
@@ -364,6 +406,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             gcs_channel
+        )
+        self._gcs_node_resource_info_stub = (
+            gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
         )
 
         await asyncio.gather(

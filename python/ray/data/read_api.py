@@ -340,10 +340,25 @@ def read_parquet(
         >>> # Read multiple local files.
         >>> ray.data.read_parquet(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
+        >>> # Specify a schema for the parquet file.
+        >>> import pyarrow as pa
+        >>> fields = [("sepal.length", pa.float64()),
+        ...           ("sepal.width", pa.float64()),
+        ...           ("petal.length", pa.float64()),
+        ...           ("petal.width", pa.float64()),
+        ...           ("variety", pa.string())]
+        >>> ray.data.read_parquet("example://iris.parquet",
+        ...     schema=pa.schema(fields))
+        Dataset(num_blocks=..., num_rows=150, schema={sepal.length: double, ...})
+
+        For further arguments you can pass to pyarrow as a keyword argument, see
+        https://arrow.apache.org/docs/python/generated/pyarrow.parquet.read_table.html
+
     Args:
         paths: A single file path or directory, or a list of file paths. Multiple
             directories are not supported.
-        filesystem: The filesystem implementation to read from.
+        filesystem: The filesystem implementation to read from. These are specified in
+            https://arrow.apache.org/docs/python/api/filesystems.html#filesystem-implementations.
         columns: A list of column names to read.
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the number of files of the dataset.
@@ -356,7 +371,8 @@ def read_parquet(
             `arr.tobytes()`).
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
-        arrow_parquet_args: Other parquet read options to pass to pyarrow.
+        arrow_parquet_args: Other parquet read options to pass to pyarrow, see
+            https://arrow.apache.org/docs/python/generated/pyarrow.parquet.read_table.html
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -548,7 +564,7 @@ def read_csv(
     ] = CSVDatasource.file_extension_filter(),
     **arrow_csv_args,
 ) -> Dataset[ArrowRow]:
-    """Create an Arrow dataset from csv files.
+    r"""Create an Arrow dataset from csv files.
 
     Examples:
         >>> import ray
@@ -561,6 +577,26 @@ def read_csv(
         >>> # Read multiple directories.
         >>> ray.data.read_csv( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
+
+        >>> # Read files that use a different delimiter. The partition_filter=None is needed here
+        >>> # because by default read_csv only reads .csv files. For more uses of ParseOptions see
+        >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html  # noqa: #501
+        >>> from pyarrow import csv
+        >>> parse_options = csv.ParseOptions(delimiter="\t")
+        >>> ray.data.read_csv( # doctest: +SKIP
+        ...     "example://iris.tsv",
+        ...     parse_options=parse_options,
+        ...     partition_filter=None)
+
+        >>> # Convert a date column with a custom format from a CSV file.
+        >>> # For more uses of ConvertOptions see
+        >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html  # noqa: #501
+        >>> from pyarrow import csv
+        >>> convert_options = csv.ConvertOptions(
+        ...     timestamp_parsers=["%m/%d/%Y"])
+        >>> ray.data.read_csv( # doctest: +SKIP
+        ...     "example://dow_jones_index.csv",
+        ...     convert_options=convert_options)
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -1117,7 +1153,7 @@ def _get_read_tasks(
     cur_pg: Optional[PlacementGroup],
     parallelism: int,
     kwargs: dict,
-) -> (int, int, List[ReadTask]):
+) -> Tuple[int, int, List[ReadTask]]:
     """Generates read tasks.
 
     Args:

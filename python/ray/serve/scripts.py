@@ -263,6 +263,11 @@ def deploy(config_file_name: str, address: str):
         "will loop and log status until Ctrl-C'd, then clean up the app."
     ),
 )
+@click.option(
+    "--gradio",
+    is_flag=True,
+    help=("Whether to enable gradio visualization of deployment graph."),
+)
 def run(
     config_or_import_path: str,
     runtime_env: str,
@@ -273,6 +278,7 @@ def run(
     host: str,
     port: int,
     blocking: bool,
+    gradio: bool,
 ):
     sys.path.insert(0, app_dir)
 
@@ -300,24 +306,38 @@ def run(
 
     if is_config:
         client = _private_api.serve_start(
-            detached=True, http_options={"host": config.host, "port": config.port}
+            detached=True,
+            http_options={
+                "host": config.host,
+                "port": config.port,
+                "location": "EveryNode",
+            },
         )
     else:
         client = _private_api.serve_start(
-            detached=True, http_options={"host": host, "port": port}
+            detached=True,
+            http_options={"host": host, "port": port, "location": "EveryNode"},
         )
 
     try:
         if is_config:
-            client.deploy_app(config)
+            client.deploy_app(config, _blocking=gradio)
+            if gradio:
+                handle = serve.get_deployment("DAGDriver").get_handle()
         else:
-            serve.run(node, host=host, port=port)
+            handle = serve.run(node, host=host, port=port)
         cli_logger.success("Deployed successfully.")
 
-        if blocking:
-            while True:
-                # Block, letting Ray print logs to the terminal.
-                time.sleep(10)
+        if gradio:
+            from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
+
+            visualizer = GraphVisualizer()
+            visualizer.visualize_with_gradio(handle)
+        else:
+            if blocking:
+                while True:
+                    # Block, letting Ray print logs to the terminal.
+                    time.sleep(10)
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")

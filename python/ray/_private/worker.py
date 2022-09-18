@@ -1,7 +1,6 @@
 import atexit
 import faulthandler
 import functools
-import grpc
 import hashlib
 import inspect
 import io
@@ -12,6 +11,7 @@ import sys
 import threading
 import time
 import traceback
+import urllib
 import warnings
 from abc import ABCMeta, abstractmethod
 from collections.abc import Mapping
@@ -31,6 +31,7 @@ from typing import (
     Union,
     overload,
 )
+from urllib.parse import urlparse
 
 import colorama
 import setproctitle
@@ -54,6 +55,7 @@ import ray._private.state
 import ray._private.storage as storage
 
 # Ray modules
+import ray.actor
 import ray.cloudpickle as pickle
 import ray.job_config
 import ray.remote_function
@@ -596,11 +598,9 @@ class Worker:
         # Make sure that the value is not an object ref.
         if isinstance(value, ObjectRef):
             raise TypeError(
-                "Calling 'put' on an ray.ObjectRef is not allowed "
-                "(similarly, returning an ray.ObjectRef from a remote "
-                "function is not allowed). If you really want to "
-                "do this, you can wrap the ray.ObjectRef in a list and "
-                "call 'put' on it (or return it)."
+                "Calling 'put' on an ray.ObjectRef is not allowed. "
+                "If you really want to do this, you can wrap the "
+                "ray.ObjectRef in a list and call 'put' on it."
             )
 
         if self.mode == LOCAL_MODE:
@@ -757,6 +757,7 @@ class Worker:
 
     def print_logs(self):
         """Prints log messages from workers on all nodes in the same job."""
+        import grpc
 
         subscriber = self.gcs_log_subscriber
         subscriber.subscribe()
@@ -880,7 +881,7 @@ def get_resource_ids():
     return global_worker.core_worker.resource_ids()
 
 
-@Deprecated(message="Use ray.init()['webui_url'] instead.")
+@Deprecated(message="Use ray.init().address_info['webui_url'] instead.")
 def get_dashboard_url():
     """Get the URL to access the Ray dashboard.
 
@@ -889,9 +890,28 @@ def get_dashboard_url():
     Returns:
         The URL of the dashboard as a string.
     """
-    worker = global_worker
-    worker.check_connected()
-    return _global_node.webui_url
+    if ray_constants.RAY_OVERRIDE_DASHBOARD_URL in os.environ:
+        return _remove_protocol_from_url(
+            os.environ.get(ray_constants.RAY_OVERRIDE_DASHBOARD_URL)
+        )
+    else:
+        worker = global_worker
+        worker.check_connected()
+        return _global_node.webui_url
+
+
+def _remove_protocol_from_url(url: Optional[str]) -> str:
+    """
+    Helper function to remove protocol from URL if it exists.
+    """
+    if not url:
+        return url
+    parsed_url = urllib.parse.urlparse(url)
+    if parsed_url.scheme:
+        # Construct URL without protocol
+        scheme = f"{parsed_url.scheme}://"
+        return parsed_url.geturl().replace(scheme, "", 1)
+    return url
 
 
 class BaseContext(metaclass=ABCMeta):
@@ -1053,7 +1073,7 @@ def init(
         ray.init(address="ray://123.45.67.89:10001")
 
     More details for starting and connecting to a remote cluster can be found
-    here: https://docs.ray.io/en/master/cluster/ray-client.html
+    here: https://docs.ray.io/en/master/cluster/getting-started.html
 
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
@@ -1471,7 +1491,15 @@ def init(
 
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
-    dashboard_url = _global_node.address_info["webui_url"]
+    if ray_constants.RAY_OVERRIDE_DASHBOARD_URL in os.environ:
+        dashboard_url = os.environ.get(ray_constants.RAY_OVERRIDE_DASHBOARD_URL)
+    else:
+        dashboard_url = _global_node.webui_url
+    # Add http protocol to dashboard URL if it doesn't
+    # already contain a protocol.
+    if dashboard_url and not urlparse(dashboard_url).scheme:
+        dashboard_url = "http://" + dashboard_url
+
     # We logged the address before attempting the connection, so we don't need
     # to log it again.
     info_str = "Connected to Ray cluster."
@@ -1479,7 +1507,7 @@ def init(
         info_str = "Started a local Ray instance."
     if dashboard_url:
         logger.info(
-            info_str + " View the dashboard at %s%shttp://%s%s%s.",
+            info_str + " View the dashboard at %s%s%s %s%s",
             colorama.Style.BRIGHT,
             colorama.Fore.GREEN,
             dashboard_url,
@@ -1517,7 +1545,9 @@ def init(
         hook()
 
     node_id = global_worker.core_worker.get_current_node_id()
-    return RayContext(dict(_global_node.address_info, node_id=node_id.hex()))
+    global_node_address_info = _global_node.address_info.copy()
+    global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
+    return RayContext(dict(global_node_address_info, node_id=node_id.hex()))
 
 
 # Functions to run as callback after a successful ray init.
@@ -1902,11 +1932,6 @@ def connect(
         if mode == SCRIPT_MODE:
             raise e
         elif mode == WORKER_MODE:
-            if isinstance(e, grpc.RpcError) and e.code() in (
-                grpc.StatusCode.UNAVAILABLE,
-                grpc.StatusCode.UNKNOWN,
-            ):
-                raise e
             traceback_str = traceback.format_exc()
             ray._private.utils.publish_error_to_driver(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
@@ -2041,10 +2066,15 @@ def connect(
         # are the same.
         # When using an interactive shell, there is no script directory.
         if not interactive_mode:
-            script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
-            worker.run_function_on_all_workers(
-                lambda worker_info: sys.path.insert(1, script_directory)
-            )
+            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
+            # If driver's sys.path doesn't include the script directory
+            # (e.g driver is started via `python -m`,
+            # see https://peps.python.org/pep-0338/),
+            # then we shouldn't add it to the workers.
+            if script_directory in sys.path:
+                worker.run_function_on_all_workers(
+                    lambda worker_info: sys.path.insert(1, script_directory)
+                )
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
         if not job_config.client_job and not job_config.runtime_env_has_working_dir():
@@ -2452,6 +2482,10 @@ def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHan
     have been created with Actor.options(name="name").remote(). This
     works for both detached & non-detached actors.
 
+    This method is a sync call and it'll timeout after 60s. This can be modified
+    by setting OS env RAY_gcs_server_request_timeout_seconds before starting
+    the cluster.
+
     Args:
         name: The name of the actor.
         namespace: The namespace of the actor, or None to specify the current
@@ -2554,6 +2588,9 @@ def _mode(worker=global_worker):
 
 
 def _make_remote(function_or_class, options):
+    if not function_or_class.__module__:
+        function_or_class.__module__ = "global"
+
     if inspect.isfunction(function_or_class) or is_cython(function_or_class):
         ray_option_utils.validate_task_options(options, in_options=False)
         return ray.remote_function.RemoteFunction(
@@ -2744,57 +2781,110 @@ def remote(
 
 
 @PublicAPI
-def remote(*args, **kwargs):
+def remote(
+    *args, **kwargs
+) -> Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass]:
     """Defines a remote function or an actor class.
 
-    This can be used with no arguments to define a remote function or actor as
-    follows:
+    This function can be used as a decorator with no arguments
+    to define a remote function or actor as follows:
 
-    .. code-block:: python
+    >>> import ray
+    >>>
+    >>> @ray.remote
+    ... def f(a, b, c):
+    ...     return a + b + c
+    >>>
+    >>> object_ref = f.remote(1, 2, 3)
+    >>> result = ray.get(object_ref)
+    >>> assert result == (1 + 2 + 3)
+    >>>
+    >>> @ray.remote
+    ... class Foo:
+    ...     def __init__(self, arg):
+    ...         self.x = arg
+    ...
+    ...     def method(self, a):
+    ...         return self.x + a
+    >>>
+    >>> actor_handle = Foo.remote(123)
+    >>> object_ref = actor_handle.method.remote(321)
+    >>> result = ray.get(object_ref)
+    >>> assert result == (123 + 321)
 
-        @ray.remote
-        def f():
-            return 1
+    Equivalently, use a function call to create a remote function or actor.
 
-        @ray.remote
-        class Foo:
-            def method(self):
-                return 1
+    >>> def g(a, b, c):
+    ...     return a + b + c
+    >>>
+    >>> remote_g = ray.remote(g)
+    >>> object_ref = remote_g.remote(1, 2, 3)
+    >>> assert ray.get(object_ref) == (1 + 2 + 3)
+
+    >>> class Bar:
+    ...     def __init__(self, arg):
+    ...         self.x = arg
+    ...
+    ...     def method(self, a):
+    ...         return self.x + a
+    >>>
+    >>> RemoteBar = ray.remote(Bar)
+    >>> actor_handle = RemoteBar.remote(123)
+    >>> object_ref = actor_handle.method.remote(321)
+    >>> result = ray.get(object_ref)
+    >>> assert result == (123 + 321)
+
 
     It can also be used with specific keyword arguments as follows:
 
-    .. code-block:: python
-
-        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-        def f():
-            return 1, 2
-
-        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-        class Foo:
-            def method(self):
-                return 1
+    >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+    ... def f():
+    ...     return 1, 2
+    >>>
+    >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+    ... class Foo:
+    ...     def method(self):
+    ...         return 1
 
     Remote task and actor objects returned by @ray.remote can also be
     dynamically modified with the same arguments as above using
     ``.options()`` as follows:
 
-    .. code-block:: python
+    >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+    ... def f():
+    ...     return 1, 2
+    >>>
+    >>> f_with_2_gpus = f.options(num_gpus=2) # doctest: +SKIP
+    >>> object_ref = f_with_2_gpus.remote() # doctest: +SKIP
+    >>> assert ray.get(object_ref) == (1, 2) # doctest: +SKIP
 
-        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-        def f():
-            return 1, 2
-        g = f.options(num_gpus=2)
+    >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+    ... class Foo:
+    ...     def method(self):
+    ...         return 1
+    >>>
+    >>> Foo_with_no_resources = Foo.options(num_cpus=1, resources=None)
+    >>> foo_actor = Foo_with_no_resources.remote()
+    >>> assert ray.get(foo_actor.method.remote()) == 1
 
-        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-        class Foo:
-            def method(self):
-                return 1
-        Bar = Foo.options(num_cpus=1, resources=None)
 
-    Running remote actors will be terminated when the actor handle to them
+    A remote actor will be terminated when all actor handle to it
     in Python is deleted, which will cause them to complete any outstanding
-    work and then shut down. If you want to kill them immediately, you can
-    also call ``ray.kill(actor)``.
+    work and then shut down. If you only have 1 reference to an actor handle,
+    calling ``del actor`` *could* trigger actor deletion. Note that your program
+    may have multiple references to the same ActorHandle, and actor termination
+    will not occur until the reference count goes to 0. See the Python
+    documentation for more context about object deletion.
+    https://docs.python.org/3.9/reference/datamodel.html#object.__del__
+
+    If you want to kill actors immediately, you can also call ``ray.kill(actor)``.
+
+    .. tip::
+        Avoid repeatedly passing in large arguments to remote task or method calls.
+
+        Instead, use ray.put to create a copy of the object in the object store.
+
+        See :ref:`more info here <tip-delay-get>`.
 
     Args:
         num_returns: This is only for *remote functions*. It specifies
@@ -2843,9 +2933,9 @@ def remote(*args, **kwargs):
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation. This API is
             in beta and may change before becoming stable.
-        retry_exceptions: Only for *remote functions*. This specifies
-            whether application-level errors should be retried
-            up to max_retries times.
+        retry_exceptions: Only for *remote functions*. This specifies whether
+            application-level errors should be retried up to max_retries times.
+            This can be a boolean or a list of exceptions that should be retried.
         scheduling_strategy: Strategy about how to
             schedule a remote function or actor. Possible values are
             None: ray will figure out the scheduling strategy to use, it
@@ -2859,6 +2949,7 @@ def remote(*args, **kwargs):
             placement group based scheduling.
         _metadata: Extended options for Ray libraries. For example,
             _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
+
     """
     # "callable" returns true for both function and class.
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):

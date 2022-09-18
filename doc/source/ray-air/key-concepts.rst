@@ -16,14 +16,11 @@ Datasets
 
 
 Preprocessors
-~~~~~~~~~~~~~
+-------------
 
-Preprocessors are primitives that can be used to transform input data into features.
+Preprocessors are primitives that can be used to transform input data into features. Preprocessors operate on :ref:`Datasets <datasets>`, which makes them scalable and compatible with a variety of datasources and dataframe libraries.
 
-A preprocessor can be fitted during Training, and applied at runtime in both Training and Serving on data batches in the same way. AIR comes with a collection of built-in preprocessors, and you can also define your own with simple templates.
-
-Preprocessors operate on :ref:`Datasets <datasets>`, which makes them scalable and compatible with a variety of datasources and dataframe libraries.
-
+A Preprocessor is fitted during Training, and applied at runtime in both Training and Serving on data batches in the same way. AIR comes with a collection of built-in preprocessors, and you can also define your own with simple templates.
 
 .. literalinclude:: doc_code/air_key_concepts.py
     :language: python
@@ -69,7 +66,7 @@ Tuners can work seamlessly with any Trainer but also can support arbitrary train
 Checkpoints
 -----------
 
-The AIR trainers, tuners, and custom pretrained model generate :class:`a framework-specific Checkpoint <ray.air.Checkpoint>` object.
+The AIR trainers, tuners, and custom pretrained model generate :class:`a framework-specific Checkpoint<ray.air.Checkpoint>` object.
 Checkpoints are a common interface for models that are used across different AIR components and libraries.
 
 There are two main ways to generate a checkpoint.

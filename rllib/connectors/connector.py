@@ -3,7 +3,7 @@
 
 import abc
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
 import gym
 
@@ -90,7 +90,7 @@ class Connector(abc.ABC):
     Connectors may be training-aware, for example, behave slightly differently
     during training and inference.
 
-    All connectors are required to be serializable and implement to_config().
+    All connectors are required to be serializable and implement to_state().
     """
 
     def __init__(self, ctx: ConnectorContext):
@@ -103,10 +103,10 @@ class Connector(abc.ABC):
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
 
-    def to_config(self) -> Tuple[str, List[Any]]:
+    def to_state(self) -> Tuple[str, List[Any]]:
         """Serialize a connector into a JSON serializable Tuple.
 
-        to_config is required, so that all Connectors are serializable.
+        to_state is required, so that all Connectors are serializable.
 
         Returns:
             A tuple of connector's name and its serialized states.
@@ -115,10 +115,10 @@ class Connector(abc.ABC):
         return NotImplementedError
 
     @staticmethod
-    def from_config(self, ctx: ConnectorContext, params: List[Any]) -> "Connector":
+    def from_state(self, ctx: ConnectorContext, params: List[Any]) -> "Connector":
         """De-serialize a JSON params back into a Connector.
 
-        from_config is required, so that all Connectors are serializable.
+        from_state is required, so that all Connectors are serializable.
 
         Args:
             ctx: Context for constructing this connector.
@@ -266,11 +266,11 @@ class ActionConnector(Connector):
     to user environments.
 
     An action connector transforms a single piece of policy output in
-    ActionConnectorDataType format, which is basically PolicyOutputType
-    plus env and agent IDs.
+    ActionConnectorDataType format, which is basically PolicyOutputType plus env and
+    agent IDs.
 
-    Any functions that operates directly on PolicyOutputType can be
-    easily adpated into an ActionConnector by using register_lambda_action_connector.
+    Any functions that operate directly on PolicyOutputType can be easily adapted
+    into an ActionConnector by using register_lambda_action_connector.
 
     Example:
     .. code-block:: python
@@ -404,6 +404,44 @@ class ConnectorPipeline(abc.ABC):
             + [c.__str__(indentation + 4) for c in self.connectors]
         )
 
+    def __getitem__(self, key: Union[str, int, type]):
+        """Returns a list of connectors that fit 'key'.
+
+        If key is a number n, we return a list with the nth element of this pipeline.
+        If key is a Connector class or a string matching the class name of a
+        Connector class, we return a list of all connectors in this pipeline matching
+        the specified class.
+
+        Args:
+            key: The key to index by
+
+        Returns: The Connector at index `key`.
+        """
+        # In case key is a class
+        if not isinstance(key, str):
+            if isinstance(key, slice):
+                raise NotImplementedError(
+                    "Slicing of ConnectorPipeline is currently not supported."
+                )
+            elif isinstance(key, int):
+                return [self.connectors[key]]
+            elif isinstance(key, type):
+                key = key.__name__
+            else:
+                raise NotImplementedError(
+                    "Indexing by {} is currently not supported.".format(type(key))
+                )
+
+        results = []
+        for c in self.connectors:
+            if c.__class__.__name__ == key:
+                results.append(c)
+
+        if len(results) == 0:
+            return []
+
+        return results
+
 
 @PublicAPI(stability="alpha")
 def register_connector(name: str, cls: Connector):
@@ -432,4 +470,4 @@ def get_connector(ctx: ConnectorContext, name: str, params: Tuple[Any]) -> Conne
     if not _global_registry.contains(RLLIB_CONNECTOR, name):
         raise NameError("connector not found.", name)
     cls = _global_registry.get(RLLIB_CONNECTOR, name)
-    return cls.from_config(ctx, params)
+    return cls.from_state(ctx, params)

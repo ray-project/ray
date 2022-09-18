@@ -40,8 +40,8 @@ RAY_MAX_LIMIT_FROM_DATA_SOURCE = env_integer(
 )  # 10k
 
 STATE_OBS_ALPHA_FEEDBACK_MSG = [
-    "\n==========ALPHA PREVIEW, FEEDBACK NEEDED ===============",
-    "State Observability APIs is currently in Alpha-Preview. ",
+    "\n==========ALPHA, FEEDBACK NEEDED ===============",
+    "State Observability APIs is currently in Alpha. ",
     "If you have any feedback, you could do so at either way as below:",
     "    1. Report bugs/issues with details: https://forms.gle/gh77mwjEskjhN8G46",
     "    2. Follow up in #ray-state-observability-dogfooding slack channel of Ray: "
@@ -936,6 +936,5 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
                 "still alive."
             )
         )
-
     api_server_url = f"http://{api_server_url.decode()}"
     return api_server_url
