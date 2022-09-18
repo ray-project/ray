@@ -80,7 +80,7 @@ install_miniconda() {
     conda="$(command -v conda || true)"
   fi
 
-  if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" != 1 ]; then  # If no conda is found, install it
+  if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
     case "${OSTYPE}" in
       linux*) miniconda_dir="/opt/miniconda";;
