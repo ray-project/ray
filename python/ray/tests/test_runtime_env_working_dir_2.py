@@ -75,8 +75,8 @@ def test_inheritance(start_cluster, option: str):
 def test_large_file_boundary(shutdown_only, tmp_path, option: str):
     """Check that packages just under the max size work as expected."""
     # To support Windows we do not use 'with tempfile' as that results in a recursion
-    # error (See: https://bugs.python.org/issue42796). Instead we use the tmp_path fixture
-    # that will clean up the files at a later time.
+    # error (See: https://bugs.python.org/issue42796). Instead we use the tmp_path
+    # fixture that will clean up the files at a later time.
     with chdir(tmp_path):
         size = GCS_STORAGE_MAX_SIZE - 1024 * 1024
         with open("test_file", "wb") as f:
@@ -122,7 +122,8 @@ def test_large_dir_upload_message(start_cluster, option):
     with tempfile.TemporaryDirectory() as tmp_dir:
         filepath = os.path.join(tmp_dir, "test_file.txt")
 
-        # Turn slashes around to prevent escapes in the text passed to stdin (for Windows)
+        # Ensure forward slashes to prevent escapes in the text passed
+        # to stdin (for Windows tests this matters)
         tmp_dir = str(Path(tmp_dir).as_posix())
 
         if option == "working_dir":

@@ -1,5 +1,4 @@
 import pytest
-import sys
 import time
 
 import ray
