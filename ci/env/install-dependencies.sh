@@ -80,7 +80,7 @@ install_miniconda() {
     conda="$(command -v conda || true)"
   fi
 
-  if [ ! -x "${conda}" ]; then  # If no conda is found, install it
+  if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" != 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
     case "${OSTYPE}" in
       linux*) miniconda_dir="/opt/miniconda";;
@@ -115,6 +115,7 @@ install_miniconda() {
         conda="${miniconda_dir}\Scripts\conda.exe"
         ;;
       *)
+        rm -rf "${miniconda_dir}"
         mkdir -p -- "${miniconda_dir}"
         # We're forced to pass -b for non-interactive mode.
         # Unfortunately it inhibits PATH modifications as a side effect.
@@ -148,11 +149,7 @@ install_miniconda() {
     (
       set +x
       echo "Resetting Anaconda Python ${python_version}..."
-      source /opt/miniconda/etc/profile.d/conda.sh
-      "${WORKSPACE_DIR}"/ci/suppress_output conda create -q -y -n minimal python==${PYTHON} pip
-      "${WORKSPACE_DIR}"/ci/suppress_output conda activate minimal
-      echo "source /opt/miniconda/etc/profile.d/conda.sh" >> "$HOME/.bashrc"
-      echo "conda activate minimal" >> "$HOME/.bashrc"
+      "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y --rev 0
     )
   fi
 

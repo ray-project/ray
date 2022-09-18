@@ -104,7 +104,8 @@ if [ -n "${BUILDKITE-}" ] && [ -f "$LLVM_DOWNLOAD_URL_FILENAME" ]; then
   read -r line < "$LLVM_DOWNLOAD_URL_FILENAME"
   if [ "$line" == "$LLVM_URL" ]; then
     printInfo "Skipping llvm download/install on Buildkite because LLVM was previously installed from the same URL ${line}."
-    exit 0
+    # Todo: either remove or skip again
+    # exit 0
   fi
 fi
 
