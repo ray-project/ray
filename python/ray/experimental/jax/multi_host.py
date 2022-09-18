@@ -1,3 +1,4 @@
+import os
 from typing import List
 
 import jax
@@ -17,19 +18,21 @@ from ray.experimental.jax.scheduling_pndm import PNDMScheduler
 from ray.experimental.jax.modeling_vae import AutoencoderKL
 from ray.experimental.jax.modeling_unet2d import UNet2D
 
-ray.init(runtime_env={"env_vars": {"XLA_PYTHON_CLIENT_MEM_FRACTION": "0.8"}})
+os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
 
-NUM_WORKERS = 4
+# ray.init(runtime_env={"env_vars": {"XLA_PYTHON_CLIENT_MEM_FRACTION": "0.8"}})
+ray.init()
+
+NUM_WORKERS = 1
 NUM_GPU_PER_WORKER = 4
 CHECKPOINT_PATH = "/mnt/cluster_storage"
-
 
 @ray.remote(num_gpus=NUM_GPU_PER_WORKER)
 class Worker:
     def __init__(self, rank):
         # Note: No jax calls should be made here before initializing jax.distributed
-        # import os 
-        # os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = 0.8
+        import os 
+        os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
         self.rank = rank
 
     def init_jax_distributed_group(self, coordinator_address, world_size):
@@ -98,20 +101,23 @@ class Worker:
 
         input_ids = self.tokenizer(
             text_prompt_list, padding="max_length",
-            truncation=True, max_length=77, return_tensors="jax"
+            truncation=True, max_length=40, return_tensors="jax"
         ).input_ids
         uncond_input_ids = self.tokenizer(
             text_prompt_list, padding="max_length",
-            truncation=True, max_length=77, return_tensors="jax"
+            truncation=True, max_length=40, return_tensors="jax"
         ).input_ids
 
         host_sharded_input_ids_list = jax.tree_map(lambda x: x.reshape((num_global_host_count, -1) + x.shape[1:]), input_ids)
         host_sharded_uncond_input_ids_list = jax.tree_map(lambda x: x.reshape((num_global_host_count, -1) + x.shape[1:]), uncond_input_ids)
 
+        print(f">>>> host_sharded_input_ids_list: {host_sharded_input_ids_list.shape}")
+        print(f">>>> host_sharded_uncond_input_ids_list: {host_sharded_uncond_input_ids_list.shape}")
+
         return host_sharded_input_ids_list, host_sharded_uncond_input_ids_list
 
 
-    def run_stable_diffusion(self, host_sharded_input_ids, host_sharded_uncond_input_ids, num_inference_steps = 1, guidance_scale = 1.0):
+    def run_stable_diffusion(self, host_sharded_input_ids, host_sharded_uncond_input_ids, num_inference_steps = 100, guidance_scale = 1.0):
         """Given host level tokenized ids, shard across all devices on host and apply pmap inference.
         """
         num_local_devices = jax.local_device_count()
@@ -123,6 +129,7 @@ class Worker:
         input_ids = shard(host_sharded_input_ids)
         uncond_input_ids = shard(host_sharded_uncond_input_ids)
         # https://github.com/google/jax/issues/10864 Assigning a random key on JAX costs 3900 MB on GPU
+        # prng_seed = jax.random.split(prng_seed, num_local_devices)
         prng_seed = jax.random.split(prng_seed, num_local_devices)
 
         # pmap the sample function
@@ -176,7 +183,7 @@ print(
 )
 print(f"Get devices: {ray.get(coordinator.get_devices.remote())} \n")
 
-text_prompts = ["apple on the tree"] * 16
+text_prompts = ["skull made of bubbles in a glass tank lit by the sun detailed aquamarine cerulean indigo teal coral reef bubbles skull water vibrant minimalist"] * 4
 
 print(f" >>> Stable diffusion init -- {ray.get([w.init_stable_diffusion.remote(CHECKPOINT_PATH) for w in workers])}")
 
