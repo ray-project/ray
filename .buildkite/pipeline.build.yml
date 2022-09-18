@@ -1,3 +1,9 @@
+- label: ":book: Lint"
+  commands:
+    - export LINT=1
+    - ./ci/env/install-dependencies.sh
+    - ./ci/ci.sh lint
+
 - label: ":ferris_wheel: Wheels and Jars"
   conditions:
     [
