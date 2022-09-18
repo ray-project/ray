@@ -115,7 +115,9 @@ install_miniconda() {
         conda="${miniconda_dir}\Scripts\conda.exe"
         ;;
       *)
-        rm -rf "${miniconda_dir}"
+        if [ "${MINIMAL_INSTALL-}" = 1 ]; then
+          rm -rf "${miniconda_dir}"
+        fi
         mkdir -p -- "${miniconda_dir}"
         # We're forced to pass -b for non-interactive mode.
         # Unfortunately it inhibits PATH modifications as a side effect.
