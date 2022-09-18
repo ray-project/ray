@@ -336,7 +336,7 @@ py_test_module_list(
 
 py_test(
   name = "test_runtime_env_complicated",
-  size = "enormous",
+  size = "large",
   srcs = ["test_runtime_env_complicated.py"],
   tags = ["exclusive", "post_wheel_build", "team:serve"],
   deps = ["//:ray_lib", ":conftest"],
