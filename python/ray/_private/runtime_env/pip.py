@@ -61,7 +61,11 @@ class _PathHelper:
     def get_virtualenv_activate_command(cls, target_dir: str) -> Union[str, List[str]]:
         virtualenv_path = cls.get_virtualenv_path(target_dir)
         if _WIN32:
-            return [os.path.join(virtualenv_path, "Scripts", "activate"), "1>&2", '&&']
+            return [
+                os.path.join(virtualenv_path, "Scripts", "activate.bat"),
+                "1>&2",
+                "&&",
+            ]
         else:
             return "source %s 1>&2" % (os.path.join(virtualenv_path, "bin/activate"))
 
@@ -494,7 +498,9 @@ class PipPlugin(RuntimeEnvPlugin):
             )
         context.py_executable = virtualenv_python
         if _WIN32:
-            context.command_prefix += _PathHelper.get_virtualenv_activate_command(target_dir)
+            context.command_prefix += _PathHelper.get_virtualenv_activate_command(
+                target_dir
+            )
         else:
             context.command_prefix += [
                 _PathHelper.get_virtualenv_activate_command(target_dir)

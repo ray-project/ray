@@ -68,13 +68,18 @@ def disable_temporary_uri_pinning():
 def check_internal_kv_gced():
     return len(kv._internal_kv_list("gcs://")) == 0
 
+
 def get_local_file_whitelist(cluster, option):
     # On Windows the runtime directory itself is not deleted due to it being in use
     # therefore whitelist it for the tests.
     if sys.platform == "win32" and option != "py_modules":
-        runtime_dir = Path(cluster.list_all_nodes()[0].get_runtime_env_dir_path()) / "working_dir_files"
+        runtime_dir = (
+            Path(cluster.list_all_nodes()[0].get_runtime_env_dir_path())
+            / "working_dir_files"
+        )
         return {list(Path(runtime_dir).iterdir())[0].name}
     return {}
+
 
 class TestGC:
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
@@ -172,7 +177,6 @@ class TestGC:
         wait_for_condition(lambda: check_local_files_gced(cluster, whitelist=whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
 
-
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     def test_actor_level_gc(
         self,
@@ -233,7 +237,6 @@ class TestGC:
         whitelist = get_local_file_whitelist(cluster, option)
         wait_for_condition(lambda: check_local_files_gced(cluster, whitelist))
         print("check_local_files_gced passed wait_for_condition block.")
-
 
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     @pytest.mark.parametrize(

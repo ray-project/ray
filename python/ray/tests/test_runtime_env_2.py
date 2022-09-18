@@ -10,9 +10,6 @@ from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 bad_runtime_env_cache_ttl_seconds = 10
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
-)
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 @pytest.mark.parametrize(
     "set_bad_runtime_env_cache_ttl_seconds",
