@@ -51,6 +51,9 @@ ENV LC_ALL=en_US.utf8
 ENV LANG=en_US.utf8
 RUN echo "ulimit -c 0" >> /root/.bashrc
 
+ENV BUILD=1
+ENV DL=1
+
 # Setup Bazel caches
 RUN (echo "build --remote_cache=${REMOTE_CACHE_URL}" >> /root/.bazelrc); \
     (if [ "${BUILDKITE_PULL_REQUEST}" != "false" ]; then (echo "build --remote_upload_local_results=false" >> /root/.bazelrc); fi); \
