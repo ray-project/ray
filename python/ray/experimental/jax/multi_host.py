@@ -1,3 +1,5 @@
+from typing import List
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -15,9 +17,9 @@ from ray.experimental.jax.scheduling_pndm import PNDMScheduler
 from ray.experimental.jax.modeling_vae import AutoencoderKL
 from ray.experimental.jax.modeling_unet2d import UNet2D
 
-ray.init()
+ray.init(runtime_env={"env_vars": {"XLA_PYTHON_CLIENT_MEM_FRACTION": "0.8"}})
 
-NUM_WORKERS = 1
+NUM_WORKERS = 4
 NUM_GPU_PER_WORKER = 4
 CHECKPOINT_PATH = "/mnt/cluster_storage"
 
@@ -26,6 +28,8 @@ CHECKPOINT_PATH = "/mnt/cluster_storage"
 class Worker:
     def __init__(self, rank):
         # Note: No jax calls should be made here before initializing jax.distributed
+        # import os 
+        # os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = 0.8
         self.rank = rank
 
     def init_jax_distributed_group(self, coordinator_address, world_size):
@@ -46,38 +50,6 @@ class Worker:
         address, port = get_address_and_port()
         return f"{address}:{port}"
 
-    def init_data(self):
-        n_devices = jax.local_device_count()
-        self.w = jnp.array([2.0, 3.0, 4.0])
-        self.xs = jnp.arange(5 * n_devices).reshape(-1, 5)
-        self.ws = jnp.stack([self.w] * n_devices)
-
-    def convolution(self, x, w):
-        output = []
-        for i in range(1, len(x) - 1):
-            output.append(jnp.dot(x[i - 1 : i + 2], w))
-        return jnp.array(output)
-
-    def convolution_vmap(self):
-        return jax.vmap(self.convolution)(self.xs, self.ws)
-
-    def convolution_pmap(self):
-        # Replicated self.w via broadcasting
-        return jax.pmap(self.convolution, in_axes=(0, None))(self.xs, self.w)
-
-    def normalized_convolution(self, x, w):
-        output = []
-        for i in range(1, len(x)-1):
-            output.append(jnp.dot(x[i-1:i+2], w))
-        output = jnp.array(output)
-        return output / jax.lax.psum(output, axis_name="p")
-
-    def pmap_with_psum(self):
-        return jax.pmap(lambda x: jax.lax.psum(x, "i"), axis_name="i")(self.xs)
-
-    def pmap_normalized_convolution_with_psum(self):
-        return jax.pmap(self.normalized_convolution, in_axes=(0, None), axis_name="p")(self.xs, self.w)
-
     def get_device_count(self):
         return f"Worker[{self.rank}]: {jax.device_count()}"
 
@@ -87,7 +59,7 @@ class Worker:
     def get_devices(self):
         return f"Worker[{self.rank}]: {str(jax.devices())}"
 
-    
+
     def init_stable_diffusion(self, fx_path):
         # inference with jax
         dtype = jnp.bfloat16
@@ -97,51 +69,68 @@ class Worker:
         unet, unet_params = UNet2D.from_pretrained(f"{fx_path}/unet", _do_init=False, dtype=dtype)
         vae, vae_params = AutoencoderKL.from_pretrained(f"{fx_path}/vae", _do_init=False, dtype=dtype)
 
-        config = CLIPConfig.from_pretrained("openai/clip-vit-large-patch14")
+        # config = CLIPConfig.from_pretrained("openai/clip-vit-large-patch14")
         self.tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
         scheduler = PNDMScheduler()
 
-        # create inference state and replicate it across all TPU devices
+        # create inference state and replicate it across all GPU devices
         inference_state = InferenceState(
-            text_encoder_params=clip_params, 
-            unet_params=unet_params, 
+            text_encoder_params=clip_params,
+            unet_params=unet_params,
             vae_params=vae_params
         )
         self.inference_state = replicate(inference_state)
 
         # create pipeline
         self.pipe = StableDiffusionPipeline(
-            text_encoder=clip_model, tokenizer=self.tokenizer, 
+            text_encoder=clip_model, tokenizer=self.tokenizer,
             unet=unet, scheduler=scheduler, vae=vae
         )
         return True
+    
+    def shard_input_tokens(self, text_prompt_list: List[str]):
+        """Should only be done by the coordinator.
 
-    def run_stable_diffusion(self, text_prompt: str, num_inference_steps = 50, guidance_scale = 1.0):
-        # TODO: Change this number to match local visible devices
-        # prepare inputs
-        num_samples = 4
-        # p = "a photo of an astronaut riding a horse on mars"
-        p = text_prompt
+        Given all text prompts, tokenize and padding each prompt, then shard the ids 
+        across number of hosts available in jax cluster. 
+        """
+        num_global_host_count = jax.host_count()
 
         input_ids = self.tokenizer(
-            [p] * num_samples, padding="max_length", 
+            text_prompt_list, padding="max_length",
             truncation=True, max_length=77, return_tensors="jax"
         ).input_ids
         uncond_input_ids = self.tokenizer(
-            [""] * num_samples, padding="max_length", 
+            text_prompt_list, padding="max_length",
             truncation=True, max_length=77, return_tensors="jax"
         ).input_ids
-        prng_seed = jax.random.PRNGKey(42)
 
+        host_sharded_input_ids_list = jax.tree_map(lambda x: x.reshape((num_global_host_count, -1) + x.shape[1:]), input_ids)
+        host_sharded_uncond_input_ids_list = jax.tree_map(lambda x: x.reshape((num_global_host_count, -1) + x.shape[1:]), uncond_input_ids)
+
+        return host_sharded_input_ids_list, host_sharded_uncond_input_ids_list
+
+
+    def run_stable_diffusion(self, host_sharded_input_ids, host_sharded_uncond_input_ids, num_inference_steps = 1, guidance_scale = 1.0):
+        """Given host level tokenized ids, shard across all devices on host and apply pmap inference.
+        """
+        num_local_devices = jax.local_device_count()
+        num_samples = len(host_sharded_input_ids)
+        print(f">>>> num_samples: {num_samples}")
+    
+        prng_seed = jax.random.PRNGKey(42)
         # shard inputs and rng
-        input_ids = shard(input_ids)
-        uncond_input_ids = shard(uncond_input_ids)
-        # TODO: Change this number to match local visible devices
-        prng_seed = jax.random.split(prng_seed, 4)
+        input_ids = shard(host_sharded_input_ids)
+        uncond_input_ids = shard(host_sharded_uncond_input_ids)
+        # https://github.com/google/jax/issues/10864 Assigning a random key on JAX costs 3900 MB on GPU
+        prng_seed = jax.random.split(prng_seed, num_local_devices)
 
         # pmap the sample function
         sample = jax.pmap(self.pipe.sample, static_broadcasted_argnums=(4, 5))
 
+        print(f">>> input_ids: {input_ids.shape}")
+        print(f">>> uncond_input_ids: {uncond_input_ids.shape}")
+        print(f">>> prng_seed: {prng_seed.shape}")
         # sample images
         images = sample(
             input_ids,
@@ -160,7 +149,6 @@ class Worker:
 
         pil_images = [Image.fromarray(image) for image in images]
         return pil_images
-
 
 workers = [
     Worker.options(
@@ -188,12 +176,23 @@ print(
 )
 print(f"Get devices: {ray.get(coordinator.get_devices.remote())} \n")
 
-# ray.get([w.init_data.remote() for w in workers])
-# # With psum, all GPU devices on host are visible to the worker actor
-# print(ray.get(workers[0].pmap_with_psum.remote()))
-# print(ray.get(workers[0].pmap_normalized_convolution_with_psum.remote()))
+text_prompts = ["apple on the tree"] * 16
 
-print(f" >>> Stable diffusion init -- {ray.get(coordinator.init_stable_diffusion.remote(CHECKPOINT_PATH))}")
-images = ray.get(coordinator.run_stable_diffusion.remote("Michael Jordan playing soccer with Leo Messi"))
-print(images)
+print(f" >>> Stable diffusion init -- {ray.get([w.init_stable_diffusion.remote(CHECKPOINT_PATH) for w in workers])}")
+
+host_sharded_input_ids_list, host_sharded_uncond_input_ids_list = ray.get(coordinator.shard_input_tokens.remote(text_prompts))
+
+rst = ray.get([
+    worker.run_stable_diffusion.remote(host_sharded_input_ids_list[idx], host_sharded_uncond_input_ids_list[idx])
+    for idx, worker in enumerate(workers)
+])
+
+# images = ray.get(coordinator.run_stable_diffusion.remote(["hi"]))
+
+import ipdb
+ipdb.set_trace()
+
+# for idx, image in enumerate(images):
+#     image.save(f"/mnt/shared_storage/avnish_cade_jiao_hackathon/multi_host_pmap_{idx}.jpg")
+
 
