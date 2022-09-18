@@ -21,7 +21,6 @@ import grpc
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve._private.constants import DEFAULT_GRPC_PORT
 
-import mock
 
 DEFAULT_HTTP_ADAPTER = "ray.serve.http_adapters.starlette_request"
 HTTPAdapterFn = Callable[[Any], Any]
@@ -213,7 +212,7 @@ class ServegRPCIngress:
         await self.server.wait_for_termination()
 
 
-if isinstance(serve_pb2_grpc.PredictAPIsServiceServicer, mock.MagicMock):
+if not isinstance(serve_pb2_grpc.PredictAPIsServiceServicer, type):
     # The reason we have this fake Driver class is that sphinx-build is to mock
     # PredictAPIsServiceServicer and it will cause the metaclass conflict issue
     # from multiple inheritance
