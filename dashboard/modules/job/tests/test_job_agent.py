@@ -235,7 +235,7 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     )
 
     # There is only one node, so there is no need to replace the client of the JobAgent
-    resp = await agent_client.get_job_logs(job_id)
+    resp = await agent_client.get_job_logs_internal(job_id)
     assert runtime_env_option["expected_logs"] in resp.logs
 
 
@@ -466,7 +466,7 @@ async def test_job_log_in_multiple_node(
             agent_address = f"{ip}:{agent_port}"
             assert wait_until_server_available(agent_address)
             client = JobAgentSubmissionClient(format_web_url(agent_address))
-            resp = await client.get_job_logs(job_id)
+            resp = await client.get_job_logs_internal(job_id)
             assert result_log in resp.logs, resp.logs
 
             job_check_status[index] = True
