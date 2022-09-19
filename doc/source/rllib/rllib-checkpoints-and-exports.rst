@@ -55,15 +55,26 @@ like this:
       ..
       .is_checkpoint
       .tune_metadata
-      policies
+      policies/
       state.pkl
+      checkpoint_version.txt
 
 As you can see, there is a `policies` sub-directory created for us (more on that
-later) and a ``state.pkl`` file. The ``state.pkl`` file contains all state information
+later), a ``state.pkl`` file, and a ``checkpoint_version.txt`` file.
+The ``state.pkl`` file contains all state information
 of the Algorithm that is **not** Policy-specific, such as the algo's counters and
 other important variables to persistently keep track of.
+The ``checkpoint_version.txt`` file contains the checkpoint version used for the user's
+convenience. From Ray RLlib 2.0 and up, all checkpoint versions will be
+backward compatible, meaning an RLlib version ``V`` will be able to
+handle any checkpoints created with 2.0 or any version up to ``V``.
 
-Let's check out the `policies/` sub-directory:
+.. code-block:: shell
+
+    $ mode checkpoint_version.txt
+    v1
+
+Now, let's check out the `policies/` sub-directory:
 
 .. code-block:: shell
 
@@ -71,7 +82,7 @@ Let's check out the `policies/` sub-directory:
     $ ls -la
       .
       ..
-      default_policy
+      default_policy/
 
 We can see yet another sub-directory, called ``default_policy``. RLlib creates
 exactly one sub-directory inside the ``policies/`` dir per Policy instance that
@@ -87,8 +98,9 @@ with the IDs "policy_1" and "policy_2", you should see the sub-directories:
     $ ls -la
       .
       ..
-      policy_1
-      policy_2
+      policy_1/
+      policy_2/
+
 
 Lastly, let's quickly take a look at our ``default_policy`` sub-directory:
 
@@ -98,15 +110,19 @@ Lastly, let's quickly take a look at our ``default_policy`` sub-directory:
     $ ls -la
       .
       ..
+      checkpoint_version.txt
       policy_state.pkl
 
 Similar to the algorithm's state (saved within ``state.pkl``),
 a Policy's state is stored under the ``policy_state.pkl`` file. We'll cover more
 details on the contents of this file when talking about Policy checkpoints below.
+Note that Policy checkpoint also have a version information
+(in ``checkpoint_version.txt``), which is always identical to the enclosing
+algorithm checkpoint version.
 
 
-How do I restore from an Algorithm Checkpoint?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How do I restore an Algorithm from a Checkpoint?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Given our checkpoint path (returned by ``Algorithm.save()``), we can now
 create a completely new Algorithm instance and make it the exact same as the one we
@@ -135,9 +151,30 @@ have to keep your original config stored somewhere.
 Which Algorithm Checkpoint versions can I use?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+RLlib uses simple checkpoint versions (for example "v0" or "v1") to figure
+out how to restore an Algorithm (or a Policy; see below) from a given
+checkpoint directory.
+
+From Ray 2.1 on, you can find the checkpoint version written in the
+``checkpoint_version.txt`` file at the top-level of your checkpoint directory.
+RLlib does not use this file or information therein, it solely exists for the
+user's convenience.
+
+From Ray RLlib 2.0 and up, all checkpoint versions will be
+backward compatible, meaning some RLlib version 2.x will be able to
+handle any checkpoints created by RLlib 2.0 or any version up to 2.x.
+
 
 Multi-agent Algorithm Checkpoints
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In case you are working with a multi-agent setup and have more than one
+Policy to train inside your Algorithm,
+
+.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+    :language: python
+    :start-after: __multi-agent-checkpoints-begin__
+    :end-before: __multi-agent-checkpoints-end__
 
 TODO: Restoring a multi-agent Algorithm, but only with some subset of the original policies
 
