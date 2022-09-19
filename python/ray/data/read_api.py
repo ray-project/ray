@@ -433,14 +433,15 @@ def read_images(
             root/cat/123.png
             root/cat/nsdf3.png
 
-        Then you can include the labels by specifying a partition scheme.
+        Then you can include the labels by specifying a
+        :class:`~ray.data.datasource.partitioning.Partitioning`.
 
         >>> import ray
         >>> from ray.data.datasource.partitioning import Partitioning
-        >>> root = "s3://balajis-tiny-imagenet/train"
+        >>> root = "example://tiny-imagenet-200/train"
         >>> partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
-        >>> ds = ray.data.read_images(root, size=(224, 224), partitioning=partitioning)
-        >>> ds
+        >>> ds = ray.data.read_images(root, size=(224, 224), partitioning=partitioning)  # doctest: +SKIP
+        >>> ds  # doctest: +SKIP
         Dataset(num_blocks=176, num_rows=94946, schema={image: TensorDtype(shape=(224, 224, 3), dtype=uint8), class: object})
 
     Args:
@@ -456,7 +457,7 @@ def read_images(
             By default, this fidslters out any file paths whose file extension does not
             match ``*.png``, ``*.jpg``, ``*.jpeg``, ``*.tiff``, ``*.bmp``, or ``*.gif``.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
-            that describes how paths are organized. Default: ``None``.
+            that describes how paths are organized. Defaults to ``None``.
         size: The desired height and width of loaded images. If unspecified, images
             retain their original shape.
         mode: A `Pillow mode <https://pillow.readthedocs.io/en/stable/handbook/concepts.html#modes>`_

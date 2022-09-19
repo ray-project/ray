@@ -24,7 +24,7 @@ from ray.data.datasource.file_meta_provider import (
     FileMetadataProvider,
     ParquetMetadataProvider,
 )
-from ray.data.datasource.image_folder_datasource import ImageDatasource
+from ray.data.datasource.image_datasource import ImageDatasource
 from ray.data.datasource.json_datasource import JSONDatasource
 from ray.data.datasource.numpy_datasource import NumpyDatasource
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
