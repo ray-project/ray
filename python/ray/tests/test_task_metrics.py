@@ -1,4 +1,5 @@
 from collections import defaultdict
+import sys
 import os
 
 import pytest
@@ -276,6 +277,7 @@ ray.get([a.f.remote() for _ in range(40)])
     proc.kill()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_metrics_export_now(shutdown_only):
     info = ray.init(num_cpus=2, **SLOW_METRIC_CONFIG)
 
