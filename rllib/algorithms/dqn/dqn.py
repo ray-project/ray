@@ -288,11 +288,14 @@ class DQNConfig(SimpleQConfig):
             self.replay_buffer_config = replay_buffer_config
         if td_error_loss_fn is not None:
             self.td_error_loss_fn = td_error_loss_fn
-            assert self.td_error_loss_fn in ["huber", "mse"], (
-                "td_error_loss_fn must be 'huber' or 'mse'."
-            )
+            assert self.td_error_loss_fn in [
+                "huber",
+                "mse",
+            ], "td_error_loss_fn must be 'huber' or 'mse'."
         if categorical_distribution_temperature is not None:
-            self.categorical_distribution_temperature = categorical_distribution_temperature
+            self.categorical_distribution_temperature = (
+                categorical_distribution_temperature
+            )
 
         return self
 

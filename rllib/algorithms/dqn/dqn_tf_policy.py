@@ -51,7 +51,7 @@ class QLoss:
         num_atoms: int = 1,
         v_min: float = -10.0,
         v_max: float = 10.0,
-        loss_fn = huber_loss,
+        loss_fn=huber_loss,
     ):
 
         if num_atoms > 1:

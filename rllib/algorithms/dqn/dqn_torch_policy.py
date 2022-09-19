@@ -109,9 +109,7 @@ class QLoss:
 
             # compute the error (potentially clipped)
             self.td_error = q_t_selected - q_t_selected_target.detach()
-            self.loss = torch.mean(
-                importance_weights.float() * loss_fn(self.td_error)
-            )
+            self.loss = torch.mean(importance_weights.float() * loss_fn(self.td_error))
             self.stats = {
                 "mean_q": torch.mean(q_t_selected),
                 "min_q": torch.min(q_t_selected),
