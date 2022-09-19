@@ -2,6 +2,7 @@ import pytest
 import pandas as pd
 import numpy as np
 import pyarrow.parquet as pq
+from typing import Any
 
 import ray
 from ray.data.datasource import (
@@ -12,6 +13,7 @@ from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
     _ParquetDatasourceReader
 )
+from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
     _SerializedPiece,
     _deserialize_pieces_with_retry,
@@ -85,7 +87,74 @@ def test_parquet_deserialize_pieces_with_retry(
     assert "test2.parquet" in retried_pieces[1].path
 
 
-from ray.data.datasource.file_based_datasource import _unwrap_protocol
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_space"),
+            lazy_fixture("s3_path_with_space"),
+        ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
+    ],
+)
+def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df1)
+    setup_data_path = _unwrap_protocol(data_path)
+    path1 = os.path.join(setup_data_path, "test1.parquet")
+    pq.write_table(table, path1, filesystem=fs)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(setup_data_path, "test2.parquet")
+    pq.write_table(table, path2, filesystem=fs)
+
+    ds = ray.data.read_parquet(data_path, filesystem=fs)
+
+    # Test metadata-only parquet ops.
+    assert ds._plan.execute()._num_computed() == 1
+    assert ds.count() == 6
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
+    input_files = ds.input_files()
+    assert len(input_files) == 2, input_files
+    assert "test1.parquet" in str(input_files)
+    assert "test2.parquet" in str(input_files)
+    assert (
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
+    ), ds
+    assert (
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
+    ), ds
+    assert ds._plan.execute()._num_computed() == 1
+
+    # Forces a data read.
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert ds._plan.execute()._num_computed() == 2
+    assert sorted(values) == [
+        [1, "a"],
+        [2, "b"],
+        [3, "c"],
+        [4, "e"],
+        [5, "f"],
+        [6, "g"],
+    ]
+
+    # Test column selection.
+    ds = ray.data.read_parquet(data_path, columns=["one"], filesystem=fs)
+    values = [s["one"] for s in ds.take()]
+    assert sorted(values) == [1, 2, 3, 4, 5, 6]
+    assert ds.schema().names == ["one"]
+
 
 @pytest.mark.parametrize(
     "fs,data_path",
