@@ -6,7 +6,7 @@ from pyarrow.fs import FileType
 from pytest_lazyfixture import lazy_fixture
 from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 
-from ray.data.datasource.partitioning import PathPartitionScheme, PathPartitionFilter
+from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 
 from ray.tests.conftest import *  # noqa
 from ray.data.datasource import (
@@ -17,7 +17,7 @@ from ray.data.datasource import (
 from ray.data.tests.conftest import *  # noqa
 
 
-def _verify_resolved_paths_and_filesystem(scheme: PathPartitionScheme):
+def _verify_resolved_paths_and_filesystem(scheme: Partitioning):
     assert scheme.base_dir is not None
     assert scheme.normalized_base_dir is not None
     paths, expected_fs = _resolve_paths_and_filesystem(
@@ -41,13 +41,13 @@ def test_path_partition_base_properties():
     style = PartitionStyle.DIRECTORY
     base_dir = "/foo/bar"
     field_names = ["baz", "qux"]
-    scheme = PathPartitionScheme(style, base_dir, field_names, None)
+    scheme = Partitioning(style, base_dir, field_names, None)
     assert scheme.style == style
     assert scheme.base_dir == base_dir
     assert scheme.field_names == field_names
     _verify_resolved_paths_and_filesystem(scheme)
 
-    scheme = PathPartitionScheme(style, None, field_names, None)
+    scheme = Partitioning(style, None, field_names, None)
     assert scheme.style == style
     assert scheme.base_dir == ""
     assert scheme.field_names == field_names
@@ -321,6 +321,16 @@ def test_path_partition_parser_dir(fs, base_dir):
     assert partition_parser(partitioned_path) == {"bar": "1", "foo": "2"}
     partitioned_path = posixpath.join(base_dir, "2/1/test")
     assert partition_parser(partitioned_path) == {"bar": "2", "foo": "1"}
+
+    partition_parser = PathPartitionParser.of(
+        PartitionStyle.DIRECTORY,
+        base_dir=base_dir,
+        field_names=["year", None, "country"],
+        filesystem=fs,
+    )
+
+    partitioned_path = posixpath.join(base_dir, "1970/countries/fr/products.csv")
+    assert partition_parser(partitioned_path) == {"year": "1970", "country": "fr"}
 
 
 @pytest.mark.parametrize(

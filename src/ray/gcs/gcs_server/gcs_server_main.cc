@@ -66,6 +66,7 @@ int main(int argc, char *argv[]) {
 
   const ray::stats::TagsType global_tags = {
       {ray::stats::ComponentKey, "gcs_server"},
+      {ray::stats::WorkerIdKey, ""},
       {ray::stats::VersionKey, kRayVersion},
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(global_tags, metrics_agent_port);
