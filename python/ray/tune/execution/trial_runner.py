@@ -977,10 +977,9 @@ class TrialRunner:
     def _post_process_on_training_saving_result(self, trial):
         # `self._queued_trial_decisions` now contains a final decision
         # based on all results
-        if trial.trial_id not in self._cached_trial_decisions:
-            final_decision = self._queued_trial_decisions.pop(trial.trial_id, None)
-            if final_decision:
-                self._execute_action(trial, final_decision)
+        final_decision = self._queued_trial_decisions.pop(trial.trial_id, None)
+        if final_decision:
+            self._execute_action(trial, final_decision)
 
     def _on_executor_error(self, trial, e: Union[RayTaskError, TuneError]):
         error_msg = f"Trial {trial}: Error processing event."
@@ -1438,7 +1437,6 @@ class TrialRunner:
         # NOTE: The cached trial decision is not needed since we will overrule this
         # decision with PAUSE.
         self._cached_trial_decisions.pop(trial.trial_id, None)
-
         self.trial_executor.pause_trial(trial, should_checkpoint=should_checkpoint)
 
     def stop_trial(self, trial):
