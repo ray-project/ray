@@ -36,7 +36,7 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/so
 # Set up port-forwarding
 kubectl port-forward services/raycluster-autoscaler-head-svc 8265:8265
 
-# Test cluster
+# Test the cluster
 ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
 
 # Step3: Run PyTorch image training benchmark
