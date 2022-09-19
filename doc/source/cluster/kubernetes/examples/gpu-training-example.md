@@ -123,6 +123,7 @@ It is optional.
 # Step 3: Run the PyTorch image training benchmark.
 ```shell
 # Step 3: Run the PyTorch image training benchmark.
+# Install Ray if needed
 pip3 install -U "ray[default]"
 
 # Download the Python script
