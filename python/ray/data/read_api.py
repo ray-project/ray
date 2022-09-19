@@ -646,7 +646,7 @@ def read_csv(
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
-    """
+    """  # noqa: E501
     return read_datasource(
         CSVDatasource(),
         parallelism=parallelism,

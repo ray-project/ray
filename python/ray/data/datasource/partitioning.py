@@ -379,7 +379,7 @@ class PathPartitionParser:
         dirs = [d for d in dir_path.split("/") if d]
         field_names = self._scheme.field_names
 
-        if dirs and len(dirs) != len(field_names):
+        if len(dirs) != len(field_names):
             raise ValueError(
                 f"Expected {len(field_names)} partition value(s) but found "
                 f"{len(dirs)}: {dirs}."
