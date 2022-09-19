@@ -7,7 +7,7 @@ In this guide, we show you how to run a sample Ray machine learning training wor
 - Step3: Run PyTorch image training benchmark 
 
 ```shell
-# Step1: Setup Kubernetes cluster on GCP
+# Step 1: Setup Kubernetes cluster on GCP
 # e2-standard-8 => 8 vCPU; 32 GB RAM
 gcloud container clusters create gpu-cluster-1 \
     --num-nodes=1 --min-nodes 0 --max-nodes 1 --enable-autoscaling \
@@ -24,7 +24,7 @@ gcloud container node-pools create gpu-node-pool \
 # Install NVIDIA GPU device driver
 kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/cos/daemonset-preloaded.yaml
 
-# Step2: Deploy a Ray cluster on Kubernetes with KubeRay (operator)
+# Step 2: Deploy a Ray cluster on Kubernetes with KubeRay (operator)
 # Please make sure whether you connect to your Kubernetes cluster on GCP or not.
 
 # Create the KubeRay operator
@@ -39,7 +39,7 @@ kubectl port-forward services/raycluster-autoscaler-head-svc 8265:8265
 # Test the cluster
 ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
 
-# Step3: Run PyTorch image training benchmark
+# Step 3: Run the PyTorch image training benchmark
 pip3 install -U "ray[default]"
 
 # Download the Python script

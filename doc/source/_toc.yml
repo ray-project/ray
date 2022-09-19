@@ -272,6 +272,7 @@ parts:
         - file: cluster/kubernetes/examples
           sections:
             - file: cluster/kubernetes/examples/ml-example.md
+            - file: cluster/kubernetes/examples/gpu-training-example.md
         - file: cluster/kubernetes/references
       - file: cluster/vms/index
         title: Deploying on VMs

@@ -1,7 +1,4 @@
-# This config demonstrates KubeRay's Ray autoscaler integration.
-# The resource requests and limits in this config are too small for production!
-# For an example with more realistic resource configuration, see
-# ray-cluster.autoscaler.large.yaml.
+# This is a RayCluster configuration for PyTorch image training benchmark with a 1Gi training set. 
 apiVersion: ray.io/v1alpha1
 kind: RayCluster
 metadata:
