@@ -303,6 +303,7 @@ parts:
     chapters:
       - file: ray-references/api
       - file: cluster/usage-stats
+      - file: ray-use-cases/overview
 
   - caption: Developer Guides
     chapters:
