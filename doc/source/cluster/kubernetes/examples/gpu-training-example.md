@@ -4,10 +4,10 @@
 In this guide, we show you how to run a sample Ray machine learning training workload with GPU on Kubernetes infrastructure. We will run Ray's {ref}`PyTorch image training benchmark <pytorch_gpu_training_benchmark>` with a 1 gigabyte training set. The following script consists of:
 - Step 1: Setup a Kubernetes cluster on GCP.
 - Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
-- Step3: Run PyTorch image training benchmark 
+- Step 3: Run the PyTorch image training benchmark. 
 
 ```shell
-# Step 1: Setup Kubernetes cluster on GCP
+# Step 1: Setup a Kubernetes cluster on GCP
 # e2-standard-8 => 8 vCPU; 32 GB RAM
 gcloud container clusters create gpu-cluster-1 \
     --num-nodes=1 --min-nodes 0 --max-nodes 1 --enable-autoscaling \
@@ -24,7 +24,7 @@ gcloud container node-pools create gpu-node-pool \
 # Install NVIDIA GPU device driver
 kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/cos/daemonset-preloaded.yaml
 
-# Step 2: Deploy a Ray cluster on Kubernetes with KubeRay (operator)
+# Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
 # Please make sure whether you connect to your Kubernetes cluster on GCP or not.
 
 # Create the KubeRay operator
@@ -39,7 +39,7 @@ kubectl port-forward services/raycluster-autoscaler-head-svc 8265:8265
 # Test the cluster
 ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
 
-# Step 3: Run the PyTorch image training benchmark
+# Step 3: Run the PyTorch image training benchmark.
 pip3 install -U "ray[default]"
 
 # Download the Python script
@@ -56,9 +56,9 @@ python3 pytorch_training_e2e_submit.py
 ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow
 ```
 
-# Step1: Setup Kubernetes cluster on GCP
+# Step 1: Setup a Kubernetes cluster on GCP.
 ```shell
-# Step1: Setup Kubernetes cluster on GCP
+# Step 1: Setup a Kubernetes cluster on GCP.
 # e2-standard-8 => 8 vCPU; 32 GB RAM
 gcloud container clusters create gpu-cluster-1 \
     --num-nodes=1 --min-nodes 0 --max-nodes 1 --enable-autoscaling \
@@ -83,7 +83,7 @@ the option `machine-type` and the resource requirements in `ray-cluster.autoscal
 First, we create a Kubernetes cluster `gpu-cluster-1` with a node (`e2-standard-8`: 8 vCPU; 32 GB RAM). Second,
 we add a new node (`n1-standard-8`: 8 vCPU; 30 GB RAM) with a GPU (`nvidia-tesla-t4`) to the cluster.
 
-# Step2: Deploy a Ray cluster on Kubernetes with KubeRay (operator)
+# Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
 
 :::{note}
 To learn the basics of Ray on Kubernetes, we recommend taking a look
@@ -95,7 +95,7 @@ Kubernetes service, we recommend taking a look at this {ref}`introductory guide 
 first.
 
 ```shell
-# Step2: Deploy a Ray cluster on Kubernetes with KubeRay (operator)
+# Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
 # Create an operator
 kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
 
@@ -117,9 +117,9 @@ The third command is used to map port 8265 of the `ray-head` pod to **127.0.0.1:
 **127.0.0.1:8265** to see the dashboard. The last command is used to test your Ray cluster by submitting a simple job.
 It is optional.
 
-# Step3: Run PyTorch image training benchmark
+# Step 3: Run the PyTorch image training benchmark.
 ```shell
-# Step3: Run PyTorch image training benchmark
+# Step 3: Run the PyTorch image training benchmark.
 pip3 install -U "ray[default]"
 
 # Download the Python script
