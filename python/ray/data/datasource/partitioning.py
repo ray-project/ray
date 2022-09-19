@@ -66,16 +66,22 @@ class Partitioning:
     def __post_init__(self):
         if self.base_dir is None:
             self.base_dir = ""
-        self._normalize_base_dir()
+
+        self._normalized_base_dir = None
+        self._resolved_filesystem = None
 
     @property
     def normalized_base_dir(self) -> str:
         """Returns the base directory normalized for compatibility with a filesystem."""
+        if self._normalized_base_dir is None:
+            self._normalize_base_dir()
         return self._normalized_base_dir
 
     @property
     def resolved_filesystem(self) -> "pyarrow.fs.FileSystem":
         """Returns the filesystem resolved for compatibility with a base directory."""
+        if self._resolved_filesystem is None:
+            self._normalize_base_dir()
         return self._resolved_filesystem
 
     def _normalize_base_dir(self):
@@ -379,7 +385,7 @@ class PathPartitionParser:
         dirs = [d for d in dir_path.split("/") if d]
         field_names = self._scheme.field_names
 
-        if dirs and len(dirs) != len(field_names):
+        if len(dirs) != len(field_names):
             raise ValueError(
                 f"Expected {len(field_names)} partition value(s) but found "
                 f"{len(dirs)}: {dirs}."
