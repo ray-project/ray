@@ -238,7 +238,7 @@ def get_distribution_inputs_and_class(
     temperature = policy.config["categorical_distribution_temperature"]
     action_dist = functools.partial(Categorical, temperature=temperature)
 
-    return policy.q_values, Categorical, []  # state-out
+    return policy.q_values, action_dist, []  # state-out
 
 
 def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:

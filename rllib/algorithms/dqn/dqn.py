@@ -254,7 +254,9 @@ class DQNConfig(SimpleQConfig):
                 when num_atoms is 1. Note that if num_atoms is > 1, this parameter
                 is simply ignored, and softmax cross entropy loss will be used.
             categorical_distribution_temperature: Set the temperature parameter used
-                by Categorical action distribution.
+                by Categorical action distribution. A valid temperature is in the range
+                of [0, 1]. Note that this mostly affects evaluation since TD error uses
+                argmax for return calculation.
 
         Returns:
             This updated AlgorithmConfig object.
