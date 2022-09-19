@@ -342,7 +342,7 @@ class AlgorithmConfig:
         *,
         num_gpus: Optional[Union[float, int]] = None,
         _fake_gpus: Optional[bool] = None,
-        num_cpus_per_worker: Optional[int] = None,
+        num_cpus_per_worker: Optional[Union[float, int]] = None,
         num_gpus_per_worker: Optional[Union[float, int]] = None,
         num_cpus_for_local_worker: Optional[int] = None,
         custom_resources_per_worker: Optional[dict] = None,
