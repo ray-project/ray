@@ -12,7 +12,7 @@ Example use case
 
 You have a worker actor that process tasks at a rate of X tasks per second and you want to submit tasks to it at a rate lower than X to avoid OOM.
 
-Ray Serve uses this pattern to limit the number of in-flight queries for each worker.
+For example, Ray Serve uses this pattern to limit the number of in-flight queries for each worker.
 
 .. figure:: ../images/limit-tasks.svg
 
