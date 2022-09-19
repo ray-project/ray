@@ -279,6 +279,61 @@ class CheckpointManagerTest(unittest.TestCase):
             if os.path.exists(tmpfile):
                 os.remove(tmpfile)
 
+    def testForcedCheckpoint(self):
+        def get_checkpoints(i):
+            persistent_checkpoint = _TrackedCheckpoint(
+                dir_or_data={"a": i},
+                storage_mode=CheckpointStorage.PERSISTENT,
+                metrics=self.mock_result(0, i),
+            )
+            memory_checkpoint = _TrackedCheckpoint(
+                dir_or_data={"a": i},
+                storage_mode=CheckpointStorage.MEMORY,
+                metrics=self.mock_result(0, i),
+            )
+            return persistent_checkpoint, memory_checkpoint
+
+        checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=2)
+
+        # 1. Both checkpoints not forced
+        persistent_checkpoint, memory_checkpoint = get_checkpoints(1)
+        checkpoint_manager.on_checkpoint(memory_checkpoint)
+        checkpoint_manager.on_checkpoint(persistent_checkpoint)
+        # Take persistent checkpoint, since it is processed 2nd
+        assert checkpoint_manager.newest_checkpoint == persistent_checkpoint
+
+        # 2. Memory checkpoint forced, calling `on_checkpoint` first
+        persistent_checkpoint, memory_checkpoint = get_checkpoints(2)
+        checkpoint_manager.on_checkpoint(memory_checkpoint, force=True)
+        checkpoint_manager.on_checkpoint(persistent_checkpoint)
+        assert checkpoint_manager.newest_checkpoint == memory_checkpoint
+
+        # 3. Persistent checkpoint forced, calling `on_checkpoint` first
+        persistent_checkpoint, memory_checkpoint = get_checkpoints(3)
+        checkpoint_manager.on_checkpoint(persistent_checkpoint, force=True)
+        checkpoint_manager.on_checkpoint(memory_checkpoint)
+        assert checkpoint_manager.newest_checkpoint == persistent_checkpoint
+
+        # 4. Both checkpoints are forced
+        persistent_checkpoint, memory_checkpoint = get_checkpoints(4)
+        checkpoint_manager.on_checkpoint(persistent_checkpoint, force=True)
+        checkpoint_manager.on_checkpoint(memory_checkpoint, force=True)
+        # Take memory checkpoint, since it is processed 2nd
+        assert checkpoint_manager.newest_checkpoint == memory_checkpoint
+
+        # 5. Set the checkpoint id manually
+        persistent_checkpoint, memory_checkpoint = get_checkpoints(5)
+        persistent_checkpoint.id = 100
+        memory_checkpoint.id = 0
+        checkpoint_manager.on_checkpoint(memory_checkpoint, force=True)
+        checkpoint_manager.on_checkpoint(persistent_checkpoint)
+        assert checkpoint_manager.newest_checkpoint == memory_checkpoint
+
+        # 6. Flush out forced checkpoint by calling `on_checkpoint` with another memory
+        # checkpoint
+        checkpoint_manager.on_checkpoint(memory_checkpoint)
+        assert checkpoint_manager.newest_checkpoint == persistent_checkpoint
+
 
 if __name__ == "__main__":
     import pytest
