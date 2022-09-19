@@ -1,10 +1,15 @@
+import os
+import shutil
+
 import pytest
 import pandas as pd
 import numpy as np
+import pyarrow as pa
 import pyarrow.parquet as pq
 from typing import Any
 
 import ray
+from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,

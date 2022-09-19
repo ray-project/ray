@@ -2,12 +2,13 @@ import os
 import shutil
 from functools import partial
 import pandas as pd
+import pyarrow as pa
 import pyarrow.json as pajson
 import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 
 from ray.data.datasource import (

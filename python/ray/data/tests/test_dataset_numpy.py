@@ -14,12 +14,13 @@ from ray.data.datasource import (
     FastFileMetadataProvider,
     PartitionStyle,
     PathPartitionEncoder,
-    PathPartitionFilter
+    PathPartitionFilter,
 )
 
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
+
 
 @pytest.mark.parametrize("from_ref", [False, True])
 def test_from_numpy(ray_start_regular_shared, from_ref):
@@ -75,7 +76,6 @@ def test_to_numpy_refs(ray_start_regular_shared):
     np.testing.assert_equal(
         arrs, [{"a": np.array([1, 2, 3]), "b": np.array([4, 5, 6])}]
     )
-
 
 
 @pytest.mark.parametrize(
