@@ -6,7 +6,7 @@ Reporting bugs and asking questions
 
 You can post questions or issues or feedback through the following channels:
 
-1. `Github Discussions`_: For discussions about development, questions about usage, and feature requests.
+1. `Discourse forum`_: For discussions about development and questions about usage.
 2. `GitHub Issues`_: For bug reports and feature requests.
 3. `StackOverflow`_
 
@@ -19,7 +19,7 @@ For instructions on setting up your development environment, check out the
 `getting involved`_ documentation page.
 
 
-.. _`Github Discussions`: https://github.com/ray-project/ray/discussions
+.. _`Discourse forum`: https://discuss.ray.io/
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`getting involved`: https://docs.ray.io/en/master/getting-involved.html
