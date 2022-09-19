@@ -22,6 +22,7 @@ PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
     METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
 )
 
+
 class MetricsHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
@@ -83,7 +84,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
     async def run(self, server):
         self._create_default_grafana_configs()
-        self._create_default_prometheus_configs() 
+        self._create_default_prometheus_configs()
 
         logger.info(
             f"Generated prometheus and grafana configurations in: {self.metrics_root}"

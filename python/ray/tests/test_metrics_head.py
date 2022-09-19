@@ -20,7 +20,8 @@ def test_metrics_folder():
             f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
         )
         assert os.path.exists(
-            f"{session_dir}/metrics/grafana/provisioning/dashboards/default_grafana_dashboard.json"
+            f"{session_dir}/metrics/grafana/provisioning/dashboards"
+            "/default_grafana_dashboard.json"
         )
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/datasources/default.yml"
@@ -30,7 +31,8 @@ def test_metrics_folder():
 
 def test_metrics_folder_when_dashboard_disabled():
     """
-    Tests that the default dashboard files do not get created when dashboard is disabled.
+    Tests that the default dashboard files do not get created when dashboard
+    is disabled.
     """
     with _ray_start(include_dashboard=False) as context:
         session_dir = context["session_dir"]
@@ -38,7 +40,8 @@ def test_metrics_folder_when_dashboard_disabled():
             f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
         )
         assert not os.path.exists(
-            f"{session_dir}/metrics/grafana/provisioning/dashboards/default_grafana_dashboard.json"
+            f"{session_dir}/metrics/grafana/provisioning/dashboards"
+            "/default_grafana_dashboard.json"
         )
         assert not os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/datasources/default.yml"
@@ -47,8 +50,6 @@ def test_metrics_folder_when_dashboard_disabled():
 
 
 if __name__ == "__main__":
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
