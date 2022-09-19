@@ -498,7 +498,6 @@ class RayTrialExecutor:
         Args:
             error: Whether to mark this trial as terminated in error.
             exc: Optional exception.
-
         """
         self.set_status(trial, Trial.ERROR if error or exc else Trial.TERMINATED)
         self._trial_just_finished = True
@@ -602,6 +601,16 @@ class RayTrialExecutor:
         error: bool = False,
         exc: Optional[Union[TuneError, RayTaskError]] = None,
     ) -> None:
+        """Stops the trial, releasing held resources and removing futures related to
+        this trial from the execution queue.
+
+        Args:
+            trial: Trial to stop.
+            error: Whether to mark this trial as terminated in error. The trial status
+                will be set to either `Trial.ERROR` or `Trial.TERMINATED` based on this.
+                Defaults to False.
+            exc: Optional exception to log (as a reason for stopping). Defaults to None.
+        """
         prior_status = trial.status
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
@@ -616,10 +625,15 @@ class RayTrialExecutor:
         self._train(trial)
 
     def pause_trial(self, trial: Trial, should_checkpoint: bool = True) -> None:
-        """Pauses the trial.
+        """Pauses the trial, releasing resources (specifically GPUs)
 
-        We want to release resources (specifically GPUs) when pausing an
-        experiment. This results in PAUSED state that similar to TERMINATED.
+        We do this by:
+        1. Checkpoint the trial (if `should_checkpoint`) in memory to allow us to resume
+           from this state in the future. We may not always  want to checkpoint, if we
+           know that the checkpoint will not be used.
+        2. Stop the trial and release resources, see `RayTrialExecutor.stop_trial` above
+        3. Set the trial status to `Trial.PAUSED`, which is similar to
+           `Trial.TERMINATED`, except we have the intention of resuming the trial.
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
