@@ -32,7 +32,7 @@ higher==0.2.1
 pyglet==1.5.15
 imageio-ffmpeg==0.4.5
 # Ray Serve example
-starlette
+starlette==0.16.0
 # ONNX
 onnx==1.9.0
 onnxruntime==1.9.0

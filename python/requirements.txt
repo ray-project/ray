@@ -41,9 +41,9 @@ pandas>=1.3.0; python_version >= '3.7'
 scipy >= 1.5
 tabulate
 tensorboardX >= 1.9
-uvicorn
+uvicorn==0.16.0
 dataclasses; python_version < '3.7'
-starlette
+starlette==0.18.0
 aiorwlock
 gradio; platform_system != "Windows"
 
@@ -89,12 +89,12 @@ pytest-lazy-fixture
 pytest-timeout
 pytest-virtualenv
 redis >= 3.5.0, < 4.0.0
-scikit-learn
+scikit-learn==0.24.2
 testfixtures
 werkzeug<2.2.0
 xlrd
 starlette
-fastapi
+fastapi==0.76.0
 smart_open[s3]
 tqdm
 async-exit-stack
