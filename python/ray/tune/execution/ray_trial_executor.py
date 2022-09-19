@@ -629,11 +629,15 @@ class RayTrialExecutor:
 
         We do this by:
         1. Checkpoint the trial (if `should_checkpoint`) in memory to allow us to resume
-           from this state in the future. We may not always  want to checkpoint, if we
-           know that the checkpoint will not be used.
+        from this state in the future. We may not always  want to checkpoint, if we
+        know that the checkpoint will not be used.
         2. Stop the trial and release resources, see `RayTrialExecutor.stop_trial` above
         3. Set the trial status to `Trial.PAUSED`, which is similar to
-           `Trial.TERMINATED`, except we have the intention of resuming the trial.
+        `Trial.TERMINATED`, except we have the intention of resuming the trial.
+
+        Args:
+            trial: Trial to pause.
+            should_checkpoint: Whether to save an in-memory checkpoint before stopping.
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
