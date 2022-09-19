@@ -55,6 +55,8 @@ class _CheckpointManager(CommonCheckpointManager):
             checkpoint_score_order=MIN if checkpoint_score_desc else MAX,
         )
 
+        # NOTE: Stores the forced status of each checkpoint storage mode, to be used to
+        # determine which checkpoint should be returned
         self.forced = {
             CheckpointStorage.MEMORY: False,
             CheckpointStorage.PERSISTENT: False,
@@ -64,7 +66,8 @@ class _CheckpointManager(CommonCheckpointManager):
 
     def handle_checkpoint(self, checkpoint: _TrackedCheckpoint):
         # Set checkpoint ID
-        checkpoint.id = checkpoint.id or self._latest_checkpoint_id
+        if checkpoint.id is None:
+            checkpoint.id = self._latest_checkpoint_id
         self._latest_checkpoint_id += 1
 
         if checkpoint.storage_mode == CheckpointStorage.MEMORY:
@@ -78,7 +81,14 @@ class _CheckpointManager(CommonCheckpointManager):
             self._process_persistent_checkpoint(checkpoint)
 
     def on_checkpoint(self, checkpoint: _TrackedCheckpoint, force: bool = False):
-        """Ray Tune's entrypoint"""
+        """Ray Tune's entry point to handle a checkpoint.
+
+        Args:
+            checkpoint: In-memory or persistent checkpoint for the manager to track.
+            force: Whether to force the manager to use this checkpoint when asking for
+                the `newest_checkpoint`. The forced bit will be stored until this
+                function gets called on another checkpoint of the same storage type.
+        """
         self.forced[checkpoint.storage_mode] = force
         # Todo (krfricke): Replace with handle_checkpoint.
         self.handle_checkpoint(checkpoint)
@@ -105,10 +115,18 @@ class _CheckpointManager(CommonCheckpointManager):
 
     @property
     def newest_checkpoint(self):
-        """Returns the newest checkpoint (based on training iteration)."""
+        """Returns the newest checkpoint. Prefers checkpoints where `force=True` upon
+        `CheckpointManager.on_checkpoint`.
+
+        `Trial.checkpoint` relies on this method to determine which checkpoint to use
+        for restore.
+        This method chooses the checkpoint to use (either MEMORY or PERSISTENT) based on:
+          1.) whether the checkpoint has been forced (tracked by `self.forced`)
+          2.) the checkpoint recency (i.e. checkpoint id)
+        Always prefer forced checkpoints, and if multiple are forced, take the most
+        recent one.
+        """
         checkpoints = [self.newest_memory_checkpoint, self.newest_persistent_checkpoint]
-        # Always prefer forced checkpoints
-        # If multiple are forced, take the one with the highest checkpoint id
         checkpoints.sort(key=lambda c: c.id)
         checkpoints.sort(key=lambda c: self.forced[c.storage_mode])
         newest_checkpoint = checkpoints[-1]
