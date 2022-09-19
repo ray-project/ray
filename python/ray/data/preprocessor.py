@@ -188,10 +188,12 @@ class Preprocessor(abc.ABC):
     def _determine_transform_to_use(self, data_format: str) -> str:
         """Determine which transform to use based on data format and implementation.
 
-        * If only _transform_numpy is implemented, will convert the data to numpy.
-        * If only _transform_pandas is implemented, will convert the data to pandas.
-        If both are implemented, will pick the method corresponding to the format
-        for best performance.
+        * If batch_format is numpy and _transform_numpy is implemented:
+            will convert the data to numpy.
+        * If batch_format is pandas and _transform_pandas is implemented:
+            will convert the data to pandas.
+
+        If both are implemented, we respect the user's choice of batch_format.
         * Implementation is defined as overriding the method in a sub-class.
         """
 
@@ -204,27 +206,17 @@ class Preprocessor(abc.ABC):
         )
 
         # Prioritize native transformation type to minimize data conversion cost.
-        if data_format == "pandas":
-            if has_transform_pandas:
-                transform_type = "pandas"
-            elif has_transform_numpy:
-                transform_type = "numpy"
-            else:
-                raise NotImplementedError(
-                    "None of `_transform_numpy` or `_transform_pandas` "
-                    "are implemented for dataset format `pandas`."
-                )
-        elif data_format == "arrow":
-            # Prioritize arrow->numpy for faster conversion.
-            if has_transform_numpy:
-                transform_type = "numpy"
-            elif has_transform_pandas:
-                transform_type = "pandas"
-            else:
-                raise NotImplementedError(
-                    "None of `_transform_numpy` or `_transform_pandas` "
-                    "are implemented for dataset format `arrow`."
-                )
+        if self.batch_format == "pandas" and has_transform_pandas:
+            transform_type = "pandas"
+        elif self.batch_format == "numpy" and has_transform_numpy:
+            transform_type = "numpy"
+        else:
+            raise NotImplementedError(
+                "None of `_transform_numpy` or `_transform_pandas` "
+                f"are implemented for dataset format `{data_format}` and "
+                f"batch_format of `{self.batch_format}`."
+            )
+
         return transform_type
 
     def _transform(self, dataset: Dataset) -> Dataset:

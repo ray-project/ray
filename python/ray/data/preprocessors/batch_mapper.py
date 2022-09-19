@@ -50,7 +50,15 @@ class BatchMapper(Preprocessor):
             [Union["pandas.DataFrame", np.ndarray, Dict[str, np.ndarray]]],
             Union["pandas.DataFrame", np.ndarray, Dict[str, np.ndarray]],
         ],
+        batch_format="pandas",
+        # TODO: We should reach consistency of args between BatchMapper and map_batches.
     ):
+        assert batch_format in [
+            "pandas",
+            "numpy",
+        ], "BatchMapper only supports pandas and numpy batch format."
+
+        self.batch_format = batch_format
         self.fn = fn
 
     def _transform_numpy(

@@ -36,20 +36,19 @@ def test_ds_multi_column_arrow_format():
     yield ds, old_column
 
 
-@pytest.fixture
-def test_ds_range_table_arrow_format():
-    ds = ray.data.range_table(10)
-    yield ds
-
-
-def test_batch_mapper_pandas(test_ds_pandas_format):
+def test_batch_mapper_pandas_data_format(test_ds_pandas_format):
     """Tests batch mapper functionality."""
     ds, old_column = test_ds_pandas_format
 
-    def add_and_modify_udf(df: "pd.DataFrame"):
+    def add_and_modify_udf_pandas(df: "pd.DataFrame"):
         df["new_col"] = df["old_column"] + 1
         df["to_be_modified"] *= 2
         return df
+
+    def add_and_modify_udf_numpy(data: Dict[str, np.ndarray]):
+        data["new_col"] = data["old_column"] + 1
+        data["to_be_modified"] *= 2
+        return data
 
     expected_df = pd.DataFrame.from_dict(
         {
@@ -60,24 +59,40 @@ def test_batch_mapper_pandas(test_ds_pandas_format):
     )
 
     # Test map_batches
-    transformed = ds.map_batches(add_and_modify_udf, batch_format="numpy")
+    transformed = ds.map_batches(add_and_modify_udf_numpy, batch_format="numpy")
+    out_df_map_batches = transformed.to_pandas()
+    assert_frame_equal(out_df_map_batches, expected_df)
+
+    transformed = ds.map_batches(add_and_modify_udf_pandas, batch_format="pandas")
     out_df_map_batches = transformed.to_pandas()
     assert_frame_equal(out_df_map_batches, expected_df)
 
     # Test BatchMapper
-    batch_mapper = BatchMapper(fn=add_and_modify_udf)
+    batch_mapper = BatchMapper(fn=add_and_modify_udf_pandas, batch_format="pandas")
+    batch_mapper.fit(ds)
+    transformed = batch_mapper.transform(ds)
+    out_df = transformed.to_pandas()
+    assert_frame_equal(out_df_map_batches, out_df)
+
+    batch_mapper = BatchMapper(fn=add_and_modify_udf_numpy, batch_format="numpy")
     batch_mapper.fit(ds)
     transformed = batch_mapper.transform(ds)
     out_df = transformed.to_pandas()
     assert_frame_equal(out_df_map_batches, out_df)
 
 
-def test_batch_mapper_numpy(test_ds_arrow_format):
+def test_batch_mapper_arrow_data_format(test_ds_multi_column_arrow_format):
     """Tests batch mapper functionality."""
-    ds, old_column = test_ds_arrow_format
+    ds, old_column = test_ds_multi_column_arrow_format
 
-    def add_and_modify_udf(data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    def add_and_modify_udf_pandas(df: "pd.DataFrame"):
+        df["new_col"] = df["old_column"] + 1
+        df["to_be_modified"] *= 2
+        return df
+
+    def add_and_modify_udf_numpy(data: Dict[str, np.ndarray]):
         data["new_col"] = data["old_column"] + 1
+        # Arrow's numpy output array is read-only
         data["to_be_modified"] = data["to_be_modified"] * 2
         return data
 
@@ -90,12 +105,22 @@ def test_batch_mapper_numpy(test_ds_arrow_format):
     )
 
     # Test map_batches
-    transformed = ds.map_batches(add_and_modify_udf, batch_format="numpy")
+    transformed = ds.map_batches(add_and_modify_udf_numpy, batch_format="numpy")
+    out_df_map_batches = transformed.to_pandas()
+    assert_frame_equal(out_df_map_batches, expected_df)
+
+    transformed = ds.map_batches(add_and_modify_udf_pandas, batch_format="pandas")
     out_df_map_batches = transformed.to_pandas()
     assert_frame_equal(out_df_map_batches, expected_df)
 
     # Test BatchMapper
-    batch_mapper = BatchMapper(fn=add_and_modify_udf)
+    batch_mapper = BatchMapper(fn=add_and_modify_udf_pandas, batch_format="pandas")
+    batch_mapper.fit(ds)
+    transformed = batch_mapper.transform(ds)
+    out_df = transformed.to_pandas()
+    assert_frame_equal(out_df_map_batches, out_df)
+
+    batch_mapper = BatchMapper(fn=add_and_modify_udf_numpy, batch_format="numpy")
     batch_mapper.fit(ds)
     transformed = batch_mapper.transform(ds)
     out_df = transformed.to_pandas()

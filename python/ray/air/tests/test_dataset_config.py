@@ -162,10 +162,15 @@ def test_use_stream_api_config(ray_start_4_cpus):
 def test_fit_transform_config(ray_start_4_cpus):
     ds = ray.data.range_table(10)
 
-    def drop_odd(rows):
+    def drop_odd_pandas(rows):
+        key = list(rows)[0]
+        return rows[(rows[key] % 2 == 0)]
+
+    def drop_odd_numpy(rows):
         return [x for x in rows if x % 2 == 0]
 
-    prep = BatchMapper(drop_odd)
+    prep_pandas = BatchMapper(drop_odd_pandas)
+    prep_numpy = BatchMapper(drop_odd_numpy, batch_format="numpy")
 
     # Single worker basic case.
     test = TestBasic(
@@ -174,7 +179,18 @@ def test_fit_transform_config(ray_start_4_cpus):
         {"train": 5, "test": 5},
         dataset_config={},
         datasets={"train": ds, "test": ds},
-        preprocessor=prep,
+        preprocessor=prep_pandas,
+    )
+    test.fit()
+
+    # Single worker basic case.
+    test = TestBasic(
+        1,
+        True,
+        {"train": 5, "test": 5},
+        dataset_config={},
+        datasets={"train": ds, "test": ds},
+        preprocessor=prep_numpy,
     )
     test.fit()
 
@@ -185,7 +201,7 @@ def test_fit_transform_config(ray_start_4_cpus):
         {"train": 5, "test": 10},
         dataset_config={"test": DatasetConfig(transform=False)},
         datasets={"train": ds, "test": ds},
-        preprocessor=prep,
+        preprocessor=prep_pandas,
     )
     test.fit()
 
