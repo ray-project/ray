@@ -1309,7 +1309,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
            {"Source", "executor"}});
       ray::stats::STATS_tasks.Record(
           -running_total_,
-          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_EXECUTION)},
+          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
            {"Source", "executor"}});
     }
   };

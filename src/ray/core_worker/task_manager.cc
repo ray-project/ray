@@ -143,7 +143,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
 
     if (!it->second.IsPending()) {
       resubmit = true;
-      it->second.SetStatus(rpc::TaskStatus::WAITING_FOR_DEPENDENCIES);
+      it->second.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
       num_pending_tasks_++;
 
       // The task is pending again, so it's no longer counted as lineage. If
@@ -413,7 +413,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
     } else {
       RAY_CHECK(num_retries_left == 0 || num_retries_left == -1);
     }
-    it->second.SetStatus(rpc::TaskStatus::WAITING_FOR_SCHEDULING);
+    it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
   }
 
   // We should not hold the lock during these calls because they may trigger
@@ -685,8 +685,8 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   if (it == submissible_tasks_.end()) {
     return;
   }
-  if (it->second.GetStatus() == rpc::TaskStatus::WAITING_FOR_DEPENDENCIES) {
-    it->second.SetStatus(rpc::TaskStatus::WAITING_FOR_SCHEDULING);
+  if (it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
+    it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
   }
 }
 
@@ -696,8 +696,8 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
   if (it == submissible_tasks_.end()) {
     return;
   }
-  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::WAITING_FOR_SCHEDULING);
-  it->second.SetStatus(rpc::TaskStatus::WAITING_FOR_EXECUTION);
+  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+  it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,

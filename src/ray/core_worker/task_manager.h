@@ -300,7 +300,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
-      counter.Increment(rpc::TaskStatus::WAITING_FOR_DEPENDENCIES);
+      counter.Increment(rpc::TaskStatus::PENDING_ARGS_AVAIL);
     }
 
     void SetStatus(rpc::TaskStatus new_status) {
@@ -313,7 +313,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     bool IsPending() const { return status != rpc::TaskStatus::FINISHED; }
 
     bool IsWaitingForExecution() const {
-      return status == rpc::TaskStatus::WAITING_FOR_EXECUTION;
+      return status == rpc::TaskStatus::SUBMITTED_TO_WORKER;
     }
 
     /// The task spec. This is pinned as long as the following are true:
@@ -355,7 +355,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
    private:
     // The task's current execution status.
-    rpc::TaskStatus status = rpc::TaskStatus::WAITING_FOR_DEPENDENCIES;
+    rpc::TaskStatus status = rpc::TaskStatus::PENDING_ARGS_AVAIL;
   };
 
   /// Remove a lineage reference to this object ID. This should be called

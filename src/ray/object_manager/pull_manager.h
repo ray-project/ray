@@ -268,13 +268,13 @@ class PullManager {
     void RecordTaskMetrics() const {
       ray::stats::STATS_tasks.Record(
           -static_cast<int64_t>(requests.size()),
-          rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_SCHEDULING));
+          rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT));
       ray::stats::STATS_tasks.Record(
           inactive_requests.size(),
-          rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_DEP_FETCH_START));
+          rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL));
       ray::stats::STATS_tasks.Record(
           active_requests.size(),
-          rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_DEP_FETCH_FINISH));
+          rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH));
     }
 
     bool Empty() const { return requests.empty(); }

@@ -452,7 +452,7 @@ class TaskState(StateSchema):
     #:
     #: - NIL: We don't have a status for this task because we are not the owner or the
     #:   task metadata has already been deleted.
-    #: - WAITING_FOR_DEPENDENCIES: The task is waiting for its dependencies
+    #: - PENDING_ARGS_AVAIL: The task is waiting for its dependencies
     #:   to be created.
     #: - SCHEDULED: All dependencies have been created and the task is
     #:   scheduled to execute.
@@ -460,7 +460,7 @@ class TaskState(StateSchema):
     #:   runtime environmenet creation, fetching dependencies to the
     #:   local node, and etc..
     #: - FINISHED: The task finished successfully.
-    #: - WAITING_FOR_EXECUTION: The task is scheduled properly and
+    #: - SUBMITTED_TO_WORKER: The task is scheduled properly and
     #:   waiting for execution. It includes time to deliver the task
     #:   to the remote worker + queueing time from the execution side.
     #: - RUNNING: The task that is running.
@@ -496,7 +496,7 @@ class ObjectState(StateSchema):
     #:
     #: - NIL: We don't have a status for this task because we are not the owner or the
     #:   task metadata has already been deleted.
-    #: - WAITING_FOR_DEPENDENCIES: The task is waiting for its dependencies
+    #: - PENDING_ARGS_AVAIL: The task is waiting for its dependencies
     #:   to be created.
     #: - SCHEDULED: All dependencies have been created and the task is
     #:   scheduled to execute.
@@ -504,7 +504,7 @@ class ObjectState(StateSchema):
     #:   runtime environmenet creation, fetching dependencies to the
     #:   local node, and etc..
     #: - FINISHED: The task finished successfully.
-    #: - WAITING_FOR_EXECUTION: The task is scheduled properly and
+    #: - SUBMITTED_TO_WORKER: The task is scheduled properly and
     #:   waiting for execution. It includes time to deliver the task
     #:   to the remote worker + queueing time from the execution side.
     #: - RUNNING: The task that is running.

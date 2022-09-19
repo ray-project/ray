@@ -1795,7 +1795,7 @@ def test_list_get_tasks(shutdown_only):
         waiting_for_execution = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "WAITING_FOR_EXECUTION",
+                    lambda task: task["scheduling_state"] == "SUBMITTED_TO_WORKER",
                     tasks,
                 )
             )
@@ -1808,7 +1808,7 @@ def test_list_get_tasks(shutdown_only):
         waiting_for_dep = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "WAITING_FOR_DEPENDENCIES",
+                    lambda task: task["scheduling_state"] == "PENDING_ARGS_AVAIL",
                     tasks,
                 )
             )
@@ -1858,8 +1858,7 @@ def test_list_actor_tasks(shutdown_only):
             len(
                 list(
                     filter(
-                        lambda task: task["scheduling_state"]
-                        == "WAITING_FOR_EXECUTION",
+                        lambda task: task["scheduling_state"] == "SUBMITTED_TO_WORKER",
                         tasks,
                     )
                 )
@@ -1878,8 +1877,7 @@ def test_list_actor_tasks(shutdown_only):
             len(
                 list(
                     filter(
-                        lambda task: task["scheduling_state"]
-                        == "WAITING_FOR_DEPENDENCIES",
+                        lambda task: task["scheduling_state"] == "PENDING_ARGS_AVAIL",
                         tasks,
                     )
                 )

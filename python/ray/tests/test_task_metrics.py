@@ -54,9 +54,9 @@ ray.get(a)
 
     expected = {
         "RUNNING": 2.0,
-        "WAITING_FOR_EXECUTION": 0.0,
+        "SUBMITTED_TO_WORKER": 0.0,
         "SCHEDULED": 8.0,
-        "WAITING_FOR_DEPENDENCIES": 0.0,
+        "PENDING_ARGS_AVAIL": 0.0,
     }
     # TODO(ekl) optimize the reporting interval to be faster for testing
     wait_for_condition(
@@ -89,9 +89,9 @@ ray.get(w)
 
     expected = {
         "RUNNING": 3.0,
-        "WAITING_FOR_EXECUTION": 0.0,
+        "SUBMITTED_TO_WORKER": 0.0,
         "SCHEDULED": 8.0,
-        "WAITING_FOR_DEPENDENCIES": 0.0,
+        "PENDING_ARGS_AVAIL": 0.0,
     }
     # TODO(ekl) optimize the reporting interval to be faster for testing
     wait_for_condition(
@@ -124,9 +124,9 @@ ray.get(a)
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
         "RUNNING": 1.0,
-        "WAITING_FOR_EXECUTION": 0.0,
+        "SUBMITTED_TO_WORKER": 0.0,
         "SCHEDULED": 0.0,
-        "WAITING_FOR_DEPENDENCIES": 5.0,
+        "PENDING_ARGS_AVAIL": 5.0,
     }
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
@@ -160,9 +160,9 @@ ray.get(z)
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
         "RUNNING": 1.0,
-        "WAITING_FOR_EXECUTION": 9.0,
+        "SUBMITTED_TO_WORKER": 9.0,
         "SCHEDULED": 0.0,
-        "WAITING_FOR_DEPENDENCIES": 0.0,
+        "PENDING_ARGS_AVAIL": 0.0,
         "FINISHED": 11.0,
     }
     wait_for_condition(
@@ -196,9 +196,9 @@ time.sleep(999)
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
         "RUNNING": 0.0,
-        "WAITING_FOR_EXECUTION": 0.0,
+        "SUBMITTED_TO_WORKER": 0.0,
         "SCHEDULED": 0.0,
-        "WAITING_FOR_DEPENDENCIES": 0.0,
+        "PENDING_ARGS_AVAIL": 0.0,
         "FINISHED": 2.0,
     }
     wait_for_condition(
@@ -227,9 +227,9 @@ time.sleep(999)
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
         "RUNNING": 0.0,
-        "WAITING_FOR_EXECUTION": 0.0,
+        "SUBMITTED_TO_WORKER": 0.0,
         "SCHEDULED": 0.0,
-        "WAITING_FOR_DEPENDENCIES": 0.0,
+        "PENDING_ARGS_AVAIL": 0.0,
         "FINISHED": 1.0,  # Only recorded as finished once.
     }
     wait_for_condition(
@@ -259,9 +259,9 @@ ray.get([a.f.remote() for _ in range(40)])
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
         "RUNNING": 30.0,
-        "WAITING_FOR_EXECUTION": 10.0,
+        "SUBMITTED_TO_WORKER": 10.0,
         "SCHEDULED": 0.0,
-        "WAITING_FOR_DEPENDENCIES": 0.0,
+        "PENDING_ARGS_AVAIL": 0.0,
         "FINISHED": 1.0,
     }
     wait_for_condition(

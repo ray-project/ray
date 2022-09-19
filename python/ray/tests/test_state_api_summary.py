@@ -341,10 +341,7 @@ def test_task_summary(ray_start_cluster):
         assert "task_wait_for_dep" in task_summary
         assert "run_long_time_task" in task_summary
         assert (
-            task_summary["task_wait_for_dep"]["state_counts"][
-                "WAITING_FOR_DEPENDENCIES"
-            ]
-            == 2
+            task_summary["task_wait_for_dep"]["state_counts"]["PENDING_ARGS_AVAIL"] == 2
         )
         assert task_summary["run_long_time_task"]["state_counts"]["RUNNING"] == 2
         assert task_summary["task_wait_for_dep"]["type"] == "NORMAL_TASK"
@@ -457,7 +454,7 @@ def test_object_summary(monkeypatch, ray_start_cluster):
             assert return_ref_summary["total_objects"] == 2
             assert return_ref_summary["total_num_workers"] == 1
             assert return_ref_summary["total_num_nodes"] == 1
-            assert return_ref_summary["task_state_counts"]["WAITING_FOR_EXECUTION"] == 2
+            assert return_ref_summary["task_state_counts"]["SUBMITTED_TO_WORKER"] == 2
             assert return_ref_summary["ref_type_counts"]["LOCAL_REFERENCE"] == 2
 
             return True

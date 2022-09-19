@@ -11,10 +11,10 @@ from ray._private.internal_api import memory_summary
 from ray._private.test_utils import Semaphore, SignalActor, wait_for_condition
 
 # Task status.
-WAITING_FOR_DEPENDENCIES = "WAITING_FOR_DEPENDENCIES"
+PENDING_ARGS_AVAIL = "PENDING_ARGS_AVAIL"
 SCHEDULED = "SCHEDULED"
 FINISHED = "FINISHED"
-WAITING_FOR_EXECUTION = "WAITING_FOR_EXECUTION"
+SUBMITTED_TO_WORKER = "SUBMITTED_TO_WORKER"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -374,14 +374,12 @@ def test_memory_util(ray_start_cluster):
         print(info)
         info = info.split("\n")
         reconstructing_waiting = [
-            line
-            for line in info
-            if "Attempt #2" in line and WAITING_FOR_DEPENDENCIES in line
+            line for line in info if "Attempt #2" in line and PENDING_ARGS_AVAIL in line
         ]
         reconstructing_scheduled = [
             line
             for line in info
-            if "Attempt #2" in line and WAITING_FOR_EXECUTION in line
+            if "Attempt #2" in line and SUBMITTED_TO_WORKER in line
         ]
         reconstructing_finished = [
             line for line in info if "Attempt #2" in line and FINISHED in line
