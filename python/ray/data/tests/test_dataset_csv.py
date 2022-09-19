@@ -21,8 +21,10 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 
+
 def df_to_csv(dataframe, path, **kwargs):
     dataframe.to_csv(path, **kwargs)
+
 
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
@@ -590,8 +592,6 @@ def test_csv_write_block_path_provider(
     assert df.equals(ds_df)
 
 
-
-
 # NOTE: The last test using the shared ray_start_regular_shared cluster must use the
 # shutdown_only fixture so the shared cluster is shut down, otherwise the below
 # test_write_datasource_ray_remote_args test, which uses a cluster_utils cluster, will
@@ -636,7 +636,6 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
     )
     expected_df = pd.DataFrame({"one": [1.0, 2.0, 30.0], "two": ["a", "b", "c"]})
     assert ds.to_pandas().equals(expected_df)
-
 
 
 def test_csv_read_filter_no_file(shutdown_only, tmp_path):

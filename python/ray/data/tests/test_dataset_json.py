@@ -15,13 +15,14 @@ from ray.data.datasource import (
     FastFileMetadataProvider,
     PartitionStyle,
     PathPartitionEncoder,
-    PathPartitionFilter
+    PathPartitionFilter,
 )
 
 from ray.data.tests.util import Counter
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
+
 
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",

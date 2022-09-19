@@ -4,6 +4,7 @@ import os
 import tempfile
 import ray
 
+
 @ray.remote
 class Counter:
     def __init__(self):
@@ -17,6 +18,7 @@ class Counter:
 
     def reset(self):
         self.count = 0
+
 
 @contextmanager
 def gen_bin_files(n):

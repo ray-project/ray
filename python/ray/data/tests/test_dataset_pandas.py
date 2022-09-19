@@ -8,6 +8,7 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
+
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
 def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
     ctx = ray.data.context.DatasetContext.get_current()

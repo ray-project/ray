@@ -7,11 +7,11 @@ from typing import Any
 import ray
 from ray.data.datasource import (
     DefaultFileMetadataProvider,
-    DefaultParquetMetadataProvider
+    DefaultParquetMetadataProvider,
 )
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
-    _ParquetDatasourceReader
+    _ParquetDatasourceReader,
 )
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
@@ -85,8 +85,6 @@ def test_parquet_deserialize_pieces_with_retry(
     retried_pieces = _deserialize_pieces_with_retry(serialized_pieces)
     assert "test1.parquet" in retried_pieces[0].path
     assert "test2.parquet" in retried_pieces[1].path
-
-
 
 
 @pytest.mark.parametrize(
@@ -320,6 +318,8 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
         [5, "f"],
         [6, "g"],
     ]
+
+
 @pytest.mark.parametrize(
     "fs,data_path",
     [

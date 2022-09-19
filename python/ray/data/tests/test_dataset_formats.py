@@ -1,39 +1,27 @@
 import os
-import shutil
-from distutils.version import LooseVersion
-from functools import partial
 from io import BytesIO
 from typing import Any, Dict, List, Union
 
-import numpy as np
 import pandas as pd
 import pyarrow as pa
-import pyarrow.json as pajson
 import pyarrow.parquet as pq
 import pytest
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
-from ray.data.datasource.image_folder_datasource import (
-    IMAGE_EXTENSIONS,
-    _ImageFolderDatasourceReader,
-)
+
 import requests
 import snappy
 from fsspec.implementations.local import LocalFileSystem
 from fsspec.implementations.http import HTTPFileSystem
-from pytest_lazyfixture import lazy_fixture
 
 import ray
-import ray.data.tests.util as util
+from ray.data.tests.util import gen_bin_files, Counter
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     Datasource,
-    DefaultFileMetadataProvider,
-    DefaultParquetMetadataProvider,
     DummyOutputDatasource,
     FastFileMetadataProvider,
-    ImageFolderDatasource,
     PartitionStyle,
     PathPartitionEncoder,
     PathPartitionFilter,
@@ -41,18 +29,7 @@ from ray.data.datasource import (
     SimpleTorchDatasource,
     WriteResult,
 )
-from ray.data.datasource.file_based_datasource import (
-    FileExtensionFilter,
-    _unwrap_protocol,
-)
-from ray.data.datasource.parquet_datasource import (
-    PARALLELIZE_META_FETCH_THRESHOLD,
-    _ParquetDatasourceReader,
-    _SerializedPiece,
-    _deserialize_pieces_with_retry,
-)
-from ray.data.extensions import TensorDtype
-from ray.data.preprocessors import BatchMapper
+
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -68,31 +45,6 @@ def maybe_pipeline(ds, enabled):
 
 def df_to_csv(dataframe, path, **kwargs):
     dataframe.to_csv(path, **kwargs)
-
-
-@pytest.mark.parametrize("from_ref", [False, True])
-def test_from_numpy(ray_start_regular_shared, from_ref):
-    arr1 = np.expand_dims(np.arange(0, 4), axis=1)
-    arr2 = np.expand_dims(np.arange(4, 8), axis=1)
-    arrs = [arr1, arr2]
-    if from_ref:
-        ds = ray.data.from_numpy_refs([ray.put(arr) for arr in arrs])
-    else:
-        ds = ray.data.from_numpy(arrs)
-    values = np.stack(ds.take(8))
-    np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
-    # Check that conversion task is included in stats.
-    assert "from_numpy_refs" in ds.stats()
-
-    # Test from single NumPy ndarray.
-    if from_ref:
-        ds = ray.data.from_numpy_refs(ray.put(arr1))
-    else:
-        ds = ray.data.from_numpy(arr1)
-    values = np.stack(ds.take(4))
-    np.testing.assert_array_equal(values, arr1)
-    # Check that conversion task is included in stats.
-    assert "from_numpy_refs" in ds.stats()
 
 
 def test_from_arrow(ray_start_regular_shared):
@@ -133,37 +85,6 @@ def test_from_arrow_refs(ray_start_regular_shared):
     assert values == rows
     # Check that metadata fetch is included in stats.
     assert "from_arrow_refs" in ds.stats()
-
-
-def test_to_numpy_refs(ray_start_regular_shared):
-    # Simple Dataset
-    ds = ray.data.range(10)
-    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
-    np.testing.assert_equal(arr, np.arange(0, 10))
-
-    # Tensor Dataset
-    ds = ray.data.range_tensor(10, parallelism=2)
-    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
-    np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
-
-    # Table Dataset
-    ds = ray.data.range_table(10)
-    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
-    np.testing.assert_equal(arr, np.arange(0, 10))
-
-    # Test multi-column Arrow dataset.
-    ds = ray.data.from_arrow(pa.table({"a": [1, 2, 3], "b": [4, 5, 6]}))
-    arrs = ray.get(ds.to_numpy_refs())
-    np.testing.assert_equal(
-        arrs, [{"a": np.array([1, 2, 3]), "b": np.array([4, 5, 6])}]
-    )
-
-    # Test multi-column Pandas dataset.
-    ds = ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
-    arrs = ray.get(ds.to_numpy_refs())
-    np.testing.assert_equal(
-        arrs, [{"a": np.array([1, 2, 3]), "b": np.array([4, 5, 6])}]
-    )
 
 
 def test_to_arrow_refs(ray_start_regular_shared):
@@ -255,202 +176,8 @@ def test_read_example_data(ray_start_regular_shared, tmp_path):
     ]
 
 
-@pytest.mark.parametrize(
-    "fs,data_path",
-    [
-        (None, lazy_fixture("local_path")),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
-        (
-            lazy_fixture("s3_fs_with_anonymous_crendential"),
-            lazy_fixture("s3_path_with_anonymous_crendential"),
-        ),
-    ],
-)
-def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
-    ds = ray.data.range_tensor(10, parallelism=2)
-    ds.write_numpy(data_path, filesystem=fs)
-    ds = ray.data.read_numpy(data_path, filesystem=fs)
-    assert str(ds) == (
-        "Dataset(num_blocks=2, num_rows=None, "
-        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
-    )
-    np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
-
-
-def test_numpy_read(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "test_np_dir")
-    os.mkdir(path)
-    np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
-    ds = ray.data.read_numpy(path)
-    assert str(ds) == (
-        "Dataset(num_blocks=1, num_rows=10, "
-        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
-    )
-    np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
-
-    # Add a file with a non-matching file extension. This file should be ignored.
-    with open(os.path.join(path, "foo.txt"), "w") as f:
-        f.write("foobar")
-
-    ds = ray.data.read_numpy(path)
-    assert ds.num_blocks() == 1
-    assert ds.count() == 10
-    assert str(ds) == (
-        "Dataset(num_blocks=1, num_rows=10, "
-        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
-    )
-    assert [v.item() for v in ds.take(2)] == [0, 1]
-
-
-def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "test_np_dir")
-    os.mkdir(path)
-    path = os.path.join(path, "test.npy")
-    np.save(path, np.expand_dims(np.arange(0, 10), 1))
-    ds = ray.data.read_numpy(path, meta_provider=FastFileMetadataProvider())
-    assert str(ds) == (
-        "Dataset(num_blocks=1, num_rows=10, "
-        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
-    )
-    np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
-
-    with pytest.raises(NotImplementedError):
-        ray.data.read_binary_files(
-            path,
-            meta_provider=BaseFileMetadataProvider(),
-        )
-
-
-def test_numpy_read_partitioned_with_filter(
-    ray_start_regular_shared,
-    tmp_path,
-    write_partitioned_df,
-    assert_base_partitioned_ds,
-):
-    def df_to_np(dataframe, path, **kwargs):
-        np.save(path, dataframe.to_numpy(dtype=np.dtype(np.int8)), **kwargs)
-
-    df = pd.DataFrame({"one": [1, 1, 1, 3, 3, 3], "two": [0, 1, 2, 3, 4, 5]})
-    partition_keys = ["one"]
-    kept_file_counter = Counter.remote()
-    skipped_file_counter = Counter.remote()
-
-    def skip_unpartitioned(kv_dict):
-        keep = bool(kv_dict)
-        counter = kept_file_counter if keep else skipped_file_counter
-        ray.get(counter.increment.remote())
-        return keep
-
-    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
-        base_dir = os.path.join(tmp_path, style.value)
-        partition_path_encoder = PathPartitionEncoder.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-        )
-        write_partitioned_df(
-            df,
-            partition_keys,
-            partition_path_encoder,
-            df_to_np,
-        )
-        df_to_np(df, os.path.join(base_dir, "test.npy"))
-        partition_path_filter = PathPartitionFilter.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filter_fn=skip_unpartitioned,
-        )
-        ds = ray.data.read_numpy(base_dir, partition_filter=partition_path_filter)
-
-        vals = [[1, 0], [1, 1], [1, 2], [3, 3], [3, 4], [3, 5]]
-        val_str = "".join(f"array({v}, dtype=int8), " for v in vals)[:-2]
-        assert_base_partitioned_ds(
-            ds,
-            schema="{__value__: ArrowTensorType(shape=(2,), dtype=int8)}",
-            sorted_values=f"[[{val_str}]]",
-            ds_take_transform_fn=lambda taken: [taken],
-            sorted_values_transform_fn=lambda sorted_values: str(sorted_values),
-        )
-        assert ray.get(kept_file_counter.get.remote()) == 2
-        assert ray.get(skipped_file_counter.get.remote()) == 1
-        ray.get(kept_file_counter.reset.remote())
-        ray.get(skipped_file_counter.reset.remote())
-
-
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
-    ds = ray.data.range_tensor(10, parallelism=2)
-    ds._set_uuid("data")
-    ds.write_numpy(data_path, filesystem=fs)
-    file_path1 = os.path.join(data_path, "data_000000.npy")
-    file_path2 = os.path.join(data_path, "data_000001.npy")
-    if endpoint_url is None:
-        arr1 = np.load(file_path1)
-        arr2 = np.load(file_path2)
-    else:
-        from s3fs.core import S3FileSystem
-
-        s3 = S3FileSystem(client_kwargs={"endpoint_url": endpoint_url})
-        arr1 = np.load(s3.open(file_path1))
-        arr2 = np.load(s3.open(file_path2))
-    assert ds.count() == 10
-    assert len(arr1) == 5
-    assert len(arr2) == 5
-    assert arr1.sum() == 10
-    assert arr2.sum() == 35
-    np.testing.assert_equal(ds.take(1), [np.array([0])])
-
-
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_numpy_write_block_path_provider(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    test_block_write_path_provider,
-):
-    ds = ray.data.range_tensor(10, parallelism=2)
-    ds._set_uuid("data")
-    ds.write_numpy(
-        data_path, filesystem=fs, block_path_provider=test_block_write_path_provider
-    )
-    file_path1 = os.path.join(data_path, "000000_05_data.test.npy")
-    file_path2 = os.path.join(data_path, "000001_05_data.test.npy")
-    if endpoint_url is None:
-        arr1 = np.load(file_path1)
-        arr2 = np.load(file_path2)
-    else:
-        from s3fs.core import S3FileSystem
-
-        s3 = S3FileSystem(client_kwargs={"endpoint_url": endpoint_url})
-        arr1 = np.load(s3.open(file_path1))
-        arr2 = np.load(s3.open(file_path2))
-    assert ds.count() == 10
-    assert len(arr1) == 5
-    assert len(arr2) == 5
-    assert arr1.sum() == 10
-    assert arr2.sum() == 35
-    np.testing.assert_equal(ds.take(1), [np.array([0])])
-
-
 def test_read_binary_files(ray_start_regular_shared):
-    with util.gen_bin_files(10) as (_, paths):
+    with gen_bin_files(10) as (_, paths):
         ds = ray.data.read_binary_files(paths, parallelism=10)
         for i, item in enumerate(ds.iter_rows()):
             expected = open(paths[i], "rb").read()
@@ -462,7 +189,7 @@ def test_read_binary_files(ray_start_regular_shared):
 
 
 def test_read_binary_files_with_fs(ray_start_regular_shared):
-    with util.gen_bin_files(10) as (tempdir, paths):
+    with gen_bin_files(10) as (tempdir, paths):
         # All the paths are absolute, so we want the root file system.
         fs, _ = pa.fs.FileSystem.from_uri("/")
         ds = ray.data.read_binary_files(paths, filesystem=fs, parallelism=10)
@@ -472,7 +199,7 @@ def test_read_binary_files_with_fs(ray_start_regular_shared):
 
 
 def test_read_binary_files_with_paths(ray_start_regular_shared):
-    with util.gen_bin_files(10) as (_, paths):
+    with gen_bin_files(10) as (_, paths):
         ds = ray.data.read_binary_files(paths, include_paths=True, parallelism=10)
         for i, (path, item) in enumerate(ds.iter_rows()):
             assert path == paths[i]
@@ -778,49 +505,6 @@ def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
             parallelism=1,
             dataset_factory=dataset,
         )
-
-    
-@pytest.mark.parametrize(
-    "image_size,image_mode,expected_size,expected_ratio",
-    [(64, "RGB", 30000, 4), (32, "L", 3500, 0.5), (256, "RGBA", 750000, 85)],
-)
-def test_image_folder_reader_estimate_data_size(
-    ray_start_regular_shared, image_size, image_mode, expected_size, expected_ratio
-):
-    root = "example://image-folders/different-sizes"
-    ds = ray.data.read_datasource(
-        ImageFolderDatasource(),
-        root=root,
-        size=(image_size, image_size),
-        mode=image_mode,
-    )
-
-    data_size = ds.size_bytes()
-    assert (
-        data_size >= expected_size and data_size <= expected_size * 1.5
-    ), "estimated data size is out of expected bound"
-    data_size = ds.fully_executed().size_bytes()
-    assert (
-        data_size >= expected_size and data_size <= expected_size * 1.5
-    ), "actual data size is out of expected bound"
-
-    reader = _ImageFolderDatasourceReader(
-        delegate=ImageFolderDatasource(),
-        paths=[root],
-        filesystem=LocalFileSystem(),
-        partition_filter=FileExtensionFilter(file_extensions=IMAGE_EXTENSIONS),
-        root=root,
-        size=(image_size, image_size),
-        mode=image_mode,
-    )
-    assert (
-        reader._encoding_ratio >= expected_ratio
-        and reader._encoding_ratio <= expected_ratio * 1.5
-    ), "encoding ratio is out of expected bound"
-    data_size = reader.estimate_inmemory_data_size()
-    assert (
-        data_size >= expected_size and data_size <= expected_size * 1.5
-    ), "estimated data size is out of expected bound"
 
 
 class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):

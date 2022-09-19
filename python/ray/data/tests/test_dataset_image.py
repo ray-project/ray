@@ -1,5 +1,3 @@
-
-
 import numpy as np
 import pytest
 from ray.data.datasource.image_folder_datasource import (
@@ -9,9 +7,7 @@ from ray.data.datasource.image_folder_datasource import (
 from fsspec.implementations.local import LocalFileSystem
 
 import ray
-from ray.data.datasource import (
-    ImageFolderDatasource
-)
+from ray.data.datasource import ImageFolderDatasource
 from ray.data.datasource.file_based_datasource import (
     FileExtensionFilter,
 )
@@ -20,6 +16,7 @@ from ray.data.preprocessors import BatchMapper
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
+
 
 def test_image_folder_datasource(
     ray_start_regular_shared, enable_automatic_tensor_extension_cast
