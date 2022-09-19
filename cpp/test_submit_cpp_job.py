@@ -34,6 +34,7 @@ def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
         raise RuntimeError(f"Job failed\nlogs:\n{logs}")
     return status == JobStatus.SUCCEEDED
 
+
 @pytest.mark.skipif(sys.platform == "darwin", reason="Failing on Mac.")
 def test_submit_simple_cpp_job(job_sdk_client):
     client = job_sdk_client
