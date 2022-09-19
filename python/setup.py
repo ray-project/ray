@@ -586,12 +586,6 @@ def pip_run(build_ext):
 
     if setup_spec.type == SetupType.RAY:
         setup_spec.files_to_include += ray_files
-        # We also need to install pickle5 along with Ray, so make sure that the
-        # relevant non-Python pickle5 files get copied.
-        pickle5_dir = os.path.join(ROOT_DIR, PICKLE5_SUBDIR)
-        setup_spec.files_to_include += walk_directory(
-            os.path.join(pickle5_dir, "pickle5")
-        )
 
         thirdparty_dir = os.path.join(ROOT_DIR, THIRDPARTY_SUBDIR)
         setup_spec.files_to_include += walk_directory(thirdparty_dir)
