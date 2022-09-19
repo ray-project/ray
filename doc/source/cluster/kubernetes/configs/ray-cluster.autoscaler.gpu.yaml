@@ -9,36 +9,6 @@ metadata:
 spec:
   # The version of Ray you are using. Make sure all Ray containers are running this version of Ray.
   rayVersion: '2.0.0'
-  # If enableInTreeAutoscaling is true, the autoscaler sidecar will be added to the Ray head pod.
-  # Ray autoscaler integration is supported only for Ray versions >= 1.11.0
-  # Ray autoscaler integration is Beta with KubeRay >= 0.3.0 and Ray >= 2.0.0.
-  enableInTreeAutoscaling: true
-  # autoscalerOptions is an OPTIONAL field specifying configuration overrides for the Ray autoscaler.
-  # The example configuration shown below below represents the DEFAULT values.
-  # (You may delete autoscalerOptions if the defaults are suitable.)
-  autoscalerOptions:
-    # upscalingMode is "Default" or "Aggressive."
-    # Conservative: Upscaling is rate-limited; the number of pending worker pods is at most the size of the Ray cluster.
-    # Default: Upscaling is not rate-limited.
-    # Aggressive: An alias for Default; upscaling is not rate-limited.
-    upscalingMode: Default
-    # idleTimeoutSeconds is the number of seconds to wait before scaling down a worker pod which is not using Ray resources.
-    idleTimeoutSeconds: 60
-    # image optionally overrides the autoscaler's container image.
-    # If instance.spec.rayVersion is at least "2.0.0", the autoscaler will default to the same image as
-    # the ray container. For older Ray versions, the autoscaler will default to using the Ray 2.0.0 image.
-    ## image: "my-repo/my-custom-autoscaler-image:tag"
-    # imagePullPolicy optionally overrides the autoscaler container's image pull policy.
-    imagePullPolicy: Always
-    # resources specifies optional resource request and limit overrides for the autoscaler container.
-    # For large Ray clusters, we recommend monitoring container resource usage to determine if overriding the defaults is required.
-    resources:
-      limits:
-        cpu: "500m"
-        memory: "512Mi"
-      requests:
-        cpu: "500m"
-        memory: "512Mi"
   ######################headGroupSpec#################################
   # head group template and specs, (perhaps 'group' is not needed in the name)
   headGroupSpec:

@@ -48,11 +48,8 @@ curl https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster
 
 # Submit the training job to your ray cluster
 python3 pytorch_training_e2e_submit.py
-# Example STDOUT:
-# Use the following command to follow this Job's logs:
-# ray job logs 'raysubmit_jNQxy92MJ4zinaDX' --follow
 
-# Track job status
+# Use the following command to follow this Job's logs:
 # Substitute the Ray Job's submission id.
 ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow
 ```
