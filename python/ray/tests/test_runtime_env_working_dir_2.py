@@ -330,7 +330,6 @@ def test_default_large_cache(start_cluster, option: str, source: str):
     indirect=True,
 )
 # TODO(architkulkarni): Deflake and reenable this test.
-@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on Mac. Issue #27562")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option):
