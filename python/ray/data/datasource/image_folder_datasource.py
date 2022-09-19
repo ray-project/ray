@@ -15,7 +15,7 @@ from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
 )
 from ray.data.datasource.file_meta_provider import DefaultFileMetadataProvider
-from ray.data.datasource.partitioning import PathPartitionFilter
+from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -24,8 +24,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-
-IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "tiff", "bmp", "gif"]
 
 # The default size multiplier for reading image data source.
 # This essentially is using image on-disk file size to estimate
@@ -39,6 +37,8 @@ IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 @DeveloperAPI
 class ImageDatasource(BinaryDatasource):
     """A datasource that lets you read images."""
+
+    _FILE_EXTENSION = ["png", "jpg", "jpeg", "tiff", "bmp", "gif"]
 
     def create_reader(
         self,
@@ -60,6 +60,16 @@ class ImageDatasource(BinaryDatasource):
         _check_import(self, module="pandas", package="pandas")
 
         return _ImageDatasourceReader(self, size=size, mode=mode, **kwargs)
+
+    def _convert_block_to_tabular_block(
+        self, block: List[np.ndarray]
+    ) -> "pd.DataFrame":
+        import pandas as pd
+
+        assert len(block) == 1
+        image = block[0]
+
+        return pd.DataFrame({"image": [image]})
 
     def _read_file(
         self,
@@ -112,6 +122,7 @@ class _ImageDatasourceReader(_FileBasedDatasourceReader):
         paths: List[str],
         filesystem: "pyarrow.fs.FileSystem",
         partition_filter: PathPartitionFilter,
+        partitioning: Partitioning,
         meta_provider: _ImageFileMetadataProvider = _ImageFileMetadataProvider(),
         **reader_args,
     ):
@@ -123,6 +134,7 @@ class _ImageDatasourceReader(_FileBasedDatasourceReader):
             open_stream_args=None,
             meta_provider=meta_provider,
             partition_filter=partition_filter,
+            partitioning=partitioning,
             **reader_args,
         )
         self._encoding_ratio = self._estimate_files_encoding_ratio()

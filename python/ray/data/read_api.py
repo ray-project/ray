@@ -405,10 +405,11 @@ def read_images(
     partition_filter: Optional[
         PathPartitionFilter
     ] = ImageDatasource.file_extension_filter(),
+    partitioning: Partitioning = None,
     size: Optional[Tuple[int, int]] = None,
     mode: Optional[str] = None,
 ):
-    """Read the images at the specified paths.
+    """Read images from the specified paths.
 
     .. warning::
         If your dataset contains images of varying sizes and you don't specify
@@ -417,32 +418,33 @@ def read_images(
 
     Examples:
         >>> import ray
-        >>> path = "s3://air-example-data2/movie-image-small-filesize-1GB"
+        >>> path = "s3://air-example-data-2/movie-image-small-filesize-1GB"
         >>> ds = ray.data.read_images(path, size=(224, 224))
         >>> ds
+        Dataset(num_blocks=200, num_rows=41979, schema=<class 'numpy.ndarray'>)
 
-        If yours images are arranged like:
+        If your images are arranged like:
 
         .. code::
 
             root/dog/xxx.png
             root/dog/xxy.png
-            root/dog/[...]/xxz.png
 
             root/cat/123.png
             root/cat/nsdf3.png
-            root/cat/[...]/asd932_.png
 
-        Then you can include the labels by specifying a partitioning scheme.
+        Then you can include the labels by specifying a partition scheme.
 
         >>> import ray
-        >>> path = "s3://balajis-tiny-imagenet/train"
-        >>> partitioning = Partitioning("dir", field_names=["label", None], base_dir=path)
-        >>> ds = ray.data.read_images(path, size=(224, 224), partitioning=partitioning)
+        >>> from ray.data.datasource.partitioning import Partitioning
+        >>> root = "s3://balajis-tiny-imagenet/train"
+        >>> partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
+        >>> ds = ray.data.read_images(root, size=(224, 224), partitioning=partitioning)
         >>> ds
+        Dataset(num_blocks=176, num_rows=94946, schema={image: TensorDtype(shape=(224, 224, 3), dtype=uint8), class: object})
 
     Args:
-         paths: A single file/directory path or a list of file/directory paths.
+        paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The requested parallelism of the read. Parallelism may be
@@ -451,13 +453,15 @@ def read_images(
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
-            By default, this filters out any file paths whose file extension does not
+            By default, this fidslters out any file paths whose file extension does not
             match ``*.png``, ``*.jpg``, ``*.jpeg``, ``*.tiff``, ``*.bmp``, or ``*.gif``.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Default: ``None``.
         size: The desired height and width of loaded images. If unspecified, images
             retain their original shape.
         mode: A `Pillow mode <https://pillow.readthedocs.io/en/stable/handbook/concepts.html#modes>`_
             describing the desired type and depth of pixels. If unspecified, image
-            modes are inferred by
+            modes are by
             `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
 
     Returns:
@@ -474,6 +478,7 @@ def read_images(
         filesystem=filesystem,
         parallelism=parallelism,
         partition_filter=partition_filter,
+        partitioning=partitioning,
         size=size,
         mode=mode,
     )
