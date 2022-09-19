@@ -894,9 +894,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
 
         new_tag = _make_experiment_tag(self.experiment_tag, new_config, new_config)
 
-        trial_executor = trial_runner.trial_executor
-        trial_executor.stop_trial(trial)
-        trial_executor.set_status(trial, Trial.PAUSED)
+        trial_runner.pause_trial(should_checkpoint=False)
         trial.set_experiment_tag(new_tag)
         trial.set_config(new_config)
         trial.on_checkpoint(checkpoint)
