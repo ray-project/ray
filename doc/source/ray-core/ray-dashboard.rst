@@ -107,7 +107,8 @@ Advanced Usage
 --------------
 
 Viewing built-in dashboard API metrics
---------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 The API server that serves the dashboard also emits basic prometheus metrics for API call count and API call duration.
 
 `dashboard_api_requests_count_requests_total`: Collects the total count of requests. This is tagged by endpoint, method, and http_status.
