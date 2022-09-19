@@ -2895,7 +2895,17 @@ class Dataset(Generic[T]):
 
         return dataset
 
-    def to_dask(self) -> "dask.DataFrame":
+    def to_dask(
+        self,
+        meta: Union[
+            "pandas.DataFrame",
+            "pandas.Series",
+            Dict[str, Any],
+            Iterable[Any],
+            Tuple[Any],
+            None,
+        ] = None,
+    ) -> "dask.DataFrame":
         """Convert this dataset into a Dask DataFrame.
 
         This is only supported for datasets convertible to Arrow records.
@@ -2905,12 +2915,25 @@ class Dataset(Generic[T]):
 
         Time complexity: O(dataset size / parallelism)
 
+        Args:
+            meta: An empty pandas DataFrame or Series that matches the dtypes and column
+                names of the Dataset. By default, this will be inferred from the
+                underlying Dataset schema, with this argument supplying an optional
+                override.
+
         Returns:
             A Dask DataFrame created from this dataset.
         """
         import dask
         import dask.dataframe as dd
+        import pandas as pd
 
+        try:
+            import pyarrow as pa
+        except Exception:
+            pa = None
+
+        from ray.data._internal.pandas_block import PandasBlockSchema
         from ray.util.client.common import ClientObjectRef
         from ray.util.dask import ray_dask_get
 
@@ -2927,10 +2950,25 @@ class Dataset(Generic[T]):
                 )
             return block.to_pandas()
 
-        # TODO(Clark): Give Dask a Pandas-esque schema via the Pyarrow schema,
-        # once that's implemented.
+        if meta is None:
+            # Infer Dask metadata from Datasets schema.
+            schema = self.schema(fetch_if_missing=True)
+            if isinstance(schema, PandasBlockSchema):
+                meta = pd.DataFrame(
+                    {
+                        col: pd.Series(dtype=dtype)
+                        for col, dtype in zip(schema.names, schema.types)
+                    }
+                )
+            elif pa is not None and isinstance(schema, pa.Schema):
+                meta = schema.empty_table().to_pandas()
+            else:
+                # Simple dataset or schema not available.
+                meta = None
+
         ddf = dd.from_delayed(
-            [block_to_df(block) for block in self.get_internal_block_refs()]
+            [block_to_df(block) for block in self.get_internal_block_refs()],
+            meta=meta,
         )
         return ddf
 
