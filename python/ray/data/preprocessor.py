@@ -59,6 +59,8 @@ class Preprocessor(abc.ABC):
 
     # Preprocessors that do not need to be fitted must override this.
     _is_fittable = True
+    # Default batch format unless numpy is explicitly specified.
+    batch_format = "pandas"
 
     def fit_status(self) -> "Preprocessor.FitStatus":
         if not self._is_fittable:
