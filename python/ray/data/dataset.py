@@ -2,6 +2,7 @@ import collections
 import itertools
 import logging
 import os
+import sys
 import time
 import html
 from typing import (
@@ -18,6 +19,7 @@ from typing import (
     Union,
 )
 from uuid import uuid4
+import warnings
 
 import numpy as np
 
@@ -94,6 +96,11 @@ from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.widgets import Template
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 if TYPE_CHECKING:
     import dask
@@ -309,8 +316,8 @@ class Dataset(Generic[T]):
         fn: BatchUDF,
         *,
         batch_size: Optional[int] = 4096,
-        compute: Union[str, ComputeStrategy] = None,
-        batch_format: str = "native",
+        compute: Optional[Union[str, ComputeStrategy]] = None,
+        batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -376,11 +383,11 @@ class Dataset(Generic[T]):
                 :class:`ActorPoolStrategy(min, max) <ray.data.ActorPoolStrategy>`
                 instance. If using callable classes for fn, the actor compute strategy
                 must be used.
-            batch_format: Specify "native" to use the native block format (promotes
+            batch_format: Specify "default" to use the default block format (promotes
                 tables to Pandas and tensors to NumPy), "pandas" to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
                 to select ``numpy.ndarray`` for tensor datasets and
-                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "native".
+                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
             fn_args: Positional arguments to pass to ``fn``, after the data batch. These
                 arguments will be top-level arguments in the underlying Ray task that's
                 submitted.
@@ -401,6 +408,12 @@ class Dataset(Generic[T]):
         """
         import pandas as pd
         import pyarrow as pa
+
+        if batch_format == "native":
+            warnings.warn(
+                "The 'native' batch format has been renamed 'default'.",
+                DeprecationWarning,
+            )
 
         if batch_size is not None and batch_size < 1:
             raise ValueError("Batch size cannot be negative or 0")
@@ -2314,15 +2327,15 @@ class Dataset(Generic[T]):
         try:
             dataset_format = self._dataset_format()
         except ValueError:
-            # Dataset is empty or cleared, so fall back to "native".
-            batch_format = "native"
+            # Dataset is empty or cleared, so fall back to "default".
+            batch_format = "default"
         else:
             batch_format = (
                 "pyarrow"
                 if dataset_format == "arrow"
                 else "pandas"
                 if dataset_format == "pandas"
-                else "native"
+                else "default"
             )
         for batch in self.iter_batches(
             batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
@@ -2336,7 +2349,7 @@ class Dataset(Generic[T]):
         *,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: str = "native",
+        batch_format: str = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -2358,11 +2371,11 @@ class Dataset(Generic[T]):
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: The format in which to return each batch.
-                Specify "native" to use the native block format (promoting
+                Specify "default" to use the default block format (promoting
                 tables to Pandas and tensors to NumPy), "pandas" to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
                 to select ``numpy.ndarray`` for tensor datasets and
-                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "native".
+                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -2374,6 +2387,12 @@ class Dataset(Generic[T]):
         Returns:
             An iterator over record batches.
         """
+        if batch_format == "native":
+            warnings.warn(
+                "The 'native' batch format has been renamed 'default'.",
+                DeprecationWarning,
+            )
+
         blocks = self._plan.execute()
         stats = self._plan.stats()
 

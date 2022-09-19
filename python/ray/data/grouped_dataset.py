@@ -185,7 +185,7 @@ class GroupedDataset(Generic[T]):
         fn: Union[CallableClass, Callable[[BatchType], BatchType]],
         *,
         compute: Union[str, ComputeStrategy] = None,
-        batch_format: str = "native",
+        batch_format: str = "default",
         **ray_remote_args,
     ) -> "Dataset[Any]":
         # TODO AttributeError: 'GroupedDataset' object has no attribute 'map_groups'
@@ -230,7 +230,7 @@ class GroupedDataset(Generic[T]):
                 batch of zero or more records, similar to map_batches().
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
-            batch_format: Specify "native" to use the native block format
+            batch_format: Specify "default" to use the default block format
                 (promotes Arrow to pandas), "pandas" to select
                 ``pandas.DataFrame`` as the batch format,
                 or "pyarrow" to select ``pyarrow.Table``.
