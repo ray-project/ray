@@ -395,7 +395,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             if driver_node_id not in self._agents_pool:
                 self._agents_pool = JobAgentSubmissionClient(driver_agent_http_address)
             job_agent_client = self._agents_pool[driver_node_id]
-            resp = await job_agent_client.get_job_logs(job.submission_id)
+            resp = await job_agent_client.get_job_logs_internal(job.submission_id)
         except Exception:
             return Response(
                 text=traceback.format_exc(),
