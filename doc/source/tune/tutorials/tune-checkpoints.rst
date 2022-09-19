@@ -20,7 +20,7 @@ This time can also be adjusted with the
 
 The purpose of the experiment checkpoint is to maintain a global state from which the whole Ray Tune experiment
 can be resumed from if it is interrupted or failed.
-It can also be used to analysis tuning results after a Ray Tune finished.
+It can also be used to analyze tuning results after a Ray Tune finished.
 
 Trial-level checkpoints capture the per-trial state. They are saved by the trainable itself.
 Commonly, this includes the model and optimizer states. This is useful mostly for three reasons:
