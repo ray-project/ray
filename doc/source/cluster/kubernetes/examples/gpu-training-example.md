@@ -14,7 +14,7 @@ gcloud container clusters create gpu-cluster-1 \
     --num-nodes=1 --min-nodes 0 --max-nodes 1 --enable-autoscaling \
     --zone=us-central1-c --machine-type e2-standard-8
 
-# Create a node-pool for GPU
+# Create a node-pool for GPU. The node is for a GPU Ray worker node.
 # n1-standard-8 => 8 vCPU; 30 GB RAM
 gcloud container node-pools create gpu-node-pool \
   --accelerator type=nvidia-tesla-t4,count=1 \
