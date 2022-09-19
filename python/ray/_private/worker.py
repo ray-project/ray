@@ -2784,9 +2784,7 @@ def remote(
 def remote(
     *args, **kwargs
 ) -> Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass]:
-    """remote(*, num_returns: Union[int, float])
-
-    Defines a remote function or an actor class.
+    """Defines a remote function or an actor class.
 
     This function can be used as a decorator with no arguments
     to define a remote function or actor as follows:
