@@ -194,7 +194,7 @@ print(ds.schema())
 ds.fully_executed()
 
 # __create_images_begin__
-ds = ray.data.read_images(root="example://image-folders/simple", size=(128, 128))
+ds = ray.data.read_images("example://image-folders/simple", size=(128, 128))
 # -> Dataset(num_blocks=3, num_rows=3,
 #            schema={image: TensorDtype(shape=(128, 128, 3), dtype=uint8),
 #                    label: object})
