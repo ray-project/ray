@@ -16,7 +16,7 @@ The experiment-level checkpoint is saved by the driver.
 The frequency at which it is conducted is automatically
 adjusted so that at least 95% of the time is used for handling training results and scheduling.
 This time can also be adjusted with the
-:ref:`TUNE_GLOBAL_CHECKPOINT_S <tune-env-vars> environment variable`.
+:ref:`TUNE_GLOBAL_CHECKPOINT_S environment variable <tune-env-vars>`.
 
 The purpose of the experiment checkpoint is to maintain a global state from which the whole Ray Tune experiment
 can be resumed from if it is interrupted or failed.
@@ -30,7 +30,6 @@ Commonly, this includes the model and optimizer states. This is useful mostly fo
 - Some searchers/schedulers pause trials to free resources so that other trials can train in
   the meantime. This only makes sense if the trials can then continue training from the latest state.
 - The checkpoint can be later used for other downstream tasks like batch inference.
-
 
 Everything that is reported by ``session.report()`` is a trial-level checkpoint.
 See :ref:`here for more information on saving checkpoints <air-checkpoint-ref>`.
