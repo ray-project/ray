@@ -75,7 +75,7 @@ appear as the task name in the logs.
 .. image:: images/task_name_dashboard.png
 
 
-(accelerator-types)=
+.. _accelerator-types:
 
 Accelerator Types
 ------------------

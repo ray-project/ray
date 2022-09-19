@@ -125,7 +125,7 @@ In this example, each replica of each deployment will be allocated 0.5 GPUs.  Th
 
 ### Custom Resources, Accelerator types, and more
 
-You can also specify [custom resources](custom-resources) in `ray_actor_options`, for example to ensure that a deployment is scheduled on a specific node.
+You can also specify {ref}`custom resources <cluster-resources>` in `ray_actor_options`, for example to ensure that a deployment is scheduled on a specific node.
 For example, if you have a deployment that requires 2 units of the `"custom_resource"` resource, you can specify it like this:
 
 ```python
@@ -134,7 +134,7 @@ def func(*args):
     return do_something_with_my_custom_resource()
 ```
 
-You can also specify [accelerator types](accelerator-types) via the `accelerator_type` parameter in `ray_actor_options`.
+You can also specify {ref}`accelerator types <accelerator-types>` via the `accelerator_type` parameter in `ray_actor_options`.
 
 Below is the full list of supported options in `ray_actor_options`; please see the relevant Ray Core documentation for more details about each option:
 
