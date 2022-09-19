@@ -3302,15 +3302,15 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_tfrecords(path)
 
     df = ds.to_pandas()
-    assert list(df.columns) == [
-        "int64",
-        "int64_list",
-        "float",
-        "float_list",
-        "bytes",
-        "bytes_list",
-    ]
-    assert list(df.dtypes) == [np.int64, object, np.float, object, object, object]
+    # Protobuf serializes features in a non-deterministic order.
+    assert dict(df.dtypes) == {
+        "int64": np.int64,
+        "int64_list": object,
+        "float": np.float,
+        "float_list": object,
+        "bytes": object,
+        "bytes_list": object,
+    }
     assert list(df["int64"]) == [1]
     assert list(df["int64_list"]) == [[1, 2, 3, 4]]
     assert list(df["float"]) == [1.0]
