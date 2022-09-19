@@ -393,6 +393,17 @@ class EnvRunnerV2:
             Object containing state, action, reward, terminal condition,
             and other fields as dictated by `policy`.
         """
+        # Before the very first poll (this will reset all vector sub-environments):
+        # Call custom `before_sub_environment_reset` callbacks for all sub-environments.
+        for env_id, sub_env in self._base_env.get_sub_environments(
+            as_dict=True
+        ).items():
+            self._callbacks.before_sub_environment_reset(
+                worker=self._worker,
+                sub_environment=sub_env,
+                env_index=env_id,
+            )
+
         while True:
             self._perf_stats.incr("iters", 1)
 
@@ -773,6 +784,15 @@ class EnvRunnerV2:
             # Basically carry RNN and other buffered state to the
             # next episode from the same env.
         else:
+            # Call custom `before_sub_environment_reset` callback.
+            self._callbacks.before_sub_environment_reset(
+                worker=self._worker,
+                sub_environment=self._base_env.get_sub_environments(as_dict=True)[
+                    env_id
+                ],
+                env_index=env_id,
+            )
+
             # TODO(jungong) : This will allow a single faulty env to
             # take out the entire RolloutWorker indefinitely. Revisit.
             while True:

@@ -1013,9 +1013,21 @@ Ray actors provide high levels of performance, so in more complex cases they can
 Callbacks and Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can provide callbacks to be called at points during policy evaluation. These callbacks have access to state for the current `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__. Certain callbacks such as ``on_postprocess_trajectory``, ``on_sample_end``, and ``on_train_result`` are also places where custom postprocessing can be applied to intermediate data or results.
+You can provide callbacks to be called at points during policy evaluation.
+These callbacks have access to state for the current
+`episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__.
+Certain callbacks such as ``on_postprocess_trajectory``, ``on_sample_end``,
+and ``on_train_result`` are also places where custom postprocessing can be applied to
+intermediate data or results.
 
-User-defined state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__ in the ``episode.user_data`` dict, and custom scalar metrics reported by saving values to the ``episode.custom_metrics`` dict. These custom metrics will be aggregated and reported as part of training results. For a full example, see `custom_metrics_and_callbacks.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__.
+User-defined state can be stored for the
+`episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__
+in the ``episode.user_data`` dict, and custom scalar metrics reported by saving values
+to the ``episode.custom_metrics`` dict. These custom metrics will be aggregated and
+reported as part of training results. For a full example, take a look at
+`this example script here <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__
+and
+`these unit test cases here <https://github.com/ray-project/ray/blob/master/rllib/algorithms/tests/test_callbacks.py>`__.
 
 .. tip::
     You can create custom logic that can run on each evaluation episode by checking if the
