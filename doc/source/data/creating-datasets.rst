@@ -164,27 +164,7 @@ Supported File Formats
 
 .. tabbed:: Images (experimental)
 
-  If  your directory structure is:
-
-  .. code-block::
-
-    root/dog/xxx.png
-    root/dog/xxy.png
-    root/dog/[...]/xxz.png
-
-    root/cat/123.png
-    root/cat/nsdf3.png
-    root/cat/[...]/asd932_.png
-
-  Then call :func:`~ray.data.read_images` to load your images into a ``Dataset``.
-
-  .. literalinclude:: ./doc_code/creating_datasets.py
-    :language: python
-    :start-after: __read_images_begin__
-    :end-before: __read_images_end__
-
-  For more information on working with tensors, see our
-  :ref:`tensor data guide <datasets_tensor_support>`
+  TODO
 
 .. tabbed:: Binary
 
