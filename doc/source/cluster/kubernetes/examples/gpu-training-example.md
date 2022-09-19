@@ -58,6 +58,8 @@ ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow
 ```
 
 # Step 1: Setup a Kubernetes cluster on GCP.
+In this section, we set up a Kubernetes cluster with CPU and GPU node pools. These instructions are for GCP, but a similar setup would work for any major cloud provider.
+
 ```shell
 # Step 1: Setup a Kubernetes cluster on GCP.
 # e2-standard-8 => 8 vCPU; 32 GB RAM
