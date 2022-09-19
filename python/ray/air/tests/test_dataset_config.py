@@ -163,12 +163,7 @@ def test_fit_transform_config(ray_start_4_cpus):
     ds = ray.data.range_table(10)
 
     def drop_odd(rows):
-        val = rows[0]
-        if val % 2 == 0:
-            return rows
-        else:
-            return rows
-        # return rows[(rows[key] % 2 == 0)]
+        return [x for x in rows if x % 2 == 0]
 
     prep = BatchMapper(drop_odd)
 

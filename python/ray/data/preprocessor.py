@@ -284,8 +284,6 @@ class Preprocessor(abc.ABC):
             if data_format == "numpy":
                 return self._transform_numpy(data)
             elif data_format == "arrow":
-                import ipdb
-                ipdb.set_trace()
                 if len(data.column_names) == 1:
                     # If just a single column, return as a single numpy array.
                     return self._transform_numpy(data[0].to_numpy())
