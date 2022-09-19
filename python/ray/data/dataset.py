@@ -3604,8 +3604,10 @@ class Dataset(Generic[T]):
                    [2],
                    [3]])
 
-            If your dataset represents tabular data and the default batch format
-            isn't ``np.ndarray``, then the default batch format is ``pd.DataFrame``.
+            If your dataset represents tabular data and doesn't only consist of a
+            ``__value__`` tensor column (such as is created by
+            :meth:`ray.data.from_numpy`), then the default batch format is
+            ``pd.DataFrame``.
 
             >>> import pandas as pd
             >>> df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
