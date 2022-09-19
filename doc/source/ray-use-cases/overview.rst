@@ -51,3 +51,11 @@ but is meant to be an engineering resource that you can use to build your own us
         :type: ref
         :text: Image Classification with Ray
         :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/credit.png
+
+    +++
+    .. link-button:: /ray-air/examples/feast_example
+        :type: ref
+        :text: Credit scoring with Ray and Feast
+        :classes: btn-link btn-block stretched-link
