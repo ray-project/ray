@@ -395,9 +395,11 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
     if num_gpus is not None:
         resources["GPU"] = num_gpus
     if memory is not None:
-        resources["memory"] = memory
+        resources["memory"] = ray_constants.to_memory_units(memory, round_up=True)
     if object_store_memory is not None:
-        resources["object_store_memory"] = object_store_memory
+        resources["object_store_memory"] = ray_constants.to_memory_units(
+            object_store_memory, round_up=True
+        )
     if accelerator_type is not None:
         resources[
             f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"

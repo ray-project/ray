@@ -6,10 +6,12 @@ from typing import Dict, List
 
 import numpy as np
 
+import ray._private.ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
     AUTOSCALER_REPORT_PER_NODE_STATUS,
+    MEMORY_RESOURCE_UNIT_BYTES,
 )
 from ray.autoscaler._private.util import (
     DictCount,
@@ -55,7 +57,7 @@ def freq_of_dicts(
             is a tuple containing a unique entry from `dicts` and its
             corresponding frequency count.
     """
-    freqs = Counter(serializer(d) for d in dicts)
+    freqs = Counter(map(lambda d: serializer(d), dicts))
     as_list = []
     for as_set, count in freqs.items():
         as_list.append((deserializer(as_set), count))
@@ -284,8 +286,14 @@ class LoadMetrics:
         usage_dict = {}
         for key in total_resources:
             if key in ["memory", "object_store_memory"]:
-                total = total_resources[key]
-                available = available_resources[key]
+                total = (
+                    total_resources[key]
+                    * ray._private.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
+                )
+                available = (
+                    available_resources[key]
+                    * ray._private.ray_constants.MEMORY_RESOURCE_UNIT_BYTES
+                )
                 usage_dict[key] = (total - available, total)
             else:
                 total = total_resources[key]
@@ -366,7 +374,9 @@ class LoadMetrics:
 
         def format_resource(key, value):
             if key in ["object_store_memory", "memory"]:
-                return "{} GiB".format(round(value / (1024 * 1024 * 1024), 2))
+                return "{} GiB".format(
+                    round(value * MEMORY_RESOURCE_UNIT_BYTES / (1024 * 1024 * 1024), 2)
+                )
             else:
                 return round(value, 2)
 
