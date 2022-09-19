@@ -275,7 +275,7 @@ class BlockAccessor(Generic[T]):
             A new block containing the provided row indices.
         """
         raise NotImplementedError
-    
+
     def select(self, keys: List[KeyFn]) -> Block:
         """Return a new block containing the provided keys."""
         raise NotImplementedError
@@ -405,6 +405,11 @@ class BlockAccessor(Generic[T]):
         self, boundaries: List[T], key: Any, descending: bool
     ) -> List["Block[T]"]:
         """Return a list of sorted partitions of this block."""
+        raise NotImplementedError
+
+    def hash_and_partition(
+        self, key: KeyFn, agg: "AggregateFn", num_reducers: int
+    ) -> List["Block[T]"]:
         raise NotImplementedError
 
     def combine(self, key: KeyFn, agg: "AggregateFn") -> Block[U]:

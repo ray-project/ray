@@ -41,6 +41,7 @@ class _GroupbyOp(ShuffleOp):
         boundaries: List[KeyType],
         key: KeyFn,
         aggs: Tuple[AggregateFn],
+        num_reducers: int,
     ) -> List[Union[BlockMetadata, Block]]:
         """Partition the block and combine rows with the same key."""
         stats = BlockExecStats.builder()
@@ -50,16 +51,23 @@ class _GroupbyOp(ShuffleOp):
         if key is None:
             partitions = [block]
         else:
+            """
             partitions = BlockAccessor.for_block(block).sort_and_partition(
                 boundaries,
                 [(key, "ascending")] if isinstance(key, str) else key,
                 descending=False,
             )
-        parts = [BlockAccessor.for_block(p).combine(key, aggs, ctx) for p in partitions]
+            """
+            partitions = BlockAccessor.for_block(block).hash_and_partition(
+                key,
+                aggs,
+                num_reducers,
+            )
+        # parts = [BlockAccessor.for_block(p).combine(key, aggs, ctx) for p in partitions]
         meta = BlockAccessor.for_block(block).get_metadata(
             input_files=None, exec_stats=stats.build()
         )
-        return parts + [meta]
+        return partitions + [meta]
 
     @staticmethod
     def reduce(
@@ -179,6 +187,7 @@ class GroupedDataset(Generic[T]):
                 num_reducers = 1
                 boundaries = []
             else:
+                """
                 boundaries = sort.sample_boundaries(
                     blocks.get_blocks(),
                     [(self._key, "ascending")]
@@ -186,13 +195,16 @@ class GroupedDataset(Generic[T]):
                     else self._key,
                     num_reducers,
                 )
+                """
+                boundaries = None
             ctx = DatasetContext.get_current()
             if ctx.use_push_based_shuffle:
                 shuffle_op_cls = PushBasedGroupbyOp
             else:
                 shuffle_op_cls = SimpleShuffleGroupbyOp
             shuffle_op = shuffle_op_cls(
-                map_args=[boundaries, self._key, aggs], reduce_args=[self._key, aggs]
+                map_args=[boundaries, self._key, aggs, num_reducers],
+                reduce_args=[self._key, aggs],
             )
             return shuffle_op.execute(
                 blocks,

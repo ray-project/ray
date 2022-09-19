@@ -14,9 +14,7 @@ def run_h2oai(benchmark: Benchmark):
     Here we run all group-by queries from the benchmark on Ray Datasets.
     The input files are pre-generated and stored in AWS S3 beforehand.
     """
-    test_input = [
-        ("/Users/chengsu/db-benchmark/G1_1e7_1e2_0_0.csv", "h2oai-500M")
-    ]
+    test_input = [("/Users/chengsu/db-benchmark/G1_1e7_1e2_0_0.csv", "h2oai-500M")]
     for path, test_name in test_input:
         input_ds = ray.data.read_csv(path).repartition(10).fully_executed()
 

@@ -152,7 +152,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         table = self._table.take(indices)
         table.reset_index(drop=True, inplace=True)
         return table
-    
+
     def select(self, keys: List[KeyFn]) -> "pandas.DataFrame":
         if not all(isinstance(key, str) for key in keys):
             raise ValueError(

@@ -271,7 +271,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         extension arrays.
         """
         return transform_pyarrow.take_table(self._table, indices)
-    
+
     def select(self, keys: List[KeyFn]) -> "pyarrow.Table":
         if not all(isinstance(key, str) for key in keys):
             raise ValueError(
@@ -404,6 +404,33 @@ class ArrowBlockAccessor(TableBlockAccessor):
             last_idx = idx
         partitions.append(_copy_table(table.slice(last_idx)))
         return partitions
+
+    def hash_and_partition(
+        self, key: KeyFn, aggs: Tuple[AggregateFn], num_reducers: int
+    ) -> List["Block[T]"]:
+        import polars as pl
+
+        aggs = [agg.as_polars() if isinstance(agg, WithPolars) else agg for agg in aggs]
+
+        df = pl.from_arrow(self._table)
+        agg_df = (
+            df.with_column(pl.col(key))
+            .groupby(key)
+            .agg([agg.map_expression for agg in aggs])
+        )
+        key_df = agg_df.select(key).with_columns(
+            [
+                pl.all().hash() % num_reducers,
+                pl.arange(0, agg_df.height).alias("_ray_row_idx"),
+            ]
+        )
+        key_df = key_df.groupby(key).agg([pl.col("_ray_row_idx").list()])
+        agg_df = agg_df.to_arrow()
+        blocks = [self._empty_table()] * num_reducers
+        for block_idx, row_indices in key_df.rows():
+            block = agg_df.take(row_indices)
+            blocks[block_idx] = block
+        return blocks
 
     def combine_polars(
         self,
@@ -583,6 +610,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if len(blocks) == 0:
             ret = ArrowBlockAccessor._empty_table()
         else:
+            """
+            ret = (
+                pl.concat([pl.from_arrow(b) for b in blocks])
+                .groupby(key, maintain_order=True)
+                .agg([agg.reduce_expression for agg in aggs])
+                .to_arrow()
+            )
+            """
             ret = (
                 pl.concat([pl.from_arrow(b) for b in blocks])
                 .groupby(key, maintain_order=True)
