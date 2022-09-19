@@ -12,6 +12,8 @@ import io.ray.api.runtimeenv.RuntimeEnv;
 import io.ray.api.runtimeenv.RuntimeEnvConfig;
 import io.ray.runtime.generated.RuntimeEnvCommon;
 import java.io.IOException;
+import java.util.Iterator;
+import java.util.Map;
 
 public class RuntimeEnvImpl implements RuntimeEnv {
 
@@ -90,6 +92,23 @@ public class RuntimeEnvImpl implements RuntimeEnv {
       return MAPPER.writeValueAsString(runtimeEnvs);
     } catch (JsonProcessingException e) {
       throw new RuntimeEnvException("Failed to serialize.", e);
+    }
+  }
+
+  public static RuntimeEnvImpl deserialize(String serializedRuntimeEnv) throws RuntimeEnvException {
+    try {
+      RuntimeEnvImpl runtimeEnvImpl = new RuntimeEnvImpl();
+      JsonNode node = JsonLoader.fromString(serializedRuntimeEnv);
+      Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+      while (fields.hasNext()) {
+        Map.Entry<String, JsonNode> entry = fields.next();
+        runtimeEnvImpl.set(entry.getKey(), entry.getValue());
+      }
+      return runtimeEnvImpl;
+    } catch (JsonProcessingException e) {
+      throw new RuntimeEnvException("Failed to deserialize.", e);
+    } catch (IOException e) {
+      throw new RuntimeEnvException("Failed to deserialize.", e);
     }
   }
 

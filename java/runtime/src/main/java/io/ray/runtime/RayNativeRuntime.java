@@ -113,6 +113,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
             rayConfig.defaultActorLifetime == ActorLifetime.DETACHED
                 ? JobConfig.ActorLifetime.DETACHED
                 : JobConfig.ActorLifetime.NON_DETACHED);
+        jobConfigBuilder.putAllMetadata(rayConfig.metadata);
         serializedJobConfig = jobConfigBuilder.build().toByteArray();
       }
 

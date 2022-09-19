@@ -1,11 +1,16 @@
 package io.ray.runtime.config;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.fge.jackson.JsonLoader;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigRenderOptions;
+import io.ray.api.exception.RuntimeEnvException;
 import io.ray.api.id.JobId;
 import io.ray.api.options.ActorLifetime;
 import io.ray.api.runtimeenv.RuntimeEnvConfig;
@@ -14,6 +19,7 @@ import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.runtimeenv.RuntimeEnvImpl;
 import io.ray.runtime.util.NetworkUtil;
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -56,6 +62,8 @@ public class RayConfig {
   public int runtimeEnvHash;
 
   public RuntimeEnvImpl runtimeEnvImpl = null;
+
+  public Map<String, String> metadata = new HashMap<>();
 
   public final ActorLifetime defaultActorLifetime;
 
@@ -166,8 +174,13 @@ public class RayConfig {
     if (StringUtils.isNotBlank(bootstrapAddress)) {
       setBootstrapAddress(bootstrapAddress);
     } else {
-      // We need to start gcs using `RunManager` for local cluster
+      // We will try to get address from env, If it still empty,
+      // we need to start gcs using `RunManager` for local cluster
       this.bootstrapAddress = null;
+      String bootstrapAddressEnv = System.getenv("RAY_ADDRESS");
+      if (StringUtils.isNotBlank(bootstrapAddressEnv)) {
+        setBootstrapAddress(bootstrapAddressEnv);
+      }
     }
 
     redisPassword = config.getString("ray.redis.password");
@@ -195,6 +208,24 @@ public class RayConfig {
     /// Driver needn't this config item.
     if (workerMode == WorkerType.WORKER && config.hasPath("ray.internal.runtime-env-hash")) {
       runtimeEnvHash = config.getInt("ray.internal.runtime-env-hash");
+    }
+
+    /// load RAY_JOB_CONFIG_JSON_ENV_VAR from env
+    String serializedEnvJobConfig = System.getenv("RAY_JOB_CONFIG_JSON_ENV_VAR");
+    JsonNode envJobConfig = null;
+    String serializedRuntimeEnv = null;
+    if (serializedEnvJobConfig != null) {
+      ObjectMapper objectMapper = new ObjectMapper();
+      try {
+        envJobConfig = JsonLoader.fromString(serializedEnvJobConfig);
+        if (envJobConfig.size() != 2) {
+          throw new RuntimeEnvException("It seems that the field from RAY_JOB_CONFIG_JSON_ENV_VAR has changed, please confirm its impact on the java driver");
+        }
+        serializedRuntimeEnv = envJobConfig.findValue("runtime_env").toString();
+        metadata = objectMapper.convertValue(envJobConfig.findValue("metadata"), new TypeReference<Map<String, String>>() {});
+      } catch (IOException e) {
+        throw new RuntimeEnvException("Failed to get job config field from env.", e);
+      }
     }
 
     {
@@ -233,15 +264,19 @@ public class RayConfig {
         runtimeEnvConfig.setEagerInstall(config.getBoolean(eagerInstallPath));
       }
 
-      runtimeEnvImpl = new RuntimeEnvImpl();
-      if (!envVars.isEmpty()) {
-        runtimeEnvImpl.set(RuntimeEnvName.ENV_VARS, envVars);
-      }
-      if (!jarUrls.isEmpty()) {
-        runtimeEnvImpl.set(RuntimeEnvName.JARS, jarUrls);
-      }
-      if (runtimeEnvConfig != null) {
-        runtimeEnvImpl.setConfig(runtimeEnvConfig);
+      if (serializedRuntimeEnv == null){
+        runtimeEnvImpl = new RuntimeEnvImpl();
+        if (!envVars.isEmpty()) {
+          runtimeEnvImpl.set(RuntimeEnvName.ENV_VARS, envVars);
+        }
+        if (!jarUrls.isEmpty()) {
+          runtimeEnvImpl.set(RuntimeEnvName.JARS, jarUrls);
+        }
+        if (runtimeEnvConfig != null) {
+          runtimeEnvImpl.setConfig(runtimeEnvConfig);
+        }
+      } else {
+        runtimeEnvImpl = RuntimeEnvImpl.deserialize(serializedRuntimeEnv);
       }
     }
 
