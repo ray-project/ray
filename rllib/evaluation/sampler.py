@@ -671,6 +671,7 @@ def _env_runner(
             worker=worker,
             sub_environment=sub_env,
             env_index=env_id,
+            next_episode=active_episodes[env_id],
         )
 
     while True:
@@ -1088,6 +1089,7 @@ def _process_observations(
                     env_id: all_agents_obs
                 }
             else:
+                # Clean up old finished episode.
                 del active_episodes[env_id]
 
                 # Call custom `before_sub_environment_reset` callback.
@@ -1097,6 +1099,8 @@ def _process_observations(
                         worker=worker,
                         sub_environment=sub_envs[env_id],
                         env_index=env_id,
+                        # Create new episode under this env_id.
+                        next_episode=active_episodes[env_id],
                     )
 
                 # TODO(jungong) : This will allow a single faulty env to

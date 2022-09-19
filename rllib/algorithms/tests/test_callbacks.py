@@ -29,10 +29,15 @@ class BeforeSubEnvironmentResetCallback(DefaultCallbacks):
         self._reset_counter = 0
 
     def before_sub_environment_reset(
-        self, *, worker, sub_environment, env_index, **kwargs
+        self, *, worker, sub_environment, env_index, next_episode, **kwargs
     ):
         print(f"Sub-env {env_index} is going to be reset.")
         self._reset_counter += 1
+
+        # Make sure the passed in episode is really brand new.
+        assert next_episode.env_id == env_index
+        assert next_episode.length == 0
+        assert next_episode.worker is worker
 
 
 class TestCallbacks(unittest.TestCase):

@@ -114,6 +114,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         worker: "RolloutWorker",
         sub_environment: EnvType,
         env_index: int,
+        next_episode: Union[Episode, EpisodeV2],
         **kwargs,
     ) -> None:
         """Callback run before a sub-environment is reset.
@@ -128,6 +129,8 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 This is usually a gym.Env object.
             env_index: The index of the sub-environment that is about to be reset
                 (within the vector of sub-environments of the BaseEnv).
+            next_episode: The next episode (the one that will be started with the
+                upcoming reset).
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -541,6 +544,7 @@ class MultiCallbacks(DefaultCallbacks):
         worker: "RolloutWorker",
         sub_environment: EnvType,
         env_index: Optional[int] = None,
+        next_episode: Union[Episode, EpisodeV2],
         **kwargs,
     ) -> None:
         for callback in self._callback_list:
@@ -548,6 +552,7 @@ class MultiCallbacks(DefaultCallbacks):
                 worker=worker,
                 sub_environment=sub_environment,
                 env_index=env_index,
+                next_episode=next_episode,
                 **kwargs,
             )
 

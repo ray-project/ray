@@ -402,6 +402,7 @@ class EnvRunnerV2:
                 worker=self._worker,
                 sub_environment=sub_env,
                 env_index=env_id,
+                next_episode=self._active_episodes[env_id],
             )
 
         while True:
@@ -791,6 +792,8 @@ class EnvRunnerV2:
                     env_id
                 ],
                 env_index=env_id,
+                # Create new episode under this env_id.
+                next_episode=self._active_episodes[env_id],
             )
 
             # TODO(jungong) : This will allow a single faulty env to
