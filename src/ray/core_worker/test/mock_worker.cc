@@ -50,7 +50,7 @@ class MockWorker {
     options.node_manager_port = node_manager_port;
     options.raylet_ip_address = "127.0.0.1";
     options.task_execution_callback = std::bind(
-        &MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10);
+        &MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11);
     options.metrics_agent_port = -1;
     options.startup_token = startup_token;
     CoreWorkerProcess::Initialize(options);
@@ -59,16 +59,18 @@ class MockWorker {
   void RunTaskExecutionLoop() { CoreWorkerProcess::RunTaskExecutionLoop(); }
 
  private:
-  Status ExecuteTask(TaskType task_type,
-                     const std::string task_name,
-                     const RayFunction &ray_function,
-                     const std::unordered_map<std::string, double> &required_resources,
-                     const std::vector<std::shared_ptr<RayObject>> &args,
-                     const std::vector<rpc::ObjectReference> &arg_refs,
-                     const std::vector<ObjectID> &return_ids,
-                     const std::string &debugger_breakpoint,
-                     const std::string &serialized_retry_exception_allowlist,
-                     std::vector<std::shared_ptr<RayObject>> *results) {
+  Status ExecuteTask(
+      const rpc::Address &caller_address,
+      TaskType task_type,
+      const std::string task_name,
+      const RayFunction &ray_function,
+      const std::unordered_map<std::string, double> &required_resources,
+      const std::vector<std::shared_ptr<RayObject>> &args,
+      const std::vector<rpc::ObjectReference> &arg_refs,
+      const std::string &debugger_breakpoint,
+      const std::string &serialized_retry_exception_allowlist,
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns) {
     // Note that this doesn't include dummy object id.
     const FunctionDescriptor function_descriptor = ray_function.GetFunctionDescriptor();
     RAY_CHECK(function_descriptor->Type() ==
@@ -78,34 +80,30 @@ class MockWorker {
     if ("actor creation task" == typed_descriptor->ModuleName()) {
       return Status::OK();
     } else if ("GetWorkerPid" == typed_descriptor->ModuleName()) {
-      // Get mock worker pid
-      return GetWorkerPid(results);
+      // Save the pid of current process to the return object.
+      std::string pid_string = std::to_string(static_cast<int>(getpid()));
+      auto data =
+          const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(pid_string.data()));
+      auto memory_buffer =
+          std::make_shared<LocalMemoryBuffer>(data, pid_string.size(), true);
+      RAY_CHECK(returns->size() == 1);
+      (*returns)[0].second = std::make_shared<RayObject>(
+          memory_buffer, nullptr, std::vector<rpc::ObjectReference>());
+      return Status::OK();
     } else if ("MergeInputArgsAsOutput" == typed_descriptor->ModuleName()) {
       // Merge input args and write the merged content to each of return ids
-      return MergeInputArgsAsOutput(args, return_ids, results);
+      return MergeInputArgsAsOutput(args, returns);
     } else if ("WhileTrueLoop" == typed_descriptor->ModuleName()) {
-      return WhileTrueLoop(args, return_ids, results);
+      return WhileTrueLoop();
     } else {
       return Status::TypeError("Unknown function descriptor: " +
                                typed_descriptor->ModuleName());
     }
   }
 
-  Status GetWorkerPid(std::vector<std::shared_ptr<RayObject>> *results) {
-    // Save the pid of current process to the return object.
-    std::string pid_string = std::to_string(static_cast<int>(getpid()));
-    auto data =
-        const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(pid_string.data()));
-    auto memory_buffer =
-        std::make_shared<LocalMemoryBuffer>(data, pid_string.size(), true);
-    results->push_back(std::make_shared<RayObject>(
-        memory_buffer, nullptr, std::vector<rpc::ObjectReference>()));
-    return Status::OK();
-  }
-
-  Status MergeInputArgsAsOutput(const std::vector<std::shared_ptr<RayObject>> &args,
-                                const std::vector<ObjectID> &return_ids,
-                                std::vector<std::shared_ptr<RayObject>> *results) {
+  Status MergeInputArgsAsOutput(
+      const std::vector<std::shared_ptr<RayObject>> &args,
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns) {
     // Merge all the content from input args.
     std::vector<uint8_t> buffer;
     for (const auto &arg : args) {
@@ -126,17 +124,15 @@ class MockWorker {
         std::make_shared<LocalMemoryBuffer>(buffer.data(), buffer.size(), true);
 
     // Write the merged content to each of return ids.
-    for (size_t i = 0; i < return_ids.size(); i++) {
-      results->push_back(std::make_shared<RayObject>(
-          memory_buffer, nullptr, std::vector<rpc::ObjectReference>()));
+    for (size_t i = 0; i < returns->size(); i++) {
+      (*returns)[i].second = std::make_shared<RayObject>(
+          memory_buffer, nullptr, std::vector<rpc::ObjectReference>());
     }
 
     return Status::OK();
   }
 
-  Status WhileTrueLoop(const std::vector<std::shared_ptr<RayObject>> &args,
-                       const std::vector<ObjectID> &return_ids,
-                       std::vector<std::shared_ptr<RayObject>> *results) {
+  Status WhileTrueLoop() {
     while (1) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
