@@ -33,7 +33,7 @@ kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?re
 # Create a Ray cluster
 kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.autoscaler.gpu.yaml
 
-# port forwarding
+# Set up port-forwarding
 kubectl port-forward services/raycluster-autoscaler-head-svc 8265:8265
 
 # Test cluster
