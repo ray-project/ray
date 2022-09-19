@@ -12,6 +12,9 @@ import ray
 from ray.data.datasource import (
     ImageFolderDatasource
 )
+from ray.data.datasource.file_based_datasource import (
+    FileExtensionFilter,
+)
 from ray.data.extensions import TensorDtype
 from ray.data.preprocessors import BatchMapper
 from ray.data.tests.conftest import *  # noqa
@@ -121,7 +124,7 @@ def test_image_folder_datasource_value_error(ray_start_regular_shared, size):
         ray.data.read_datasource(ImageFolderDatasource(), root=root, size=size)
 
 
-def test_image_folder_datasource_e2e(ray_start_regular_shared):
+def test_image_folder_datasource_e2e(shutdown_only):
     from ray.train.torch import TorchCheckpoint, TorchPredictor
     from ray.train.batch_predictor import BatchPredictor
 
