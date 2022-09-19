@@ -8,6 +8,7 @@ In this guide, we show you how to run a sample Ray machine learning training wor
 
 ```shell
 # Step 1: Setup a Kubernetes cluster on GCP
+# Create a node-pool for a CPU-only head node
 # e2-standard-8 => 8 vCPU; 32 GB RAM
 gcloud container clusters create gpu-cluster-1 \
     --num-nodes=1 --min-nodes 0 --max-nodes 1 --enable-autoscaling \
