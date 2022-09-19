@@ -1494,6 +1494,27 @@ def test_with_resources_class_fn(ray_start_2_cpus_2_gpus, num_gpus):
     assert trial.last_result["_metric"] == num_gpus
 
 
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_with_resources_class_method(ray_start_2_cpus_2_gpus, num_gpus):
+    class Worker:
+        def train_fn(self, config):
+            return len(ray.get_gpu_ids())
+
+    worker = Worker()
+
+    [trial] = tune.run(
+        tune.with_resources(
+            worker.train_fn,
+            resources=lambda config: PlacementGroupFactory(
+                [{"GPU": config["use_gpus"]}]
+            ),
+        ),
+        config={"use_gpus": num_gpus},
+    ).trials
+
+    assert trial.last_result["_metric"] == num_gpus
+
+
 class SerializabilityTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
