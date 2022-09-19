@@ -1122,8 +1122,6 @@ class DeploymentState:
         )
         self._replica_constructor_retry_counter = 0
 
-        # check the autoscaling config if driver mode is set
-
         logger.debug(f"Deploying new version of {self._name}: {target_state.version}.")
 
     def deploy(self, deployment_info: DeploymentInfo) -> bool:
@@ -2016,7 +2014,6 @@ class DeploymentStateManager:
         """Updates the state of all deployments to match their goal state."""
         deleted_tags = []
         for deployment_name, deployment_state in self._deployment_states.items():
-
             if deployment_state.should_autoscale():
                 current_num_ongoing_requests = self.get_replica_ongoing_request_metrics(
                     deployment_name,

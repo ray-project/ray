@@ -380,8 +380,6 @@ def deployment(
             "Explicitly specifying version will raise an error in the future!"
         )
 
-    # Check driver mode validation
-
     config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
@@ -518,7 +516,6 @@ def run(
 
     parameter_group = []
 
-    # check if only one deployment has driver mode set
     for deployment in deployments:
         deployment_parameters = {
             "name": deployment._name,
