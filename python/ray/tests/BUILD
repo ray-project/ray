@@ -13,6 +13,7 @@ py_library(
 py_test_module_list(
   files = [
     "test_dashboard.py",
+    "test_metrics_head.py",
     "test_ray_cluster_with_external_redis.py",
   ],
   size = "large",

@@ -41,7 +41,7 @@ First, download Prometheus. `Download Link <https://prometheus.io/download/>`_
     tar xvfz prometheus-*.tar.gz
     cd prometheus-*
 
-Ray provides a prometheus config that works out of the box. After running ray, it can be found at `/tmp/ray/metrics/prometheus/prometheus.yml`.
+With the `ray[default]` installation, Ray provides a prometheus config that works out of the box. After running ray, it can be found at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
 
 .. code-block:: yaml
 
@@ -61,7 +61,7 @@ Next, let's start Prometheus.
 
 .. code-block:: shell
 
-    ./prometheus --config.file=/tmp/ray/metrics/prometheus/prometheus.yml
+    ./prometheus --config.file=/tmp/ray/session_latest/metrics/prometheus/prometheus.yml
 
 Now, you can access Ray metrics from the default Prometheus url, `http://localhost:9090`.
 
@@ -71,7 +71,6 @@ See :ref:`here <multi-node-metrics>` for more information on how to set up Prome
 
 Grafana
 -------
-(TODO: AGUO WIP [DO NOT MERGE])
 Grafana is a tool that supports more advanced visualizations of prometheus metrics and
 allows you to create custom dashboards with your favorite metrics. Ray exports some default
 configurations which includes a default dashboard showing some of the most valuable metrics
@@ -83,14 +82,15 @@ Then run grafana using the built in configuration found in `/tmp/ray/metrics/gra
 
 .. code-block:: shell
 
-    ./bin/grafana-server --config /tmp/ray/metrics/grafana/grafana.ini web
+    ./bin/grafana-server --config /tmp/ray/session_latest/metrics/grafana/grafana.ini web
 
 Now, you can access grafana using the default grafana url, `http://localhost:3000`.
 If this is your first time, you can login with the username: `admin` and password `admin`.
 
 You can then see the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard.
 
-TODO(aguo): INSERT SCREENSHOT
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/default_grafana_dashboard.png
+    :align: center
 
 
 .. _application-level-metrics:

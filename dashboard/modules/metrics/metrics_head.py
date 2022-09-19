@@ -13,28 +13,22 @@ logger.setLevel(logging.INFO)
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 
-METRICS_PATH = "/tmp/ray/metrics"
+METRICS_OUTPUT_ROOT_ENV_VAR = "RAY_METRICS_OUTPUT_ROOT"
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
 
-GRAFANA_CONFIG_OUTPUT_PATH = os.path.join(METRICS_PATH, "grafana")
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
 
-PROMETHEUS_CONFIG_OUTPUT_PATH = os.path.join(
-    METRICS_PATH, "prometheus", "prometheus.yml"
-)
 PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
     METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
 )
 
-USER_CUSTOM_METRIC_CONFIG_PATH = os.path.join(METRICS_PATH, "custom")
-USER_CUSTOM_GRAFANA_CONFIG_PATH = os.path.join(
-    USER_CUSTOM_METRIC_CONFIG_PATH, "grafana-dashboards"
-)
-
-
 class MetricsHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
+        default_metrics_root = os.path.join(self._dashboard_head.session_dir, "metrics")
+        self.metrics_root = os.environ.get(
+            METRICS_OUTPUT_ROOT_ENV_VAR, default_metrics_root
+        )
 
     @staticmethod
     def is_minimal_module():
@@ -44,21 +38,20 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         """
         Creates the grafana configurations that are by default provided by Ray.
         This will completely replace the `/tmp/ray/metrics/grafana` folder.
-
-        Users can put custom configurations in `/tmp/ray/metrics/custom`. That folder
-        will be picked up by grafana but not be modified by ray.
         """
+        grafana_config_output_path = os.path.join(self.metrics_root, "grafana")
+
         # Copy default grafana configurations
-        if os.path.exists(GRAFANA_CONFIG_OUTPUT_PATH):
-            shutil.rmtree(GRAFANA_CONFIG_OUTPUT_PATH)
-        os.makedirs(os.path.dirname(GRAFANA_CONFIG_OUTPUT_PATH), exist_ok=True)
-        shutil.copytree(GRAFANA_CONFIG_INPUT_PATH, GRAFANA_CONFIG_OUTPUT_PATH)
+        if os.path.exists(grafana_config_output_path):
+            shutil.rmtree(grafana_config_output_path)
+        os.makedirs(os.path.dirname(grafana_config_output_path), exist_ok=True)
+        shutil.copytree(GRAFANA_CONFIG_INPUT_PATH, grafana_config_output_path)
         # Overwrite grafana's prometheus datasource based on env var
         prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
         data_sources_path = os.path.join(
-            GRAFANA_CONFIG_OUTPUT_PATH, "provisioning", "datasources"
+            grafana_config_output_path, "provisioning", "datasources"
         )
         os.makedirs(
             data_sources_path,
@@ -78,29 +71,20 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         Creates the prometheus configurations that are by default provided by Ray.
         This will completely replace the `/tmp/ray/metrics/prometheus` folder.
         """
+        prometheus_config_output_path = os.path.join(
+            self.metrics_root, "prometheus", "prometheus.yml"
+        )
 
         # Copy default prometheus configurations
-        if os.path.exists(PROMETHEUS_CONFIG_OUTPUT_PATH):
-            os.remove(PROMETHEUS_CONFIG_OUTPUT_PATH)
-        os.makedirs(os.path.dirname(PROMETHEUS_CONFIG_OUTPUT_PATH), exist_ok=True)
-        shutil.copy(PROMETHEUS_CONFIG_INPUT_PATH, PROMETHEUS_CONFIG_OUTPUT_PATH)
-
-    def _create_custom_config_folders(self):
-        """
-        Creates folder for custom metric configurations if it doesn't exist.
-
-        Currently, only custom grafana dashboards are supported at
-        `/tmp/ray/metrics/custom/grafana-dashboards`
-        """
-
-        # grafana
-        os.makedirs(USER_CUSTOM_GRAFANA_CONFIG_PATH, exist_ok=True)
+        if os.path.exists(prometheus_config_output_path):
+            os.remove(prometheus_config_output_path)
+        os.makedirs(os.path.dirname(prometheus_config_output_path), exist_ok=True)
+        shutil.copy(PROMETHEUS_CONFIG_INPUT_PATH, prometheus_config_output_path)
 
     async def run(self, server):
         self._create_default_grafana_configs()
-        self._create_default_prometheus_configs()
-        self._create_custom_config_folders()
+        self._create_default_prometheus_configs() 
 
         logger.info(
-            f"Generated prometheus and grafana configurations in: {METRICS_PATH}"
+            f"Generated prometheus and grafana configurations in: {self.metrics_root}"
         )

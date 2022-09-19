@@ -6,9 +6,3 @@ providers:
     type: file
     options:
       path:  /tmp/ray/metrics/grafana/provisioning/dashboards
-
-  - name: RayUser  # User provided dashboards found in the metrics/custom/grafana-dashboard folder.
-    folder: RayUser
-    type: file
-    options:
-      path:  /tmp/ray/metrics/custom/grafana-dashboards

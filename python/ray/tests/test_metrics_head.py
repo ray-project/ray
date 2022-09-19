@@ -12,50 +12,38 @@ logger = logging.getLogger(__name__)
 
 def test_metrics_folder():
     """
-    Tests that the default dashboard files get created
-    Tests that custom dashbaords do not get overwritten.
+    Tests that the default dashboard files get created.
     """
-    with _ray_start(include_dashboard=True):
+    with _ray_start(include_dashboard=True) as context:
+        session_dir = context["session_dir"]
         assert os.path.exists(
-            "/tmp/ray/metrics/grafana/provisioning/dashboards/default.yml"
+            f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
         )
         assert os.path.exists(
-            "/tmp/ray/metrics/grafana/provisioning/dashboards/default_grafana_dashboard.json"
+            f"{session_dir}/metrics/grafana/provisioning/dashboards/default_grafana_dashboard.json"
         )
         assert os.path.exists(
-            "/tmp/ray/metrics/grafana/provisioning/datasources/default.yml"
+            f"{session_dir}/metrics/grafana/provisioning/datasources/default.yml"
         )
-        assert os.path.exists("/tmp/ray/metrics/prometheus/prometheus.yml")
+        assert os.path.exists(f"{session_dir}/metrics/prometheus/prometheus.yml")
 
-        assert os.path.exists("/tmp/ray/metrics/custom/grafana-dashboards")
 
-    # Create a custom dashboard file
-    with open(
-        "/tmp/ray/metrics/custom/grafana-dashboards/custom-dashboard-for-testing.json",
-        "w",
-    ) as f:
-        f.write('{ "name": "custom-dashboard"}')
-
-    with _ray_start(include_dashboard=True):
-        assert os.path.exists(
-            "/tmp/ray/metrics/grafana/provisioning/dashboards/default.yml"
+def test_metrics_folder_when_dashboard_disabled():
+    """
+    Tests that the default dashboard files do not get created when dashboard is disabled.
+    """
+    with _ray_start(include_dashboard=False) as context:
+        session_dir = context["session_dir"]
+        assert not os.path.exists(
+            f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
         )
-        assert os.path.exists(
-            "/tmp/ray/metrics/grafana/provisioning/dashboards/default_grafana_dashboard.json"
+        assert not os.path.exists(
+            f"{session_dir}/metrics/grafana/provisioning/dashboards/default_grafana_dashboard.json"
         )
-        assert os.path.exists(
-            "/tmp/ray/metrics/grafana/provisioning/datasources/default.yml"
+        assert not os.path.exists(
+            f"{session_dir}/metrics/grafana/provisioning/datasources/default.yml"
         )
-        assert os.path.exists("/tmp/ray/metrics/prometheus/prometheus.yml")
-
-        # Check custom-dashboard file exists and was not deleted.
-        assert os.path.exists(
-            "/tmp/ray/metrics/custom/grafana-dashboards/custom-dashboard-for-testing.json"
-        )
-
-    os.remove(
-        "/tmp/ray/metrics/custom/grafana-dashboards/custom-dashboard-for-testing.json"
-    )
+        assert not os.path.exists(f"{session_dir}/metrics/prometheus/prometheus.yml")
 
 
 if __name__ == "__main__":
