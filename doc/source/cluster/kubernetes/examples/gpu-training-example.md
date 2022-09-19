@@ -27,7 +27,7 @@ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container
 # Step2: Deploy a Ray cluster on Kubernetes with KubeRay (operator)
 # Please make sure whether you connect to your Kubernetes cluster on GCP or not.
 
-# Create an operator
+# Create the KubeRay operator
 kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
 
 # Create a Ray cluster
