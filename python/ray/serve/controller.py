@@ -348,7 +348,7 @@ class ServeController:
         replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
         deployer_job_id: Union["ray._raylet.JobID", bytes],
-        driver_deployment: Optional[bool],
+        driver_deployment: Optional[bool] = False,
     ) -> bool:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
