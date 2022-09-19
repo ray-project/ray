@@ -31,8 +31,8 @@ BlockTransform = Union[
     # transform type.
     # Callable[[Block, ...], Iterable[Block]]
     # Callable[[Block, BatchUDF, ...], Iterable[Block]],
-    Callable[[Block], Iterable[Block]],
-    Callable[[Block, Union[BatchUDF, RowUDF]], Iterable[Block]],
+    Callable[[Iterable[Block]], Iterable[Block]],
+    Callable[[Iterable[Block], Union[BatchUDF, RowUDF]], Iterable[Block]],
     Callable[..., Iterable[Block]],
 ]
 
@@ -61,6 +61,7 @@ class TaskPoolStrategy(ComputeStrategy):
         block_list: BlockList,
         clear_input_blocks: bool,
         name: Optional[str] = None,
+        target_block_size: Optional[int] = None,
         fn: Optional[UDF] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -80,34 +81,68 @@ class TaskPoolStrategy(ComputeStrategy):
             return block_list
 
         blocks = block_list.get_blocks_with_metadata()
+        # Bin blocks by target block size.
+        if target_block_size is not None:
+            binned_blocks = []
+            curr_bin = []
+            curr_bin_size = 0
+            for b, m in blocks:
+                num_rows = m.num_rows
+                if num_rows is None:
+                    num_rows = float("inf")
+                if curr_bin_size > 0 and curr_bin_size + num_rows > target_block_size:
+                    binned_blocks.append(curr_bin)
+                    curr_bin = []
+                    curr_bin_size = 0
+                curr_bin.append((b, m))
+                curr_bin_size += num_rows
+            if curr_bin:
+                binned_blocks.append(curr_bin)
+            binned_blocks = [tuple(zip(*block_bin)) for block_bin in binned_blocks]
+        else:
+            binned_blocks = [((b,), (m,)) for b, m in blocks]
+        del blocks
         if name is None:
             name = "map"
         name = name.title()
-        map_bar = ProgressBar(name, total=len(blocks))
+        map_bar = ProgressBar(name, total=len(binned_blocks))
 
         if context.block_splitting_enabled:
             map_block = cached_remote_fn(_map_block_split).options(
                 num_returns="dynamic", **remote_args
             )
             refs = [
-                map_block.remote(b, block_fn, m.input_files, fn, *fn_args, **fn_kwargs)
-                for b, m in blocks
+                map_block.remote(
+                    block_fn,
+                    [f for m in ms for f in m.input_files],
+                    fn,
+                    len(bs),
+                    *(bs + fn_args),
+                    **fn_kwargs,
+                )
+                for bs, ms in binned_blocks
             ]
         else:
             map_block = cached_remote_fn(_map_block_nosplit).options(
                 **dict(remote_args, num_returns=2)
             )
             all_refs = [
-                map_block.remote(b, block_fn, m.input_files, fn, *fn_args, **fn_kwargs)
-                for b, m in blocks
+                map_block.remote(
+                    block_fn,
+                    [f for m in ms for f in m.input_files],
+                    fn,
+                    len(bs),
+                    *(bs + fn_args),
+                    **fn_kwargs,
+                )
+                for bs, ms in binned_blocks
             ]
-            data_refs = [r[0] for r in all_refs]
-            refs = [r[1] for r in all_refs]
+            data_refs, refs = map(list, zip(*all_refs))
 
         in_block_owned_by_consumer = block_list._owned_by_consumer
         # Release input block references.
         if clear_input_blocks:
-            del blocks
+            del binned_blocks
             block_list.clear()
 
         # Common wait for non-data refs.
@@ -203,6 +238,7 @@ class ActorPoolStrategy(ComputeStrategy):
         block_list: BlockList,
         clear_input_blocks: bool,
         name: Optional[str] = None,
+        target_block_size: Optional[int] = None,
         fn: Optional[UDF] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -220,13 +256,34 @@ class ActorPoolStrategy(ComputeStrategy):
             fn_constructor_kwargs = {}
 
         blocks_in = block_list.get_blocks_with_metadata()
+        # Bin blocks by target block size.
+        if target_block_size is not None:
+            binned_blocks = []
+            curr_bin = []
+            curr_bin_size = 0
+            for b, m in blocks_in:
+                num_rows = m.num_rows
+                if num_rows is None:
+                    num_rows = float("inf")
+                if curr_bin_size > 0 and curr_bin_size + num_rows > target_block_size:
+                    binned_blocks.append(curr_bin)
+                    curr_bin = []
+                    curr_bin_size = 0
+                curr_bin.append((b, m))
+                curr_bin_size += num_rows
+            if curr_bin:
+                binned_blocks.append(curr_bin)
+            binned_blocks = [tuple(zip(*block_bin)) for block_bin in binned_blocks]
+        else:
+            binned_blocks = [((b,), (m,)) for b, m in blocks_in]
+        del blocks_in
         owned_by_consumer = block_list._owned_by_consumer
 
         # Early release block references.
         if clear_input_blocks:
             block_list.clear()
 
-        orig_num_blocks = len(blocks_in)
+        orig_num_blocks = len(binned_blocks)
         results = []
         if name is None:
             name = "map"
@@ -254,25 +311,35 @@ class ActorPoolStrategy(ComputeStrategy):
 
             def map_block_split(
                 self,
-                block: Block,
                 input_files: List[str],
-                *fn_args,
+                num_blocks: int,
+                *blocks_and_fn_args,
                 **fn_kwargs,
             ) -> BlockPartition:
                 return _map_block_split(
-                    block, block_fn, input_files, self.fn, *fn_args, **fn_kwargs
+                    block_fn,
+                    input_files,
+                    self.fn,
+                    num_blocks,
+                    *blocks_and_fn_args,
+                    **fn_kwargs,
                 )
 
             @ray.method(num_returns=2)
             def map_block_nosplit(
                 self,
-                block: Block,
                 input_files: List[str],
-                *fn_args,
+                num_blocks: int,
+                *blocks_and_fn_args,
                 **fn_kwargs,
             ) -> Tuple[Block, BlockMetadata]:
                 return _map_block_nosplit(
-                    block, block_fn, input_files, self.fn, *fn_args, **fn_kwargs
+                    block_fn,
+                    input_files,
+                    self.fn,
+                    num_blocks,
+                    *blocks_and_fn_args,
+                    **fn_kwargs,
                 )
 
         if "num_cpus" not in remote_args:
@@ -338,20 +405,20 @@ class ActorPoolStrategy(ComputeStrategy):
 
                 # Schedule a new task.
                 while (
-                    blocks_in
+                    binned_blocks
                     and tasks_in_flight[worker] < self.max_tasks_in_flight_per_actor
                 ):
-                    block, meta = blocks_in.pop()
+                    blocks, metas = binned_blocks.pop()
                     # TODO(swang): Support block splitting for compute="actors".
                     ref, meta_ref = worker.map_block_nosplit.remote(
-                        block,
-                        meta.input_files,
-                        *fn_args,
+                        [f for meta in metas for f in meta.input_files],
+                        len(blocks),
+                        *(blocks + fn_args),
                         **fn_kwargs,
                     )
                     metadata_mapping[ref] = meta_ref
                     tasks[ref] = worker
-                    block_indices[ref] = len(blocks_in)
+                    block_indices[ref] = len(binned_blocks)
                     tasks_in_flight[worker] += 1
 
             map_bar.close()
@@ -398,18 +465,19 @@ def is_task_compute(compute_spec: Union[str, ComputeStrategy]) -> bool:
 
 
 def _map_block_split(
-    block: Block,
     block_fn: BlockTransform,
     input_files: List[str],
     fn: Optional[UDF],
-    *fn_args,
+    num_blocks: int,
+    *blocks_and_fn_args: Union[Block, Any],
     **fn_kwargs,
 ) -> BlockPartition:
     stats = BlockExecStats.builder()
+    blocks, fn_args = blocks_and_fn_args[:num_blocks], blocks_and_fn_args[num_blocks:]
     if fn is not None:
         fn_args = (fn,) + fn_args
     new_metas = []
-    for new_block in block_fn(block, *fn_args, **fn_kwargs):
+    for new_block in block_fn(blocks, *fn_args, **fn_kwargs):
         accessor = BlockAccessor.for_block(new_block)
         new_meta = BlockMetadata(
             num_rows=accessor.num_rows(),
@@ -425,18 +493,19 @@ def _map_block_split(
 
 
 def _map_block_nosplit(
-    block: Block,
     block_fn: BlockTransform,
     input_files: List[str],
     fn: Optional[UDF],
-    *fn_args,
+    num_blocks: int,
+    *blocks_and_fn_args: Union[Block, Any],
     **fn_kwargs,
 ) -> Tuple[Block, BlockMetadata]:
     stats = BlockExecStats.builder()
     builder = DelegatingBlockBuilder()
+    blocks, fn_args = blocks_and_fn_args[:num_blocks], blocks_and_fn_args[num_blocks:]
     if fn is not None:
         fn_args = (fn,) + fn_args
-    for new_block in block_fn(block, *fn_args, **fn_kwargs):
+    for new_block in block_fn(blocks, *fn_args, **fn_kwargs):
         builder.add_block(new_block)
     new_block = builder.build()
     accessor = BlockAccessor.for_block(new_block)

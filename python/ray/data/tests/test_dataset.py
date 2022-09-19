@@ -2409,7 +2409,7 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path):
     ds = ray.data.range(size)
     ds2 = ds.map_batches(lambda df: df + 1, batch_size=17, batch_format="pandas")
     assert ds2._dataset_format() == "pandas"
-    ds_list = ds2.take(limit=size)
+    ds_list = ds2.take_all()
     for i in range(size):
         # The pandas column is "value", and it originally has rows from 0~299.
         # After the map batch, it should have 1~300.
@@ -2459,8 +2459,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         ds.map_batches(Foo, compute="tasks")
 
     with pytest.raises(ValueError):
-        # fn_constructor_args and fn_constructor_kwargs only supported for actor compute
-        # strategy.
+        # fn_constructor_args and fn_constructor_kwargs only supported for actor
+        # compute strategy.
         ds.map_batches(
             lambda x: x,
             compute="tasks",
