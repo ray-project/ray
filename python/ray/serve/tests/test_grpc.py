@@ -8,6 +8,7 @@ from ray.serve.generated import serve_pb2, serve_pb2_grpc
 import grpc
 from ray.cluster_utils import Cluster
 from ray.serve._private.constants import SERVE_NAMESPACE
+from ray._private.test_utils import wait_for_condition
 
 
 pytestmark = pytest.mark.asyncio
@@ -80,7 +81,18 @@ def test_deploy_grpc_driver_to_node(ray_cluster):
     replicas = ray.get(
         serve.context._global_client._controller._all_running_replicas.remote()
     )
-    assert len(replicas) == 2
+    assert len(replicas["gRPCDriver"]) == 1
+
+    cluster.add_node(num_cpus=2)
+
+    wait_for_condition(
+        lambda: len(
+            ray.get(
+                serve.context._global_client._controller._all_running_replicas.remote()
+            )["gRPCDriver"]
+        )
+        == 2
+    )
 
 
 if __name__ == "__main__":

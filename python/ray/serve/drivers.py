@@ -193,6 +193,11 @@ class ServegRPCIngress:
         self.port = port
 
         def register_servicer():
+            """
+            protobuf Schema gRPC should generate bind function
+            (e.g. add_PredictAPIsServiceServicer_to_server) to bind gRPC server
+            and schema interface
+            """
             bind_function_name = "add_{}_to_server"
             module_name = self.__class__.__bases__[1].__module__
             servicer_name = self.__class__.__bases__[1].__name__
