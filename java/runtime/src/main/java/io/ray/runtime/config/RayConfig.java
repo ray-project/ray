@@ -219,10 +219,13 @@ public class RayConfig {
       try {
         envJobConfig = JsonLoader.fromString(serializedEnvJobConfig);
         if (envJobConfig.size() != 2) {
-          throw new RuntimeEnvException("It seems that the field from RAY_JOB_CONFIG_JSON_ENV_VAR has changed, please confirm its impact on the java driver");
+          throw new RuntimeEnvException(
+              "It seems that the field from RAY_JOB_CONFIG_JSON_ENV_VAR has changed, please confirm its impact on the java driver");
         }
         serializedRuntimeEnv = envJobConfig.findValue("runtime_env").toString();
-        metadata = objectMapper.convertValue(envJobConfig.findValue("metadata"), new TypeReference<Map<String, String>>() {});
+        metadata =
+            objectMapper.convertValue(
+                envJobConfig.findValue("metadata"), new TypeReference<Map<String, String>>() {});
       } catch (IOException e) {
         throw new RuntimeEnvException("Failed to get job config field from env.", e);
       }
@@ -264,7 +267,7 @@ public class RayConfig {
         runtimeEnvConfig.setEagerInstall(config.getBoolean(eagerInstallPath));
       }
 
-      if (serializedRuntimeEnv == null){
+      if (serializedRuntimeEnv == null) {
         runtimeEnvImpl = new RuntimeEnvImpl();
         if (!envVars.isEmpty()) {
           runtimeEnvImpl.set(RuntimeEnvName.ENV_VARS, envVars);

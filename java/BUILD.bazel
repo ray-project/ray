@@ -386,3 +386,15 @@ genrule(
     local = 1,
     tags = ["no-cache"],
 )
+
+py_test(
+    name = "test_submit_java_job",
+    size = "medium",
+    srcs = ["python_test/test_submit_java_job.py"],
+    data = [
+        "all_tests_shaded.jar",
+    ],
+    env = {
+        "SIMPLE_JOB_JAR_PATH": "$(location all_tests_shaded.jar)",
+    },
+)

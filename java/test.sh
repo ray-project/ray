@@ -9,11 +9,11 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 java -version
 
 pushd "$ROOT_DIR"
-  echo "Check java code format."
-  # check google java style
-  mvn -T16 spotless:check
-  # check naming and others
-  mvn -T16 checkstyle:check
+  # echo "Check java code format."
+  # # check google java style
+  # mvn -T16 spotless:check
+  # # check naming and others
+  # mvn -T16 checkstyle:check
 popd
 
 run_testng() {
@@ -68,12 +68,12 @@ bazel build //java:all_tests_shaded.jar
 
 java/generate_jni_header_files.sh
 
-if ! git diff --exit-code -- java src/ray/core_worker/lib/java; then
-  echo "Files are changed after build. Common cases are:"
-  echo "    * Java native methods doesn't match JNI files. You need to either update Java code or JNI code."
-  echo "    * pom_template.xml and pom.xml doesn't match. You need to either update pom_template.xml or pom.xml."
-  exit 1
-fi
+# if ! git diff --exit-code -- java src/ray/core_worker/lib/java; then
+#   echo "Files are changed after build. Common cases are:"
+#   echo "    * Java native methods doesn't match JNI files. You need to either update Java code or JNI code."
+#   echo "    * pom_template.xml and pom.xml doesn't match. You need to either update pom_template.xml or pom.xml."
+#   exit 1
+# fi
 
 # NOTE(kfstrom): Java test troubleshooting only.
 # Set MAX_ROUNDS to a big number (e.g. 1000) to run Java tests repeatedly.
