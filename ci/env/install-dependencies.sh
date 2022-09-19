@@ -297,7 +297,7 @@ install_pip_packages() {
     pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
   fi
 
-  if { [ -n "${PYTHON-}" ] && [ "${MINIMAL_INSTALL-}" != 1 ]; } || [ "${DL-}" = "1" ]; then
+  if { [ -n "${PYTHON-}" ] || [ "${DL-}" = "1" ]; } && [ "${MINIMAL_INSTALL-}" != 1 ]; then
     # Remove this entire section once Serve dependencies are fixed.
     if { [ -z "${BUILDKITE-}" ] || [ "${DL-}" = "1" ]; } && [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
       # We want to install the CPU version only.
