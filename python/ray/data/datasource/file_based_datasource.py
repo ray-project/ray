@@ -523,8 +523,12 @@ def _add_partitions(
 def _add_partitions_to_table(
     table: "pyarrow.Table", partitions: Dict[str, Any]
 ) -> "pyarrow.Table":
-    if any(field in table.column_names for field in partitions):
-        raise ValueError("TODO")
+    for field in table.column_names:
+        if field in partitions:
+            raise RuntimeError(
+                f"{field} is a partition key, but it's also the name of a column in the"
+                "read dataset."
+            )
 
     num_columns = table.num_columns
     for i, (field, value) in enumerate(partitions.items()):
@@ -539,8 +543,12 @@ def _add_partitions_to_dataframe(
 ) -> "pd.DataFrame":
     import pandas as pd
 
-    if any(field in df.columns for field in partitions):
-        raise ValueError("TODO")
+    for field in df.columns:
+        if field in partitions:
+            raise RuntimeError(
+                f"{field} is a partition key, but it's also the name of a column in the"
+                "read dataset."
+            )
 
     partitions = pd.DataFrame(
         {key: [value] * len(df) for key, value in partitions.items()}

@@ -634,7 +634,9 @@ def read_json(
             By default, this filters out any file paths whose file extension does not
             match "*.json*".
         arrow_json_args: Other json read options to pass to pyarrow.
-        partitioning: TODO
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. By default, this function parses
+            `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -761,7 +763,7 @@ def read_text(
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[PathPartitionFilter] = None,
-    partitioning: Partitioning = Partitioning("hive"),
+    partitioning: Partitioning = None,
 ) -> Dataset[str]:
     """Create a dataset from lines stored in text files.
 
@@ -772,15 +774,6 @@ def read_text(
 
         >>> # Read multiple local files.
         >>> ray.data.read_text(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
-
-        By default, ``read_json`` parses
-        `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_
-        from file paths. If your data adheres to a different partitioning scheme, set
-        the ``partitioning`` parameter.
-
-        >>> ds = ray.data.read_json("example://year=2022/month=09/sales.json")  # doctest: + SKIP
-        >>> ds.take(1)  # doctest: + SKIP
-        [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}
 
     Args:
         paths: A single file path or a list of file paths (or directories).
@@ -801,7 +794,8 @@ def read_text(
             By default, this does not filter out any files.
             If wishing to filter out all file paths except those whose file extension
             matches e.g. "*.txt*", a ``FileXtensionFilter("txt")`` can be provided.
-        partitioning: TODO
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
 
     Returns:
         Dataset holding lines of text read from the specified paths.
@@ -832,7 +826,7 @@ def read_numpy(
     partition_filter: Optional[
         PathPartitionFilter
     ] = NumpyDatasource.file_extension_filter(),
-    partitioning: Partitioning = Partitioning("hive"),
+    partitioning: Partitioning = None,
     **numpy_load_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from numpy files.
@@ -864,7 +858,9 @@ def read_numpy(
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
             match "*.npy*".
-        partitioning: TODO
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
+
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """
@@ -892,7 +888,7 @@ def read_binary_files(
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[PathPartitionFilter] = None,
-    partitioning: Partitioning = Partitioning("hive"),
+    partitioning: Partitioning = None,
 ) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 
@@ -921,7 +917,8 @@ def read_binary_files(
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
             By default, this does not filter out any files.
-        partitioning: TODO
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
