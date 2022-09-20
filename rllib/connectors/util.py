@@ -78,14 +78,14 @@ def create_connectors_for_policy(policy: "Policy", config: TrainerConfigDict):
     """
     ctx: ConnectorContext = ConnectorContext.from_policy(policy)
 
-    if policy.agent_connectors is not None:
+    if policy.agent_connectors is None:
         policy.agent_connectors = get_agent_connectors_from_config(ctx, config)
-        logger.info("Using agent connector:")
-        logger.info(policy.agent_connectors.__str__(indentation=4))
-    if policy.action_connectors is not None:
+    if policy.action_connectors is None:
         policy.action_connectors = get_action_connectors_from_config(ctx, config)
-        logger.info("Using action connector:")
-        logger.info(policy.action_connectors.__str__(indentation=4))
+
+    logger.info("Using connectors:")
+    logger.info(policy.agent_connectors.__str__(indentation=4))
+    logger.info(policy.action_connectors.__str__(indentation=4))
 
 
 @PublicAPI(stability="alpha")
