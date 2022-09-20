@@ -159,7 +159,7 @@ class TestAgentConnector(unittest.TestCase):
         self.assertEqual(with_buffered[0].data[SampleBatch.ACTIONS], [1, 2, 3])
 
 
-class TestViewRequirementConnector(unittest.TestCase):
+class TestViewRequirementAgentConnector(unittest.TestCase):
     def test_vr_connector_respects_training_or_inference_vr_flags(self):
         """Tests that the connector respects the flags within view_requirements (i.e.
         used_for_training, used_for_compute_actions).
@@ -197,6 +197,7 @@ class TestViewRequirementConnector(unittest.TestCase):
         sample_batch_expected = SampleBatch(
             {
                 "both": obs_arr[None],
+                # Output in training model as well.
                 "only_inference": obs_arr[None],
                 "seq_lens": np.array([1]),
             }
@@ -207,20 +208,13 @@ class TestViewRequirementConnector(unittest.TestCase):
         processed = c([data])
 
         raw_dict = processed[0].data.raw_dict
-        raw_dict_expected = agent_data
         sample_batch = processed[0].data.sample_batch
-
-        print("-" * 30)
-        print("for action:")
-        print(sample_batch)
-        print("for training:")
-        print(raw_dict)
 
         check(raw_dict, agent_data)
         check(sample_batch, sample_batch_expected)
 
     def test_vr_connector_shift_by_one(self):
-        """Test that the ViewRequirementConnector can handle shift by one correctly and
+        """Test that the ViewRequirementAgentConnector can handle shift by one correctly and
         can ignore future referencing view_requirements to respect causality"""
         view_rq_dict = {
             "state": ViewRequirement("obs"),
@@ -256,7 +250,7 @@ class TestViewRequirementConnector(unittest.TestCase):
                 check(sample_batch["prev_state"], obs_list[-2][None])
 
     def test_vr_connector_causal_slice(self):
-        """Test that the ViewRequirementConnector can handle slice shifts correctly."""
+        """Test that the ViewRequirementAgentConnector can handle slice shifts correctly."""
         view_rq_dict = {
             "state": ViewRequirement("obs"),
             # shift array should be [-2, -1, 0]
@@ -312,7 +306,7 @@ class TestViewRequirementConnector(unittest.TestCase):
             )
 
     def test_vr_connector_with_multiple_buffers(self):
-        """Test that the ViewRequirementConnector can handle slice shifts correctly
+        """Test that the ViewRequirementAgentConnector can handle slice shifts correctly
         when it has multiple buffers to shift."""
         context_len = 5
         # This view requirement simulates the use-case of a decision transformer

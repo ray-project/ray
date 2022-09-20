@@ -95,7 +95,7 @@ class Connector(abc.ABC):
 
     def __init__(self, ctx: ConnectorContext):
         # Default is training mode.
-        self.in_training()
+        self._is_training = True
 
     def in_training(self):
         self._is_training = True

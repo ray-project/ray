@@ -192,7 +192,7 @@ class ActionConnectorDataType:
     Args:
         env_id: ID of the environment.
         agent_id: ID to help identify the agent from which the data is received.
-        input: Input data that was passed into the policy.
+        input_dict: Input data that was passed into the policy.
             Sometimes output must be adapted based on the input, for example
             action masking. So the entire input data structure is provided here.
         output: An object of PolicyOutputType. It is is composed of the

@@ -119,7 +119,7 @@ The output from RLlib's default agent connector pipeline is in ``AgentConnectors
    :start-after: __sphinx_doc_begin_agent_connector_output__
    :end-before: __sphinx_doc_end_agent_connector_output__
 
-Note that in addition to the processed sample batch which can be used for running the policy
+Note that in addition to the processed sample batch, which can be used for running the policy
 forward pass, ``AgentConnectorsOutput`` also provides the original raw input dict, because it
 sometimes contains data required for downstream processing (e.g. action masks).
 

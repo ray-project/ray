@@ -27,7 +27,7 @@ class ViewRequirementAgentConnector(AgentConnector):
         "raw_dict": {"obs": ...}
         "sample_batch": SampleBatch
     }
-    raw_dict which contains raw data for the latest time slice,
+    raw_dict, which contains raw data for the latest time slice,
     can be used to construct a complete episode by Sampler for training purpose.
     The "for_action" SampleBatch can be used to directly call the policy.
     """
@@ -87,7 +87,7 @@ class ViewRequirementAgentConnector(AgentConnector):
         )
 
         vr = self._view_requirements
-        assert vr, "ViewRequirements required by ViewRequirementConnector"
+        assert vr, "ViewRequirements required by ViewRequirementAgentConnector"
 
         # Note(jungong) : we need to keep the entire input dict here.
         # A column may be used by postprocessing (GAE) even if its
