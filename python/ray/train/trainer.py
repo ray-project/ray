@@ -5,9 +5,9 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
-from python.ray.air import session
 
 import ray
+from ray.air import session
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import CheckpointConfig
