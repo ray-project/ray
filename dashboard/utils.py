@@ -515,7 +515,6 @@ def async_loop_forever(interval_seconds, cancellable=False):
     return _wrapper
 
 
-# ARCHIT reuse this function
 def ray_address_to_api_server_url(address: Optional[str]) -> str:
     """Parse a ray cluster bootstrap address into API server URL.
 
