@@ -298,6 +298,21 @@ def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
 
 
 @PublicAPI
+def l2_loss(x: TensorType) -> TensorType:
+    """Computes half the L2 norm over a tensor's values without the sqrt.
+
+    output = 0.5 * sum(x ** 2)
+
+    Args:
+        x: The input tensor.
+
+    Returns:
+        0.5 times the L2 norm over the given tensor's values (w/o sqrt).
+    """
+    return 0.5 * tf.reduce_sum(tf.pow(x, 2.0))
+
+
+@PublicAPI
 def make_tf_callable(
     session_or_none: Optional["tf1.Session"], dynamic_shape: bool = False
 ) -> Callable:
