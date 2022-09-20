@@ -9,6 +9,14 @@ import torch.nn as nn
 
 from models import SimpleCNN
 
+def prepare_imagenet(imagenet_path, imgsize = 256):
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Resize((imgsize, imgsize)),
+    ])
+    trainset = torchvision.datasets.ImageFolder(root=imagenet_path, transform=transform)
+    return trainset
+
 def download_dataset(imgsize):
     transform = transforms.Compose([
         transforms.ToTensor(),
@@ -18,37 +26,8 @@ def download_dataset(imgsize):
     testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
     return trainset, testset
 
-def train_epoch(net, criterion, optimizer, trainloader, pinned):
-    net.train()
-    for i,data in enumerate(trainloader):
-        inputs, labels = data[0].to(device, non_blocking=pinned), data[1].to(device, non_blocking=pinned)
-        optimizer.zero_grad()
-        
-        out = net(inputs)
-        loss = criterion(out, labels)
-        loss.backward()
-        optimizer.step()
-
-def test(net, testloader, pinned):
-    net.eval()
-    total = 0
-    correct = 0
-    with torch.no_grad():
-        for data in testloader:
-            images, labels = data[0].to(device, non_blocking=pinned), data[1].to(device, non_blocking=pinned)
-            outputs = net(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-    return correct / total
-
 def parse_args():
     parser = argparse.ArgumentParser(description='Pytorch CUDA benchmark. Loads CIFAR10 and runs 3 training epochs.')
-    parser.add_argument(
-        '--download-only',
-        action='store_true',
-        required=False
-    )
     parser.add_argument(
         '--pin',
         help='Pins memory. Default is false.',
@@ -69,14 +48,50 @@ def parse_args():
         default=32,
         required=False,
     )
+    parser.add_argument(
+        '--dataset',
+        help='Which dataset to use. Default is CIFAR10.',
+        choices=['cifar10', 'imagenet'],
+        default='cifar10',
+        required=False
+    )
+    parser.add_argument(
+        '--imagenetpath',
+        help='Root path to imagenet. Only applies if the selected dataset is imagenet.',
+        default='/mnt/cluster_storage/aviv/testnet/files',
+        required=False
+    )
     args = parser.parse_args()
     return args
 
+def train_epoch(net, criterion, optimizer, trainloader, pinned):
+    net.train()
+    for i,data in enumerate(trainloader):
+        inputs, labels = data[0].to(device, non_blocking=pinned), data[1].to(device, non_blocking=pinned)
+        optimizer.zero_grad()
+        
+        out = net(inputs)
+        loss = criterion(out, labels)
+        loss.backward()
+        optimizer.step()
+
+def test(net, testloader, pinned):
+    net.eval()
+    total = torch.zeros(1, dtype=torch.int).to(device, non_blocking=pinned)
+    correct = torch.zeros(1, dtype=torch.int).to(device, non_blocking=pinned)
+    with torch.no_grad():
+        for data in testloader:
+            images, labels = data[0].to(device, non_blocking=pinned), data[1].to(device, non_blocking=pinned)
+            outputs = net(images)
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum()
+    return correct.item() / total.item()
 
 if __name__ == '__main__':
     NUM_WORKERS = 8
     BATCH_SIZE = 100
-    EPOCHS = 1
+    EPOCHS = 5
 
     if not torch.cuda.is_available():
         raise Exception('No GPU detected, cannot perform benchmark')
@@ -84,24 +99,27 @@ if __name__ == '__main__':
     print('Using device:', device)
 
     args = parse_args()
-    trainset, testset = download_dataset(args.size)
-    print('Dataset Downloaded!')
-    if args.download_only:
-        exit()
-
-    start_time = time.time()
+    testloader = None
+    if args.dataset == 'imagenet':
+        trainset = prepare_imagenet(args.imagenetpath)
+    else:
+        trainset, testset = download_dataset(args.size)
+        testloader = torch.utils.data.DataLoader(testset, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=args.pin)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=args.pin)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=args.pin)
     print('Dataset Loaded!')
 
-    print(f'Model: {args.model}, Pinned: {args.pin}, Size: {args.size}')
-    net = torchvision.models.vgg11() if args.model == 'large' else SimpleCNN(args.size)
+    start_time = time.time()
+
+    size = 256 if args.dataset == "imagenet" else args.size
+    print(f'Model: {args.model}, Dataset: {args.dataset}, Pinned: {args.pin}, Size: {size}')
+    net = torchvision.models.vgg11() if args.model == 'large' else SimpleCNN(size)
     net.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
     for epoch in range(EPOCHS):
         train_epoch(net, criterion, optimizer, trainloader, args.pin)
-        accuracy = test(net, testloader, args.pin)
-        print(f"Accuracy after epoch {epoch + 1}: {accuracy*100}%")
+        if testloader:
+            accuracy = test(net, testloader, args.pin)
+            print(f"Accuracy after epoch {epoch + 1}: {accuracy*100}%")
     end_time = time.time()
     print(f'total time: {end_time - start_time}s')
