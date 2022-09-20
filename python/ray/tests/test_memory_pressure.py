@@ -160,6 +160,50 @@ def test_memory_pressure_kill_task(ray_with_memory_monitor):
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
+def test_memory_pressure_kill_task_t(ray_with_memory_monitor):
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.6)
+    no_retry.remote(allocate_bytes=bytes_to_alloc, allocate_interval_s=0, post_allocate_sleep_s=1000)
+    
+    from ray._private.internal_api import memory_summary
+
+    # node_table = ray._private.state.GlobalState().node_table()
+    # print(node_table)
+    # print(node_table[0])
+    
+    raylet_port = ray._private.worker._global_node._ray_params.node_manager_port
+    raylet_address = ray._private.worker._global_node.raylet_ip_address
+
+    import grpc
+    from ray.core.generated import node_manager_pb2_grpc, node_manager_pb2
+
+    # Kill a raylet gracefully.
+    def kill_raylet(ip, port, graceful=True):
+        raylet_address = f"{ip}:{port}"
+        channel = grpc.insecure_channel(raylet_address)
+        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+        print(f"Sending a shutdown request to {ip}:{port}")
+        stub.ShutdownRaylet(
+            node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
+        )
+        
+    kill_raylet(raylet_address, raylet_port, graceful=False)
+
+    time.sleep(1000)
+
+    try:
+        ray.get()
+    except ray.exceptions.OutOfMemoryError as error:
+        message = str(error)
+        assert "no_retry()" in message
+        assert "threshold 0.7" in message
+
+
+    
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
 def test_memory_pressure_kill_newest_worker(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold_fraction - 0.1
