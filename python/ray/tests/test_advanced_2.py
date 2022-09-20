@@ -16,10 +16,15 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.parametrize("cuda_visible_devices", ["", "4,5,6"])
 def test_gpu_ids(shutdown_only, cuda_visible_devices, monkeypatch):
-    if cuda_visible_devices:
-        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", cuda_visible_devices)
-
     num_gpus = 3
+
+    if cuda_visible_devices:
+        device_ids = [int(i) for i in cuda_visible_devices.split(",")]
+        assert len(device_ids) == num_gpus
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", cuda_visible_devices)
+    else:
+        device_ids = list(range(num_gpus))
+
     ray.init(num_cpus=num_gpus, num_gpus=num_gpus)
 
     def get_gpu_ids(num_gpus_per_worker):
@@ -29,7 +34,7 @@ def test_gpu_ids(shutdown_only, cuda_visible_devices, monkeypatch):
             [str(i) for i in gpu_ids]  # noqa
         )
         for gpu_id in gpu_ids:
-            assert gpu_id in range(num_gpus)
+            assert gpu_id in device_ids
         return gpu_ids
 
     f0 = ray.remote(num_gpus=0)(lambda: get_gpu_ids(0))
@@ -67,6 +72,8 @@ def test_gpu_ids(shutdown_only, cuda_visible_devices, monkeypatch):
             assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
                 [str(i) for i in gpu_ids]  # noqa
             )
+            for gpu_id in gpu_ids:
+                assert gpu_id in device_ids
             # Set self.x to make sure that we got here.
             self.x = 1
 
@@ -76,6 +83,8 @@ def test_gpu_ids(shutdown_only, cuda_visible_devices, monkeypatch):
             assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
                 [str(i) for i in gpu_ids]
             )
+            for gpu_id in gpu_ids:
+                assert gpu_id in device_ids
             return self.x
 
     @ray.remote(num_gpus=1)
@@ -86,6 +95,8 @@ def test_gpu_ids(shutdown_only, cuda_visible_devices, monkeypatch):
             assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
                 [str(i) for i in gpu_ids]
             )
+            for gpu_id in gpu_ids:
+                assert gpu_id in device_ids
             # Set self.x to make sure that we got here.
             self.x = 1
 
@@ -95,6 +106,8 @@ def test_gpu_ids(shutdown_only, cuda_visible_devices, monkeypatch):
             assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
                 [str(i) for i in gpu_ids]
             )
+            for gpu_id in gpu_ids:
+                assert gpu_id in device_ids
             return self.x
 
     a0 = Actor0.remote()
