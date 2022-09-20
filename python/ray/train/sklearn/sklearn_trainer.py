@@ -18,7 +18,6 @@ from sklearn.model_selection._validation import _check_multimetric_scoring, _sco
 
 import ray.cloudpickle as cpickle
 from ray import tune
-from ray.air import session
 from ray.air._internal.checkpointing import (
     save_preprocessor_to_dir,
 )
@@ -370,7 +369,7 @@ class SklearnTrainer(BaseTrainer):
                 save_preprocessor_to_dir(self.preprocessor, checkpoint_dir)
 
     def _report(self, results: dict) -> None:
-        session.report(results)
+        tune.report(**results)
 
     def training_loop(self) -> None:
         register_ray()

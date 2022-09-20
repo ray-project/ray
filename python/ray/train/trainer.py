@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
 
 import ray
-from ray.air import session
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import CheckpointConfig
@@ -893,7 +892,7 @@ def _create_tune_trainable(
         for results in iterator:
             first_worker_results = results[0]
 
-            session.report(first_worker_results)
+            tune.report(**first_worker_results)
 
         trainer.shutdown()
 

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Un
 from tabulate import tabulate
 
 import ray
+from ray import tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
@@ -314,7 +315,7 @@ class DataParallelTrainer(BaseTrainer):
         for results in training_iterator:
             # TODO(ml-team): add ability to report results from multiple workers.
             first_worker_results = results[0]
-            session.report(first_worker_results)
+            tune.report(**first_worker_results)
 
     def training_loop(self) -> None:
         scaling_config = self._validate_scaling_config(self.scaling_config)

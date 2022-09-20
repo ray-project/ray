@@ -3,7 +3,6 @@ import warnings
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
 
 from ray import tune
-from ray.air import session
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
@@ -216,7 +215,7 @@ class GBDTTrainer(BaseTrainer):
 
         with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
             self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
-        session.report(result_dict)
+        tune.report(**result_dict)
 
     def training_loop(self) -> None:
         config = self.train_kwargs.copy()
