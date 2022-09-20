@@ -70,7 +70,7 @@ If you are new to Kubernetes and you are planning to deploy Ray workloads on a m
 Kubernetes service, we recommend taking a look at this {ref}`introductory guide <kuberay-k8s-setup>` first.
 
 ```shell
-# Step 1: Setup a Kubernetes cluster on GCP.
+# Step 1: Set up a Kubernetes cluster on GCP.
 # e2-standard-8 => 8 vCPU; 32 GB RAM
 gcloud container clusters create gpu-cluster-1 \
     --num-nodes=1 --min-nodes 0 --max-nodes 1 --enable-autoscaling \
