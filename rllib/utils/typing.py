@@ -201,10 +201,11 @@ class ActionConnectorDataType:
     """
 
     def __init__(
-        self, env_id: str,
+        self,
+        env_id: str,
         agent_id: str,
         input_dict: TensorStructType,
-        output: PolicyOutputType
+        output: PolicyOutputType,
     ):
         self.env_id = env_id
         self.agent_id = agent_id

@@ -316,6 +316,7 @@ class ActionConnector(Connector):
 @PublicAPI(stability="alpha")
 class ConnectorPipeline(abc.ABC):
     """Utility class for quick manipulation of a connector pipeline."""
+
     def __init__(self, ctx: ConnectorContext, connectors: List[Connector]):
         self.connectors = connectors
 
