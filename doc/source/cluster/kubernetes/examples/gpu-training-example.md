@@ -15,7 +15,7 @@ The following script summarizes the end-to-end workflow for GPU training. These 
 - Step 3: Run the PyTorch image training benchmark. 
 
 ```shell
-# Step 1: Setup a Kubernetes cluster on GCP
+# Step 1: Set up a Kubernetes cluster on GCP
 # Create a node-pool for a CPU-only head node
 # e2-standard-8 => 8 vCPU; 32 GB RAM
 gcloud container clusters create gpu-cluster-1 \
