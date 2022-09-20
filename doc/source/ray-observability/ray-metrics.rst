@@ -41,29 +41,57 @@ First, download Prometheus. `Download Link <https://prometheus.io/download/>`_
     tar xvfz prometheus-*.tar.gz
     cd prometheus-*
 
-Let's modify Prometheus's config file to scrape metrics from Prometheus endpoints.
+With the `ray[default]` installation, Ray provides a prometheus config that works out of the box. After running ray, it can be found at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
 
 .. code-block:: yaml
 
-    # prometheus.yml
     global:
-      scrape_interval:     5s
-      evaluation_interval: 5s
+      scrape_interval: 15s
+      evaluation_interval: 15s
 
     scrape_configs:
-      - job_name: prometheus
-        static_configs:
-        - targets: ['localhost:8080'] # This must be same as metrics_export_port
+    # Scrape from each ray node as defined in the service_discovery.json provided by ray.
+    - job_name: 'ray'
+      file_sd_configs:
+      - files:
+        - '/tmp/ray/prom_metrics_service_discovery.json'
+
 
 Next, let's start Prometheus.
 
 .. code-block:: shell
 
-    ./prometheus --config.file=./prometheus.yml
+    ./prometheus --config.file=/tmp/ray/session_latest/metrics/prometheus/prometheus.yml
 
 Now, you can access Ray metrics from the default Prometheus url, `http://localhost:9090`.
 
 See :ref:`here <multi-node-metrics>` for more information on how to set up Prometheus on a Ray Cluster.
+
+.. _grafana:
+
+Grafana
+-------
+Grafana is a tool that supports more advanced visualizations of prometheus metrics and
+allows you to create custom dashboards with your favorite metrics. Ray exports some default
+configurations which includes a default dashboard showing some of the most valuable metrics
+for debugging ray applications.
+
+First, download Grafana. `Download Link <https://grafana.com/grafana/download>`
+
+Then run grafana using the built in configuration found in `/tmp/ray/metrics/grafana` folder.
+
+.. code-block:: shell
+
+    ./bin/grafana-server --config /tmp/ray/session_latest/metrics/grafana/grafana.ini web
+
+Now, you can access grafana using the default grafana url, `http://localhost:3000`.
+If this is your first time, you can login with the username: `admin` and password `admin`.
+
+You can then see the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard.
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/default_grafana_dashboard.png
+    :align: center
+
 
 .. _application-level-metrics:
 

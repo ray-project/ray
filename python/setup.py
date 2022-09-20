@@ -195,6 +195,13 @@ ray_files += [
     for filename in filenames
 ]
 
+# Dashboard metrics files.
+ray_files += [
+    os.path.join(dirpath, filename)
+    for dirpath, dirnames, filenames in os.walk("ray/dashboard/modules/metrics/export")
+    for filename in filenames
+]
+
 # html templates for notebook integration
 ray_files += [
     p.as_posix() for p in pathlib.Path("ray/widgets/templates/").glob("*.html.j2")
