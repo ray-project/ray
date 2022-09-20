@@ -88,7 +88,7 @@ gcloud container node-pools create gpu-node-pool \
 kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/cos/daemonset-preloaded.yaml
 ```
 
-In addition, it is not necessary to run this example with a cluster having that much RAM (>30GB per node in the above commands). Feel free to update
+It is not necessary to run this example with a cluster having that much RAM (>30GB per node in the above commands). Feel free to update
 the option `machine-type` and the resource requirements in `ray-cluster.gpu.yaml`.
 
 First, we create a Kubernetes cluster `gpu-cluster-1` with one CPU node (`e2-standard-8`: 8 vCPU; 32 GB RAM). Second,
