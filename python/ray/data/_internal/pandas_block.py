@@ -153,13 +153,13 @@ class PandasBlockAccessor(TableBlockAccessor):
         table.reset_index(drop=True, inplace=True)
         return table
 
-    def select(self, keys: List[KeyFn]) -> "pandas.DataFrame":
-        if not all(isinstance(key, str) for key in keys):
+    def select(self, columns: List[KeyFn]) -> "pandas.DataFrame":
+        if not all(isinstance(col, str) for col in columns):
             raise ValueError(
-                "keys must be a list of column name strings when aggregating on Pandas "
-                f"blocks, but got: {keys}."
+                "Columns must be a list of column name strings when aggregating on "
+                f"Pandas blocks, but got: {columns}."
             )
-        return self._table[keys]
+        return self._table[columns]
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pandas.DataFrame":
         table = self._table.sample(frac=1, random_state=random_seed)

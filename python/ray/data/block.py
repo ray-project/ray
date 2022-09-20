@@ -276,8 +276,8 @@ class BlockAccessor(Generic[T]):
         """
         raise NotImplementedError
 
-    def select(self, keys: List[KeyFn]) -> Block:
-        """Return a new block containing the provided keys."""
+    def select(self, columns: List[KeyFn]) -> Block:
+        """Return a new block containing the provided columns."""
         raise NotImplementedError
 
     def random_shuffle(self, random_seed: Optional[int]) -> Block:

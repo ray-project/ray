@@ -266,13 +266,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
         """
         return transform_pyarrow.take_table(self._table, indices)
 
-    def select(self, keys: List[KeyFn]) -> "pyarrow.Table":
-        if not all(isinstance(key, str) for key in keys):
+    def select(self, columns: List[KeyFn]) -> "pyarrow.Table":
+        if not all(isinstance(col, str) for col in columns):
             raise ValueError(
-                "keys must be a list of column name strings when aggregating on Arrow "
-                f"blocks, but got: {keys}."
+                "Columns must be a list of column name strings when aggregating on "
+                f"Arrow blocks, but got: {columns}."
             )
-        return self._table.select(keys)
+        return self._table.select(columns)
 
     def _sample(self, n_samples: int, key: "SortKeyT") -> "pyarrow.Table":
         indices = random.sample(range(self._table.num_rows), n_samples)
