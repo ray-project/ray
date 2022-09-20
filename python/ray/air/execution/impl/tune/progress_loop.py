@@ -46,9 +46,7 @@ def tune_run(
     trainable, num_samples=1, param_space=None, search_alg=None, resource_manager=None
 ):
     search_alg = search_alg or BasicVariantGenerator(max_concurrent=4)
-    resource_manager = resource_manager or FixedResourceManager(
-        total_resources={"CPU": 4}
-    )
+    resource_manager = resource_manager or FixedResourceManager()
 
     tune_controller = TuneController(
         trainable_cls=wrap_function(trainable),
