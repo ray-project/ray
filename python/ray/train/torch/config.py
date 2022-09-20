@@ -56,9 +56,6 @@ def _set_nccl_network_interface() -> str:
     """Set the appropriate NCCL network interface to use."""
 
     if "NCCL_SOCKET_IFNAME" not in os.environ:
-        # Use ethernet when possible.
-        # NCCL_SOCKET_IFNAME does a prefix match so "ens3" or "ens5" will match with
-        # "en".
         os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_NCCL_SOCKET_IFNAME
 
 
