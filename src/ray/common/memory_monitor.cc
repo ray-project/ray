@@ -124,11 +124,10 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
     }
     if (used_bytes >= total_bytes) {
       RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-              << " Used memory is less than or equal to total memory used. This can "
-                 "happen if the memory usage if memory limit is set and the container is "
-                 "using a lot of memory. Used "
-              << used_bytes <
-          ", total " << total_bytes;
+          << " Used memory is less than or equal to total memory used. This can "
+             "happen if the memory usage if memory limit is set and the container is "
+             "using a lot of memory. Used "
+          << used_bytes << ", total " << total_bytes;
     }
   }
 
