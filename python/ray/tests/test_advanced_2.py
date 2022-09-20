@@ -19,6 +19,8 @@ def test_gpu_ids(shutdown_only, cuda_visible_devices, monkeypatch):
     num_gpus = 3
 
     if cuda_visible_devices:
+        # Test if gpu_ids are correct even when CUDA_VISIBLE_DEVICES env var is set on
+        # the driver.
         device_ids = [int(i) for i in cuda_visible_devices.split(",")]
         assert len(device_ids) == num_gpus
         monkeypatch.setenv("CUDA_VISIBLE_DEVICES", cuda_visible_devices)
