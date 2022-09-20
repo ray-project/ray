@@ -761,7 +761,7 @@ def test_user_error(ray_start_2_cpus):
         trainer.run(fail_train_1)
     assert "NotImplementedError" in str(exc.value)
 
-    #trainer.shutdown()
+    # trainer.shutdown()
 
     def fail_train_2():
         for _ in range(2):
@@ -1012,25 +1012,6 @@ def test_multiple_run(ray_start_2_cpus):
 
     output_2 = trainer.run(train_2)
     assert output_2 == [2, 2]
-
-
-def test_run_after_user_error(ray_start_2_cpus):
-    config = TestConfig()
-
-    def fail_train():
-        raise NotImplementedError
-
-    trainer = Trainer(config, num_workers=2)
-    trainer.start()
-    with pytest.raises(StartTraceback) as exc:
-        trainer.run(fail_train)
-    assert "NotImplementedError" in str(exc.value)
-
-    def train_func():
-        return 1
-
-    output = trainer.run(train_func)
-    assert output == [1, 1]
 
 
 def check_dataset_output(num_data, num_epochs, data_all_epochs):

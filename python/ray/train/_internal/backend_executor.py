@@ -459,7 +459,6 @@ class BackendExecutor:
         results = self.get_with_failure_handling(futures)
         return results
 
-
     def get_with_failure_handling(self, remote_values):
         """Gets the remote values while handling for worker failures.
 
@@ -476,6 +475,7 @@ class BackendExecutor:
         Returns:
             The resolved objects represented by the passed in ObjectRefs.
         """
+        # import pdb; pdb.set_trace()
         success, exception = check_for_failure(remote_values)
         if success:
             return ray.get(remote_values)

@@ -10,7 +10,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import CheckpointConfig
-from ray.air._internal.util import StartTraceback, skip_exceptions
+from ray.air._internal.util import StartTraceback
 from ray.train._internal.backend_executor import (
     BackendExecutor,
     InactiveWorkerGroupError,
@@ -766,14 +766,14 @@ class TrainingIterator:
                 raise StopIteration
             else:
                 return next_results
-        except StartTraceback as e:
+        except StartTraceback:
             # If this is a StartTraceback, then this is a user error.
             # We raise it directly
             try:
                 self._backend_executor.shutdown()
                 self._finished_training = True
             except Exception:
-              pass
+                pass
             raise
 
     def _fetch_next_result(self) -> Optional[List[Dict]]:

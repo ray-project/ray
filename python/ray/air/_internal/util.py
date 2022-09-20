@@ -71,7 +71,7 @@ class RunnerThread(threading.Thread):
                     "signal to terminate the thread without error."
                 )
             )
-        except Exception as e:
+        except BaseException as e:
             try:
                 # report the error but avoid indefinite blocking which would
                 # prevent the exception from being propagated in the unlikely
