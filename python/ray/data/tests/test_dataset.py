@@ -1735,8 +1735,12 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert all(isinstance(col, np.ndarray) for col in batch.values())
         pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
 
-    # Native format.
+    # Native format (deprecated).
     for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="native"), dfs):
+        assert BlockAccessor.for_block(batch).to_pandas().equals(df)
+
+    # Default format.
+    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="default"), dfs):
         assert BlockAccessor.for_block(batch).to_pandas().equals(df)
 
     # Batch size.
@@ -4906,6 +4910,18 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
         compute_strategy.num_workers >= num_cpus
         and compute_strategy.num_workers <= expected_max_num_workers
     ), "Number of actors is out of the expected bound"
+
+
+def test_default_batch_format(shutdown_only):
+    ds = ray.data.range(100)
+    assert ds.default_batch_format() == list
+
+    ds = ray.data.range_tensor(100)
+    assert ds.default_batch_format() == np.ndarray
+
+    df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
+    ds = ray.data.from_pandas(df)
+    assert ds.default_batch_format() == pd.DataFrame
 
 
 if __name__ == "__main__":

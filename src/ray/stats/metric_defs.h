@@ -42,6 +42,9 @@ namespace stats {
 /// ray_[component]_[metrics_name]_total (e.g., ray_pull_manager_total)
 ///
 
+/// Task stats from core workers.
+DECLARE_stats(tasks);
+
 /// Event stats
 DECLARE_stats(operation_count);
 DECLARE_stats(operation_run_time_ms);
