@@ -32,10 +32,10 @@ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container
 kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
 
 # Create a Ray cluster
-kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.autoscaler.gpu.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.gpu.yaml
 
 # Set up port-forwarding
-kubectl port-forward services/raycluster-autoscaler-head-svc 8265:8265
+kubectl port-forward services/raycluster-head-svc 8265:8265
 
 # Test the cluster
 ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
@@ -78,7 +78,7 @@ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container
 
 If you have an existing Kubernetes cluster with GPU, you can ignore this step. In addition, it is not necessary
 to run this example with a cluster having that much RAM (>30GB per node in the above commands). Feel free to update
-the option `machine-type` and the resource requirements in `ray-cluster.autoscaler.gpu.yaml`.
+the option `machine-type` and the resource requirements in `ray-cluster.gpu.yaml`.
 
 First, we create a Kubernetes cluster `gpu-cluster-1` with a node (`e2-standard-8`: 8 vCPU; 32 GB RAM). Second,
 we add a new node (`n1-standard-8`: 8 vCPU; 30 GB RAM) with a GPU (`nvidia-tesla-t4`) to the cluster.
@@ -100,10 +100,10 @@ first.
 kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
 
 # Create a Ray cluster
-kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.autoscaler.gpu.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.gpu.yaml
 
 # port forwarding
-kubectl port-forward services/raycluster-autoscaler-head-svc 8265:8265
+kubectl port-forward services/raycluster-head-svc 8265:8265
 
 # Test cluster (optional)
 ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
@@ -140,7 +140,7 @@ ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow
 # Clean-up
 Delete your Ray cluster and KubeRay with the following commands:
 ```shell
-kubectl delete raycluster raycluster-autoscaler
+kubectl delete raycluster raycluster
 
 # Please make sure the ray cluster has already been removed before delete the operator.
 kubectl delete -k "http://github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"

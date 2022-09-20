@@ -5,7 +5,7 @@ metadata:
   labels:
     controller-tools.k8s.io: "1.0"
     # A unique identifier for the head node and workers of this cluster.
-  name: raycluster-autoscaler
+  name: raycluster
 spec:
   # The version of Ray you are using. Make sure all Ray containers are running this version of Ray.
   rayVersion: '2.0.0'
@@ -19,7 +19,6 @@ spec:
     # rayNodeType: head # Not needed since it is under the headgroup
     # the following params are used to complete the ray start: ray start --head --block ...
     rayStartParams:
-      # Flag "no-monitor" will be automatically set when autoscaling is enabled.
       dashboard-host: '0.0.0.0'
       block: 'true'
     #pod template
