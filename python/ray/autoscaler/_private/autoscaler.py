@@ -113,6 +113,7 @@ class NonTerminatedNodes:
     """Class to extract and organize information on non-terminated nodes."""
 
     def __init__(self, provider: NodeProvider):
+        start_time = time.time()
         # All non-terminated nodes
         self.all_node_ids = provider.non_terminated_nodes({})
 
@@ -128,8 +129,15 @@ class NonTerminatedNodes:
             elif node_kind == NODE_KIND_HEAD:
                 self.head_id = node
 
-        # Note: For typical use-cases,
-        # self.all_node_ids == self.worker_ids + [self.head_id]
+        # Note: For typical use-cases, self.all_node_ids == self.worker_ids +
+        # [self.head_id]. The difference being in the case of unmanaged nodes.
+
+        # Record the time of the non_terminated nodes call. This typically
+        # translates to a "describe" or "list" call on most cluster managers
+        # which can be quite expensive. Note that we include the processing
+        # time because on some clients, there may be pagination and the
+        # underlying api calls may be done lazily.
+        self.non_terminated_nodes_time = time.time() - start_time
 
     def remove_terminating_nodes(self, terminating_nodes: List[NodeID]) -> None:
         """Remove nodes we're in the process of terminating from internal
