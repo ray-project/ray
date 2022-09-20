@@ -188,13 +188,14 @@ class Preprocessor(abc.ABC):
     def _determine_transform_to_use(self, data_format: str) -> str:
         """Determine which transform to use based on data format and implementation.
 
-        * If batch_format is numpy and _transform_numpy is implemented:
-            will convert the data to numpy.
-        * If batch_format is pandas and _transform_pandas is implemented:
-            will convert the data to pandas.
-
-        If both are implemented, we respect the user's choice of batch_format.
-        * Implementation is defined as overriding the method in a sub-class.
+        * If batch_format is given as:
+            * numpy and _transform_numpy is implemented will transform as numpy.
+            * pandas and _transform_pandas is implemented will transform as pandas.
+            * If both are implemented, we respect the user's choice of batch_format.
+        * Otherwise, we will infer and pick the best transform to use:
+            * pandas data format prioritized transform as pandas if available.
+            * arrow data format prioritized transform as numpy if available.
+            * Fall back to what's available if no preferred path found.
         """
 
         assert data_format in ("pandas", "arrow")
