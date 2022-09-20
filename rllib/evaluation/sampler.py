@@ -627,7 +627,7 @@ def _env_runner(
         horizon = float("inf")
         logger.debug("No episode horizon specified, assuming inf.")
 
-    def new_episode(env_id):
+    def _new_episode(env_id):
         episode = Episode(
             worker.policy_map,
             worker.policy_mapping_fn,
@@ -639,40 +639,15 @@ def _env_runner(
             env_id=env_id,
             worker=worker,
         )
-        # Call each policy's Exploration.on_episode_start method.
-        # Note: This may break the exploration (e.g. ParameterNoise) of
-        # policies in the `policy_map` that have not been recently used
-        # (and are therefore stashed to disk). However, we certainly do not
-        # want to loop through all (even stashed) policies here as that
-        # would counter the purpose of the LRU policy caching.
-        for p in worker.policy_map.cache.values():
-            if getattr(p, "exploration", None) is not None:
-                p.exploration.on_episode_start(
-                    policy=p,
-                    environment=base_env,
-                    episode=episode,
-                    tf_sess=p.get_session(),
-                )
-        callbacks.on_episode_start(
-            worker=worker,
-            base_env=base_env,
-            policies=worker.policy_map,
-            episode=episode,
-            env_index=env_id,
-        )
         return episode
 
-    active_episodes: Dict[EnvID, Episode] = _NewEpisodeDefaultDict(new_episode)
+    active_episodes: Dict[EnvID, Episode] = _NewEpisodeDefaultDict(_new_episode)
 
     # Before the very first poll (this will reset all vector sub-environments):
-    # Call custom `before_sub_environment_reset` callbacks for all sub-environments.
+    # Create all upcoming episodes and call `on_episode_created` callbacks for
+    # all sub-environments (upcoming episodes).
     for env_id, sub_env in base_env.get_sub_environments(as_dict=True).items():
-        callbacks.before_sub_environment_reset(
-            worker=worker,
-            sub_environment=sub_env,
-            env_index=env_id,
-            next_episode=active_episodes[env_id],
-        )
+        _create_episode(active_episodes, env_id, callbacks, worker, base_env)
 
     while True:
         perf_stats.incr("iters", 1)
@@ -841,7 +816,6 @@ def _process_observations(
     # For each (vectorized) sub-environment.
     # types: EnvID, Dict[AgentID, EnvObsType]
     for env_id, all_agents_obs in unfiltered_obs.items():
-        is_new_episode: bool = env_id not in active_episodes
         episode: Episode = active_episodes[env_id]
 
         # Check for env_id having returned an error instead of a multi-agent obs dict.
@@ -857,7 +831,11 @@ def _process_observations(
             # This will be filled with dummy observations below.
             all_agents_obs = {}
 
-        if not is_new_episode:
+        # If this episode is brand-new, call the episode start callback(s).
+        if episode.started is False:
+            _call_on_episode_start(episode, env_id, callbacks, worker, base_env)
+            episode.started = True
+        else:
             sample_collector.episode_step(episode)
             episode._add_agent_rewards(rewards[env_id])
 
@@ -1092,16 +1070,10 @@ def _process_observations(
                 # Clean up old finished episode.
                 del active_episodes[env_id]
 
-                # Call custom `before_sub_environment_reset` callback.
-                sub_envs = base_env.get_sub_environments(as_dict=True)
-                if env_id in sub_envs:
-                    callbacks.before_sub_environment_reset(
-                        worker=worker,
-                        sub_environment=sub_envs[env_id],
-                        env_index=env_id,
-                        # Create new episode under this env_id.
-                        next_episode=active_episodes[env_id],
-                    )
+                # Create a new episode and call `on_episode_created` callback(s).
+                episode = _create_episode(
+                    active_episodes, env_id, callbacks, worker, base_env
+                )
 
                 # TODO(jungong) : This will allow a single faulty env to
                 # take out the entire RolloutWorker indefinitely. Revisit.
@@ -1116,6 +1088,9 @@ def _process_observations(
                     else:
                         # Failed to reset, add metrics about a faulty episode.
                         outputs.append(RolloutMetrics(episode_faulty=True))
+
+            _call_on_episode_start(episode, env_id, callbacks, worker, base_env)
+
             # Reset not supported, drop this env from the ready list.
             if resetted_obs is None:
                 if horizon != float("inf"):
@@ -1334,6 +1309,45 @@ def _process_policy_eval_results(
             actions_to_send[env_id][agent_id] = action_to_send
 
     return actions_to_send
+
+
+def _create_episode(active_episodes, env_id, callbacks, worker, base_env):
+    # Create a new episode under the given `env_id` and call the
+    # `on_episode_created` callbacks.
+    new_episode = active_episodes[env_id]
+    # Call `on_episode_created()` callback.
+    callbacks.on_episode_created(
+        worker=worker,
+        base_env=base_env,
+        policies=worker.policy_map,
+        env_index=env_id,
+        episode=new_episode,
+    )
+    return new_episode
+
+
+def _call_on_episode_start(episode, env_id, callbacks, worker, base_env):
+    # Call each policy's Exploration.on_episode_start method.
+    # Note: This may break the exploration (e.g. ParameterNoise) of
+    # policies in the `policy_map` that have not been recently used
+    # (and are therefore stashed to disk). However, we certainly do not
+    # want to loop through all (even stashed) policies here as that
+    # would counter the purpose of the LRU policy caching.
+    for p in worker.policy_map.cache.values():
+        if getattr(p, "exploration", None) is not None:
+            p.exploration.on_episode_start(
+                policy=p,
+                environment=base_env,
+                episode=episode,
+                tf_sess=p.get_session(),
+            )
+    callbacks.on_episode_start(
+        worker=worker,
+        base_env=base_env,
+        policies=worker.policy_map,
+        episode=episode,
+        env_index=env_id,
+    )
 
 
 def _to_column_format(rnn_state_rows: List[List[Any]]) -> StateBatch:

@@ -354,6 +354,9 @@ class EnvRunnerV2:
             worker=self._worker,
             callbacks=self._callbacks,
         )
+        return episode
+
+    def _call_on_episode_start(self, episode, env_id):
         # Call each policy's Exploration.on_episode_start method.
         # Note: This may break the exploration (e.g. ParameterNoise) of
         # policies in the `policy_map` that have not been recently used
@@ -368,15 +371,14 @@ class EnvRunnerV2:
                     episode=episode,
                     tf_sess=p.get_session(),
                 )
-        # Call on_episode_start callbacks.
+        # Call `on_episode_start()` callback.
         self._callbacks.on_episode_start(
             worker=self._worker,
             base_env=self._base_env,
             policies=self._worker.policy_map,
-            episode=episode,
             env_index=env_id,
+            episode=episode,
         )
-        return episode
 
     def _new_batch_builder(self, _) -> _PolicyCollectorGroup:
         """Create a new batch builder.
@@ -394,16 +396,12 @@ class EnvRunnerV2:
             and other fields as dictated by `policy`.
         """
         # Before the very first poll (this will reset all vector sub-environments):
-        # Call custom `before_sub_environment_reset` callbacks for all sub-environments.
+        # Create all upcoming episodes and call `on_episode_created` callbacks for
+        # all sub-environments (upcoming episodes).
         for env_id, sub_env in self._base_env.get_sub_environments(
             as_dict=True
         ).items():
-            self._callbacks.before_sub_environment_reset(
-                worker=self._worker,
-                sub_environment=sub_env,
-                env_index=env_id,
-                next_episode=self._active_episodes[env_id],
-            )
+            self.create_episode(env_id)
 
         while True:
             self._perf_stats.incr("iters", 1)
@@ -531,6 +529,10 @@ class EnvRunnerV2:
                 continue
 
             episode: EpisodeV2 = self._active_episodes[env_id]
+            # If this episode is brand-new, call the episode start callback(s).
+            # Note: EpisodeV2s are initialized with length=-1 (before the reset).
+            if episode.length == -1:
+                self._call_on_episode_start(episode, env_id)
 
             # Episode length after this step.
             next_episode_length = episode.length + 1
@@ -777,6 +779,8 @@ class EnvRunnerV2:
         # Clean up and deleted the post-processed episode now that we have collected
         # its data.
         self.end_episode(env_id, episode)
+        # Create a new episode instance (before we reset the sub-environment).
+        self.create_episode(env_id)
 
         # Horizon hit and we have a soft horizon (no hard env reset).
         if hit_horizon and self._soft_horizon:
@@ -785,17 +789,6 @@ class EnvRunnerV2:
             # Basically carry RNN and other buffered state to the
             # next episode from the same env.
         else:
-            # Call custom `before_sub_environment_reset` callback.
-            self._callbacks.before_sub_environment_reset(
-                worker=self._worker,
-                sub_environment=self._base_env.get_sub_environments(as_dict=True)[
-                    env_id
-                ],
-                env_index=env_id,
-                # Create new episode under this env_id.
-                next_episode=self._active_episodes[env_id],
-            )
-
             # TODO(jungong) : This will allow a single faulty env to
             # take out the entire RolloutWorker indefinitely. Revisit.
             while True:
@@ -857,10 +850,35 @@ class EnvRunnerV2:
             # Step after adding initial obs. This will give us 0 env and agent step.
             new_episode.step()
 
+    def create_episode(self, env_id: EnvID) -> EpisodeV2:
+        """Creates a new EpisodeV2 instance and returns it.
+
+        Calls `on_episode_created` callbacks, but does NOT reset the respective
+        sub-environment yet.
+
+        Args:
+            env_id: Env ID.
+
+        Returns:
+            The newly created EpisodeV2 instance.
+        """
+        # Create a new episode under the same `env_id` and call the
+        # `on_episode_created` callbacks.
+        new_episode = self._active_episodes[env_id]
+        # Call `on_episode_created()` callback.
+        self._callbacks.on_episode_created(
+            worker=self._worker,
+            base_env=self._base_env,
+            policies=self._worker.policy_map,
+            env_index=env_id,
+            episode=new_episode,
+        )
+        return new_episode
+
     def end_episode(
         self, env_id: EnvID, episode_or_exception: Union[EpisodeV2, Exception]
     ):
-        """Clena up an episode that has finished.
+        """Cleans up an episode that has finished.
 
         Args:
             env_id: Env ID.

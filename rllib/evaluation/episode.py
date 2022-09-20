@@ -88,6 +88,7 @@ class Episode:
         self.batch_builder: "MultiAgentSampleBatchBuilder" = batch_builder_factory()
         self.total_reward: float = 0.0
         self.length: int = 0
+        self.started = False
         self.episode_id: int = random.randrange(2e9)
         self.env_id = env_id
         self.worker = worker
