@@ -85,7 +85,7 @@ def test_preprocess_datasets(ray_start_4_cpus):
     trainer.fit()
 
 
-def test_validate_datasets():
+def test_validate_datasets(ray_start_4_cpus):
     with pytest.raises(ValueError) as e:
         DummyTrainer(train_loop=None, datasets=1)
     assert "`datasets` should be a dict mapping" in str(e.value)

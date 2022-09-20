@@ -380,7 +380,7 @@ FAQ
 ---
 
 How do I pass in a :py:class:`~ray.data.dataset_pipeline.DatasetPipeline` to my ``Trainer``?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The Trainer interface only accepts a standard :py:class:`~ray.data.dataset.Dataset` and not a :py:class:`~ray.data.dataset_pipeline.DatasetPipeline`.
 Instead, you can configure the ingest via the ``dataset_config`` that is passed to your ``Trainer``. Internally, Ray AIR will
@@ -393,5 +393,5 @@ How do I shard validation and test datasets?
 
 By default only the `"train"` Dataset is sharded. To also shard validation and test datasets, you can configure the ``dataset_config``
 that is passed to your ``Trainer``.
-See the :ref:`Splitting Auxiliary Datasets` section for a full example.
+See the :ref:`Splitting Auxiliary Datasets <air-splitting-aux-datasets>` section for a full example.
 
