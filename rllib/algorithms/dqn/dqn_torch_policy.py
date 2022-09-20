@@ -1,6 +1,5 @@
 """PyTorch policy class used for DQN"""
 
-import functools
 from typing import Dict, List, Tuple
 
 import gym

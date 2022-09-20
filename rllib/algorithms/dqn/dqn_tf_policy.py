@@ -1,6 +1,5 @@
 """TensorFlow policy class used for DQN"""
 
-import functools
 from typing import Dict
 
 import gym
