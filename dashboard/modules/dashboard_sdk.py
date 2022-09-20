@@ -147,19 +147,6 @@ def parse_cluster_info(
 
     module_string, inner_address = _split_address(address)
 
-    # XXX(archit): Move warning to Serve CLI somehow
-    # # If user passes in ray://, raise error. Dashboard submission should
-    # # not use a Ray client address.
-    # if module_string == "ray":
-    #     raise ValueError(
-    #         f'Got an unexpected Ray client address "{address}" while trying '
-    #         "to connect to the Ray dashboard. The dashboard SDK requires the "
-    #         "Ray dashboard server's HTTP(S) address (which should start with "
-    #         '"http://" or "https://", not "ray://"). If this address '
-    #         "wasn't passed explicitly, it may be set in the RAY_ADDRESS "
-    #         "environment variable."
-    #     )
-
     # If user passes http(s)://, go through normal parsing.
     if module_string in {"http", "https"}:
         return get_job_submission_client_cluster_info(
