@@ -98,7 +98,7 @@ we add a new node (`n1-standard-8`: 8 vCPU; 30 GB RAM) with a GPU (`nvidia-tesla
 
 ```shell
 # Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
-# Create an operator
+# Create the KubeRay operator
 kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
 
 # Create a Ray cluster
