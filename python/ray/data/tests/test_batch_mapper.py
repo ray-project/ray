@@ -87,7 +87,7 @@ def test_batch_mapper_arrow_data_format(test_ds_multi_column_arrow_format):
 
     def add_and_modify_udf_pandas(df: "pd.DataFrame"):
         df["new_col"] = df["old_column"] + 1
-        df["to_be_modified"] *= 2
+        df["to_be_modified"] = df["to_be_modified"] * 2
         return df
 
     def add_and_modify_udf_numpy(data: Dict[str, np.ndarray]):

@@ -1629,7 +1629,8 @@ def test_numpy_pandas_support_arrow_dataset(create_dummy_preprocessors):
 
     assert with_numpy.transform(ds)._dataset_format() == "arrow"
 
-    assert with_pandas_and_numpy.transform(ds)._dataset_format() == "pandas"
+    # Auto select data_format = "arrow" -> batch_format = "numpy" for performance
+    assert with_pandas_and_numpy.transform(ds)._dataset_format() == "arrow"
 
 
 def test_numpy_pandas_support_transform_batch_wrong_format(create_dummy_preprocessors):
@@ -1709,10 +1710,10 @@ def test_numpy_pandas_support_transform_batch_arrow(create_dummy_preprocessors):
     assert isinstance(
         with_numpy.transform_batch(table_single_column), (np.ndarray, dict)
     )
-
-    assert isinstance(with_pandas_and_numpy.transform_batch(table), pd.DataFrame)
+    # Auto select data_format = "arrow" -> batch_format = "numpy" for performance
+    assert isinstance(with_pandas_and_numpy.transform_batch(table), (np.ndarray, dict))
     assert isinstance(
-        with_pandas_and_numpy.transform_batch(table_single_column), pd.DataFrame
+        with_pandas_and_numpy.transform_batch(table_single_column), (np.ndarray, dict)
     )
 
 

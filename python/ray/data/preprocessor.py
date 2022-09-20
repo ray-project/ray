@@ -59,8 +59,6 @@ class Preprocessor(abc.ABC):
 
     # Preprocessors that do not need to be fitted must override this.
     _is_fittable = True
-    # Default batch format unless numpy is explicitly specified.
-    batch_format = "pandas"
 
     def fit_status(self) -> "Preprocessor.FitStatus":
         if not self._is_fittable:
@@ -206,18 +204,45 @@ class Preprocessor(abc.ABC):
         has_transform_numpy = (
             self.__class__._transform_numpy != Preprocessor._transform_numpy
         )
+        has_batch_format = hasattr(self, "batch_format")
 
-        # Prioritize native transformation type to minimize data conversion cost.
-        if self.batch_format == "pandas" and has_transform_pandas:
-            transform_type = "pandas"
-        elif self.batch_format == "numpy" and has_transform_numpy:
-            transform_type = "numpy"
+        # Preprocessor (Ex: BatchMapper) provided a specific batch_format
+        if has_batch_format:
+            if self.batch_format == "pandas" and has_transform_pandas:
+                transform_type = "pandas"
+            elif self.batch_format == "numpy" and has_transform_numpy:
+                transform_type = "numpy"
+            else:
+                raise NotImplementedError(
+                    "None of `_transform_numpy` or `_transform_pandas` "
+                    f"are implemented for dataset format `{data_format}` and "
+                    f"user specifified batch_format of `{self.batch_format}`."
+                )
+        # Infer transform type by prioritizing native transformation to minimize
+        # data conversion cost.
         else:
-            raise NotImplementedError(
-                "None of `_transform_numpy` or `_transform_pandas` "
-                f"are implemented for dataset format `{data_format}` and "
-                f"batch_format of `{self.batch_format}`."
-            )
+            if data_format == "pandas":
+                # Perform native pandas transformation if possible.
+                if has_transform_pandas:
+                    transform_type = "pandas"
+                elif has_transform_numpy:
+                    transform_type = "numpy"
+                else:
+                    raise NotImplementedError(
+                        "None of `_transform_numpy` or `_transform_pandas` "
+                        f"are implemented for dataset format `{data_format}`."
+                    )
+            elif data_format == "arrow":
+                # Arrow -> Numpy is more efficient
+                if has_transform_numpy:
+                    transform_type = "numpy"
+                elif has_transform_pandas:
+                    transform_type = "pandas"
+                else:
+                    raise NotImplementedError(
+                        "None of `_transform_numpy` or `_transform_pandas` "
+                        f"are implemented for dataset format `{data_format}`."
+                    )
 
         return transform_type
 
