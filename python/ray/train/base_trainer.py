@@ -214,14 +214,25 @@ class BaseTrainer(abc.ABC):
                 f"`ray.data.Dataset` objects, "
                 f"found {type(self.datasets)} with value `{self.datasets}`."
             )
-        elif any(
-            not isinstance(ds, ray.data.Dataset) and not callable(ds)
-            for ds in self.datasets.values()
-        ):
-            raise ValueError(
-                f"At least one value in the `datasets` dict is not a "
-                f"`ray.data.Dataset`: {self.datasets}"
-            )
+        else:
+            for key, dataset in self.datasets.items():
+                if isinstance(dataset, ray.data.DatasetPipeline):
+                    raise ValueError(
+                        f"The Dataset under {key} key is a `ray.data.DatasetPipeline`."
+                        "Only `ray.data.Dataset` are allowed to be passed in. "
+                        "Pipelined/streaming ingest can be configured via the "
+                        "`dataset_config` arg. See "
+                        "https://docs.ray.io/en/latest/ray-air/check-ingest.html#enabling-streaming-ingest"  # noqa: E501
+                        "for an example."
+                    )
+                elif not isinstance(dataset, ray.data.Dataset) and not callable(
+                    dataset
+                ):
+                    raise ValueError(
+                        f"The Dataset under {key} key is not a `ray.data.Dataset`. "
+                        f"Received {dataset} instead."
+                    )
+
         # Preprocessor
         if self.preprocessor is not None and not isinstance(
             self.preprocessor, ray.data.Preprocessor

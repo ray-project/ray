@@ -85,6 +85,22 @@ def test_preprocess_datasets(ray_start_4_cpus):
     trainer.fit()
 
 
+def test_validate_datasets():
+    with pytest.raises(ValueError) as e:
+        DummyTrainer(train_loop=None, datasets=1)
+    assert "`datasets` should be a dict mapping" in str(e.value)
+
+    with pytest.raises(ValueError) as e:
+        DummyTrainer(train_loop=None, datasets={"train": 1})
+    assert "The Dataset under train key is not a `ray.data.Dataset`"
+
+    with pytest.raises(ValueError) as e:
+        DummyTrainer(
+            train_loop=None, datasets={"train": ray.data.from_items([1]).repeat()}
+        )
+    assert "The Dataset under train key is a `ray.data.DatasetPipeline`."
+
+
 def test_resources(ray_start_4_cpus):
     def check_cpus(self):
         assert ray.available_resources()["CPU"] == 2
