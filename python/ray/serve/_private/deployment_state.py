@@ -181,6 +181,9 @@ class ActorReplicaWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
+        # Spread replicas to avoid correlated failures on a single node.
+        # This is a soft spread, so if there is only space on a single node
+        # the replicas will be placed there.
         scheduling_strategy="SPREAD",
     ):
         self._actor_name = actor_name
@@ -660,11 +663,11 @@ class DriverActorReplicaWrapper(ActorReplicaWrapper):
 
     @property
     def node_id(self) -> Optional[str]:
-        """Returns the node id of the actor, None if not placed."""
+        """Returns the node id of the actor"""
         return self.deployed_node_id
 
 
-class DeploymentReplica(VersionedReplica):
+class BaseDeploymentReplica(VersionedReplica):
     """Manages state transitions for deployment replicas.
 
     This is basically a checkpointable lightweight state machine.
@@ -673,30 +676,12 @@ class DeploymentReplica(VersionedReplica):
     def __init__(
         self,
         controller_name: str,
-        detached: bool,
         replica_tag: ReplicaTag,
         deployment_name: str,
         version: DeploymentVersion,
-        is_driver_deployment: bool = False,
-        node_id=None,
+        actor,
     ):
-        if is_driver_deployment:
-            self._actor = DriverActorReplicaWrapper(
-                f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
-                detached,
-                controller_name,
-                replica_tag,
-                deployment_name,
-                node_id,
-            )
-        else:
-            self._actor = ActorReplicaWrapper(
-                f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
-                detached,
-                controller_name,
-                replica_tag,
-                deployment_name,
-            )
+        self._actor = actor
         self._controller_name = controller_name
         self._deployment_name = deployment_name
         self._replica_tag = replica_tag
@@ -840,6 +825,54 @@ class DeploymentReplica(VersionedReplica):
         # when dumping these dictionaries. See
         # https://github.com/ray-project/ray/issues/26210 for the issue.
         return json.dumps(required), json.dumps(available)
+
+
+class DeploymentReplica(BaseDeploymentReplica):
+    """
+    Inference deployment replica to manage the state transition
+    """
+
+    def __init__(
+        self,
+        controller_name: str,
+        detached: bool,
+        replica_tag: ReplicaTag,
+        deployment_name: str,
+        version: DeploymentVersion,
+    ):
+        actor = ActorReplicaWrapper(
+            f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
+            detached,
+            controller_name,
+            replica_tag,
+            deployment_name,
+        )
+        super().__init__(controller_name, replica_tag, deployment_name, version, actor)
+
+
+class DriverDeploymentReplica(BaseDeploymentReplica):
+    """
+    Driver deployment replica to manage the state transition
+    """
+
+    def __init__(
+        self,
+        controller_name: str,
+        detached: bool,
+        replica_tag: ReplicaTag,
+        deployment_name: str,
+        version: DeploymentVersion,
+        node_id,
+    ):
+        actor = DriverActorReplicaWrapper(
+            f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
+            detached,
+            controller_name,
+            replica_tag,
+            deployment_name,
+            node_id,
+        )
+        super().__init__(controller_name, replica_tag, deployment_name, version, actor)
 
 
 class ReplicaStateContainer:
@@ -1654,6 +1687,8 @@ class DeploymentState:
 
 
 class DriverDeploymentState(DeploymentState):
+    """Manages the target state and replicas for a single driver deployment."""
+
     def __init__(
         self,
         name: str,
@@ -1664,12 +1699,24 @@ class DriverDeploymentState(DeploymentState):
         super().__init__(name, controller_name, detached, None, _save_checkpoint_func)
         self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
+    def _get_all_node_ids(self):
+        # Test to mock purpose
+        return get_all_node_ids(self._gcs_client)
+
     def _deploy_driver(self):
-        all_nodes = get_all_node_ids(self._gcs_client)
+        """
+        Deploy the driver deployment to each node
+        """
+        all_nodes = self._get_all_node_ids()
         self.target_info.deployment_config.num_replicas = len(all_nodes)
         deployed_nodes = set()
         for replica in self._replicas.get(
-            [ReplicaState.STARTING, ReplicaState.RUNNING, ReplicaState.RECOVERING]
+            [
+                ReplicaState.STARTING,
+                ReplicaState.RUNNING,
+                ReplicaState.RECOVERING,
+                ReplicaState.UPDATING,
+            ]
         ):
             if replica.actor_node_id:
                 deployed_nodes.add(replica.actor_node_id)
@@ -1677,13 +1724,12 @@ class DriverDeploymentState(DeploymentState):
             if node_id in deployed_nodes:
                 continue
             replica_name = ReplicaName(self._name, get_random_letters())
-            new_deployment_replica = DeploymentReplica(
+            new_deployment_replica = DriverDeploymentReplica(
                 self._controller_name,
                 self._detached,
                 replica_name.replica_tag,
                 replica_name.deployment_tag,
                 self._target_state.version,
-                True,
                 node_id,
             )
             new_deployment_replica.start(

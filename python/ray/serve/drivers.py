@@ -183,7 +183,7 @@ class DAGDriver:
 
 
 @PublicAPI(stability="alpha")
-class ServegRPCIngress:
+class gRPCIngress:
     """
     gRPC Ingress that starts gRPC server based on the port
     """
@@ -220,7 +220,7 @@ class ServegRPCIngress:
 if not isinstance(serve_pb2_grpc.PredictAPIsServiceServicer, type):
     # The reason we have this fake Driver class is that sphinx-build is to mock
     # PredictAPIsServiceServicer and it will cause the metaclass conflict issue
-    # from multiple inheritance
+    # from multiple inheritance.
     @serve.deployment
     class gRPCDriver:
         def __init__(self):
@@ -229,7 +229,7 @@ if not isinstance(serve_pb2_grpc.PredictAPIsServiceServicer, type):
 else:
 
     @serve.deployment(driver_deployment=True, ray_actor_options={"num_cpus": 0})
-    class gRPCDriver(ServegRPCIngress, serve_pb2_grpc.PredictAPIsServiceServicer):
+    class gRPCDriver(gRPCIngress, serve_pb2_grpc.PredictAPIsServiceServicer):
         """
         gRPC Driver that responsible for redirecting the gRPC requests
         and hold dag handle
@@ -247,7 +247,7 @@ else:
             self.dag = dags
             # TODO(Sihan) we will add a gRPCOption class
             # once we have more options to use
-            ServegRPCIngress.__init__(self, port)
+            gRPCIngress.__init__(self, port)
 
         async def Predict(self, request, context):
             """
