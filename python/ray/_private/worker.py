@@ -851,14 +851,14 @@ def get_gpu_ids() -> List[int]:
     if global_worker.original_gpu_ids is not None:
         # Use the assigned ids to index into the user provided CUDA_VISIBLE_DEVICES.
         assigned_ids = [
-            int(global_worker.original_gpu_ids[gpu_id]) for gpu_id in assigned_ids if
-            len(global_worker.original_gpu_ids) >= gpu_id # Avoid IndexError.
+            int(global_worker.original_gpu_ids[gpu_id]) for gpu_id in assigned_ids
         ]
         # Give all GPUs in local_mode.
         if global_worker.mode == LOCAL_MODE:
             max_gpus = global_worker.node.get_resource_spec().num_gpus
-            assigned_ids = [int(gpu_id) for gpu_id in global_worker.original_gpu_ids[
-                                                      :max_gpus]]
+            assigned_ids = [
+                int(gpu_id) for gpu_id in global_worker.original_gpu_ids[:max_gpus]
+            ]
 
     return assigned_ids
 

@@ -82,7 +82,14 @@ class NonTensorDataset(LinearDataset):
 
 # TODO: Refactor as a backend test.
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
-def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
+@pytest.mark.parametrize("cuda_visible_devices", ["", "1"])
+def test_torch_get_device(
+    ray_start_4_cpus_2_gpus, num_gpus_per_worker, cuda_visible_devices, monkeypatch
+):
+    if cuda_visible_devices:
+        # Test if `get_device` is correct even with user specified env var.
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", cuda_visible_devices)
+
     def train_fn():
         return train.torch.get_device().index
 

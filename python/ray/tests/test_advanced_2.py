@@ -14,7 +14,11 @@ from ray._private.test_utils import RayTestTimeoutException, wait_for_condition
 logger = logging.getLogger(__name__)
 
 
-def test_gpu_ids(shutdown_only):
+@pytest.mark.parametrize("cuda_visible_devices", ["", "4,5,6"])
+def test_gpu_ids(shutdown_only, cuda_visible_devices, monkeypatch):
+    if cuda_visible_devices:
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", cuda_visible_devices)
+
     num_gpus = 3
     ray.init(num_cpus=num_gpus, num_gpus=num_gpus)
 
