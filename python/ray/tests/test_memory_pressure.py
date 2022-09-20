@@ -13,7 +13,7 @@ from ray._private.test_utils import get_node_stats, wait_for_condition
 memory_usage_threshold_fraction = 0.7
 memory_monitor_interval_ms = 100
 expected_worker_eviction_message = "System memory low at node with IP"
-task_failure_entry_gc_period_ms = 2000
+task_failure_entry_gc_period_ms = 1 * 1000
 task_failure_entry_ttl_ms = 2 * 60 * 1000
 
 
@@ -289,8 +289,6 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
     # returns the crashed task.
     # TODO(clarng): verify log info once state api can dump log info
 
-
-# TODO: update & add tests
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

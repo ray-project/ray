@@ -582,21 +582,15 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           RAY_CHECK_GE(scheduling_key_entry.num_busy_workers, 1u);
           scheduling_key_entry.num_busy_workers--;
 
-          std::thread::id thread_used = std::this_thread::get_id();
           if (!status.ok() || !is_actor_creation || reply.worker_exiting()) {
             RAY_LOG(DEBUG) << "Getting error from raylet for task " << task_id;
 
-            auto callback = [this, status, is_actor, task_id, thread_used, addr, reply](
+            auto callback = [this, status, is_actor, task_id, addr, reply](
                                 const Status &get_task_result_reply_status,
                                 const rpc::GetTaskResultReply &get_task_result_reply) {
-              std::thread::id callback_thread_id = std::this_thread::get_id();
-              RAY_CHECK(thread_used == callback_thread_id)
-                  << "Threading issue. Callback must be called on the original calling "
-                     "thread. Original thread id "
-                  << thread_used << " callback thread id " << callback_thread_id;
-              RAY_CHECK(!status.ok()) << "Tried to call GetTaskResult RPC to fetch the "
-                                         "failure cause even though the task succeeded";
-              rpc::ErrorType task_error_type = rpc::ErrorType::WORKER_DIED;
+              RAY_CHECK(!status.ok()) << "Tried to call GetTaskResult RPC to fetch task "
+                                         "failure even though the task succeeded";
+              rpc::ErrorType task_error_type;
               std::unique_ptr<rpc::RayErrorInfo> error_info;
               if (get_task_result_reply_status.ok()) {
                 task_error_type = get_task_result_reply.failure_cause().error_type();
@@ -605,8 +599,6 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
                                       get_task_result_reply.failure_cause());
                 error_info = std::make_unique<rpc::RayErrorInfo>(
                     get_task_result_reply.failure_cause());
-                // error_info->set_error_message(get_task_result_reply.failure_cause().error_message());
-                // error_info->set_error_type(get_task_result_reply.failure_cause().error_type());
               } else {
                 RAY_LOG(DEBUG) << "Failed to fetch task result with status "
                                << get_task_result_reply_status.ToString()
