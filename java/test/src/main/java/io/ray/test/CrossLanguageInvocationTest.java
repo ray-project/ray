@@ -23,6 +23,7 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Supplier;
 import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -170,6 +171,38 @@ public class CrossLanguageInvocationTest extends BaseTest {
     ObjectRef<byte[]> res =
         actor.task(PyActorMethod.of("increase", byte[].class), "1".getBytes()).remote();
     Assert.assertEquals(res.get(), "2".getBytes());
+  }
+
+  @Test
+  public void testCallingPythonAsyncActor() {
+    {
+      PyActorHandle actor =
+          Ray.actor(PyActorClass.of(PYTHON_MODULE, "AsyncCounter"), "1".getBytes())
+              .setAsync(true)
+              .remote();
+      actor.task(PyActorMethod.of("block_task", byte[].class)).remote();
+      ObjectRef<byte[]> res =
+          actor.task(PyActorMethod.of("increase", byte[].class), "1".getBytes()).remote();
+      Assert.assertEquals(res.get(), "2".getBytes());
+    }
+    {
+      PyActorHandle actor =
+          Ray.actor(PyActorClass.of(PYTHON_MODULE, "SyncCounter"), "1".getBytes())
+              .setAsync(false)
+              .remote();
+      actor.task(PyActorMethod.of("block_task", byte[].class)).remote();
+      ObjectRef<byte[]> res =
+          actor.task(PyActorMethod.of("increase", byte[].class), "1".getBytes()).remote();
+      Supplier<Boolean> getValue =
+          () -> {
+            if (equals(res.get() == "2".getBytes())) {
+              return true;
+            } else {
+              return false;
+            }
+          };
+      Assert.assertFalse(TestUtils.waitForCondition(getValue, 30000));
+    }
   }
 
   @Test

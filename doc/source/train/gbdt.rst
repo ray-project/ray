@@ -1,15 +1,9 @@
-.. _air-trainers-gbdt-user-guide:
+.. _train-gbdt-guide:
 
+XGBoost / LightGBM User Guide
+=============================
 
-Ray Train XGBoost/LightGBM User Guide
-=====================================
-
-Ray Train has Trainers for XGBoost and LightGBM. These trainers:
-
-* enable `multi-node <#usage>`_ and `multi-GPU <#multi-gpu-training>`_ training
-* integrate seamlessly with distributed `hyperparameter optimization <#hyperparameter-tuning>`_ library `Ray Tune <http://tune.io>`_
-* support `distributed data loading <#distributed-data-loading>`_
-
+Ray Train has built-in support for XGBoost and LightGBM.
 
 Basic Usage
 -----------
@@ -42,8 +36,18 @@ Ray-specific params are passed in through the trainer constructors.
 How to scale out training?
 --------------------------
 The benefit of using Ray AIR is that you can seamlessly scale up your training by
-adjusting the :class:`ScalingConfig <ray.air.config.ScalingConfig>`. Here are some
-examples for common use-cases:
+adjusting the :class:`ScalingConfig <ray.air.config.ScalingConfig>`.
+
+.. note::
+    Ray Train does not modify or otherwise alter the working
+    of the underlying XGBoost / LightGBM distributed training algorithms.
+    Ray only provides orchestration, data ingest and fault tolerance.
+    For more information on GBDT distributed training, refer to
+    `XGBoost documentation <https://xgboost.readthedocs.io>`__ and
+    `LightGBM documentation <https://lightgbm.readthedocs.io/>`__.
+
+
+Here are some examples for common use-cases:
 
 
 .. tabbed:: Multi-node CPU

@@ -13,7 +13,7 @@ Overview
 .. _ingest_basics:
 
 The following figure illustrates a simple Ray AIR training job that (1) loads parquet data from S3, (2) applies a simple
-user-defined function to preprocess batches of data, and (3) runs an AIR Trainer with the given dataset and preprocessor.
+:ref:`user-defined function <transform_datasets_writing_udfs>` to preprocess batches of data, and (3) runs an AIR Trainer with the given dataset and preprocessor.
 
 .. figure:: images/ingest.svg
 
@@ -79,7 +79,7 @@ Shuffling Data
 Shuffling or data randomization is important for training high-quality models. By default, AIR will randomize the order the data files (blocks) are read from. AIR also offers options for further randomizing data records within each file:
 
 .. tabbed:: Local Shuffling
-    
+
     Local shuffling is the recommended approach for randomizing data order. To use local shuffle,
     simply specify a non-zero ``local_shuffle_buffer_size`` as an argument to ``iter_batches()``.
     The iterator will then use a local buffer of the given size to randomize record order. The
@@ -276,7 +276,7 @@ Let's break it down:
 
 * **Batch delay**: Time the trainer spents waiting for the next data batch to be fetched. Ideally
   this value is as close to zero as possible. If it is too high, Ray may be spending too much time
-  loading data from disk.
+  downloading data from remote nodes to the trainer node.
 * **Num epochs read**: The number of times the trainer read the dataset during the run.
 * **Num batches read**: The number of batches read.
 * **Num bytes read**: The number of bytes read.
@@ -338,7 +338,7 @@ Performance Tips
 
 **Autoscaling**: We generally recommend first trying out AIR training with a fixed size cluster. This makes it easier to understand and debug issues. Autoscaling can be enabled after you are happy with performance to autoscale experiment sweeps with Tune, etc. We also recommend starting with autoscaling with a single node type. Autoscaling with hetereogeneous clusters can optimize costs, but may complicate performance debugging.
 
-**Partitioning**: By default, Datasets will create up to 200 blocks per Dataset, or less if there are fewer base files for the Dataset. If you run into out-of-memory errors during preprocessing, consider increasing the number of blocks to reduce their size. To increase the max number of partitions, set the ``parallelism`` option when calling ``ray.data.read_*()``. To change the number of partitions at runtime, use ``ds.repartition(N)``. As a rule of thumb, blocks should be not more than 1-2GiB each.
+**Partitioning**: By default, Datasets will automatically select the read parallelism based on the current cluster size and number of files. If you run into out-of-memory errors during preprocessing, consider increasing the number of blocks to reduce their size. To increase the max number of partitions, you can manually set the ``parallelism`` option when calling ``ray.data.read_*()``. To change the number of partitions at runtime, use ``ds.repartition(N)``. As a rule of thumb, blocks should be no more than 1-2GiB each.
 
 Dataset Sharing
 ~~~~~~~~~~~~~~~

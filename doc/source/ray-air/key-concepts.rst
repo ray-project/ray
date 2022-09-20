@@ -16,14 +16,11 @@ Datasets
 
 
 Preprocessors
-~~~~~~~~~~~~~
+-------------
 
-Preprocessors are primitives that can be used to transform input data into features.
+Preprocessors are primitives that can be used to transform input data into features. Preprocessors operate on :ref:`Datasets <datasets>`, which makes them scalable and compatible with a variety of datasources and dataframe libraries.
 
-A preprocessor can be fitted during Training, and applied at runtime in both Training and Serving on data batches in the same way. AIR comes with a collection of built-in preprocessors, and you can also define your own with simple templates.
-
-Preprocessors operate on :ref:`Datasets <datasets>`, which makes them scalable and compatible with a variety of datasources and dataframe libraries.
-
+A Preprocessor is fitted during Training, and applied at runtime in both Training and Serving on data batches in the same way. AIR comes with a collection of built-in preprocessors, and you can also define your own with simple templates.
 
 .. literalinclude:: doc_code/air_key_concepts.py
     :language: python
@@ -43,9 +40,8 @@ See the documentation on :ref:`Trainers <air-trainers>`.
     :start-after: __air_trainer_start__
     :end-before: __air_trainer_end__
 
-
-
-Trainer objects will produce a :ref:`Result <air-results-ref>` object after calling ``.fit()``.  These objects will contain training metrics as long as checkpoints to retrieve the best model.
+Trainer objects produce a :ref:`Result <air-results-ref>` object after calling ``.fit()``.
+These objects contain training metrics as well as checkpoints to retrieve the best model.
 
 .. literalinclude:: doc_code/air_key_concepts.py
     :language: python
@@ -65,11 +61,40 @@ Tuners can work seamlessly with any Trainer but also can support arbitrary train
     :start-after: __air_tuner_start__
     :end-before: __air_tuner_end__
 
+.. _air-checkpoints-doc:
+
+Checkpoints
+-----------
+
+The AIR trainers, tuners, and custom pretrained model generate :class:`a framework-specific Checkpoint<ray.air.Checkpoint>` object.
+Checkpoints are a common interface for models that are used across different AIR components and libraries.
+
+There are two main ways to generate a checkpoint.
+
+Checkpoint objects can be retrieved from the Result object returned by a Trainer or Tuner ``.fit()`` call.
+
+.. literalinclude:: doc_code/air_key_concepts.py
+    :language: python
+    :start-after: __air_checkpoints_start__
+    :end-before: __air_checkpoints_end__
+
+You can also generate a checkpoint from a pretrained model. Each AIR supported machine learning (ML) framework has
+a ``Checkpoint`` object that can be used to generate an AIR checkpoint:
+
+.. literalinclude:: doc_code/air_key_concepts.py
+    :language: python
+    :start-after: __checkpoint_adhoc_start__
+    :end-before: __checkpoint_adhoc_end__
+
+
+Checkpoints can be used to instantiate a :class:`Predictor`, :class:`BatchPredictor`, or :class:`PredictorDeployment` classes,
+as seen below.
+
 
 Batch Predictor
 ---------------
 
-You can take a trained model and do batch inference using the BatchPredictor object.
+You can take a checkpoint and do batch inference using the BatchPredictor object.
 
 .. literalinclude:: doc_code/air_key_concepts.py
     :language: python

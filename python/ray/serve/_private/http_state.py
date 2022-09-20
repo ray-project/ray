@@ -7,6 +7,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+from ray._private.gcs_utils import GcsClient
 from ray.serve.config import HTTPOptions, DeploymentMode
 from ray.serve._private.constants import (
     ASYNC_CONCURRENCY,
@@ -37,6 +38,7 @@ class HTTPState:
         detached: bool,
         config: HTTPOptions,
         head_node_id: str,
+        gcs_client: GcsClient,
         # Used by unit testing
         _start_proxies_on_init: bool = True,
     ):
@@ -49,6 +51,9 @@ class HTTPState:
         self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
         self._proxy_actor_names: Dict[NodeId, str] = dict()
         self._head_node_id: str = head_node_id
+
+        self._gcs_client = gcs_client
+
         assert isinstance(head_node_id, str)
 
         # Will populate self.proxy_actors with existing actors.
@@ -75,7 +80,7 @@ class HTTPState:
     def _get_target_nodes(self) -> List[Tuple[str, str]]:
         """Return the list of (node_id, ip_address) to deploy HTTP servers on."""
         location = self._config.location
-        target_nodes = get_all_node_ids()
+        target_nodes = get_all_node_ids(self._gcs_client)
 
         if location == DeploymentMode.NoServer:
             return []
@@ -112,6 +117,7 @@ class HTTPState:
 
     def _start_proxies_if_needed(self) -> None:
         """Start a proxy on every node if it doesn't already exist."""
+
         for node_id, node_ip_address in self._get_target_nodes():
             if node_id in self._proxy_actors:
                 continue
@@ -151,7 +157,7 @@ class HTTPState:
 
     def _stop_proxies_if_needed(self) -> bool:
         """Removes proxy actors from any nodes that no longer exist."""
-        all_node_ids = {node_id for node_id, _ in get_all_node_ids()}
+        all_node_ids = {node_id for node_id, _ in get_all_node_ids(self._gcs_client)}
         to_stop = []
         for node_id in self._proxy_actors:
             if node_id not in all_node_ids:

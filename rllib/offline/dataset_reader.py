@@ -2,13 +2,14 @@ import logging
 import math
 from pathlib import Path
 import re
+import numpy as np
 from typing import List, Tuple, Optional
 import zipfile
 
 import ray.data
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
-from ray.rllib.offline.json_reader import from_json_data
+from ray.rllib.offline.json_reader import from_json_data, postprocess_actions
 from ray.rllib.policy.sample_batch import concat_samples, SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.typing import SampleBatchType, AlgorithmConfigDict
@@ -213,6 +214,7 @@ class DatasetReader(InputReader):
         """
         self._ioctx = ioctx or IOContext()
         self._default_policy = self.policy_map = None
+        self.preprocessor = None
         self._dataset = ds
         self.count = None if not self._dataset else self._dataset.count()
         # do this to disable the ray data stdout logging
@@ -230,6 +232,11 @@ class DatasetReader(InputReader):
             if self._ioctx.worker is not None:
                 self._policy_map = self._ioctx.worker.policy_map
                 self._default_policy = self._policy_map.get(DEFAULT_POLICY_ID)
+                self.preprocessor = (
+                    self._ioctx.worker.preprocessors.get(DEFAULT_POLICY_ID)
+                    if not self._ioctx.config.get("_disable_preprocessors", False)
+                    else None
+                )
             self._dataset.random_shuffle(seed=seed)
             print(
                 f"DatasetReader {self._ioctx.worker_index} has {ds.count()}, samples."
@@ -252,9 +259,22 @@ class DatasetReader(InputReader):
             # Columns like obs are compressed when written by DatasetWriter.
             d = from_json_data(d, self._ioctx.worker)
             count += d.count
-            ret.append(self._postprocess_if_needed(d))
+            d = self._preprocess_if_needed(d)
+            d = postprocess_actions(d, self._ioctx)
+            d = self._postprocess_if_needed(d)
+            ret.append(d)
         ret = concat_samples(ret)
         return ret
+
+    def _preprocess_if_needed(self, batch: SampleBatchType) -> SampleBatchType:
+        # TODO: @kourosh, preprocessor is only supported for single agent case.
+        if self.preprocessor:
+            for key in (SampleBatch.CUR_OBS, SampleBatch.NEXT_OBS):
+                if key in batch:
+                    batch[key] = np.stack(
+                        [self.preprocessor.transform(s) for s in batch[key]]
+                    )
+        return batch
 
     def _postprocess_if_needed(self, batch: SampleBatchType) -> SampleBatchType:
         if not self._ioctx.config.get("postprocess_inputs"):

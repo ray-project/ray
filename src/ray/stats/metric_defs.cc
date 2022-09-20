@@ -31,6 +31,13 @@ namespace stats {
 /// NOTE: When adding a new metric, add the metric name to the _METRICS list in
 /// python/ray/tests/test_metrics_agent.py to ensure that its existence is tested.
 
+/// Scheduler
+DEFINE_stats(tasks,
+             "Current number of tasks currently in a particular state.",
+             ("State", "Source"),
+             (),
+             ray::stats::GAUGE);
+
 /// Event stats
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
 DEFINE_stats(
@@ -219,6 +226,13 @@ DEFINE_stats(gcs_actors_count,
              ("State"),
              (),
              ray::stats::GAUGE);
+
+/// Memory Manager
+DEFINE_stats(memory_manager_worker_eviction_total,
+             "Total worker eviction events broken per work type {Actor, Task}",
+             ("Type"),
+             (),
+             ray::stats::COUNT);
 }  // namespace stats
 
 }  // namespace ray

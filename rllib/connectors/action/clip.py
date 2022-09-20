@@ -29,11 +29,11 @@ class ClipActionsConnector(ActionConnector):
             (clip_action(actions, self._action_space_struct), states, fetches),
         )
 
-    def to_config(self):
+    def to_state(self):
         return ClipActionsConnector.__name__, None
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: List[Any]):
         return ClipActionsConnector(ctx)
 
 

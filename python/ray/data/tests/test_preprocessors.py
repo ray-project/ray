@@ -20,6 +20,8 @@ from ray.data.preprocessors import (
     OrdinalEncoder,
     SimpleImputer,
     StandardScaler,
+    CustomKBinsDiscretizer,
+    UniformKBinsDiscretizer,
 )
 from ray.data.preprocessors.encoder import Categorizer, MultiHotEncoder
 from ray.data.preprocessors.hasher import FeatureHasher
@@ -1223,14 +1225,14 @@ def test_concatenator():
     df = pd.DataFrame(
         {
             "a": [1, 2, 3, 4],
-            "b": [1, 2, 3, 4],
+            "b": [5, 6, 7, 8],
         }
     )
     ds = ray.data.from_pandas(df)
     prep = Concatenator(output_column_name="c")
     new_ds = prep.transform(ds)
     for i, row in enumerate(new_ds.take()):
-        assert np.array_equal(row["c"], np.array([i + 1, i + 1]))
+        assert np.array_equal(row["c"], np.array([i + 1, i + 5]))
 
     df = pd.DataFrame({"a": [1, 2, 3, 4]})
     ds = ray.data.from_pandas(df)
@@ -1278,6 +1280,150 @@ def test_concatenator():
         ctx.enable_tensor_extension_casting = old_config
 
 
+@pytest.mark.parametrize("bins", (3, {"A": 4, "B": 3}))
+@pytest.mark.parametrize(
+    "dtypes",
+    (
+        None,
+        {"A": int, "B": int},
+        {"A": int, "B": pd.CategoricalDtype(["cat1", "cat2", "cat3"], ordered=True)},
+    ),
+)
+@pytest.mark.parametrize("right", (True, False))
+@pytest.mark.parametrize("include_lowest", (True, False))
+def test_uniform_kbins_discretizer(
+    bins,
+    dtypes,
+    right,
+    include_lowest,
+):
+    """Tests basic UniformKBinsDiscretizer functionality."""
+
+    col_a = [0.2, 1.4, 2.5, 6.2, 9.7, 2.1]
+    col_b = [0.2, 1.4, 2.5, 6.2, 9.7, 2.1]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
+    ds = ray.data.from_pandas(in_df).repartition(2)
+
+    discretizer = UniformKBinsDiscretizer(
+        ["A", "B"], bins=bins, dtypes=dtypes, right=right, include_lowest=include_lowest
+    )
+
+    transformed = discretizer.fit_transform(ds)
+    out_df = transformed.to_pandas()
+
+    if isinstance(bins, dict):
+        bins_A = bins["A"]
+        bins_B = bins["B"]
+    else:
+        bins_A = bins_B = bins
+
+    labels_A = False
+    ordered_A = True
+    labels_B = False
+    ordered_B = True
+    if isinstance(dtypes, dict):
+        if isinstance(dtypes.get("A"), pd.CategoricalDtype):
+            labels_A = dtypes.get("A").categories
+            ordered_A = dtypes.get("A").ordered
+        if isinstance(dtypes.get("B"), pd.CategoricalDtype):
+            labels_B = dtypes.get("B").categories
+            ordered_B = dtypes.get("B").ordered
+
+    assert out_df["A"].equals(
+        pd.cut(
+            in_df["A"],
+            bins_A,
+            labels=labels_A,
+            ordered=ordered_A,
+            right=right,
+            include_lowest=include_lowest,
+        )
+    )
+    assert out_df["B"].equals(
+        pd.cut(
+            in_df["B"],
+            bins_B,
+            labels=labels_B,
+            ordered=ordered_B,
+            right=right,
+            include_lowest=include_lowest,
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "bins", ([3, 4, 6, 9], {"A": [3, 4, 6, 8, 9], "B": [3, 4, 6, 9]})
+)
+@pytest.mark.parametrize(
+    "dtypes",
+    (
+        None,
+        {"A": int, "B": int},
+        {"A": int, "B": pd.CategoricalDtype(["cat1", "cat2", "cat3"], ordered=True)},
+    ),
+)
+@pytest.mark.parametrize("right", (True, False))
+@pytest.mark.parametrize("include_lowest", (True, False))
+def test_custom_kbins_discretizer(
+    bins,
+    dtypes,
+    right,
+    include_lowest,
+):
+    """Tests basic CustomKBinsDiscretizer functionality."""
+
+    col_a = [0.2, 1.4, 2.5, 6.2, 9.7, 2.1]
+    col_b = [0.2, 1.4, 2.5, 6.2, 9.7, 2.1]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
+    ds = ray.data.from_pandas(in_df).repartition(2)
+
+    discretizer = CustomKBinsDiscretizer(
+        ["A", "B"], bins=bins, dtypes=dtypes, right=right, include_lowest=include_lowest
+    )
+
+    transformed = discretizer.transform(ds)
+    out_df = transformed.to_pandas()
+
+    if isinstance(bins, dict):
+        bins_A = bins["A"]
+        bins_B = bins["B"]
+    else:
+        bins_A = bins_B = bins
+
+    labels_A = False
+    ordered_A = True
+    labels_B = False
+    ordered_B = True
+    if isinstance(dtypes, dict):
+        if isinstance(dtypes.get("A"), pd.CategoricalDtype):
+            labels_A = dtypes.get("A").categories
+            ordered_A = dtypes.get("A").ordered
+        if isinstance(dtypes.get("B"), pd.CategoricalDtype):
+            labels_B = dtypes.get("B").categories
+            ordered_B = dtypes.get("B").ordered
+
+    assert out_df["A"].equals(
+        pd.cut(
+            in_df["A"],
+            bins_A,
+            labels=labels_A,
+            ordered=ordered_A,
+            right=right,
+            include_lowest=include_lowest,
+        )
+    )
+    assert out_df["B"].equals(
+        pd.cut(
+            in_df["B"],
+            bins_B,
+            labels=labels_B,
+            ordered=ordered_B,
+            right=right,
+            include_lowest=include_lowest,
+        )
+    )
+
+
 def test_tokenizer():
     """Tests basic Tokenizer functionality."""
 
@@ -1302,33 +1448,29 @@ def test_tokenizer():
 
 def test_feature_hasher():
     """Tests basic FeatureHasher functionality."""
-
-    col_a = [0, "a", "b"]
-    col_b = [0, "a", "c"]
-    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
-    ds = ray.data.from_pandas(in_df)
-
-    hasher = FeatureHasher(["A", "B"], num_features=5)
-    transformed = hasher.transform(ds)
-    out_df = transformed.to_pandas()
-
-    processed_col_0 = [0, 0, 1]
-    processed_col_1 = [0, 0, 1]
-    processed_col_2 = [0, 2, 0]
-    processed_col_3 = [2, 0, 0]
-    processed_col_4 = [0, 0, 0]
-
-    expected_df = pd.DataFrame.from_dict(
-        {
-            "hash_A_B_0": processed_col_0,
-            "hash_A_B_1": processed_col_1,
-            "hash_A_B_2": processed_col_2,
-            "hash_A_B_3": processed_col_3,
-            "hash_A_B_4": processed_col_4,
-        }
+    # This dataframe represents the counts from the documents "I like Python" and "I
+    # dislike Python".
+    token_counts = pd.DataFrame(
+        {"I": [1, 1], "like": [1, 0], "dislike": [0, 1], "Python": [1, 1]}
     )
 
-    assert out_df.equals(expected_df)
+    hasher = FeatureHasher(["I", "like", "dislike", "Python"], num_features=256)
+    document_term_matrix = hasher.fit_transform(
+        ray.data.from_pandas(token_counts)
+    ).to_pandas()
+
+    # Document-term matrix should have shape (# documents, # features)
+    assert document_term_matrix.shape == (2, 256)
+
+    # The tokens tokens "I", "like", and "Python" should be hashed to distinct indices
+    # for adequately large `num_features`.
+    assert document_term_matrix.iloc[0].sum() == 3
+    assert all(document_term_matrix.iloc[0] <= 1)
+
+    # The tokens tokens "I", "dislike", and "Python" should be hashed to distinct
+    # indices for adequately large `num_features`.
+    assert document_term_matrix.iloc[1].sum() == 3
+    assert all(document_term_matrix.iloc[1] <= 1)
 
 
 def test_hashing_vectorizer():

@@ -381,6 +381,35 @@ py_test(
     args = ["--yaml-dir=tuned_examples/dqn"]
 )
 
+# DT
+py_test(
+   name = "learning_tests_pendulum_dt",
+   main = "tests/run_regression_tests.py",
+   tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+   size = "large",
+   srcs = ["tests/run_regression_tests.py"],
+   # Include an offline json data file as well.
+   data = [
+       "tuned_examples/dt/pendulum-v1-dt.yaml",
+       "tests/data/pendulum/pendulum_expert_sac_50eps.zip",
+   ],
+   args = ["--yaml-dir=tuned_examples/dt"]
+)
+
+py_test(
+    name = "learning_tests_cartpole_dt",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "torch_only", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include an offline json data file as well.
+    data = [
+        "tuned_examples/dt/cartpole-v0-dt.yaml",
+        "tests/data/cartpole/large.json",
+    ],
+    args = ["--yaml-dir=tuned_examples/dt"]
+)
+
 # Simple-Q
 py_test(
     name = "learning_tests_cartpole_simpleq",
@@ -502,12 +531,12 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_multi_agent_cartpole_crashing_pg",
+    name = "learning_tests_multi_agent_cartpole_crashing_restart_sub_envs_pg",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/pg/multi-agent-cartpole-crashing-pg.yaml"],
+    data = ["tuned_examples/pg/multi-agent-cartpole-crashing-restart-sub-envs-pg.yaml"],
     args = ["--yaml-dir=tuned_examples/pg"]
 )
 
@@ -751,10 +780,17 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_worker_failures",
-    tags = ["team:rllib", "tests_dir", "algorithms_dir_generic"],
+    name = "test_worker_failures",
+    tags = ["team:rllib", "tests_dir", "tests_dir_W"],
     size = "large",
-    srcs = ["algorithms/tests/test_worker_failures.py"]
+    srcs = ["tests/test_worker_failures.py"]
+)
+
+py_test(
+    name = "test_node_failure",
+    tags = ["team:rllib", "tests_dir", "tests_dir_N", "exclusive"],
+    size = "large",
+    srcs = ["tests/test_node_failure.py"],
 )
 
 py_test(
@@ -890,12 +926,50 @@ py_test(
     srcs = ["algorithms/dqn/tests/test_dqn.py"]
 )
 
+# DQN Reproducibility
+py_test(
+    name = "test_repro_dqn",
+    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    size = "large",
+    srcs = ["algorithms/dqn/tests/test_repro_dqn.py"]
+)
+
 # Dreamer
 py_test(
     name = "test_dreamer",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/dreamer/tests/test_dreamer.py"]
+)
+
+# DT
+py_test(
+    name = "test_segmentation_buffer",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/dt/tests/test_segmentation_buffer.py"]
+)
+
+py_test(
+    name = "test_dt_model",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/dt/tests/test_dt_model.py"]
+)
+
+py_test(
+    name = "test_dt_policy",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/dt/tests/test_dt_policy.py"]
+)
+
+py_test(
+    name = "test_dt",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/dt/tests/test_dt.py"],
+    data = ["tests/data/pendulum/large.json"],
 )
 
 # ES
@@ -974,6 +1048,14 @@ py_test(
     srcs = ["algorithms/ppo/tests/test_ppo.py"]
 )
 
+# PPO Reproducibility
+py_test(
+    name = "test_repro_ppo",
+    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    size = "large",
+    srcs = ["algorithms/ppo/tests/test_repro_ppo.py"]
+)
+
 # QMix
 py_test(
     name = "test_qmix",
@@ -1012,6 +1094,14 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/simple_q/tests/test_simple_q.py"]
+)
+
+# SimpleQ Reproducibility
+py_test(
+    name = "test_repro_simple_q",
+    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    size = "large",
+    srcs = ["algorithms/simple_q/tests/test_repro_simple_q.py"]
 )
 
 # SlateQ
@@ -1191,7 +1281,7 @@ py_test(
         "--env", "Pendulum-v1",
         "--run", "APEX_DDPG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"replay_buffer_config\": {\"learning_starts\": 100}, \"min_time_s_per_iteration\": 1, \"batch_mode\": \"complete_episodes\"}'",
+        "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"num_steps_sampled_before_learning_starts\": 100, \"min_time_s_per_iteration\": 1, \"batch_mode\": \"complete_episodes\"}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -1248,7 +1338,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"replay_buffer_config\": {\"learning_starts\": 0}, \"off_policy_estimation_methods\": {\"wis\": {\"type\": \"wis\"}, \"is\": {\"type\": \"is\"}}, \"exploration_config\": {\"type\": \"SoftQ\"}}'"
+        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"num_steps_sampled_before_learning_starts\": 0, \"off_policy_estimation_methods\": {\"wis\": {\"type\": \"wis\"}, \"is\": {\"type\": \"is\"}}, \"exploration_config\": {\"type\": \"SoftQ\"}}'"
         ]
 )
 
@@ -1260,7 +1350,7 @@ py_test(
         "--env", "PongDeterministic-v4",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"replay_buffer_config\": {\"capacity\": 10000, \"learning_starts\": 10000}, \"rollout_fragment_length\": 4, \"target_network_update_freq\": 1000, \"gamma\": 0.99}'"
+        "--config", "'{\"framework\": \"tf\", \"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"replay_buffer_config\": {\"capacity\": 10000}, \"num_steps_sampled_before_learning_starts\": 10000, \"rollout_fragment_length\": 4, \"target_network_update_freq\": 1000, \"gamma\": 0.99}'"
         ]
 )
 
@@ -1435,6 +1525,13 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "env/tests/test_env_with_subprocess",
+    tags = ["team:rllib", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_env_with_subprocess.py"]
+)
+
+py_test(
     name = "env/tests/test_external_env",
     tags = ["team:rllib", "env"],
     size = "large",
@@ -1458,6 +1555,38 @@ sh_test(
 )
 
 sh_test(
+    name = "env/tests/test_local_inference_cartpole_w_2_concurrent_episodes",
+    tags = ["team:rllib", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["local", "cartpole-dummy-2-episodes", "8830"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+sh_test(
+    name = "env/tests/test_local_inference_unity3d",
+    tags = ["team:rllib", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+    args = ["local", "unity3d", "8850"],
+    data = glob(["examples/serving/*.py"]),
+)
+
+py_test(
+    name = "env/tests/test_multi_agent_env",
+    tags = ["team:rllib", "tests_dir", "tests_dir_M"],
+    size = "medium",
+    srcs = ["env/tests/test_multi_agent_env.py"]
+)
+
+py_test(
+    name = "env/tests/test_multi_agent_pendulum",
+    tags = ["team:rllib", "tests_dir", "tests_dir_M"],
+    size = "large",
+    srcs = ["env/tests/test_multi_agent_pendulum.py"]
+)
+
+sh_test(
     name = "env/tests/test_remote_inference_cartpole",
     tags = ["team:rllib", "env"],
     size = "medium",
@@ -1476,29 +1605,11 @@ sh_test(
 )
 
 sh_test(
-    name = "env/tests/test_local_inference_cartpole_w_2_concurrent_episodes",
-    tags = ["team:rllib", "env"],
-    size = "medium",
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "cartpole-dummy-2-episodes", "8830"],
-    data = glob(["examples/serving/*.py"]),
-)
-
-sh_test(
     name = "env/tests/test_remote_inference_cartpole_w_2_concurrent_episodes",
     tags = ["team:rllib", "env"],
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole-dummy-2-episodes", "8840"],
-    data = glob(["examples/serving/*.py"]),
-)
-
-sh_test(
-    name = "env/tests/test_local_inference_unity3d",
-    tags = ["team:rllib", "env"],
-    size = "medium",
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "unity3d", "8850"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -1511,33 +1622,11 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-
 py_test(
     name = "env/tests/test_remote_worker_envs",
     tags = ["team:rllib", "env"],
     size = "medium",
     srcs = ["env/tests/test_remote_worker_envs.py"]
-)
-
-py_test(
-    name = "env/tests/test_env_with_subprocess",
-    tags = ["team:rllib", "env"],
-    size = "medium",
-    srcs = ["env/tests/test_env_with_subprocess.py"]
-)
-
-py_test(
-    name = "env/wrappers/tests/test_unity3d_env",
-    tags = ["team:rllib", "env"],
-    size = "small",
-    srcs = ["env/wrappers/tests/test_unity3d_env.py"]
-)
-
-py_test(
-    name = "env/wrappers/tests/test_recsim_wrapper",
-    tags = ["team:rllib", "env"],
-    size = "small",
-    srcs = ["env/wrappers/tests/test_recsim_wrapper.py"]
 )
 
 py_test(
@@ -1552,6 +1641,20 @@ py_test(
     tags = ["team:rllib", "env"],
     size = "small",
     srcs = ["env/wrappers/tests/test_group_agents_wrapper.py"]
+)
+
+py_test(
+    name = "env/wrappers/tests/test_recsim_wrapper",
+    tags = ["team:rllib", "env"],
+    size = "small",
+    srcs = ["env/wrappers/tests/test_recsim_wrapper.py"]
+)
+
+py_test(
+    name = "env/wrappers/tests/test_unity3d_env",
+    tags = ["team:rllib", "env"],
+    size = "small",
+    srcs = ["env/wrappers/tests/test_unity3d_env.py"]
 )
 
 # --------------------------------------------------------------------
@@ -1625,7 +1728,7 @@ py_test(
 
 py_test(
     name = "test_async_requests_manager",
-    tags = ["team:rllib", "execution"],
+    tags = ["team:rllib", "execution", "exclusive"],
     size = "medium",
     srcs = ["execution/tests/test_async_requests_manager.py"]
 )
@@ -1728,6 +1831,20 @@ py_test(
     data = ["tests/data/cartpole/small.json"],
 )
 
+py_test(
+    name = "test_dm_learning",
+    tags = ["team:rllib", "offline"],
+    size = "large",
+    srcs = ["offline/estimators/tests/test_dm_learning.py"],
+)
+
+py_test(
+    name = "test_dr_learning",
+    tags = ["team:rllib", "offline"],
+    size = "large",
+    srcs = ["offline/estimators/tests/test_dr_learning.py"],
+)
+
 # --------------------------------------------------------------------
 # Policies
 # rllib/policy/
@@ -1765,7 +1882,7 @@ py_test(
 
 py_test(
     name = "policy/tests/test_sample_batch",
-    tags = ["team:rllib", "policy"],
+    tags = ["team:rllib", "policy", "gpu"],
     size = "small",
     srcs = ["policy/tests/test_sample_batch.py"]
 )
@@ -1784,6 +1901,13 @@ py_test(
 #
 # Tag: utils
 # --------------------------------------------------------------------
+
+py_test(
+    name = "test_errors",
+    tags = ["team:rllib", "utils"],
+    size = "medium",
+    srcs = ["utils/tests/test_errors.py"]
+)
 
 py_test(
     name = "test_serialization",
@@ -2068,20 +2192,6 @@ py_test(
     size = "medium",
     data = glob(["tests/data/model_weights/**"]),
     srcs = ["tests/test_model_imports.py"]
-)
-
-py_test(
-    name = "tests/test_multi_agent_env",
-    tags = ["team:rllib", "tests_dir", "tests_dir_M"],
-    size = "medium",
-    srcs = ["tests/test_multi_agent_env.py"]
-)
-
-py_test(
-    name = "tests/test_multi_agent_pendulum",
-    tags = ["team:rllib", "tests_dir", "tests_dir_M"],
-    size = "large",
-    srcs = ["tests/test_multi_agent_pendulum.py"]
 )
 
 py_test(
@@ -2933,6 +3043,15 @@ py_test(
     args = ["--as-test", "--framework=torch", "--stop-reward=70"]
 )
 
+py_test(
+    name = "examples/offline_rl_torch",
+    main = "examples/offline_rl.py",
+    tags = ["team:rllib", "exclusive", "examples", "examples_M"],
+    size = "medium",
+    srcs = ["examples/offline_rl.py"],
+    args = ["--as-test", "--stop-reward=-300", "--stop-iters=1"]
+)
+
 # Taking out this test for now: Mixed torch- and tf- policies within the same
 # Trainer never really worked.
 # py_test(
@@ -3080,6 +3199,16 @@ py_test(
 )
 
 py_test(
+    name = "examples/inference_and_serving/policy_inference_after_training_with_dt_torch",
+    main = "examples/inference_and_serving/policy_inference_after_training_with_dt.py",
+    tags = ["team:rllib", "exclusive", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_dt.py"],
+    data = ["tests/data/cartpole/large.json"],
+    args = ["--input-files=tests/data/cartpole/large.json"]
+)
+
+py_test(
     name = "examples/inference_and_serving/policy_inference_after_training_with_lstm_tf",
     main = "examples/inference_and_serving/policy_inference_after_training_with_lstm.py",
     tags = ["team:rllib", "exclusive", "examples", "examples_P"],
@@ -3121,7 +3250,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples", "examples_R"],
     size = "large",
     srcs = ["examples/recommender_system_with_recsim_and_slateq.py"],
-    args = ["--stop-iters=2", "--learning-starts=100", "--framework=tf2", "--use-tune", "--random-test-episodes=10", "--env-num-candidates=50", "--env-slate-size=2"],
+    args = ["--stop-iters=2", "--num-steps-sampled-before-learning_starts=100", "--framework=tf2", "--use-tune", "--random-test-episodes=10", "--env-num-candidates=50", "--env-slate-size=2"],
 )
 
 py_test(
@@ -3311,7 +3440,7 @@ py_test(
 py_test(
     name = "examples/bandit/lin_ts_train_wheel_env",
     main = "examples/bandit/lin_ts_train_wheel_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
+    tags = ["team:rllib", "exclusive", "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bandit/lin_ts_train_wheel_env.py"],
 )
@@ -3319,7 +3448,7 @@ py_test(
 py_test(
     name = "examples/bandit/tune_lin_ts_train_wheel_env",
     main = "examples/bandit/tune_lin_ts_train_wheel_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
+    tags = ["team:rllib", "exclusive", "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bandit/tune_lin_ts_train_wheel_env.py"],
 )
@@ -3327,7 +3456,7 @@ py_test(
 py_test(
     name = "examples/bandit/tune_lin_ucb_train_recommendation",
     main = "examples/bandit/tune_lin_ucb_train_recommendation.py",
-    tags = ["team:rllib","exclusive",  "examples", ],
+    tags = ["team:rllib","exclusive",  "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bandit/tune_lin_ucb_train_recommendation.py"],
 )
@@ -3335,7 +3464,7 @@ py_test(
 py_test(
     name = "examples/bandit/tune_lin_ucb_train_recsim_env",
     main = "examples/bandit/tune_lin_ucb_train_recsim_env.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bandit/tune_lin_ucb_train_recsim_env.py"],
 )
@@ -3343,36 +3472,36 @@ py_test(
 py_test(
     name = "examples/connectors/run_connector_policy",
     main = "examples/connectors/run_connector_policy.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_AtoT"],
     size = "small",
     srcs = ["examples/connectors/run_connector_policy.py"],
-    data = [
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6",
-    ],
-    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6"]
+    data = glob([
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022",
+    ]),
+    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022"]
 )
 
 py_test(
     name = "examples/connectors/adapt_connector_policy",
     main = "examples/connectors/adapt_connector_policy.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_AtoT"],
     size = "small",
     srcs = ["examples/connectors/adapt_connector_policy.py"],
-    data = [
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6",
-    ],
-    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6"]
+    data = glob([
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022",
+    ]),
+    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022"]
 )
 
 py_test(
     name = "examples/connectors/self_play_with_policy_checkpoint",
     main = "examples/connectors/self_play_with_policy_checkpoint.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_AtoT"],
     size = "small",
     srcs = ["examples/connectors/self_play_with_policy_checkpoint.py"],
-    data = [
+    data = glob([
         "tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
-    ],
+    ]),
     args = [
         "--checkpoint_file=tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
         "--train_iteration=1"  # Smoke test.
@@ -3434,16 +3563,12 @@ py_test_module_list(
   files = [
     "tests/test_dnc.py",
     "tests/test_perf.py",
-    "tests/test_vector_env.py",
-    "env/tests/test_multi_agent_env.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
     "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",
     "examples/env/tests/test_coin_game_vectorized_env.py",
     "examples/env/tests/test_matrix_sequential_social_dilemma.py",
     "examples/env/tests/test_wrappers.py",
-    "execution/tests/test_mixin_multi_agent_replay_buffer.py",
-    "utils/tests/test_errors.py",
     "utils/tests/test_utils.py",
   ],
   size = "large",

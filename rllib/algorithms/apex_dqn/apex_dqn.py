@@ -75,15 +75,16 @@ class ApexDQNConfig(DQNConfig):
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = ApexDQNConfig()
         >>> config.training(num_atoms=tune.grid_search(list(range(1, 11)))
         >>> config.environment(env="CartPole-v1")
-        >>> tune.run(
+        >>> tune.Tuner(
         >>>     "APEX",
-        >>>     stop={"episode_reward_mean":200},
-        >>>     config=config.to_dict()
-        >>> )
+        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        >>>     param_space=config.to_dict()
+        >>> ).fit()
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
@@ -132,6 +133,10 @@ class ApexDQNConfig(DQNConfig):
         self.train_batch_size = 512
         self.target_network_update_freq = 500000
         self.training_intensity = 1
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        self.num_steps_sampled_before_learning_starts = 50000
 
         # max number of inflight requests to each sampling worker
         # see the AsyncRequestsManager class for more details
@@ -161,7 +166,6 @@ class ApexDQNConfig(DQNConfig):
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
-            "learning_starts": 50000,
             # Whether all shards of the replay buffer must be co-located
             # with the learner process (running the execution plan).
             # This is preferred b/c the learner process should have quick
@@ -241,7 +245,6 @@ class ApexDQNConfig(DQNConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "learning_starts": 1000,
                 "capacity": 50000,
                 "replay_batch_size": 32,
                 "replay_sequence_length": 1,
@@ -441,12 +444,19 @@ class ApexDQN(DQN):
         # only do this if there are remote workers (config["num_workers"] > 1)
         if self.workers.remote_workers():
             self.update_workers(worker_samples_collected)
-        # trigger a sample from the replay actors and enqueue operation to the
-        # learner thread.
-        self.sample_from_replay_buffer_place_on_learner_queue_non_blocking(
-            worker_samples_collected
-        )
-        self.update_replay_sample_priority()
+
+        # Update target network every `target_network_update_freq` sample steps.
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+        ]
+
+        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+            # trigger a sample from the replay actors and enqueue operation to the
+            # learner thread.
+            self.sample_from_replay_buffer_place_on_learner_queue_non_blocking(
+                worker_samples_collected
+            )
+            self.update_replay_sample_priority()
 
         return copy.deepcopy(self.learner_thread.learner_info)
 

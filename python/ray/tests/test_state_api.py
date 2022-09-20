@@ -6,6 +6,7 @@ from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
+from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
 
@@ -98,7 +99,7 @@ from ray.experimental.state.state_manager import IdToIpMap, StateDataSourceClien
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
 
-if sys.version_info > (3, 7, 0):
+if sys.version_info >= (3, 8, 0):
     from unittest.mock import AsyncMock
 else:
     from asyncmock import AsyncMock
@@ -1097,7 +1098,8 @@ async def test_state_data_source_client(ray_start_cluster):
     gcs_channel = ray._private.utils.init_grpc_channel(
         cluster.address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
-    client = StateDataSourceClient(gcs_channel)
+    gcs_aio_client = GcsAioClient(address=cluster.address, nums_reconnect_retry=0)
+    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
 
     """
     Test actor
@@ -1133,7 +1135,7 @@ async def test_state_data_source_client(ray_start_cluster):
         # Entrypoint shell command to execute
         entrypoint="ls",
     )
-    result = client.get_job_info()
+    result = await client.get_job_info()
     assert list(result.keys())[0] == job_id
     assert isinstance(result, dict)
 
@@ -1257,7 +1259,8 @@ async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
     gcs_channel = ray._private.utils.init_grpc_channel(
         cluster.address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
-    client = StateDataSourceClient(gcs_channel)
+    gcs_aio_client = GcsAioClient(address=cluster.address, nums_reconnect_retry=0)
+    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
 
     """
     Test actor
@@ -1308,7 +1311,8 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     gcs_channel = ray._private.utils.init_grpc_channel(
         cluster.address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
-    client = StateDataSourceClient(gcs_channel)
+    gcs_aio_client = GcsAioClient(address=cluster.address, nums_reconnect_retry=0)
+    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
     for node in ray.nodes():
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
@@ -1594,6 +1598,57 @@ def test_list_get_actors(shutdown_only):
 
     wait_for_condition(verify)
     print(list_actors())
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Failed on Windows",
+)
+@pytest.mark.parametrize(
+    "override_url",
+    [
+        "https://external_dashboard_url",
+        "https://external_dashboard_url/path1/?query_param1=val1&query_param2=val2",
+        "new_external_dashboard_url",
+    ],
+)
+def test_state_api_with_external_dashboard_override(
+    shutdown_only, override_url, monkeypatch
+):
+    with monkeypatch.context() as m:
+        if override_url:
+            m.setenv(
+                ray_constants.RAY_OVERRIDE_DASHBOARD_URL,
+                override_url,
+            )
+
+        ray.init()
+
+        @ray.remote
+        class A:
+            pass
+
+        a = A.remote()  # noqa
+
+        def verify():
+            # Test list
+            actors = list_actors()
+            assert len(actors) == 1
+            assert actors[0]["state"] == "ALIVE"
+            assert is_hex(actors[0]["actor_id"])
+            assert a._actor_id.hex() == actors[0]["actor_id"]
+
+            # Test get
+            actors = list_actors(detail=True)
+            for actor in actors:
+                get_actor_data = get_actor(actor["actor_id"])
+                assert get_actor_data is not None
+                assert get_actor_data == actor
+
+            return True
+
+        wait_for_condition(verify)
+        print(list_actors())
 
 
 @pytest.mark.skipif(

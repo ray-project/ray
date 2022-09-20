@@ -43,6 +43,9 @@ from ray.autoscaler._private.constants import (
 )
 from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
 from ray.autoscaler._private.log_timer import LogTimer
+from ray.autoscaler._private.node_provider_availability_tracker import (
+    NodeAvailabilitySummary,
+)
 from ray.autoscaler._private.providers import (
     _NODE_PROVIDERS,
     _PROVIDER_PRETTY_NAMES,
@@ -122,7 +125,7 @@ def try_reload_log_state(provider_config: Dict[str, Any], log_state: dict) -> No
         return reload_log_state(log_state)
 
 
-def debug_status(status, error) -> str:
+def debug_status(status, error, verbose: bool = False) -> str:
     """Return a debug string for the autoscaler."""
     if status:
         status = status.decode("utf-8")
@@ -130,12 +133,28 @@ def debug_status(status, error) -> str:
         lm_summary_dict = status_dict.get("load_metrics_report")
         autoscaler_summary_dict = status_dict.get("autoscaler_report")
         timestamp = status_dict.get("time")
+        gcs_request_time = status_dict.get("gcs_request_time")
+        non_terminated_nodes_time = status_dict.get("non_terminated_nodes_time")
         if lm_summary_dict and autoscaler_summary_dict and timestamp:
             lm_summary = LoadMetricsSummary(**lm_summary_dict)
-            autoscaler_summary = AutoscalerSummary(**autoscaler_summary_dict)
+            node_availability_summary_dict = autoscaler_summary_dict.pop(
+                "node_availability_summary", {}
+            )
+            node_availability_summary = NodeAvailabilitySummary.from_fields(
+                **node_availability_summary_dict
+            )
+            autoscaler_summary = AutoscalerSummary(
+                node_availability_summary=node_availability_summary,
+                **autoscaler_summary_dict,
+            )
             report_time = datetime.datetime.fromtimestamp(timestamp)
             status = format_info_string(
-                lm_summary, autoscaler_summary, time=report_time
+                lm_summary,
+                autoscaler_summary,
+                time=report_time,
+                gcs_request_time=gcs_request_time,
+                non_terminated_nodes_time=non_terminated_nodes_time,
+                verbose=verbose,
             )
         else:
             status = "No cluster status."

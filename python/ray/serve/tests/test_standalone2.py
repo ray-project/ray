@@ -13,12 +13,15 @@ import ray
 import ray.actor
 import ray._private.state
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.cluster_utils import AutoscalingCluster
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ApplicationStatus, DeploymentStatus
-from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    SERVE_NAMESPACE,
+    SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
+)
 from ray.serve.context import get_global_client
 from ray.serve.schema import ServeApplicationSchema
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
@@ -488,7 +491,7 @@ class TestDeployApp:
             "runtime_env": {
                 "working_dir": (
                     "https://github.com/ray-project/test_dag/archive/"
-                    "76a741f6de31df78411b1f302071cde46f098418.zip"
+                    "41d09119cbdf8450599f993f51318e9e27c59098.zip"
                 )
             },
         }
@@ -563,16 +566,22 @@ class TestDeployApp:
         assert client.get_serve_status().app_status.deployment_timestamp == 0
 
     @pytest.mark.parametrize(
-        "option_to_update,config_update",
+        "field_to_update,option_to_update,config_update",
         [
-            ("num_replicas", True),
-            ("autoscaling_config", True),
-            ("user_config", True),
-            ("ray_actor_options", False),
+            ("import_path", "", False),
+            ("runtime_env", "", False),
+            ("deployments", "num_replicas", True),
+            ("deployments", "autoscaling_config", True),
+            ("deployments", "user_config", True),
+            ("deployments", "ray_actor_options", False),
         ],
     )
     def test_deploy_config_update(
-        self, client: ServeControllerClient, option_to_update: str, config_update: bool
+        self,
+        client: ServeControllerClient,
+        field_to_update: str,
+        option_to_update: str,
+        config_update: bool,
     ):
         """
         Check that replicas stay alive when lightweight config updates are made and
@@ -604,15 +613,22 @@ class TestDeployApp:
         wait_for_condition(deployment_running, timeout=15)
         pid1 = requests.get("http://localhost:8000/f").text
 
-        updated_options = {
-            "num_replicas": 2,
-            "autoscaling_config": {"max_replicas": 2},
-            "user_config": {"name": "bob"},
-            "ray_actor_options": {"num_cpus": 0.2},
-        }
-        config_template["deployments"][0][option_to_update] = updated_options[
-            option_to_update
-        ]
+        if field_to_update == "import_path":
+            config_template[
+                "import_path"
+            ] = "ray.serve.tests.test_config_files.pid.bnode"
+        elif field_to_update == "runtime_env":
+            config_template["runtime_env"] = {"env_vars": {"test_var": "test_val"}}
+        elif field_to_update == "deployments":
+            updated_options = {
+                "num_replicas": 2,
+                "autoscaling_config": {"max_replicas": 2},
+                "user_config": {"name": "bob"},
+                "ray_actor_options": {"num_cpus": 0.2},
+            }
+            config_template["deployments"][0][option_to_update] = updated_options[
+                option_to_update
+            ]
 
         client.deploy_app(ServeApplicationSchema.parse_obj(config_template))
         wait_for_condition(deployment_running, timeout=15)
@@ -802,6 +818,40 @@ def test_autoscaler_shutdown_node_http_everynode(
     wait_for_condition(
         lambda: len(list(filter(lambda n: n["Alive"], ray.nodes()))) == 1
     )
+
+
+def test_legacy_sync_handle_env_var(call_ray_stop_only):  # noqa: F811
+    script = """
+from ray import serve
+from ray.serve.dag import InputNode
+from ray.serve.drivers import DAGDriver
+import ray
+
+@serve.deployment
+class A:
+    def predict(self, inp):
+        return inp
+
+@serve.deployment
+class Dispatch:
+    def __init__(self, handle):
+        self.handle = handle
+
+    def predict(self, inp):
+        ref = self.handle.predict.remote(inp)
+        assert isinstance(ref, ray.ObjectRef), ref
+        return ray.get(ref)
+
+with InputNode() as inp:
+    a = A.bind()
+    d = Dispatch.bind(a)
+    dag = d.predict.bind(inp)
+
+handle = serve.run(DAGDriver.bind(dag))
+assert ray.get(handle.predict.remote(1)) == 1
+    """
+
+    run_string_as_driver(script, env={SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY: "1"})
 
 
 if __name__ == "__main__":
