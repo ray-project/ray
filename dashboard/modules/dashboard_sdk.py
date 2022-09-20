@@ -156,7 +156,7 @@ def parse_cluster_info(
         module_string = "http"
 
     # If user passes http(s)://, go through normal parsing.
-    if module_string in {"http", "https"}:
+    if module_string in {"http", "https", "ray"}:
         return get_job_submission_client_cluster_info(
             inner_address,
             create_cluster_if_needed=create_cluster_if_needed,
@@ -172,11 +172,12 @@ def parse_cluster_info(
         except Exception:
             raise RuntimeError(
                 f"Module: {module_string} does not exist.\n"
-                f"This module was parsed from Address: {address}"
+                f"This module was parsed from address: {address}"
             ) from None
         assert "get_job_submission_client_cluster_info" in dir(module), (
             f"Module: {module_string} does "
-            "not have `get_job_submission_client_cluster_info`."
+            "not have `get_job_submission_client_cluster_info`.\n"
+            f"This module was parsed from address: {address}"
         )
 
         return module.get_job_submission_client_cluster_info(
