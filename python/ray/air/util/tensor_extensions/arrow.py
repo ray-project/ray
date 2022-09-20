@@ -451,6 +451,12 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         else:
             np_data_buffer = np.concatenate(raveled)
         dtype = np_data_buffer.dtype
+        if dtype.type is np.object_:
+            raise ValueError(
+                "ArrowVariableShapedTensorArray only supports heterogeneous-shaped "
+                "tensor collections, not arbitrarily nested ragged tensors. Got: "
+                f"{arr}"
+            )
         pa_dtype = pa.from_numpy_dtype(dtype)
         if dtype.type is np.bool_:
             # NumPy doesn't represent boolean arrays as bit-packed, so we manually

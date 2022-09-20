@@ -566,6 +566,51 @@ def test_scalar_tensor_array_roundtrip():
     np.testing.assert_array_equal(out, arr)
 
 
+def test_arrow_variable_shaped_tensor_array_validation():
+    # Test homogeneous-typed tensor raises ValueError.
+    with pytest.raises(ValueError):
+        ArrowVariableShapedTensorArray.from_numpy(np.ones((3, 2, 2)))
+
+    # Test arbitrary object raises ValueError.
+    with pytest.raises(ValueError):
+        ArrowVariableShapedTensorArray.from_numpy(object())
+
+    # Test empty array raises ValueError.
+    with pytest.raises(ValueError):
+        ArrowVariableShapedTensorArray.from_numpy(np.array([]))
+
+    # Test deeply ragged tensor raises ValueError.
+    with pytest.raises(ValueError):
+        ArrowVariableShapedTensorArray.from_numpy(
+            np.array(
+                [
+                    np.array(
+                        [
+                            np.array([1, 2]),
+                            np.array([3, 4, 5]),
+                        ],
+                        dtype=object,
+                    ),
+                    np.array(
+                        [
+                            np.array([5, 6, 7, 8]),
+                        ],
+                        dtype=object,
+                    ),
+                    np.array(
+                        [
+                            np.array([5, 6, 7, 8]),
+                            np.array([5, 6, 7, 8]),
+                            np.array([5, 6, 7, 8]),
+                        ],
+                        dtype=object,
+                    ),
+                ],
+                dtype=object,
+            )
+        )
+
+
 def test_arrow_variable_shaped_tensor_array_roundtrip():
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
