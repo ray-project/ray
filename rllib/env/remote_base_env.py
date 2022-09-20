@@ -443,17 +443,18 @@ class _RemoteSingleAgentEnv:
         self.env = make_env(i)
 
     def reset(self, seed: Optional[int] = None):
-        if seed is not None:
-            obs_and_info = {_DUMMY_AGENT_ID: self.env.reset()}
+        if seed is None:
+            obs_and_info = self.env.reset()
         else:
-            obs_and_info = {_DUMMY_AGENT_ID: self.env.reset(seed)}
+            obs_and_info = self.env.reset(seed)
 
         if check_old_gym_env(self.env, reset_results=obs_and_info):
-            obs_and_info = (obs_and_info, {k: {} for k in obs_and_info.keys()})
+            obs_and_info = obs_and_info, {}
 
-        obs, info = obs_and_info
+        obs = {_DUMMY_AGENT_ID: obs_and_info[0]}
+        info = {_DUMMY_AGENT_ID: obs_and_info[1]}
 
-        rew = {agent_id: 0 for agent_id in obs.keys()}
+        rew = {_DUMMY_AGENT_ID: 0.0}
         done = {"__all__": False}
         truncated = {}
         return obs, rew, done, truncated, info

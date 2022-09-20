@@ -35,7 +35,7 @@ def _gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
         import pybullet_envs
 
         pybullet_envs.getList()
-    except (ModuleNotFoundError, ImportError):
+    except (AttributeError, ModuleNotFoundError, ImportError):
         pass
     try:
         import vizdoomgym
