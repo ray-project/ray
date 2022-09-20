@@ -515,13 +515,6 @@ def test_tensor_array_validation():
     with pytest.raises(TypeError):
         TensorArray(object())
 
-    # Test 1D array raises TypeError.
-    with pytest.raises(TypeError):
-        TensorArray(np.array([1, 2, 3]))
-
-    with pytest.raises(TypeError):
-        TensorArray([1, 2, 3])
-
     # Test string array raises TypeError.
     with pytest.raises(TypeError):
         TensorArray(np.array(["foo", "bar", "baz", "quux"]))
@@ -535,6 +528,42 @@ def test_tensor_array_validation():
 
     with pytest.raises(TypeError):
         TensorArray([object(), object()])
+
+
+def test_arrow_scalar_tensor_array_roundtrip():
+    arr = np.arange(10)
+    ata = ArrowTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, pa.DataType)
+    assert len(ata) == len(arr)
+    out = ata.to_numpy()
+    np.testing.assert_array_equal(out, arr)
+
+
+def test_arrow_scalar_tensor_array_roundtrip_boolean():
+    arr = np.array([True, False, False, True])
+    ata = ArrowTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, pa.DataType)
+    assert len(ata) == len(arr)
+    # Zero-copy is not possible since Arrow bitpacks boolean arrays while NumPy does
+    # not.
+    out = ata.to_numpy(zero_copy_only=False)
+    np.testing.assert_array_equal(out, arr)
+
+
+def test_scalar_tensor_array_roundtrip():
+    arr = np.arange(10)
+    ta = TensorArray(arr)
+    assert isinstance(ta.dtype, TensorDtype)
+    assert len(ta) == len(arr)
+    out = ta.to_numpy()
+    np.testing.assert_array_equal(out, arr)
+
+    # Check Arrow conversion.
+    ata = ta.__arrow_array__()
+    assert isinstance(ata.type, pa.DataType)
+    assert len(ata) == len(arr)
+    out = ata.to_numpy()
+    np.testing.assert_array_equal(out, arr)
 
 
 def test_arrow_variable_shaped_tensor_array_roundtrip():

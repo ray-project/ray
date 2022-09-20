@@ -126,14 +126,12 @@ class ArrowTensorArray(pa.ExtensionArray):
         Returns:
             An ArrowTensorArray containing len(arr) tensors of fixed shape.
         """
-        if isinstance(arr, (list, tuple)):
-            if np.isscalar(arr[0]):
-                return pa.array(arr)
-            elif isinstance(arr[0], np.ndarray):
-                # Stack ndarrays and pass through to ndarray handling logic
-                # below.
-                arr = np.stack(arr, axis=0)
+        if isinstance(arr, (list, tuple)) and arr and isinstance(arr[0], np.ndarray):
+            # Stack ndarrays and pass through to ndarray handling logic below.
+            arr = np.stack(arr, axis=0)
         if isinstance(arr, np.ndarray):
+            if len(arr) == 0 or np.isscalar(arr[0]):
+                return pa.array(arr)
             if not arr.flags.c_contiguous:
                 # We only natively support C-contiguous ndarrays.
                 arr = np.ascontiguousarray(arr)
