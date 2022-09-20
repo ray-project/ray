@@ -40,10 +40,10 @@ OBJECT_SIZE = "object size"
 REFERENCE_TYPE = "reference type"
 
 # Task status.
-PENDING_ARGS_AVAIL = "PENDING_ARGS_AVAIL"
+WAITING_FOR_DEPENDENCIES = "WAITING_FOR_DEPENDENCIES"
 SCHEDULED = "SCHEDULED"
 FINISHED = "FINISHED"
-SUBMITTED_TO_WORKER = "SUBMITTED_TO_WORKER"
+WAITING_FOR_EXECUTION = "WAITING_FOR_EXECUTION"
 
 
 def data_lines(memory_str):
@@ -347,33 +347,33 @@ def test_task_status(ray_start_regular):
     im = impossible.remote()  # noqa
     # x and its semaphore task are scheduled. im cannot
     # be scheduled, so it is pending forever.
-    wait_for_condition(lambda: count(filtered_summary(), SUBMITTED_TO_WORKER) == 2)
-    wait_for_condition(lambda: count(filtered_summary(), PENDING_ARGS_AVAIL) == 1)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_EXECUTION) == 2)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_DEPENDENCIES) == 1)
     wait_for_condition(lambda: count(filtered_summary(), SCHEDULED) == 1)
 
     z = dep.remote(sema, x=x)
-    wait_for_condition(lambda: count(filtered_summary(), PENDING_ARGS_AVAIL) == 2)
-    wait_for_condition(lambda: count(filtered_summary(), SUBMITTED_TO_WORKER) == 2)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_DEPENDENCIES) == 2)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_EXECUTION) == 2)
     wait_for_condition(lambda: count(filtered_summary(), FINISHED) == 0)
 
     sema.release.remote()
     time.sleep(2)
     wait_for_condition(lambda: count(filtered_summary(), FINISHED) == 1)
-    wait_for_condition(lambda: count(filtered_summary(), PENDING_ARGS_AVAIL) == 0)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_DEPENDENCIES) == 0)
     # y, z, and two semaphore tasks are scheduled.
-    wait_for_condition(lambda: count(filtered_summary(), SUBMITTED_TO_WORKER) == 4)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_EXECUTION) == 4)
 
     sema.release.remote()
     wait_for_condition(lambda: count(filtered_summary(), FINISHED) == 2)
-    wait_for_condition(lambda: count(filtered_summary(), PENDING_ARGS_AVAIL) == 0)
-    wait_for_condition(lambda: count(filtered_summary(), SUBMITTED_TO_WORKER) == 2)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_DEPENDENCIES) == 0)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_EXECUTION) == 2)
 
     sema.release.remote()
     ray.get(y)
     ray.get(z)
     wait_for_condition(lambda: count(filtered_summary(), FINISHED) == 3)
-    wait_for_condition(lambda: count(filtered_summary(), PENDING_ARGS_AVAIL) == 0)
-    wait_for_condition(lambda: count(filtered_summary(), SUBMITTED_TO_WORKER) == 0)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_DEPENDENCIES) == 0)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_EXECUTION) == 0)
     wait_for_condition(lambda: count(filtered_summary(), SCHEDULED) == 1)
 
 
