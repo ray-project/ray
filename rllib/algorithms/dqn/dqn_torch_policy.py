@@ -45,6 +45,17 @@ if nn:
     F = nn.functional
 
 
+def get_dist_class_with_temperature(temperature):
+    """Custom TorchCategorical distribution class that has temperature set.
+    """
+
+    class TorchCategoricalWithTemperature(TorchCategorical):
+        def __init__(self, inputs, model = None):
+            super().__init__(inputs, model, temperature)
+
+    return TorchCategoricalWithTemperature
+
+
 class QLoss:
     def __init__(
         self,
@@ -223,9 +234,8 @@ def build_q_model_and_distribution(
     # Return a Torch TorchCategorical distribution where the temperature
     # parameter is partially binded to the configured value.
     temperature = config["categorical_distribution_temperature"]
-    action_dist = functools.partial(TorchCategorical, temperature=temperature)
 
-    return model, action_dist
+    return model, get_dist_class_with_temperature(temperature)
 
 
 def get_distribution_inputs_and_class(
@@ -247,9 +257,8 @@ def get_distribution_inputs_and_class(
     # Return a Torch TorchCategorical distribution where the temperature
     # parameter is partially binded to the configured value.
     temperature = policy.config["categorical_distribution_temperature"]
-    action_dist = functools.partial(TorchCategorical, temperature=temperature)
 
-    return q_vals, action_dist, []  # state-out
+    return q_vals, get_dist_class_with_temperature(temperature), []  # state-out
 
 
 def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:

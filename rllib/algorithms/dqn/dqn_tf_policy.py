@@ -36,6 +36,17 @@ tf1, tf, tfv = try_import_tf()
 PRIO_WEIGHTS = "weights"
 
 
+def get_dist_class_with_temperature(temperature):
+    """Custom Categorical distribution class that has temperature set.
+    """
+
+    class CategoricalWithTemperature(Categorical):
+        def __init__(self, inputs, model = None):
+            super().__init__(inputs, model, temperature)
+
+    return CategoricalWithTemperature
+
+
 class QLoss:
     def __init__(
         self,
@@ -236,9 +247,8 @@ def get_distribution_inputs_and_class(
     # Return a Torch TorchCategorical distribution where the temperature
     # parameter is partially binded to the configured value.
     temperature = policy.config["categorical_distribution_temperature"]
-    action_dist = functools.partial(Categorical, temperature=temperature)
 
-    return policy.q_values, action_dist, []  # state-out
+    return policy.q_values, get_dist_class_with_temperature(temperature), []  # state-out
 
 
 def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
