@@ -279,7 +279,7 @@ class CheckpointManagerTest(unittest.TestCase):
             if os.path.exists(tmpfile):
                 os.remove(tmpfile)
 
-    def testForcedCheckpoint(self):
+    def testPreferMemoryCheckpoint(self):
         def get_checkpoints(i):
             persistent_checkpoint = _TrackedCheckpoint(
                 dir_or_data={"a": i},
@@ -322,6 +322,14 @@ class CheckpointManagerTest(unittest.TestCase):
             checkpoint_manager.on_checkpoint(
                 persistent_checkpoint, prefer_memory_checkpoint=True
             )
+
+        # 5. Should raise an exception if prefer_memory_checkpoint is set and no memory
+        # checkpoint exists
+        checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
+        checkpoint_manager.on_checkpoint(persistent_checkpoint)
+        with self.assertRaises(AssertionError):
+            checkpoint_manager._prefer_memory_checkpoint = True
+            assert checkpoint_manager.checkpoint
 
 
 if __name__ == "__main__":
