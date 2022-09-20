@@ -3,7 +3,7 @@ import os
 import pprint
 import time
 from subprocess import list2cmdline
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple, Union
 
 import click
 
@@ -142,6 +142,9 @@ def submit(
     runtime_env_json: Optional[str],
     working_dir: Optional[str],
     entrypoint: Tuple[str],
+    num_cpus: Optional[Union[int, float]],
+    num_gpus: Optional[Union[int, float]],
+    resources: Optional[Dict[str, float]],
     no_wait: bool,
 ):
     """Submits a job to be run on the cluster.

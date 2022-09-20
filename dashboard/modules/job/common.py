@@ -220,7 +220,6 @@ class JobSubmitRequest:
     # to reserve for the execution of the entrypoint command.
     resources: Optional[Dict[str, float]] = None
 
-
     def __post_init__(self):
         if not isinstance(self.entrypoint, str):
             raise TypeError(f"entrypoint must be a string, got {type(self.entrypoint)}")
@@ -269,9 +268,7 @@ class JobSubmitRequest:
 
         if self.resources is not None:
             if not isinstance(self.resources, dict):
-                raise TypeError(
-                    f"resources must be a dict, got {type(self.resources)}"
-                )
+                raise TypeError(f"resources must be a dict, got {type(self.resources)}")
             else:
                 for k in self.resources.keys():
                     if not isinstance(k, str):
@@ -283,6 +280,7 @@ class JobSubmitRequest:
                         raise TypeError(
                             f"resources values must be numbers, got {type(v)}"
                         )
+
 
 @dataclass
 class JobSubmitResponse:
