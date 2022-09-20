@@ -3563,6 +3563,8 @@
 
     run:
       timeout: 3600
+      wait_for_nodes:
+        num_nodes: 5
       script: python stress_tests/test_state_api_scale.py --smoke-test
 
 
