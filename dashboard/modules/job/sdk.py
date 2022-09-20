@@ -1,6 +1,6 @@
 import dataclasses
 import logging
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Union
 
 try:
     import aiohttp
@@ -88,6 +88,9 @@ class JobSubmissionClient(SubmissionClient):
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
         submission_id: Optional[str] = None,
+        num_cpus: Optional[Union[int, float]] = None,
+        num_gpus: Optional[Union[int, float]] = None,
+        resources: Optional[Dict[str, float]] = None,
     ) -> str:
         """Submit and execute a job asynchronously.
 
@@ -114,6 +117,12 @@ class JobSubmissionClient(SubmissionClient):
             runtime_env: The runtime environment to install and run this job in.
             metadata: Arbitrary data to store along with this job.
             job_id: DEPRECATED. This has been renamed to submission_id
+            num_cpus: The quantity of CPU cores to reserve for the execution
+                of the entrypoint command. Defaults to 0.
+            num_gpus: The quantity of GPUs to reserve for the execution
+                of the entrypoint command. Defaults to 0.
+            resources: The quantity of custom resources to reserve for the
+                execution of the entrypoint command.
 
         Returns:
             The submission ID of the submitted job.  If not specified,
@@ -145,6 +154,9 @@ class JobSubmissionClient(SubmissionClient):
             submission_id=submission_id,
             runtime_env=runtime_env,
             metadata=metadata,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            resources=resources,
         )
 
         logger.debug(f"Submitting job with submission_id={submission_id}.")
