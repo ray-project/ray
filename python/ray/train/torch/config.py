@@ -56,6 +56,13 @@ def _set_nccl_network_interface() -> str:
     """Set the appropriate NCCL network interface to use."""
 
     if "NCCL_SOCKET_IFNAME" not in os.environ:
+        logger.debug(
+            f"Setting NCCL_SOCKET_IFNAME to {DEFAULT_NCCL_SOCKET_IFNAME} "
+            f"to prioritize ethernet connection. To override this behavior, set the "
+            f"`NCCL_SOCKET_IFNAME` environment variable in your Ray runtime "
+            "environment: "
+            "`ray.init(runtime_env={{'env_vars': {'NCCL_SOCKET_IFNAME': 'ens5'}}}`"
+        )
         os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_NCCL_SOCKET_IFNAME
 
 

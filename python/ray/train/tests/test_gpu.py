@@ -327,7 +327,7 @@ def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
 
 
 @pytest.mark.parametrize("nccl_socket_ifname", ["", "ens3"])
-def test_torch_backend_nccl_socket_ifname(ray_start_2_gpus, nccl_socket_ifname):
+def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_gpus, nccl_socket_ifname):
 
     if nccl_socket_ifname:
         os.environ["NCCL_SOCKET_IFNAME"] = nccl_socket_ifname
