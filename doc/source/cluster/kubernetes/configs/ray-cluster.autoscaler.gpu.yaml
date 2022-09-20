@@ -22,11 +22,6 @@ spec:
       # Flag "no-monitor" will be automatically set when autoscaling is enabled.
       dashboard-host: '0.0.0.0'
       block: 'true'
-      # num-cpus: '1' # can be auto-completed from the limits
-      # Use `resources` to optionally specify custom resource annotations for the Ray node.
-      # The value of `resources` is a string-integer mapping.
-      # Currently, `resources` must be provided in the specific format demonstrated below:
-      # resources: '"{\"Custom1\": 1, \"Custom2\": 5}"'
     #pod template
     template:
       spec:
