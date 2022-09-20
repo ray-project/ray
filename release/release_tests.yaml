@@ -4203,7 +4203,7 @@
   working_dir: nightly_tests/dataset
 
   frequency: multi
-  team: core
+  team: data
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: aggregate_benchmark_compute.yaml
