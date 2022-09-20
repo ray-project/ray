@@ -21,4 +21,5 @@ post_build_cmds:
   # version too, but pip won't be able to find the new version of ray-cpp.
   - pip3 uninstall ray -y && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+  # TODO(rickyx): Uncomment once product PR(https://github.com/anyscale/product/pull/13694) is rolled out
   - unset RAY_RAYLET_NODE_ID
