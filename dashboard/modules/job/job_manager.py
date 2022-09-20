@@ -11,7 +11,7 @@ import time
 import traceback
 from asyncio.tasks import FIRST_COMPLETED
 from collections import deque
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
@@ -524,8 +524,8 @@ class JobManager:
         submission_id: Optional[str] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
-        num_cpus: Optional[float] = None,
-        num_gpus: Optional[float] = None,
+        num_cpus: Optional[Union[int, float]] = None,
+        num_gpus: Optional[Union[int, float]] = None,
         resources: Optional[Dict[str, float]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
         _driver_on_current_node: bool = True,
