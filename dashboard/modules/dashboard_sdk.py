@@ -24,7 +24,7 @@ from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray.dashboard.modules.job.common import uri_to_http_components
 
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.client_builder import _split_address
 from ray.autoscaler._private.cli_logger import cli_logger
 
@@ -125,6 +125,7 @@ def parse_cluster_info(
     metadata: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, Any]] = None,
 ) -> ClusterInfo:
+    """Create a cluster if needed and return its address, cookies, and metadata."""
     if address is None:
         if (
             ray.is_initialized()
@@ -135,6 +136,9 @@ def parse_cluster_info(
                 "http://"
                 f"{ray._private.worker.global_worker.node.address_info['webui_url']}"
             )
+            logger.info(
+                f"No address provided but Ray is running; using address {address}."
+            )
         else:
             logger.info(
                 f"No address provided, defaulting to {DEFAULT_DASHBOARD_ADDRESS}."
@@ -143,17 +147,18 @@ def parse_cluster_info(
 
     module_string, inner_address = _split_address(address)
 
-    # If user passes in ray://, raise error. Dashboard submission should
-    # not use a Ray client address.
-    if module_string == "ray":
-        raise ValueError(
-            f'Got an unexpected Ray client address "{address}" while trying '
-            "to connect to the Ray dashboard. The dashboard SDK requires the "
-            "Ray dashboard server's HTTP(S) address (which should start with "
-            '"http://" or "https://", not "ray://"). If this address '
-            "wasn't passed explicitly, it may be set in the RAY_ADDRESS "
-            "environment variable."
-        )
+    # XXX(archit): Move warning to Serve CLI somehow
+    # # If user passes in ray://, raise error. Dashboard submission should
+    # # not use a Ray client address.
+    # if module_string == "ray":
+    #     raise ValueError(
+    #         f'Got an unexpected Ray client address "{address}" while trying '
+    #         "to connect to the Ray dashboard. The dashboard SDK requires the "
+    #         "Ray dashboard server's HTTP(S) address (which should start with "
+    #         '"http://" or "https://", not "ray://"). If this address '
+    #         "wasn't passed explicitly, it may be set in the RAY_ADDRESS "
+    #         "environment variable."
+    #     )
 
     # If user passes http(s)://, go through normal parsing.
     if module_string in {"http", "https"}:
@@ -163,7 +168,7 @@ def parse_cluster_info(
             cookies=cookies,
             metadata=metadata,
             headers=headers,
-            _use_tls=module_string == "https",
+            _use_tls=(module_string == "https"),
         )
     # Try to dynamically import the function to get cluster info.
     else:
@@ -381,3 +386,7 @@ class SubmissionClient:
             return r.json().get("version")
         else:
             self._raise_error(r)
+
+    @DeveloperAPI
+    def get_address(self) -> str:
+        return self._address

@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import os
 from typing import Any, Dict, Iterator, List, Optional
 
 try:
@@ -22,6 +23,7 @@ from ray.dashboard.modules.job.common import (
 )
 
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
+from ray.dashboard.utils import ray_address_to_api_server_url
 
 from ray.runtime_env import RuntimeEnv
 
@@ -65,6 +67,14 @@ class JobSubmissionClient(SubmissionClient):
                 "The Ray jobs CLI & SDK require the ray[default] "
                 "installation: `pip install 'ray[default']``"
             )
+
+        if create_cluster_if_needed:
+            if address is None and "RAY_ADDRESS" in os.environ:
+                address = os.environ["RAY_ADDRESS"]
+            else:
+                # Get the API Server URL (e.g. http://localhost:8265)
+                address = ray_address_to_api_server_url(address)
+
         super().__init__(
             address=address,
             create_cluster_if_needed=create_cluster_if_needed,

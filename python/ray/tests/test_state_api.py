@@ -83,9 +83,9 @@ from ray.experimental.state.common import (
     TaskState,
     WorkerState,
     StateSchema,
-    ray_address_to_api_server_url,
     state_column,
 )
+from ray.dashboard.utils import ray_address_to_api_server_url
 from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.experimental.state.state_cli import (
     AvailableFormat,
@@ -281,6 +281,8 @@ def test_ray_address_to_api_server_url(shutdown_only):
     # localhost string
     gcs_port = gcs_address.split(":")[1]
     assert api_server_url == ray_address_to_api_server_url(f"localhost:{gcs_port}")
+    # Ray Client address
+    assert api_server_url == ray_address_to_api_server_url("ray://localhost:10001")
 
 
 def test_state_schema():

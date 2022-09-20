@@ -5,11 +5,17 @@ import functools
 import importlib
 import json
 import logging
+import os
 import pkgutil
 from abc import ABCMeta, abstractmethod
 from base64 import b64decode
 from collections import namedtuple
 from collections.abc import MutableMapping, Mapping, Sequence
+from typing import Optional
+import ray
+import ray._private.ray_constants as ray_constants
+import ray._private.services as services
+from ray._private.gcs_utils import GcsClient
 
 import aiosignal  # noqa: F401
 
@@ -507,3 +513,49 @@ def async_loop_forever(interval_seconds, cancellable=False):
         return _looper
 
     return _wrapper
+
+
+# ARCHIT reuse this function
+def ray_address_to_api_server_url(address: Optional[str]) -> str:
+    """Parse a ray cluster bootstrap address into API server URL.
+
+    When an address is provided, it will be used to query GCS for
+    API server address from GCS, so a Ray cluster must be running.
+
+    When an address is not provided, it will first try to auto-detect
+    a running ray instance, or look for local GCS process.
+
+    Args:
+        address: Ray cluster bootstrap address. Could also be `auto`.
+
+    Return:
+        API server HTTP URL.
+    """
+    # Check the case of a Ray Client address (e.g. "ray://<head_node_ip>:10001")
+    address_env_var = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
+    if address_env_var and address.startswith("ray://"):
+        with ray.init(address=address, ignore_reinit_error=True) as ray_context:
+            gcs_address = ray_context.address_info["gcs_address"]
+            gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
+    else:
+        address = services.canonicalize_bootstrap_address_or_die(address)
+        gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
+
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    api_server_url = ray._private.utils.internal_kv_get_with_retry(
+        gcs_client,
+        ray_constants.DASHBOARD_ADDRESS,
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        num_retries=20,
+    )
+
+    if api_server_url is None:
+        raise ValueError(
+            (
+                "Couldn't obtain the API server address from GCS. It is likely that "
+                "the GCS server is down. Check gcs_server.[out | err] to see if it is "
+                "still alive."
+            )
+        )
+    api_server_url = f"http://{api_server_url.decode()}"
+    return api_server_url

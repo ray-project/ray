@@ -9,6 +9,7 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 import requests
 
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
+from ray.dashboard.utils import ray_address_to_api_server_url
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_LOG_LIMIT,
@@ -27,7 +28,6 @@ from ray.experimental.state.common import (
     SupportedFilterType,
     TaskState,
     WorkerState,
-    ray_address_to_api_server_url,
 )
 from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
 

@@ -8,7 +8,7 @@ import pytest
 import ray
 from ray._private.ray_constants import RAY_OVERRIDE_DASHBOARD_URL
 import ray._private.services
-from ray.experimental.state.common import ray_address_to_api_server_url
+from ray.dashboard.utils import ray_address_to_api_server_url
 from ray._private.test_utils import run_string_as_driver
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
@@ -167,6 +167,11 @@ def test_hosted_external_dashboard_url_with_connecting_to_existing_cluster(
     assert info.address_info["webui_url"] == "external_dashboard_url"
     assert ray._private.worker._global_node.webui_url == "127.0.0.1:8265"
     assert ray_address_to_api_server_url("auto") == "http://" + "127.0.0.1:8265"
+    # Test Ray Client address
+    assert (
+        ray_address_to_api_server_url("ray://localhost:25553")
+        == "http://" + "127.0.0.1:8265"
+    )
 
 
 def test_shutdown_and_reset_global_worker(shutdown_only):
