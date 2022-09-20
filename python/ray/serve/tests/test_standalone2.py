@@ -107,7 +107,10 @@ def test_serve_namespace(shutdown_ray, detached, ray_namespace):
 
         serve.run(f.bind())
 
-        actors = list_actors(address=ray_context.address_info["address"])
+        actors = list_actors(
+            address=ray_context.address_info["address"],
+            filters=[("state", "=", "ALIVE")],
+        )
 
         assert len(actors) == 3
 
@@ -133,16 +136,25 @@ def test_update_num_replicas(shutdown_ray, detached):
 
         serve.run(f.bind())
 
-        actors = list_actors(address=ray_context.address_info["address"])
+        actors = list_actors(
+            address=ray_context.address_info["address"],
+            filters=[("state", "=", "ALIVE")],
+        )
 
         serve.run(f.options(num_replicas=4).bind())
-        updated_actors = list_actors(address=ray_context.address_info["address"])
+        updated_actors = list_actors(
+            address=ray_context.address_info["address"],
+            filters=[("state", "=", "ALIVE")],
+        )
 
         # Check that only 2 new replicas were created
         assert len(updated_actors) == len(actors) + 2
 
         serve.run(f.options(num_replicas=1).bind())
-        updated_actors = list_actors(address=ray_context.address_info["address"])
+        updated_actors = list_actors(
+            address=ray_context.address_info["address"],
+            filters=[("state", "=", "ALIVE")],
+        )
 
         # Check that all but 1 replica has spun down
         assert len(updated_actors) == len(actors) - 1
@@ -392,7 +404,7 @@ class TestDeployApp:
             == "9 pizzas please!"
         )
 
-        actors = list_actors()
+        actors = list_actors(filters=[("state", "=", "ALIVE")])
 
         config = self.get_test_config()
         config["deployments"] = [
@@ -431,7 +443,7 @@ class TestDeployApp:
             timeout=15,
         )
 
-        updated_actors = list_actors()
+        updated_actors = list_actors(filters=[("state", "=", "ALIVE")])
         assert len(updated_actors) == len(actors) + 3
 
     def test_deploy_app_update_timestamp(self, client: ServeControllerClient):
@@ -664,7 +676,9 @@ def test_controller_recover_and_delete(shutdown_ray):
 
     f.deploy()
 
-    actors = list_actors(address=ray_context.address_info["address"])
+    actors = list_actors(
+        address=ray_context.address_info["address"], filters=[("state", "=", "ALIVE")]
+    )
 
     # Try to delete the deployments and kill the controller right after
     client.delete_deployments(["f"], blocking=False)
@@ -672,12 +686,22 @@ def test_controller_recover_and_delete(shutdown_ray):
 
     # All replicas should be removed already or after the controller revives
     wait_for_condition(
-        lambda: len(list_actors(address=ray_context.address_info["address"]))
+        lambda: len(
+            list_actors(
+                address=ray_context.address_info["address"],
+                filters=[("state", "=", "ALIVE")],
+            )
+        )
         < len(actors)
     )
 
     wait_for_condition(
-        lambda: len(list_actors(address=ray_context.address_info["address"]))
+        lambda: len(
+            list_actors(
+                address=ray_context.address_info["address"],
+                filters=[("state", "=", "ALIVE")],
+            )
+        )
         == len(actors) - 50
     )
 
