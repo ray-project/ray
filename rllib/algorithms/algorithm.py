@@ -1684,7 +1684,8 @@ class Algorithm(Trainable):
     def add_policy(
         self,
         policy_id: PolicyID,
-        policy_cls: Type[Policy],
+        policy_cls: Optional[Type[Policy]] = None,
+        policy: Optional[Policy] = None,
         *,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
@@ -1704,8 +1705,10 @@ class Algorithm(Trainable):
 
         Args:
             policy_id: ID of the policy to add.
-            policy_cls: The Policy class to use for
-                constructing the new Policy.
+            policy_cls: The Policy class to use for constructing the new Policy.
+                Note: Only one of `policy_cls` or `policy` must be provided.
+            policy: The Policy instance to add to this algorithm.
+                Note: Only one of `policy_cls` or `policy` must be provided.
             observation_space: The observation space of the policy to add.
                 If None, try to infer this space from the environment.
             action_space: The action space of the policy to add.
@@ -1732,35 +1735,94 @@ class Algorithm(Trainable):
         Returns:
             The newly added policy (the copy that got added to the local
             worker).
-        """
 
-        kwargs = dict(
-            policy_id=policy_id,
-            policy_cls=policy_cls,
-            observation_space=observation_space,
-            action_space=action_space,
-            config=config,
-            policy_state=policy_state,
-            policy_mapping_fn=policy_mapping_fn,
-            policies_to_train=list(policies_to_train) if policies_to_train else None,
-        )
+        Raises:
+            ValueError: If both `policy_cls` AND `policy` are provided.
+            KeyError: If the given `policy_id` already exists in this Algorithm.
+        """
+        local_worker = self.workers.local_worker()
+
+        if policy_id in local_worker.policy_map:
+            raise KeyError(
+                f"Policy ID '{policy_id}' already exists in policy map! "
+                "Make sure you use a Policy ID that has not been taken yet."
+                " Policy IDs that are already in your policy map: "
+                f"{list(local_worker.policy_map.keys())}"
+            )
+
+        if policy_cls is not None and policy is not None:
+            raise ValueError(
+                "Only one of `policy_cls` or `policy` must be provided to "
+                "Algorithm.add_policy()!"
+            )
+
+        # Policy instance not provided: Use the information given here.
+        if policy_cls is not None:
+            kwargs = dict(
+                policy_id=policy_id,
+                policy_cls=policy_cls,
+                observation_space=observation_space,
+                action_space=action_space,
+                config=config,
+                policy_state=policy_state,
+                policy_mapping_fn=policy_mapping_fn,
+                policies_to_train=list(policies_to_train) if policies_to_train else None,
+            )
+        # Policy instance provided: Create clones of this very policy on the different
+        # workers (copy all its properties here for the calls to add_policy on the
+        # remote workers).
+        else:
+            kwargs = dict(
+                policy_id=policy_id,
+                policy_cls=type(policy),
+                observation_space=policy.observation_space,
+                action_space=policy.action_space,
+                config=policy.config,
+                policy_state=policy.get_state(),
+                policy_mapping_fn=policy_mapping_fn,
+                policies_to_train=list(policies_to_train) if policies_to_train else None,
+            )
 
         def fn(worker: RolloutWorker):
             # `foreach_worker` function: Adds the policy the the worker (and
             # maybe changes its policy_mapping_fn - if provided here).
             worker.add_policy(**kwargs)
 
+        # Workers to add the policy to are given as an explicit list.
         if workers is not None:
             ray_gets = []
             for worker in workers:
+                # A remote worker (ray actor).
                 if isinstance(worker, ActorHandle):
                     ray_gets.append(worker.add_policy.remote(**kwargs))
+                # (Local) RolloutWorker instance.
                 else:
-                    fn(worker)
+                    if policy is not None:
+                        worker.add_policy(
+                            policy_id=policy_id,
+                            policy=policy,
+                            policies_to_train=policies_to_train,
+                            policy_mapping_fn=policy_mapping_fn,
+                        )
+                    else:
+                        fn(worker)
             ray.get(ray_gets)
+        # Add to all RolloutWorkers within `self.workers`.
         else:
+            # Policy is provided as an instance -> Add this very instance to local
+            # worker.
+            if policy is not None:
+                local_worker.add_policy(
+                    policy_id=policy_id,
+                    policy=policy,
+                    policies_to_train=policies_to_train,
+                    policy_mapping_fn=policy_mapping_fn,
+                )
+                # Then add a new instance to each remote worker.
+                ray.get([w.apply.remote(fn) for w in self.workers.remote_workers()])
             # Run foreach_worker fn on all workers.
-            self.workers.foreach_worker(fn)
+            else:
+                self.workers.foreach_worker(fn)
 
         # Update evaluation workers, if necessary.
         if evaluation_workers and self.evaluation_workers is not None:
@@ -1907,17 +1969,20 @@ class Algorithm(Trainable):
         if local_worker_state:
             policies = local_worker_state.pop("state", {})
 
-        # Write state (w/o policies or filters) to disk.
-        state_file = os.path.join(checkpoint_dir, "state.pkl")
-
         # TODO: Once filters have been outsourced into connectors,
         #  we should remove this hack.
         state["filters"] = local_worker_state.get("filters", {})
 
-        # Add checkpoint version.
+        # Add RLlib checkpoint version.
         state["__version__"] = "v1"
 
+        # Write state (w/o policies or filters) to disk.
+        state_file = os.path.join(checkpoint_dir, "state.pkl")
         pickle.dump(state, open(state_file, "wb"))
+        # Write checkpoint version separately. This file will NOT be used
+        # by RLlib anywhere, it is solely for the user's convenience.
+        with open(os.path.join(checkpoint_dir, "checkpoint_version.txt"), "w") as f:
+            f.write(state["__version__"])
 
         # Write individual policies to disk.
         if (

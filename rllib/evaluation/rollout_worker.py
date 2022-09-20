@@ -1179,9 +1179,10 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def add_policy(
         self,
-        *,
         policy_id: PolicyID,
-        policy_cls: Type[Policy],
+        policy_cls: Optional[Type[Policy]] = None,
+        policy: Optional[Policy] = None,
+        *,
         observation_space: Optional[Space] = None,
         action_space: Optional[Space] = None,
         config: Optional[PartialAlgorithmConfigDict] = None,
@@ -1195,8 +1196,10 @@ class RolloutWorker(ParallelIteratorWorker):
 
         Args:
             policy_id: ID of the policy to add.
-            policy_cls: The Policy class to use for constructing the new
-                Policy.
+            policy_cls: The Policy class to use for constructing the new Policy.
+                Note: Only one of `policy_cls` or `policy` must be provided.
+            policy: The Policy instance to add to this algorithm.
+                Note: Only one of `policy_cls` or `policy` must be provided.
             observation_space: The observation space of the policy to add.
             action_space: The action space of the policy to add.
             config: The config overrides for the policy to add.
@@ -1217,25 +1220,52 @@ class RolloutWorker(ParallelIteratorWorker):
             The newly added policy.
 
         Raises:
+            ValueError: If both `policy_cls` AND `policy` are provided.
             KeyError: If the given `policy_id` already exists in this worker's
                 PolicyMap.
         """
         if policy_id in self.policy_map:
-            raise KeyError(f"Policy ID '{policy_id}' already in policy map!")
-        policy_dict_to_add = _determine_spaces_for_multi_agent_dict(
-            {
+            raise KeyError(
+                f"Policy ID '{policy_id}' already exists in policy map! "
+                "Make sure you use a Policy ID that has not been taken yet."
+                " Policy IDs that are already in your policy map: "
+                f"{list(self.workers.local_worker().policy_map.keys())}"
+            )
+        if policy_cls is not None and policy is not None:
+            raise ValueError(
+                "Only one of `policy_cls` or `policy` must be provided to "
+                "RolloutWorker.add_policy()!"
+            )
+
+        if policy is None:
+            policy_dict_to_add = _determine_spaces_for_multi_agent_dict(
+                {
+                    policy_id: PolicySpec(
+                        policy_cls, observation_space, action_space, config or {}
+                    )
+                },
+                self.env,
+                spaces=self.spaces,
+                policy_config=self.policy_config,
+            )
+        else:
+            policy_dict_to_add = {
                 policy_id: PolicySpec(
-                    policy_cls, observation_space, action_space, config or {}
+                    type(policy),
+                    policy.observation_space,
+                    policy.action_space,
+                    policy.config,
                 )
-            },
-            self.env,
-            spaces=self.spaces,
-            policy_config=self.policy_config,
-        )
+            }
+
         self.policy_dict.update(policy_dict_to_add)
         self._build_policy_map(
-            policy_dict_to_add, self.policy_config, seed=self.policy_config.get("seed")
+            policy_dict=policy_dict_to_add,
+            policy_config=self.policy_config,
+            policy=policy,
+            seed=self.policy_config.get("seed"),
         )
+
         new_policy = self.policy_map[policy_id]
         # Set the state of the newly created policy.
         if policy_state:
@@ -1747,6 +1777,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self,
         policy_dict: MultiAgentPolicyConfigDict,
         policy_config: PartialAlgorithmConfigDict,
+        policy: Optional[Policy] = None,
         session_creator: Optional[Callable[[], "tf1.Session"]] = None,
         seed: Optional[int] = None,
     ) -> None:
@@ -1758,6 +1789,7 @@ class RolloutWorker(ParallelIteratorWorker):
             policy_config: The general policy config to use. May be updated
                 by individual policy config overrides in the given
                 multi-agent `policy_dict`.
+            policy: If the policy to add already exists, user can provide it here.
             session_creator: A callable that creates a tf session
                 (if applicable).
             seed: An optional random seed to pass to PolicyMap's
@@ -1811,15 +1843,18 @@ class RolloutWorker(ParallelIteratorWorker):
                     # the running of these preprocessors.
                     self.preprocessors[name] = preprocessor
 
-            # Create the actual policy object.
-            self.policy_map.create_policy(
-                name,
-                policy_spec.policy_class,
-                obs_space,
-                policy_spec.action_space,
-                policy_spec.config,  # overrides.
-                merged_conf,
-            )
+            if policy is not None:
+                self.policy_map.insert_policy(name, policy)
+            else:
+                # Create the actual policy object.
+                self.policy_map.create_policy(
+                    name,
+                    policy_spec.policy_class,
+                    obs_space,
+                    policy_spec.action_space,
+                    policy_spec.config,  # overrides.
+                    merged_conf,
+                )
 
             if connectors_enabled and name in self.policy_map:
                 create_connectors_for_policy(self.policy_map[name], policy_config)
