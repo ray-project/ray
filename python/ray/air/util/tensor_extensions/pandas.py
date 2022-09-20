@@ -282,9 +282,9 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
     # https://github.com/CODAIT/text-extensions-for-pandas/issues/166
     base = None
 
-    def __init__(self, dtype: np.dtype, shape: Optional[Tuple[int, ...]] = None):
-        self._dtype = dtype
+    def __init__(self, shape: Optional[Tuple[int, ...]], dtype: np.dtype):
         self._shape = shape
+        self._dtype = dtype
 
     @property
     def type(self):
@@ -373,7 +373,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         shape, dtype = groups
         shape = ast.literal_eval(shape)
         dtype = np.dtype(dtype)
-        return cls(dtype, shape)
+        return cls(shape, dtype)
 
     @classmethod
     def construct_array_type(cls):
@@ -741,12 +741,6 @@ class TensorArray(
                         "ndarray pointers, but got an object-typed ndarray whose "
                         f"subndarrays are of type {type(values[0])}."
                     )
-            elif values.ndim == 1:
-                raise TypeError(
-                    "Expected a multi-dimensional ndarray but got a 1-dimensional "
-                    "ndarray; this can be represented natively within Pandas and Arrow "
-                    "without the tensor extension."
-                )
         elif isinstance(values, TensorArray):
             raise TypeError("Use the copy() method to create a copy of a TensorArray.")
         else:
@@ -883,7 +877,7 @@ class TensorArray(
         else:
             dtype = self.numpy_dtype
             shape = self.numpy_shape[1:]
-        return TensorDtype(dtype, shape)
+        return TensorDtype(shape, dtype)
 
     @property
     def nbytes(self) -> int:

@@ -46,7 +46,7 @@ class ArrowTensorType(pa.PyExtensionType):
         """
         from ray.air.util.tensor_extensions.pandas import TensorDtype
 
-        return TensorDtype(self.storage_type.value_type.to_pandas_dtype(), self._shape)
+        return TensorDtype(self._shape, self.storage_type.value_type.to_pandas_dtype())
 
     def __reduce__(self):
         return ArrowTensorType, (self._shape, self.storage_type.value_type)
@@ -309,6 +309,7 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
         from ray.air.util.tensor_extensions.pandas import TensorDtype
 
         return TensorDtype(
+            None,
             self.storage_type["data"].type.value_type.to_pandas_dtype(),
         )
 

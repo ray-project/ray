@@ -1071,7 +1071,7 @@ def test_tensors_in_tables_from_pandas_variable_shaped(ray_start_regular_shared)
     outer_dim = len(arrs)
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": arrs})
     # Cast column to tensor extension dtype.
-    df["two"] = df["two"].astype(TensorDtype(np.int64))
+    df["two"] = df["two"].astype(TensorDtype(None, np.int64))
     ds = ray.data.from_pandas(df)
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(range(outer_dim), arrs))
