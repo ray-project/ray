@@ -7,10 +7,10 @@ from ray.air.execution.actor_request import ActorInfo, ActorRequest
 from ray.air.execution.controller import Controller
 from ray.air.execution.event import (
     ExecutionEvent,
-    FutureResult,
     MultiFutureResult,
     FutureFailed,
 )
+from ray.air.execution.impl.split.split_result import SplitResult
 from ray.air.execution.resources.fixed import FixedResourceManager
 from ray.air.execution.resources.request import ResourceRequest
 from ray.air.execution.resources.resource_manager import ResourceManager
@@ -41,6 +41,12 @@ class SplitController(Controller):
         self._started = False
         self._live_actors = set()
 
+        self._results = []
+
+    @property
+    def results(self):
+        return self._results
+
     def add_split(self, run_fn: Callable, resources: Dict, *args, **kwargs):
         self._actor_manager.add_actor(
             ActorRequest(
@@ -64,7 +70,7 @@ class SplitController(Controller):
     ) -> None:
         self._live_actors.add(actor)
         self._actor_manager.track_future(
-            actor=actor, future=actor.run.remote(), cls=FutureResult
+            actor=actor, future=actor.run.remote(), cls=SplitResult
         )
         self._started = True
 
@@ -79,11 +85,12 @@ class SplitController(Controller):
         logger.error(f"Split actor failed: {exception}")
         self._live_actors.remove(actor)
 
-    def future_result(self, result: FutureResult):
+    def future_result(self, result: SplitResult):
         if isinstance(result, FutureFailed):
             logger.error(f"Split actor execution failed: {result.exception}")
         else:
             logger.info("Split actor finished.")
+            self._results.append(result.return_value)
             self._actor_manager.remove_actor(result.actor)
 
     def multi_future_result(self, result: MultiFutureResult):

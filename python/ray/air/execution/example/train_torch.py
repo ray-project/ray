@@ -2,11 +2,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+import ray
 import ray.train as train
 from ray.air import session
-from ray.air.execution.impl.train.train_controller import TrainController
-from ray.air.execution.resources.fixed import FixedResourceManager
-from ray.train._internal.utils import construct_train_func
+from ray.air.execution.impl.train.progress_loop import train_run
 from ray.train.torch import TorchConfig
 
 
@@ -54,7 +53,6 @@ def validate_epoch(dataloader, model, loss_fn):
 
 
 def train_func(config):
-    print("START TRAINING")
     data_size = config.get("data_size", 1000)
     val_size = config.get("val_size", 400)
     batch_size = config.get("batch_size", 32)
@@ -92,16 +90,15 @@ def train_func(config):
 def train_linear(num_workers=2, use_gpu=False, epochs=3):
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
 
-    wrapped_train_func = construct_train_func(train_func, config)
-
-    train_controller = TrainController(
-        train_fn=wrapped_train_func,
+    result = train_run(
+        train_func,
+        config=config,
         backend_config=TorchConfig(),
-        resource_manager=FixedResourceManager(total_resources={"CPU": 4}),
+        num_workers=num_workers,
     )
-    while not train_controller.is_finished():
-        train_controller.step()
+    print("Got result", result)
 
 
 if __name__ == "__main__":
+    ray.init()
     train_linear(num_workers=2)

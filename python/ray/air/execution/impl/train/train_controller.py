@@ -66,7 +66,6 @@ def _initialize_session(
     encode_data_fn,
     use_detailed_autofilled_metrics,
 ):
-    print("I AM STARTING A SESSION OH YEAH")
     try:
         init_session(
             training_func=train_func,
@@ -151,6 +150,16 @@ class TrainController(Controller):
 
         self._dataset_shards = None
         self._dataset_spec = dataset_spec or RayDatasetSpec(None)
+
+        self._results = []
+
+    @property
+    def results(self):
+        return self._results
+
+    @property
+    def last_result(self):
+        return self._results[-1] if self._results else None
 
     def is_finished(self) -> bool:
         return self._training_started and not self._live_actors
@@ -300,11 +309,10 @@ class TrainController(Controller):
         done = first_results.result is None
 
         if done:
-            print("I am done.")
             for live_actor in self._live_actors:
                 self._actor_manager.remove_actor(live_actor)
         else:
             result_data = self._backend.decode_data(first_results.result.data)
-            print("Event data", result_data)
+            self._results.append(result_data)
 
             self._stage_training()
