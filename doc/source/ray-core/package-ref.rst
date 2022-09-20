@@ -24,6 +24,7 @@ ray.remote
 ~~~~~~~~~~
 
 .. autofunction:: ray.remote
+   :no-undoc-members:
 
 .. autofunction:: ray.remote_function.RemoteFunction.options
 
@@ -41,6 +42,7 @@ ray.get
 ~~~~~~~
 
 .. autofunction:: ray.get
+   :no-undoc-members:
 
 .. _ray-wait-ref:
 
