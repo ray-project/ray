@@ -460,7 +460,7 @@ RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 RAY_CONFIG(int64_t, num_workers_soft_limit, -1)
 
 // The interval where metrics are exported in milliseconds.
-RAY_CONFIG(uint64_t, metrics_report_interval_ms, 5000)
+RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
 
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
