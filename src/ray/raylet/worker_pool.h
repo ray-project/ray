@@ -471,6 +471,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     PopWorkerCallback callback;
   };
 
+  /// Represents a PopWorker call.
   struct PopWorkerRequest {
     TaskSpecification task_spec;
     PopWorkerCallback callback;
@@ -569,6 +570,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// worker.
   void TryStartIOWorkers(const Language &language, const rpc::WorkerType &worker_type);
 
+  /// Try to fulfill pending PopWorker requests.
+  /// This happens when we have more room to start workers or an idle worker is pushed.
+  /// \param language The language of the PopWorker requests.
   void TryPendingPopWorkerRequests(const Language &language);
 
   /// Get all workers of the given process.
