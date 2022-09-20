@@ -23,7 +23,7 @@ ray.is_initialized
 ray.remote
 ~~~~~~~~~~
 
-.. autofunction:: ray.remote(*, num_returns: Union[int, float])
+.. autofunction:: ray.remote(x, y)
 
 .. autofunction:: ray.remote_function.RemoteFunction.options
 
