@@ -141,6 +141,7 @@ class TestCallbacks(unittest.TestCase):
             .callbacks(BeforeSubEnvironmentResetCallback)
         )
 
+        # Test with and without Connectors.
         for connector in [True, False]:
             config.rollouts(enable_connectors=connector)
             algo = config.build()
@@ -150,7 +151,7 @@ class TestCallbacks(unittest.TestCase):
             # -> 1000 / 2 [sub-envs] = 500 [per sub-env]
             # -> 1 episode = 200 timesteps
             # -> 2.5 episodes per sub-env
-            # -> 3 resets [per sub-env] = 6 resets total
+            # -> 3 episodes created [per sub-env] = 6 episodes total
             self.assertTrue(
                 6
                 == ray.get(
