@@ -535,7 +535,7 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     address_env_var = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
     if address_env_var and address_env_var.startswith("ray://"):
         address = address_env_var
-    if address.startswith("ray://"):
+    if address and address.startswith("ray://"):
         with ray.init(address=address_env_var, ignore_reinit_error=True) as ray_context:
             gcs_address = ray_context.address_info["gcs_address"]
             gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
