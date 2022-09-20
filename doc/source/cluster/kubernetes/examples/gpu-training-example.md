@@ -80,7 +80,7 @@ If you have an existing Kubernetes cluster with GPU, you can ignore this step. I
 to run this example with a cluster having that much RAM (>30GB per node in the above commands). Feel free to update
 the option `machine-type` and the resource requirements in `ray-cluster.gpu.yaml`.
 
-First, we create a Kubernetes cluster `gpu-cluster-1` with a node (`e2-standard-8`: 8 vCPU; 32 GB RAM). Second,
+First, we create a Kubernetes cluster `gpu-cluster-1` with one CPU node (`e2-standard-8`: 8 vCPU; 32 GB RAM). Second,
 we add a new node (`n1-standard-8`: 8 vCPU; 30 GB RAM) with a GPU (`nvidia-tesla-t4`) to the cluster.
 
 # Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
