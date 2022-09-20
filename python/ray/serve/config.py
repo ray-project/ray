@@ -247,11 +247,6 @@ class DeploymentConfig(BaseModel):
 
         Ignores any kwargs set to DEFAULT.VALUE.
 
-        Args:
-            ignore_default: When True, any valid keywords with value
-                DEFAULT.VALUE are ignored, and their values stay default.
-                Invalid keywords still raise a TypeError.
-
         Raises:
             TypeError: when a keyword that's not an argument to the class is
                 passed in.
