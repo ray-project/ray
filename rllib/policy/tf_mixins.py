@@ -1,10 +1,9 @@
-import logging
-from typing import Dict, List, Union
-
 import gym
+import logging
+from typing import Dict
 
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils.annotations import DeveloperAPI, override
@@ -182,14 +181,14 @@ class KLCoeffMixin:
             self.kl_coeff.assign(self.kl_coeff_val, read_value=False)
 
     @override(Policy)
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_state(self) -> PolicyState:
         state = super().get_state()
         # Add current kl-coeff value.
         state["current_kl_coeff"] = self.kl_coeff_val
         return state
 
     @override(Policy)
-    def set_state(self, state: dict) -> None:
+    def set_state(self, state: PolicyState) -> None:
         # Set current kl-coeff value first.
         self._set_kl_coeff(state.pop("current_kl_coeff", self.config["kl_coeff"]))
         # Call super's set_state with rest of the state dict.

@@ -664,6 +664,15 @@ def _env_runner(
 
     active_episodes: Dict[EnvID, Episode] = _NewEpisodeDefaultDict(new_episode)
 
+    # Before the very first poll (this will reset all vector sub-environments):
+    # Call custom `before_sub_environment_reset` callbacks for all sub-environments.
+    for env_id, sub_env in base_env.get_sub_environments(as_dict=True).items():
+        callbacks.before_sub_environment_reset(
+            worker=worker,
+            sub_environment=sub_env,
+            env_index=env_id,
+        )
+
     while True:
         perf_stats.incr("iters", 1)
 
@@ -1098,6 +1107,16 @@ def _process_observations(
             # Regular done (no horizon hit). Try to reset the sub environment.
             else:
                 del active_episodes[env_id]
+
+                # Call custom `before_sub_environment_reset` callback.
+                sub_envs = base_env.get_sub_environments(as_dict=True)
+                if env_id in sub_envs:
+                    callbacks.before_sub_environment_reset(
+                        worker=worker,
+                        sub_environment=sub_envs[env_id],
+                        env_index=env_id,
+                    )
+
                 # The sub environment at index `env_id` might throw an exception
                 # during the following `try_reset()` attempt. If configured with
                 # `restart_failed_sub_environments=True`, the BaseEnv will restart
