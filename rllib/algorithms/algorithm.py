@@ -1,15 +1,18 @@
+from collections import defaultdict
 import concurrent
 import copy
+from datetime import datetime
 import functools
+import gym
+import importlib
 import logging
 import math
+import numpy as np
 import os
-import pickle
+from packaging import version
+import pkg_resources
 import tempfile
 import time
-import importlib
-from collections import defaultdict
-from datetime import datetime
 from typing import (
     Callable,
     Container,
@@ -23,14 +26,10 @@ from typing import (
     Union,
 )
 
-import gym
-import numpy as np
-import pkg_resources
-from packaging import version
-
 import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
+import ray.cloudpickle as pickle
 from ray.exceptions import GetTimeoutError, RayActorError, RayError
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -260,7 +259,9 @@ class Algorithm(Trainable):
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             logdir_prefix = "{}_{}_{}".format(str(self), env_descr, timestr)
             if not os.path.exists(DEFAULT_RESULTS_DIR):
-                os.makedirs(DEFAULT_RESULTS_DIR)
+                # Possible race condition if dir is created several times on
+                # rollout workers
+                os.makedirs(DEFAULT_RESULTS_DIR, exist_ok=True)
             logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
 
             # Allow users to more precisely configure the created logger
@@ -758,6 +759,8 @@ class Algorithm(Trainable):
                 ],
             )
 
+        self.callbacks.on_evaluate_start(algorithm=self)
+
         if self.config["custom_eval_function"]:
             logger.info(
                 "Running custom eval function {}".format(
@@ -941,6 +944,10 @@ class Algorithm(Trainable):
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
 
+        self.callbacks.on_evaluate_end(
+            algorithm=self, evaluation_metrics=self.evaluation_metrics
+        )
+
         # Also return the results here for convenience.
         return self.evaluation_metrics
 
@@ -951,8 +958,13 @@ class Algorithm(Trainable):
     ) -> dict:
         """Evaluates current policy under `evaluation_config` settings.
 
-        Note that this default implementation does not do anything beyond
-        merging evaluation_config with the normal trainer config.
+        Uses the AsyncParallelRequests manager to send frequent `sample.remote()`
+        requests to the evaluation RolloutWorkers and collect the results of these
+        calls. Handles worker failures (or slowdowns) gracefully due to the asynch'ness
+        and the fact that other eval RolloutWorkers can thus cover the workload.
+
+        Important Note: This will replace the current `self.evaluate()` method as the
+        default in the future.
 
         Args:
             duration_fn: An optional callable taking the already run
@@ -1627,7 +1639,10 @@ class Algorithm(Trainable):
         *,
         policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
         policies_to_train: Optional[
-            Union[Set[PolicyID], Callable[[PolicyID, Optional[SampleBatchType]], bool]]
+            Union[
+                Container[PolicyID],
+                Callable[[PolicyID, Optional[SampleBatchType]], bool],
+            ]
         ] = None,
         evaluation_workers: bool = True,
     ) -> None:
@@ -1941,8 +1956,8 @@ class Algorithm(Trainable):
         assert worker_set is not None
         # Broadcast the new policy weights to all evaluation workers.
         logger.info("Synchronizing weights to workers.")
-        weights = ray.put(self.workers.local_worker().save())
-        worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
+        weights = ray.put(self.workers.local_worker().get_state())
+        worker_set.foreach_worker(lambda w: w.set_state(ray.get(weights)))
 
     @classmethod
     @override(Trainable)
@@ -2475,7 +2490,7 @@ class Algorithm(Trainable):
     def __getstate__(self) -> dict:
         state = {}
         if hasattr(self, "workers"):
-            state["worker"] = self.workers.local_worker().save()
+            state["worker"] = self.workers.local_worker().get_state()
         # TODO: Experimental functionality: Store contents of replay buffer
         #  to checkpoint, only if user has configured this.
         if self.local_replay_buffer is not None and self.config.get(
@@ -2490,15 +2505,15 @@ class Algorithm(Trainable):
 
     def __setstate__(self, state: dict):
         if hasattr(self, "workers") and "worker" in state:
-            self.workers.local_worker().restore(state["worker"])
+            self.workers.local_worker().set_state(state["worker"])
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
-                r.restore.remote(remote_state)
+                r.set_state.remote(remote_state)
             if self.evaluation_workers:
                 # If evaluation workers are used, also restore the policies
                 # there in case they are used for evaluation purpose.
                 for r in self.evaluation_workers.remote_workers():
-                    r.restore.remote(remote_state)
+                    r.set_state.remote(remote_state)
         # If necessary, restore replay data as well.
         if self.local_replay_buffer is not None:
             # TODO: Experimental functionality: Restore contents of replay

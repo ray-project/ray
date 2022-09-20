@@ -8,6 +8,7 @@ from dataclasses import asdict
 from datetime import datetime
 from time import sleep
 from unittest import mock
+import subprocess
 
 import pytest
 import yaml
@@ -59,6 +60,7 @@ from ray.tests.test_autoscaler import (
     fill_in_raylet_ids,
     mock_raylet_id,
 )
+from ray.cluster_utils import AutoscalingCluster
 
 GET_DEFAULT_METHOD = "ray.autoscaler._private.util._get_default_config"
 
@@ -2657,6 +2659,176 @@ Demands:
     assert expected == actual
 
 
+def test_info_string_verbose():
+    lm_summary = LoadMetricsSummary(
+        usage={
+            "CPU": (530.0, 544.0),
+            "GPU": (2, 2),
+            "AcceleratorType:V100": (1, 2),
+            "memory": (2 * 2 ** 30, 2 ** 33),
+            "object_store_memory": (3.14 * 2 ** 30, 2 ** 34),
+        },
+        resource_demand=[({"CPU": 1}, 150)],
+        pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
+        request_demand=[({"CPU": 16}, 100)],
+        node_types=[],
+        usage_by_node={
+            "192.168.1.1": {
+                "CPU": (5.0, 20.0),
+                "GPU": (0.7, 1),
+                "AcceleratorType:V100": (0.1, 1),
+                "memory": (2 ** 30, 2 ** 32),
+                "object_store_memory": (3.14 * 2 ** 30, 2 ** 32),
+            },
+            "192.168.1.2": {
+                "CPU": (15.0, 20.0),
+                "GPU": (0.3, 1),
+                "AcceleratorType:V100": (0.9, 1),
+                "memory": (2 ** 30, 1.5 * 2 ** 33),
+                "object_store_memory": (0, 2 ** 32),
+            },
+        },
+    )
+    autoscaler_summary = AutoscalerSummary(
+        active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
+        pending_nodes=[
+            ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
+            ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
+        ],
+        pending_launches={"m4.4xlarge": 2},
+        failed_nodes=[("1.2.3.6", "p3.2xlarge")],
+    )
+
+    expected = """
+======== Autoscaler status: 2020-12-28 01:02:03 ========
+GCS request time: 3.141500s
+Node Provider non_terminated_nodes time: 1.618000s
+
+Node status
+--------------------------------------------------------
+Healthy:
+ 2 p3.2xlarge
+ 20 m4.4xlarge
+Pending:
+ m4.4xlarge, 2 launching
+ 1.2.3.4: m4.4xlarge, waiting-for-ssh
+ 1.2.3.5: m4.4xlarge, waiting-for-ssh
+Recent failures:
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+
+Resources
+--------------------------------------------------------
+Total Usage:
+ 1/2 AcceleratorType:V100
+ 530.0/544.0 CPU
+ 2/2 GPU
+ 2.00/8.000 GiB memory
+ 3.14/16.000 GiB object_store_memory
+
+Total Demands:
+ {'CPU': 1}: 150+ pending tasks/actors
+ {'CPU': 4} * 5 (PACK): 420+ pending placement groups
+ {'CPU': 16}: 100+ from request_resources()
+
+Node: 192.168.1.1
+ Usage:
+  0.1/1 AcceleratorType:V100
+  5.0/20.0 CPU
+  0.7/1 GPU
+  1.00/4.000 GiB memory
+  3.14/4.000 GiB object_store_memory
+
+Node: 192.168.1.2
+ Usage:
+  0.9/1 AcceleratorType:V100
+  15.0/20.0 CPU
+  0.3/1 GPU
+  1.00/12.000 GiB memory
+  0.00/4.000 GiB object_store_memory
+""".strip()
+    actual = format_info_string(
+        lm_summary,
+        autoscaler_summary,
+        time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3),
+        gcs_request_time=3.1415,
+        non_terminated_nodes_time=1.618,
+        verbose=True,
+    )
+    print(actual)
+    assert expected == actual
+
+
+def test_info_string_verbose_no_breakdown():
+    """
+    Test the verbose string but with node reporting feature flagged off.
+    """
+    lm_summary = LoadMetricsSummary(
+        usage={
+            "CPU": (530.0, 544.0),
+            "GPU": (2, 2),
+            "AcceleratorType:V100": (1, 2),
+            "memory": (2 * 2 ** 30, 2 ** 33),
+            "object_store_memory": (3.14 * 2 ** 30, 2 ** 34),
+        },
+        resource_demand=[({"CPU": 1}, 150)],
+        pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
+        request_demand=[({"CPU": 16}, 100)],
+        node_types=[],
+        usage_by_node=None,
+    )
+    autoscaler_summary = AutoscalerSummary(
+        active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
+        pending_nodes=[
+            ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
+            ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
+        ],
+        pending_launches={"m4.4xlarge": 2},
+        failed_nodes=[("1.2.3.6", "p3.2xlarge")],
+    )
+
+    expected = """
+======== Autoscaler status: 2020-12-28 01:02:03 ========
+GCS request time: 3.141500s
+Node Provider non_terminated_nodes time: 1.618000s
+
+Node status
+--------------------------------------------------------
+Healthy:
+ 2 p3.2xlarge
+ 20 m4.4xlarge
+Pending:
+ m4.4xlarge, 2 launching
+ 1.2.3.4: m4.4xlarge, waiting-for-ssh
+ 1.2.3.5: m4.4xlarge, waiting-for-ssh
+Recent failures:
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+
+Resources
+--------------------------------------------------------
+Total Usage:
+ 1/2 AcceleratorType:V100
+ 530.0/544.0 CPU
+ 2/2 GPU
+ 2.00/8.000 GiB memory
+ 3.14/16.000 GiB object_store_memory
+
+Total Demands:
+ {'CPU': 1}: 150+ pending tasks/actors
+ {'CPU': 4} * 5 (PACK): 420+ pending placement groups
+ {'CPU': 16}: 100+ from request_resources()
+""".strip()
+    actual = format_info_string(
+        lm_summary,
+        autoscaler_summary,
+        time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3),
+        gcs_request_time=3.1415,
+        non_terminated_nodes_time=1.618,
+        verbose=True,
+    )
+    print(actual)
+    assert expected == actual
+
+
 def test_info_string_with_launch_failures():
     lm_summary = LoadMetricsSummary(
         usage={
@@ -2829,6 +3001,54 @@ Demands:
     )
     print(actual)
     assert expected.strip() == actual
+
+
+def test_ray_status_e2e(shutdown_only):
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "type-i": {
+                "resources": {"CPU": 1, "fun": 1},
+                "node_config": {},
+                "min_workers": 1,
+                "max_workers": 1,
+            },
+            "type-ii": {
+                "resources": {"CPU": 1, "fun": 100},
+                "node_config": {},
+                "min_workers": 1,
+                "max_workers": 1,
+            },
+        },
+    )
+
+    try:
+        cluster.start()
+        ray.init(address="auto")
+
+        @ray.remote(num_cpus=0, resources={"fun": 2})
+        class Actor:
+            def ping(self):
+                return None
+
+        actor = Actor.remote()
+        ray.get(actor.ping.remote())
+
+        assert "Demands" in subprocess.check_output("ray status", shell=True).decode()
+        assert (
+            "Total Demands"
+            not in subprocess.check_output("ray status", shell=True).decode()
+        )
+        assert (
+            "Total Demands"
+            in subprocess.check_output("ray status -v", shell=True).decode()
+        )
+        assert (
+            "Total Demands"
+            in subprocess.check_output("ray status --verbose", shell=True).decode()
+        )
+    finally:
+        cluster.shutdown()
 
 
 def test_placement_group_match_string():

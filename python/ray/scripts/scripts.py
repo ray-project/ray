@@ -675,9 +675,7 @@ def start(
         ray_params.gcs_server_port = port
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
-            ray_params.env_vars = {
-                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
-            }
+            ray_params.env_vars = {"RAY_RAYLET_NODE_ID": FAKE_HEAD_NODE_ID}
 
         num_redis_shards = None
         # Start Ray on the head node.
@@ -1863,8 +1861,16 @@ def memory(
     default=ray_constants.REDIS_DEFAULT_PASSWORD,
     help="Connect to ray with redis_password.",
 )
+@click.option(
+    "-v",
+    "--verbose",
+    required=False,
+    is_flag=True,
+    hidden=True,
+    help="Experimental: Display additional debuggging information.",
+)
 @PublicAPI
-def status(address, redis_password):
+def status(address: str, redis_password: str, verbose: bool):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address_or_die(address)
     if not ray._private.gcs_utils.check_health(address):
@@ -1878,7 +1884,7 @@ def status(address, redis_password):
     error = ray.experimental.internal_kv._internal_kv_get(
         ray_constants.DEBUG_AUTOSCALING_ERROR
     )
-    print(debug_status(status, error))
+    print(debug_status(status, error, verbose=verbose))
 
 
 @cli.command(hidden=True)

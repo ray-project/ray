@@ -1,5 +1,6 @@
 import logging
 import logging.handlers
+import os
 import sys
 import urllib
 import urllib.request
@@ -59,6 +60,7 @@ MOCK_MODULES = [
     "dask.distributed",
     "datasets",
     "datasets.iterable_dataset",
+    "datasets.load",
     "gym",
     "gym.spaces",
     "horovod",
@@ -117,6 +119,9 @@ def make_typing_mock(module, name):
 
 
 def mock_modules():
+    if os.environ.get("RAY_MOCK_MODULES", "1") == "0":
+        return
+
     for mod_name in MOCK_MODULES:
         mock_module = mock.MagicMock()
         mock_module.__spec__ = mock.MagicMock()

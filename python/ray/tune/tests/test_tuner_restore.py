@@ -347,6 +347,10 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir):
     # Contents changed
     assert prev_lstat.st_size != after_lstat.st_size
 
+    # Overwriting should work
+    tuner3 = Tuner.restore("memory:///test/restore/exp_dir")
+    tuner3.fit()
+
 
 if __name__ == "__main__":
     import sys
