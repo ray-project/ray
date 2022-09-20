@@ -3275,6 +3275,50 @@ def test_read_s3_file_error(ray_start_regular_shared, s3_path):
     assert error_message in str(e.value)
 
 
+def test_read_tfrecords(ray_start_regular_shared, tmp_path):
+    import tensorflow as tf
+
+    features = tf.train.Features(
+        feature={
+            "int64": tf.train.Feature(int64_list=tf.train.Int64List(value=[1])),
+            "int64_list": tf.train.Feature(
+                int64_list=tf.train.Int64List(value=[1, 2, 3, 4])
+            ),
+            "float": tf.train.Feature(float_list=tf.train.FloatList(value=[1.0])),
+            "float_list": tf.train.Feature(
+                float_list=tf.train.FloatList(value=[1.0, 2.0, 3.0, 4.0])
+            ),
+            "bytes": tf.train.Feature(bytes_list=tf.train.BytesList(value=[b"abc"])),
+            "bytes_list": tf.train.Feature(
+                bytes_list=tf.train.BytesList(value=[b"abc", b"1234"])
+            ),
+        }
+    )
+    example = tf.train.Example(features=features)
+    path = os.path.join(tmp_path, "data.tfrecords")
+    with tf.io.TFRecordWriter(path=path) as writer:
+        writer.write(example.SerializeToString())
+
+    ds = ray.data.read_tfrecords(path)
+
+    df = ds.to_pandas()
+    # Protobuf serializes features in a non-deterministic order.
+    assert dict(df.dtypes) == {
+        "int64": np.int64,
+        "int64_list": object,
+        "float": np.float,
+        "float_list": object,
+        "bytes": object,
+        "bytes_list": object,
+    }
+    assert list(df["int64"]) == [1]
+    assert list(df["int64_list"]) == [[1, 2, 3, 4]]
+    assert list(df["float"]) == [1.0]
+    assert list(df["float_list"]) == [[1.0, 2.0, 3.0, 4.0]]
+    assert list(df["bytes"]) == [b"abc"]
+    assert list(df["bytes_list"]) == [[b"abc", b"1234"]]
+
+
 if __name__ == "__main__":
     import sys
 
