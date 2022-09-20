@@ -94,11 +94,14 @@ class Connector(abc.ABC):
     """
 
     def __init__(self, ctx: ConnectorContext):
-        # This gets flipped to False for inference.
+        # Default is training mode.
         self._is_training = True
 
-    def is_training(self, is_training: bool):
-        self._is_training = is_training
+    def in_training(self):
+        self._is_training = True
+
+    def in_eval(self):
+        self._is_training = False
 
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
@@ -314,6 +317,17 @@ class ActionConnector(Connector):
 class ConnectorPipeline(abc.ABC):
     """Utility class for quick manipulation of a connector pipeline."""
 
+    def __init__(self, ctx: ConnectorContext, connectors: List[Connector]):
+        self.connectors = connectors
+
+    def in_training(self):
+        for c in self.connectors:
+            c.in_training()
+
+    def in_eval(self):
+        for c in self.connectors:
+            c.in_eval()
+
     def remove(self, name: str):
         """Remove a connector by <name>
 
@@ -321,14 +335,15 @@ class ConnectorPipeline(abc.ABC):
             name: name of the connector to be removed.
         """
         idx = -1
-        for idx, c in enumerate(self.connectors):
+        for i, c in enumerate(self.connectors):
             if c.__class__.__name__ == name:
+                idx = i
                 break
-        if idx < 0:
-            raise ValueError(f"Can not find connector {name}")
-        del self.connectors[idx]
-
-        logger.info(f"Removed connector {name} from {self.__class__.__name__}.")
+        if idx >= 0:
+            del self.connectors[idx]
+            logger.info(f"Removed connector {name} from {self.__class__.__name__}.")
+        else:
+            logger.warning(f"Trying to remove a non-existent connector {name}.")
 
     def insert_before(self, name: str, connector: Connector):
         """Insert a new connector before connector <name>

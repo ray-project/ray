@@ -15,13 +15,7 @@ from ray.util.annotations import PublicAPI
 @PublicAPI(stability="alpha")
 class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
     def __init__(self, ctx: ConnectorContext, connectors: List[Connector]):
-        super().__init__(ctx)
-        self.connectors = connectors
-
-    def is_training(self, is_training: bool):
-        self._is_training = is_training
-        for c in self.connectors:
-            c.is_training(is_training)
+        super().__init__(ctx, connectors)
 
     def reset(self, env_id: str):
         for c in self.connectors:

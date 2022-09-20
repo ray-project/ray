@@ -24,10 +24,10 @@ class ViewRequirementAgentConnector(AgentConnector):
     The output of this connector is AgentConnectorsOut, which basically is
     a tuple of 2 things:
     {
-        "for_training": {"obs": ...}
-        "for_action": SampleBatch
+        "raw_dict": {"obs": ...}
+        "sample_batch": SampleBatch
     }
-    The "for_training" dict, which contains data for the latest time slice,
+    raw_dict, which contains raw data for the latest time slice,
     can be used to construct a complete episode by Sampler for training purpose.
     The "for_action" SampleBatch can be used to directly call the policy.
     """
@@ -87,15 +87,12 @@ class ViewRequirementAgentConnector(AgentConnector):
         )
 
         vr = self._view_requirements
-        assert vr, "ViewRequirements required by ViewRequirementConnector"
+        assert vr, "ViewRequirements required by ViewRequirementAgentConnector"
 
-        training_dict = None
-        # Return full training_dict for env runner to construct episodes.
-        if self._is_training:
-            # Note(jungong) : we need to keep the entire input dict here.
-            # A column may be used by postprocessing (GAE) even if its
-            # iew_requirement.used_for_training is False.
-            training_dict = d
+        # Note(jungong) : we need to keep the entire input dict here.
+        # A column may be used by postprocessing (GAE) even if its
+        # iew_requirement.used_for_training is False.
+        training_dict = d
 
         agent_collector = self.agent_collectors[env_id][agent_id]
 

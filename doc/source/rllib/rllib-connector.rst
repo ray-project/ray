@@ -119,18 +119,17 @@ The output from RLlib's default agent connector pipeline is in ``AgentConnectors
    :start-after: __sphinx_doc_begin_agent_connector_output__
    :end-before: __sphinx_doc_end_agent_connector_output__
 
-Note that if ``AgentConnector._is_training`` is False, the ``for_training`` field of ``AgentConnectorsOutput``
-will not be populated. This is for more efficient inference.
-
-.. note::
-    There is a plan to consolidate training episode building into agent connectors, in which case there will
-    not be a need to output the ``for_training`` data piece.
+Note that in addition to the processed sample batch, which can be used for running the policy
+forward pass, ``AgentConnectorsOutput`` also provides the original raw input dict, because it
+sometimes contains data required for downstream processing (e.g. action masks).
 
 ActionConnectorDataType
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 ``ActionConnectorDataType`` is the data type ``ActionConnector`` deals with.
-It is basically env and agent IDs plus ``PolicyOutputType``.
+It is basically env and agent IDs, input_dict, and ``PolicyOutputType``.
+The raw input dict is made available for action connectors in case some of the
+data fields are needed for adapting action outputs, for example action masks.
 
 .. literalinclude:: ../../../rllib/utils/typing.py
    :language: python
