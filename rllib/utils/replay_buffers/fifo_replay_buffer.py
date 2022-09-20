@@ -10,7 +10,7 @@ from ray.util.annotations import DeveloperAPI
 
 @DeveloperAPI
 class FifoReplayBuffer(ReplayBuffer):
-    """This replay buffer implements an FIFO queue.
+    """This replay buffer implements a FIFO queue.
 
     Sometimes, e.g. for offline use cases, it may be desirable to use
     off-policy algorithms without a Replay Buffer.
