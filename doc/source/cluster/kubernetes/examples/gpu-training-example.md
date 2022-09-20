@@ -91,7 +91,7 @@ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container
 It is not necessary to run this example with a cluster having that much RAM (>30GB per node in the above commands). Feel free to update
 the option `machine-type` and the resource requirements in `ray-cluster.gpu.yaml`.
 
-First, we create a Kubernetes cluster `gpu-cluster-1` with one CPU node (`e2-standard-8`: 8 vCPU; 32 GB RAM). Second,
+In the first command above, we create a Kubernetes cluster `gpu-cluster-1` with one CPU node (`e2-standard-8`: 8 vCPU; 32 GB RAM). In the second command,
 we add a new node (`n1-standard-8`: 8 vCPU; 30 GB RAM) with a GPU (`nvidia-tesla-t4`) to the cluster.
 
 ## Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
