@@ -80,7 +80,7 @@ class SimpleBlockAccessor(BlockAccessor):
         if len(keys) != 1 or not callable(keys[0]):
             raise ValueError(
                 "keys must be a single callable when selecting on Simple blocks, but "
-                f"got: {type(keys)}."
+                f"got: {keys}."
             )
         callable_key = keys[0]
         return [callable_key(row) for row in self.iter_rows()]

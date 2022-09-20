@@ -156,8 +156,8 @@ class PandasBlockAccessor(TableBlockAccessor):
     def select(self, keys: List[KeyFn]) -> "pandas.DataFrame":
         if not all(isinstance(key, str) for key in keys):
             raise ValueError(
-                "keys must be a list of strings when aggregating on Pandas blocks, "
-                f"but got: {type(keys)}."
+                "keys must be a list of column name strings when aggregating on Pandas "
+                f"blocks, but got: {keys}."
             )
         return self._table[keys]
 

@@ -91,7 +91,7 @@ class _GroupbyOp(ShuffleOp):
             if isinstance(agg, _AggregateOnKeyBase) and isinstance(agg._key_fn, str):
                 columns.add(agg._key_fn)
             elif not isinstance(agg, Count):
-                # Not prune columns if any aggregate key is not string.
+                # Don't prune columns if any aggregate key is not string.
                 prune_columns = False
 
         block_accessor = BlockAccessor.for_block(block)
