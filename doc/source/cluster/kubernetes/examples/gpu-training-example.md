@@ -10,7 +10,7 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 
 ## The end-to-end workflow
 The following script summarizes the end-to-end workflow for GPU training. These instructions are for GCP, but a similar setup would work for any major cloud provider. The following script consists of:
-- Step 1: Setup a Kubernetes cluster on GCP.
+- Step 1: Set up a Kubernetes cluster on GCP.
 - Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
 - Step 3: Run the PyTorch image training benchmark. 
 
