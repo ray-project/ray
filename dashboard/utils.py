@@ -530,9 +530,12 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     Return:
         API server HTTP URL.
     """
-    # Check the case of a Ray Client address (e.g. "ray://<head_node_ip>:10001")
+    # Check the case of a Ray Client address (e.g. "ray://<head_node_ip>:10001").
+    # This case is not checked by canonicalize_bootstrap_address_or_die.
     address_env_var = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
     if address_env_var and address_env_var.startswith("ray://"):
+        address = address_env_var
+    if address.startswith("ray://"):
         with ray.init(address=address_env_var, ignore_reinit_error=True) as ray_context:
             gcs_address = ray_context.address_info["gcs_address"]
             gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
