@@ -240,8 +240,6 @@ else:
 
             Args:
                 dags: a handle to a Ray Serve DAG or a dictionary of handles.
-                http_adapter: a callable function or import string to convert
-                    HTTP requests to Ray Serve input.
                 port: Port to use to listen to receive the request
             """
             self.dag = dags
