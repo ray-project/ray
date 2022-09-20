@@ -172,7 +172,7 @@ def test_memory_pressure_kill_task(ray_with_memory_monitor):
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_task_crash_raylet_dead_throws_node_died_error(ray_with_memory_monitor):
+def test_task_crash_after_raylet_dead_throws_node_died_error(ray_with_memory_monitor):
     ref = sleeper.remote(sleep_s=5, crash_at_the_end=True)
 
     raylet = ray.nodes()[0]
