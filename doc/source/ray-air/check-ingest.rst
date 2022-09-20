@@ -46,8 +46,9 @@ The following is a simple example of how to configure ingest for a dummy :py:cla
 Configuring Ingest
 ------------------
 You can use the :py:class:`~ray.air.config.DatasetConfig` object to configure how Datasets are preprocessed and split across training workers.
-Each :py:class:`~ray.train.data_parallel_trainer.DataParallelTrainer` has a default ``_dataset_config`` class field. It is a mapping
-from dataset names to :py:class:`~ray.air.config.DatasetConfig` objects, and implements the default behavior described in the :ref:`overview <ingest_basics>`:
+Each :py:class:`~ray.train.data_parallel_trainer.DataParallelTrainer` takes in a ``dataset_config`` constructor argument that takes in a mapping
+from Dataset name to a :py:class:`~ray.air.config.DatasetConfig` object. If no ``dataset_config`` is passed in,
+the default configuration is used:
 
 .. code:: python
 
@@ -62,7 +63,6 @@ from dataset names to :py:class:`~ray.air.config.DatasetConfig` objects, and imp
         "*": DatasetConfig(),
     }
 
-These configs can be overriden via the ``dataset_config`` constructor argument passed to your ``Trainer``.
 Here are some examples of configuring Dataset ingest options and what they do:
 
 .. _air-streaming-ingest:

@@ -218,10 +218,10 @@ class BaseTrainer(abc.ABC):
             for key, dataset in self.datasets.items():
                 if isinstance(dataset, ray.data.DatasetPipeline):
                     raise ValueError(
-                        f"The Dataset under {key} key is a `ray.data.DatasetPipeline`."
-                        "Only `ray.data.Dataset` are allowed to be passed in. "
-                        "Pipelined/streaming ingest can be configured via the "
-                        "`dataset_config` arg. See "
+                        f"The Dataset under '{key}' key is a "
+                        f"`ray.data.DatasetPipeline`. Only `ray.data.Dataset` are "
+                        f"allowed to be passed in.  Pipelined/streaming ingest can be "
+                        f"configured via the `dataset_config` arg. See "
                         "https://docs.ray.io/en/latest/ray-air/check-ingest.html#enabling-streaming-ingest"  # noqa: E501
                         "for an example."
                     )
@@ -229,7 +229,7 @@ class BaseTrainer(abc.ABC):
                     dataset
                 ):
                     raise ValueError(
-                        f"The Dataset under {key} key is not a `ray.data.Dataset`. "
+                        f"The Dataset under '{key}' key is not a `ray.data.Dataset`. "
                         f"Received {dataset} instead."
                     )
 
