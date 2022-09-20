@@ -118,7 +118,18 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
             (total_bytes != kNull && used_bytes != kNull));
   if (total_bytes != kNull) {
     RAY_CHECK_GT(used_bytes, 0);
-    RAY_CHECK_GT(total_bytes, used_bytes);
+    if (used_bytes <= 0) {
+      RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+          << " Memory usage from cgroup is less than or equal to zero: " << used_bytes;
+    }
+    if (used_bytes >= total_bytes) {
+      RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+              << " Used memory is less than or equal to total memory used. This can "
+                 "happen if the memory usage if memory limit is set and the container is "
+                 "using a lot of memory. Used "
+              << used_bytes <
+          ", total " << total_bytes;
+    }
   }
 
   return {used_bytes, total_bytes};
