@@ -455,8 +455,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
 
   if (RayConfig::instance().task_failure_entry_gc_period_ms() > 0) {
     periodical_runner_.RunFnPeriodically(
-      [this]() { GCTaskFailureReason(); },
-      RayConfig::instance().task_failure_entry_gc_period_ms());
+        [this]() { GCTaskFailureReason(); },
+        RayConfig::instance().task_failure_entry_gc_period_ms());
   }
 }
 
@@ -821,15 +821,16 @@ void NodeManager::HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request
 }
 
 void NodeManager::HandleGetTaskResult(const rpc::GetTaskResultRequest &request,
-                          rpc::GetTaskResultReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) {
+                                      rpc::GetTaskResultReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) {
   const TaskID task_id = TaskID::FromBinary(request.task_id());
   RAY_LOG(DEBUG) << "Received a HandleGetTaskResult request for task " << task_id;
-  
+
   auto it = task_failure_reasons_.find(task_id);
   if (it != task_failure_reasons_.end()) {
-    RAY_LOG(DEBUG) << "task " << task_id << " has failure cause " << ray::gcs::RayExceptionToString(it->second.ray_exception);
-    reply->mutable_failure_cause()->CopyFrom(it->second.ray_exception);
+    RAY_LOG(DEBUG) << "task " << task_id << " has failure cause "
+                   << it->second.ray_error_info.error_message();
+    reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info);
   } else {
     RAY_LOG(WARNING) << "didn't find failure cause for task " << task_id;
   }
@@ -1462,8 +1463,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    const std::string &disconnect_detail,
                                    const rpc::RayException *creation_task_exception) {
   RAY_LOG(INFO) << "NodeManager::DisconnectClient, disconnect_type=" << disconnect_type
-                << ", has creation task exception = "
-                << std::boolalpha
+                << ", has creation task exception = " << std::boolalpha
                 << bool(creation_task_exception == nullptr);
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
@@ -2993,10 +2993,11 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           RAY_LOG(INFO) << "Latest 10 worker details:\n"
                         << this->WorkersDebugString(workers, max_to_print);
 
-          rpc::RayException task_failure_reason;
-          task_failure_reason.set_formatted_exception_string("out of memory!");
+          rpc::RayErrorInfo task_failure_reason;
+          task_failure_reason.set_error_message(error_log_ss.str());
           task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
-          SetTaskFailureReason(latest_worker->GetAssignedTaskId(), std::move(task_failure_reason));
+          SetTaskFailureReason(latest_worker->GetAssignedTaskId(),
+                               std::move(task_failure_reason));
           /// TODO: (clarng) right now destroy is called after the messages are created
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
@@ -3018,18 +3019,24 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
   };
 }
 
-void NodeManager::SetTaskFailureReason(const TaskID &task_id, const rpc::RayException &failure_reason) {
+void NodeManager::SetTaskFailureReason(const TaskID &task_id,
+                                       const rpc::RayErrorInfo &failure_reason) {
   RAY_LOG(INFO) << "set failure reason for task " << task_id;
   ray::TaskFailureEntry entry(failure_reason);
   auto result = task_failure_reasons_.emplace(task_id, std::move(entry));
-  RAY_CHECK(result.second) << "Trying to insert failure reason more than once for the same task, task id: " << task_id;
+  RAY_CHECK(result.second)
+      << "Trying to insert failure reason more than once for the same task, task id: "
+      << task_id;
 }
 
 void NodeManager::GCTaskFailureReason() {
   for (const auto &entry : task_failure_reasons_) {
-    auto duration = (uint64_t) std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - entry.second.creation_time).count();
+    auto duration = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - entry.second.creation_time)
+                        .count();
     if (duration > RayConfig::instance().task_failure_entry_ttl_ms()) {
-      RAY_LOG(INFO) << "Removing task failure reason since it expired, task: " << entry.first;
+      RAY_LOG(INFO) << "Removing task failure reason since it expired, task: "
+                    << entry.first;
       task_failure_reasons_.erase(entry.first);
     }
   }

@@ -218,12 +218,6 @@ class SerializationContext:
         ray_error_info.ParseFromString(pb_bytes)
         return ray_error_info
 
-    def _deserialize_exception(self, data, metadata_fields):
-        assert data
-        ray_error_info = self._deserialize_error_info(data, metadata_fields)
-        assert ray_error_info.HasField("exception")
-        return ray_error_info.exception
-
     def _deserialize_actor_died_error(self, data, metadata_fields):
         if not data:
             return RayActorError()
@@ -291,11 +285,12 @@ class SerializationContext:
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
             elif error_type == ErrorType.Value("OUT_OF_MEMORY"):
-                exception = self._deserialize_exception(data, metadata_fields)
-                return OutOfMemoryError(exception.formatted_exception_string)
+                error_info = self._deserialize_error_info(data, metadata_fields)
+                # return WorkerCrashedError()
+                return OutOfMemoryError(error_info.error_message)
             elif error_type == ErrorType.Value("NODE_DIED"):
-                exception = self._deserialize_exception(data, metadata_fields)
-                return NodeDiedError(exception.formatted_exception_string)
+                error_info = self._deserialize_error_info(data, metadata_fields)
+                return NodeDiedError(error_info.error_message)
             elif error_type == ErrorType.Value("OBJECT_DELETED"):
                 return ReferenceCountingAssertionError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()

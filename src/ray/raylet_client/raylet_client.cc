@@ -385,8 +385,8 @@ Status raylet::RayletClient::ReturnWorker(int worker_port,
 }
 
 void raylet::RayletClient::GetTaskResult(
-      const TaskID &task_id,
-      const ray::rpc::ClientCallback<ray::rpc::GetTaskResultReply> &callback) {
+    const TaskID &task_id,
+    const ray::rpc::ClientCallback<ray::rpc::GetTaskResultReply> &callback) {
   rpc::GetTaskResultRequest request;
   request.set_task_id(task_id.Binary());
   grpc_client_->GetTaskResult(

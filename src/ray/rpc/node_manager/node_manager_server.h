@@ -156,9 +156,8 @@ class NodeManagerServiceHandler {
                                     SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetTaskResult(const GetTaskResultRequest &request,
-                                    GetTaskResultReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
-
+                                   GetTaskResultReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

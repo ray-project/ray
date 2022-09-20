@@ -211,12 +211,15 @@ message RayErrorInfo {
     ActorDeathCause actor_died_error = 2;
     RuntimeEnvFailedContext runtime_env_setup_failed_error = 3;
     string error_message = 4;
-    RayException exception = 5;
   }
+  // The type of error that caused the exception.
+  optional ErrorType error_type = 11;
 }
 
-/// The task exception encapsulates all information about task
-/// execution execeptions.
+/// The task exception encapsulates the information about task
+/// execution execeptions. This should be used by the frontend
+/// to represent a user application error. Errors originating from the
+/// backend such as from the raylet should be propagated as RayErrorInfo.
 message RayException {
   // Language of this exception.
   Language language = 1;
@@ -224,8 +227,6 @@ message RayException {
   bytes serialized_exception = 2;
   // The formatted exception string.
   string formatted_exception_string = 3;
-  // The type of error that caused the exception.
-  optional ErrorType error_type = 4;
 }
 
 message ActorDeathCause {

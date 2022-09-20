@@ -622,8 +622,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Handle a `GetTaskResult` request.
   void HandleGetTaskResult(const rpc::GetTaskResultRequest &request,
-                            rpc::GetTaskResultReply *reply,
-                            rpc::SendReplyCallback send_reply_callback) override;
+                           rpc::GetTaskResultReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetObjectsInfo` request.
   void HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request,
@@ -695,8 +695,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Creates the callback used in the memory monitor.
   MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
 
-  /// Stores the failure reason for the task. The entry will be cleaned up by a periodic function post TTL.
-  void SetTaskFailureReason(const TaskID &task_id, const rpc::RayException &failure_reason);
+  /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
+  /// function post TTL.
+  void SetTaskFailureReason(const TaskID &task_id,
+                            const rpc::RayErrorInfo &failure_reason);
 
   /// Checks the expiry time of the task failures and garbage collect them.
   void GCTaskFailureReason();

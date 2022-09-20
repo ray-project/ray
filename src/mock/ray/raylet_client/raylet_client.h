@@ -61,7 +61,6 @@ class MockWorkerLeaseInterface : public WorkerLeaseInterface {
               (const TaskID &task_id,
                const rpc::ClientCallback<rpc::GetTaskResultReply> &callback),
               (override));
-
 };
 
 }  // namespace ray

@@ -340,7 +340,7 @@ message GetTaskResultRequest {
 }
 
 message GetTaskResultReply {
-  optional RayException failure_cause = 1;
+  optional RayErrorInfo failure_cause = 1;
 }
 
 // Service for inter-node-manager communication.
