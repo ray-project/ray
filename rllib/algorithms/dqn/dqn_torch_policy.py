@@ -45,11 +45,10 @@ if nn:
 
 
 def get_dist_class_with_temperature(temperature):
-    """Custom TorchCategorical distribution class that has temperature set.
-    """
+    """Custom TorchCategorical distribution class that has temperature set."""
 
     class TorchCategoricalWithTemperature(TorchCategorical):
-        def __init__(self, inputs, model = None):
+        def __init__(self, inputs, model=None):
             super().__init__(inputs, model, temperature)
 
     return TorchCategoricalWithTemperature

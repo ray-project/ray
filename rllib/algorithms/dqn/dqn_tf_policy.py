@@ -36,11 +36,10 @@ PRIO_WEIGHTS = "weights"
 
 
 def get_dist_class_with_temperature(temperature):
-    """Custom Categorical distribution class that has temperature set.
-    """
+    """Custom Categorical distribution class that has temperature set."""
 
     class CategoricalWithTemperature(Categorical):
-        def __init__(self, inputs, model = None):
+        def __init__(self, inputs, model=None):
             super().__init__(inputs, model, temperature)
 
     return CategoricalWithTemperature
@@ -247,7 +246,11 @@ def get_distribution_inputs_and_class(
     # parameter is partially binded to the configured value.
     temperature = policy.config["categorical_distribution_temperature"]
 
-    return policy.q_values, get_dist_class_with_temperature(temperature), []  # state-out
+    return (
+        policy.q_values,
+        get_dist_class_with_temperature(temperature),
+        [],
+    )  # state-out
 
 
 def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
