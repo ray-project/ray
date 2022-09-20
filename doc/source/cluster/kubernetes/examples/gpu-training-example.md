@@ -26,7 +26,7 @@ gcloud container node-pools create gpu-node-pool \
 kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/cos/daemonset-preloaded.yaml
 
 # Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
-# Please make sure whether you connect to your Kubernetes cluster on GCP or not.
+# Please make sure you are connected to your Kubernetes cluster. (For GCP, you can do so by running the relevant "gcloud containers" command.)
 
 # Create the KubeRay operator
 kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
@@ -54,7 +54,7 @@ python3 pytorch_training_e2e_submit.py
 ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow
 ```
 
-# Step 1: Setup a Kubernetes cluster on GCP.
+## Step 1: Setup a Kubernetes cluster on GCP.
 In this section, we set up a Kubernetes cluster with CPU and GPU node pools. These instructions are for GCP, but a similar setup would work for any major cloud provider.
 
 ```shell
@@ -83,7 +83,7 @@ the option `machine-type` and the resource requirements in `ray-cluster.gpu.yaml
 First, we create a Kubernetes cluster `gpu-cluster-1` with one CPU node (`e2-standard-8`: 8 vCPU; 32 GB RAM). Second,
 we add a new node (`n1-standard-8`: 8 vCPU; 30 GB RAM) with a GPU (`nvidia-tesla-t4`) to the cluster.
 
-# Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
+## Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
 
 :::{note}
 To learn the basics of Ray on Kubernetes, we recommend taking a look
@@ -109,15 +109,14 @@ kubectl port-forward services/raycluster-head-svc 8265:8265
 ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
 ```
 
-Please make sure whether you connect to your Kubernetes cluster on GCP or not. The first command will deploy
-KubeRay (ray-operator) to your Kubernetes cluster. The second command will create a ray cluster with the help
-of KubeRay.
+Please make sure you are connected to your Kubernetes cluster. (For GCP, you can do so by running the relevant `gcloud containers` command.)
+The first command will deploy KubeRay (ray-operator) to your Kubernetes cluster. The second command will create a ray cluster with the help of KubeRay.
 
 The third command is used to map port 8265 of the `ray-head` pod to **127.0.0.1:8265**. You can check
 **127.0.0.1:8265** to see the dashboard. The last command is used to test your Ray cluster by submitting a simple job.
 It is optional.
 
-# Step 3: Run the PyTorch image training benchmark.
+## Step 3: Run the PyTorch image training benchmark.
 ```shell
 # Step 3: Run the PyTorch image training benchmark.
 # Install Ray if needed
@@ -137,7 +136,7 @@ python3 pytorch_training_e2e_submit.py
 ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow
 ```
 
-# Clean-up
+## Clean-up
 Delete your Ray cluster and KubeRay with the following commands:
 ```shell
 kubectl delete raycluster raycluster
