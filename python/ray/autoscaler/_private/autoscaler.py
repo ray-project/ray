@@ -1457,4 +1457,31 @@ class StandardAutoscaler:
 
 
 def _prioritize_and_filter_nodes(autoscaler: StandardAutoscaler) -> List[NodeType]:
-    return list(autoscaler.config.get("available_node_types", {}).keys())
+    default_list_order = {
+        node_type: idx
+        for idx, node_type in enumerate(
+            autoscaler.config.get("available_node_types", {}).keys()
+        )
+    }
+    sort_order = {}
+
+    node_availability_summary = (
+        autoscaler.node_provider_availability_tracker.summary().node_availabilities
+    )
+    for node_type in default_list_order:
+        if (
+            node_type in node_availability_summary
+            and not node_availability_summary[node_type].is_available
+        ):
+            # Prioritize unavailable things after available/unknown things.
+            sort_order[node_type] = (
+                len(default_list_order),
+                node_availability_summary[node_type].last_checked_timestamp,
+            )
+        else:
+            sort_order[node_type] = (default_list_order[node_type], 0)
+
+    ordered_node_types = sorted(
+        list(sort_order.keys()), key=lambda node_type: sort_order[node_type]
+    )
+    return ordered_node_types
