@@ -63,7 +63,7 @@ ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow
 ```
 In the rest of this document, we present a more detailed breakdown of the above workflow.
 
-## Step 1: Setup a Kubernetes cluster on GCP.
+## Step 1: Set up a Kubernetes cluster on GCP.
 In this section, we set up a Kubernetes cluster with CPU and GPU node pools. These instructions are for GCP, but a similar setup would work for any major cloud provider. If you have an existing Kubernetes cluster with GPU, you can ignore this step.
 
 If you are new to Kubernetes and you are planning to deploy Ray workloads on a managed
