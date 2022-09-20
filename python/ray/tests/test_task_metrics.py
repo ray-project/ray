@@ -19,10 +19,15 @@ METRIC_CONFIG = {
 }
 
 
-def tasks_by_state(info) -> dict:
+def raw_metrics(info):
     metrics_page = "localhost:{}".format(info["metrics_export_port"])
     print("Fetch metrics from", metrics_page)
     res = fetch_prometheus_metrics([metrics_page])
+    return res
+
+
+def tasks_by_state(info) -> dict:
+    res = raw_metrics(info)
     if "ray_tasks" in res:
         states = defaultdict(int)
         for sample in res["ray_tasks"]:
@@ -58,11 +63,48 @@ ray.get(a)
         "SCHEDULED": 8.0,
         "WAITING_FOR_DEPENDENCIES": 0.0,
     }
-    # TODO(ekl) optimize the reporting interval to be faster for testing
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
     proc.kill()
+
+
+def test_task_job_ids(shutdown_only):
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+
+    driver = """
+import ray
+import time
+
+ray.init("auto")
+
+@ray.remote(num_cpus=0)
+def f():
+    time.sleep(999)
+a = [f.remote() for _ in range(1)]
+ray.get(a)
+"""
+    procs = [run_string_as_driver_nonblocking(driver) for _ in range(3)]
+    expected = {
+        "RUNNING": 3.0,
+        "WAITING_FOR_EXECUTION": 0.0,
+        "SCHEDULED": 0.0,
+        "WAITING_FOR_DEPENDENCIES": 0.0,
+    }
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+    )
+
+    # Check we have three jobs reporting "RUNNING".
+    metrics = raw_metrics(info)
+    jobs_at_state = defaultdict(set)
+    for sample in metrics["ray_tasks"]:
+        jobs_at_state[sample.labels["State"]].add(sample.labels["JobId"])
+    print("Jobs at state: {}".format(jobs_at_state))
+    assert len(jobs_at_state["RUNNING"]) == 3, jobs_at_state
+
+    for proc in procs:
+        proc.kill()
 
 
 def test_task_nested(shutdown_only):
@@ -93,7 +135,6 @@ ray.get(w)
         "SCHEDULED": 8.0,
         "WAITING_FOR_DEPENDENCIES": 0.0,
     }
-    # TODO(ekl) optimize the reporting interval to be faster for testing
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
     )
