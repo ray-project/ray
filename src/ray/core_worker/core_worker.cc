@@ -36,9 +36,6 @@
 
 namespace ray {
 namespace core {
-namespace {
-
-using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
 
 JobID GetProcessJobID(const CoreWorkerOptions &options) {
   if (options.worker_type == WorkerType::DRIVER) {
@@ -55,6 +52,10 @@ JobID GetProcessJobID(const CoreWorkerOptions &options) {
   }
   return options.job_id;
 }
+
+namespace {
+
+using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
 
 // Helper function converts GetObjectLocationsOwnerReply to ObjectLocation
 ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &reply) {
