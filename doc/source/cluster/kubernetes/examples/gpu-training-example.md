@@ -3,6 +3,11 @@
 # ML training with GPUs on Kubernetes
 In this guide, we show you how to run a sample Ray machine learning training workload with GPU on Kubernetes infrastructure. We will run Ray's {ref}`PyTorch image training benchmark <pytorch_gpu_training_benchmark>` with a 1 gigabyte training set.
 
+:::{note}
+To learn the basics of Ray on Kubernetes, we recommend taking a look
+at the {ref}`introductory guide <kuberay-quickstart>` first.
+:::
+
 ## The end-to-end workflow
 The following script summarizes the end-to-end workflow for GPU training. These instructions are for GCP, but a similar setup would work for any major cloud provider. The following script consists of:
 - Step 1: Setup a Kubernetes cluster on GCP.
@@ -59,7 +64,10 @@ ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow
 In the rest of this document, we present a more detailed breakdown of the above workflow.
 
 ## Step 1: Setup a Kubernetes cluster on GCP.
-In this section, we set up a Kubernetes cluster with CPU and GPU node pools. These instructions are for GCP, but a similar setup would work for any major cloud provider.
+In this section, we set up a Kubernetes cluster with CPU and GPU node pools. These instructions are for GCP, but a similar setup would work for any major cloud provider. If you have an existing Kubernetes cluster with GPU, you can ignore this step.
+
+If you are new to Kubernetes and you are planning to deploy Ray workloads on a managed
+Kubernetes service, we recommend taking a look at this {ref}`introductory guide <kuberay-k8s-setup>` first.
 
 ```shell
 # Step 1: Setup a Kubernetes cluster on GCP.
@@ -80,23 +88,13 @@ gcloud container node-pools create gpu-node-pool \
 kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/cos/daemonset-preloaded.yaml
 ```
 
-If you have an existing Kubernetes cluster with GPU, you can ignore this step. In addition, it is not necessary
-to run this example with a cluster having that much RAM (>30GB per node in the above commands). Feel free to update
+In addition, it is not necessary to run this example with a cluster having that much RAM (>30GB per node in the above commands). Feel free to update
 the option `machine-type` and the resource requirements in `ray-cluster.gpu.yaml`.
 
 First, we create a Kubernetes cluster `gpu-cluster-1` with one CPU node (`e2-standard-8`: 8 vCPU; 32 GB RAM). Second,
 we add a new node (`n1-standard-8`: 8 vCPU; 30 GB RAM) with a GPU (`nvidia-tesla-t4`) to the cluster.
 
 ## Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
-
-:::{note}
-To learn the basics of Ray on Kubernetes, we recommend taking a look
-at the {ref}`introductory guide <kuberay-quickstart>` first.
-:::
-
-If you are new to Kubernetes and you are planning to deploy Ray workloads on a managed
-Kubernetes service, we recommend taking a look at this {ref}`introductory guide <kuberay-k8s-setup>`
-first.
 
 ```shell
 # Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
