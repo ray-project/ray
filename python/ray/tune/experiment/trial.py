@@ -502,7 +502,7 @@ class Trial:
         if self.status == Trial.ERROR:
             checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
         else:
-            checkpoint = self.checkpoint_manager.newest_checkpoint
+            checkpoint = self.checkpoint_manager.checkpoint
         if checkpoint.dir_or_data is None:
             checkpoint = _TrackedCheckpoint(
                 dir_or_data=self.restore_path,
@@ -694,13 +694,17 @@ class Trial:
         self.restoring_from = None
         self.invalidate_json_state()
 
-    def on_checkpoint(self, checkpoint: _TrackedCheckpoint, force: bool = False):
+    def on_checkpoint(
+        self, checkpoint: _TrackedCheckpoint, prefer_memory_checkpoint: bool = False
+    ):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
             checkpoint: Checkpoint taken.
         """
-        self.checkpoint_manager.on_checkpoint(checkpoint, force=force)
+        self.checkpoint_manager.on_checkpoint(
+            checkpoint, prefer_memory_checkpoint=prefer_memory_checkpoint
+        )
         self.invalidate_json_state()
 
     def on_restore(self):

@@ -663,7 +663,7 @@ class PopulationBasedTraining(FIFOScheduler):
         trial.set_config(new_config)
         # Resume training state from the latest checkpoint of `trial_to_clone`
         checkpoint_to_exploit = new_state.last_checkpoint
-        trial.on_checkpoint(checkpoint_to_exploit, force=True)
+        trial.on_checkpoint(checkpoint_to_exploit, prefer_memory_checkpoint=True)
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
@@ -903,7 +903,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         trial_executor.set_status(trial, Trial.PAUSED)
         trial.set_experiment_tag(new_tag)
         trial.set_config(new_config)
-        trial.on_checkpoint(checkpoint)
+        trial.on_checkpoint(checkpoint, prefer_memory_checkpoint=True)
 
         self.current_config = new_config
         self._num_perturbations += 1
