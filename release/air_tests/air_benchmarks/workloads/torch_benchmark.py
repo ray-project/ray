@@ -404,17 +404,8 @@ def run(
     config["epochs"] = num_epochs
     config["batch_size"] = batch_size
 
-    # Find interface
-    for iface in os.listdir("/sys/class/net"):
-        if iface.startswith("ens"):
-            network_interface = iface
-            break
-    else:
-        network_interface = "^lo,docker"
-
     ray.init(
         "auto",
-        runtime_env={"env_vars": {"NCCL_SOCKET_IFNAME": network_interface}},
     )
     print("Preparing Torch benchmark: Downloading MNIST")
 

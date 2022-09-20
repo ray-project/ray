@@ -11,13 +11,9 @@ if __name__ == "__main__":
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "ray_lightning_user_test")
 
-    # Manually set NCCL_SOCKET_IFNAME to "ens3" so NCCL training works on
-    # anyscale_default_cloud.
-    # See https://github.com/pytorch/pytorch/issues/68893 for more details.
     # Passing in runtime_env to ray.init() will also set it for all the
     # workers.
     runtime_env = {
-        "env_vars": {"NCCL_SOCKET_IFNAME": "ens3"},
         "working_dir": os.path.dirname(__file__),
     }
 

@@ -7,6 +7,7 @@ from typing import Dict, Optional
 
 import ray
 from ray.train.backend import BackendConfig, Backend, EncodedData
+from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train._internal.utils import get_address_and_port
 from ray.util import PublicAPI
@@ -49,6 +50,16 @@ class TorchConfig(BackendConfig):
     @property
     def backend_cls(self):
         return _TorchBackend
+
+
+def _set_nccl_network_interface() -> str:
+    """Set the appropriate NCCL network interface to use."""
+
+    if "NCCL_SOCKET_IFNAME" not in os.environ:
+        # Use ethernet when possible.
+        # NCCL_SOCKET_IFNAME does a prefix match so "ens3" or "ens5" will match with
+        # "en".
+        os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_NCCL_SOCKET_IFNAME
 
 
 def _setup_torch_process_group(
@@ -115,6 +126,9 @@ class _TorchBackend(Backend):
                     backend = "gloo"
             else:
                 backend = backend_config.backend
+
+            if backend == "nccl":
+                worker_group.execute(_set_nccl_network_interface)
 
             master_addr, master_port = worker_group.execute_single(
                 0, get_address_and_port

@@ -79,3 +79,6 @@ PYTORCH_PROFILER_KEY = "_train_torch_profiler"
 # By default these will be filtered out from ``session.report()``.
 # See ``TrainingCallback._preprocess_results`` for more details.
 ALL_RESERVED_KEYS = {PYTORCH_PROFILER_KEY}
+
+# Default NCCL_SOCKET_IFNAME.
+DEFAULT_NCCL_SOCKET_IFNAME = "en,eth,bond"
