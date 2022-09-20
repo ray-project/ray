@@ -21,26 +21,24 @@ from ray.rllib.policy import Policy
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.rl import RLTrainer
+from ray.train.rl.rl_checkpoint import RLCheckpoint
 from ray.train.rl.rl_predictor import RLPredictor
 from ray.tune.trainable.util import TrainableUtil
 
-
-@pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
+from dummy_preprocessor import DummyPreprocessor
 
 
 class _DummyAlgo(Algorithm):
     train_exec_impl = None
 
     def setup(self, config):
-        self.policy = _DummyPolicy(
+        random_state = config.pop("random_state", None)
+        policy_class = _DummyStatefulPolicy if random_state else _DummyPolicy
+        policy_config = {"random_state": random_state} if random_state else {}
+        self.policy = policy_class(
             observation_space=gym.spaces.Box(low=-2.0, high=-2.0, shape=(10,)),
             action_space=gym.spaces.Discrete(n=1),
-            config={},
+            config=policy_config,
         )
 
     def train(self):
@@ -66,10 +64,25 @@ class _DummyPolicy(Policy):
         )
 
 
-class _DummyPreprocessor(Preprocessor):
-    def transform_batch(self, df):
-        self._batch_transformed = True
-        return df * 2
+class _DummyStatefulPolicy(Policy):
+    """Returns actions by averaging over observations, adding a random state
+    at initialization"""
+
+    def __init__(self, observation_space, action_space, config):
+        super().__init__(observation_space, action_space, config)
+        self.random_state = config.pop("random_state")
+
+    def compute_actions(
+        self,
+        obs_batch,
+        *args,
+        **kwargs,
+    ):
+        return (
+            self.random_state + np.mean(obs_batch, axis=1),
+            [],
+            {},
+        )
 
 
 def create_checkpoint(
@@ -89,6 +102,40 @@ def create_checkpoint(
         checkpoint_data = Checkpoint.from_directory(checkpoint_path).to_dict()
 
     return Checkpoint.from_dict(checkpoint_data)
+
+
+def test_rl_checkpoint():
+    preprocessor = DummyPreprocessor()
+
+    rl_trainer = RLTrainer(
+        algorithm=_DummyAlgo,
+        config={"random_state": np.random.uniform(0, 1)},
+        preprocessor=preprocessor,
+    )
+    rl_trainable_cls = rl_trainer.as_trainable()
+    rl_trainable = rl_trainable_cls()
+    policy = rl_trainable.get_policy()
+    predictor = RLPredictor(policy, preprocessor)
+
+    with tempfile.TemporaryDirectory() as checkpoint_dir:
+        checkpoint_file = rl_trainable.save(checkpoint_dir)
+        checkpoint_path = TrainableUtil.find_checkpoint_dir(checkpoint_file)
+        checkpoint_data = Checkpoint.from_directory(checkpoint_path).to_dict()
+
+    checkpoint = RLCheckpoint.from_dict(checkpoint_data)
+    checkpoint_predictor = RLPredictor.from_checkpoint(checkpoint)
+
+    # Observations
+    data = pd.DataFrame([list(range(10))])
+    obs = convert_pandas_to_batch_type(data, type=TYPE_TO_ENUM[np.ndarray])
+
+    # Check that the policies compute the same actions
+    actions = predictor.predict(obs)
+    checkpoint_actions = checkpoint_predictor.predict(obs)
+
+    assert actions == checkpoint_actions
+    assert preprocessor == checkpoint.get_preprocessor()
+    assert checkpoint_predictor.get_preprocessor().has_preprocessed
 
 
 def test_repr():
@@ -124,7 +171,7 @@ def test_predict_no_preprocessor(batch_type, batch_size):
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
 @pytest.mark.parametrize("batch_size", [1, 20])
 def test_predict_with_preprocessor(batch_type, batch_size):
-    preprocessor = _DummyPreprocessor()
+    preprocessor = DummyPreprocessor(lambda df: 2 * df)
     checkpoint = create_checkpoint(preprocessor=preprocessor)
     predictor = RLPredictor.from_checkpoint(checkpoint)
 
@@ -145,7 +192,7 @@ def test_predict_with_preprocessor(batch_type, batch_size):
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table])
 @pytest.mark.parametrize("batch_size", [1, 20])
 def test_predict_batch(ray_start_4_cpus, batch_type, batch_size):
-    preprocessor = _DummyPreprocessor()
+    preprocessor = DummyPreprocessor(lambda df: 2 * df)
     checkpoint = create_checkpoint(preprocessor=preprocessor)
     predictor = BatchPredictor.from_checkpoint(checkpoint, RLPredictor)
 
