@@ -15,11 +15,19 @@ def run_h2oai(benchmark: Benchmark):
     Here we run all group-by queries from the benchmark on Ray Datasets.
     The input files are pre-generated and stored in AWS S3 beforehand.
     """
+
+    # Test input file schema={
+    #   id1: string, id2: string, id3: string, id4: int64, id5: int64, id6: int64,
+    #   v1: int64, v2: int64, v3: double
+    # })
     test_input = [
         ("s3://air-example-data/h2oai_benchmark/G1_1e7_1e2_0_0.csv", "h2oai-500M")
     ]
     for path, test_name in test_input:
-        input_ds = ray.data.read_csv(path).repartition(10).fully_executed()
+        # Number of blocks (parallelism) should be set as number of available CPUs
+        # to get best performance.
+        num_blocks = 10
+        input_ds = ray.data.read_csv(path).repartition(num_blocks).fully_executed()
 
         q_list = [
             (h2oai_q1, "q1"),

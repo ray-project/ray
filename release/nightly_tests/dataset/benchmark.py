@@ -13,6 +13,8 @@ class Benchmark:
     Call ``run(fn)`` to benchmark a specific piece of code/function.
     Call ``write_result()`` to write benchmark result in file.
     Result can be rendered in dashboard later through other tool.
+    We should use this class for any benchmark related to Ray Datasets.
+    It works for both local and distribute benchmarking.
 
     A typical workflow would be:
 
