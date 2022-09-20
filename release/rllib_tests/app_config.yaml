@@ -17,7 +17,7 @@ post_build_cmds:
   - pip install -U pybullet==3.2.0
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   # TODO(Artur): Remove this as soon as this exact torch version has made it into -gpu images.
-  - pip install -U torch==1.9.0+cu102 -f https://download.pytorch.org/whl/torch_stable.html
+  - pip install -U torch==1.12.1+cu102 -f https://download.pytorch.org/whl/torch_stable.html
   # Clone the rl-experiments repo for offline-RL files.
   - git clone https://github.com/ray-project/rl-experiments.git
   - cp rl-experiments/halfcheetah-sac/2021-09-06/halfcheetah_expert_sac.zip ~/.
