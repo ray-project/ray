@@ -524,6 +524,9 @@ class JobManager:
         submission_id: Optional[str] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        resources: Optional[Dict[str, float]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
         _driver_on_current_node: bool = True,
     ) -> str:
@@ -547,6 +550,13 @@ class JobManager:
                 env at ray cluster, task and actor level.
             metadata: Support passing arbitrary data to driver command in
                 case needed.
+            num_cpus: The quantity of CPU cores to reserve for the execution
+                of the entrypoint command. Defaults to 0.
+            num_gpus: The quantity of GPUs to reserve for the execution of
+                the entrypoint command. Defaults to 0.
+            resources: The quantity of various custom resources
+                to reserve for the execution of the entrypoint command.
+            entrypoint_resources: Resources to allocate for the driver.
             _start_signal_actor: Used in testing only to capture state
                 transitions between PENDING -> RUNNING. Regular user shouldn't
                 need this.
@@ -557,6 +567,10 @@ class JobManager:
             job_id: Generated uuid for further job management. Only valid
                 within the same ray cluster.
         """
+        if num_cpus is None:
+            num_cpus = 0
+        if num_gpus is None:
+            num_gpus = 0
         if submission_id is None:
             submission_id = generate_job_id()
         elif await self._job_info_client.get_status(submission_id) is not None:
@@ -587,7 +601,9 @@ class JobManager:
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
-                num_cpus=0,
+                num_cpus=num_cpus,
+                num_gpus=num_gpus,
+                resources=resources,
                 scheduling_strategy=scheduling_strategy,
                 runtime_env=self._get_supervisor_runtime_env(runtime_env),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
