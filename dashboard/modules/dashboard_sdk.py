@@ -145,7 +145,15 @@ def parse_cluster_info(
             )
             address = DEFAULT_DASHBOARD_ADDRESS
 
-    module_string, inner_address = _split_address(address)
+    module_string, inner_address = _split_address(address, prepend_ray_if_needed=False)
+
+    if module_string == "":
+        # Default to HTTPS.
+        logger.info(
+            "No scheme (e.g. 'http://') or module string (e.g. 'ray://') "
+            f"provided in address {address}, defaulting to HTTP."
+        )
+        module_string = "http"
 
     # If user passes http(s)://, go through normal parsing.
     if module_string in {"http", "https"}:

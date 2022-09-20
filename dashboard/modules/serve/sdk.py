@@ -32,7 +32,10 @@ class ServeSubmissionClient(SubmissionClient):
                 "installation: `pip install 'ray[default']``"
             )
 
-        module_string, _ = _split_address(dashboard_agent_address)
+        module_string, _ = _split_address(
+            dashboard_agent_address, prepend_ray_if_needed=False
+        )
+
         # If user passes in ray://, raise error. Serve submission should
         # not use a Ray client address.
         if module_string == "ray":

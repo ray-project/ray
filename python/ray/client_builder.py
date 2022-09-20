@@ -321,11 +321,14 @@ class _LocalClientBuilder(ClientBuilder):
         )
 
 
-def _split_address(address: str) -> Tuple[str, str]:
+def _split_address(address: str, prepend_ray_if_needed: bool = True) -> Tuple[str, str]:
     """
     Splits address into a module string (scheme) and an inner_address.
+
+    If prepend_ray_if_needed is True, and the scheme is not present, then
+    "ray://" is prepended to the address.
     """
-    if "://" not in address:
+    if prepend_ray_if_needed and "://" not in address:
         address = "ray://" + address
     # NOTE: We use a custom splitting function instead of urllib because
     # PEP allows "underscores" in a module names, while URL schemes do not

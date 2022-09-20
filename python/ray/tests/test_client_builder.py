@@ -27,6 +27,10 @@ from ray._private.test_utils import (
 )
 def test_split_address(address):
     assert client_builder._split_address(address) == ("ray", address)
+    assert client_builder._split_address(address, prepend_ray_if_needed=False) == (
+        "",
+        address,
+    )
 
     specified_module = f"ray://{address}"
     assert client_builder._split_address(specified_module) == ("ray", address)
