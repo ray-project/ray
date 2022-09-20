@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Any, Dict, Optional
 
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer, StorageUnit
 from ray.rllib.utils.typing import SampleBatchType
@@ -54,7 +54,7 @@ class FifoReplayBuffer(ReplayBuffer):
         """
         if len(self._queue) <= 0:
             # Return empty SampleBatch if queue is empty.
-            return SampleBatch()
+            return MultiAgentBatch({}, 0)
         batch = self._queue.pop(0)
         # Equal weights of 1.0.
         batch["weights"] = np.ones(len(batch))
