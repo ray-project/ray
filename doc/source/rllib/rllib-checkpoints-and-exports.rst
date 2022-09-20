@@ -5,7 +5,7 @@ Using Checkpoints
 #################
 
 
-What's a Checkpoint?
+What's a checkpoint?
 ====================
 
 A checkpoint is a set of information, located inside a directory (which may contain
@@ -17,10 +17,10 @@ RLlib uses the new Ray AIR :py:class:`~ray.air.checkpoint.Checkpoint` class to c
 restore objects from them.
 
 
-Algorithm- vs Policy Checkpoints vs Model exports
+Algorithm- vs Policy checkpoints vs Model exports
 =================================================
 
-Algorithm Checkpoints
+Algorithm checkpoints
 ---------------------
 
 An Algorithm checkpoint contains all of the Algorithm's state, including its configuration,
@@ -30,7 +30,7 @@ Restoring a new Algorithm from such a Checkpoint leaves you in a state, where yo
 working with that new Algorithm exactly like you would have continued working with the
 old Algorithm (from which the checkpoint as taken).
 
-How do I create an Algorithm Checkpoint?
+How do I create an Algorithm checkpoint?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` ``save()`` method creates a new checkpoint
@@ -121,7 +121,7 @@ Note that Policy checkpoint also have a version information
 algorithm checkpoint version.
 
 
-How do I restore an Algorithm from a Checkpoint?
+How do I restore an Algorithm from a checkpoint?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Given our checkpoint path (returned by ``Algorithm.save()``), we can now
@@ -148,7 +148,7 @@ than using the ``from_checkpoint()`` utility as it requires an extra step and yo
 have to keep your original config stored somewhere.
 
 
-Which Algorithm Checkpoint versions can I use?
+Which Algorithm checkpoint versions can I use?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 RLlib uses simple checkpoint versions (for example "v0" or "v1") to figure
@@ -165,30 +165,104 @@ backward compatible, meaning some RLlib version 2.x will be able to
 handle any checkpoints created by RLlib 2.0 or any version up to 2.x.
 
 
-Multi-agent Algorithm Checkpoints
+Multi-agent Algorithm checkpoints
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In case you are working with a multi-agent setup and have more than one
-Policy to train inside your Algorithm,
+Policy to train inside your Algorithm, you can create an Algorithm checkpoint in the
+exact same way as described above and will find your individual Policy checkpoints
+inside the sub-directory ``policies/``.
+
+For example:
 
 .. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
     :language: python
     :start-after: __multi-agent-checkpoints-begin__
     :end-before: __multi-agent-checkpoints-end__
 
+
+Assuming
 TODO: Restoring a multi-agent Algorithm, but only with some subset of the original policies
 
 
-Policy Checkpoints
+Policy checkpoints
 ------------------
 
-How do I create a Policy Checkpoint?
+We have already looked at the ``policies/`` sub-directory inside an Algorithm checkpoint dir
+and learned that individual policies inside the Algorithm store all their state
+information under their policy ID inside that sub-directory.
+Thus, we now have the entire picture of a checkpoint:
+
+.. code-block::
+
+    .
+    ..
+    .is_checkpoint
+    .tune_metadata
+
+    checkpoint_version.txt          # <- contains checkpoint version, e.g. "v1"
+    state.pkl                       # <- state of the Algorithm (excluding Policy states)
+
+    policies/
+
+        policy_A/
+            checkpoint_version.txt  # <- contains checkpoint version, e.g. "v1"
+            policy_state.pkl        # <- state of policy_A
+
+        policy_B/
+            checkpoint_version.txt  # <- contains checkpoint version, e.g. "v1"
+            policy_state.pkl        # <- state of policy_B
+
+
+How do I create a Policy checkpoint?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+You can create a Policy checkpoint by either calling ``save()`` on your Algorithm, which
+will save each individual Policy's checkpoint under the ``policies/`` sub-directory as
+described above or - if you need more fine-grained control - by doing the following:
 
-How do I restore from a Policy Checkpoint?
+
+
+.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+    :language: python
+    :start-after: __create-policy-checkpoint-begin__
+    :end-before: __create-policy-checkpoint-end__
+
+If you now check out the provided directory (``/tmp/my_policy_checkpoint/``), you
+should see the following files in there:
+
+.. code-block::
+
+    .
+    ..
+    checkpoint_version.txt  # <- contains checkpoint version, e.g. "v1"
+    policy_state.pkl        # <- state of "pol1"
+
+
+How do I restore from a Policy checkpoint?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Assume you would like to serve your trained policy(ies) in production and would therefore
+like to use only the RLlib Policy instance, without all the other functionality that
+normally comes with the Algorithm object, like different ``RolloutWorkers`` for collecting
+training samples or for evaluation, including RL environment copies, etc..
+
+In this case, it would be quite useful if you had a way to restore just the Policy
+from either a Policy checkpoint or an Algorithm checkpoint (which contains the
+Policy checkpoint).
+
+Here is how you can do this:
+
+.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+    :language: python
+    :start-after: __restore-policy-begin__
+    :end-before: __restore-policy-end__
+
+
+
+
+How do I restore a multi-agent Algorithm with a set of the original policies?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 
