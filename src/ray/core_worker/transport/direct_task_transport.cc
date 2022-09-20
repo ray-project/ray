@@ -595,7 +595,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
               if (get_task_result_reply_status.ok()) {
                 task_error_type = get_task_result_reply.failure_cause().error_type();
                 RAY_LOG(DEBUG) << "Task failure cause "
-                               << ray::gcs::RayExceptionToString(
+                               << ray::gcs::RayErrorInfoToString(
                                       get_task_result_reply.failure_cause());
                 error_info = std::make_unique<rpc::RayErrorInfo>(
                     get_task_result_reply.failure_cause());

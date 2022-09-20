@@ -828,14 +828,13 @@ void NodeManager::HandleGetTaskResult(const rpc::GetTaskResultRequest &request,
 
   auto it = task_failure_reasons_.find(task_id);
   if (it != task_failure_reasons_.end()) {
-    RAY_LOG(DEBUG) << "task " << task_id << " has failure cause "
-                   << it->second.ray_error_info.error_message();
+    RAY_LOG(DEBUG) << "task " << task_id << " has failure reason "
+                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info);
     reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info);
   } else {
     RAY_LOG(WARNING) << "didn't find failure cause for task " << task_id;
   }
 
-  // reply->set_failure_cause()
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
