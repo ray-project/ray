@@ -1,6 +1,6 @@
 import logging
 import time
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import numpy as np

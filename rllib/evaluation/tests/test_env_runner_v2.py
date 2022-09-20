@@ -1,4 +1,3 @@
-from gc import callbacks
 import unittest
 
 import ray

@@ -1,4 +1,3 @@
-from random import sample
 import gym
 import numpy as np
 import unittest
@@ -250,7 +249,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
                 check(sample_batch["prev_state"], obs_list[-2][None])
 
     def test_vr_connector_causal_slice(self):
-        """Test that the ViewRequirementAgentConnector can handle slice shifts correctly."""
+        """Test that the ViewRequirementAgentConnector can handle slice shifts."""
         view_rq_dict = {
             "state": ViewRequirement("obs"),
             # shift array should be [-2, -1, 0]
