@@ -118,7 +118,7 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
             (total_bytes != kNull && used_bytes != kNull));
   if (used_bytes < 0) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-        << "Got negative used memory for cgroup" << used_bytes;
+        << "Got negative used memory for cgroup " << used_bytes << ", setting it to zero";
     used_bytes = 0;
   }
   if (total_bytes != kNull) {
@@ -196,7 +196,7 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
   int64_t used_bytes = mem_total_bytes - available_bytes;
   if (used_bytes < 0) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-        << "Got negative used memory for linux " << used_bytes;
+        << "Got negative used memory for linux " << used_bytes << ", setting it to zero";
     used_bytes = 0;
   }
   return {used_bytes, mem_total_bytes};
