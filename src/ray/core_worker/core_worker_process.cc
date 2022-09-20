@@ -119,13 +119,13 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   // Assume stats module will be initialized exactly once in once process.
   // So it must be called in CoreWorkerProcess constructor and will be reused
   // by all of core worker.
-  RAY_LOG(DEBUG) << "Stats setup in core worker with JobID "
-                 << GetProcessJobID(options).Hex();
+  auto process_job_id = GetProcessJobID(options);
+  RAY_LOG(DEBUG) << "Stats setup in core worker with JobID " << process_job_id;
   // Initialize stats in core worker global tags.
   const ray::stats::TagsType global_tags = {
       {ray::stats::ComponentKey, "core_worker"},
       {ray::stats::WorkerIdKey, worker_id_.Hex()},
-      {ray::stats::JobIdKey, GetProcessJobID(options).Hex()},
+      {ray::stats::JobIdKey, process_job_id.Hex()},
       {ray::stats::VersionKey, kRayVersion},
       {ray::stats::NodeAddressKey, options_.node_ip_address}};
 
