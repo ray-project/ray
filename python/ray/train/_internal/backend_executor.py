@@ -475,7 +475,6 @@ class BackendExecutor:
         Returns:
             The resolved objects represented by the passed in ObjectRefs.
         """
-        # import pdb; pdb.set_trace()
         success, exception = check_for_failure(remote_values)
         if success:
             return ray.get(remote_values)

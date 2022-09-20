@@ -761,8 +761,6 @@ def test_user_error(ray_start_2_cpus):
         trainer.run(fail_train_1)
     assert "NotImplementedError" in str(exc.value)
 
-    # trainer.shutdown()
-
     def fail_train_2():
         for _ in range(2):
             train.report(loss=1)
