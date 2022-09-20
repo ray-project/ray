@@ -453,8 +453,8 @@ class AlgorithmConfig:
 
     def environment(
         self,
-        *,
         env: Optional[Union[str, EnvType]] = None,
+        *,
         env_config: Optional[EnvConfigDict] = None,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,

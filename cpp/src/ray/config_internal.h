@@ -18,7 +18,6 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 
 #include "ray/core_worker/common.h"
 
@@ -68,8 +67,6 @@ class ConfigInternal {
   // The default actor lifetime type.
   rpc::JobConfig_ActorLifetime default_actor_lifetime =
       rpc::JobConfig_ActorLifetime_NON_DETACHED;
-
-  std::unordered_map<std::string, std::string> job_config_metadata;
 
   std::string ray_namespace = "";
 
