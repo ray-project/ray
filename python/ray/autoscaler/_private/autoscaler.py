@@ -1484,4 +1484,8 @@ def _prioritize_and_filter_nodes(autoscaler: StandardAutoscaler) -> List[NodeTyp
     ordered_node_types = sorted(
         list(sort_order.keys()), key=lambda node_type: sort_order[node_type]
     )
+    from pprint import pprint
+    print("+++++++++++++++++++++")
+    pprint(ordered_node_types, sort_order, default_list_order)
+    print("#####################")
     return ordered_node_types
