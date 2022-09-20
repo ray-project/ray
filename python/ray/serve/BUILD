@@ -50,7 +50,7 @@ py_test(
 )
 
 py_test(
-    name = "test_deployment",
+    name = "test_deployment_class",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
