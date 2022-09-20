@@ -582,21 +582,18 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           RAY_CHECK_GE(scheduling_key_entry.num_busy_workers, 1u);
           scheduling_key_entry.num_busy_workers--;
 
-          if (!status.ok() || !is_actor_creation || reply.worker_exiting()) {
+          if (!status.ok()) {
             RAY_LOG(DEBUG) << "Getting error from raylet for task " << task_id;
-
             auto callback = [this, status, is_actor, task_id, addr, reply](
                                 const Status &get_task_result_reply_status,
                                 const rpc::GetTaskResultReply &get_task_result_reply) {
-              RAY_CHECK(!status.ok()) << "Tried to call GetTaskResult RPC to fetch task "
-                                         "failure even though the task succeeded";
               rpc::ErrorType task_error_type;
               std::unique_ptr<rpc::RayErrorInfo> error_info;
               if (get_task_result_reply_status.ok()) {
-                task_error_type = get_task_result_reply.failure_cause().error_type();
                 RAY_LOG(DEBUG) << "Task failure cause "
                                << ray::gcs::RayErrorInfoToString(
                                       get_task_result_reply.failure_cause());
+                task_error_type = get_task_result_reply.failure_cause().error_type();
                 error_info = std::make_unique<rpc::RayErrorInfo>(
                     get_task_result_reply.failure_cause());
               } else {
@@ -621,7 +618,9 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
             auto &lease_entry = worker_to_lease_entry_[addr];
             RAY_CHECK(lease_entry.lease_client);
             lease_entry.lease_client->GetTaskResult(lease_entry.task_id, callback);
+          }
 
+          if (!status.ok() || !is_actor_creation || reply.worker_exiting()) {
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr,
                          scheduling_key,

@@ -1,13 +1,14 @@
 from math import ceil
 import sys
 import time
+import os
 
 import psutil
 import pytest
 
 import ray
 from ray._private import test_utils
-from ray._private.test_utils import get_node_stats, wait_for_condition
+from ray._private.test_utils import get_node_stats, wait_for_condition, kill_raylet
 
 
 memory_usage_threshold_fraction = 0.7
@@ -67,6 +68,17 @@ def no_retry(
     end = time.time()
     time.sleep(post_allocate_sleep_s)
     return end - start
+
+
+@ray.remote(max_retries=0)
+def sleeper(
+    sleep_s: float = 0,
+    crash_at_the_end: bool = False,
+):
+    time.sleep(sleep_s)
+    if crash_at_the_end:
+        os.kill(os.getpid(), 9)
+    return os.getpid()
 
 
 @ray.remote
@@ -160,45 +172,19 @@ def test_memory_pressure_kill_task(ray_with_memory_monitor):
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_memory_pressure_kill_task_t(ray_with_memory_monitor):
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.6)
-    no_retry.remote(allocate_bytes=bytes_to_alloc, allocate_interval_s=0, post_allocate_sleep_s=1000)
-    
-    from ray._private.internal_api import memory_summary
+def test_task_crash_raylet_dead_throws_node_died_error(ray_with_memory_monitor):
+    ref = sleeper.remote(sleep_s=5, crash_at_the_end=True)
 
-    # node_table = ray._private.state.GlobalState().node_table()
-    # print(node_table)
-    # print(node_table[0])
-    
-    raylet_port = ray._private.worker._global_node._ray_params.node_manager_port
-    raylet_address = ray._private.worker._global_node.raylet_ip_address
-
-    import grpc
-    from ray.core.generated import node_manager_pb2_grpc, node_manager_pb2
-
-    # Kill a raylet gracefully.
-    def kill_raylet(ip, port, graceful=True):
-        raylet_address = f"{ip}:{port}"
-        channel = grpc.insecure_channel(raylet_address)
-        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-        print(f"Sending a shutdown request to {ip}:{port}")
-        stub.ShutdownRaylet(
-            node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
-        )
-        
-    kill_raylet(raylet_address, raylet_port, graceful=False)
-
-    time.sleep(1000)
+    raylet = ray.nodes()[0]
+    kill_raylet(raylet)
 
     try:
-        ray.get()
-    except ray.exceptions.OutOfMemoryError as error:
+        ray.get(ref)
+    except ray.exceptions.NodeDiedError as error:
         message = str(error)
-        assert "no_retry()" in message
-        assert "threshold 0.7" in message
+        assert "Node died" in message
+        assert raylet["NodeManagerAddress"] in message
 
-
-    
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
