@@ -1795,14 +1795,15 @@ class Algorithm(Trainable):
                 # A remote worker (ray actor).
                 if isinstance(worker, ActorHandle):
                     ray_gets.append(worker.add_policy.remote(**kwargs))
-                # Local RolloutWorker instance.
+                # (Local) RolloutWorker instance.
                 else:
                     if policy is not None:
-                        local_worker.policy_map[policy_id] = policy
-                        if policies_to_train is not None:
-                            local_worker.set_is_policy_to_train(policies_to_train)
-                        if policy_mapping_fn is not None:
-                            local_worker.set_policy_mapping_fn(policy_mapping_fn)
+                        worker.add_policy(
+                            policy_id=policy_id,
+                            policy=policy,
+                            policies_to_train=policies_to_train,
+                            policy_mapping_fn=policy_mapping_fn,
+                        )
                     else:
                         fn(worker)
             ray.get(ray_gets)
@@ -1811,12 +1812,13 @@ class Algorithm(Trainable):
             # Policy is provided as an instance -> Add this very instance to local
             # worker.
             if policy is not None:
-                local_worker.policy_map[policy_id] = policy
-                if policies_to_train is not None:
-                    local_worker.set_is_policy_to_train(policies_to_train)
-                if policy_mapping_fn is not None:
-                    local_worker.set_policy_mapping_fn(policy_mapping_fn)
-                # Then add a new instance ()
+                local_worker.add_policy(
+                    policy_id=policy_id,
+                    policy=policy,
+                    policies_to_train=policies_to_train,
+                    policy_mapping_fn=policy_mapping_fn,
+                )
+                # Then add a new instance to each remote worker.
                 ray.get([w.apply.remote(fn) for w in self.workers.remote_workers()])
             # Run foreach_worker fn on all workers.
             else:

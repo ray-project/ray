@@ -5,7 +5,7 @@ import threading
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Set, Type
 
 import ray.cloudpickle as pickle
-from ray.rllib.policy.policy import PolicySpec
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.policy import create_policy_for_framework
@@ -91,6 +91,19 @@ class PolicyMap(dict):
         # and the underlying structures, like self.deque and others.
         self._lock = threading.RLock()
 
+    def insert_policy(self, policy_id: PolicyID, policy: Policy, config_override=None) -> None:
+        self[policy_id] = policy
+
+        # Store spec (class, obs-space, act-space, and config overrides) such
+        # that the map will be able to reproduce on-the-fly added policies
+        # from disk.
+        self.policy_specs[policy_id] = PolicySpec(
+            policy_class=type(policy),
+            observation_space=policy.observation_space,
+            action_space=policy.action_space,
+            config=config_override if config_override is not None else policy.config,
+        )
+
     def create_policy(
         self,
         policy_id: PolicyID,
@@ -119,7 +132,7 @@ class PolicyMap(dict):
         """
         _class = get_tf_eager_cls_if_necessary(policy_cls, merged_config)
 
-        self[policy_id] = create_policy_for_framework(
+        policy = create_policy_for_framework(
             policy_id,
             _class,
             merged_config,
@@ -129,16 +142,7 @@ class PolicyMap(dict):
             self.session_creator,
             self.seed,
         )
-
-        # Store spec (class, obs-space, act-space, and config overrides) such
-        # that the map will be able to reproduce on-the-fly added policies
-        # from disk.
-        self.policy_specs[policy_id] = PolicySpec(
-            policy_class=policy_cls,
-            observation_space=observation_space,
-            action_space=action_space,
-            config=config_override,
-        )
+        self.insert_policy(policy_id, policy, config_override)
 
     @with_lock
     @override(dict)

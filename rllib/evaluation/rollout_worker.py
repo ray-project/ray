@@ -1248,12 +1248,23 @@ class RolloutWorker(ParallelIteratorWorker):
                 spaces=self.spaces,
                 policy_config=self.policy_config,
             )
-            self.policy_dict.update(policy_dict_to_add)
-            self._build_policy_map(
-                policy_dict_to_add, self.policy_config, seed=self.policy_config.get("seed")
-            )
         else:
+            policy_dict_to_add = {
+                policy_id: PolicySpec(
+                    type(policy),
+                    policy.observation_space,
+                    policy.action_space,
+                    policy.config,
+                )
+            }
 
+        self.policy_dict.update(policy_dict_to_add)
+        self._build_policy_map(
+            policy_dict=policy_dict_to_add,
+            policy_config=self.policy_config,
+            policy=policy,
+            seed=self.policy_config.get("seed"),
+        )
 
         new_policy = self.policy_map[policy_id]
         # Set the state of the newly created policy.
@@ -1766,6 +1777,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self,
         policy_dict: MultiAgentPolicyConfigDict,
         policy_config: PartialAlgorithmConfigDict,
+        policy: Optional[Policy] = None,
         session_creator: Optional[Callable[[], "tf1.Session"]] = None,
         seed: Optional[int] = None,
     ) -> None:
@@ -1777,6 +1789,7 @@ class RolloutWorker(ParallelIteratorWorker):
             policy_config: The general policy config to use. May be updated
                 by individual policy config overrides in the given
                 multi-agent `policy_dict`.
+            policy: If the policy to add already exists, user can provide it here.
             session_creator: A callable that creates a tf session
                 (if applicable).
             seed: An optional random seed to pass to PolicyMap's
@@ -1830,15 +1843,18 @@ class RolloutWorker(ParallelIteratorWorker):
                     # the running of these preprocessors.
                     self.preprocessors[name] = preprocessor
 
-            # Create the actual policy object.
-            self.policy_map.create_policy(
-                name,
-                policy_spec.policy_class,
-                obs_space,
-                policy_spec.action_space,
-                policy_spec.config,  # overrides.
-                merged_conf,
-            )
+            if policy is not None:
+                self.policy_map.insert_policy(name, policy)
+            else:
+                # Create the actual policy object.
+                self.policy_map.create_policy(
+                    name,
+                    policy_spec.policy_class,
+                    obs_space,
+                    policy_spec.action_space,
+                    policy_spec.config,  # overrides.
+                    merged_conf,
+                )
 
             if connectors_enabled and name in self.policy_map:
                 create_connectors_for_policy(self.policy_map[name], policy_config)
