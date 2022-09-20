@@ -259,9 +259,7 @@ class EnvRunnerV2:
         ] = self._get_simple_image_viewer()
 
         # Keeps track of active episodes.
-        self._active_episodes: Dict[EnvID, EpisodeV2] = _NewDefaultDict(
-            self._new_episode
-        )
+        self._active_episodes: Dict[EnvID, EpisodeV2] = {}
         self._batch_builders: Dict[EnvID, _PolicyCollectorGroup] = _NewDefaultDict(
             self._new_batch_builder
         )
@@ -344,17 +342,6 @@ class EnvRunnerV2:
             )
 
         return None
-
-    def _new_episode(self, env_id) -> EpisodeV2:
-        """Create a new episode."""
-        episode = EpisodeV2(
-            env_id,
-            self._worker.policy_map,
-            self._worker.policy_mapping_fn,
-            worker=self._worker,
-            callbacks=self._callbacks,
-        )
-        return episode
 
     def _call_on_episode_start(self, episode, env_id):
         # Call each policy's Exploration.on_episode_start method.
@@ -862,9 +849,20 @@ class EnvRunnerV2:
         Returns:
             The newly created EpisodeV2 instance.
         """
+        # Make sure we currently don't have an active episode under this env ID.
+        assert env_id not in self._active_episodes
+
         # Create a new episode under the same `env_id` and call the
         # `on_episode_created` callbacks.
-        new_episode = self._active_episodes[env_id]
+        new_episode = EpisodeV2(
+            env_id,
+            self._worker.policy_map,
+            self._worker.policy_mapping_fn,
+            worker=self._worker,
+            callbacks=self._callbacks,
+        )
+        self._active_episodes[env_id] = new_episode
+
         # Call `on_episode_created()` callback.
         self._callbacks.on_episode_created(
             worker=self._worker,
