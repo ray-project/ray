@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Un
 from tabulate import tabulate
 
 import ray
-from ray import tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
@@ -311,6 +310,12 @@ class DataParallelTrainer(BaseTrainer):
                 f"but it accepts {num_params} arguments instead."
             )
 
+    def _report(self, training_iterator: TrainingIterator) -> None:
+        for results in training_iterator:
+            # TODO(ml-team): add ability to report results from multiple workers.
+            first_worker_results = results[0]
+            session.report(first_worker_results)
+
     def training_loop(self) -> None:
         scaling_config = self._validate_scaling_config(self.scaling_config)
 
@@ -357,11 +362,7 @@ class DataParallelTrainer(BaseTrainer):
             checkpoint_strategy=None,
         )
 
-        for results in training_iterator:
-            # TODO(ml-team): add ability to report results from multiple workers.
-            first_worker_results = results[0]
-
-            tune.report(**first_worker_results)
+        self._report(training_iterator)
 
         # Shutdown workers.
         backend_executor.shutdown()

@@ -5,6 +5,7 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
+from python.ray.air import session
 
 import ray
 from ray.actor import ActorHandle
@@ -892,7 +893,7 @@ def _create_tune_trainable(
         for results in iterator:
             first_worker_results = results[0]
 
-            tune.report(**first_worker_results)
+            session.report(first_worker_results)
 
         trainer.shutdown()
 
