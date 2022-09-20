@@ -111,7 +111,7 @@ kubectl port-forward services/raycluster-head-svc 8265:8265
 ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
 ```
 
-Please make sure you are connected to your Kubernetes cluster. (For GCP, you can do so by running the relevant `gcloud containers` command.)
+To execute the above steps, please make sure you are connected to your Kubernetes cluster. (For GCP, you can do so by running the relevant `gcloud containers` command.)
 The first command will deploy KubeRay (ray-operator) to your Kubernetes cluster. The second command will create a ray cluster with the help of KubeRay.
 
 The third command is used to map port 8265 of the `ray-head` pod to **127.0.0.1:8265**. You can check
