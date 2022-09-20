@@ -94,8 +94,8 @@ class ResourceSpec(
             self.resources,
             CPU=self.num_cpus,
             GPU=self.num_gpus,
-            memory=self.memory,
-            object_store_memory=self.object_store_memory,
+            memory=int(self.memory),
+            object_store_memory=int(self.object_store_memory),
         )
 
         resources = {
