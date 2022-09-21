@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 import composer.trainer
 from composer.callbacks.checkpoint_saver import CheckpointSaver
+from composer.loggers import InMemoryLogger
 
 
 @PublicAPI(stability="alpha")
@@ -301,7 +302,7 @@ def _mosaic_train_loop_per_worker(config):
     os.environ["LOCAL_RANK"] = str(session.get_local_rank())
 
     # Arbitrary values set for these as they are needed for some composer functions
-    os.environ["LOCAL_WORLD_SIZE"] = str(1)
+    os.environ["LOCAL_WORLD_SIZE"] = os.environ["WORLD_SIZE"]
     os.environ["NODE_RANK"] = str(0)
 
     # get dataset shard
@@ -327,6 +328,11 @@ def _mosaic_train_loop_per_worker(config):
     else:
         config["loggers"] = [RayLogger()]
 
+    in_memory_logger = []
+    for logger in config["loggers"]:
+        if isinstance(logger, InMemoryLogger):
+            in_memory_logger.append(logger)
+
     # initialize Composer trainer
     trainer: composer.trainer.Trainer = trainer_init_per_worker(
         train_torch_iterable, eval_torch_iterable, **config
@@ -340,14 +346,14 @@ def _mosaic_train_loop_per_worker(config):
             trainer.state.callbacks.remove(callback)
             trainer.state.callbacks.append(
                 RayTrainReportCallback(
-                    loggers=config["loggers"][:-1], checkpoint_saver=callback
+                    in_memory_logger=in_memory_logger, checkpoint_saver=callback
                 )
             )
             is_report_call_added = True
     if not is_report_call_added:
         trainer.state.callbacks.append(
             RayTrainReportCallback(
-                loggers=config["loggers"][:-1], folder="ray_tmp", overwrite=True
+                in_memory_logger=in_memory_logger, folder="ray_tmp", overwrite=True
             )
         )
 

@@ -111,8 +111,10 @@ class RayTrainReportCallback(CheckpointSaver):
         args: Arguments for initializing a Composer ``CheckpointSaver`` object.
     """
 
-    def __init__(self, loggers=None, checkpoint_saver: CheckpointSaver = None, **args):
-        self.loggers = loggers
+    def __init__(
+        self, in_memory_logger=None, checkpoint_saver: CheckpointSaver = None, **args
+    ):
+        self.in_memory_logger = in_memory_logger
         self.last_checkpoint = None
         self.checkpoint_count = 0
 
@@ -137,7 +139,7 @@ class RayTrainReportCallback(CheckpointSaver):
         checkpoint = Checkpoint.from_dict(
             {
                 "last_checkpoint": self.last_checkpoint,
-                "loggers": self.loggers,
+                "in_memory_logger": self.in_memory_logger,
                 "all_checkpoints": self.saved_checkpoints,
             }
         )
