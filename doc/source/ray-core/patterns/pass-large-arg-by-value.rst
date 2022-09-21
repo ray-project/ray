@@ -1,5 +1,5 @@
 Anti-pattern: Passing the same large argument by value repeatedly harms performance
-=================================================================================
+===================================================================================
 
 **TLDR:** Avoid passing the same large argument by value to multiple tasks, use :ref:`ray.put() <ray-put-ref>` and pass by reference instead.
 
