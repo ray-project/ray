@@ -186,13 +186,10 @@ operatorImage: rayproject/ray:2.0.0
 ### KubeRay RayCluster CR
 In this section, we present an annotated KubeRay RayCluster CR equivalent to the above legacy Ray Operator Helm configuration.
 
-```{note}
-The configuration below is more verbose, as it does not employ Helm.
-Helm support for KubeRay is in progress; to try it, out read KubeRay's [Helm docs][KubeRayHelm].
-KubeRay's Helm charts can be found on GitHub [here][KubeRayHelmCode].
-
-Currently, we recommend directly deploying KubeRay RayCluster CRs without Helm.
-```
+> **_NOTE:_** The configuration below is more verbose, as it does not employ Helm.
+> Helm support for KubeRay is in progress; to try it, out read KubeRay's [Helm docs][KubeRayHelm].
+> KubeRay's Helm charts can be found on GitHub [here][KubeRayHelmCode].
+> Currently, we recommend directly deploying KubeRay RayCluster CRs without Helm.
 
 Here is a [link][ConfigLink] to the configuration shown below.
 
