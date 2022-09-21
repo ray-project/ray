@@ -72,6 +72,13 @@ class RayLogger(LoggerDestination):
             # the logged metric is more verbose than what we want to record.
             return
         self.data.update(data.items())
+
+    def batch_checkpoint(self, state: State, logger: Logger) -> None:
+        del logger  # unused
+        session.report(self.data)
+
+    def epoch_checkpoint(self, state: State, logger: Logger) -> None:
+        del logger  # unused
         session.report(self.data)
 
 
