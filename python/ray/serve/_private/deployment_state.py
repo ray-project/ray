@@ -472,7 +472,7 @@ class ActorReplicaWrapper:
                 )
                 self._health_check_period_s = deployment_config.health_check_period_s
                 self._health_check_timeout_s = deployment_config.health_check_timeout_s
-                self._node_id = ray.get(self._allocated_obj_ref)
+                self._node_id = ray.get(self._allocated_obj_ref).hex()
             except Exception:
                 logger.exception(f"Exception in deployment '{self._deployment_name}'")
                 return ReplicaStartupStatus.FAILED, None
@@ -1633,9 +1633,12 @@ class DriverDeploymentState(DeploymentState):
         name: str,
         controller_name: str,
         detached: bool,
+        long_poll_host: LongPollHost,
         _save_checkpoint_func: Callable,
     ):
-        super().__init__(name, controller_name, detached, None, _save_checkpoint_func)
+        super().__init__(
+            name, controller_name, detached, long_poll_host, _save_checkpoint_func
+        )
         self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
     def _get_all_node_ids(self):
@@ -1693,7 +1696,9 @@ class DriverDeploymentState(DeploymentState):
             self._stop_all_replicas()
         else:
             self._deploy_driver()
-        self._check_and_update_replicas()
+        running_replicas_changed = self._check_and_update_replicas()
+        if running_replicas_changed:
+            self._notify_running_replicas_changed()
         return self._check_curr_status()
 
     def should_autoscale(self) -> bool:
@@ -1734,6 +1739,7 @@ class DeploymentStateManager:
                 name,
                 controller_name,
                 detached,
+                long_poll_host,
                 self._save_checkpoint_func,
             )
         )

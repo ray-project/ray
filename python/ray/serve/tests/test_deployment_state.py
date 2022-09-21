@@ -39,6 +39,7 @@ class MockReplicaActorWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
+        scheduling_strategy="SPREAD",
     ):
         self._actor_name = actor_name
         self._replica_tag = replica_tag
