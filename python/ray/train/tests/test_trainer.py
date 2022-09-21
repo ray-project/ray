@@ -781,7 +781,7 @@ def test_worker_failure_1(ray_start_2_cpus):
     def train_actor_failure():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
@@ -805,7 +805,7 @@ def test_worker_failure_2(ray_start_2_cpus):
             train.report(loss=1)
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
@@ -825,7 +825,7 @@ def test_worker_failure_local_rank(ray_start_2_cpus):
     def train_actor_failure():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
         return train.local_rank()
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
@@ -866,7 +866,7 @@ def test_max_failures(ray_start_2_cpus):
     def train_func():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     trainer = Trainer(test_config, num_workers=2)
     trainer.start()
@@ -884,7 +884,7 @@ def test_start_max_failures(ray_start_2_cpus):
     def init_hook_fail():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     with pytest.raises(RuntimeError):
         trainer.start(initialization_hook=init_hook_fail)
@@ -1154,7 +1154,7 @@ def test_dataset_fault_tolerance(ray_start_4_cpus):
     def train_actor_failure():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
