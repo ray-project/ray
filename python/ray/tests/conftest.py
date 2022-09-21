@@ -199,6 +199,15 @@ def shutdown_only(maybe_external_redis):
     ray._private.utils.reset_ray_address()
 
 
+# Provide a shared Ray instance for a test class
+@pytest.fixture(scope="class")
+def class_ray_instance():
+    yield ray.init()
+    ray.shutdown()
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
+
+
 @contextmanager
 def _ray_start(**kwargs):
     init_kwargs = get_default_fixture_ray_kwargs()
