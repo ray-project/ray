@@ -337,7 +337,6 @@ def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_gpus, nccl_socket_i
         assert os.environ["NCCL_SOCKET_IFNAME"] == value
 
     worker_group = WorkerGroup(num_workers=2, num_gpus_per_worker=1)
-    worker_group.start()
 
     torch_backend = _TorchBackend()
     torch_backend.on_start(worker_group, backend_config=TorchConfig(backend="nccl"))
