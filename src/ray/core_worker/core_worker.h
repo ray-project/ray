@@ -57,6 +57,8 @@
 namespace ray {
 namespace core {
 
+JobID GetProcessJobID(const CoreWorkerOptions &options);
+
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
@@ -1301,12 +1303,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
 
     void UpdateStats() EXCLUSIVE_LOCKS_REQUIRED(&tasks_counter_mutex_) {
-      ray::stats::STATS_tasks.Record(running_total_,
-                                     rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING));
-      // TODO(ekl) this conflicts with WAITING_FOR_EXECUTION recorded by task manager
-      // extract counter into a concrete structure
+      // Note that we set a Source=executor label so that metrics reported here don't
+      // conflict with metrics reported from task_manager.cc.
       ray::stats::STATS_tasks.Record(
-          -running_total_, rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_EXECUTION));
+          running_total_,
+          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
+           {"Source", "executor"}});
+      ray::stats::STATS_tasks.Record(
+          -running_total_,
+          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_EXECUTION)},
+           {"Source", "executor"}});
     }
   };
   TaskCounter task_counter_;
