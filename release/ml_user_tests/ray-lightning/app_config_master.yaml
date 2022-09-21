@@ -8,7 +8,7 @@ python:
     - tblib
     # Need to have in pip_packages so it is installed on the driver.
     - git+https://github.com/ray-project/ray_lightning#ray_lightning
-    - torch==1.12.1
+    - torch==1.10.2
   conda_packages: []
 
 post_build_cmds:
@@ -17,7 +17,7 @@ post_build_cmds:
   - pip3 install -U --force-reinstall pytorch-lightning lightning-bolts
   - pip uninstall ray_lightning -y # Uninstall first so pip does a reinstall.
   - pip3 install -U --no-cache-dir git+https://github.com/ray-project/ray_lightning#ray_lightning
-  - pip3 install --force-reinstall torch==1.12.1
-  - pip3 install --force-reinstall torchvision==0.13.1
+  - pip3 install --force-reinstall torch==1.10.2
+  - pip3 install --force-reinstall torchvision==0.11.3
   - pip uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

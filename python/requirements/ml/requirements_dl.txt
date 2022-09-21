@@ -6,10 +6,12 @@ tensorflow-probability==0.14.1
 
 # If you make changes to the torch versions below, please also make the corresponding changes to `requirements_ml_docker.txt`!
 -f https://download.pytorch.org/whl/torch_stable.html
-torch==1.12.1;sys_platform=="darwin"
-torchvision==0.13.1;sys_platform=="darwin"
+torch==1.10.2;sys_platform=="darwin"
+-f https://download.pytorch.org/whl/torch_stable.html
+torchvision==0.11.3;sys_platform=="darwin"
 
 # On non-OSX machines only install CPU version of torch and torchvision
 -f https://download.pytorch.org/whl/torch_stable.html
-torch==1.12.1+cpu;sys_platform!="darwin"
-torchvision==0.13.1+cpu;sys_platform!="darwin"
+torch==1.10.2+cpu;sys_platform!="darwin"
+-f https://download.pytorch.org/whl/torch_stable.html
+torchvision==0.11.3+cpu;sys_platform!="darwin"
