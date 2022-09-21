@@ -31,6 +31,9 @@ const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 TaskStatusCounter::TaskStatusCounter() {}
 
 void TaskStatusCounter::Swap(rpc::TaskStatus old_status, rpc::TaskStatus new_status) {
+  if (old_status == new_status) {
+    return;
+  }
   counters_[old_status] -= 1;
   counters_[new_status] += 1;
   RAY_CHECK(counters_[old_status] >= 0);
