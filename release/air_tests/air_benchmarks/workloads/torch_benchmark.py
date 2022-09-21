@@ -17,6 +17,17 @@ CONFIG = {"lr": 1e-3, "batch_size": 64}
 VANILLA_RESULT_JSON = "/tmp/vanilla_out.json"
 
 
+def find_network_interface():
+    for iface in os.listdir("/sys/class/net"):
+        if iface.startswith("ens"):
+            network_interface = iface
+            break
+    else:
+        network_interface = "^lo,docker"
+
+    return network_interface
+
+
 # Define model
 class NeuralNetwork(nn.Module):
     def __init__(self):
@@ -283,7 +294,7 @@ def train_torch_vanilla(
     # off tasks that run train_torch_vanilla_worker() on the worker nodes.
     from benchmark_util import (
         upload_file_to_all_nodes,
-        create_actors_with_resources,
+        create_actors_with_options,
         run_commands_on_actors,
         run_fn_on_actors,
         get_ip_port_actors,
@@ -297,12 +308,15 @@ def train_torch_vanilla(
 
     num_epochs = config["epochs"]
 
-    actors = create_actors_with_resources(
+    nccl_network_interface = find_network_interface()
+
+    actors = create_actors_with_options(
         num_actors=num_workers,
         resources={
             "CPU": cpus_per_worker,
             "GPU": int(use_gpu),
         },
+        runtime_env={"env_vars": {"NCCL_SOCKET_IFNAME": nccl_network_interface}},
     )
 
     run_fn_on_actors(actors=actors, fn=lambda: os.environ.pop("OMP_NUM_THREADS", None))
@@ -404,18 +418,10 @@ def run(
     config["epochs"] = num_epochs
     config["batch_size"] = batch_size
 
-    # Find interface
-    for iface in os.listdir("/sys/class/net"):
-        if iface.startswith("ens"):
-            network_interface = iface
-            break
-    else:
-        network_interface = "^lo,docker"
-
     ray.init(
         "auto",
-        runtime_env={"env_vars": {"NCCL_SOCKET_IFNAME": network_interface}},
     )
+
     print("Preparing Torch benchmark: Downloading MNIST")
 
     path = os.path.abspath("workloads/_torch_prepare.py")

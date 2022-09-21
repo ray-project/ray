@@ -75,3 +75,9 @@ PYTORCH_PROFILER_KEY = "_train_torch_profiler"
 # By default these will be filtered out from ``session.report()``.
 # See ``TrainingCallback._preprocess_results`` for more details.
 ALL_RESERVED_KEYS = {PYTORCH_PROFILER_KEY}
+
+# Default NCCL_SOCKET_IFNAME.
+# Use ethernet when possible.
+# NCCL_SOCKET_IFNAME does a prefix match so "ens3" or "ens5" will match with
+# "en".
+DEFAULT_NCCL_SOCKET_IFNAME = "en,eth,bond"

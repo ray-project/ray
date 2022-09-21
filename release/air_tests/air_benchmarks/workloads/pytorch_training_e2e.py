@@ -86,9 +86,6 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1):
     )
     print(f"Training for {num_epochs} epochs with {num_workers} workers.")
     start = time.time()
-    # Enable cross host NCCL for larger scale tests
-    runtime_env = {"env_vars": {"NCCL_SOCKET_IFNAME": "ens3"}}
-    ray.init(runtime_env=runtime_env)
     dataset = ray.data.read_datasource(
         ImageFolderDatasource(), root=data_url, size=(256, 256)
     )

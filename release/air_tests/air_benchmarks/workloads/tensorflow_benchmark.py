@@ -160,7 +160,7 @@ def train_tf_vanilla(
     # off tasks that run train_tf_vanilla_worker() on the worker nodes.
     from benchmark_util import (
         upload_file_to_all_nodes,
-        create_actors_with_resources,
+        create_actors_with_options,
         run_commands_on_actors,
         run_fn_on_actors,
         get_ip_port_actors,
@@ -171,7 +171,7 @@ def train_tf_vanilla(
 
     num_epochs = config["epochs"]
 
-    actors = create_actors_with_resources(
+    actors = create_actors_with_options(
         num_actors=num_workers,
         resources={
             "CPU": cpus_per_worker,
