@@ -86,7 +86,9 @@ class TaskPoolStrategy(ComputeStrategy):
         map_bar = ProgressBar(name, total=len(blocks))
 
         if context.block_splitting_enabled:
-            map_block = cached_remote_fn(_map_block_split).options(**remote_args)
+            map_block = cached_remote_fn(_map_block_split).options(
+                num_returns="dynamic", **remote_args
+            )
             refs = [
                 map_block.remote(b, block_fn, m.input_files, fn, *fn_args, **fn_kwargs)
                 for b, m in blocks
@@ -127,10 +129,12 @@ class TaskPoolStrategy(ComputeStrategy):
 
         new_blocks, new_metadata = [], []
         if context.block_splitting_enabled:
-            for result in results:
-                for block, metadata in result:
-                    new_blocks.append(block)
-                    new_metadata.append(metadata)
+            for ref_generator in results:
+                refs = list(ref_generator)
+                metadata = ray.get(refs.pop(-1))
+                assert len(metadata) == len(refs)
+                new_blocks += refs
+                new_metadata += metadata
         else:
             for block, metadata in zip(data_refs, results):
                 new_blocks.append(block)
@@ -341,12 +345,16 @@ class ActorPoolStrategy(ComputeStrategy):
                 ):
                     block, meta = blocks_in.pop()
                     if context.block_splitting_enabled:
-                        ref = worker.map_block_split.remote(
-                            block,
-                            meta.input_files,
-                            *fn_args,
-                            **fn_kwargs,
+                        raise NotImplementedError(
+                            "DatasetContext.block_splitting_enabled currently "
+                            'not supported with compute="actors"'
                         )
+                        # ref = worker.map_block_split.remote(
+                        #     block,
+                        #     meta.input_files,
+                        #     *fn_args,
+                        #     **fn_kwargs,
+                        # )
                     else:
                         ref, meta_ref = worker.map_block_nosplit.remote(
                             block,
@@ -415,10 +423,10 @@ def _map_block_split(
     *fn_args,
     **fn_kwargs,
 ) -> BlockPartition:
-    output = []
     stats = BlockExecStats.builder()
     if fn is not None:
         fn_args = (fn,) + fn_args
+    new_metas = []
     for new_block in block_fn(block, *fn_args, **fn_kwargs):
         accessor = BlockAccessor.for_block(new_block)
         new_meta = BlockMetadata(
@@ -428,10 +436,10 @@ def _map_block_split(
             input_files=input_files,
             exec_stats=stats.build(),
         )
-        owner = DatasetContext.get_current().block_owner
-        output.append((ray.put(new_block, _owner=owner), new_meta))
+        yield new_block
+        new_metas.append(new_meta)
         stats = BlockExecStats.builder()
-    return output
+    yield new_metas
 
 
 def _map_block_nosplit(
