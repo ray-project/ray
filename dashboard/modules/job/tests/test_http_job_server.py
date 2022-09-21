@@ -8,6 +8,7 @@ import sys
 import tempfile
 from pathlib import Path
 import subprocess
+import time
 from typing import Optional
 from unittest.mock import patch
 
@@ -606,12 +607,17 @@ for i in range(100):
             entrypoint="python test_script.py", runtime_env={"working_dir": tmp_dir}
         )
 
-        i = 0
-        async for lines in client.tail_job_logs(job_id):
-            print(lines, end="")
-            for line in lines.strip().split("\n"):
-                assert line.split(" ") == ["Hello", str(i)]
-                i += 1
+        st = time.time()
+        while time.time() - st <= 10:
+            try:
+                i = 0
+                async for lines in client.tail_job_logs(job_id):
+                    print(lines, end="")
+                    for line in lines.strip().split("\n"):
+                        assert line.split(" ") == ["Hello", str(i)]
+                        i += 1
+            except Exception as ex:
+                print("Exception:", ex)
 
         wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 

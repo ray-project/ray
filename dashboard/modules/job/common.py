@@ -78,7 +78,8 @@ class JobInfo:
     runtime_env: Optional[Dict[str, Any]] = None
     #: Driver agent http address
     driver_agent_http_address: Optional[str] = None
-    #: Driver node id
+    #: The node id that driver running on. It will be None only when the job status
+    # is PENDING, and this field will not be deleted or modified even if the driver dies
     driver_node_id: Optional[str] = None
 
     def __post_init__(self):
@@ -139,6 +140,38 @@ class JobInfoStorageClient:
             if status != old_info.status and old_info.status.is_terminal():
                 assert False, "Attempted to change job status from a terminal state."
             new_info = replace(old_info, status=status, message=message)
+        else:
+            new_info = JobInfo(
+                entrypoint="Entrypoint not found.", status=status, message=message
+            )
+
+        if status.is_terminal():
+            new_info.end_time = int(time.time() * 1000)
+
+        await self.put_info(job_id, new_info)
+
+    async def put_running_job_info(
+        self,
+        job_id: str,
+        driver_agent_http_address: str,
+        driver_node_id: str,
+        message: Optional[str] = None,
+    ):
+        """Modify job info when job status turn to running."""
+        status = JobStatus.RUNNING
+
+        old_info = await self.get_info(job_id)
+
+        if old_info is not None:
+            if status != old_info.status and old_info.status.is_terminal():
+                assert False, "Attempted to change job status from a terminal state."
+            new_info = replace(
+                old_info,
+                status=status,
+                message=message,
+                driver_agent_http_address=driver_agent_http_address,
+                driver_node_id=driver_node_id,
+            )
         else:
             new_info = JobInfo(
                 entrypoint="Entrypoint not found.", status=status, message=message

@@ -45,7 +45,6 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 submission_id=request_submission_id,
                 runtime_env=submit_request.runtime_env,
                 metadata=submit_request.metadata,
-                _driver_on_current_node=False,
             )
 
             resp = JobSubmitResponse(job_id=submission_id, submission_id=submission_id)

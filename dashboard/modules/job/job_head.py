@@ -136,6 +136,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         # this is a queue of JobAgentSubmissionClient
         self._agents = OrderedDict()
 
+        # a cache to avoid initializing the same JobAgentSubmissionClient repeatedly.
         self._agents_pool = dict()
 
     async def choose_agent(self) -> Optional[JobAgentSubmissionClient]:
@@ -163,7 +164,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             }
             if len(agent_infos) > 0:
                 break
-            await asyncio.sleep(dashboard_consts.WAIT_RAYLET_START_INTERVAL_SECONDS)
+            await asyncio.sleep(dashboard_consts.TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
         # delete dead agents.
         for dead_node in set(self._agents) - set(agent_infos):
             client = self._agents.pop(dead_node)
@@ -392,6 +393,12 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         try:
             driver_agent_http_address = job.driver_agent_http_address
             driver_node_id = job.driver_node_id
+            if driver_agent_http_address is None:
+                return Response(
+                    text="The driver process has not started running yet, "
+                    "please try it later",
+                    status=aiohttp.web.HTTPBadRequest.status_code,
+                )
             if driver_node_id not in self._agents_pool:
                 self._agents_pool = JobAgentSubmissionClient(driver_agent_http_address)
             job_agent_client = self._agents_pool[driver_node_id]
@@ -428,6 +435,12 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         driver_agent_http_address = job.driver_agent_http_address
         driver_node_id = job.driver_node_id
+        if driver_agent_http_address is None:
+            return Response(
+                text="The driver process has not started running yet, "
+                "please try it later",
+                status=aiohttp.web.HTTPBadRequest.status_code,
+            )
         if driver_node_id not in self._agents_pool:
             self._agents_pool = JobAgentSubmissionClient(driver_agent_http_address)
         job_agent_client = self._agents_pool[driver_node_id]
