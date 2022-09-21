@@ -1614,7 +1614,7 @@ class Algorithm(Trainable):
                 f"{list(local_worker.policy_map.keys())}"
             )
 
-        if policy_cls is not None and policy is not None:
+        if (policy_cls is None) == (policy is None):
             raise ValueError(
                 "Only one of `policy_cls` or `policy` must be provided to "
                 "Algorithm.add_policy()!"
@@ -1622,7 +1622,7 @@ class Algorithm(Trainable):
 
         # Policy instance not provided: Use the information given here.
         if policy_cls is not None:
-            kwargs = dict(
+            new_policy_instance_kwargs = dict(
                 policy_id=policy_id,
                 policy_cls=policy_cls,
                 observation_space=observation_space,
@@ -1638,7 +1638,7 @@ class Algorithm(Trainable):
         # workers (copy all its properties here for the calls to add_policy on the
         # remote workers).
         else:
-            kwargs = dict(
+            new_policy_instance_kwargs = dict(
                 policy_id=policy_id,
                 policy_cls=type(policy),
                 observation_space=policy.observation_space,
@@ -1651,29 +1651,30 @@ class Algorithm(Trainable):
                 else None,
             )
 
-        def fn(worker: RolloutWorker):
+        def _create_new_policy_fn(worker: RolloutWorker):
             # `foreach_worker` function: Adds the policy the the worker (and
             # maybe changes its policy_mapping_fn - if provided here).
-            worker.add_policy(**kwargs)
+            worker.add_policy(**new_policy_instance_kwargs)
 
         # Workers to add the policy to are given as an explicit list.
         if workers is not None:
             ray_gets = []
             for worker in workers:
+                # Existing policy AND local worker: Add Policy as-is.
+                if policy is not None and not isinstance(worker, ActorHandle):
+                    worker.add_policy(
+                        policy_id=policy_id,
+                        policy=policy,
+                        policies_to_train=policies_to_train,
+                        policy_mapping_fn=policy_mapping_fn,
+                    )
                 # A remote worker (ray actor).
-                if isinstance(worker, ActorHandle):
-                    ray_gets.append(worker.add_policy.remote(**kwargs))
+                elif isinstance(worker, ActorHandle):
+                    ray_gets.append(worker.apply.remote(_create_new_policy_fn))
                 # (Local) RolloutWorker instance.
                 else:
-                    if policy is not None:
-                        worker.add_policy(
-                            policy_id=policy_id,
-                            policy=policy,
-                            policies_to_train=policies_to_train,
-                            policy_mapping_fn=policy_mapping_fn,
-                        )
-                    else:
-                        fn(worker)
+                    worker.add_policy(**new_policy_instance_kwargs)
+
             ray.get(ray_gets)
         # Add to all RolloutWorkers within `self.workers`.
         else:
@@ -1687,14 +1688,20 @@ class Algorithm(Trainable):
                     policy_mapping_fn=policy_mapping_fn,
                 )
                 # Then add a new instance to each remote worker.
-                ray.get([w.apply.remote(fn) for w in self.workers.remote_workers()])
-            # Run foreach_worker fn on all workers.
+                ray.get(
+                    [
+                        w.apply.remote(_create_new_policy_fn)
+                        for w in self.workers.remote_workers()
+                    ]
+                )
+            # Run foreach_worker fn on all workers (incl. local one)
+            # to create new Policies on each.
             else:
-                self.workers.foreach_worker(fn)
+                self.workers.foreach_worker(_create_new_policy_fn)
 
         # Update evaluation workers, if necessary.
         if evaluation_workers and self.evaluation_workers is not None:
-            self.evaluation_workers.foreach_worker(fn)
+            self.evaluation_workers.foreach_worker(_create_new_policy_fn)
 
         # Return newly added policy (from the local rollout worker).
         return self.get_policy(policy_id)

@@ -1229,9 +1229,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 f"Policy ID '{policy_id}' already exists in policy map! "
                 "Make sure you use a Policy ID that has not been taken yet."
                 " Policy IDs that are already in your policy map: "
-                f"{list(self.workers.local_worker().policy_map.keys())}"
+                f"{list(self.policy_map.keys())}"
             )
-        if policy_cls is not None and policy is not None:
+        if (policy_cls is None) == (policy is None):
             raise ValueError(
                 "Only one of `policy_cls` or `policy` must be provided to "
                 "RolloutWorker.add_policy()!"
