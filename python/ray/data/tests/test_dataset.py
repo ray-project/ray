@@ -515,13 +515,6 @@ def test_tensor_array_validation():
     with pytest.raises(TypeError):
         TensorArray(object())
 
-    # Test string array raises TypeError.
-    with pytest.raises(TypeError):
-        TensorArray(np.array(["foo", "bar", "baz", "quux"]))
-
-    with pytest.raises(TypeError):
-        TensorArray(["foo", "bar", "baz", "quux"])
-
     # Test non-primitive element raises TypeError.
     with pytest.raises(TypeError):
         TensorArray(np.array([object(), object()]))

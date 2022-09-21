@@ -143,7 +143,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> "pyarrow.Table":
         import pyarrow as pa
 
-        from ray.data.extensions.tensor_extension import ArrowTensorArray
+        from ray.data.extensions.tensor_extension import (
+            ArrowTensorArray,
+            ArrowVariableShapedTensorArray,
+            is_ndarray_variable_shaped_tensor,
+        )
 
         if isinstance(batch, np.ndarray):
             batch = {VALUE_COL_NAME: batch}
@@ -157,9 +161,12 @@ class ArrowBlockAccessor(TableBlockAccessor):
         new_batch = {}
         for col_name, col in batch.items():
             # Use Arrow's native *List types for 1-dimensional ndarrays.
-            if col.ndim > 1:
+            if col.dtype.type is np.object_ or col.ndim > 1:
                 try:
-                    col = ArrowTensorArray.from_numpy(col)
+                    if is_ndarray_variable_shaped_tensor(col):
+                        col = ArrowVariableShapedTensorArray.from_numpy(col)
+                    else:
+                        col = ArrowTensorArray.from_numpy(col)
                 except pa.ArrowNotImplementedError as e:
                     raise ValueError(
                         "Failed to convert multi-dimensional ndarray of dtype "

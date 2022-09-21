@@ -720,16 +720,9 @@ class TensorArray(
                 if len(values) == 0:
                     # Tensor is empty, pass through to create empty TensorArray.
                     pass
-                elif all(isinstance(v, str) for v in values):
-                    # 1D array of strings, these don't need a TensorArray
-                    # representation.
-                    raise TypeError(
-                        "Got a 1D array of strings when constructing a TensorArray; "
-                        "this can be represented natively within Pandas and Arrow "
-                        "without the tensor extension."
-                    )
                 elif all(
                     isinstance(v, (np.ndarray, TensorArrayElement, Sequence))
+                    and not isinstance(v, str)
                     for v in values
                 ):
                     # Try to convert ndarrays of ndarrays/TensorArrayElements with an
@@ -750,7 +743,7 @@ class TensorArray(
             )
         assert isinstance(values, np.ndarray)
         self._tensor = values
-        self._is_variable_shaped = _is_ndarray_variable_shaped_tensor(values)
+        self._is_variable_shaped = is_ndarray_variable_shaped_tensor(values)
 
     @classmethod
     def _from_sequence(
@@ -1393,9 +1386,12 @@ TensorArray._add_comparison_ops()
 TensorArray._add_logical_ops()
 
 
-def _is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
+@PublicAPI(stability="beta")
+def is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
     """Return whether the provided NumPy ndarray is representing a variable-shaped
     tensor.
+
+    NOTE: This is an O(rows) check.
     """
     if arr.dtype.type is not np.object_:
         return False
@@ -1412,6 +1408,7 @@ def _is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
     return True
 
 
+@PublicAPI(stability="beta")
 def column_needs_tensor_extension(s: pd.Series) -> bool:
     """Return whether the provided pandas Series column needs a tensor extension
     representation. This tensor extension representation provides more efficient slicing

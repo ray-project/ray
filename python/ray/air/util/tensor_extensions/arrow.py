@@ -130,7 +130,7 @@ class ArrowTensorArray(pa.ExtensionArray):
             # Stack ndarrays and pass through to ndarray handling logic below.
             arr = np.stack(arr, axis=0)
         if isinstance(arr, np.ndarray):
-            if len(arr) == 0 or np.isscalar(arr[0]):
+            if len(arr) > 0 and np.isscalar(arr[0]):
                 return pa.array(arr)
             if not arr.flags.c_contiguous:
                 # We only natively support C-contiguous ndarrays.
@@ -271,7 +271,7 @@ class ArrowTensorArray(pa.ExtensionArray):
         return self._to_numpy(zero_copy_only=zero_copy_only)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class ArrowVariableShapedTensorType(pa.PyExtensionType):
     """
     Arrow ExtensionType for an array of heterogeneous-shaped, homogeneous-typed
@@ -335,7 +335,7 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
         return str(self)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class ArrowVariableShapedTensorArray(pa.ExtensionArray):
     """
     An array of heterogeneous-shaped, homogeneous-typed tensors.
