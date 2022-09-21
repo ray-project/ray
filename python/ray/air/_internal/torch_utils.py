@@ -169,7 +169,7 @@ def load_torch_model(
 ) -> torch.nn.Module:
     """Loads a PyTorch model from the provided ``saved_model``.
 
-    ``model_definition`` is used and only used when ``saved_model`` is
+    ``model_definition`` is only used when ``saved_model`` is
     a torch state dict, which will be loaded into ``model_definition``.
     Otherwise, ``model_definition`` is discarded.
     """
