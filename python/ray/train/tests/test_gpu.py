@@ -99,7 +99,7 @@ def test_torch_get_device(
 
     def train_fn():
         if cuda_visible_devices:
-            assert os.environ["CUDA_VISIBLE_DEVICES"] == cuda_visible_devices
+            assert os.environ["CUDA_VISIBLE_DEVICES"] in cuda_visible_devices
         return train.torch.get_device().index
 
     trainer = Trainer(

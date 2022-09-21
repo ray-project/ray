@@ -47,7 +47,7 @@ class WorkerMetadata:
     node_id: str
     node_ip: str
     hostname: str
-    gpu_ids: Optional[List[int]]
+    gpu_ids: Optional[List[str]]
 
 
 @dataclass
@@ -81,7 +81,7 @@ def construct_metadata() -> WorkerMetadata:
     node_id = ray.get_runtime_context().node_id.hex()
     node_ip = ray.util.get_node_ip_address()
     hostname = socket.gethostname()
-    gpu_ids = ray.get_gpu_ids()
+    gpu_ids = [str(gpu_id) for gpu_id in ray.get_gpu_ids()]
 
     return WorkerMetadata(
         node_id=node_id, node_ip=node_ip, hostname=hostname, gpu_ids=gpu_ids
