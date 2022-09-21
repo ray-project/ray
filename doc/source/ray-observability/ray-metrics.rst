@@ -78,7 +78,7 @@ for debugging ray applications.
 
 First, download Grafana. `Download Link <https://grafana.com/grafana/download>`
 
-Then run grafana using the built in configuration found in `/tmp/ray/metrics/grafana` folder.
+Then run grafana using the built in configuration found in `/tmp/ray/session_latest/metrics/grafana` folder.
 
 .. code-block:: shell
 
