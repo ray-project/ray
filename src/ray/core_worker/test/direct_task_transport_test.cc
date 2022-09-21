@@ -177,7 +177,6 @@ class MockRayletClient : public WorkerLeaseInterface {
     num_get_task_results += 1;
   }
 
-
   void ReportWorkerBacklog(
       const WorkerID &worker_id,
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override {
