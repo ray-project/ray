@@ -737,11 +737,12 @@ def test_scheduling_class_depth(ray_start_regular):
 
         return condition
 
-    wait_for_condition(make_condition(2))
+    # timeout=60 necessary to pass on windows debug/asan builds.
+    wait_for_condition(make_condition(2), timeout=60)
     start_infeasible.remote(2)
-    wait_for_condition(make_condition(3))
+    wait_for_condition(make_condition(3), timeout=60)
     start_infeasible.remote(4)
-    wait_for_condition(make_condition(4))
+    wait_for_condition(make_condition(4), timeout=60)
 
 
 if __name__ == "__main__":
