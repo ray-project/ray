@@ -15,9 +15,9 @@ def train_model(config):
     # Load data and train model code here...
 
     # Return final stats. You can also return intermediate progress
-    # using Tune if needed.
+    # using ray.air.session.report() if needed.
     # To return your model, you could write it to storage and return its
-    # URI in this dict, or return it as a tune Checkpoint:
+    # URI in this dict, or return it as a Tune Checkpoint:
     # https://docs.ray.io/en/latest/tune/tutorials/tune-checkpoints.html
     return {"score": score, "other_data": ...}
 # __step1_end__
@@ -33,7 +33,7 @@ trial_space = {
 # __step2_end__
 
 # __step3_begin__
-# Can customize resources per trial, here set 1 CPU each.
+# Can customize resources per trial, here we set 1 CPU each.
 train_model = tune.with_resources(train_model, {"cpu": 1})
 # __step3_end__
 
