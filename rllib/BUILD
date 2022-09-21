@@ -1905,7 +1905,7 @@ py_test(
 py_test(
     name = "test_errors",
     tags = ["team:rllib", "utils"],
-    size = "small",
+    size = "medium",
     srcs = ["utils/tests/test_errors.py"]
 )
 
@@ -2010,6 +2010,13 @@ py_test(
     tags = ["team:rllib", "utils"],
     size = "small",
     srcs = ["utils/replay_buffers/tests/test_replay_buffer.py"]
+)
+
+py_test(
+    name = "test_fifo_replay_buffer",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_fifo_replay_buffer.py"]
 )
 
 py_test(

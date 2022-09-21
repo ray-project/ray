@@ -1494,7 +1494,7 @@ class RolloutWorker(ParallelIteratorWorker):
         return return_filters
 
     @DeveloperAPI
-    def save(self) -> bytes:
+    def get_state(self) -> bytes:
         """Serializes this RolloutWorker's current state and returns it.
 
         Returns:
@@ -1523,7 +1523,7 @@ class RolloutWorker(ParallelIteratorWorker):
         )
 
     @DeveloperAPI
-    def restore(self, objs: bytes) -> None:
+    def set_state(self, objs: bytes) -> None:
         """Restores this RolloutWorker's state from a sequence of bytes.
 
         Args:
@@ -1963,6 +1963,14 @@ class RolloutWorker(ParallelIteratorWorker):
     @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=False)
     def foreach_trainable_policy(self, func, **kwargs):
         return self.foreach_policy_to_train(func, **kwargs)
+
+    @Deprecated(new="RolloutWorker.get_state()", error=False)
+    def save(self, *args, **kwargs):
+        return self.get_state(*args, **kwargs)
+
+    @Deprecated(new="RolloutWorker.set_state([state])", error=False)
+    def restore(self, *args, **kwargs):
+        return self.set_state(*args, **kwargs)
 
 
 def _determine_spaces_for_multi_agent_dict(

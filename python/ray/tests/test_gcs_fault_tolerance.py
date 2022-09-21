@@ -6,6 +6,7 @@ from time import sleep
 import pytest
 
 import ray
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     convert_actor_state,
@@ -594,7 +595,9 @@ def test_pg_actor_workloads(ray_start_regular_with_external_redis):
 
             return os.getpid()
 
-    c = Counter.options(placement_group=pg).remote()
+    c = Counter.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+    ).remote()
     r = ray.get(c.r.remote(10))
     assert r == 10
 
