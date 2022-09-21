@@ -114,7 +114,8 @@ There are basic prometheus metrics that are emitted for each of these API endpoi
 `dashboard_api_requests_count_requests_total`: Collects the total count of requests. This is tagged by endpoint, method, and http_status.
 
 `dashboard_api_requests_duration_seconds_bucket`: Collects the duration of requests. This is tagged by endpoint and method.
-Example: You can view the p95 duration of all requests with this query:
+
+For example, you can view the p95 duration of all requests with this query:
 
 .. code-block:: text
 
