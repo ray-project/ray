@@ -368,7 +368,7 @@ def test_dynamic_empty_generator_reconstruction_nondeterministic(ray_start_clust
     assert ray.get(check.remote(gen))
 
     # We should never reconstruct an empty generator.
-    assert exec_counter.get_count.remote() == 1
+    assert ray.get(exec_counter.get_count.remote()) == 1
 
 
 if __name__ == "__main__":
