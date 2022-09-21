@@ -20,6 +20,7 @@ from ray.dashboard.modules.job.common import JobStatus
 
 from ray.job_submission import JobSubmissionClient
 
+
 def wait_until_finish(
     client: JobSubmissionClient,
     job_id: str,
@@ -37,6 +38,7 @@ def wait_until_finish(
         time.sleep(retry_interval_s)
     return None
 
+
 def submit_batch_jobs(
     client: JobSubmissionClient,
     num_jobs: int,
@@ -46,10 +48,8 @@ def submit_batch_jobs(
     job_ids = []
     for i in range(num_jobs):
         job_id = client.submit_job(
-            runtime_env={
-                "working_dir": os.path.dirname(os.path.abspath(__file__))
-            },
-            entrypoint=f"echo starting && sleep 60 && echo finished",
+            runtime_env={"working_dir": os.path.dirname(os.path.abspath(__file__))},
+            entrypoint="echo starting && sleep 60 && echo finished",
         )
         job_ids.append(job_id)
         print(f"submitted job: {job_id}")
@@ -57,7 +57,9 @@ def submit_batch_jobs(
     for job_id in job_ids:
         status = wait_until_finish(client, job_id, timeout_s, retry_interval_s)
         if status != JobStatus.SUCCEEDED:
-            print(f"job {job_id} failed with status {status} (`None` indicates timeout)")
+            print(
+                f"job {job_id} failed with status {status} (`None` indicates timeout)"
+            )
             return False
     return True
 
@@ -91,7 +93,7 @@ if __name__ == "__main__":
         if not submit_batch_jobs(client, 20):
             print("FAILED")
             exit(1)
-        
+
         # Test list jobs
         jobs = client.list_jobs()
         print("list jobs:")
