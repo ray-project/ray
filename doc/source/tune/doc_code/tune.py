@@ -25,6 +25,9 @@ def train_model(config):
 # __step2_begin__
 # Define trial parameters as a single grid sweep.
 trial_space = {
+    # This is an example parameter. You could replace it with filesystem paths,
+    # model types, or even full nested Python dicts of model configurations, etc.,
+    # that enumerate the set of trials to run.
     "model_id": tune.grid_search([
         "model_{}".format(i)
         for i in range(NUM_MODELS)
