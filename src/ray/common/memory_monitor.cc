@@ -118,9 +118,21 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
     total_bytes = kNull;
   }
 
+  if (used_bytes < 0) {
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+        << "Got negative used memory for cgroup " << used_bytes << ", setting it to zero";
+    used_bytes = 0;
+  }
   if (total_bytes != kNull) {
-    RAY_CHECK_GT(used_bytes, 0);
-    RAY_CHECK_GT(total_bytes, used_bytes);
+    if (used_bytes >= total_bytes) {
+      RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+          << " Used memory is greater than or equal to total memory used. This can "
+             "happen if the memory limit is set and the container is "
+             "using a lot of memory. Used "
+          << used_bytes << ", total " << total_bytes
+          << ", setting used to be equal to total";
+      used_bytes = total_bytes;
+    }
   }
 
   return {used_bytes, total_bytes};
@@ -185,7 +197,12 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
         << "Total bytes less than available bytes. Will return null";
     return {kNull, kNull};
   }
-  auto used_bytes = mem_total_bytes - available_bytes;
+  int64_t used_bytes = mem_total_bytes - available_bytes;
+  if (used_bytes < 0) {
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+        << "Got negative used memory for linux " << used_bytes << ", setting it to zero";
+    used_bytes = 0;
+  }
   return {used_bytes, mem_total_bytes};
 }
 
