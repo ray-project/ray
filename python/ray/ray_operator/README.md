@@ -107,7 +107,7 @@ There is no need to specify this volume in the RayCluster CR.
 
 ### Don't specify metadata.name in pod templates
 Do not specify `metadata.name` in the pod templates specifying head pod and worker pod
-configurations; as of KubeRay 0.3.0 this may prevent the KubeRay operator from
+configuration. As of KubeRay 0.3.0, specifying pod template names may prevent the KubeRay operator from
 launching multiple worker pods. See [KubeRay issue 582][KubeRay582].
 
 The KubeRay operator chooses unique pod names using the Ray cluster name
