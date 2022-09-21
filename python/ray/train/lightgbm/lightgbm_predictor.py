@@ -148,14 +148,6 @@ class LightGBMPredictor(Predictor):
         elif feature_columns:
             # feature_columns is a list of integers or strings
             data = data[feature_columns]
-            # Only set the feature names if they are strings
-            if all(isinstance(fc, str) for fc in feature_columns):
-                feature_names = feature_columns
-        else:
-            feature_columns = data.columns.tolist()
-
-            if all(isinstance(fc, str) for fc in feature_columns):
-                feature_names = feature_columns
 
         df = pd.DataFrame(self.model.predict(data, **predict_kwargs))
         df.columns = (
