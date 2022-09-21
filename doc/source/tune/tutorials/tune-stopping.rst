@@ -1,3 +1,5 @@
+.. _tune-stopping-guide:
+
 Stopping and Resuming Tune Trials
 =================================
 

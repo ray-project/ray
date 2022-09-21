@@ -29,7 +29,7 @@ As a general example, let's consider executing ``N`` independent model training 
     :start-after: __step3_begin__
     :end-before: __step3_end__
 
-**Step 4:** Run the trial with Tune. Tune will report on experiment status, and after the experiment finishes, you can inspect the results. Tune can retry failed trials automatically, as well as entire experiments; see :ref:`tune-stopping`.
+**Step 4:** Run the trial with Tune. Tune will report on experiment status, and after the experiment finishes, you can inspect the results. Tune can retry failed trials automatically, as well as entire experiments; see :ref:`tune-stopping-guide`.
 
 .. literalinclude:: ../doc_code/tune.py
     :language: python
