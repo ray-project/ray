@@ -12,5 +12,5 @@ setup(
     author="Ray Team",
     description="The Ray OSS release testing package",
     url="https://github.com/ray-project/ray",
-    install_requires=["ray>=1.9", "click", "anyscale", "boto3", "freezegun"],
+    install_requires=["ray>=1.9", "click", "anyscale", "boto3", "freezegun", "retry"],
 )
