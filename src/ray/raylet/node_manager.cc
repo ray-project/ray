@@ -453,11 +453,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       });
   worker_pool_.SetAgentManager(agent_manager_);
 
-  if (RayConfig::instance().task_failure_entry_gc_period_ms() > 0) {
-    periodical_runner_.RunFnPeriodically(
-        [this]() { GCTaskFailureReason(); },
-        RayConfig::instance().task_failure_entry_gc_period_ms());
-  }
+  periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },
+                                       RayConfig::instance().task_failure_entry_ttl_ms());
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -820,11 +817,12 @@ void NodeManager::HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request
       /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
 }
 
-void NodeManager::HandleGetTaskResult(const rpc::GetTaskResultRequest &request,
-                                      rpc::GetTaskResultReply *reply,
-                                      rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleGetTaskFailureCause(
+    const rpc::GetTaskFailureCauseRequest &request,
+    rpc::GetTaskFailureCauseReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   const TaskID task_id = TaskID::FromBinary(request.task_id());
-  RAY_LOG(DEBUG) << "Received a HandleGetTaskResult request for task " << task_id;
+  RAY_LOG(DEBUG) << "Received a HandleGetTaskFailureCause request for task " << task_id;
 
   auto it = task_failure_reasons_.find(task_id);
   if (it != task_failure_reasons_.end()) {
@@ -832,7 +830,7 @@ void NodeManager::HandleGetTaskResult(const rpc::GetTaskResultRequest &request,
                    << ray::gcs::RayErrorInfoToString(it->second.ray_error_info);
     reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info);
   } else {
-    RAY_LOG(WARNING) << "didn't find failure cause for task " << task_id;
+    RAY_LOG(INFO) << "didn't find failure cause for task " << task_id;
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -3020,12 +3018,14 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
 
 void NodeManager::SetTaskFailureReason(const TaskID &task_id,
                                        const rpc::RayErrorInfo &failure_reason) {
-  RAY_LOG(INFO) << "set failure reason for task " << task_id;
+  RAY_LOG(DEBUG) << "set failure reason for task " << task_id;
   ray::TaskFailureEntry entry(failure_reason);
   auto result = task_failure_reasons_.emplace(task_id, std::move(entry));
-  RAY_CHECK(result.second)
-      << "Trying to insert failure reason more than once for the same task, task id: "
-      << task_id;
+  if (result.second) {
+    RAY_LOG(WARNING) << "Trying to insert failure reason more than once for the same "
+                        "task, the previous failure will be removed. Task id: "
+                     << task_id;
+  }
 }
 
 void NodeManager::GCTaskFailureReason() {

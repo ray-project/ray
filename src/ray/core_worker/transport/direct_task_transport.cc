@@ -584,40 +584,11 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 
           if (!status.ok()) {
             RAY_LOG(DEBUG) << "Getting error from raylet for task " << task_id;
-            auto callback = [this, status, is_actor, task_id, addr, reply](
-                                const Status &get_task_result_reply_status,
-                                const rpc::GetTaskResultReply &get_task_result_reply) {
-              rpc::ErrorType task_error_type;
-              std::unique_ptr<rpc::RayErrorInfo> error_info;
-              if (get_task_result_reply_status.ok()) {
-                RAY_LOG(DEBUG) << "Task failure cause "
-                               << ray::gcs::RayErrorInfoToString(
-                                      get_task_result_reply.failure_cause());
-                task_error_type = get_task_result_reply.failure_cause().error_type();
-                error_info = std::make_unique<rpc::RayErrorInfo>(
-                    get_task_result_reply.failure_cause());
-              } else {
-                RAY_LOG(DEBUG) << "Failed to fetch task result with status "
-                               << get_task_result_reply_status.ToString()
-                               << " node id: " << addr.raylet_id
-                               << " ip: " << addr.ip_address;
-                task_error_type = rpc::ErrorType::NODE_DIED;
-                std::stringstream buffer;
-                buffer << "Node died, node id: " << addr.raylet_id
-                       << " ip: " << addr.ip_address;
-                error_info = std::make_unique<rpc::RayErrorInfo>();
-                error_info->set_error_message(buffer.str());
-                error_info->set_error_type(rpc::ErrorType::NODE_DIED);
-              }
-              RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-                  task_id,
-                  is_actor ? rpc::ErrorType::ACTOR_DIED : task_error_type,
-                  &status,
-                  error_info.get()));
-            };
+            auto callback =
+                CreateGetTaskFailureCauseCallback(status, is_actor, task_id, addr);
             auto &lease_entry = worker_to_lease_entry_[addr];
             RAY_CHECK(lease_entry.lease_client);
-            lease_entry.lease_client->GetTaskResult(lease_entry.task_id, callback);
+            lease_entry.lease_client->GetTaskFailureCause(lease_entry.task_id, callback);
           }
 
           if (!status.ok() || !is_actor_creation || reply.worker_exiting()) {
@@ -636,6 +607,45 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           }
         }
       });
+}
+
+const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply>
+CoreWorkerDirectTaskSubmitter::CreateGetTaskFailureCauseCallback(
+    const Status &status,
+    const bool is_actor,
+    const TaskID &task_id,
+    const rpc::WorkerAddress &addr) {
+  return [this, status, is_actor, task_id, addr](
+             const Status &get_task_failure_cause_reply_status,
+             const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
+    rpc::ErrorType task_error_type = rpc::ErrorType::WORKER_DIED;
+    std::unique_ptr<rpc::RayErrorInfo> error_info;
+    if (get_task_failure_cause_reply_status.ok()) {
+      RAY_LOG(DEBUG) << "Task failure cause "
+                     << ray::gcs::RayErrorInfoToString(
+                            get_task_failure_cause_reply.failure_cause());
+      if (get_task_failure_cause_reply.has_failure_cause()) {
+        task_error_type = get_task_failure_cause_reply.failure_cause().error_type();
+        error_info = std::make_unique<rpc::RayErrorInfo>(
+            get_task_failure_cause_reply.failure_cause());
+      }
+    } else {
+      RAY_LOG(DEBUG) << "Failed to fetch task result with status "
+                     << get_task_failure_cause_reply_status.ToString()
+                     << " node id: " << addr.raylet_id << " ip: " << addr.ip_address;
+      task_error_type = rpc::ErrorType::NODE_DIED;
+      std::stringstream buffer;
+      buffer << "Node died, node id: " << addr.raylet_id << " ip: " << addr.ip_address;
+      error_info = std::make_unique<rpc::RayErrorInfo>();
+      error_info->set_error_message(buffer.str());
+      error_info->set_error_type(rpc::ErrorType::NODE_DIED);
+    }
+    RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
+        task_id,
+        is_actor ? rpc::ErrorType::ACTOR_DIED : task_error_type,
+        &status,
+        error_info.get()));
+  };
 }
 
 Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,

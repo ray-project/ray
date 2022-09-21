@@ -18,6 +18,7 @@ from ray._private.test_utils import (
     init_error_pubsub,
     run_string_as_driver,
     wait_for_condition,
+    kill_raylet,
 )
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.core.generated import (
@@ -652,6 +653,27 @@ def test_actor_task_fast_fail(ray_start_cluster):
     time.sleep(1)
     # An actor task should succeed.
     ray.get(actor.ping.remote())
+
+
+def test_task_crash_after_raylet_dead_throws_node_died_error():
+    @ray.remote(max_retries=0)
+    def sleeper():
+        import os
+
+        time.sleep(3)
+        os.kill(os.getpid(), 9)
+
+    with ray.init():
+        ref = sleeper.remote()
+
+        raylet = ray.nodes()[0]
+        kill_raylet(raylet)
+
+        with pytest.raises(ray.exceptions.NodeDiedError) as error:
+            ray.get(ref)
+        message = str(error)
+        assert "Node died" in message
+        assert raylet["NodeManagerAddress"] in message
 
 
 if __name__ == "__main__":

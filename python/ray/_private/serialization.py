@@ -233,6 +233,36 @@ class SerializationContext:
                 cause=ray_error_info.actor_died_error.actor_died_error_context
             )
 
+    def _deserialize_oom_error(self, data, metadata_fields):
+        if not data:
+            return RayActorError()
+        ray_error_info = self._deserialize_error_info(data, metadata_fields)
+        assert ray_error_info.HasField("actor_died_error")
+        if ray_error_info.actor_died_error.HasField("creation_task_failure_context"):
+            return RayError.from_ray_exception(
+                ray_error_info.actor_died_error.creation_task_failure_context
+            )
+        else:
+            assert ray_error_info.actor_died_error.HasField("actor_died_error_context")
+            return RayActorError(
+                cause=ray_error_info.actor_died_error.actor_died_error_context
+            )
+
+    def _deserialize_nodedied_error(self, data, metadata_fields):
+        if not data:
+            return RayActorError()
+        ray_error_info = self._deserialize_error_info(data, metadata_fields)
+        assert ray_error_info.HasField("actor_died_error")
+        if ray_error_info.actor_died_error.HasField("creation_task_failure_context"):
+            return RayError.from_ray_exception(
+                ray_error_info.actor_died_error.creation_task_failure_context
+            )
+        else:
+            assert ray_error_info.actor_died_error.HasField("actor_died_error_context")
+            return RayActorError(
+                cause=ray_error_info.actor_died_error.actor_died_error_context
+            )
+
     def _deserialize_object(self, data, metadata, object_ref):
         if metadata:
             metadata_fields = metadata.split(b",")

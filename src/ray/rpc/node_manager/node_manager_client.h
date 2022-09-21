@@ -200,7 +200,7 @@ class NodeManagerWorkerClient
                          /*method_timeout_ms*/ -1, )
 
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         GetTaskResult,
+                         GetTaskFailureCause,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 

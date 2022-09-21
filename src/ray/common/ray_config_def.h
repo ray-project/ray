@@ -84,12 +84,6 @@ RAY_CONFIG(float, memory_usage_threshold_fraction, 0.9)
 /// Monitor is disabled when this value is 0.
 RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 0)
 
-/// The interval between checking whether task failure entry
-/// should be garbage collected. Disabled when value is 0.
-/// Enabled by default as this prevents memory leak, and
-/// the code path executes only when memory monitor is enabled.
-RAY_CONFIG(uint64_t, task_failure_entry_gc_period_ms, 5 * 60 * 1000)
-
 /// The TTL for when the task failure entry is considered
 /// eligble for garbage colletion.
 RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)

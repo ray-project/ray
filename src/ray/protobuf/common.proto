@@ -216,6 +216,30 @@ message RayErrorInfo {
   optional ErrorType error_type = 11;
 }
 
+message OutOfMemoryErrorContext {
+  // The task id of the task evicted due to node running out of memory.
+  bytes task_id = 1;
+  // The task name of the task evicted due to node running out of memory.
+  string task_name = 2;
+  // The IP address of the node that was running the task.
+  string node_ip_address = 3;
+  // The memory used by the node.
+  uint64 memory_used_bytes = 4;
+  // The memory total by the node.
+  uint64 memory_total_bytes = 5;
+  // The fraction of memory used, i.e. used / total.
+  double memory_usage_fraction = 6;
+  // The threshold when task will be evicted to free up memory.
+  double memory_threshold = 7;
+}
+
+message NodeDiedErrorContext {
+  // The id of the node that died.
+  bytes node_id = 1;
+  // The IP address of the node that died.
+  string node_ip_address = 2;
+}
+
 /// The task exception encapsulates the information about task
 /// execution execeptions. This should be used by the frontend
 /// to represent a user application error. Errors originating from the

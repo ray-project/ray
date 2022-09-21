@@ -8,13 +8,12 @@ import pytest
 
 import ray
 from ray._private import test_utils
-from ray._private.test_utils import get_node_stats, wait_for_condition, kill_raylet
+from ray._private.test_utils import get_node_stats, wait_for_condition
 
 
 memory_usage_threshold_fraction = 0.7
 memory_monitor_interval_ms = 100
 expected_worker_eviction_message = "System memory low at node with IP"
-task_failure_entry_gc_period_ms = 1 * 1000
 task_failure_entry_ttl_ms = 2 * 60 * 1000
 
 
@@ -29,7 +28,6 @@ def ray_with_memory_monitor(shutdown_only):
             "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
             "memory_monitor_interval_ms": memory_monitor_interval_ms,
             "metrics_report_interval_ms": metrics_report_interval_ms,
-            "task_failure_entry_gc_period_ms": task_failure_entry_gc_period_ms,
             "task_failure_entry_ttl_ms": task_failure_entry_ttl_ms,
         },
     ):
@@ -152,12 +150,8 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
 )
 def test_memory_pressure_kill_task(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.95)
-    try:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(no_retry.remote(bytes_to_alloc))
-    except ray.exceptions.OutOfMemoryError as error:
-        message = str(error)
-        assert "no_retry()" in message
-        assert "threshold 0.7" in message
 
     wait_for_condition(
         has_metric_tagged_with_value,
@@ -172,24 +166,6 @@ def test_memory_pressure_kill_task(ray_with_memory_monitor):
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_task_crash_after_raylet_dead_throws_node_died_error(ray_with_memory_monitor):
-    ref = sleeper.remote(sleep_s=5, crash_at_the_end=True)
-
-    raylet = ray.nodes()[0]
-    kill_raylet(raylet)
-
-    try:
-        ray.get(ref)
-    except ray.exceptions.NodeDiedError as error:
-        message = str(error)
-        assert "Node died" in message
-        assert raylet["NodeManagerAddress"] in message
-
-
-@pytest.mark.skipif(
-    sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
-)
 def test_memory_pressure_kill_newest_worker(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold_fraction - 0.1
@@ -198,13 +174,8 @@ def test_memory_pressure_kill_newest_worker(ray_with_memory_monitor):
     actor_ref = Leaker.options(name="actor").remote()
     ray.get(actor_ref.allocate.remote(bytes_to_alloc))
 
-    try:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(no_retry.remote(allocate_bytes=bytes_to_alloc))
-    except ray.exceptions.OutOfMemoryError as error:
-        message = str(error)
-        assert "no_retry()" in message
-        assert "Leaker" not in message
-        assert "threshold 0.7" in message
 
     actors = ray.util.list_named_actors()
     assert len(actors) == 1
@@ -229,13 +200,8 @@ def test_memory_pressure_kill_task_if_actor_submitted_task_first(
     )
 
     ray.get(actor_ref.allocate.remote(bytes_to_alloc))
-    try:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(task_ref)
-    except ray.exceptions.OutOfMemoryError as error:
-        message = str(error)
-        assert "no_retry()" in message
-        assert "Leaker" not in message
-        assert "threshold 0.7" in message
 
     actors = ray.util.list_named_actors()
     assert len(actors) == 1
@@ -293,7 +259,7 @@ async def test_actor_oom_logs_error(ray_with_memory_monitor):
 )
 async def test_task_oom_logs_error(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
-    try:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(
             no_retry.remote(
                 allocate_bytes=bytes_to_alloc,
@@ -301,10 +267,6 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
                 post_allocate_sleep_s=1000,
             )
         )
-    except ray.exceptions.OutOfMemoryError as error:
-        message = str(error)
-        assert "no_retry()" in message
-        assert "threshold 0.7" in message
 
     state_api_client = test_utils.get_local_state_client()
     result = await state_api_client.get_all_worker_info(timeout=5, limit=10)

@@ -335,11 +335,11 @@ message NotifyGCSRestartRequest {}
 
 message NotifyGCSRestartReply {}
 
-message GetTaskResultRequest {
+message GetTaskFailureCauseRequest {
   bytes task_id = 1;
 }
 
-message GetTaskResultReply {
+message GetTaskFailureCauseReply {
   optional RayErrorInfo failure_cause = 1;
 }
 
@@ -408,5 +408,5 @@ service NodeManagerService {
   rpc GetObjectsInfo(GetObjectsInfoRequest) returns (GetObjectsInfoReply);
   // Gets the task execution result. May contain a result if
   // the task completed in error.
-  rpc GetTaskResult(GetTaskResultRequest) returns (GetTaskResultReply);
+  rpc GetTaskFailureCause(GetTaskFailureCauseRequest) returns (GetTaskFailureCauseReply);
 }

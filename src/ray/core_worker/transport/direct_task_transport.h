@@ -199,6 +199,13 @@ class CoreWorkerDirectTaskSubmitter {
                       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
                           &assigned_resources);
 
+  /// Creates callback used for calling GetTaskFailureCause.
+  const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply>
+  CreateGetTaskFailureCauseCallback(const Status &status,
+                                    const bool is_actor,
+                                    const TaskID &task_id,
+                                    const rpc::WorkerAddress &addr);
+
   /// Address of our RPC server.
   rpc::Address rpc_address_;
 
