@@ -13,7 +13,7 @@ Overview
 .. _ingest_basics:
 
 The following figure illustrates a simple Ray AIR training job that (1) loads parquet data from S3, (2) applies a simple
-user-defined function to preprocess batches of data, and (3) runs an AIR Trainer with the given dataset and preprocessor.
+:ref:`user-defined function <transform_datasets_writing_udfs>` to preprocess batches of data, and (3) runs an AIR Trainer with the given dataset and preprocessor.
 
 .. figure:: images/ingest.svg
 
@@ -79,7 +79,7 @@ Shuffling Data
 Shuffling or data randomization is important for training high-quality models. By default, AIR will randomize the order the data files (blocks) are read from. AIR also offers options for further randomizing data records within each file:
 
 .. tabbed:: Local Shuffling
-    
+
     Local shuffling is the recommended approach for randomizing data order. To use local shuffle,
     simply specify a non-zero ``local_shuffle_buffer_size`` as an argument to ``iter_batches()``.
     The iterator will then use a local buffer of the given size to randomize record order. The

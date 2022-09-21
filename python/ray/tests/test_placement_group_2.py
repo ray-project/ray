@@ -48,12 +48,16 @@ def test_check_bundle_index(ray_start_cluster, connect_to_client):
 
         with pytest.raises(ValueError, match="bundle index 3 is invalid"):
             Actor.options(
-                placement_group=placement_group, placement_group_bundle_index=3
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=placement_group, placement_group_bundle_index=3
+                )
             ).remote()
 
         with pytest.raises(ValueError, match="bundle index -2 is invalid"):
             Actor.options(
-                placement_group=placement_group, placement_group_bundle_index=-2
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=placement_group, placement_group_bundle_index=-2
+                )
             ).remote()
 
         with pytest.raises(ValueError, match="bundle index must be -1"):
@@ -188,8 +192,10 @@ def test_atomic_creation(ray_start_cluster, connect_to_client):
         # This shouldn't be scheduled because atomic
         # placement group creation should've failed.
         pg_actor = NormalActor.options(
-            placement_group=pg,
-            placement_group_bundle_index=num_nodes * bundle_per_node - 1,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg,
+                placement_group_bundle_index=num_nodes * bundle_per_node - 1,
+            ),
         ).remote()
 
         # Wait on the placement group now. It should be unready
@@ -227,7 +233,9 @@ def test_atomic_creation(ray_start_cluster, connect_to_client):
         # This all should scheduled on each bundle.
         check_with_pg = [
             resource_check.options(
-                placement_group=pg, placement_group_bundle_index=i
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg, placement_group_bundle_index=i
+                )
             ).remote()
             for i in range(bundle_per_node * num_nodes)
         ]
@@ -305,7 +313,10 @@ def test_mini_integration(ray_start_cluster, connect_to_client):
             pg_tasks.append(
                 [
                     random_tasks.options(
-                        placement_group=pg, placement_group_bundle_index=bundle_index
+                        scheduling_strategy=PlacementGroupSchedulingStrategy(
+                            placement_group=pg,
+                            placement_group_bundle_index=bundle_index,
+                        )
                     ).remote()
                     for bundle_index in range(bundles_per_pg)
                 ]
@@ -381,7 +392,9 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
                 self.actors.append(actor)
 
         a = Actor.options(
-            placement_group=pg, placement_group_capture_child_tasks=True
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_capture_child_tasks=True
+            )
         ).remote()
         ray.get(a.ready.remote())
         # 1 top level actor + 3 children.
@@ -406,7 +419,9 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
             ray.get(a.ready.remote())
 
         # Now create an actor, but do not capture the current tasks
-        a = Actor.options(placement_group=pg).remote()
+        a = Actor.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
         ray.get(a.ready.remote())
         # 1 top level actor + 3 children.
         for _ in range(total_num_actors - 1):
@@ -431,7 +446,9 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
 
         # Lastly, make sure when None is specified, actors are not scheduled
         # on the same placement group.
-        a = Actor.options(placement_group=pg).remote()
+        a = Actor.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
         ray.get(a.ready.remote())
         # 1 top level actor + 3 children.
         for _ in range(total_num_actors - 1):
@@ -497,8 +514,9 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
         t = create_nested_task.options(
             num_cpus=1,
             num_gpus=0,
-            placement_group=pg,
-            placement_group_capture_child_tasks=True,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_capture_child_tasks=True
+            ),
         ).remote(1, 0)
         pgs = ray.get(t)
         # Every task should have current placement group because they
@@ -508,8 +526,9 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
         t1 = create_nested_task.options(
             num_cpus=1,
             num_gpus=0,
-            placement_group=pg,
-            placement_group_capture_child_tasks=True,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_capture_child_tasks=True
+            ),
         ).remote(1, 0, True)
         pgs = ray.get(t1)
         # Every task should have no placement group since it's set to None.
@@ -518,7 +537,9 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
 
         # Test if tasks don't capture child tasks when the option is off.
         t2 = create_nested_task.options(
-            num_cpus=0, num_gpus=1, placement_group=pg
+            num_cpus=0,
+            num_gpus=1,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
         ).remote(0, 1)
         pgs = ray.get(t2)
         # All placement groups should be None since we don't capture child
@@ -769,7 +790,9 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
     cluster.head_node.kill_gcs_server()
     cluster.head_node.start_gcs_server()
     actor_2 = Increase.options(
-        placement_group=placement_group, placement_group_bundle_index=1
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=placement_group, placement_group_bundle_index=1
+        )
     ).remote()
     assert ray.get(actor_2.method.remote(1)) == 3
 
@@ -808,7 +831,9 @@ def test_bundle_recreated_when_raylet_fo_after_gcs_server_restart(
 
     # Schedule an actor and make sure its creaton successfully.
     actor = Increase.options(
-        placement_group=placement_group, placement_group_bundle_index=0
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=placement_group, placement_group_bundle_index=0
+        )
     ).remote()
 
     assert ray.get(actor.method.remote(1), timeout=5) == 3

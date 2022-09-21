@@ -27,7 +27,6 @@ from ray.air._internal.remote_storage import (
 )
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.result import NODE_IP
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.widgets import Template
@@ -39,6 +38,9 @@ logger = logging.getLogger(__name__)
 
 # Syncing period for syncing checkpoints between nodes or to cloud.
 DEFAULT_SYNC_PERIOD = 300
+
+# Default sync timeout after which syncing processes are aborted
+DEFAULT_SYNC_TIMEOUT = 1800
 
 _EXCLUDE_FROM_SYNC = [
     "./checkpoint_-00001",
@@ -85,6 +87,8 @@ class SyncConfig:
             is asynchronous and best-effort. This does not affect persistent
             storage syncing. Defaults to True.
         sync_period: Syncing period for syncing between nodes.
+        sync_timeout: Timeout after which running sync processes are aborted.
+            Currently only affects trial-to-cloud syncing.
 
     """
 
@@ -93,6 +97,7 @@ class SyncConfig:
 
     sync_on_checkpoint: bool = True
     sync_period: int = DEFAULT_SYNC_PERIOD
+    sync_timeout: int = DEFAULT_SYNC_TIMEOUT
 
     def _repr_html_(self) -> str:
         """Generate an HTML representation of the SyncConfig.
@@ -494,6 +499,7 @@ class SyncerCallback(Callback):
         self._sync_processes: Dict[str, _BackgroundProcess] = {}
         self._sync_times: Dict[str, float] = {}
         self._sync_period = sync_period
+        self._trial_ips = {}
 
     def _get_trial_sync_process(self, trial: "Trial"):
         return self._sync_processes.setdefault(
@@ -531,10 +537,16 @@ class SyncerCallback(Callback):
         if not force and (not self._should_sync(trial) or sync_process.is_running):
             return False
 
-        if NODE_IP in trial.last_result:
-            source_ip = trial.last_result[NODE_IP]
-        else:
-            source_ip = ray.get(trial.runner.get_current_ip.remote())
+        source_ip = self._trial_ips.get(trial.trial_id, None)
+
+        if not source_ip:
+            source_ip = trial.get_runner_ip()
+
+            # If it still does not exist, the runner is terminated.
+            if not source_ip:
+                return False
+
+        self._trial_ips[trial.trial_id] = source_ip
 
         try:
             sync_process.wait()
@@ -565,6 +577,11 @@ class SyncerCallback(Callback):
                 )
         return True
 
+    def on_trial_start(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
+        self._trial_ips.pop(trial.trial_id, None)
+
     def on_trial_result(
         self,
         iteration: int,
@@ -580,6 +597,13 @@ class SyncerCallback(Callback):
     ):
         self._sync_trial_dir(trial, force=True, wait=True)
         self._remove_trial_sync_process(trial)
+        self._trial_ips.pop(trial.trial_id, None)
+
+    def on_trial_error(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
+        self._remove_trial_sync_process(trial)
+        self._trial_ips.pop(trial.trial_id, None)
 
     def on_checkpoint(
         self,
@@ -616,3 +640,9 @@ class SyncerCallback(Callback):
                 f"At least one trial failed to sync down when waiting for all "
                 f"trials to sync: \n{sync_str}"
             )
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        for remove in ["_sync_times", "_sync_processes", "_trial_ips"]:
+            state.pop(remove, None)
+        return state

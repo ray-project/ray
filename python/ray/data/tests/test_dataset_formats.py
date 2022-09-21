@@ -1,5 +1,6 @@
 import os
 import shutil
+from distutils.version import LooseVersion
 from functools import partial
 from io import BytesIO
 from typing import Any, Dict, List, Union
@@ -1989,6 +1990,49 @@ def test_json_read_with_read_options(
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
+def test_json_read_with_parse_options(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+):
+    # Arrow's JSON ParseOptions isn't serializable in pyarrow < 8.0.0, so this test
+    # covers our custom ParseOptions serializer, similar to ReadOptions in above test.
+    # TODO(chengsu): Remove this test and our custom serializer once we require
+    # pyarrow >= 8.0.0.
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(data_path, "test1.json")
+    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    ds = ray.data.read_json(
+        path1,
+        filesystem=fs,
+        parse_options=pajson.ParseOptions(
+            explicit_schema=pa.schema([("two", pa.string())]),
+            unexpected_field_behavior="ignore",
+        ),
+    )
+    dsdf = ds.to_pandas()
+    assert len(dsdf.columns) == 1
+    assert (df1["two"]).equals(dsdf["two"])
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert ds.input_files() == [_unwrap_protocol(path1)]
+    assert "{two: string}" in str(ds), ds
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
 def test_json_read_partitioned_with_filter(
     ray_start_regular_shared,
     fs,
@@ -3037,7 +3081,7 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
             ),
         )
 
-    # Parsing scientific notation in double shoud work.
+    # Parsing scientific notation in double should work.
     ds = ray.data.read_csv(
         file_path,
         convert_options=csv.ConvertOptions(
@@ -3057,6 +3101,26 @@ def test_csv_read_filter_no_file(shutdown_only, tmp_path):
     error_message = "No input files found to read"
     with pytest.raises(ValueError, match=error_message):
         ray.data.read_csv(path)
+
+
+@pytest.mark.skipif(
+    LooseVersion(pa.__version__) < LooseVersion("7.0.0"),
+    reason="invalid_row_handler was added in pyarrow 7.0.0",
+)
+def test_csv_invalid_file_handler(shutdown_only, tmp_path):
+    from pyarrow import csv
+
+    invalid_txt = "f1,f2\n2,3\nx\n4,5"
+    invalid_file = os.path.join(tmp_path, "invalid.csv")
+    with open(invalid_file, "wt") as f:
+        f.write(invalid_txt)
+
+    ray.data.read_csv(
+        invalid_file,
+        parse_options=csv.ParseOptions(
+            delimiter=",", invalid_row_handler=lambda i: "skip"
+        ),
+    )
 
 
 class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
@@ -3209,6 +3273,50 @@ def test_read_s3_file_error(ray_start_regular_shared, s3_path):
         )
         _handle_read_os_error(error, dummy_path)
     assert error_message in str(e.value)
+
+
+def test_read_tfrecords(ray_start_regular_shared, tmp_path):
+    import tensorflow as tf
+
+    features = tf.train.Features(
+        feature={
+            "int64": tf.train.Feature(int64_list=tf.train.Int64List(value=[1])),
+            "int64_list": tf.train.Feature(
+                int64_list=tf.train.Int64List(value=[1, 2, 3, 4])
+            ),
+            "float": tf.train.Feature(float_list=tf.train.FloatList(value=[1.0])),
+            "float_list": tf.train.Feature(
+                float_list=tf.train.FloatList(value=[1.0, 2.0, 3.0, 4.0])
+            ),
+            "bytes": tf.train.Feature(bytes_list=tf.train.BytesList(value=[b"abc"])),
+            "bytes_list": tf.train.Feature(
+                bytes_list=tf.train.BytesList(value=[b"abc", b"1234"])
+            ),
+        }
+    )
+    example = tf.train.Example(features=features)
+    path = os.path.join(tmp_path, "data.tfrecords")
+    with tf.io.TFRecordWriter(path=path) as writer:
+        writer.write(example.SerializeToString())
+
+    ds = ray.data.read_tfrecords(path)
+
+    df = ds.to_pandas()
+    # Protobuf serializes features in a non-deterministic order.
+    assert dict(df.dtypes) == {
+        "int64": np.int64,
+        "int64_list": object,
+        "float": np.float,
+        "float_list": object,
+        "bytes": object,
+        "bytes_list": object,
+    }
+    assert list(df["int64"]) == [1]
+    assert list(df["int64_list"]) == [[1, 2, 3, 4]]
+    assert list(df["float"]) == [1.0]
+    assert list(df["float_list"]) == [[1.0, 2.0, 3.0, 4.0]]
+    assert list(df["bytes"]) == [b"abc"]
+    assert list(df["bytes_list"]) == [[b"abc", b"1234"]]
 
 
 if __name__ == "__main__":

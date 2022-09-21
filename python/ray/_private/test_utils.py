@@ -14,20 +14,22 @@ import tempfile
 import time
 import timeit
 import traceback
+from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from typing import Any, Dict, List, Optional
 
 import grpc
 import numpy as np
 import psutil  # We must import psutil after ray because we bundle it with ray.
-import pytest
+from ray._private import (
+    ray_constants,
+)
 import yaml
 from grpc._channel import _InactiveRpcError
 
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
-import ray._private.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 from ray._private.gcs_pubsub import GcsErrorSubscriber, GcsLogSubscriber
@@ -37,6 +39,8 @@ from ray._raylet import GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
+from ray.experimental.state.state_manager import StateDataSourceClient
+
 
 logger = logging.getLogger(__name__)
 
@@ -46,18 +50,6 @@ except (ImportError, ModuleNotFoundError):
 
     def text_string_to_metric_families(*args, **kwargs):
         raise ModuleNotFoundError("`prometheus_client` not found")
-
-
-@pytest.fixture
-def set_override_dashboard_url(monkeypatch, request):
-    override_url = getattr(request, "param", "https://external_dashboard_url")
-    with monkeypatch.context() as m:
-        if override_url:
-            m.setenv(
-                ray_constants.RAY_OVERRIDE_DASHBOARD_URL,
-                override_url,
-            )
-        yield
 
 
 class RayTestTimeoutException(Exception):
@@ -828,6 +820,22 @@ def fetch_prometheus(prom_addresses):
     return components_dict, metric_names, metric_samples
 
 
+def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
+    """Return prometheus metrics from the given addresses.
+
+    Args:
+        prom_addresses: List of metrics_agent addresses to collect metrics from.
+
+    Returns:
+        Dict mapping from metric name to list of samples for the metric.
+    """
+    _, _, samples = fetch_prometheus(prom_addresses)
+    samples_by_name = defaultdict(list)
+    for sample in samples:
+        samples_by_name[sample.name].append(sample)
+    return samples_by_name
+
+
 def load_test_config(config_file_name):
     """Loads a config yaml from tests/test_cli_patterns."""
     here = os.path.realpath(__file__)
@@ -1399,6 +1407,43 @@ def wandb_setup_api_key_hook():
     WandbIntegrationTest.testWandbLoggerConfig
     """
     return "abcd"
+
+
+# Get node stats from node manager.
+def get_node_stats(raylet, num_retry=5, timeout=2):
+    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    channel = ray._private.utils.init_grpc_channel(raylet_address)
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    for _ in range(num_retry):
+        try:
+            reply = stub.GetNodeStats(
+                node_manager_pb2.GetNodeStatsRequest(), timeout=timeout
+            )
+            break
+        except grpc.RpcError:
+            continue
+    assert reply is not None
+    return reply
+
+
+# Creates a state api client assuming the head node (gcs) is local.
+def get_local_state_client():
+    hostname = ray.worker._global_node.gcs_address
+
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        hostname, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=True
+    )
+
+    gcs_aio_client = gcs_utils.GcsAioClient(address=hostname, nums_reconnect_retry=0)
+    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        ip = node["NodeManagerAddress"]
+        port = int(node["NodeManagerPort"])
+        client.register_raylet_client(node_id, ip, port)
+        client.register_agent_client(node_id, ip, port)
+
+    return client
 
 
 # Global counter to test different return values

@@ -132,6 +132,9 @@ class WandbIntegrationTest(unittest.TestCase):
         mock_external_hook.assert_called_once_with(mock_run)
         mock_finish.assert_called_once()
 
+        # Test `trial_log_path` of W&B run config is correctly set
+        assert mock_run.config.trial_log_path == "mock_logdir"
+
     def testWandbLoggerConfig(self):
         trial_config = {"par1": 4, "par2": 9.12345678}
         trial = Trial(

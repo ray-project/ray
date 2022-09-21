@@ -155,6 +155,7 @@ def start(address, http_host, http_port, http_location):
         "This call is async; a successful response only indicates that the "
         "request was sent to the Ray cluster successfully. It does not mean "
         "the the deployments have been deployed/updated.\n\n"
+        "Existing deployments with no code changes will not be redeployed.\n\n"
         "Use `serve config` to fetch the current config and `serve status` to "
         "check the status of the deployments after deploying."
     ),
@@ -188,7 +189,10 @@ def deploy(config_file_name: str, address: str):
 @cli.command(
     short_help="Run a Serve app.",
     help=(
-        "Runs the Serve app from the specified import path or YAML config.\n"
+        "Runs the Serve app from the specified import path (e.g. "
+        "my_script:my_bound_deployment) or YAML config.\n\n"
+        "If using a YAML config, existing deployments with no code changes "
+        "will not be redeployed.\n\n"
         "Any import path must lead to a FunctionNode or ClassNode object. "
         "By default, this will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
@@ -263,6 +267,11 @@ def deploy(config_file_name: str, address: str):
         "will loop and log status until Ctrl-C'd, then clean up the app."
     ),
 )
+@click.option(
+    "--gradio",
+    is_flag=True,
+    help=("Whether to enable gradio visualization of deployment graph."),
+)
 def run(
     config_or_import_path: str,
     runtime_env: str,
@@ -273,6 +282,7 @@ def run(
     host: str,
     port: int,
     blocking: bool,
+    gradio: bool,
 ):
     sys.path.insert(0, app_dir)
 
@@ -300,24 +310,38 @@ def run(
 
     if is_config:
         client = _private_api.serve_start(
-            detached=True, http_options={"host": config.host, "port": config.port}
+            detached=True,
+            http_options={
+                "host": config.host,
+                "port": config.port,
+                "location": "EveryNode",
+            },
         )
     else:
         client = _private_api.serve_start(
-            detached=True, http_options={"host": host, "port": port}
+            detached=True,
+            http_options={"host": host, "port": port, "location": "EveryNode"},
         )
 
     try:
         if is_config:
-            client.deploy_app(config)
+            client.deploy_app(config, _blocking=gradio)
+            if gradio:
+                handle = serve.get_deployment("DAGDriver").get_handle()
         else:
-            serve.run(node, host=host, port=port)
+            handle = serve.run(node, host=host, port=port)
         cli_logger.success("Deployed successfully.")
 
-        if blocking:
-            while True:
-                # Block, letting Ray print logs to the terminal.
-                time.sleep(10)
+        if gradio:
+            from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
+
+            visualizer = GraphVisualizer()
+            visualizer.visualize_with_gradio(handle)
+        else:
+            if blocking:
+                while True:
+                    # Block, letting Ray print logs to the terminal.
+                    time.sleep(10)
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")

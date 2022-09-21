@@ -28,6 +28,14 @@ _TUNER_INTERNAL = "_tuner_internal"
 _SELF = "self"
 
 
+_TUNER_FAILED_MSG = (
+    "The Ray Tune run failed. Please inspect the previous error messages for a "
+    "cause. After fixing the issue, you can restart the run from scratch or "
+    "continue this run. To continue this run, you can use "
+    '`tuner = Tuner.restore("{path}")`.'
+)
+
+
 @PublicAPI(stability="beta")
 class Tuner:
     """Tuner is the recommended way of launching hyperparameter tuning jobs with Ray Tune.
@@ -226,7 +234,8 @@ class Tuner:
         to resume.
 
         Raises:
-            RayTaskError when the exception happens in trainable else TuneError.
+            RayTaskError: If user-provided trainable raises an exception
+            TuneError: General Ray Tune error.
         """
 
         if not self._is_ray_client:
@@ -234,9 +243,9 @@ class Tuner:
                 return self._local_tuner.fit()
             except Exception as e:
                 raise TuneError(
-                    f"Tune run failed. "
-                    f'Please use tuner = Tuner.restore("'
-                    f'{self._local_tuner.get_experiment_checkpoint_dir()}") to resume.'
+                    _TUNER_FAILED_MSG.format(
+                        path=self._local_tuner.get_experiment_checkpoint_dir()
+                    )
                 ) from e
         else:
             experiment_checkpoint_dir = ray.get(
@@ -246,7 +255,5 @@ class Tuner:
                 return ray.get(self._remote_tuner.fit.remote())
             except Exception as e:
                 raise TuneError(
-                    f"Tune run failed. "
-                    f'Please use tuner = Tuner.restore("'
-                    f'{experiment_checkpoint_dir}") to resume.'
+                    _TUNER_FAILED_MSG.format(path=experiment_checkpoint_dir)
                 ) from e

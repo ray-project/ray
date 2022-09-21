@@ -6,6 +6,7 @@ from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
@@ -138,17 +139,23 @@ def load_policies_from_checkpoint(
             continue
 
         merged_config = merge_dicts(policy_config, policy_spec.config or {})
+        # Similar to PolicyMap.create_policy(), we need to wrap a TF2 policy
+        # automatically into an eager traced policy class if necessary.
+        # Basically, PolicyMap handles this step automatically for training,
+        # and we handle it automatically here for inference use cases.
+        policy_class = get_tf_eager_cls_if_necessary(
+            policy_spec.policy_class, merged_config
+        )
+
         policy = create_policy_for_framework(
             id,
-            policy_spec.policy_class,
+            policy_class,
             merged_config,
             policy_spec.observation_space,
             policy_spec.action_space,
         )
         if id in policy_states:
             policy.set_state(policy_states[id])
-        if policy.agent_connectors:
-            policy.agent_connectors.is_training(False)
         policies[id] = policy
 
     return policies
@@ -184,6 +191,11 @@ def local_policy_inference(
         policy.agent_connectors
     ), "policy_inference only works with connector enabled policies."
 
+    # Put policy in inference mode, so we don't spend time on training
+    # only transformations.
+    policy.agent_connectors.in_eval()
+    policy.action_connectors.in_eval()
+
     # TODO(jungong) : support multiple env, multiple agent inference.
     input_dict = {SampleBatch.NEXT_OBS: obs}
     acd_list: List[AgentConnectorDataType] = [
@@ -192,11 +204,14 @@ def local_policy_inference(
     ac_outputs: List[AgentConnectorsOutput] = policy.agent_connectors(acd_list)
     outputs = []
     for ac in ac_outputs:
-        policy_output = policy.compute_actions_from_input_dict(ac.data.for_action)
+        policy_output = policy.compute_actions_from_input_dict(ac.data.sample_batch)
+
+        action_connector_data = ActionConnectorDataType(
+            env_id, agent_id, ac.data.raw_dict, policy_output
+        )
 
         if policy.action_connectors:
-            acd = ActionConnectorDataType(env_id, agent_id, policy_output)
-            acd = policy.action_connectors(acd)
+            acd = policy.action_connectors(action_connector_data)
             actions = acd.output
         else:
             actions = policy_output[0]
@@ -205,9 +220,7 @@ def local_policy_inference(
 
         # Notify agent connectors with this new policy output.
         # Necessary for state buffering agent connectors, for example.
-        policy.agent_connectors.on_policy_output(
-            ActionConnectorDataType(env_id, agent_id, policy_output)
-        )
+        policy.agent_connectors.on_policy_output(action_connector_data)
     return outputs
 
 

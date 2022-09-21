@@ -88,23 +88,40 @@ class _StatsActor:
     """Actor holding stats for blocks created by LazyBlockList.
 
     This actor is shared across all datasets created in the same cluster.
-    The stats data is small so we don't worry about clean up for now.
+    In order to cap memory usage, we set a max number of stats to keep
+    in the actor. When this limit is exceeded, the stats will be garbage
+    collected in FIFO order.
 
     TODO(ekl) we should consider refactoring LazyBlockList so stats can be
     extracted without using an out-of-band actor."""
 
-    def __init__(self):
+    def __init__(self, max_stats=1000):
         # Mapping from uuid -> dataset-specific stats.
         self.metadata = collections.defaultdict(dict)
         self.last_time = {}
         self.start_time = {}
+        self.max_stats = max_stats
+        self.fifo_queue = []
 
     def record_start(self, stats_uuid):
         self.start_time[stats_uuid] = time.perf_counter()
+        self.fifo_queue.append(stats_uuid)
+        # Purge the oldest stats if the limit is exceeded.
+        if len(self.fifo_queue) > self.max_stats:
+            uuid = self.fifo_queue.pop(0)
+            if uuid in self.start_time:
+                del self.start_time[uuid]
+            if uuid in self.last_time:
+                del self.last_time[uuid]
+            if uuid in self.metadata:
+                del self.metadata[uuid]
 
-    def record_task(self, stats_uuid, i, metadata):
-        self.metadata[stats_uuid][i] = metadata
-        self.last_time[stats_uuid] = time.perf_counter()
+    def record_task(self, stats_uuid, task_idx, metadata):
+        # Null out the schema to keep the stats size small.
+        metadata.schema = None
+        if stats_uuid in self.start_time:
+            self.metadata[stats_uuid][task_idx] = metadata
+            self.last_time[stats_uuid] = time.perf_counter()
 
     def get(self, stats_uuid):
         if stats_uuid not in self.metadata:
@@ -113,6 +130,9 @@ class _StatsActor:
             self.metadata[stats_uuid],
             self.last_time[stats_uuid] - self.start_time[stats_uuid],
         )
+
+    def _get_stats_dict_size(self):
+        return len(self.start_time), len(self.last_time), len(self.metadata)
 
 
 def _get_or_create_stats_actor():
@@ -315,7 +335,9 @@ class DatasetStats:
             )
 
             out += indent
-            memory_stats = [round(e.max_rss_bytes / 1024 * 1024, 2) for e in exec_stats]
+            memory_stats = [
+                round(e.max_rss_bytes / (1024 * 1024), 2) for e in exec_stats
+            ]
             out += "* Peak heap memory usage (MiB): {} min, {} max, {} mean\n".format(
                 min(memory_stats),
                 max(memory_stats),

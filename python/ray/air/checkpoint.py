@@ -2,13 +2,15 @@ import contextlib
 import io
 import logging
 import os
-import platform
 import shutil
 import tarfile
 import tempfile
 import traceback
 from pathlib import Path
+import platform
 from typing import Any, Dict, Iterator, Optional, Tuple, Union, TYPE_CHECKING
+import uuid
+import warnings
 
 import ray
 from ray import cloudpickle as pickle
@@ -21,7 +23,7 @@ from ray.air._internal.remote_storage import (
     upload_to_uri,
 )
 from ray.air.constants import PREPROCESSOR_KEY
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
 if TYPE_CHECKING:
@@ -91,7 +93,8 @@ class Checkpoint:
     be used to create checkpoint objects
     (e.g. ``Checkpoint.from_directory()``).
 
-    *Other implementation notes:*
+    **Other implementation notes:**
+
     When converting between different checkpoint formats, it is guaranteed
     that a full round trip of conversions (e.g. directory --> dict -->
     obj ref --> directory) will recover the original checkpoint data.
@@ -189,6 +192,8 @@ class Checkpoint:
         self._data_dict: Optional[Dict[str, Any]] = data_dict
         self._uri: Optional[str] = uri
         self._obj_ref: Optional[ray.ObjectRef] = obj_ref
+
+        self._uuid = uuid.uuid4()
 
     def __repr__(self):
         parameter, argument = self.get_internal_representation()
@@ -300,6 +305,10 @@ class Checkpoint:
             raise RuntimeError(f"Empty data for checkpoint {self}")
 
     @classmethod
+    @Deprecated(
+        message="To restore a checkpoint from a remote object ref, call "
+        "`ray.get(obj_ref)` instead."
+    )
     def from_object_ref(cls, obj_ref: ray.ObjectRef) -> "Checkpoint":
         """Create checkpoint object from object reference.
 
@@ -309,14 +318,30 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
+        warnings.warn(
+            "`from_object_ref` is deprecated and will be removed in a future Ray "
+            "version. To restore a Checkpoint from a remote object ref, call "
+            "`ray.get(obj_ref)` instead.",
+            DeprecationWarning,
+        )
         return cls(obj_ref=obj_ref)
 
+    @Deprecated(
+        message="To store the checkpoint in the Ray object store, call `ray.put(ckpt)` "
+        "instead of `ckpt.to_object_ref()`."
+    )
     def to_object_ref(self) -> ray.ObjectRef:
         """Return checkpoint data as object reference.
 
         Returns:
             ray.ObjectRef: ObjectRef pointing to checkpoint data.
         """
+        warnings.warn(
+            "`to_object_ref` is deprecated and will be removed in a future Ray "
+            "version. To store the checkpoint in the Ray object store, call "
+            "`ray.put(ckpt)` instead of `ckpt.to_object_ref()`.",
+            DeprecationWarning,
+        )
         if self._obj_ref:
             return self._obj_ref
         else:
@@ -358,29 +383,27 @@ class Checkpoint:
 
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir."""
-        if self._obj_ref:
-            tmp_dir_path = tempfile.gettempdir()
-            checkpoint_dir_name = _CHECKPOINT_DIR_PREFIX + self._obj_ref.hex()
-            if platform.system() == "Windows":
-                # Max path on Windows is 260 chars, -1 for joining \
-                # Also leave a little for the del lock
-                del_lock_name = _get_del_lock_path("")
-                checkpoint_dir_name = (
-                    _CHECKPOINT_DIR_PREFIX
-                    + self._obj_ref.hex()[
-                        -259
-                        + len(_CHECKPOINT_DIR_PREFIX)
-                        + len(tmp_dir_path)
-                        + len(del_lock_name) :
-                    ]
+        tmp_dir_path = tempfile.gettempdir()
+        checkpoint_dir_name = _CHECKPOINT_DIR_PREFIX + self._uuid.hex
+        if platform.system() == "Windows":
+            # Max path on Windows is 260 chars, -1 for joining \
+            # Also leave a little for the del lock
+            del_lock_name = _get_del_lock_path("")
+            checkpoint_dir_name = (
+                _CHECKPOINT_DIR_PREFIX
+                + self._uuid.hex[
+                    -259
+                    + len(_CHECKPOINT_DIR_PREFIX)
+                    + len(tmp_dir_path)
+                    + len(del_lock_name) :
+                ]
+            )
+            if not checkpoint_dir_name.startswith(_CHECKPOINT_DIR_PREFIX):
+                raise RuntimeError(
+                    "Couldn't create checkpoint directory due to length "
+                    "constraints. Try specifing a shorter checkpoint path."
                 )
-                if not checkpoint_dir_name.startswith(_CHECKPOINT_DIR_PREFIX):
-                    raise RuntimeError(
-                        "Couldn't create checkpoint directory due to length "
-                        "constraints. Try specifing a shorter checkpoint path."
-                    )
-            return os.path.join(tmp_dir_path, checkpoint_dir_name)
-        return _temporary_checkpoint_dir()
+        return os.path.join(tmp_dir_path, checkpoint_dir_name)
 
     def _to_directory(self, path: str) -> None:
         if self._data_dict or self._obj_ref:
@@ -475,18 +498,12 @@ class Checkpoint:
         the existing path. If it is not, it will create a temporary directory,
         which will be deleted after the context is exited.
 
-        If the checkpoint has been created from an object reference, the directory name
-        will be constant and equal to the object reference ID. This allows for multiple
-        processes to use the same files for improved performance. The directory
-        will be deleted after exiting the context only if no other processes are using
-        it.
-        In any other case, a new temporary directory will be created with each call
-        to ``as_directory``.
-
         Users should treat the returned checkpoint directory as read-only and avoid
         changing any data within it, as it might get deleted when exiting the context.
 
         Example:
+
+        .. code-block:: python
 
             with checkpoint.as_directory() as checkpoint_dir:
                 # Do some read-only processing of files within checkpoint_dir
@@ -652,11 +669,6 @@ def _get_external_path(path: Optional[str]) -> Optional[str]:
     if not isinstance(path, str) or not is_non_local_path_uri(path):
         return None
     return path
-
-
-def _temporary_checkpoint_dir() -> str:
-    """Create temporary checkpoint dir."""
-    return tempfile.mkdtemp(prefix=_CHECKPOINT_DIR_PREFIX)
 
 
 def _pack(path: str) -> bytes:

@@ -74,6 +74,15 @@ Feature Scalers
 .. autoclass:: ray.data.preprocessors.StandardScaler
     :show-inheritance:
 
+K-Bins Discretizers
+###################
+
+.. autoclass:: ray.data.preprocessors.CustomKBinsDiscretizer
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.UniformKBinsDiscretizer
+    :show-inheritance:
+
 Text Encoders
 #############
 
@@ -121,6 +130,8 @@ Training Result
 
 .. automodule:: ray.air.result
     :members:
+
+.. _air-session-ref:
 
 Training Session
 ################
@@ -199,14 +210,17 @@ XGBoost
 .. autoclass:: ray.train.xgboost.XGBoostTrainer
     :members:
     :show-inheritance:
+    :noindex:
 
     .. automethod:: __init__
+        :noindex:
 
 
 .. automodule:: ray.train.xgboost
     :members:
     :exclude-members: XGBoostTrainer
     :show-inheritance:
+    :noindex:
 
 LightGBM
 ########
@@ -214,14 +228,17 @@ LightGBM
 .. autoclass:: ray.train.lightgbm.LightGBMTrainer
     :members:
     :show-inheritance:
+    :noindex:
 
     .. automethod:: __init__
+        :noindex:
 
 
 .. automodule:: ray.train.lightgbm
     :members:
     :exclude-members: LightGBMTrainer
     :show-inheritance:
+    :noindex:
 
 TensorFlow
 ##########
@@ -229,14 +246,17 @@ TensorFlow
 .. autoclass:: ray.train.tensorflow.TensorflowTrainer
     :members:
     :show-inheritance:
+    :noindex:
 
     .. automethod:: __init__
+        :noindex:
 
 
 .. automodule:: ray.train.tensorflow
     :members:
     :exclude-members: TensorflowTrainer
     :show-inheritance:
+    :noindex:
 
 .. _air-pytorch-ref:
 
@@ -246,14 +266,17 @@ PyTorch
 .. autoclass:: ray.train.torch.TorchTrainer
     :members:
     :show-inheritance:
+    :noindex:
 
     .. automethod:: __init__
+        :noindex:
 
 
 .. automodule:: ray.train.torch
     :members:
     :exclude-members: TorchTrainer
     :show-inheritance:
+    :noindex:
 
 Horovod
 #######
@@ -261,14 +284,17 @@ Horovod
 .. autoclass:: ray.train.horovod.HorovodTrainer
     :members:
     :show-inheritance:
+    :noindex:
 
     .. automethod:: __init__
+        :noindex:
 
 
 .. automodule:: ray.train.horovod
     :members:
     :exclude-members: HorovodTrainer
     :show-inheritance:
+    :noindex:
 
 HuggingFace
 ###########
@@ -276,14 +302,17 @@ HuggingFace
 .. autoclass:: ray.train.huggingface.HuggingFaceTrainer
     :members:
     :show-inheritance:
+    :noindex:
 
     .. automethod:: __init__
+        :noindex:
 
 
 .. automodule:: ray.train.huggingface
     :members:
     :exclude-members: HuggingFaceTrainer
     :show-inheritance:
+    :noindex:
 
 Scikit-Learn
 ############
@@ -291,14 +320,17 @@ Scikit-Learn
 .. autoclass:: ray.train.sklearn.SklearnTrainer
     :members:
     :show-inheritance:
+    :noindex:
 
     .. automethod:: __init__
+        :noindex:
 
 
 .. automodule:: ray.train.sklearn
     :members:
     :exclude-members: SklearnTrainer
     :show-inheritance:
+    :noindex:
 
 
 Reinforcement Learning (RLlib)
@@ -307,6 +339,7 @@ Reinforcement Learning (RLlib)
 .. automodule:: ray.train.rl
     :members:
     :show-inheritance:
+    :noindex:
 
 .. _air-builtin-callbacks:
 
@@ -333,5 +366,3 @@ Weights and Biases
 ##################
 
 .. autoclass:: ray.air.callbacks.wandb.WandbLoggerCallback
-
-.. _air-session-ref:
