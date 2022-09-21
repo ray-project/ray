@@ -210,8 +210,11 @@ class ActorReplicaWrapper:
         # the non-detached case.
         self._actor_handle: ActorHandle = None
 
-        # Populated after replica is allocated.
-        self._node_id: str = None
+        if isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy):
+            self._node_id = scheduling_strategy.node_id
+        else:
+            # Populated after replica is allocated.
+            self._node_id: str = None
 
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
@@ -641,33 +644,7 @@ class ActorReplicaWrapper:
             pass
 
 
-class DriverActorReplicaWrapper(ActorReplicaWrapper):
-    def __init__(
-        self,
-        actor_name: str,
-        detached: bool,
-        controller_name: str,
-        replica_tag: ReplicaTag,
-        deployment_name: str,
-        node_id: str,
-    ):
-        self.deployed_node_id = node_id
-        super().__init__(
-            actor_name,
-            detached,
-            controller_name,
-            replica_tag,
-            deployment_name,
-            NodeAffinitySchedulingStrategy(self.deployed_node_id, soft=False),
-        )
-
-    @property
-    def node_id(self) -> Optional[str]:
-        """Returns the node id of the actor"""
-        return self.deployed_node_id
-
-
-class BaseDeploymentReplica(VersionedReplica):
+class DeploymentReplica(VersionedReplica):
     """Manages state transitions for deployment replicas.
 
     This is basically a checkpointable lightweight state machine.
@@ -676,12 +653,23 @@ class BaseDeploymentReplica(VersionedReplica):
     def __init__(
         self,
         controller_name: str,
+        detached: bool,
         replica_tag: ReplicaTag,
         deployment_name: str,
         version: DeploymentVersion,
-        actor,
+        # Spread replicas to avoid correlated failures on a single node.
+        # This is a soft spread, so if there is only space on a single node
+        # the replicas will be placed there.
+        scheduling_strategy="SPREAD",
     ):
-        self._actor = actor
+        self._actor = ActorReplicaWrapper(
+            f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
+            detached,
+            controller_name,
+            replica_tag,
+            deployment_name,
+            scheduling_strategy,
+        )
         self._controller_name = controller_name
         self._deployment_name = deployment_name
         self._replica_tag = replica_tag
@@ -825,54 +813,6 @@ class BaseDeploymentReplica(VersionedReplica):
         # when dumping these dictionaries. See
         # https://github.com/ray-project/ray/issues/26210 for the issue.
         return json.dumps(required), json.dumps(available)
-
-
-class DeploymentReplica(BaseDeploymentReplica):
-    """
-    Inference deployment replica to manage the state transition
-    """
-
-    def __init__(
-        self,
-        controller_name: str,
-        detached: bool,
-        replica_tag: ReplicaTag,
-        deployment_name: str,
-        version: DeploymentVersion,
-    ):
-        actor = ActorReplicaWrapper(
-            f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
-            detached,
-            controller_name,
-            replica_tag,
-            deployment_name,
-        )
-        super().__init__(controller_name, replica_tag, deployment_name, version, actor)
-
-
-class DriverDeploymentReplica(BaseDeploymentReplica):
-    """
-    Driver deployment replica to manage the state transition
-    """
-
-    def __init__(
-        self,
-        controller_name: str,
-        detached: bool,
-        replica_tag: ReplicaTag,
-        deployment_name: str,
-        version: DeploymentVersion,
-        node_id,
-    ):
-        actor = DriverActorReplicaWrapper(
-            f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
-            detached,
-            controller_name,
-            replica_tag,
-            deployment_name,
-            node_id,
-        )
-        super().__init__(controller_name, replica_tag, deployment_name, version, actor)
 
 
 class ReplicaStateContainer:
@@ -1515,7 +1455,6 @@ class DeploymentState:
             ]:
 
                 is_slow = time.time() - replica._start_time > SLOW_STARTUP_WARNING_S
-
                 if is_slow:
                     slow_replicas.append((replica, start_status))
 
@@ -1724,13 +1663,13 @@ class DriverDeploymentState(DeploymentState):
             if node_id in deployed_nodes:
                 continue
             replica_name = ReplicaName(self._name, get_random_letters())
-            new_deployment_replica = DriverDeploymentReplica(
+            new_deployment_replica = DeploymentReplica(
                 self._controller_name,
                 self._detached,
                 replica_name.replica_tag,
                 replica_name.deployment_tag,
                 self._target_state.version,
-                node_id,
+                NodeAffinitySchedulingStrategy(node_id, soft=False),
             )
             new_deployment_replica.start(
                 self._target_state.info, self._target_state.version
