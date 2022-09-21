@@ -631,7 +631,8 @@ def run(
     runner = TrialRunner(
         search_alg=search_alg,
         scheduler=scheduler,
-        local_checkpoint_dir=experiments[0].checkpoint_dir,
+        root_dir=experiments[0].local_dir,
+        local_checkpoint_dir=experiments[0].relative_checkpoint_dir,
         remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
         sync_config=sync_config,
         stopper=experiments[0].stopper,

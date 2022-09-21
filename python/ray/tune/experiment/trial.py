@@ -860,7 +860,7 @@ class Trial:
 
         return copy.deepcopy(state)
 
-    def __setstate__(self, state):
+    def __setstate__(self, state: dict, skip_init_logdir: bool = False):
 
         if state["status"] == Trial.RUNNING:
             state["status"] = Trial.PENDING
@@ -881,5 +881,5 @@ class Trial:
         # Avoid creating logdir in client mode for returned trial results,
         # since the dir might not be creatable locally.
         # TODO(ekl) this is kind of a hack.
-        if not ray.util.client.ray.is_connected():
+        if not skip_init_logdir and not ray.util.client.ray.is_connected():
             self.init_logdir()  # Create logdir if it does not exist

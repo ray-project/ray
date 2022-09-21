@@ -126,7 +126,6 @@ class Experiment:
         max_failures=0,
         restore=None,
     ):
-
         local_dir = _get_local_dir_with_expand_user(local_dir)
         # `_experiment_checkpoint_dir` is for internal use only for better
         # support of Tuner API.
@@ -408,6 +407,10 @@ class Experiment:
             return self._experiment_checkpoint_dir
         assert self.local_dir
         return os.path.join(self.local_dir, self.dir_name)
+
+    @property
+    def relative_checkpoint_dir(self):
+        return self.dir_name
 
     @property
     def run_identifier(self):

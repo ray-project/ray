@@ -53,28 +53,62 @@ MAX_DEBUG_TRIALS = 20
 logger = logging.getLogger(__name__)
 
 
-def _find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
+def _find_newest_experiment_checkpoint(
+    ckpt_dir, relative: bool = False
+) -> Optional[str]:
     """Returns path to most recently modified checkpoint."""
-    full_paths = [
-        os.path.join(ckpt_dir, fname)
+    paths = [
+        fname if relative else os.path.join(ckpt_dir, fname)
         for fname in os.listdir(ckpt_dir)
         if fname.startswith("experiment_state") and fname.endswith(".json")
     ]
-    if not full_paths:
+    if not paths:
         return None
-    return max(full_paths)
+    return max(paths)
 
 
-def _load_trial_from_checkpoint(trial_cp: dict, stub: bool = False, **kwargs):
+def _load_trial_from_checkpoint(
+    trial_cp: dict, stub: bool = False, local_dir: Optional[str] = None, **kwargs
+):
     new_trial = Trial(
         trial_cp["trainable_name"], stub=stub, _setup_default_resource=False, **kwargs
     )
-    new_trial.__setstate__(trial_cp)
+
+    checkpoint_local_dir = trial_cp.get("local_dir", None)
+    local_dir_changed = local_dir and checkpoint_local_dir != local_dir
+
+    # NOTE: Skip initializing the logdir if local_dir has changed, since it will create
+    # a directory at the old path (i.e. moving the experiment directory, then resuming)
+    new_trial.__setstate__(trial_cp, skip_init_logdir=local_dir_changed)
+
+    if local_dir_changed:
+        # Update checkpoint dir_or_data by joining the new local_dir with the
+        # relative checkpoint path (relative to the old local_dir)
+        new_checkpoint_dir = os.path.relpath(
+            new_trial.checkpoint.dir_or_data, new_trial.local_dir
+        )
+        relative_checkpoint_dir_or_data = new_checkpoint_dir
+        new_trial.checkpoint.dir_or_data = os.path.join(
+            local_dir, relative_checkpoint_dir_or_data
+        )
+
+        logger.info(
+            f"Updated {new_trial} checkpoint directory to match the new "
+            f"local_dir: {new_trial.checkpoint.dir_or_data}"
+        )
+
+        # Update trial local_dir
+        new_trial.local_dir = local_dir
+        # Finish setting up the logdir with the new paths (since we skipped earlier)
+        new_trial.init_logdir()
+
     return new_trial
 
 
 def _load_trials_from_experiment_checkpoint(
-    experiment_checkpoint: Mapping[str, Any], stub: bool = False
+    experiment_checkpoint: Mapping[str, Any],
+    stub: bool = False,
+    local_dir: Optional[str] = None,
 ) -> List[Trial]:
     """Create trial objects from experiment checkpoint.
 
@@ -87,7 +121,9 @@ def _load_trials_from_experiment_checkpoint(
 
     trials = []
     for trial_cp in checkpoints:
-        trials.append(_load_trial_from_checkpoint(trial_cp, stub=stub))
+        trials.append(
+            _load_trial_from_checkpoint(trial_cp, stub=stub, local_dir=local_dir)
+        )
 
     return trials
 
@@ -296,6 +332,7 @@ class TrialRunner:
         self,
         search_alg: Optional[SearchAlgorithm] = None,
         scheduler: Optional[TrialScheduler] = None,
+        root_dir: Optional[str] = None,
         local_checkpoint_dir: Optional[str] = None,
         remote_checkpoint_dir: Optional[str] = None,
         sync_config: Optional[SyncConfig] = None,
@@ -388,7 +425,9 @@ class TrialRunner:
 
         self._stop_queue = []
         self._should_stop_experiment = False  # used by TuneServer
-        self._local_checkpoint_dir = local_checkpoint_dir
+
+        self._root_dir = root_dir
+        self._relative_local_checkpoint_dir = local_checkpoint_dir
 
         if self._local_checkpoint_dir:
             os.makedirs(self._local_checkpoint_dir, exist_ok=True)
@@ -428,12 +467,9 @@ class TrialRunner:
         self._session_str = datetime.fromtimestamp(self._start_time).strftime(
             "%Y-%m-%d_%H-%M-%S"
         )
-        self.checkpoint_file = None
-        if self._local_checkpoint_dir:
-            self.checkpoint_file = os.path.join(
-                self._local_checkpoint_dir,
-                TrialRunner.CKPT_FILE_TMPL.format(self._session_str),
-            )
+        self._relative_checkpoint_file = TrialRunner.CKPT_FILE_TMPL.format(
+            self._session_str
+        )
 
         self._callbacks = CallbackList(callbacks or [])
 
@@ -713,6 +749,20 @@ class TrialRunner:
                 force=force,
             )
 
+    @property
+    def _local_checkpoint_dir(self):
+        if self._root_dir and self._relative_local_checkpoint_dir:
+            return os.path.join(self._root_dir, self._relative_local_checkpoint_dir)
+        return None
+
+    @property
+    def checkpoint_file(self):
+        if self._local_checkpoint_dir and self._relative_checkpoint_file:
+            return os.path.join(
+                self._local_checkpoint_dir, self._relative_checkpoint_file
+            )
+        return None
+
     def resume(
         self,
         resume_unfinished: bool = True,
@@ -724,21 +774,23 @@ class TrialRunner:
         Requires user to manually re-register their objects. Also stops
         all ongoing trials.
         """
-        newest_ckpt_path = _find_newest_experiment_checkpoint(
-            self._local_checkpoint_dir
+        relative_newest_ckpt_path = _find_newest_experiment_checkpoint(
+            self._local_checkpoint_dir, relative=True
         )
+        self._relative_checkpoint_file = relative_newest_ckpt_path
 
-        if not newest_ckpt_path:
+        if not relative_newest_ckpt_path:
             raise ValueError(
                 f"Tried to resume from checkpoint dir "
                 f"`{self._local_checkpoint_dir}`, but no "
                 f"experiment checkpoint data was found."
             )
 
+        newest_ckpt_path = self.checkpoint_file
+
         logger.info(f"Using following checkpoint to resume: {newest_ckpt_path}")
         with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f, cls=TuneFunctionDecoder)
-            self.checkpoint_file = newest_ckpt_path
 
         logger.warning(
             "".join(
@@ -751,11 +803,22 @@ class TrialRunner:
             )
         )
 
+        restore_root_dir = self._root_dir
         self.__setstate__(runner_state["runner_data"])
+        if self._root_dir != restore_root_dir:
+            logger.info(
+                f"Experiment parent directory has changed from {self._root_dir} to "
+                f"{restore_root_dir}. Resuming using checkpoints relative to the new "
+                "directory."
+            )
+            self._root_dir = restore_root_dir
+
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
-        trials = _load_trials_from_experiment_checkpoint(runner_state)
+        trials = _load_trials_from_experiment_checkpoint(
+            runner_state, local_dir=self._local_checkpoint_dir
+        )
         for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
             trial_to_add = trial
             if trial.status == Trial.ERROR:
