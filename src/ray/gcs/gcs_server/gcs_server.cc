@@ -197,13 +197,13 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
         DumpDebugStateToFile();
 
         if (cluster_task_manager_->GetPendingQueueSize() == 0) {
-          resource_deadlock_detected_ = 0;
+          task_pending_schedule_detected_ = 0;
           return;
         }
-        // Trigger global gc to solve resource deadlocks.
+        // Trigger global gc to solve task pending.
         // To avoid spurious triggers, only those after two consecutive
         // detections and under throttling are sent out.
-        if (resource_deadlock_detected_++ > 0 && global_gc_throttler_->AbleToRun()) {
+        if (task_pending_schedule_detected_++ > 0 && global_gc_throttler_->AbleToRun()) {
           rpc::ResourcesData resources_data;
           resources_data.set_should_global_gc(true);
 

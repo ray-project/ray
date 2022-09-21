@@ -111,6 +111,11 @@ void GcsResourceManager::HandleGetAllAvailableResources(
 
 void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data) {
   NodeID node_id = NodeID::FromBinary(data.node_id());
+  // When gcs detects task pending, we may receive an local update. But it can be ignored
+  // here because gcs' syncer has already broadcast it.
+  if (node_id == local_node_id_) {
+    return;
+  }
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, data);
   } else {
