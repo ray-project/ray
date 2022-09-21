@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import pandas as pd
-from ray.train.xgboost.xgboost_checkpoint import XGBoostCheckpoint
+from pandas.api.types import is_object_dtype
 import xgboost
 
 from ray.air.checkpoint import Checkpoint
@@ -9,6 +9,7 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 from ray.train.predictor import Predictor
+from ray.train.xgboost.xgboost_checkpoint import XGBoostCheckpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -143,15 +144,30 @@ class XGBoostPredictor(Predictor):
             if feature_columns:
                 # In this case feature_columns is a list of integers
                 data = data[:, feature_columns]
+            # Turn into dataframe to make dtype resolution easy
+            data = pd.DataFrame(data, columns=feature_names)
+            data = data.infer_objects()
+
+            # Pandas does not detect categorical dtypes. Any remaining object
+            # dtypes are probably categories, so convert them.
+            # This will fail if we have a category composed entirely of
+            # integers, but this is the best we can do here.
+            update_dtypes = {}
+            for column in data.columns:
+                dtype = data.dtypes[column]
+                if is_object_dtype(dtype):
+                    update_dtypes[column] = pd.CategoricalDtype()
+
+            if update_dtypes:
+                data = data.astype(update_dtypes, copy=False)
         elif feature_columns:
             # feature_columns is a list of integers or strings
-            data = data[feature_columns].to_numpy()
+            data = data[feature_columns]
             # Only set the feature names if they are strings
             if all(isinstance(fc, str) for fc in feature_columns):
                 feature_names = feature_columns
         else:
             feature_columns = data.columns.tolist()
-            data = data.to_numpy()
 
             if all(isinstance(fc, str) for fc in feature_columns):
                 feature_names = feature_columns
