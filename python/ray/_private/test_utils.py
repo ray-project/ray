@@ -1426,7 +1426,7 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
     return reply
 
 
-# Senda RPC to the raylet to have it self-destruct its process.
+# Send a RPC to the raylet to have it self-destruct its process.
 def kill_raylet(raylet, graceful=False):
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
     channel = grpc.insecure_channel(raylet_address)
