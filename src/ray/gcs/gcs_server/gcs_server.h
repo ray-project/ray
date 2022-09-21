@@ -34,6 +34,7 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/util/throttler.h"
 
 namespace ray {
 using raylet::ClusterTaskManager;
@@ -267,6 +268,9 @@ class GcsServer {
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
+  int resource_deadlock_detected_;
+  /// Throttler for global gc
+  std::unique_ptr<Throttler> global_gc_throttler_;
 };
 
 }  // namespace gcs
