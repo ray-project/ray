@@ -196,14 +196,25 @@ if __name__ == "__main__":
             elif changed_file.startswith("docker/"):
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
-            elif changed_file.startswith("doc/") and (
-                changed_file.endswith(".py")
-                or changed_file.endswith(".ipynb")
-                or changed_file.endswith("BUILD")
-            ):
-                RAY_CI_DOC_AFFECTED = 1
+            elif changed_file.startswith("doc/"):
+                if (
+                    changed_file.endswith(".py")
+                    or changed_file.endswith(".ipynb")
+                    or changed_file.endswith("BUILD")
+                ):
+                    RAY_CI_DOC_AFFECTED = 1
+                # Else, this affects only a rst file or so. In that case,
+                # we pass, as the flag RAY_CI_DOC_AFFECTED is only
+                # used to indicate that tests/examples should be run
+                # (documentation will be built always)
             elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
+                pass
+            elif changed_file.startswith("ci/lint"):
+                # Linter will always be run
+                pass
+            elif changed_file.startswith("ci/pipeline"):
+                # These scripts are always run as part of the build process
                 pass
             elif changed_file.endswith("build-docker-images.py"):
                 RAY_CI_DOCKER_AFFECTED = 1
@@ -223,6 +234,8 @@ if __name__ == "__main__":
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_DOC_AFFECTED = 1
             else:
+                print(f"Unhandled source code change: {changed_file}", file=sys.stderr)
+
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1

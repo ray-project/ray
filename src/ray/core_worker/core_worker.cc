@@ -36,6 +36,23 @@
 
 namespace ray {
 namespace core {
+
+JobID GetProcessJobID(const CoreWorkerOptions &options) {
+  if (options.worker_type == WorkerType::DRIVER) {
+    RAY_CHECK(!options.job_id.IsNil());
+  } else {
+    RAY_CHECK(options.job_id.IsNil());
+  }
+
+  if (options.worker_type == WorkerType::WORKER) {
+    // For workers, the job ID is assigned by Raylet via an environment variable.
+    const std::string &job_id_env = RayConfig::instance().JOB_ID();
+    RAY_CHECK(!job_id_env.empty());
+    return JobID::FromHex(job_id_env);
+  }
+  return options.job_id;
+}
+
 namespace {
 
 class ScopedTaskStateSetter {
@@ -55,22 +72,6 @@ class ScopedTaskStateSetter {
 };
 
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
-
-JobID GetProcessJobID(const CoreWorkerOptions &options) {
-  if (options.worker_type == WorkerType::DRIVER) {
-    RAY_CHECK(!options.job_id.IsNil());
-  } else {
-    RAY_CHECK(options.job_id.IsNil());
-  }
-
-  if (options.worker_type == WorkerType::WORKER) {
-    // For workers, the job ID is assigned by Raylet via an environment variable.
-    const std::string &job_id_env = RayConfig::instance().JOB_ID();
-    RAY_CHECK(!job_id_env.empty());
-    return JobID::FromHex(job_id_env);
-  }
-  return options.job_id;
-}
 
 // Helper function converts GetObjectLocationsOwnerReply to ObjectLocation
 ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &reply) {
@@ -606,6 +607,8 @@ void CoreWorker::Disconnect(
     const rpc::WorkerExitType &exit_type,
     const std::string &exit_detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
+  // Force stats export before exiting the worker.
+  opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {
     RAY_LOG(INFO) << "Disconnecting to the raylet.";
     connected_ = false;

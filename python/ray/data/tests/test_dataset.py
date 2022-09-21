@@ -391,6 +391,51 @@ def test_batch_tensors(ray_start_regular_shared):
     assert df.to_dict().keys() == {"value"}
 
 
+def test_arrow_block_select():
+    df = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13], "three": [14, 15, 16]})
+    table = pa.Table.from_pandas(df)
+    block_accessor = BlockAccessor.for_block(table)
+
+    block = block_accessor.select(["two"])
+    assert block.schema == pa.schema([("two", pa.int64())])
+    assert block.to_pandas().equals(df[["two"]])
+
+    block = block_accessor.select(["two", "one"])
+    assert block.schema == pa.schema([("two", pa.int64()), ("one", pa.int64())])
+    assert block.to_pandas().equals(df[["two", "one"]])
+
+    with pytest.raises(ValueError):
+        block = block_accessor.select([lambda x: x % 3, "two"])
+
+
+def test_pandas_block_select():
+    df = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13], "three": [14, 15, 16]})
+    block_accessor = BlockAccessor.for_block(df)
+
+    block = block_accessor.select(["two"])
+    assert block.equals(df[["two"]])
+
+    block = block_accessor.select(["two", "one"])
+    assert block.equals(df[["two", "one"]])
+
+    with pytest.raises(ValueError):
+        block = block_accessor.select([lambda x: x % 3, "two"])
+
+
+def test_simple_block_select():
+    xs = list(range(100))
+    block_accessor = BlockAccessor.for_block(xs)
+
+    block = block_accessor.select([lambda x: x % 3])
+    assert block == [x % 3 for x in xs]
+
+    with pytest.raises(ValueError):
+        block = block_accessor.select(["foo"])
+
+    with pytest.raises(ValueError):
+        block = block_accessor.select([])
+
+
 def test_arrow_block_slice_copy():
     # Test that ArrowBlock slicing properly copies the underlying Arrow
     # table.
@@ -4910,6 +4955,18 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
         compute_strategy.num_workers >= num_cpus
         and compute_strategy.num_workers <= expected_max_num_workers
     ), "Number of actors is out of the expected bound"
+
+
+def test_default_batch_format(shutdown_only):
+    ds = ray.data.range(100)
+    assert ds.default_batch_format() == list
+
+    ds = ray.data.range_tensor(100)
+    assert ds.default_batch_format() == np.ndarray
+
+    df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
+    ds = ray.data.from_pandas(df)
+    assert ds.default_batch_format() == pd.DataFrame
 
 
 if __name__ == "__main__":
