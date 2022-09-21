@@ -39,15 +39,16 @@ def get_agent_connectors_from_config(
             ClipRewardAgentConnector(ctx, limit=abs(config["clip_rewards"]))
         )
 
+    if not config["_disable_preprocessor_api"]:
+        connectors.append(ObsPreprocessorConnector(ctx))
+
+    # Filters should be after observation preprocessing
     filter_connector = get_synced_filter_connector(
         ctx,
     )
-    # Configuration option "NoFilter" results in `connector==None`.
+    # Configuration option "NoFilter" results in `filter_connector==None`.
     if filter_connector:
-        connectors.insert_after("ObsPreprocessorConnector", filter_connector)
-
-    if not config["_disable_preprocessor_api"]:
-        connectors.append(ObsPreprocessorConnector(ctx))
+        connectors.append(filter_connector)
 
     connectors.extend(
         [

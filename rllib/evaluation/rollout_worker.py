@@ -648,7 +648,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     policy.observation_space_struct,
                 )
                 self.filters[policy_id] = get_filter(
-                    self.policy_map[policy_id].config.get("observation_filter"),
+                    self.policy_map[policy_id].config.get(
+                        "observation_filter", "NoFilter"
+                    ),
                     filter_shape,
                 )
 
@@ -1256,8 +1258,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 new_policy.observation_space_struct,
             )
 
-            self.filters[policy_id] = get_filter(config["observation_filter"],
-                                                 filter_shape)
+            self.filters[policy_id] = get_filter(
+                config.get("observation_filter", "NoFilter"), filter_shape
+            )
 
         if connectors_enabled and policy_id in self.policy_map:
             create_connectors_for_policy(self.policy_map[policy_id], self.policy_config)
