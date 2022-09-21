@@ -59,6 +59,59 @@ namespace core {
 
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
+/// Simple container for per function task counters. The counters will be
+/// keyed by the function name in task spec.
+struct TaskCounter {
+  /// A task can only be one of the following state. Received state in particular
+  /// covers from the point of RPC call to beginning execution.
+  enum TaskStatusType { kPending, kRunning, kFinished };
+
+  /// This mutex should be used by caller to ensure consistency when transitioning
+  /// a task's state.
+  mutable absl::Mutex tasks_counter_mutex_;
+  absl::flat_hash_map<std::string, int> pending_tasks_counter_map_
+      GUARDED_BY(tasks_counter_mutex_);
+  absl::flat_hash_map<std::string, int> running_tasks_counter_map_
+      GUARDED_BY(tasks_counter_mutex_);
+  absl::flat_hash_map<std::string, int> finished_tasks_counter_map_
+      GUARDED_BY(tasks_counter_mutex_);
+  int64_t running_total_ GUARDED_BY(tasks_counter_mutex_) = 0;
+
+  void IncPending(const std::string &func_name) {
+    absl::MutexLock l(&tasks_counter_mutex_);
+    pending_tasks_counter_map_[func_name] += 1;
+  }
+
+  void MovePendingToRunning(const std::string &func_name) {
+    absl::MutexLock l(&tasks_counter_mutex_);
+    pending_tasks_counter_map_[func_name] -= 1;
+    running_tasks_counter_map_[func_name] += 1;
+    running_total_ += 1;
+    UpdateStats();
+  }
+
+  void MoveRunningToFinished(const std::string &func_name) {
+    absl::MutexLock l(&tasks_counter_mutex_);
+    running_tasks_counter_map_[func_name] -= 1;
+    finished_tasks_counter_map_[func_name] += 1;
+    running_total_ -= 1;
+    UpdateStats();
+  }
+
+  void UpdateStats() EXCLUSIVE_LOCKS_REQUIRED(&tasks_counter_mutex_) {
+    // Note that we set a Source=executor label so that metrics reported here don't
+    // conflict with metrics reported from task_manager.cc.
+    ray::stats::STATS_tasks.Record(
+        running_total_,
+        {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
+         {"Source", "executor"}});
+    ray::stats::STATS_tasks.Record(
+        -running_total_,
+        {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
+         {"Source", "executor"}});
+  }
+};
+
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
@@ -1263,58 +1316,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   std::shared_ptr<rpc::RuntimeEnvInfo> job_runtime_env_info_;
 
-  /// Simple container for per function task counters. The counters will be
-  /// keyed by the function name in task spec.
-  struct TaskCounter {
-    /// A task can only be one of the following state. Received state in particular
-    /// covers from the point of RPC call to beginning execution.
-    enum TaskStatusType { kPending, kRunning, kFinished };
-
-    /// This mutex should be used by caller to ensure consistency when transitioning
-    /// a task's state.
-    mutable absl::Mutex tasks_counter_mutex_;
-    absl::flat_hash_map<std::string, int> pending_tasks_counter_map_
-        GUARDED_BY(tasks_counter_mutex_);
-    absl::flat_hash_map<std::string, int> running_tasks_counter_map_
-        GUARDED_BY(tasks_counter_mutex_);
-    absl::flat_hash_map<std::string, int> finished_tasks_counter_map_
-        GUARDED_BY(tasks_counter_mutex_);
-    int64_t running_total_ GUARDED_BY(tasks_counter_mutex_) = 0;
-
-    void IncPending(const std::string &func_name) {
-      absl::MutexLock l(&tasks_counter_mutex_);
-      pending_tasks_counter_map_[func_name] += 1;
-    }
-
-    void MovePendingToRunning(const std::string &func_name) {
-      absl::MutexLock l(&tasks_counter_mutex_);
-      pending_tasks_counter_map_[func_name] -= 1;
-      running_tasks_counter_map_[func_name] += 1;
-      running_total_ += 1;
-      UpdateStats();
-    }
-
-    void MoveRunningToFinished(const std::string &func_name) {
-      absl::MutexLock l(&tasks_counter_mutex_);
-      running_tasks_counter_map_[func_name] -= 1;
-      finished_tasks_counter_map_[func_name] += 1;
-      running_total_ -= 1;
-      UpdateStats();
-    }
-
-    void UpdateStats() EXCLUSIVE_LOCKS_REQUIRED(&tasks_counter_mutex_) {
-      // Note that we set a Source=executor label so that metrics reported here don't
-      // conflict with metrics reported from task_manager.cc.
-      ray::stats::STATS_tasks.Record(
-          running_total_,
-          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
-           {"Source", "executor"}});
-      ray::stats::STATS_tasks.Record(
-          -running_total_,
-          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
-           {"Source", "executor"}});
-    }
-  };
   TaskCounter task_counter_;
 
   /// Used to guarantee that submitting actor task is thread safe.
