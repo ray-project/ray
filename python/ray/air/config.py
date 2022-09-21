@@ -266,6 +266,9 @@ class ScalingConfig:
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
 
+    See :ref:`the AIR Dataset configuration guide <air-configure-ingest>` for
+    usage examples.
+
     This config defines how the Dataset should be read into the DataParallelTrainer.
     It configures the preprocessing, splitting, and ingest strategy per-dataset.
 
