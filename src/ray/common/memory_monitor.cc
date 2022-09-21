@@ -127,7 +127,9 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
           << " Used memory is greater than or equal to total memory used. This can "
              "happen if the memory limit is set and the container is "
              "using a lot of memory. Used "
-          << used_bytes << ", total " << total_bytes;
+          << used_bytes << ", total " << total_bytes
+          << ", setting used to be equal to total";
+      used_bytes = total_bytes;
     }
   }
 
