@@ -87,6 +87,7 @@ class NonTensorDataset(LinearDataset):
 
 # TODO: Refactor as a backend test.
 @pytest.mark.parametrize("cuda_visible_devices", ["", "1"])
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
 def test_torch_get_device(
     shutdown_only, num_gpus_per_worker, cuda_visible_devices, monkeypatch
 ):
