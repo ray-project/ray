@@ -108,7 +108,8 @@ Advanced Usage
 
 Viewing built-in dashboard API metrics
 --------------------------------------
-The API server that serves the dashboard also emits basic prometheus metrics for API call count and API call duration.
+The dashboard is powered by a server that serves both the UI code and the data about the cluster via API endpoints.
+There are basic prometheus metrics that are emitted for each of these API endpoints:
 
 `dashboard_api_requests_count_requests_total`: Collects the total count of requests. This is tagged by endpoint, method, and http_status.
 
@@ -118,6 +119,8 @@ Example: You can view the p95 duration of all requests with this query:
 .. code-block:: text
 
   histogram_quantile(0.95, sum(rate(dashboard_api_requests_duration_seconds_bucket[5m])) by (le))
+
+These metrics can be queried via prometheus or grafana UI. Instructions on how to set these tools up can be found :ref:`here <ray-metrics>`.
 
 Debugging ObjectStoreFullError and Memory Leaks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
