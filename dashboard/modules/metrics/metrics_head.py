@@ -38,7 +38,6 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
     def _create_default_grafana_configs(self):
         """
         Creates the grafana configurations that are by default provided by Ray.
-        This will completely replace the `/tmp/ray/metrics/grafana` folder.
         """
         grafana_config_output_path = os.path.join(self.metrics_root, "grafana")
 
@@ -70,7 +69,6 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
     def _create_default_prometheus_configs(self):
         """
         Creates the prometheus configurations that are by default provided by Ray.
-        This will completely replace the `/tmp/ray/metrics/prometheus` folder.
         """
         prometheus_config_output_path = os.path.join(
             self.metrics_root, "prometheus", "prometheus.yml"
