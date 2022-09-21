@@ -8,8 +8,8 @@ Ray will implicitly store the argument in the object store and the worker proces
 If we pass the same large argument to multiple tasks, Ray will end up storing multiple copies of the argument in the object store since Ray doesn't do deduplication.
 
 Instead of passing the large argument by value to multiple tasks,
-we should use :ref:`ray.put() <ray-put-ref>` to store the argument to the object store once and get a ``ObjectRef``,
-then pass the reference to tasks. This way, we make sure all tasks use the same copy of the argument, which is faster and uses less object store memory.
+we should use :ref:`ray.put() <ray-put-ref>` to store the argument to the object store once and get an ``ObjectRef``,
+then pass the argument reference to tasks. This way, we make sure all tasks use the same copy of the argument, which is faster and uses less object store memory.
 
 Code example
 ------------
