@@ -57,16 +57,17 @@ namespace {
 
 class ScopedTaskStateSetter {
  public:
-  ScopedTaskStateSetter(WorkerContext &ctx, TaskCounter &ctr, rpc::TaskStatus status) : status_(status), ctr_(ctr) {
+  ScopedTaskStateSetter(WorkerContext &ctx, TaskCounter &ctr, rpc::TaskStatus status)
+      : status_(status), ctr_(ctr) {
     task_spec_ = ctx.GetCurrentTask();
     if (task_spec_ != nullptr) {
-      RAY_LOG(ERROR) << "CURRENT TASK IN STATE ";
+      ctr_.SetMetricStatus(task_spec_->GetName(), status);
     }
   }
 
   ~ScopedTaskStateSetter() {
     if (task_spec_ != nullptr) {
-      RAY_LOG(ERROR) << "CURRENT TASK EXIT STATE ";
+      ctr_.UnsetMetricStatus(task_spec_->GetName(), status_);
     }
   }
 
@@ -1120,7 +1121,8 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
-  ScopedTaskStateSetter state(worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
+  ScopedTaskStateSetter state(
+      worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
 
   results->resize(ids.size(), nullptr);
 
@@ -1259,7 +1261,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
                         int64_t timeout_ms,
                         std::vector<bool> *results,
                         bool fetch_local) {
-  ScopedTaskStateSetter state(worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_WAIT);
+  ScopedTaskStateSetter state(
+      worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_WAIT);
 
   results->resize(ids.size(), false);
 

@@ -75,7 +75,14 @@ struct TaskCounter {
       GUARDED_BY(tasks_counter_mutex_);
   absl::flat_hash_map<std::string, int> finished_tasks_counter_map_
       GUARDED_BY(tasks_counter_mutex_);
+
+  /// Tracks the total number of running tasks on this process.
   int64_t running_total_ GUARDED_BY(tasks_counter_mutex_) = 0;
+
+  // Tracks tasks blocked in ray.get() and wait(). These counters overlap
+  // the counts of running_total_.
+  int64_t running_in_get_total_ GUARDED_BY(tasks_counter_mutex_) = 0;
+  int64_t running_in_wait_total_ GUARDED_BY(tasks_counter_mutex_) = 0;
 
   void IncPending(const std::string &func_name) {
     absl::MutexLock l(&tasks_counter_mutex_);
@@ -98,12 +105,41 @@ struct TaskCounter {
     UpdateStats();
   }
 
+  void SetMetricStatus(const std::string &func_name, rpc::TaskStatus status) {
+    // TODO(ekl) track and report per-name status.
+    if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
+      running_in_get_total_ += 1;
+    } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
+      running_in_wait_total_ += 1;
+    } else {
+      RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
+    }
+  }
+
+  void UnsetMetricStatus(const std::string &func_name, rpc::TaskStatus status) {
+    if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
+      running_in_get_total_ -= 1;
+    } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
+      running_in_wait_total_ -= 1;
+    } else {
+      RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
+    }
+  }
+
   void UpdateStats() EXCLUSIVE_LOCKS_REQUIRED(&tasks_counter_mutex_) {
     // Note that we set a Source=executor label so that metrics reported here don't
     // conflict with metrics reported from task_manager.cc.
     ray::stats::STATS_tasks.Record(
-        running_total_,
+        running_total_ - running_in_get_total_ - running_in_wait_total_,
         {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
+         {"Source", "executor"}});
+    ray::stats::STATS_tasks.Record(
+        running_in_get_total_,
+        {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
+         {"Source", "executor"}});
+    ray::stats::STATS_tasks.Record(
+        running_in_wait_total_,
+        {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
          {"Source", "executor"}});
     ray::stats::STATS_tasks.Record(
         -running_total_,
