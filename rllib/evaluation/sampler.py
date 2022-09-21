@@ -644,8 +644,7 @@ def _env_runner(
     active_episodes: Dict[EnvID, Episode] = _NewEpisodeDefaultDict(_new_episode)
 
     # Before the very first poll (this will reset all vector sub-environments):
-    # Create all upcoming episodes and call `on_episode_created` callbacks for
-    # all sub-environments (upcoming episodes).
+    # Call custom `before_sub_environment_reset` callbacks for all sub-environments.
     for env_id, sub_env in base_env.get_sub_environments(as_dict=True).items():
         _create_episode(active_episodes, env_id, callbacks, worker, base_env)
 
@@ -1088,8 +1087,6 @@ def _process_observations(
                         # Failed to reset, add metrics about a faulty episode.
                         outputs.append(RolloutMetrics(episode_faulty=True))
 
-            _call_on_episode_start(episode, env_id, callbacks, worker, base_env)
-
             # Reset not supported, drop this env from the ready list.
             if resetted_obs is None:
                 if horizon != float("inf"):
@@ -1311,6 +1308,9 @@ def _process_policy_eval_results(
 
 
 def _create_episode(active_episodes, env_id, callbacks, worker, base_env):
+    # Make sure we are really creating a new episode here.
+    assert env_id not in active_episodes
+
     # Create a new episode under the given `env_id` and call the
     # `on_episode_created` callbacks.
     new_episode = active_episodes[env_id]
