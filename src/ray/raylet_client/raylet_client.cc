@@ -469,11 +469,15 @@ void raylet::RayletClient::ReleaseUnusedBundles(
 void raylet::RayletClient::PinObjectIDs(
     const rpc::Address &caller_address,
     const std::vector<ObjectID> &object_ids,
+    const ObjectID &generator_id,
     const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {
   rpc::PinObjectIDsRequest request;
   request.mutable_owner_address()->CopyFrom(caller_address);
   for (const ObjectID &object_id : object_ids) {
     request.add_object_ids(object_id.Binary());
+  }
+  if (!generator_id.IsNil()) {
+    request.set_generator_id(generator_id.Binary());
   }
   pins_in_flight_++;
   auto rpc_callback = [this, callback = std::move(callback)](

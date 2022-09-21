@@ -82,9 +82,15 @@ class LocalObjectManager {
   /// \param objects Pointers to the objects to be pinned. The pointer should
   /// be kept in scope until the object can be released.
   /// \param owner_address The owner of the objects to be pinned.
+  /// \param generator_id When it's set, this means that it was a dynamically
+  /// created ObjectID, so we need to notify the owner of the outer ObjectID
+  /// that should already be owned by the same worker. If the outer ObjectID is
+  /// still in scope, then the owner can add the dynamically created ObjectID
+  /// to its ref count. Set to nil for statically allocated ObjectIDs.
   void PinObjectsAndWaitForFree(const std::vector<ObjectID> &object_ids,
                                 std::vector<std::unique_ptr<RayObject>> &&objects,
-                                const rpc::Address &owner_address);
+                                const rpc::Address &owner_address,
+                                const ObjectID &generator_id = ObjectID::Nil());
 
   /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///
@@ -161,6 +167,16 @@ class LocalObjectManager {
   std::string DebugString() const;
 
  private:
+  struct LocalObjectInfo {
+    LocalObjectInfo(const rpc::Address &owner_address, const ObjectID &generator_id)
+        : owner_address(owner_address),
+          generator_id(generator_id.IsNil() ? std::nullopt
+                                            : std::optional<ObjectID>(generator_id)) {}
+    rpc::Address owner_address;
+    bool is_freed = false;
+    const std::optional<ObjectID> generator_id;
+  };
+
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSizeZero);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxFuseCount);
   FRIEND_TEST(LocalObjectManagerTest,
@@ -219,14 +235,14 @@ class LocalObjectManager {
   /// A callback to call when an object has been freed.
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
 
-  /// Hashmap from local objects that we are waiting to free to a tuple of
-  /// (their owner address, whether the object has been freed).
+  /// Hashmap from local objects that we are waiting to free to metadata about
+  /// the object including their owner address.
   /// All objects in this hashmap should also be in exactly one of the
   /// following maps:
   /// - pinned_objects_: objects pinned in shared memory
   /// - objects_pending_spill_: objects pinned and waiting for spill to complete
   /// - spilled_objects_url_: objects already spilled
-  absl::flat_hash_map<ObjectID, std::pair<rpc::Address, bool>> local_objects_;
+  absl::flat_hash_map<ObjectID, LocalObjectInfo> local_objects_;
 
   // Objects that are pinned on this node.
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
