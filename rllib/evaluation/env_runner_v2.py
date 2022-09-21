@@ -515,7 +515,7 @@ class EnvRunnerV2:
             episode: EpisodeV2 = self._active_episodes[env_id]
             # If this episode is brand-new, call the episode start callback(s).
             # Note: EpisodeV2s are initialized with length=-1 (before the reset).
-            if not episode.started:
+            if episode.length == -1:
                 self._call_on_episode_start(episode, env_id)
 
             # Episode length after this step.
