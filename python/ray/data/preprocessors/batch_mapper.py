@@ -53,10 +53,11 @@ class BatchMapper(Preprocessor):
         batch_format="pandas",
         # TODO: We should reach consistency of args between BatchMapper and map_batches.
     ):
-        assert batch_format in [
+        if batch_format not in [
             "pandas",
             "numpy",
-        ], "BatchMapper only supports pandas and numpy batch format."
+        ]:
+            raise ValueError("BatchMapper only supports pandas and numpy batch format.")
 
         self.batch_format = batch_format
         self.fn = fn

@@ -6,10 +6,13 @@ from typing import TYPE_CHECKING, Optional, Union, Dict
 import numpy as np
 
 from ray.data import Dataset
+from ray.data._internal.table_block import VALUE_COL_NAME
+from ray.data.extensions.tensor_extension import ArrowTensorType, TensorDtype
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
+    import pyarrow
 
     from ray.air.data_batch_type import DataBatchType
 
@@ -146,14 +149,14 @@ class Preprocessor(abc.ABC):
         self._transform_stats = transformed_ds.stats()
         return transformed_ds
 
-    def transform_batch(self, df: "DataBatchType") -> "DataBatchType":
+    def transform_batch(self, data: "DataBatchType") -> "DataBatchType":
         """Transform a single batch of data.
 
         The data will be converted to the format supported by the Preprocessor,
         based on which ``_transform_*`` method(s) are implemented.
 
         Args:
-            df: Input data batch.
+            data: Input data batch.
 
         Returns:
             DataBatchType:
@@ -169,7 +172,7 @@ class Preprocessor(abc.ABC):
             raise PreprocessorNotFittedException(
                 "`fit` must be called before `transform_batch`."
             )
-        return self._transform_batch(df)
+        return self._transform_batch(data)
 
     def _check_is_fitted(self) -> bool:
         """Returns whether this preprocessor is fitted.
@@ -189,16 +192,19 @@ class Preprocessor(abc.ABC):
         """Determine which transform to use based on data format and implementation.
 
         * If batch_format is given as:
-            * numpy and _transform_numpy is implemented will transform as numpy.
-            * pandas and _transform_pandas is implemented will transform as pandas.
-            * If both are implemented, we respect the user's choice of batch_format.
+            * ``numpy`` and ``_transform_numpy`` is implemented, will transform as ``numpy``.  # noqa: E501
+            * ``pandas`` and ``_transform_pandas`` is implemented will transform as ``pandas``. # noqa: E501
         * Otherwise, we will infer and pick the best transform to use:
-            * pandas data format prioritized transform as pandas if available.
-            * arrow data format prioritized transform as numpy if available.
+            * ``pandas`` data format prioritized transform as ``pandas`` if available.
+            * ``arrow`` and ``numpy`` data format prioritized transform as ``numpy`` if available. # noqa: E501
             * Fall back to what's available if no preferred path found.
         """
 
-        assert data_format in ("pandas", "arrow")
+        assert data_format in (
+            "pandas",
+            "arrow",
+            "numpy",
+        ), f"Unsupported data format: {data_format}"
         has_transform_pandas = (
             self.__class__._transform_pandas != Preprocessor._transform_pandas
         )
@@ -233,7 +239,7 @@ class Preprocessor(abc.ABC):
                         "None of `_transform_numpy` or `_transform_pandas` "
                         f"are implemented for dataset format `{data_format}`."
                     )
-            elif data_format == "arrow":
+            elif data_format == "arrow" or data_format == "numpy":
                 # Arrow -> Numpy is more efficient
                 if has_transform_numpy:
                     transform_type = "numpy"
@@ -302,26 +308,75 @@ class Preprocessor(abc.ABC):
                 return self._transform_pandas(data.to_pandas())
         elif transform_type == "numpy":
             if data_format == "numpy":
-                return self._transform_numpy(data)
+                return self._numpy_data_transform_numpy(data)
             elif data_format == "arrow":
-                if len(data.column_names) == 1:
-                    # If just a single column, return as a single numpy array.
-                    return self._transform_numpy(data[0].to_numpy())
-                else:
-                    output_dict = {}
-                    for col_name in data.column_names:
-                        output_dict[col_name] = data[col_name].to_numpy()
-                    return self._transform_numpy(output_dict)
+                return self._arrow_data_transform_numpy(data)
             elif data_format == "pandas":
-                if len(data.columns) == 1:
-                    # If just a single column, return as a single numpy array.
-                    return self._transform_numpy(data.iloc[:, 0].to_numpy())
-                else:
-                    # Else return as a dict of numpy arrays.
-                    output_dict = {}
-                    for column_name in data:
-                        output_dict[column_name] = data[column_name].to_numpy()
-                    return self._transform_numpy(output_dict)
+                return self._pandas_data_transform_numpy(data)
+
+    def _numpy_data_transform_numpy(
+        self, data: Union[np.ndarray, Dict[str, np.ndarray]]
+    ):
+        """Transform data batch with `numpy` format to `numpy` format.
+
+        Single-column dictionary will need to be preserved as dict unless
+        it's using the Datasets scheme for representing "tensor datasets"
+        """
+        if (
+            isinstance(data, dict)
+            and data.keys() == {VALUE_COL_NAME}
+            and isinstance(data[VALUE_COL_NAME], np.ndarray)
+        ):
+            return self._transform_numpy(data[VALUE_COL_NAME])
+        else:
+            return self._transform_numpy(data)
+
+    def _arrow_data_transform_numpy(self, data: "pyarrow.Table"):
+        """Transform data batch with `arrow` format to `numpy` format.
+
+        Single-column tables will need to be preserved as tables unless
+        it's using the Datasets scheme for representing "tensor datasets"
+        """
+        import pyarrow
+
+        if data.column_names == [VALUE_COL_NAME] and isinstance(
+            data.schema.types[0], ArrowTensorType
+        ):
+            # If representing a tensor dataset, return as a single numpy array.
+            return self._transform_numpy(data[0].to_numpy())
+        else:
+            output_dict = {}
+            for col_name in data.column_names:
+                output_dict[col_name] = data[col_name].to_numpy()
+            if len(data.column_names) == 1:
+                # Otherwise, single-column table is perserved as a table.
+                return pyarrow.Table.from_pydict(output_dict)
+            else:
+                return self._transform_numpy(output_dict)
+
+    def _pandas_data_transform_numpy(self, data: "pd.DataFrame"):
+        """Transform data batch with `pandas` format to `numpy` format.
+
+        Single-column tables will need to be preserved as tables unless
+        it's using the Datasets scheme for representing "tensor datasets"
+        """
+        import pandas as pd
+
+        if list(data.columns) == [VALUE_COL_NAME] and isinstance(
+            next(iter(data.dtypes)), TensorDtype
+        ):
+            # If representing a tensor dataset, return as a single numpy array.
+            return self._transform_numpy(data.iloc[:, 0].to_numpy())
+        else:
+            # Else return as a dict of numpy arrays.
+            output_dict = {}
+            for column_name in data:
+                output_dict[column_name] = data[column_name].to_numpy()
+            if len(data.columns) == 1:
+                # Otherwise, single-column table is perserved as a table.
+                return pd.DataFrame.from_dict(output_dict)
+            else:
+                return self._transform_numpy(output_dict)
 
     @DeveloperAPI
     def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":

@@ -11,7 +11,7 @@ from ray.data.preprocessors import BatchMapper
 
 
 @pytest.fixture
-def test_ds_pandas_format():
+def ds_pandas_format():
     old_column = [1, 2, 3, 4]
     to_be_modified = [1, -1, 1, -1]
     in_df = pd.DataFrame.from_dict(
@@ -22,7 +22,7 @@ def test_ds_pandas_format():
 
 
 @pytest.fixture
-def test_ds_multi_column_arrow_format():
+def ds_multi_column_arrow_format():
     old_column = [1, 2, 3, 4]
     to_be_modified = [1, -1, 1, -1]
     ds = ray.data.from_arrow(
@@ -36,9 +36,9 @@ def test_ds_multi_column_arrow_format():
     yield ds, old_column
 
 
-def test_batch_mapper_pandas_data_format(test_ds_pandas_format):
+def test_batch_mapper_pandas_data_format(ds_pandas_format):
     """Tests batch mapper functionality."""
-    ds, old_column = test_ds_pandas_format
+    ds, old_column = ds_pandas_format
 
     def add_and_modify_udf_pandas(df: "pd.DataFrame"):
         df["new_col"] = df["old_column"] + 1
@@ -81,9 +81,9 @@ def test_batch_mapper_pandas_data_format(test_ds_pandas_format):
     assert_frame_equal(out_df_map_batches, out_df)
 
 
-def test_batch_mapper_arrow_data_format(test_ds_multi_column_arrow_format):
+def test_batch_mapper_arrow_data_format(ds_multi_column_arrow_format):
     """Tests batch mapper functionality."""
-    ds, old_column = test_ds_multi_column_arrow_format
+    ds, old_column = ds_multi_column_arrow_format
 
     def add_and_modify_udf_pandas(df: "pd.DataFrame"):
         df["new_col"] = df["old_column"] + 1

@@ -33,6 +33,7 @@ from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
 from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
+from ray.data._internal.table_block import VALUE_COL_NAME
 from ray.air.constants import MAX_REPR_LENGTH
 
 
@@ -1676,7 +1677,7 @@ def test_numpy_pandas_support_transform_batch_pandas(create_dummy_preprocessors)
     assert isinstance(with_pandas.transform_batch(df_single_column), pd.DataFrame)
 
     assert isinstance(with_numpy.transform_batch(df), (np.ndarray, dict))
-    assert isinstance(with_numpy.transform_batch(df_single_column), (np.ndarray, dict))
+    assert isinstance(with_numpy.transform_batch(df_single_column), pd.DataFrame)
 
     assert isinstance(with_pandas_and_numpy.transform_batch(df), pd.DataFrame)
     assert isinstance(
@@ -1707,13 +1708,41 @@ def test_numpy_pandas_support_transform_batch_arrow(create_dummy_preprocessors):
     assert isinstance(with_pandas.transform_batch(table_single_column), pd.DataFrame)
 
     assert isinstance(with_numpy.transform_batch(table), (np.ndarray, dict))
-    assert isinstance(
-        with_numpy.transform_batch(table_single_column), (np.ndarray, dict)
-    )
+    assert isinstance(with_numpy.transform_batch(table_single_column), pyarrow.Table)
     # Auto select data_format = "arrow" -> batch_format = "numpy" for performance
     assert isinstance(with_pandas_and_numpy.transform_batch(table), (np.ndarray, dict))
     assert isinstance(
-        with_pandas_and_numpy.transform_batch(table_single_column), (np.ndarray, dict)
+        with_pandas_and_numpy.transform_batch(table_single_column), pyarrow.Table
+    )
+
+
+def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors):
+    # Case 4: tensor dataset created by from numpy data directly
+    (
+        with_nothing,
+        _,
+        with_numpy,
+        with_pandas_and_numpy,
+    ) = create_dummy_preprocessors
+    np_data = np.ones(5)
+    np_dict = {"A": np.ones(5)}
+    np_single_column = {VALUE_COL_NAME: np.ones(5)}
+
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(np_data)
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(np_dict)
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(np_single_column)
+
+    assert isinstance(with_numpy.transform_batch(np_data), np.ndarray)
+    assert isinstance(with_numpy.transform_batch(np_dict), dict)
+    assert isinstance(with_numpy.transform_batch(np_single_column), np.ndarray)
+
+    assert isinstance(with_pandas_and_numpy.transform_batch(np_data), np.ndarray)
+    assert isinstance(with_pandas_and_numpy.transform_batch(np_dict), dict)
+    assert isinstance(
+        with_pandas_and_numpy.transform_batch(np_single_column), np.ndarray
     )
 
 
