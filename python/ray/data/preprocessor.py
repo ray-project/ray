@@ -350,7 +350,7 @@ class Preprocessor(abc.ABC):
                 output_dict[col_name] = data[col_name].to_numpy()
             if len(data.column_names) == 1:
                 # Otherwise, single-column table is perserved as a table.
-                return pyarrow.Table.from_pydict(output_dict)
+                return pyarrow.Table.from_pydict(self._transform_numpy(output_dict))
             else:
                 return self._transform_numpy(output_dict)
 
@@ -374,7 +374,7 @@ class Preprocessor(abc.ABC):
                 output_dict[column_name] = data[column_name].to_numpy()
             if len(data.columns) == 1:
                 # Otherwise, single-column table is perserved as a table.
-                return pd.DataFrame.from_dict(output_dict)
+                return pd.DataFrame.from_dict(self._transform_numpy(output_dict))
             else:
                 return self._transform_numpy(output_dict)
 
