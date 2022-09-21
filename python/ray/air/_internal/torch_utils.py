@@ -3,7 +3,6 @@ from typing import Dict, List, Optional, Union
 import numpy as np
 import pandas as pd
 import torch
-import warnings
 
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 
@@ -174,17 +173,6 @@ def load_torch_model(
     Otherwise, ``model_definition`` is discarded.
     """
     if isinstance(saved_model, torch.nn.Module):
-        if model_definition:
-            warnings.warn(
-                "TorchCheckpoint already contains all information needed. "
-                "Discarding provided `model_definition`. This means: "
-                "If you are using BatchPredictor, you should do "
-                "`BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)` by"
-                "removing kwargs `model=`. "
-                "If you are using TorchPredictor directly, you should do "
-                "`TorchPredictor.from_checkpoint(checkpoint)` by removing kwargs "
-                "`model=`."
-            )
         return saved_model
     elif isinstance(saved_model, dict):
         if not model_definition:
