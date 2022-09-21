@@ -156,8 +156,6 @@ def load_policies_from_checkpoint(
         )
         if id in policy_states:
             policy.set_state(policy_states[id])
-        if policy.agent_connectors:
-            policy.agent_connectors.is_training(False)
         policies[id] = policy
 
     return policies
@@ -195,8 +193,8 @@ def local_policy_inference(
 
     # Put policy in inference mode, so we don't spend time on training
     # only transformations.
-    policy.agent_connectors.is_training(False)
-    policy.action_connectors.is_training(False)
+    policy.agent_connectors.in_eval()
+    policy.action_connectors.in_eval()
 
     # TODO(jungong) : support multiple env, multiple agent inference.
     input_dict = {SampleBatch.NEXT_OBS: obs}
@@ -206,11 +204,14 @@ def local_policy_inference(
     ac_outputs: List[AgentConnectorsOutput] = policy.agent_connectors(acd_list)
     outputs = []
     for ac in ac_outputs:
-        policy_output = policy.compute_actions_from_input_dict(ac.data.for_action)
+        policy_output = policy.compute_actions_from_input_dict(ac.data.sample_batch)
+
+        action_connector_data = ActionConnectorDataType(
+            env_id, agent_id, ac.data.raw_dict, policy_output
+        )
 
         if policy.action_connectors:
-            acd = ActionConnectorDataType(env_id, agent_id, policy_output)
-            acd = policy.action_connectors(acd)
+            acd = policy.action_connectors(action_connector_data)
             actions = acd.output
         else:
             actions = policy_output[0]
@@ -219,9 +220,7 @@ def local_policy_inference(
 
         # Notify agent connectors with this new policy output.
         # Necessary for state buffering agent connectors, for example.
-        policy.agent_connectors.on_policy_output(
-            ActionConnectorDataType(env_id, agent_id, policy_output)
-        )
+        policy.agent_connectors.on_policy_output(action_connector_data)
     return outputs
 
 
