@@ -2887,8 +2887,11 @@ def remote(
 
     Args:
         num_returns: This is only for *remote functions*. It specifies
-            the number of object refs returned by
-            the remote function invocation.
+            the number of object refs returned by the remote function
+            invocation. Pass "dynamic" to allow the task to decide how many
+            return values to return during execution, and the caller will
+            receive an ObjectRef[ObjectRefGenerator] (note, this setting is
+            experimental).
         num_cpus: The quantity of CPU cores to reserve
             for this task or for the lifetime of the actor.
         num_gpus: The quantity of GPUs to reserve
