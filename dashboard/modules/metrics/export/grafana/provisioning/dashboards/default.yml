@@ -5,4 +5,4 @@ providers:
     folder: Ray
     type: file
     options:
-      path:  /tmp/ray/metrics/grafana/provisioning/dashboards
+      path:  /tmp/ray/session_latest/metrics/grafana/provisioning/dashboards
