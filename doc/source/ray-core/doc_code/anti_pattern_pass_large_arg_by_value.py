@@ -1,6 +1,5 @@
 # __anti_pattern_start__
 import ray
-import time
 import numpy as np
 
 ray.init()
