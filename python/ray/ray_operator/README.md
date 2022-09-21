@@ -111,7 +111,7 @@ configuration. As of KubeRay 0.3.0, specifying pod template names may prevent th
 launching multiple worker pods. See [KubeRay issue 582][KubeRay582].
 
 The KubeRay operator chooses unique pod names using the Ray cluster name
-and worker groups' `groupName`.
+and worker group `groupName`.
 
 ### Namespace-scoped operation.
 Similar to the legacy Ray Operator, it is possible to run the KubeRay operator at single-namespace scope.
