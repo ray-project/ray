@@ -9,6 +9,7 @@ import pytest
 
 import ray
 from ray import tune
+from ray.air import session
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.data.preprocessor import Preprocessor
 from ray.tune.impl import tuner_internal
@@ -67,7 +68,7 @@ class DummyGBDTTrainer(GBDTTrainer):
 
 def test_trainer_fit(ray_start_4_cpus):
     def training_loop(self):
-        tune.report(my_metric=1)
+        session.report(dict(my_metric=1))
 
     trainer = DummyTrainer(train_loop=training_loop)
     result = trainer.fit()
