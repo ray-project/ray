@@ -11,6 +11,10 @@ class Benchmark:
     """Benchmark class used for Ray Datasets.
 
     Call ``run(fn)`` to benchmark a specific piece of code/function.
+    ``fn`` is expected to return the final Dataset. Benchmark ensures
+    final Dataset is fully executed. Plan to add Dataset statistics
+    logging in the future.
+
     Call ``write_result()`` to write benchmark result in file.
     Result can be rendered in dashboard later through other tool.
     We should use this class for any benchmark related to Ray Datasets.
