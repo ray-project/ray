@@ -95,6 +95,18 @@ class EpisodeV2:
         # us something.
         self._last_infos: Dict[AgentID, Dict] = {}
 
+    @property
+    def started(self) -> bool:
+        """Returns whether this EpisodeV2 has already been started.
+
+        An episode counts as started right after its respective environment has been
+        `reset()`
+
+        Returns:
+            Whether this EpisodeV2 has already been started.
+        """
+        return bool(self._has_init_obs)
+
     @DeveloperAPI
     def policy_for(
         self, agent_id: AgentID = _DUMMY_AGENT_ID, refresh: bool = False

@@ -88,7 +88,6 @@ class Episode:
         self.batch_builder: "MultiAgentSampleBatchBuilder" = batch_builder_factory()
         self.total_reward: float = 0.0
         self.length: int = 0
-        self.started = False
         self.episode_id: int = random.randrange(2e9)
         self.env_id = env_id
         self.worker = worker
@@ -115,6 +114,18 @@ class Episode:
         self._agent_to_last_extra_action_outs: Dict[AgentID, dict] = {}
         self._agent_to_prev_action: Dict[AgentID, EnvActionType] = {}
         self._agent_reward_history: Dict[AgentID, List[int]] = defaultdict(list)
+
+    @property
+    def started(self) -> bool:
+        """Returns whether this Episode has already been started.
+
+        An episode counts as started right after its respective environment has been
+        `reset()`
+
+        Returns:
+            Whether this Episode has already been started.
+        """
+        return bool(self._has_init_obs)
 
     @DeveloperAPI
     def soft_reset(self) -> None:

@@ -122,9 +122,12 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
 
         This method gets called after a new Episode(V2) instance is created to
         start a new episode. This happens before the respective sub-environment's
-        (usually a gym.Env) `try_reset()` is called by RLlib.
+        (usually a gym.Env) `reset()` is called by RLlib.
 
-        episode
+        1) Episode(V2) created: This callback fires.
+        2) Respective sub-environment (gym.Env) is `reset()`.
+        3) Callback `on_episode_start` is fired.
+        4) Stepping through sub-environment/episode commences.
 
         Args:
             worker: Reference to the current rollout worker.
@@ -153,7 +156,15 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
-        """Callback run on the rollout worker before each episode starts.
+        """Callback run right after an Episode has started.
+
+        This method gets called after the Episode(V2)'s respective sub-environment's
+        (usually a gym.Env) `reset()` is called by RLlib.
+
+        1) Episode(V2) created: Triggers callback `on_episode_created`.
+        2) Respective sub-environment (gym.Env) is `reset()`.
+        3) Episode(V2) starts: This callback fires.
+        4) Stepping through sub-environment/episode commences.
 
         Args:
             worker: Reference to the current rollout worker.

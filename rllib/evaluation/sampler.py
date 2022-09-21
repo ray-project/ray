@@ -831,7 +831,7 @@ def _process_observations(
             all_agents_obs = {}
 
         # If this episode is brand-new, call the episode start callback(s).
-        if episode.started is False:
+        if not episode.started:
             _call_on_episode_start(episode, env_id, callbacks, worker, base_env)
         else:
             sample_collector.episode_step(episode)
@@ -1347,7 +1347,6 @@ def _call_on_episode_start(episode, env_id, callbacks, worker, base_env):
         episode=episode,
         env_index=env_id,
     )
-    episode.started = True
 
 
 def _to_column_format(rnn_state_rows: List[List[Any]]) -> StateBatch:
