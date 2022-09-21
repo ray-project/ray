@@ -105,6 +105,14 @@ Note that autoscaling with KubeRay is supported only with Ray versions at least 
 The KubeRay operator automatically configures a `/dev/shm` volume for each Ray pod's object store.
 There is no need to specify this volume in the RayCluster CR.
 
+### Don't specify metadata.name in podTemplates
+Do not specify `metadata.name` in the pod templates specifying head pod and worker pod
+configurations; as of KubeRay 0.3.0 this may prevent the KubeRay operator from
+launching multiple worker pods. See [KubeRay issue 582][KubeRay582].
+
+The KubeRay operator chooses unique pod names using the Ray cluster name
+and worker groups' `groupName`.
+
 ### Namespace-scoped operation.
 Similar to the legacy Ray Operator, it is possible to run the KubeRay operator at single-namespace scope.
 See the [KubeRay documentation][KubeRaySingleNamespace] for details.
@@ -303,3 +311,4 @@ spec:
 <!-- [ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/7aeb1ab9cf7adb58fd9418c0e08984ff0fe6d018/doc/source/cluster/ray-clusters-on-kubernetes/configs/migration-example.yaml -->
 [KubeRayHelm]: https://ray-project.github.io/kuberay/deploy/helm/
 [KubeRayHelmCode]: https://github.com/ray-project/kuberay/tree/master/helm-chart
+[KubeRay582]: https://github.com/ray-project/kuberay/issues/582
