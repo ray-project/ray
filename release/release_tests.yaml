@@ -2193,6 +2193,36 @@
 
   alert: default
 
+- name: jobs_long_running_many_jobs
+  group: Jobs tests
+  working_dir: jobs_tests
+
+  frequency: weekly
+  team: serve
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_4_xlarge.yaml
+
+  run:
+    timeout: 36000
+    script: python workloads/jobs_long_running.py
+    long_running: true
+    wait_for_nodes:
+      num_nodes: 4
+
+    type: sdk_command
+    file_manager: job
+
+  smoke_test:
+    frequency: disabled
+
+    run:
+      timeout: 1800
+
+  alert: default
+
 ########################
 # Runtime env tests
 ########################
