@@ -1099,6 +1099,8 @@ def _process_observations(
             # If reset is async, we will get its result in some future poll.
             elif resetted_obs != ASYNC_RESET_RETURN:
                 new_episode: Episode = active_episodes[env_id]
+                new_episode.started = True
+
                 _assert_episode_not_faulty(new_episode)
                 resetted_obs = resetted_obs[env_id]
                 if observation_fn:
