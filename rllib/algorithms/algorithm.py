@@ -270,7 +270,7 @@ class Algorithm(Trainable):
 
             state = pickle.load(open(state_file, "rb"))
 
-            # Olf style: Create algo first, then call its `restore()` method.
+            # Old style: Create algo first, then call its `restore()` method.
             if v0_checkpoint_file:
                 # Worker state used to be pickled ("v0"), now it's just another sub-dict
                 # within the state.

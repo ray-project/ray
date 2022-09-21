@@ -174,6 +174,33 @@ class TestAlgorithm(unittest.TestCase):
                 self.assertTrue(pol0.action_space.contains(a))
                 test.stop()
 
+                # After having added 2 policies, try to restore the Algorithm,
+                # but only with 1 of the originally added policies (plus the initial
+                # p0).
+                if i == 2:
+                    test2 = pg.PG.from_checkpoint(checkpoint, policies=["p0", "p2"])
+
+                    # Make sure evaluation workers have the same policies.
+                    def _has_policies(w):
+                        return (
+                            w.get_policy("p0") is not None and w.get_policy(
+                            "p2") is not None and w.get_policy("p1") is None
+                        )
+
+                    self.assertTrue(
+                        all(test2.evaluation_workers.foreach_worker(_has_policies))
+                    )
+
+                    # Make sure algorithm can continue training the restored policy.
+                    pol2 = test2.get_policy("p2")
+                    test2.train()
+                    # Test creating an action with the added (and restored) policy.
+                    a = test2.compute_single_action(
+                        np.zeros_like(pol2.observation_space.sample()), policy_id=pid
+                    )
+                    self.assertTrue(pol2.action_space.contains(a))
+                    test2.stop()
+
             # Delete all added policies again from Algorithm.
             for i in range(2, 0, -1):
                 pid = f"p{i}"
