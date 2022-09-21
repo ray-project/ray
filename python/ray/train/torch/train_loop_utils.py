@@ -559,7 +559,17 @@ class _TorchAccelerator(Accelerator):
         """
         if torch.cuda.is_available():
             # GPU IDs are assigned by Ray after you specify "use_gpu"
-            gpu_ids = ray.get_gpu_ids()
+            # GPU `ray.get_gpu_ids()` may return ints or may return strings.
+            # We should always convert to ints.
+            try:
+                gpu_ids = [int(id) for id in ray.get_gpu_ids()]
+            except ValueError:
+                raise RuntimeError(
+                    "Received invalid CUDA_VISIBLE_DEVICES environment "
+                    "variable. `ray.train.torch.get_device()` only "
+                    "works with CUDA_VISIBLE_DEVICES with integer "
+                    "indices specified and not device UUID strings."
+                )
 
             if len(gpu_ids) > 0:
                 # By default, there should only be one GPU ID if `use_gpu=True`.

@@ -53,6 +53,11 @@ def ray_start_1_cpu_1_gpu():
 
 
 @pytest.fixture
+def shutdown_only():
+    ray.shutdown()
+
+
+@pytest.fixture
 def ray_2_node_2_gpu():
     cluster = Cluster()
     for _ in range(2):
@@ -81,9 +86,19 @@ class NonTensorDataset(LinearDataset):
 
 
 # TODO: Refactor as a backend test.
-@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
-def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
+@pytest.mark.parametrize("cuda_visible_devices", ["", "1"])
+def test_torch_get_device(
+    shutdown_only, num_gpus_per_worker, cuda_visible_devices, monkeypatch
+):
+    if cuda_visible_devices:
+        # Test if `get_device` is correct even with user specified env var.
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", cuda_visible_devices)
+
+    ray.init(num_cpus=4, num_gpus=2)
+
     def train_fn():
+        if cuda_visible_devices:
+            assert os.environ["CUDA_VISIBLE_DEVICES"] == cuda_visible_devices
         return train.torch.get_device().index
 
     trainer = Trainer(
