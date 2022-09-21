@@ -2,6 +2,7 @@ import dataclasses
 import json
 import logging
 import traceback
+from typing import Iterator
 
 import aiohttp.web
 from aiohttp.web import Request, Response
@@ -53,12 +54,12 @@ class JobAgentSubmissionClient:
         self,
         dashboard_agent_address: str,
     ):
-        self._address = dashboard_agent_address
+        self._agent_address = dashboard_agent_address
         self._session = aiohttp.ClientSession()
 
-    async def _raise_error(self, r: ClientResponse):
-        status = r.status
-        error_text = await r.text()
+    async def _raise_error(self, resp: ClientResponse):
+        status = resp.status
+        error_text = await resp.text()
         raise RuntimeError(f"Request failed with status code {status}: {error_text}.")
 
     async def submit_job_internal(self, req: JobSubmitRequest) -> JobSubmitResponse:
@@ -66,7 +67,7 @@ class JobAgentSubmissionClient:
         logger.debug(f"Submitting job with submission_id={req.submission_id}.")
 
         async with self._session.post(
-            self._address + "/api/job_agent/jobs/", json=dataclasses.asdict(req)
+            f"{self._agent_address}/api/job_agent/jobs/", json=dataclasses.asdict(req)
         ) as resp:
 
             if resp.status == 200:
@@ -75,15 +76,45 @@ class JobAgentSubmissionClient:
             else:
                 await self._raise_error(resp)
 
-    async def get_job_info(self, job_id: str) -> JobDetails:
+    async def stop_job_internal(self, job_id: str) -> JobStopResponse:
+
+        logger.debug(f"Stopping job with job_id={job_id}.")
+
+        async with self._session.post(
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}/stop"
+        ) as resp:
+
+            if resp.status == 200:
+                result_json = await resp.json()
+                return JobStopResponse(**result_json)
+            else:
+                self._raise_error(resp)
+
+    async def get_job_logs_internal(self, job_id: str) -> JobLogsResponse:
         async with self._session.get(
-            self._address + f"/api/job_agent/jobs/{job_id}"
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs"
         ) as resp:
             if resp.status == 200:
                 result_json = await resp.json()
-                return JobDetails(**result_json)
+                return JobLogsResponse(**result_json)
             else:
-                await self._raise_error(resp)
+                self._raise_error(resp)
+
+    async def tail_job_logs(self, job_id: str) -> Iterator[str]:
+        """Get an iterator that follows the logs of a job."""
+        ws = await self._session.ws_connect(
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs/tail"
+        )
+
+        while True:
+            msg = await ws.receive()
+
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                yield msg.data
+            elif msg.type == aiohttp.WSMsgType.CLOSED:
+                break
+            elif msg.type == aiohttp.WSMsgType.ERROR:
+                pass
 
     async def close(self, ignore_error=True):
         try:
@@ -227,7 +258,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/jobs/{job_or_submission_id}")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def get_job_info(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(

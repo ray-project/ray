@@ -29,6 +29,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/util.h"
@@ -589,6 +590,8 @@ void CoreWorker::Disconnect(
     const rpc::WorkerExitType &exit_type,
     const std::string &exit_detail,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
+  // Force stats export before exiting the worker.
+  opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {
     RAY_LOG(INFO) << "Disconnecting to the raylet.";
     connected_ = false;
@@ -2189,11 +2192,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   // Modify the worker's per function counters.
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
-  {
-    absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
-    task_counter_.Add(TaskCounter::kPending, func_name, -1);
-    task_counter_.Add(TaskCounter::kRunning, func_name, 1);
-  }
+  task_counter_.MovePendingToRunning(func_name);
 
   if (!options_.is_local_mode) {
     worker_context_.SetCurrentTask(task_spec);
@@ -2309,13 +2308,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     }
   }
 
-  // Modify the worker's per function counters.
-  {
-    absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
-    task_counter_.Add(TaskCounter::kRunning, func_name, -1);
-    task_counter_.Add(TaskCounter::kFinished, func_name, 1);
-  }
-
+  task_counter_.MoveRunningToFinished(func_name);
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
                  << ", status=" << status;
 
@@ -2339,7 +2332,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   } else if (!status.ok()) {
     RAY_LOG(FATAL) << "Unexpected task status type : " << status;
   }
-
   return status;
 }
 
@@ -2553,10 +2545,7 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
   std::string func_name =
       FunctionDescriptorBuilder::FromProto(request.task_spec().function_descriptor())
           ->CallString();
-  {
-    absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
-    task_counter_.Add(TaskCounter::kPending, func_name, 1);
-  }
+  task_counter_.IncPending(func_name);
 
   // For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.
