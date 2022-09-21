@@ -299,6 +299,8 @@ class RemoteFunction:
         ]
         scheduling_strategy = task_options["scheduling_strategy"]
         num_returns = task_options["num_returns"]
+        if num_returns == "dynamic":
+            num_returns = -1
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
         if isinstance(retry_exceptions, (list, tuple)):
