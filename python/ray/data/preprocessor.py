@@ -217,7 +217,7 @@ class Preprocessor(abc.ABC):
                 raise NotImplementedError(
                     "None of `_transform_numpy` or `_transform_pandas` "
                     f"are implemented for dataset format `{data_format}` and "
-                    f"user specifified batch_format of `{self.batch_format}`."
+                    f"user specified batch_format of `{self.batch_format}`."
                 )
         # Infer transform type by prioritizing native transformation to minimize
         # data conversion cost.
@@ -289,8 +289,8 @@ class Preprocessor(abc.ABC):
         else:
             raise NotImplementedError(
                 "`transform_batch` is currently only implemented for Pandas "
-                "DataFrames, PyArrow Tables, Numpy ndarray and dictionary of "
-                f"ndarary. Got {type(data)}."
+                "DataFrames, pyarrow Tables, NumPy ndarray and dictionary of "
+                f"ndarray. Got {type(data)}."
             )
 
         transform_type = self._determine_transform_to_use(data_format)
@@ -311,7 +311,7 @@ class Preprocessor(abc.ABC):
                     output_dict = {}
                     for col_name in data.column_names:
                         output_dict[col_name] = data[col_name].to_numpy()
-                return self._transform_numpy(output_dict)
+                    return self._transform_numpy(output_dict)
             elif data_format == "pandas":
                 if len(data.columns) == 1:
                     # If just a single column, return as a single numpy array.
@@ -332,5 +332,5 @@ class Preprocessor(abc.ABC):
     def _transform_numpy(
         self, np_data: Union[np.ndarray, Dict[str, np.ndarray]]
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
-        """Run the transformation on a data batch in a Numpy array format."""
+        """Run the transformation on a data batch in a NumPy ndarray format."""
         raise NotImplementedError()

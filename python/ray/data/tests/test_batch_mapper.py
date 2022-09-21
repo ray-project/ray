@@ -50,7 +50,7 @@ def test_batch_mapper_pandas_data_format(test_ds_pandas_format):
         data["to_be_modified"] *= 2
         return data
 
-    expected_df = pd.DataFrame.from_dict(
+    expected_df = pd.DataFrame(
         {
             "old_column": old_column,
             "to_be_modified": [2, -2, 2, -2],
