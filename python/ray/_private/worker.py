@@ -2264,9 +2264,9 @@ def get(
         if is_individual_id:
             object_refs = [object_refs]
 
-        if not (isinstance(object_refs, list) or isinstance(object_refs)):
+        if not isinstance(object_refs, list):
             raise ValueError(
-                "'object_refs' must either be an ObjectRef or " "a list of ObjectRefs."
+                "'object_refs' must either be an ObjectRef or a list of ObjectRefs."
             )
 
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.

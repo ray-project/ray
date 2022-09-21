@@ -860,15 +860,10 @@ cdef execute_task(
                 worker, errors,
                 returns)
             if dynamic_returns != NULL:
-                # We generated dynamic objects during the first execution and
-                # we are now re-executing the task during object
-                # reconstruction. Store the error for the dynamically generated
-                # objects too.
+                # Store errors for any dynamically generated objects too.
                 dynamic_errors = []
                 for _ in range(dynamic_returns[0].size()):
                     dynamic_errors.append(failure_object)
-                # We pass is_dynamic=False because we have a fixed number of
-                # return objects to populate.
                 core_worker.store_task_outputs(
                     worker, dynamic_errors,
                     dynamic_returns)
@@ -2184,6 +2179,10 @@ cdef class CoreWorker:
             else:
                 # This is the first execution of the task, so we don't know how
                 # many return objects it should have yet.
+                # NOTE(swang): returns could also be empty if the task returned
+                # an empty generator and was re-executed. However, this should
+                # not happen because we never reconstruct empty
+                # ObjectRefGenerators (since these are not stored in plasma).
                 num_returns = -1
         else:
             # The task specified how many return values it should have.

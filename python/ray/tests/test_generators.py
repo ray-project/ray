@@ -316,6 +316,61 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     #         ray.get(ref)
 
 
+def test_dynamic_empty_generator_reconstruction_nondeterministic(ray_start_cluster):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "max_direct_call_object_size": 100,
+        "task_retry_delay_ms": 100,
+        "object_timeout_milliseconds": 200,
+        "fetch_warn_timeout_milliseconds": 1000,
+    }
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config=config,
+        enable_object_reconstruction=True,
+        resources={"head": 1},
+    )
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=0, resources={"head": 1})
+    class ExecutionCounter:
+        def __init__(self):
+            self.count = 0
+
+        def inc(self):
+            self.count += 1
+            return self.count
+
+        def get_count(self):
+            return self.count
+
+    @ray.remote(num_returns="dynamic")
+    def maybe_empty_generator(exec_counter):
+        if ray.get(exec_counter.inc.remote()) > 1:
+            for i in range(3):
+                yield np.ones(1_000_000, dtype=np.int8) * i
+
+    @ray.remote
+    def check(empty_generator):
+        return len(empty_generator) == 0
+
+    exec_counter = ExecutionCounter.remote()
+    gen = maybe_empty_generator.remote(exec_counter)
+    assert ray.get(check.remote(gen))
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    assert ray.get(check.remote(gen))
+
+    # We should never reconstruct an empty generator.
+    assert exec_counter.get_count.remote() == 1
+
+
 if __name__ == "__main__":
     import os
 
