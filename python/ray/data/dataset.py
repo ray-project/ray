@@ -365,8 +365,8 @@ class Dataset(Generic[T]):
 
             .. tip::
 
-                Datasets created from tabular data like Arrow tables yield
-                ``pd.DataFrame`` batches.
+                Datasets created from tabular data like Arrow tables and Parquet files
+                yield ``pd.DataFrame`` batches.
 
             Once you know the batch type, define a function that transforms batches
             of data. ``ds.map_batches`` applies the function in parallel.
