@@ -280,6 +280,7 @@ def rollout(
     Please use the "evaluate" command with the same arguments."""
 
     from ray.rllib.utils.deprecation import deprecation_warning
+
     deprecation_warning(old="rllib rollout", new="rllib evaluate", error=False)
 
     return evaluate(
