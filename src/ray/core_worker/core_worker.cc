@@ -124,7 +124,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                   std::placeholders::_2,
                                   std::placeholders::_3,
                                   std::placeholders::_4,
-                                  std::placeholders::_5);
+                                  std::placeholders::_5,
+                                  std::placeholders::_6);
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task, [this] {
           return local_raylet_client_->TaskDone();
@@ -950,6 +951,7 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
       local_raylet_client_->PinObjectIDs(
           rpc_address_,
           {object_id},
+          /*generator_id=*/ObjectID::Nil(),
           [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
             // Only release the object once the raylet has responded to avoid the race
             // condition that the object could be evicted before the raylet pins it.
@@ -1083,7 +1085,8 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
 Status CoreWorker::SealOwned(const ObjectID &object_id,
                              bool pin_object,
                              const std::unique_ptr<rpc::Address> &owner_address) {
-  auto status = SealExisting(object_id, pin_object, std::move(owner_address));
+  auto status =
+      SealExisting(object_id, pin_object, ObjectID::Nil(), std::move(owner_address));
   if (status.ok()) return status;
   RemoveLocalReference(object_id);
   if (reference_counter_->HasReference(object_id)) {
@@ -1096,6 +1099,7 @@ Status CoreWorker::SealOwned(const ObjectID &object_id,
 
 Status CoreWorker::SealExisting(const ObjectID &object_id,
                                 bool pin_object,
+                                const ObjectID &generator_id,
                                 const std::unique_ptr<rpc::Address> &owner_address) {
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
@@ -1104,6 +1108,7 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
     local_raylet_client_->PinObjectIDs(
         owner_address != nullptr ? *owner_address : rpc_address_,
         {object_id},
+        generator_id,
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
           // Only release the object once the raylet has responded to avoid the race
           // condition that the object could be evicted before the raylet pins it.
@@ -1566,7 +1571,7 @@ void CoreWorker::BuildCommonTaskSpec(
     const rpc::Address &address,
     const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args,
-    uint64_t num_returns,
+    int64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     const std::string &debugger_breakpoint,
@@ -1576,6 +1581,14 @@ void CoreWorker::BuildCommonTaskSpec(
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
+
+  bool returns_dynamic = num_returns == -1;
+  if (returns_dynamic) {
+    // This remote function returns 1 ObjectRef, whose value
+    // is a generator of ObjectRefs.
+    num_returns = 1;
+  }
+  RAY_CHECK(num_returns >= 0);
   builder.SetCommonTaskSpec(task_id,
                             name,
                             function.GetLanguage(),
@@ -1586,6 +1599,7 @@ void CoreWorker::BuildCommonTaskSpec(
                             caller_id,
                             address,
                             num_returns,
+                            returns_dynamic,
                             required_resources,
                             required_placement_resources,
                             debugger_breakpoint,
@@ -2212,11 +2226,13 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
-                               const std::shared_ptr<ResourceMappingType> &resource_ids,
-                               std::vector<std::shared_ptr<RayObject>> *return_objects,
-                               ReferenceCounter::ReferenceTableProto *borrowed_refs,
-                               bool *is_retryable_error) {
+Status CoreWorker::ExecuteTask(
+    const TaskSpecification &task_spec,
+    const std::shared_ptr<ResourceMappingType> &resource_ids,
+    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
+    std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
+    ReferenceCounter::ReferenceTableProto *borrowed_refs,
+    bool *is_retryable_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
@@ -2248,16 +2264,31 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   std::vector<ObjectID> borrowed_ids;
   RAY_CHECK_OK(GetAndPinArgsForExecutor(task_spec, &args, &arg_refs, &borrowed_ids));
 
-  std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-    return_ids.push_back(task_spec.ReturnId(i));
+    return_objects->push_back(std::make_pair<>(task_spec.ReturnId(i), nullptr));
+  }
+  // For dynamic tasks, pass the return IDs that were dynamically generated on
+  // the first execution.
+  if (!task_spec.ReturnsDynamic()) {
+    dynamic_return_objects = NULL;
+  } else if (task_spec.AttemptNumber() > 0) {
+    for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
+      dynamic_return_objects->push_back(
+          std::make_pair<>(dynamic_return_id, std::shared_ptr<RayObject>()));
+      RAY_LOG(DEBUG) << "Re-executed task " << task_spec.TaskId()
+                     << " should return dynamic object " << dynamic_return_id;
+
+      AddLocalReference(dynamic_return_id, "<temporary (ObjectRefGenerator)>");
+      reference_counter_->AddBorrowedObject(
+          dynamic_return_id, ObjectID::Nil(), task_spec.CallerAddress());
+    }
   }
 
   Status status;
   TaskType task_type = TaskType::NORMAL_TASK;
   if (task_spec.IsActorCreationTask()) {
-    RAY_CHECK(return_ids.size() > 0);
-    return_ids.pop_back();
+    RAY_CHECK(return_objects->size() > 0);
+    return_objects->pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
     {
@@ -2272,8 +2303,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     }
     RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {
-    RAY_CHECK(return_ids.size() > 0);
-    return_ids.pop_back();
+    RAY_CHECK(return_objects->size() > 0);
+    return_objects->pop_back();
     task_type = TaskType::ACTOR_TASK;
   }
 
@@ -2288,16 +2319,17 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   }
 
   status = options_.task_execution_callback(
+      task_spec.CallerAddress(),
       task_type,
       task_spec.GetName(),
       func,
       task_spec.GetRequiredResources().GetResourceUnorderedMap(),
       args,
       arg_refs,
-      return_ids,
       task_spec.GetDebuggerBreakpoint(),
       task_spec.GetSerializedRetryExceptionAllowlist(),
       return_objects,
+      dynamic_return_objects,
       creation_task_exception_pb_bytes,
       is_retryable_error,
       defined_concurrency_groups,
@@ -2312,6 +2344,12 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   std::vector<ObjectID> deleted;
   if (!borrowed_ids.empty()) {
     reference_counter_->PopAndClearLocalBorrowers(borrowed_ids, borrowed_refs, &deleted);
+  }
+  if (dynamic_return_objects != NULL) {
+    for (const auto &dynamic_return : *dynamic_return_objects) {
+      reference_counter_->PopAndClearLocalBorrowers(
+          {dynamic_return.first}, borrowed_refs, &deleted);
+    }
   }
   memory_store_->Delete(deleted);
 
@@ -2367,7 +2405,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 }
 
 Status CoreWorker::SealReturnObject(const ObjectID &return_id,
-                                    std::shared_ptr<RayObject> return_object) {
+                                    std::shared_ptr<RayObject> return_object,
+                                    const ObjectID &generator_id) {
   RAY_LOG(DEBUG) << "Sealing return object " << return_id;
   Status status = Status::OK();
   RAY_CHECK(return_object);
@@ -2375,7 +2414,8 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
   std::unique_ptr<rpc::Address> caller_address =
       std::make_unique<rpc::Address>(worker_context_.GetCurrentTask()->CallerAddress());
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
-    status = SealExisting(return_id, /*pin_object=*/true, std::move(caller_address));
+    status = SealExisting(
+        return_id, /*pin_object=*/true, generator_id, std::move(caller_address));
     if (!status.ok()) {
       RAY_LOG(FATAL) << "Failed to seal object " << return_id
                      << " in store: " << status.message();
@@ -2385,7 +2425,8 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
 }
 
 bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
-                                         std::shared_ptr<RayObject> *return_object) {
+                                         std::shared_ptr<RayObject> *return_object,
+                                         const ObjectID &generator_id) {
   // TODO(swang): If there is already an existing copy of this object, then it
   // might not have the same value as the new copy. It would be better to evict
   // the existing copy here.
@@ -2416,6 +2457,7 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
     local_raylet_client_->PinObjectIDs(
         owner_address,
         {return_id},
+        generator_id,
         [return_id, pinned_return_object](const Status &status,
                                           const rpc::PinObjectIDsReply &reply) {
           if (!status.ok() || !reply.successes(0)) {
@@ -2435,10 +2477,20 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   }
 }
 
+ObjectID CoreWorker::AllocateDynamicReturnId() {
+  const auto &task_spec = worker_context_.GetCurrentTask();
+  const auto return_id =
+      ObjectID::FromIndex(task_spec->TaskId(), worker_context_.GetNextPutIndex());
+  AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
+  reference_counter_->AddBorrowedObject(
+      return_id, ObjectID::Nil(), worker_context_.GetCurrentTask()->CallerAddress());
+  return return_id;
+}
+
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
     const TaskSpecification &task_spec, const ActorID &actor_id) {
   auto resource_ids = std::make_shared<ResourceMappingType>();
-  auto return_objects = std::vector<std::shared_ptr<RayObject>>();
+  auto return_objects = std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>();
   auto borrowed_refs = ReferenceCounter::ReferenceTableProto();
 
   std::vector<rpc::ObjectReference> returned_refs;
@@ -2464,8 +2516,14 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   auto old_id = GetActorId();
   SetActorId(actor_id);
   bool is_retryable_error;
-  RAY_UNUSED(ExecuteTask(
-      task_spec, resource_ids, &return_objects, &borrowed_refs, &is_retryable_error));
+  // TODO(swang): Support ObjectRefGenerators in local mode?
+  std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
+  RAY_UNUSED(ExecuteTask(task_spec,
+                         resource_ids,
+                         &return_objects,
+                         &dynamic_return_objects,
+                         &borrowed_refs,
+                         &is_retryable_error));
   SetActorId(old_id);
   return returned_refs;
 }
@@ -2770,6 +2828,17 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     return;
   }
 
+  if (message.has_generator_id()) {
+    // For dynamically generated return values, the raylet may subscribe to
+    // eviction events before we know about the object. This can happen when we
+    // receive the subscription request before the reply from the task that
+    // created the object. Add the dynamically created object to our ref
+    // counter so that we know that it exists.
+    const auto generator_id = ObjectID::FromBinary(message.generator_id());
+    RAY_CHECK(!generator_id.IsNil());
+    reference_counter_->AddDynamicReturn(object_id, generator_id);
+  }
+
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
@@ -2859,7 +2928,11 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
           object_location_update.spilled_location_update().spilled_url(),
           object_location_update.spilled_location_update().spilled_to_local_storage()
               ? node_id
-              : NodeID::Nil());
+              : NodeID::Nil(),
+          object_location_update.has_generator_id()
+              ? std::optional<ObjectID>(
+                    ObjectID::FromBinary(object_location_update.generator_id()))
+              : std::nullopt);
     }
 
     if (object_location_update.has_plasma_location_update()) {
@@ -2882,12 +2955,30 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
                       /*failure_callback_on_reply*/ nullptr);
 }
 
-void CoreWorker::AddSpilledObjectLocationOwner(const ObjectID &object_id,
-                                               const std::string &spilled_url,
-                                               const NodeID &spilled_node_id) {
+void CoreWorker::AddSpilledObjectLocationOwner(
+    const ObjectID &object_id,
+    const std::string &spilled_url,
+    const NodeID &spilled_node_id,
+    const std::optional<ObjectID> &generator_id) {
   RAY_LOG(DEBUG) << "Received object spilled location update for object " << object_id
                  << ", which has been spilled to " << spilled_url << " on node "
                  << spilled_node_id;
+  if (generator_id.has_value()) {
+    // For dynamically generated return values, the raylet may spill the
+    // primary copy before we know about the object. This can happen when the
+    // object is spilled before the reply from the task that created the
+    // object. Add the dynamically created object to our ref counter so that we
+    // know that it exists.
+    // NOTE(swang): We don't need to do this for in-plasma object locations because:
+    // 1) We will add the primary copy as a location when processing the task
+    // reply.
+    // 2) It is not possible to copy the object to a second location until
+    // after the owner has added the object to the ref count table (since no
+    // raylet can get the current location of the object until this happens).
+    RAY_CHECK(!generator_id->IsNil());
+    reference_counter_->AddDynamicReturn(object_id, *generator_id);
+  }
+
   auto reference_exists =
       reference_counter_->HandleObjectSpilled(object_id, spilled_url, spilled_node_id);
   if (!reference_exists) {

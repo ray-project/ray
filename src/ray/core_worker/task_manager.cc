@@ -259,6 +259,65 @@ size_t TaskManager::NumPendingTasks() const {
   return num_pending_tasks_;
 }
 
+bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
+                                   const rpc::ReturnObject &return_object,
+                                   const NodeID &worker_raylet_id,
+                                   bool store_in_plasma) {
+  bool direct_return = false;
+  reference_counter_->UpdateObjectSize(object_id, return_object.size());
+  RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
+                 << return_object.size();
+
+  const auto nested_refs =
+      VectorFromProtobuf<rpc::ObjectReference>(return_object.nested_inlined_refs());
+  if (return_object.in_plasma()) {
+    // NOTE(swang): We need to add the location of the object before marking
+    // it as local in the in-memory store so that the data locality policy
+    // will choose the right raylet for any queued dependent tasks.
+    reference_counter_->UpdateObjectPinnedAtRaylet(object_id, worker_raylet_id);
+    // Mark it as in plasma with a dummy object.
+    RAY_CHECK(
+        in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+  } else {
+    // NOTE(swang): If a direct object was promoted to plasma, then we do not
+    // record the node ID that it was pinned at, which means that we will not
+    // be able to reconstruct it if the plasma object copy is lost. However,
+    // this is okay because the pinned copy is on the local node, so we will
+    // fate-share with the object if the local node fails.
+    std::shared_ptr<LocalMemoryBuffer> data_buffer;
+    if (return_object.data().size() > 0) {
+      data_buffer = std::make_shared<LocalMemoryBuffer>(
+          const_cast<uint8_t *>(
+              reinterpret_cast<const uint8_t *>(return_object.data().data())),
+          return_object.data().size());
+    }
+    std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
+    if (return_object.metadata().size() > 0) {
+      metadata_buffer = std::make_shared<LocalMemoryBuffer>(
+          const_cast<uint8_t *>(
+              reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
+          return_object.metadata().size());
+    }
+
+    RayObject object(data_buffer, metadata_buffer, nested_refs);
+    if (store_in_plasma) {
+      put_in_local_plasma_callback_(object, object_id);
+    } else {
+      direct_return = in_memory_store_->Put(object, object_id);
+    }
+  }
+
+  rpc::Address owner_address;
+  if (reference_counter_->GetOwner(object_id, &owner_address) && !nested_refs.empty()) {
+    std::vector<ObjectID> nested_ids;
+    for (const auto &nested_ref : nested_refs) {
+      nested_ids.emplace_back(ObjectRefToId(nested_ref));
+    }
+    reference_counter_->AddNestedObjectIds(object_id, nested_ids, owner_address);
+  }
+  return direct_return;
+}
+
 void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::PushTaskReply &reply,
                                       const rpc::Address &worker_addr) {
@@ -270,74 +329,49 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   // reference holders that are already scheduled at the raylet can retrieve
   // these objects through plasma.
   absl::flat_hash_set<ObjectID> store_in_plasma_ids = {};
+  bool first_execution = false;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
-    if (it->second.num_successful_executions > 0) {
+    first_execution = it->second.num_successful_executions == 0;
+    if (!first_execution) {
       store_in_plasma_ids = it->second.reconstructable_return_ids;
     }
   }
 
+  std::vector<ObjectID> dynamic_return_ids;
+  std::vector<ObjectID> dynamic_returns_in_plasma;
   std::vector<ObjectID> direct_return_ids;
-  for (int i = 0; i < reply.return_objects_size(); i++) {
-    const auto &return_object = reply.return_objects(i);
-    ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
-    reference_counter_->UpdateObjectSize(object_id, return_object.size());
-    RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
-                   << return_object.size();
-
-    const auto nested_refs =
-        VectorFromProtobuf<rpc::ObjectReference>(return_object.nested_inlined_refs());
-    if (return_object.in_plasma()) {
-      // NOTE(swang): We need to add the location of the object before marking
-      // it as local in the in-memory store so that the data locality policy
-      // will choose the right raylet for any queued dependent tasks.
-      const auto pinned_at_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
-      reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
-      // Mark it as in plasma with a dummy object.
-      RAY_CHECK(
-          in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
-    } else {
-      // NOTE(swang): If a direct object was promoted to plasma, then we do not
-      // record the node ID that it was pinned at, which means that we will not
-      // be able to reconstruct it if the plasma object copy is lost. However,
-      // this is okay because the pinned copy is on the local node, so we will
-      // fate-share with the object if the local node fails.
-      std::shared_ptr<LocalMemoryBuffer> data_buffer;
-      if (return_object.data().size() > 0) {
-        data_buffer = std::make_shared<LocalMemoryBuffer>(
-            const_cast<uint8_t *>(
-                reinterpret_cast<const uint8_t *>(return_object.data().data())),
-            return_object.data().size());
+  if (reply.dynamic_return_objects_size() > 0) {
+    RAY_CHECK(reply.return_objects_size() == 1)
+        << "Dynamic generators only supported for num_returns=1";
+    const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
+    for (const auto &return_object : reply.dynamic_return_objects()) {
+      const auto object_id = ObjectID::FromBinary(return_object.object_id());
+      if (first_execution) {
+        reference_counter_->AddDynamicReturn(object_id, generator_id);
+        dynamic_return_ids.push_back(object_id);
       }
-      std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
-      if (return_object.metadata().size() > 0) {
-        metadata_buffer = std::make_shared<LocalMemoryBuffer>(
-            const_cast<uint8_t *>(
-                reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
-            return_object.metadata().size());
-      }
-
-      RayObject object(data_buffer, metadata_buffer, nested_refs);
-      if (store_in_plasma_ids.count(object_id)) {
-        put_in_local_plasma_callback_(object, object_id);
-      } else {
-        bool stored_in_direct_memory = in_memory_store_->Put(object, object_id);
-        if (stored_in_direct_memory) {
-          direct_return_ids.push_back(object_id);
+      if (!HandleTaskReturn(object_id,
+                            return_object,
+                            NodeID::FromBinary(worker_addr.raylet_id()),
+                            store_in_plasma_ids.count(object_id))) {
+        if (first_execution) {
+          dynamic_returns_in_plasma.push_back(object_id);
         }
       }
     }
+  }
 
-    rpc::Address owner_address;
-    if (reference_counter_->GetOwner(object_id, &owner_address) && !nested_refs.empty()) {
-      std::vector<ObjectID> nested_ids;
-      for (const auto &nested_ref : nested_refs) {
-        nested_ids.emplace_back(ObjectRefToId(nested_ref));
-      }
-      reference_counter_->AddNestedObjectIds(object_id, nested_ids, owner_address);
+  for (const auto &return_object : reply.return_objects()) {
+    const auto object_id = ObjectID::FromBinary(return_object.object_id());
+    if (HandleTaskReturn(object_id,
+                         return_object,
+                         NodeID::FromBinary(worker_addr.raylet_id()),
+                         store_in_plasma_ids.count(object_id))) {
+      direct_return_ids.push_back(object_id);
     }
   }
 
@@ -350,6 +384,20 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
+
+    // Record any dynamically returned objects. We need to store these with the
+    // task spec so that the worker will recreate them if the task gets
+    // re-executed.
+    if (first_execution) {
+      for (const auto &dynamic_return_id : dynamic_return_ids) {
+        RAY_LOG(DEBUG) << "Task " << task_id << " produced dynamic return object "
+                       << dynamic_return_id;
+        spec.AddDynamicReturnId(dynamic_return_id);
+      }
+      for (const auto &dynamic_return_id : dynamic_returns_in_plasma) {
+        it->second.reconstructable_return_ids.insert(dynamic_return_id);
+      }
+    }
 
     // Release the lineage for any non-plasma return objects.
     for (const auto &direct_return_id : direct_return_ids) {
@@ -564,6 +612,11 @@ void TaskManager::RemoveFinishedTaskReferences(
   }
   for (size_t i = 0; i < num_returns; i++) {
     return_ids.push_back(spec.ReturnId(i));
+  }
+  if (spec.ReturnsDynamic()) {
+    for (const auto &dynamic_return_id : spec.DynamicReturnIds()) {
+      return_ids.push_back(dynamic_return_id);
+    }
   }
 
   std::vector<ObjectID> deleted;
