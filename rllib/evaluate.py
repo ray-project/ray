@@ -176,6 +176,7 @@ def run(
             "If you set --track-progress, you must provide an output file via "
             "--out as well!"
         )
+    # FIXME: video_dir is not used
     # Load configuration from checkpoint file.
     config_args = json.loads(config)
     config_path = ""
