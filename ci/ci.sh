@@ -815,6 +815,8 @@ test_minimal() {
 
 
 test_latest_core_dependencies() {
+  ./ci/env/install-minimal.sh "$1"
+  ./ci/env/env_info.sh
   ./ci/env/install-core-prerelease-dependencies.sh
   run_minimal_test "$1"
 }
