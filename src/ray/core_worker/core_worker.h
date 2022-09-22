@@ -114,6 +114,7 @@ struct TaskCounter {
     } else {
       RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
     }
+    UpdateStats();
   }
 
   void UnsetMetricStatus(const std::string &func_name, rpc::TaskStatus status) {
@@ -124,6 +125,7 @@ struct TaskCounter {
     } else {
       RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
     }
+    UpdateStats();
   }
 
   void UpdateStats() EXCLUSIVE_LOCKS_REQUIRED(&tasks_counter_mutex_) {
