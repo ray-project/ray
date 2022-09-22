@@ -11,7 +11,7 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import framework_iterator
 
 
-def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
+def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
     extra_config = ""
     if algo == "ARS":
         extra_config = ',"train_batch_size": 10, "noise_size": 250000'
@@ -31,30 +31,30 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
 
         rllib_dir = str(Path(__file__).parent.parent.absolute())
         print("RLlib dir = {}\nexists={}".format(rllib_dir, os.path.exists(rllib_dir)))
+
         os.system(
-            "python {}/train.py --local-dir={} --run={} "
-            "--checkpoint-freq=1 ".format(rllib_dir, tmp_dir, algo)
-            + "--config='{"
-            + '"num_workers": 1, "num_gpus": 0{}{}'.format(fw_, extra_config)
+            f"python {rllib_dir}/train.py --local-dir={tmp_dir} --run={algo} "
+            "--checkpoint-freq=1 --config='{"
+            + f'"num_workers": 1, "num_gpus": 0{fw_}{extra_config}'
             + ', "min_sample_timesteps_per_iteration": 5,'
-            '"min_time_s_per_iteration": 0.1, '
+            + '"min_time_s_per_iteration": 0.1, '
             '"model": {"fcnet_hiddens": [10]}'
-            "}' --stop='{\"training_iteration\": 1}'" + " --env={}".format(env)
+            "}' --stop='{\"training_iteration\": 1}'"
+            f" --env={env}"
         )
 
         checkpoint_path = os.popen(
-            "ls {}/default/*/checkpoint_000001/checkpoint-1".format(tmp_dir)
+            f"ls {tmp_dir}/default/*/checkpoint_000001/checkpoint-1"
         ).read()[:-1]
+
         if not os.path.exists(checkpoint_path):
             sys.exit(1)
-        print("Checkpoint path {} (exists)".format(checkpoint_path))
+        print(f"Checkpoint path {checkpoint_path} (exists)")
 
         # Test rolling out n steps.
         os.popen(
-            'python {}/evaluate.py --run={} "{}" --steps=10 '
-            '--out="{}/rollouts_10steps.pkl"'.format(
-                rllib_dir, algo, checkpoint_path, tmp_dir
-            )
+            f'python {rllib_dir}/evaluate.py --run={algo} "{checkpoint_path}" '
+            f'--steps=10 --out="{tmp_dir}/rollouts_10steps.pkl"'
         ).read()
         if not os.path.exists(tmp_dir + "/rollouts_10steps.pkl"):
             sys.exit(1)
@@ -63,10 +63,8 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
         # Test rolling out 1 episode.
         if test_episode_rollout:
             os.popen(
-                'python {}/evaluate.py --run={} "{}" --episodes=1 '
-                '--out="{}/rollouts_1episode.pkl"'.format(
-                    rllib_dir, algo, checkpoint_path, tmp_dir
-                )
+                f'python {rllib_dir}/evaluate.py --run={algo} "{checkpoint_path}" '
+                f'--episodes=1 --out="{tmp_dir}/rollouts_1episode.pkl"'
             ).read()
             if not os.path.exists(tmp_dir + "/rollouts_1episode.pkl"):
                 sys.exit(1)
@@ -76,7 +74,7 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
         os.popen('rm -rf "{}"'.format(tmp_dir)).read()
 
 
-def learn_test_plus_evaluate(algo, env="CartPole-v0"):
+def learn_test_plus_evaluate(algo, env="CartPole-v1"):
     for fw in framework_iterator(frameworks=("tf", "torch")):
         fw_ = ', \\"framework\\": \\"{}\\"'.format(fw)
 
