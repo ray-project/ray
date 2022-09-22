@@ -1548,7 +1548,7 @@ class Algorithm(Trainable):
         self,
         policy_id: PolicyID,
         policy_cls: Type[Policy],
-        config: Optional[PartialAlgorithmConfigDict],
+        config: AlgorithmConfig,
         *,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
@@ -1569,7 +1569,8 @@ class Algorithm(Trainable):
             policy_id: ID of the policy to add.
             policy_cls: The Policy class to use for
                 constructing the new Policy.
-            config: The config for the policy to add.
+            config: The config for the policy to add. This is expected to be a
+                complete AlgorithmConfig.
             observation_space: The observation space of the policy to add.
                 If None, try to infer this space from the environment.
             action_space: The action space of the policy to add.

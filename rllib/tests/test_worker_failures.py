@@ -410,7 +410,7 @@ class TestWorkerFailure(unittest.TestCase):
                 algorithm.add_policy(
                     policy_id="test_policy",
                     policy_cls=PGTorchPolicy,
-                    config={},
+                    config=algorithm.config,
                     observation_space=gym.spaces.Box(low=0, high=1, shape=(8,)),
                     action_space=gym.spaces.Discrete(2),
                     policy_state=None,

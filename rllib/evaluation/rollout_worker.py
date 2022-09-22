@@ -52,6 +52,7 @@ from ray.rllib.utils.tf_run_builder import _TFRunBuilder
 from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.rllib.utils.typing import (
     AgentID,
+    AlgorithmConfigDict,
     EnvConfigDict,
     EnvCreator,
     EnvType,
@@ -1182,7 +1183,7 @@ class RolloutWorker(ParallelIteratorWorker):
         *,
         policy_id: PolicyID,
         policy_cls: Type[Policy],
-        config: PartialAlgorithmConfigDict,
+        config: AlgorithmConfigDict,
         observation_space: Optional[Space] = None,
         action_space: Optional[Space] = None,
         policy_state: Optional[PolicyState] = None,
@@ -1197,7 +1198,8 @@ class RolloutWorker(ParallelIteratorWorker):
             policy_id: ID of the policy to add.
             policy_cls: The Policy class to use for constructing the new
                 Policy.
-            config: The config for the policy to add.
+            config: The config for the policy to add. This is expected to be a
+                complete AlgorithmConfig.
             observation_space: The observation space of the policy to add.
             action_space: The action space of the policy to add.
             policy_state: Optional state dict to apply to the new

@@ -327,7 +327,7 @@ class AlphaStar(appo.APPO):
         super().validate_config(config)
 
     @override(appo.APPO)
-    def setup(self, config: PartialAlgorithmConfigDict):
+    def setup(self, config: AlgorithmConfigDict):
         # Call super's setup to validate config, create RolloutWorkers
         # (train and eval), etc..
         num_gpus_saved = config["num_gpus"]
