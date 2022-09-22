@@ -44,8 +44,8 @@ class AlgorithmConfig:
         >>> config = AlgorithmConfig()
         >>> config.training(lr=tune.grid_search([0.01, 0.001]))
         >>> # Use `to_dict()` method to get the legacy plain python config dict
-        >>> # for usage with `tune.run()`.
-        >>> tune.run("[registered trainer class]", config=config.to_dict())
+        >>> # for usage with `tune.Tuner().fit()`.
+        >>> tune.Tuner("[registered trainer class]", param_space=config.to_dict()).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -242,7 +242,7 @@ class AlgorithmConfig:
 
         Returns:
             A complete AlgorithmConfigDict, usable in backward-compatible Tune/RLlib
-            use cases, e.g. w/ `tune.run()`.
+            use cases, e.g. w/ `tune.Tuner().fit()`.
         """
         config = copy.deepcopy(vars(self))
         config.pop("algo_class")
@@ -451,8 +451,8 @@ class AlgorithmConfig:
 
     def environment(
         self,
-        *,
         env: Optional[Union[str, EnvType]] = None,
+        *,
         env_config: Optional[EnvConfigDict] = None,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,

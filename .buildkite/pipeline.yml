@@ -1,3 +1,9 @@
+### ATTENTION: THIS FILE IS DEPRECATED AND WILL BE REMOVED SHORTLY
+### IT HAS BEEN SPLIT INTO TWO FILES:
+### - pipeline.build.yml FOR ALL TESTS THAT REQUIRE A FULL BUILD ENV (E.G. LLVM)
+### - pipeline.test.yml FOR THE REMAINING TESTS
+### IF YOU CHANGE SOMETHING HERE, CHANGE IT IN THE OTHER LOCATIONS, TOO!
+
 - label: ":ferris_wheel: Wheels and Jars"
   conditions:
     [
@@ -169,6 +175,18 @@
     - export LINT=1
     - ./ci/env/install-dependencies.sh
     - ./ci/ci.sh lint
+
+- label: ":book: Documentation"
+  commands:
+    - export LINT=1
+    - echo "--- Setting up Python 3.7 environment."
+    - ./ci/env/install-dependencies.sh
+    # Specifying above somehow messes up the Ray install.
+    # Uninstall and re-install Ray so that we can use Ray Client
+    # (remove thirdparty_files to sidestep an issue with psutil).
+    - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
+    - pushd /ray && git clean -f -f -x -d -e .whl -e python/ray/dashboard/client && popd
+    - bazel clean --expunge
     - ./ci/ci.sh build
 
 - label: ":book: LinkCheck"
@@ -261,6 +279,7 @@
     [
         "RAY_CI_SERVE_AFFECTED",
         "RAY_CI_PYTHON_AFFECTED",
+        "RAY_CI_ML_AFFECTED",
     ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -276,7 +295,7 @@
       > test_shard.txt
     - cat test_shard.txt
     - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=-post_wheel_build,-py37
+      --test_tag_filters=-post_wheel_build,-py37,-gpu
       $(cat test_shard.txt)
 
 
@@ -289,8 +308,8 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - echo "--- Setting up Python 3.7 environment."
-    - PYTHON=3.7 TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
-    # Specifying PYTHON=3.7 above somehow messes up the Ray install.
+    - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
+    # Specifying above somehow messes up the Ray install.
     # Uninstall and re-install Ray so that we can use Ray Client.
     # (Remove thirdparty_files to sidestep an issue with psutil.)
     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
@@ -298,6 +317,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=team:serve
       python/ray/serve/test_gradio
+      python/ray/serve/test_gradio_visualization
 
 
 - label: ":python: Minimal install 3.6"
@@ -515,8 +535,8 @@
       }
       trap cleanup EXIT
     - echo "--- Setting up Python 3.7 environment."
-    - PYTHON=3.7 ./ci/env/install-dependencies.sh
-    # Specifying PYTHON=3.7 above somehow messes up the Ray install.
+    - ./ci/env/install-dependencies.sh
+    # Specifying above somehow messes up the Ray install.
     # Uninstall and re-install Ray so that we can use Ray Client.
     # (Remove thirdparty_files to sidestep an issue with psutil.)
     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files

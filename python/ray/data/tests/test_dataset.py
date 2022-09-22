@@ -32,6 +32,7 @@ from ray.data.extensions.tensor_extension import (
 from ray.data.row import TableRow
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def maybe_pipeline(ds, enabled):
@@ -141,7 +142,9 @@ def test_avoid_placement_group_capture(shutdown_only, pipelined):
     pg = ray.util.placement_group([{"CPU": 1}])
     ray.get(
         run.options(
-            placement_group=pg, placement_group_capture_child_tasks=True
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_capture_child_tasks=True
+            )
         ).remote()
     )
 
@@ -386,6 +389,51 @@ def test_batch_tensors(ray_start_regular_shared):
         next(ds.iter_batches(batch_format="pyarrow"))
     df = next(ds.iter_batches(batch_format="pandas"))
     assert df.to_dict().keys() == {"value"}
+
+
+def test_arrow_block_select():
+    df = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13], "three": [14, 15, 16]})
+    table = pa.Table.from_pandas(df)
+    block_accessor = BlockAccessor.for_block(table)
+
+    block = block_accessor.select(["two"])
+    assert block.schema == pa.schema([("two", pa.int64())])
+    assert block.to_pandas().equals(df[["two"]])
+
+    block = block_accessor.select(["two", "one"])
+    assert block.schema == pa.schema([("two", pa.int64()), ("one", pa.int64())])
+    assert block.to_pandas().equals(df[["two", "one"]])
+
+    with pytest.raises(ValueError):
+        block = block_accessor.select([lambda x: x % 3, "two"])
+
+
+def test_pandas_block_select():
+    df = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13], "three": [14, 15, 16]})
+    block_accessor = BlockAccessor.for_block(df)
+
+    block = block_accessor.select(["two"])
+    assert block.equals(df[["two"]])
+
+    block = block_accessor.select(["two", "one"])
+    assert block.equals(df[["two", "one"]])
+
+    with pytest.raises(ValueError):
+        block = block_accessor.select([lambda x: x % 3, "two"])
+
+
+def test_simple_block_select():
+    xs = list(range(100))
+    block_accessor = BlockAccessor.for_block(xs)
+
+    block = block_accessor.select([lambda x: x % 3])
+    assert block == [x % 3 for x in xs]
+
+    with pytest.raises(ValueError):
+        block = block_accessor.select(["foo"])
+
+    with pytest.raises(ValueError):
+        block = block_accessor.select([])
 
 
 def test_arrow_block_slice_copy():
@@ -1732,8 +1780,12 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert all(isinstance(col, np.ndarray) for col in batch.values())
         pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
 
-    # Native format.
+    # Native format (deprecated).
     for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="native"), dfs):
+        assert BlockAccessor.for_block(batch).to_pandas().equals(df)
+
+    # Default format.
+    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="default"), dfs):
         assert BlockAccessor.for_block(batch).to_pandas().equals(df)
 
     # Batch size.
@@ -4903,6 +4955,18 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
         compute_strategy.num_workers >= num_cpus
         and compute_strategy.num_workers <= expected_max_num_workers
     ), "Number of actors is out of the expected bound"
+
+
+def test_default_batch_format(shutdown_only):
+    ds = ray.data.range(100)
+    assert ds.default_batch_format() == list
+
+    ds = ray.data.range_tensor(100)
+    assert ds.default_batch_format() == np.ndarray
+
+    df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
+    ds = ray.data.from_pandas(df)
+    assert ds.default_batch_format() == pd.DataFrame
 
 
 if __name__ == "__main__":

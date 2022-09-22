@@ -1,3 +1,4 @@
+from ray.rllib.utils.replay_buffers.fifo_replay_buffer import FifoReplayBuffer
 from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import (
     MultiAgentMixInReplayBuffer,
 )
@@ -25,6 +26,7 @@ from ray.rllib.utils.replay_buffers.storage import (
 from ray.rllib.utils.replay_buffers import utils
 
 __all__ = [
+    "FifoReplayBuffer",
     "InMemoryStorage",
     "LocalStorage",
     "MultiAgentMixInReplayBuffer",

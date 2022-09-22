@@ -55,6 +55,7 @@ import ray._private.state
 import ray._private.storage as storage
 
 # Ray modules
+import ray.actor
 import ray.cloudpickle as pickle
 import ray.job_config
 import ray.remote_function
@@ -597,11 +598,9 @@ class Worker:
         # Make sure that the value is not an object ref.
         if isinstance(value, ObjectRef):
             raise TypeError(
-                "Calling 'put' on an ray.ObjectRef is not allowed "
-                "(similarly, returning an ray.ObjectRef from a remote "
-                "function is not allowed). If you really want to "
-                "do this, you can wrap the ray.ObjectRef in a list and "
-                "call 'put' on it (or return it)."
+                "Calling 'put' on an ray.ObjectRef is not allowed. "
+                "If you really want to do this, you can wrap the "
+                "ray.ObjectRef in a list and call 'put' on it."
             )
 
         if self.mode == LOCAL_MODE:
@@ -2067,10 +2066,15 @@ def connect(
         # are the same.
         # When using an interactive shell, there is no script directory.
         if not interactive_mode:
-            script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
-            worker.run_function_on_all_workers(
-                lambda worker_info: sys.path.insert(1, script_directory)
-            )
+            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
+            # If driver's sys.path doesn't include the script directory
+            # (e.g driver is started via `python -m`,
+            # see https://peps.python.org/pep-0338/),
+            # then we shouldn't add it to the workers.
+            if script_directory in sys.path:
+                worker.run_function_on_all_workers(
+                    lambda worker_info: sys.path.insert(1, script_directory)
+                )
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
         if not job_config.client_job and not job_config.runtime_env_has_working_dir():
@@ -2262,8 +2266,7 @@ def get(
 
         if not isinstance(object_refs, list):
             raise ValueError(
-                "'object_refs' must either be an object ref "
-                "or a list of object refs."
+                "'object_refs' must either be an ObjectRef or a list of ObjectRefs."
             )
 
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
@@ -2584,6 +2587,9 @@ def _mode(worker=global_worker):
 
 
 def _make_remote(function_or_class, options):
+    if not function_or_class.__module__:
+        function_or_class.__module__ = "global"
+
     if inspect.isfunction(function_or_class) or is_cython(function_or_class):
         ray_option_utils.validate_task_options(options, in_options=False)
         return ray.remote_function.RemoteFunction(
@@ -2774,62 +2780,118 @@ def remote(
 
 
 @PublicAPI
-def remote(*args, **kwargs):
+def remote(
+    *args, **kwargs
+) -> Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass]:
     """Defines a remote function or an actor class.
 
-    This can be used with no arguments to define a remote function or actor as
-    follows:
+    This function can be used as a decorator with no arguments
+    to define a remote function or actor as follows:
 
-    .. code-block:: python
+    >>> import ray
+    >>>
+    >>> @ray.remote
+    ... def f(a, b, c):
+    ...     return a + b + c
+    >>>
+    >>> object_ref = f.remote(1, 2, 3)
+    >>> result = ray.get(object_ref)
+    >>> assert result == (1 + 2 + 3)
+    >>>
+    >>> @ray.remote
+    ... class Foo:
+    ...     def __init__(self, arg):
+    ...         self.x = arg
+    ...
+    ...     def method(self, a):
+    ...         return self.x + a
+    >>>
+    >>> actor_handle = Foo.remote(123)
+    >>> object_ref = actor_handle.method.remote(321)
+    >>> result = ray.get(object_ref)
+    >>> assert result == (123 + 321)
 
-        @ray.remote
-        def f():
-            return 1
+    Equivalently, use a function call to create a remote function or actor.
 
-        @ray.remote
-        class Foo:
-            def method(self):
-                return 1
+    >>> def g(a, b, c):
+    ...     return a + b + c
+    >>>
+    >>> remote_g = ray.remote(g)
+    >>> object_ref = remote_g.remote(1, 2, 3)
+    >>> assert ray.get(object_ref) == (1 + 2 + 3)
+
+    >>> class Bar:
+    ...     def __init__(self, arg):
+    ...         self.x = arg
+    ...
+    ...     def method(self, a):
+    ...         return self.x + a
+    >>>
+    >>> RemoteBar = ray.remote(Bar)
+    >>> actor_handle = RemoteBar.remote(123)
+    >>> object_ref = actor_handle.method.remote(321)
+    >>> result = ray.get(object_ref)
+    >>> assert result == (123 + 321)
+
 
     It can also be used with specific keyword arguments as follows:
 
-    .. code-block:: python
-
-        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-        def f():
-            return 1, 2
-
-        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-        class Foo:
-            def method(self):
-                return 1
+    >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+    ... def f():
+    ...     return 1, 2
+    >>>
+    >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+    ... class Foo:
+    ...     def method(self):
+    ...         return 1
 
     Remote task and actor objects returned by @ray.remote can also be
     dynamically modified with the same arguments as above using
     ``.options()`` as follows:
 
-    .. code-block:: python
+    >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+    ... def f():
+    ...     return 1, 2
+    >>>
+    >>> f_with_2_gpus = f.options(num_gpus=2) # doctest: +SKIP
+    >>> object_ref = f_with_2_gpus.remote() # doctest: +SKIP
+    >>> assert ray.get(object_ref) == (1, 2) # doctest: +SKIP
 
-        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-        def f():
-            return 1, 2
-        g = f.options(num_gpus=2)
+    >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+    ... class Foo:
+    ...     def method(self):
+    ...         return 1
+    >>>
+    >>> Foo_with_no_resources = Foo.options(num_cpus=1, resources=None)
+    >>> foo_actor = Foo_with_no_resources.remote()
+    >>> assert ray.get(foo_actor.method.remote()) == 1
 
-        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-        class Foo:
-            def method(self):
-                return 1
-        Bar = Foo.options(num_cpus=1, resources=None)
 
-    Running remote actors will be terminated when the actor handle to them
+    A remote actor will be terminated when all actor handle to it
     in Python is deleted, which will cause them to complete any outstanding
-    work and then shut down. If you want to kill them immediately, you can
-    also call ``ray.kill(actor)``.
+    work and then shut down. If you only have 1 reference to an actor handle,
+    calling ``del actor`` *could* trigger actor deletion. Note that your program
+    may have multiple references to the same ActorHandle, and actor termination
+    will not occur until the reference count goes to 0. See the Python
+    documentation for more context about object deletion.
+    https://docs.python.org/3.9/reference/datamodel.html#object.__del__
+
+    If you want to kill actors immediately, you can also call ``ray.kill(actor)``.
+
+    .. tip::
+        Avoid repeatedly passing in large arguments to remote task or method calls.
+
+        Instead, use ray.put to create a copy of the object in the object store.
+
+        See :ref:`more info here <tip-delay-get>`.
 
     Args:
         num_returns: This is only for *remote functions*. It specifies
-            the number of object refs returned by
-            the remote function invocation.
+            the number of object refs returned by the remote function
+            invocation. Pass "dynamic" to allow the task to decide how many
+            return values to return during execution, and the caller will
+            receive an ObjectRef[ObjectRefGenerator] (note, this setting is
+            experimental).
         num_cpus: The quantity of CPU cores to reserve
             for this task or for the lifetime of the actor.
         num_gpus: The quantity of GPUs to reserve
@@ -2889,6 +2951,7 @@ def remote(*args, **kwargs):
             placement group based scheduling.
         _metadata: Extended options for Ray libraries. For example,
             _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
+
     """
     # "callable" returns true for both function and class.
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):

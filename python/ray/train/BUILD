@@ -2,6 +2,11 @@
 # Tests from the python/ray/train/examples directory.
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
+py_library(
+    name = "conftest",
+    srcs = ["tests/conftest.py"]
+)
+
 py_test(
     name = "mlflow_fashion_mnist_example",
     size = "medium",
@@ -170,6 +175,14 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_fsdp",
+    size = "large",
+    srcs = ["tests/test_torch_fsdp.py"],
+    tags = ["team:ml", "exclusive", "torch_1_11", "gpu_only"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_horovod_trainer",
     size = "large",
     srcs = ["tests/test_horovod_trainer.py"],
@@ -178,17 +191,33 @@ py_test(
 )
 
 py_test(
+    name = "test_huggingface_checkpoint",
+    size = "small",
+    srcs = ["tests/test_huggingface_checkpoint.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
     name = "test_huggingface_predictor",
     size = "medium",
     srcs = ["tests/test_huggingface_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_huggingface_trainer",
+    size = "large",
+    srcs = ["tests/test_huggingface_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )
 
 py_test(
-    name = "test_huggingface_trainer",
-    size = "medium",
-    srcs = ["tests/test_huggingface_trainer.py"],
+    name = "test_huggingface_trainer_steps",
+    size = "large",
+    srcs = ["tests/test_huggingface_trainer_steps.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )
@@ -198,7 +227,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_lightgbm_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -238,7 +267,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_rl_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -246,7 +275,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_rl_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -262,7 +291,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_sklearn_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -286,7 +315,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_tensorflow_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -306,11 +335,19 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_checkpoint",
+    size = "small",
+    srcs = ["tests/test_torch_checkpoint.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
     name = "test_torch_predictor",
     size = "small",
     srcs = ["tests/test_torch_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -358,7 +395,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_xgboost_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
