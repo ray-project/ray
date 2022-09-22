@@ -234,7 +234,12 @@ if __name__ == "__main__":
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_DOC_AFFECTED = 1
             else:
-                print(f"Unhandled source code change: {changed_file}", file=sys.stderr)
+                print(
+                    "Unhandled source code change: {changed_file}".format(
+                        changed_file=changed_file
+                    ),
+                    file=sys.stderr,
+                )
 
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
