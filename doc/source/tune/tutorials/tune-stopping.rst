@@ -1,5 +1,7 @@
-Stopping and resuming a Ray Tune run
-====================================
+.. _tune-stopping-guide:
+
+Stopping and Resuming a Tune Run
+================================
 
 Ray Tune periodically checkpoints the run state so that it can be restarted when it fails or stops.
 
