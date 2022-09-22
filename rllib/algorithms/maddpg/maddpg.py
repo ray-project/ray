@@ -50,15 +50,16 @@ class MADDPGConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = MADDPGConfig()
         >>> config.training(n_step=tune.grid_search([3, 5]))
         >>> config.environment(env="CartPole-v1")
-        >>> tune.run(
+        >>> tune.Tuner(
         >>>     "MADDPG",
-        >>>     stop={"episode_reward_mean":200},
-        >>>     config=config.to_dict()
-        >>> )
+        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        >>>     param_space=config.to_dict()
+        >>> ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -84,12 +85,14 @@ class MADDPGConfig(AlgorithmConfig):
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
             "capacity": int(1e6),
-            # How many steps of the model to sample before learning starts.
-            "learning_starts": 1024 * 25,
             # Force lockstep replay mode for MADDPG.
             "replay_mode": "lockstep",
         }
         self.training_intensity = None
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        self.num_steps_sampled_before_learning_starts = 1024 * 25
         self.critic_lr = 1e-2
         self.actor_lr = 1e-2
         self.target_network_update_freq = 0
@@ -157,7 +160,6 @@ class MADDPGConfig(AlgorithmConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "learning_starts": 1000,
                 "capacity": 50000,
                 "replay_sequence_length": 1,
                 }

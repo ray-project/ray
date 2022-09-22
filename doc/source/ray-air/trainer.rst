@@ -1,7 +1,7 @@
 .. _air-trainers:
 
-Ray AIR Trainers
-================
+Using Trainers
+==============
 
 .. https://docs.google.com/drawings/d/1anmT0JVFH9abR5wX5_WcxNHJh6jWeDL49zWxGpkfORA/edit
 
@@ -32,7 +32,7 @@ construct a Trainer, you can provide:
 * A collection of :ref:`datasets <air-ingest>` and a :ref:`preprocessor <air-preprocessors>` for the provided datasets, which configures preprocessing and the datasets to ingest from.
 * ``resume_from_checkpoint``, which is a checkpoint path to resume from, should your training run be interrupted.
 
-After instatiating a Trainer, you can invoke it by calling :meth:`Trainer.fit() <ray.air.Trainer.fit>`.
+After instantiating a Trainer, you can invoke it by calling :meth:`Trainer.fit() <ray.air.trainer.BaseTrainer.fit>`.
 
 .. literalinclude:: doc_code/xgboost_trainer.py
     :language: python
@@ -63,7 +63,7 @@ You can access the data shard within a worker via ``session.get_dataset_shard()`
 to generate batches of Tensorflow or Pytorch tensors.
 You can read more about :ref:`data ingest <air-ingest>` here.
 
-Read more about :ref:`Ray Train's Deep Learning Trainers <train-user-guide>`.
+Read more about :ref:`Ray Train's Deep Learning Trainers <train-dl-guide>`.
 
 .. dropdown:: Code examples
 
@@ -110,7 +110,7 @@ Ray Train offers 2 main tree-based trainers:
 :class:`XGBoostTrainer <ray.train.xgboost.XGBoostTrainer>` and
 :class:`LightGBMTrainer <ray.train.lightgbm.LightGBMTrainer>`.
 
-See :ref:`here for a more detailed user-guide <air-trainers-gbdt-user-guide>`.
+See :ref:`here for a more detailed user-guide <train-gbdt-guide>`.
 
 
 XGBoost Trainer
@@ -212,8 +212,11 @@ You can interact with a `Result` object as follows:
     # returns the final metrics as reported
     result.metrics
 
-    # returns the contain an Exception if training failed.
+    # returns the Exception if training failed.
     result.error
+
+    # Returns a pandas dataframe of all reported results
+    result.metrics_dataframe
 
 
 See :class:`the Result docstring <ray.air.result.Result>` for more details.

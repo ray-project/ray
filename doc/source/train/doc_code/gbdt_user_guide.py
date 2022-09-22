@@ -24,14 +24,58 @@ trainer = XGBoostTrainer(
     params={
         # XGBoost specific params
         "objective": "binary:logistic",
+        # "tree_method": "gpu_hist",  # uncomment this to use GPU for training
         "eval_metric": ["logloss", "error"],
     },
     datasets={"train": train_dataset, "valid": valid_dataset},
 )
 result = trainer.fit()
 print(result.metrics)
-
 # __xgboost_end__
+
+# __xgb_detail_intro_start__
+import ray
+
+# Load data.
+dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
+
+# Split data into train and validation.
+train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
+# __xgb_detail_intro_end__
+
+# __xgb_detail_scaling_start__
+from ray.air.config import ScalingConfig
+
+scaling_config = ScalingConfig(
+    # Number of workers to use for data parallelism.
+    num_workers=2,
+    # Whether to use GPU acceleration.
+    use_gpu=False,
+)
+# __xgb_detail_scaling_end__
+
+# __xgb_detail_training_start__
+from ray.train.xgboost import XGBoostTrainer
+
+trainer = XGBoostTrainer(
+    scaling_config=scaling_config,
+    label_column="target",
+    num_boost_round=20,
+    params={
+        # XGBoost specific params
+        "objective": "binary:logistic",
+        # "tree_method": "gpu_hist",  # uncomment this to use GPU for training
+        "eval_metric": ["logloss", "error"],
+    },
+    datasets={"train": train_dataset, "valid": valid_dataset},
+)
+# __xgb_detail_training_end__
+
+# __xgb_detail_fit_start__
+result = trainer.fit()
+print(result.metrics)
+# __xgb_detail_fit_end__
+
 
 # __lightgbm_start__
 import ray
@@ -62,8 +106,51 @@ trainer = LightGBMTrainer(
 )
 result = trainer.fit()
 print(result.metrics)
-
 # __lightgbm_end__
+
+
+# __lgbm_detail_intro_start__
+import ray
+
+# Load data.
+dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
+
+# Split data into train and validation.
+train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
+# __lgbm_detail_intro_end__
+
+# __lgbm_detail_scaling_start__
+from ray.air.config import ScalingConfig
+
+scaling_config = ScalingConfig(
+    # Number of workers to use for data parallelism.
+    num_workers=2,
+    # Whether to use GPU acceleration.
+    use_gpu=False,
+)
+# __lgbm_detail_scaling_end__
+
+# __lgbm_detail_training_start__
+from ray.train.lightgbm import LightGBMTrainer
+
+trainer = LightGBMTrainer(
+    scaling_config=scaling_config,
+    label_column="target",
+    num_boost_round=20,
+    params={
+        # LightGBM specific params
+        "objective": "binary",
+        "metric": ["binary_logloss", "binary_error"],
+    },
+    datasets={"train": train_dataset, "valid": valid_dataset},
+)
+# __lgbm_detail_training_end__
+
+# __lgbm_detail_fit_start__
+result = trainer.fit()
+print(result.metrics)
+# __lgbm_detail_fit_end__
+
 
 # __scaling_cpu_start__
 scaling_config = ScalingConfig(

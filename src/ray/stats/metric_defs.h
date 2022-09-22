@@ -42,6 +42,9 @@ namespace stats {
 /// ray_[component]_[metrics_name]_total (e.g., ray_pull_manager_total)
 ///
 
+/// Task stats from core workers.
+DECLARE_stats(tasks);
+
 /// Event stats
 DECLARE_stats(operation_count);
 DECLARE_stats(operation_run_time_ms);
@@ -94,6 +97,9 @@ DECLARE_stats(gcs_placement_group_scheduling_latency_ms);
 DECLARE_stats(gcs_placement_group_count);
 
 DECLARE_stats(gcs_actors_count);
+
+/// Memory Manager
+DECLARE_stats(memory_manager_worker_eviction_total);
 
 /// The below items are legacy implementation of metrics.
 /// TODO(sang): Use DEFINE_stats instead.

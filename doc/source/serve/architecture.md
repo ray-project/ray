@@ -1,11 +1,10 @@
 (serve-architecture)=
 
-# Serve Architecture
+# Architecture
 
-This section should help you:
-
-- Get an overview of how each component in Serve works
-- Understand the different types of actors that make up a Serve instance
+In this section, we explore Serve's key architectural concepts and components. It will offer insight and overview into:
+- the role of each component in Serve and how they work
+- the different types of actors that make up a Serve application
 
 % Figure source: https://docs.google.com/drawings/d/1jSuBN5dkSj2s9-0eGzlU_ldsRa3TsswQUZM-cMQ29a0/edit?usp=sharing
 
@@ -14,6 +13,7 @@ This section should help you:
 :width: 600px
 ```
 
+(serve-architecture-high-level-view)=
 ## High-Level View
 
 Serve runs on Ray and utilizes [Ray actors](actor-guide).
@@ -31,11 +31,11 @@ There are three kinds of actors that are created to make up a Serve instance:
 - **Replicas**: Actors that actually execute the code in response to a
   request. For example, they may contain an instantiation of an ML model. Each
   replica processes individual requests from the HTTP proxy (these may be batched
-  by the replica using `@serve.batch`, see the [batching](serve-batching) docs).
+  by the replica using `@serve.batch`, see the [batching](serve-performance-batching-requests) docs).
 
 ## Lifetime of a Request
 
-When an HTTP request is sent to the HTTP proxy, the following things happen:
+When an HTTP request is sent to the HTTP proxy, the following happens:
 
 1. The HTTP request is received and parsed.
 2. The correct deployment associated with the HTTP URL path is looked up. The
@@ -64,14 +64,14 @@ Machine errors and faults will be handled by Ray Serve as follows:
 - When replica actors fail, the Controller actor will replace them with new ones.
 - When the HTTP proxy actor fails, the Controller actor will restart it.
 - When the Controller actor fails, Ray will restart it.
-- When using the [Kuberay RayService](https://ray-project.github.io/kuberay/guidance/rayservice/), KubeRay will recover crashed nodes or a crashed cluster.  Cluster crashes can be avoided using the [GCS HA feature](https://ray-project.github.io/kuberay/guidance/gcs-ha/).
-- If not using Kuberay, when the Ray cluster fails, Ray Serve cannot recover.
+- When using the [KubeRay RayService](https://ray-project.github.io/kuberay/guidance/rayservice/), KubeRay will recover crashed nodes or a crashed cluster.  Cluster crashes can be avoided using the [GCS FT feature](https://ray-project.github.io/kuberay/guidance/gcs-ft/).
+- If not using KubeRay, when the Ray cluster fails, Ray Serve cannot recover.
 
 When a machine hosting any of the actors crashes, those actors will be automatically restarted on another
 available machine. All data in the Controller (routing policies, deployment
 configurations, etc) is checkpointed to the Ray Global Control Store (GCS) on the head node. Transient data in the
-router and the replica (like network connections and internal request
-queues) will be lost for this kind of failure.
+router and the replica (like network connections and internal request queues) will be lost for this kind of failure.
+See [Serve Health Checking](serve-health-checking) for how actor crashes are detected.
 
 (serve-autoscaling-architecture)=
 

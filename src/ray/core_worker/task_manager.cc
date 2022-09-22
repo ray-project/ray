@@ -28,6 +28,28 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
+TaskStatusCounter::TaskStatusCounter() {}
+
+void TaskStatusCounter::Swap(rpc::TaskStatus old_status, rpc::TaskStatus new_status) {
+  counters_[old_status] -= 1;
+  counters_[new_status] += 1;
+  RAY_CHECK(counters_[old_status] >= 0);
+  // Note that we set a Source=owner label so that metrics reported here don't
+  // conflict with metrics reported from core_worker.h.
+  ray::stats::STATS_tasks.Record(
+      counters_[old_status],
+      {{"State", rpc::TaskStatus_Name(old_status)}, {"Source", "owner"}});
+  ray::stats::STATS_tasks.Record(
+      counters_[new_status],
+      {{"State", rpc::TaskStatus_Name(new_status)}, {"Source", "owner"}});
+}
+
+void TaskStatusCounter::Increment(rpc::TaskStatus status) {
+  counters_[status] += 1;
+  ray::stats::STATS_tasks.Record(
+      counters_[status], {{"State", rpc::TaskStatus_Name(status)}, {"Source", "owner"}});
+}
+
 std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     const rpc::Address &caller_address,
     const TaskSpecification &spec,
@@ -97,8 +119,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
   {
     absl::MutexLock lock(&mu_);
-    auto inserted = submissible_tasks_.emplace(spec.TaskId(),
-                                               TaskEntry(spec, max_retries, num_returns));
+    auto inserted = submissible_tasks_.emplace(
+        spec.TaskId(), TaskEntry(spec, max_retries, num_returns, task_counter_));
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
   }
@@ -121,7 +143,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
 
     if (!it->second.IsPending()) {
       resubmit = true;
-      it->second.status = rpc::TaskStatus::WAITING_FOR_DEPENDENCIES;
+      it->second.SetStatus(rpc::TaskStatus::WAITING_FOR_DEPENDENCIES);
       num_pending_tasks_++;
 
       // The task is pending again, so it's no longer counted as lineage. If
@@ -156,6 +178,20 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     }
 
     reference_counter_->UpdateResubmittedTaskReferences(return_ids, *task_deps);
+
+    for (const auto &task_dep : *task_deps) {
+      bool was_freed = reference_counter_->TryMarkFreedObjectInUseAgain(task_dep);
+      if (was_freed) {
+        RAY_LOG(DEBUG) << "Dependency " << task_dep << " of task " << task_id
+                       << " was freed";
+        // We do not keep around copies for objects that were freed, but now that
+        // they're needed for recovery, we need to generate and pin a new copy.
+        // Delete the old in-memory marker that indicated that the object was
+        // freed. Now workers that attempt to get the object will be able to get
+        // the reconstructed value.
+        in_memory_store_->Delete({task_dep});
+      }
+    }
     if (spec.IsActorTask()) {
       const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
       reference_counter_->UpdateResubmittedTaskReferences(return_ids,
@@ -325,7 +361,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                    << " plasma returns in scope";
     it->second.num_successful_executions++;
 
-    it->second.status = rpc::TaskStatus::FINISHED;
+    it->second.SetStatus(rpc::TaskStatus::FINISHED);
     num_pending_tasks_--;
 
     // A finished task can only be re-executed if it has some number of
@@ -377,7 +413,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
     } else {
       RAY_CHECK(num_retries_left == 0 || num_retries_left == -1);
     }
-    it->second.status = rpc::TaskStatus::SCHEDULED;
+    it->second.SetStatus(rpc::TaskStatus::SCHEDULED);
   }
 
   // We should not hold the lock during these calls because they may trigger
@@ -386,12 +422,13 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
     std::ostringstream stream;
     auto num_retries_left_str =
         num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-    stream << num_retries_left_str << " retries left for task " << spec.TaskId()
-           << ", attempting to resubmit.";
-    RAY_LOG(INFO) << stream.str();
+    RAY_LOG(INFO) << num_retries_left_str << " retries left for task " << spec.TaskId()
+                  << ", attempting to resubmit.";
     retry_task_callback_(spec, /*delay=*/true);
     return true;
   } else {
+    RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()
+                  << ", not going to resubmit.";
     return false;
   }
 }
@@ -637,7 +674,7 @@ void TaskManager::AddTaskStatusInfo(rpc::CoreWorkerStats *stats) const {
     if (it == submissible_tasks_.end()) {
       continue;
     }
-    ref->set_task_status(it->second.status);
+    ref->set_task_status(it->second.GetStatus());
     ref->set_attempt_number(it->second.spec.AttemptNumber());
   }
 }
@@ -648,8 +685,8 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   if (it == submissible_tasks_.end()) {
     return;
   }
-  if (it->second.status == rpc::TaskStatus::WAITING_FOR_DEPENDENCIES) {
-    it->second.status = rpc::TaskStatus::SCHEDULED;
+  if (it->second.GetStatus() == rpc::TaskStatus::WAITING_FOR_DEPENDENCIES) {
+    it->second.SetStatus(rpc::TaskStatus::SCHEDULED);
   }
 }
 
@@ -659,8 +696,8 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
   if (it == submissible_tasks_.end()) {
     return;
   }
-  RAY_CHECK(it->second.status == rpc::TaskStatus::SCHEDULED);
-  it->second.status = rpc::TaskStatus::WAITING_FOR_EXECUTION;
+  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::SCHEDULED);
+  it->second.SetStatus(rpc::TaskStatus::WAITING_FOR_EXECUTION);
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
@@ -677,7 +714,7 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
     const auto &task_entry = task_it.second;
     auto entry = reply->add_owned_task_info_entries();
     const auto &task_spec = task_entry.spec;
-    const auto &task_state = task_entry.status;
+    const auto &task_state = task_entry.GetStatus();
     rpc::TaskType type;
     if (task_spec.IsNormalTask()) {
       type = rpc::TaskType::NORMAL_TASK;

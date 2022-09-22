@@ -189,6 +189,8 @@ extern jfieldID java_actor_creation_options_name;
 extern jfieldID java_actor_creation_options_lifetime;
 /// maxRestarts field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_restarts;
+/// maxTaskRetries field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_max_task_retries;
 /// jvmOptions field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_jvm_options;
 /// maxConcurrency field of ActorCreationOptions class
@@ -205,6 +207,8 @@ extern jfieldID java_actor_creation_options_serialized_runtime_env;
 extern jfieldID java_actor_creation_options_namespace;
 /// maxPendingCalls field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_pending_calls;
+/// isAsync field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_is_async;
 /// ActorLifetime enum class
 extern jclass java_actor_lifetime_class;
 /// ordinal method of ActorLifetime class

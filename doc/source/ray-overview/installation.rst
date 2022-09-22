@@ -58,7 +58,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. note::
 
-  Python 3.10 support is currently experimental.
+  Python 3.9/3.10 support is currently experimental.
 
 .. note::
 
@@ -167,6 +167,24 @@ The latest Ray Java snapshot can be found in `sonatype repository <https://oss.s
 
   If you want to run your Java code in a multi-node Ray cluster, it's better to exclude Ray jars when packaging your code to avoid jar conficts if the versions (installed Ray with ``pip install`` and maven dependencies) don't match.
 
+.. _ray-install-cpp:
+
+Install Ray C++
+---------------
+
+You can install and use Ray C++ API as follows.
+
+.. code-block:: bash
+
+  pip install -U ray[cpp]
+
+  # Create a Ray C++ project template to start with.
+  mkdir ray-template && ray cpp --generate-bazel-project-template-to ray-template
+
+.. note::
+
+  If you build Ray from source, please remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file ``cpp/example/.bazelrc`` before running your application. The related issue is `this <https://github.com/ray-project/ray/issues/26031>`_.
+
 .. _apple-silcon-supprt:
 
 M1 Mac (Apple Silicon) Support
@@ -243,7 +261,7 @@ If you use `Anaconda`_ (`installation instructions`_) and want to use Ray in a d
 .. code-block:: bash
 
   conda config --env --add channels conda-forge
-  conda env create -n ray  # works with mamba too
+  conda create -n ray  # works with mamba too
   conda activate ray
   pip install ray  # or `conda install ray-core`
 

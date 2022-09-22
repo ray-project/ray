@@ -20,7 +20,7 @@ and are compatible with a variety of file formats, data sources, and distributed
 Here's an overview of the integrations with other processing frameworks, file formats, and supported operations,
 as well as a glimpse at the Ray Datasets API.
 
-Check our :ref:`compatibility matrix<data-compatibility>` to see if your favorite format
+Check our :ref:`compatibility matrix <data-compatibility>` to see if your favorite format
 is already supported.
 
 .. image:: images/dataset.svg
@@ -60,7 +60,7 @@ Where to Go from Here?
 As new user of Ray Datasets, you may want to start with our :ref:`Getting Started guide<datasets_getting_started>`.
 If you've run your first examples already, you might want to dive into Ray Datasets'
 :ref:`key concepts <data_key_concepts>` or our :ref:`User Guide <data_user_guide>` instead.
-Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_api>` for their projects.
+Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-api>` for their projects.
 
 .. panels::
     :container: text-center
@@ -85,7 +85,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
     ^^^
 
     Understand the key concepts behind Ray Datasets.
-    Learn what :ref:`Datasets<dataset_concept>` and :ref:`Dataset Pipelines<dataset_pipeline_concept>` are
+    Learn what :ref:`Datasets <dataset_concept>` and :ref:`Dataset Pipelines <dataset_pipeline_concept>` are
     and how they get executed in Ray Datasets.
 
     +++
@@ -98,11 +98,11 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
     **User Guides**
     ^^^
 
-    Learn how to :ref:`create datasets<creating_datasets>`, :ref:`save
-    datasets<saving_datasets>`, :ref:`transform datasets<transforming_datasets>`,
-    :ref:`access and exchange datasets<consuming_datasets>`, :ref:`pipeline
-    transformations<pipelining_datasets>`, :ref:`load and process data for ML<datasets-ml-preprocessing>`,
-    work with :ref:`tensor data<datasets_tensor_support>`, or :ref:`use pipelines<data_pipeline_usage>`.
+    Learn how to :ref:`create datasets <creating_datasets>`, :ref:`save
+    datasets <saving_datasets>`, :ref:`transform datasets <transforming_datasets>`,
+    :ref:`access and exchange datasets <consuming_datasets>`, :ref:`pipeline
+    transformations <pipelining_datasets>`, :ref:`load and process data for ML <datasets-ml-preprocessing>`,
+    work with :ref:`tensor data <datasets_tensor_support>`, or :ref:`use pipelines <data_pipeline_usage>`.
 
     +++
     .. link-button:: data_user_guide
@@ -110,7 +110,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
         :text: Start Using Ray Datasets
         :classes: btn-outline-info btn-block
     ---
-    
+
     **Examples**
     ^^^
 
@@ -142,7 +142,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
     Get more in-depth information about the Ray Datasets API.
 
     +++
-    .. link-button:: data_api
+    .. link-button:: data-api
         :type: ref
         :text: Read the API Reference
         :classes: btn-outline-info btn-block
@@ -203,6 +203,9 @@ Supported Input Formats
    * - Binary Files
      - :func:`ray.data.read_binary_files()`
      - ✅
+   * - TFRecord Files
+     - :func:`ray.data.read_tfrecords()`
+     - 🚧
    * - Python Objects
      - :func:`ray.data.from_items()`
      - ✅
@@ -286,11 +289,11 @@ Supported Output Formats
    * - Pandas Dataframe Iterator
      - :meth:`ds.iter_batches(batch_format="pandas") <ray.data.Dataset.iter_batches>`
      - ✅
-   * - PyTorch Iterable Dataset
-     - :meth:`ds.to_torch() <ray.data.Dataset.to_torch>`
+   * - PyTorch Tensor Iterator
+     - :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
      - ✅
-   * - TensorFlow Iterable Dataset
-     - :meth:`ds.to_tf() <ray.data.Dataset.to_tf>`
+   * - TensorFlow Tensor Iterator
+     - :meth:`ds.iter_tf_batches() <ray.data.Dataset.iter_tf_batches>`
      - ✅
    * - Random Access Dataset
      - :meth:`ds.to_random_access_dataset() <ray.data.Dataset.to_random_access_dataset>`

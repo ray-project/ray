@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 import ray
 from ray.actor import ActorHandle
+from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 
@@ -18,11 +19,9 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
     compute_iterable_delta,
     JavaActorHandleProxy,
-    msgpack_serialize,
 )
 from ray.serve.generated.serve_pb2 import (
     RequestMetadata as RequestMetadataProto,
-    RequestWrapper as RequestWrapperProto,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -44,6 +43,20 @@ class Query:
     args: List[Any]
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
+    return_num: int = 2
+
+    async def resolve_async_tasks(self):
+        """Find all unresolved asyncio.Task and gather them all at once."""
+        scanner = _PyObjScanner(source_type=asyncio.Task)
+        tasks = scanner.find_nodes((self.args, self.kwargs))
+
+        if len(tasks) > 0:
+            resolved = await asyncio.gather(*tasks)
+            replacement_table = dict(zip(tasks, resolved))
+            self.args, self.kwargs = scanner.replace_nodes(replacement_table)
+
+        # Make the scanner GCable to avoid memory leak
+        scanner.clear()
 
 
 class ReplicaSet:
@@ -149,11 +162,11 @@ class ReplicaSet:
                     RequestMetadataProto(
                         request_id=query.metadata.request_id,
                         endpoint=query.metadata.endpoint,
-                        call_method=query.metadata.call_method,
+                        call_method=query.metadata.call_method
+                        if query.metadata.call_method != "__call__"
+                        else "call",
                     ).SerializeToString(),
-                    RequestWrapperProto(
-                        body=msgpack_serialize(arg)
-                    ).SerializeToString(),
+                    [arg],
                 )
                 self.in_flight_queries[replica].add(user_ref)
             else:
@@ -216,6 +229,7 @@ class ReplicaSet:
         self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint}
         )
+        await query.resolve_async_tasks()
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug(

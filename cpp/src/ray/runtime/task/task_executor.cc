@@ -127,9 +127,10 @@ Status TaskExecutor::ExecuteTask(
     const std::vector<rpc::ObjectReference> &arg_refs,
     const std::vector<ObjectID> &return_ids,
     const std::string &debugger_breakpoint,
+    const std::string &serialized_retry_exception_allowlist,
     std::vector<std::shared_ptr<ray::RayObject>> *results,
     std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
-    bool *is_application_level_error,
+    bool *is_retryable_error,
     const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
     const std::string name_of_concurrency_group_to_execute) {
   RAY_LOG(DEBUG) << "Execute task type: " << TaskType_Name(task_type)
@@ -141,6 +142,10 @@ Status TaskExecutor::ExecuteTask(
   auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
   std::string func_name = typed_descriptor->FunctionName();
   bool cross_lang = !typed_descriptor->Caller().empty();
+  // TODO(Clark): Support retrying application-level errors for C++.
+  // TODO(Clark): Support exception allowlist for retrying application-level
+  // errors for C++.
+  *is_retryable_error = false;
 
   Status status{};
   std::shared_ptr<msgpack::sbuffer> data = nullptr;

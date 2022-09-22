@@ -6,25 +6,30 @@ import os
 import random
 import string
 import subprocess
+import sys
 import time
 import traceback
 from asyncio.tasks import FIRST_COMPLETED
 from collections import deque
-from typing import Any, Dict, Iterator, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import ray
+from ray._private.gcs_utils import GcsAioClient
 import ray._private.ray_constants as ray_constants
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
+    JOB_ACTOR_NAME_TEMPLATE,
+    SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfo,
     JobInfoStorageClient,
 )
 from ray.dashboard.modules.job.utils import file_tail_iterator
 from ray.exceptions import RuntimeEnvSetupError
 from ray.job_submission import JobStatus
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +38,21 @@ try:
     create_task = asyncio.create_task
 except AttributeError:
     create_task = asyncio.ensure_future
+
+# Windows requires additional packages for proper process control.
+if sys.platform == "win32":
+    try:
+        import win32api
+        import win32con
+        import win32job
+    except (ModuleNotFoundError, ImportError) as e:
+        win32api = None
+        win32con = None
+        win32job = None
+        logger.warning(
+            "Failed to Import win32api. For best usage experience run "
+            f"'conda install pywin32'. Import error: {e}"
+        )
 
 
 def generate_job_id() -> str:
@@ -57,6 +77,9 @@ class JobLogStorageClient:
     JOB_LOGS_PATH = "job-driver-{job_id}.log"
     # Number of last N lines to put in job message upon failure.
     NUM_LOG_LINES_ON_ERROR = 10
+    # Maximum number of characters to print out of the logs to avoid
+    # HUGE log outputs that bring down the api server
+    MAX_LOG_SIZE = 20000
 
     def get_logs(self, job_id: str) -> str:
         try:
@@ -65,20 +88,31 @@ class JobLogStorageClient:
         except FileNotFoundError:
             return ""
 
-    def tail_logs(self, job_id: str) -> Iterator[str]:
+    def tail_logs(self, job_id: str) -> Iterator[List[str]]:
         return file_tail_iterator(self.get_log_file_path(job_id))
 
     def get_last_n_log_lines(
         self, job_id: str, num_log_lines=NUM_LOG_LINES_ON_ERROR
     ) -> str:
+        """
+        Returns the last MAX_LOG_SIZE (20000) characters in the last
+        `num_log_lines` lines.
+
+        Args:
+            job_id: The id of the job whose logs we want to return
+            num_log_lines: The number of lines to return.
+        """
         log_tail_iter = self.tail_logs(job_id)
         log_tail_deque = deque(maxlen=num_log_lines)
-        for line in log_tail_iter:
-            if line is None:
+        for lines in log_tail_iter:
+            if lines is None:
                 break
             else:
-                log_tail_deque.append(line)
-        return "".join(log_tail_deque)
+                # log_tail_iter can return batches of lines at a time.
+                for line in lines:
+                    log_tail_deque.append(line)
+
+        return "".join(log_tail_deque)[-self.MAX_LOG_SIZE :]
 
     def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
         """
@@ -103,9 +137,16 @@ class JobSupervisor:
 
     SUBPROCESS_POLL_PERIOD_S = 0.1
 
-    def __init__(self, job_id: str, entrypoint: str, user_metadata: Dict[str, str]):
+    def __init__(
+        self,
+        job_id: str,
+        entrypoint: str,
+        user_metadata: Dict[str, str],
+        gcs_address: str,
+    ):
         self._job_id = job_id
-        self._job_info_client = JobInfoStorageClient()
+        gcs_aio_client = GcsAioClient(address=gcs_address)
+        self._job_info_client = JobInfoStorageClient(gcs_aio_client)
         self._log_client = JobLogStorageClient()
         self._driver_runtime_env = self._get_driver_runtime_env()
         self._entrypoint = entrypoint
@@ -116,6 +157,9 @@ class JobSupervisor:
 
         # fire and forget call from outer job manager to this actor
         self._stop_event = asyncio.Event()
+
+        # Windows Job Object used to handle stopping the child processes.
+        self._win32_job_object = None
 
     def _get_driver_runtime_env(self) -> Dict[str, Any]:
         # Get the runtime_env set for the supervisor actor.
@@ -136,9 +180,13 @@ class JobSupervisor:
         Runs the entrypoint command as a child process, streaming stderr &
         stdout to given log files.
 
+        Unix systems:
         Meanwhile we start a demon process and group driver
         subprocess in same pgid, such that if job actor dies, entire process
         group also fate share with it.
+
+        Windows systems:
+        A jobObject is created to enable fate sharing for the entire process group.
 
         Args:
             logs_path: File path on head node's local disk to store driver
@@ -156,20 +204,47 @@ class JobSupervisor:
                 stderr=subprocess.STDOUT,
             )
             parent_pid = os.getpid()
-            # Create new pgid with new subprocess to execute driver command
             child_pid = child_process.pid
-            child_pgid = os.getpgid(child_pid)
+            # Create new pgid with new subprocess to execute driver command
 
-            # Open a new subprocess to kill the child process when the parent
-            # process dies kill -s 0 parent_pid will succeed if the parent is
-            # alive. If it fails, SIGKILL the child process group and exit
-            subprocess.Popen(
-                f"while kill -s 0 {parent_pid}; do sleep 1; done; kill -9 -{child_pgid}",  # noqa: E501
-                shell=True,
-                # Suppress output
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            if sys.platform != "win32":
+                child_pgid = os.getpgid(child_pid)
+
+                # Open a new subprocess to kill the child process when the parent
+                # process dies kill -s 0 parent_pid will succeed if the parent is
+                # alive. If it fails, SIGKILL the child process group and exit
+                subprocess.Popen(
+                    f"while kill -s 0 {parent_pid}; do sleep 1; done; kill -9 -{child_pgid}",  # noqa: E501
+                    shell=True,
+                    # Suppress output
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+            elif sys.platform == "win32" and win32api:
+                # Create a JobObject to which the child process (and its children)
+                # will be connected. This job object can be used to kill the child
+                # processes explicitly or when the jobObject gets deleted during
+                # garbage collection.
+                self._win32_job_object = win32job.CreateJobObject(None, "")
+                win32_job_info = win32job.QueryInformationJobObject(
+                    self._win32_job_object, win32job.JobObjectExtendedLimitInformation
+                )
+                win32_job_info["BasicLimitInformation"][
+                    "LimitFlags"
+                ] = win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                win32job.SetInformationJobObject(
+                    self._win32_job_object,
+                    win32job.JobObjectExtendedLimitInformation,
+                    win32_job_info,
+                )
+                child_handle = win32api.OpenProcess(
+                    win32con.PROCESS_TERMINATE | win32con.PROCESS_SET_QUOTA,
+                    False,
+                    child_pid,
+                )
+                win32job.AssignProcessToJobObject(self._win32_job_object, child_handle)
+
             return child_process
 
     def _get_driver_env_vars(self) -> Dict[str, str]:
@@ -227,14 +302,14 @@ class JobSupervisor:
             variables.
         3) Handle concurrent events of driver execution and
         """
-        curr_status = self._job_info_client.get_status(self._job_id)
+        curr_status = await self._job_info_client.get_status(self._job_id)
         assert curr_status == JobStatus.PENDING, "Run should only be called once."
 
         if _start_signal_actor:
             # Block in PENDING state until start signal received.
             await _start_signal_actor.wait.remote()
 
-        self._job_info_client.put_status(self._job_id, JobStatus.RUNNING)
+        await self._job_info_client.put_status(self._job_id, JobStatus.RUNNING)
 
         try:
             # Configure environment variables for the child process. These
@@ -255,9 +330,12 @@ class JobSupervisor:
 
             if self._stop_event.is_set():
                 polling_task.cancel()
-                # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
-                child_process.kill()
-                self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
+                if sys.platform == "win32" and self._win32_job_object:
+                    win32job.TerminateJobObject(self._win32_job_object, -1)
+                elif sys.platform != "win32":
+                    # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
+                    child_process.kill()
+                await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
                 # at the same time
@@ -265,17 +343,20 @@ class JobSupervisor:
                 [child_process_task] = finished
                 return_code = child_process_task.result()
                 if return_code == 0:
-                    self._job_info_client.put_status(self._job_id, JobStatus.SUCCEEDED)
+                    await self._job_info_client.put_status(
+                        self._job_id, JobStatus.SUCCEEDED
+                    )
                 else:
                     log_tail = self._log_client.get_last_n_log_lines(self._job_id)
                     if log_tail is not None and log_tail != "":
                         message = (
                             "Job failed due to an application error, "
-                            "last available logs:\n" + log_tail
+                            "last available logs (truncated to 20,000 chars):\n"
+                            + log_tail
                         )
                     else:
                         message = None
-                    self._job_info_client.put_status(
+                    await self._job_info_client.put_status(
                         self._job_id, JobStatus.FAILED, message=message
                     )
         except Exception:
@@ -299,35 +380,37 @@ class JobManager:
     goes down.
     """
 
-    JOB_ACTOR_NAME_TEMPLATE = (
-        f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_id}"
-    )
     # Time that we will sleep while tailing logs if no new log line is
     # available.
     LOG_TAIL_SLEEP_S = 1
     JOB_MONITOR_LOOP_PERIOD_S = 1
 
-    def __init__(self):
-        self._job_info_client = JobInfoStorageClient()
+    def __init__(self, gcs_aio_client: GcsAioClient):
+        self._gcs_aio_client = gcs_aio_client
+        self._job_info_client = JobInfoStorageClient(gcs_aio_client)
+        self._gcs_address = gcs_aio_client._channel._gcs_address
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
 
-        self._recover_running_jobs()
+        create_task(self._recover_running_jobs())
 
-    def _recover_running_jobs(self):
+    async def _recover_running_jobs(self):
         """Recovers all running jobs from the status client.
 
         For each job, we will spawn a coroutine to monitor it.
         Each will be added to self._running_jobs and reconciled.
         """
-        all_jobs = self._job_info_client.get_all_jobs()
+        all_jobs = await self._job_info_client.get_all_jobs()
         for job_id, job_info in all_jobs.items():
             if not job_info.status.is_terminal():
                 create_task(self._monitor_job(job_id))
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
-            return ray.get_actor(self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id))
+            return ray.get_actor(
+                JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id),
+                namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
+            )
         except ValueError:  # Ray returns ValueError for nonexistent actor.
             return None
 
@@ -345,7 +428,7 @@ class JobManager:
 
             if job_supervisor is None:
                 logger.error(f"Failed to get job supervisor for job {job_id}.")
-                self._job_info_client.put_status(
+                await self._job_info_client.put_status(
                     job_id,
                     JobStatus.FAILED,
                     message="Unexpected error occurred: Failed to get job supervisor.",
@@ -358,13 +441,14 @@ class JobManager:
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
                 is_alive = False
-                if self._job_info_client.get_status(job_id).is_terminal():
+                job_status = await self._job_info_client.get_status(job_id)
+                if job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
                     pass
                 elif isinstance(e, RuntimeEnvSetupError):
                     logger.info(f"Failed to set up runtime_env for job {job_id}.")
-                    self._job_info_client.put_status(
+                    await self._job_info_client.put_status(
                         job_id,
                         JobStatus.FAILED,
                         message=f"runtime_env setup failed: {e}",
@@ -373,7 +457,7 @@ class JobManager:
                     logger.warning(
                         f"Job supervisor for job {job_id} failed unexpectedly: {e}."
                     )
-                    self._job_info_client.put_status(
+                    await self._job_info_client.put_status(
                         job_id,
                         JobStatus.FAILED,
                         message=f"Unexpected error occurred: {e}",
@@ -413,7 +497,6 @@ class JobManager:
     def _get_supervisor_runtime_env(
         self, user_runtime_env: Dict[str, Any]
     ) -> Dict[str, Any]:
-
         """Configure and return the runtime_env for the supervisor actor."""
 
         # Make a copy to avoid mutating passed runtime_env.
@@ -434,7 +517,7 @@ class JobManager:
         runtime_env["env_vars"] = env_vars
         return runtime_env
 
-    def submit_job(
+    async def submit_job(
         self,
         *,
         entrypoint: str,
@@ -442,6 +525,7 @@ class JobManager:
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
+        _driver_on_current_node: bool = True,
     ) -> str:
         """
         Job execution happens asynchronously.
@@ -466,6 +550,8 @@ class JobManager:
             _start_signal_actor: Used in testing only to capture state
                 transitions between PENDING -> RUNNING. Regular user shouldn't
                 need this.
+            _driver_on_current_node: whether force driver run on current node,
+                the default value is True.
 
         Returns:
             job_id: Generated uuid for further job management. Only valid
@@ -473,7 +559,7 @@ class JobManager:
         """
         if submission_id is None:
             submission_id = generate_job_id()
-        elif self._job_info_client.get_status(submission_id) is not None:
+        elif await self._job_info_client.get_status(submission_id) is not None:
             raise RuntimeError(f"Job {submission_id} already exists.")
 
         logger.info(f"Starting job with submission_id: {submission_id}")
@@ -484,30 +570,35 @@ class JobManager:
             metadata=metadata,
             runtime_env=runtime_env,
         )
-        self._job_info_client.put_info(submission_id, job_info)
+        await self._job_info_client.put_info(submission_id, job_info)
 
         # Wait for the actor to start up asynchronously so this call always
         # returns immediately and we can catch errors with the actor starting
         # up.
         try:
+            scheduling_strategy = "DEFAULT"
+            if _driver_on_current_node:
+                # If JobManager is created by dashboard server
+                # running on headnode, same for job supervisor actors scheduled
+                scheduling_strategy = NodeAffinitySchedulingStrategy(
+                    node_id=ray.get_runtime_context().node_id,
+                    soft=False,
+                )
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
-                name=self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
+                name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=0,
-                # Currently we assume JobManager is created by dashboard server
-                # running on headnode, same for job supervisor actors scheduled
-                resources={
-                    self._get_current_node_resource_key(): 0.001,
-                },
+                scheduling_strategy=scheduling_strategy,
                 runtime_env=self._get_supervisor_runtime_env(runtime_env),
-            ).remote(submission_id, entrypoint, metadata or {})
+                namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
+            ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)
             supervisor.run.remote(_start_signal_actor=_start_signal_actor)
 
             # Monitor the job in the background so we can detect errors without
             # requiring a client to poll.
             create_task(self._monitor_job(submission_id, job_supervisor=supervisor))
         except Exception as e:
-            self._job_info_client.put_status(
+            await self._job_info_client.put_status(
                 submission_id,
                 JobStatus.FAILED,
                 message=f"Failed to start job supervisor: {e}.",
@@ -529,17 +620,17 @@ class JobManager:
         else:
             return False
 
-    def get_job_status(self, job_id: str) -> Optional[JobStatus]:
+    async def get_job_status(self, job_id: str) -> Optional[JobStatus]:
         """Get latest status of a job."""
-        return self._job_info_client.get_status(job_id)
+        return await self._job_info_client.get_status(job_id)
 
-    def get_job_info(self, job_id: str) -> Optional[JobInfo]:
+    async def get_job_info(self, job_id: str) -> Optional[JobInfo]:
         """Get latest info of a job."""
-        return self._job_info_client.get_info(job_id)
+        return await self._job_info_client.get_info(job_id)
 
-    def list_jobs(self) -> Dict[str, JobInfo]:
+    async def list_jobs(self) -> Dict[str, JobInfo]:
         """Get info for all jobs."""
-        return self._job_info_client.get_all_jobs()
+        return await self._job_info_client.get_all_jobs()
 
     def get_job_logs(self, job_id: str) -> str:
         """Get all logs produced by a job."""
@@ -547,16 +638,16 @@ class JobManager:
 
     async def tail_job_logs(self, job_id: str) -> Iterator[str]:
         """Return an iterator following the logs of a job."""
-        if self.get_job_status(job_id) is None:
+        if await self.get_job_status(job_id) is None:
             raise RuntimeError(f"Job '{job_id}' does not exist.")
 
-        for line in self._log_client.tail_logs(job_id):
-            if line is None:
+        for lines in self._log_client.tail_logs(job_id):
+            if lines is None:
                 # Return if the job has exited and there are no new log lines.
-                status = self.get_job_status(job_id)
+                status = await self.get_job_status(job_id)
                 if status not in {JobStatus.PENDING, JobStatus.RUNNING}:
                     return
 
                 await asyncio.sleep(self.LOG_TAIL_SLEEP_S)
             else:
-                yield line
+                yield "".join(lines)

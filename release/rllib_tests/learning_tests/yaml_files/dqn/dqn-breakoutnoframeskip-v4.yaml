@@ -20,8 +20,8 @@ dqn-breakoutnoframeskip-v4:
         replay_buffer_config:
           type: MultiAgentReplayBuffer
           capacity: 1000000
-          learning_starts: 20000
           prioritized_replay_alpha: 0.5
+        num_steps_sampled_before_learning_starts: 20000
         rollout_fragment_length: 4
         train_batch_size: 32
         exploration_config:

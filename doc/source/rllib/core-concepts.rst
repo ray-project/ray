@@ -11,9 +11,10 @@ Key Concepts
 ============
 
 On this page, we'll cover the key concepts to help you understand how RLlib works and
-how to use it. In RLlib you use ``Algorithm``'s to learn in problem environments.
-These algorithms use ``policies`` to select actions for your agents.
-Given a policy, ``evaluation`` of a policy produces ``sample batches`` of experiences.
+how to use it. In RLlib, you use ``Algorithm``'s to learn how to solve problem ``environments``.
+The algorithms use ``policies`` to select actions. Given a policy,
+``rollouts`` throughout an ``environment`` produce
+``sample batches`` (or ``trajectories``) of experiences.
 You can also customize the ``training_step``\s of your RL experiments.
 
 .. _environments:
@@ -67,8 +68,8 @@ which implements the proximal policy optimization algorithm in RLlib.
     .. code-block:: python
 
         # Configure.
-        from ray.rllib.algorithms import PPOConfig
-        config = PPOConfig().environment("CartPole-v0").training(train_batch_size=4000)
+        from ray.rllib.algorithms.ppo import PPOConfig
+        config = PPOConfig().environment(env="CartPole-v0").training(train_batch_size=4000)
 
         # Build.
         algo = config.build()
@@ -85,8 +86,8 @@ which implements the proximal policy optimization algorithm in RLlib.
         from ray import tune
 
         # Configure.
-        from ray.rllib.algorithms import PPOConfig
-        config = PPOConfig().environment("CartPole-v0").training(train_batch_size=4000)
+        from ray.rllib.algorithms.ppo import PPOConfig
+        config = PPOConfig().environment(env="CartPole-v0").training(train_batch_size=4000)
 
         # Train via Ray Tune.
         # Note that Ray Tune does not yet support AlgorithmConfig objects, hence
@@ -302,7 +303,7 @@ In the first step, we collect trajectory data from the environment(s):
 
 Here, ``self.workers`` is a set of ``RolloutWorkers`` that are created in the ``Algorithm``'s ``setup()`` method
 (prior to calling ``training_step()``).
-This ``WorkerSet`` is covered in greater depth on the :ref:`WorkerSet documentation page<workerset-reference-docs>`.
+This ``WorkerSet`` is covered in greater depth on the :ref:`WorkerSet documentation page <workerset-reference-docs>`.
 The utilify function ``synchronous_parallel_sample`` can be used for parallel sampling in a blocking
 fashion across multiple rollout workers (returns once all rollout workers are sone sampling).
 It returns one final MultiAgentBatch resulting from concatenating n smaller MultiagentBatches
@@ -377,7 +378,7 @@ From a high level, we can use rollout workers to collect experiences from the en
 their ``sample()`` method and we can train their policies by calling their ``learn_on_batch()`` method.
 By default, in RLlib, we create a set of workers that can be used for sampling and training.
 We create a ``WorkerSet`` object inside of ``setup`` which is called when an RLlib algorithm is created. The ``WorkerSet`` has a ``local_worker``
-and ``remote_workers`` if ``num_workers > 0`` in the experiment config. In RLlib we use typically use ``local_worker``
+and ``remote_workers`` if ``num_workers > 0`` in the experiment config. In RLlib we typically use ``local_worker``
 for training and ``remote_workers`` for sampling.
 
 

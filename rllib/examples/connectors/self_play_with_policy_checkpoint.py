@@ -4,6 +4,7 @@ The checkpointed policy may be trained with a different algorithm too.
 """
 
 import argparse
+from pathlib import Path
 import pyspiel
 
 import ray
@@ -23,7 +24,10 @@ parser.add_argument(
     "--checkpoint_file",
     type=str,
     default="",
-    help="Path to a connector enabled checkpoint file for restoring.",
+    help=(
+        "Path to a connector enabled checkpoint file for restoring,"
+        "relative to //ray/rllib/ folder."
+    ),
 )
 parser.add_argument(
     "--policy_id",
@@ -46,8 +50,13 @@ class AddPolicyCallback(DefaultCallbacks):
         super().__init__()
 
     def on_algorithm_init(self, *, algorithm, **kwargs):
+        checkpoint_path = str(
+            Path(__file__)
+            .parent.parent.parent.absolute()
+            .joinpath(args.checkpoint_file)
+        )
         policy_config, policy_specs, policy_states = parse_policy_specs_from_checkpoint(
-            args.checkpoint_file
+            checkpoint_path
         )
 
         assert args.policy_id in policy_specs, (

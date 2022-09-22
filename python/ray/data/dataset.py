@@ -2,7 +2,9 @@ import collections
 import itertools
 import logging
 import os
+import sys
 import time
+import html
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -12,11 +14,13 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Type,
     Optional,
     Tuple,
     Union,
 )
 from uuid import uuid4
+import warnings
 
 import numpy as np
 
@@ -36,6 +40,7 @@ from ray.data._internal.equalize import _equalize
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _estimate_available_parallelism
+from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import (
     ExecutionPlan,
     OneToOneStage,
@@ -92,6 +97,12 @@ from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.widgets import Template
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 if TYPE_CHECKING:
     import dask
@@ -136,9 +147,9 @@ class Dataset(Generic[T]):
     Examples:
         >>> import ray
         >>> # Create dataset from synthetic data.
-        >>> ds = ray.data.range(1000) # doctest: +SKIP
+        >>> ds = ray.data.range(1000)
         >>> # Create dataset from in-memory data.
-        >>> ds = ray.data.from_items( # doctest: +SKIP
+        >>> ds = ray.data.from_items(
         ...     [{"col1": i, "col2": i * 2} for i in range(1000)])
         >>> # Create dataset from external storage system.
         >>> ds = ray.data.read_parquet("s3://bucket/path") # doctest: +SKIP
@@ -157,17 +168,22 @@ class Dataset(Generic[T]):
 
     Examples:
         >>> import ray
-        >>> ds = ray.data.range(1000) # doctest: +SKIP
+        >>> ds = ray.data.range(1000)
         >>> # Transform in parallel with map_batches().
-        >>> ds.map_batches(lambda batch: [v * 2 for v in batch]) # doctest: +SKIP
+        >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
+        Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
         >>> # Compute max.
-        >>> ds.max() # doctest: +SKIP
+        >>> ds.max()
+        999
         >>> # Group the data.
-        >>> ds.groupby(lambda x: x % 3).count() # doctest: +SKIP
+        >>> ds.groupby(lambda x: x % 3).count()
+        Dataset(num_blocks=..., num_rows=3, schema=<class 'tuple'>)
         >>> # Shuffle this dataset randomly.
-        >>> ds.random_shuffle() # doctest: +SKIP
+        >>> ds.random_shuffle()
+        Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
         >>> # Sort it back in order.
-        >>> ds.sort() # doctest: +SKIP
+        >>> ds.sort()
+        Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors without incurring a copy. Datasets support
@@ -219,12 +235,14 @@ class Dataset(Generic[T]):
         Examples:
             >>> import ray
             >>> # Transform python objects.
-            >>> ds = ray.data.range(1000) # doctest: +SKIP
-            >>> ds.map(lambda x: x * 2) # doctest: +SKIP
+            >>> ds = ray.data.range(1000)
+            >>> ds.map(lambda x: x * 2)
+            Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
             >>> # Transform Arrow records.
-            >>> ds = ray.data.from_items( # doctest: +SKIP
+            >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
-            >>> ds.map(lambda record: {"v2": record["value"] * 2}) # doctest: +SKIP
+            >>> ds.map(lambda record: {"v2": record["value"] * 2})
+            Dataset(num_blocks=..., num_rows=1000, schema={v2: int64})
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
             >>> init_model = ... # doctest: +SKIP
@@ -300,8 +318,8 @@ class Dataset(Generic[T]):
         fn: BatchUDF,
         *,
         batch_size: Optional[int] = 4096,
-        compute: Union[str, ComputeStrategy] = None,
-        batch_format: str = "native",
+        compute: Optional[Union[str, ComputeStrategy]] = None,
+        batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -318,9 +336,10 @@ class Dataset(Generic[T]):
         Examples:
             >>> import ray
             >>> # Transform python objects.
-            >>> ds = ray.data.range(1000) # doctest: +SKIP
+            >>> ds = ray.data.range(1000)
             >>> # Transform batches in parallel.
-            >>> ds.map_batches(lambda batch: [v * 2 for v in batch]) # doctest: +SKIP
+            >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
+            Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
             >>> init_model = ... # doctest: +SKIP
@@ -342,11 +361,11 @@ class Dataset(Generic[T]):
             You can use ``map_batches`` to efficiently filter records.
 
             >>> import ray
-            >>> ds = ray.data.range(10000)  # doctest: +SKIP
-            >>> ds.count()  # doctest: +SKIP
+            >>> ds = ray.data.range(10000)
+            >>> ds.count()
             10000
-            >>> ds = ds.map_batches(lambda batch: [x for x in batch if x % 2 == 0])  # doctest: +SKIP  # noqa: #501
-            >>> ds.count()  # doctest: +SKIP
+            >>> ds = ds.map_batches(lambda batch: [x for x in batch if x % 2 == 0])
+            >>> ds.count()
             5000
 
         Time complexity: O(dataset size / parallelism)
@@ -366,11 +385,11 @@ class Dataset(Generic[T]):
                 :class:`ActorPoolStrategy(min, max) <ray.data.ActorPoolStrategy>`
                 instance. If using callable classes for fn, the actor compute strategy
                 must be used.
-            batch_format: Specify "native" to use the native block format (promotes
+            batch_format: Specify "default" to use the default block format (promotes
                 tables to Pandas and tensors to NumPy), "pandas" to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
                 to select ``numpy.ndarray`` for tensor datasets and
-                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "native".
+                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
             fn_args: Positional arguments to pass to ``fn``, after the data batch. These
                 arguments will be top-level arguments in the underlying Ray task that's
                 submitted.
@@ -391,6 +410,12 @@ class Dataset(Generic[T]):
         """
         import pandas as pd
         import pyarrow as pa
+
+        if batch_format == "native":
+            warnings.warn(
+                "The 'native' batch format has been renamed 'default'.",
+                DeprecationWarning,
+            )
 
         if batch_size is not None and batch_size < 1:
             raise ValueError("Batch size cannot be negative or 0")
@@ -510,12 +535,12 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range_table(100) # doctest: +SKIP
+            >>> ds = ray.data.range_table(100)
             >>> # Add a new column equal to value * 2.
-            >>> ds = ds.add_column( # doctest: +SKIP
+            >>> ds = ds.add_column(
             ...     "new_col", lambda df: df["value"] * 2)
             >>> # Overwrite the existing "value" with zeros.
-            >>> ds = ds.add_column("value", lambda df: 0) # doctest: +SKIP
+            >>> ds = ds.add_column("value", lambda df: 0)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -554,12 +579,12 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range_table(100) # doctest: +SKIP
+            >>> ds = ray.data.range_table(100)
             >>> # Add a new column equal to value * 2.
-            >>> ds = ds.add_column( # doctest: +SKIP
+            >>> ds = ds.add_column(
             ...     "new_col", lambda df: df["value"] * 2)
             >>> # Drop the existing "value" column.
-            >>> ds = ds.drop_columns(["value"]) # doctest: +SKIP
+            >>> ds = ds.drop_columns(["value"])
 
 
         Time complexity: O(dataset size / parallelism)
@@ -591,8 +616,9 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(1000) # doctest: +SKIP
-            >>> ds.flat_map(lambda x: [x, x ** 2, x ** 3]) # doctest: +SKIP
+            >>> ds = ray.data.range(1000)
+            >>> ds.flat_map(lambda x: [x, x ** 2, x ** 3])
+            Dataset(num_blocks=..., num_rows=3000, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -657,8 +683,9 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.filter(lambda x: x % 2 == 0) # doctest: +SKIP
+            >>> ds = ray.data.range(100)
+            >>> ds.filter(lambda x: x % 2 == 0)
+            Dataset(num_blocks=..., num_rows=50, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -713,9 +740,9 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds = ray.data.range(100)
             >>> # Set the number of output partitions to write to disk.
-            >>> ds.repartition(10).write_parquet(...) # doctest: +SKIP
+            >>> ds.repartition(10).write_parquet("/tmp/test")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -747,11 +774,13 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds = ray.data.range(100)
             >>> # Shuffle this dataset randomly.
-            >>> ds.random_shuffle() # doctest: +SKIP
+            >>> ds.random_shuffle()
+            Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
             >>> # Shuffle this dataset with a fixed random seed.
-            >>> ds.random_shuffle(seed=12345) # doctest: +SKIP
+            >>> ds.random_shuffle(seed=12345)
+            Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1053,13 +1082,13 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(10) # doctest: +SKIP
-            >>> d1, d2, d3 = ds.split_at_indices([2, 5]) # doctest: +SKIP
-            >>> d1.take() # doctest: +SKIP
+            >>> ds = ray.data.range(10)
+            >>> d1, d2, d3 = ds.split_at_indices([2, 5])
+            >>> d1.take()
             [0, 1]
-            >>> d2.take() # doctest: +SKIP
+            >>> d2.take()
             [2, 3, 4]
-            >>> d3.take() # doctest: +SKIP
+            >>> d3.take()
             [5, 6, 7, 8, 9]
 
         Time complexity: O(num splits)
@@ -1121,13 +1150,13 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(10) # doctest: +SKIP
-            >>> d1, d2, d3 = ds.split_proportionately([0.2, 0.5]) # doctest: +SKIP
-            >>> d1.take() # doctest: +SKIP
+            >>> ds = ray.data.range(10)
+            >>> d1, d2, d3 = ds.split_proportionately([0.2, 0.5])
+            >>> d1.take()
             [0, 1]
-            >>> d2.take() # doctest: +SKIP
+            >>> d2.take()
             [2, 3, 4, 5, 6]
-            >>> d3.take() # doctest: +SKIP
+            >>> d3.take()
             [7, 8, 9]
 
         Time complexity: O(num splits)
@@ -1180,15 +1209,15 @@ class Dataset(Generic[T]):
     ) -> Tuple["Dataset[T]", "Dataset[T]"]:
         """Split the dataset into train and test subsets.
 
-        Example:
-            .. code-block:: python
+        Examples:
 
-                import ray
-
-                ds = ray.data.range(8)
-                train, test = ds.train_test_split(test_size=0.25)
-                print(train.take())  # [0, 1, 2, 3, 4, 5]
-                print(test.take())  # [6, 7]
+            >>> import ray
+            >>> ds = ray.data.range(8)
+            >>> train, test = ds.train_test_split(test_size=0.25)
+            >>> train.take()
+            [0, 1, 2, 3, 4, 5]
+            >>> test.take()
+            [6, 7]
 
         Args:
             test_size: If float, should be between 0.0 and 1.0 and represent the
@@ -1312,11 +1341,13 @@ class Dataset(Generic[T]):
         Examples:
             >>> import ray
             >>> # Group by a key function and aggregate.
-            >>> ray.data.range(100).groupby(lambda x: x % 3).count() # doctest: +SKIP
+            >>> ray.data.range(100).groupby(lambda x: x % 3).count()
+            Dataset(num_blocks=..., num_rows=3, schema=<class 'tuple'>)
             >>> # Group by an Arrow table column and aggregate.
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby( # doctest: +SKIP
-            ...     "A").count() # doctest: +SKIP
+            >>> ray.data.from_items([
+            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
+            ...     "A").count()
+            Dataset(num_blocks=..., num_rows=3, schema={A: int64, count(): int64})
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -1344,9 +1375,11 @@ class Dataset(Generic[T]):
         Examples:
             >>> import ray
             >>> from ray.data.aggregate import Max, Mean
-            >>> ray.data.range(100).aggregate(Max()) # doctest: +SKIP
-            >>> ray.data.range_table(100).aggregate( # doctest: +SKIP
-            ...    Max("value"), Mean("value")) # doctest: +SKIP
+            >>> ray.data.range(100).aggregate(Max())
+            (99,)
+            >>> ray.data.range_table(100).aggregate(
+            ...    Max("value"), Mean("value"))
+            {'max(value)': 99, 'mean(value)': 49.5}
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1374,14 +1407,18 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).sum() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]).sum(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_table(100).sum("value") # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i, "B": i**2} # doctest: +SKIP
-            ...     for i in range(100)]).sum(["A", "B"]) # doctest: +SKIP
+            >>> ray.data.range(100).sum()
+            4950
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).sum(lambda x: x[1])
+            328350
+            >>> ray.data.range_table(100).sum("value")
+            4950
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).sum(["A", "B"])
+            {'sum(A)': 4950, 'sum(B)': 328350}
 
         Args:
             on: The data subset on which to compute the sum.
@@ -1433,14 +1470,18 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).min() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]).min(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_table(100).min("value") # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i, "B": i**2} # doctest: +SKIP
-            ...     for i in range(100)]).min(["A", "B"]) # doctest: +SKIP
+            >>> ray.data.range(100).min()
+            0
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).min(lambda x: x[1])
+            0
+            >>> ray.data.range_table(100).min("value")
+            0
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).min(["A", "B"])
+            {'min(A)': 0, 'min(B)': 0}
 
         Args:
             on: The data subset on which to compute the min.
@@ -1492,14 +1533,18 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).max() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]).max(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_table(100).max("value") # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i, "B": i**2} # doctest: +SKIP
-            ...     for i in range(100)]).max(["A", "B"]) # doctest: +SKIP
+            >>> ray.data.range(100).max()
+            99
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).max(lambda x: x[1])
+            9801
+            >>> ray.data.range_table(100).max("value")
+            99
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).max(["A", "B"])
+            {'max(A)': 99, 'max(B)': 9801}
 
         Args:
             on: The data subset on which to compute the max.
@@ -1551,14 +1596,18 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).mean() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]).mean(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_table(100).mean("value") # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i, "B": i**2} # doctest: +SKIP
-            ...     for i in range(100)]).mean(["A", "B"]) # doctest: +SKIP
+            >>> ray.data.range(100).mean()
+            49.5
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).mean(lambda x: x[1])
+            3283.5
+            >>> ray.data.range_table(100).mean("value")
+            49.5
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).mean(["A", "B"])
+            {'mean(A)': 49.5, 'mean(B)': 3283.5}
 
         Args:
             on: The data subset on which to compute the mean.
@@ -1612,15 +1661,19 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> import ray # doctest: +SKIP
-            >>> ray.data.range(100).std() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]).std(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_table(100).std("value", ddof=0) # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i, "B": i**2} # doctest: +SKIP
-            ...     for i in range(100)]).std(["A", "B"]) # doctest: +SKIP
+            >>> import ray
+            >>> ray.data.range(100).std()
+            29.011491975882016
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).std(lambda x: x[1])
+            2968.1748039269296
+            >>> ray.data.range_table(100).std("value", ddof=0)
+            28.86607004772212
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).std(["A", "B"])
+            {'std(A)': 29.011491975882016, 'std(B)': 2968.1748039269296}
 
         NOTE: This uses Welford's online method for an accumulator-style
         computation of the standard deviation. This method was chosen due to
@@ -1685,14 +1738,16 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> import ray # doctest: +SKIP
+            >>> import ray
             >>> # Sort using the entire record as the key.
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.sort() # doctest: +SKIP
+            >>> ds = ray.data.range(100)
+            >>> ds.sort()
+            Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
             >>> # Sort by a single column in descending order.
-            >>> ds = ray.data.from_items( # doctest: +SKIP
+            >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
-            >>> ds.sort("value", descending=True) # doctest: +SKIP
+            >>> ds.sort("value", descending=True)
+            Dataset(num_blocks=..., num_rows=1000, schema={value: int64})
             >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["value"]) # doctest: +SKIP
 
@@ -1731,8 +1786,8 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(5) # doctest: +SKIP
-            >>> ds.zip(ds).take() # doctest: +SKIP
+            >>> ds = ray.data.range(5)
+            >>> ds.zip(ds).take()
             [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
 
         Returns:
@@ -1744,12 +1799,17 @@ class Dataset(Generic[T]):
         return Dataset(plan, self._epoch, self._lazy)
 
     def limit(self, limit: int) -> "Dataset[T]":
-        """Limit the dataset to the first number of records specified.
+        """Truncate the dataset to the first ``limit`` records.
+
+        Contrary to :meth`.take`, this will not move any data to the caller's
+        machine. Instead, it will return a new ``Dataset`` pointing to the truncated
+        distributed data.
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(1000) # doctest: +SKIP
-            >>> ds.limit(100).map(lambda x: x * 2).take() # doctest: +SKIP
+            >>> ds = ray.data.range(1000)
+            >>> ds.limit(100).map(lambda x: x * 2).take()
+            [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38]
 
         Time complexity: O(limit specified)
 
@@ -1759,12 +1819,47 @@ class Dataset(Generic[T]):
         Returns:
             The truncated dataset.
         """
-
-        left, _ = self._split(limit, return_right_half=False)
-        return left
+        start_time = time.perf_counter()
+        # Truncate the block list to the minimum number of blocks that contains at least
+        # `limit` rows.
+        block_list = self._plan.execute().truncate_by_rows(limit)
+        blocks, metadata, _, _ = _split_at_index(block_list, limit)
+        split_duration = time.perf_counter() - start_time
+        meta_for_stats = [
+            BlockMetadata(
+                num_rows=m.num_rows,
+                size_bytes=m.size_bytes,
+                schema=m.schema,
+                input_files=m.input_files,
+                exec_stats=None,
+            )
+            for m in metadata
+        ]
+        dataset_stats = DatasetStats(
+            stages={"limit": meta_for_stats},
+            parent=self._plan.stats(),
+        )
+        dataset_stats.time_total_s = split_duration
+        return Dataset(
+            ExecutionPlan(
+                BlockList(
+                    blocks,
+                    metadata,
+                    owned_by_consumer=block_list._owned_by_consumer,
+                ),
+                dataset_stats,
+                run_by_consumer=block_list._owned_by_consumer,
+            ),
+            self._epoch,
+            self._lazy,
+        )
 
     def take(self, limit: int = 20) -> List[T]:
-        """Take up to the given number of records from the dataset.
+        """Return up to ``limit`` records from the dataset.
+
+        This will move up to ``limit`` records to the caller's machine; if
+        ``limit`` is very large, this can result in an OutOfMemory crash on
+        the caller.
 
         Time complexity: O(limit specified)
 
@@ -1782,7 +1877,11 @@ class Dataset(Generic[T]):
         return output
 
     def take_all(self, limit: int = 100000) -> List[T]:
-        """Take all the records in the dataset.
+        """Return all of the records in the dataset.
+
+        This will move the entire dataset to the caller's machine; if the
+        dataset is very large, this can result in an OutOfMemory crash on
+        the caller.
 
         Time complexity: O(dataset size)
 
@@ -2230,15 +2329,15 @@ class Dataset(Generic[T]):
         try:
             dataset_format = self._dataset_format()
         except ValueError:
-            # Dataset is empty or cleared, so fall back to "native".
-            batch_format = "native"
+            # Dataset is empty or cleared, so fall back to "default".
+            batch_format = "default"
         else:
             batch_format = (
                 "pyarrow"
                 if dataset_format == "arrow"
                 else "pandas"
                 if dataset_format == "pandas"
-                else "native"
+                else "default"
             )
         for batch in self.iter_batches(
             batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
@@ -2252,7 +2351,7 @@ class Dataset(Generic[T]):
         *,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: str = "native",
+        batch_format: str = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -2274,11 +2373,11 @@ class Dataset(Generic[T]):
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: The format in which to return each batch.
-                Specify "native" to use the native block format (promoting
+                Specify "default" to use the default block format (promoting
                 tables to Pandas and tensors to NumPy), "pandas" to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
                 to select ``numpy.ndarray`` for tensor datasets and
-                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "native".
+                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -2290,6 +2389,12 @@ class Dataset(Generic[T]):
         Returns:
             An iterator over record batches.
         """
+        if batch_format == "native":
+            warnings.warn(
+                "The 'native' batch format has been renamed 'default'.",
+                DeprecationWarning,
+            )
+
         blocks = self._plan.execute()
         stats = self._plan.stats()
 
@@ -3038,10 +3143,10 @@ class Dataset(Generic[T]):
         Examples:
             >>> import ray
             >>> # Infinite pipeline of numbers [0, 5)
-            >>> ray.data.range(5).repeat().take() # doctest: +SKIP
+            >>> ray.data.range(5).repeat().take()
             [0, 1, 2, 3, 4, 0, 1, 2, 3, 4, ...]
             >>> # Can apply transformations to the pipeline.
-            >>> ray.data.range(5).repeat().map(lambda x: -x).take() # doctest: +SKIP
+            >>> ray.data.range(5).repeat().map(lambda x: -x).take()
             [0, -1, -2, -3, -4, 0, -1, -2, -3, -4, ...]
             >>> # Can shuffle each epoch (dataset) in the pipeline.
             >>> ray.data.range(5).repeat().random_shuffle().take() # doctest: +SKIP
@@ -3450,78 +3555,6 @@ class Dataset(Generic[T]):
         """
         return pickle.loads(serialized_ds)
 
-    def _split(
-        self, index: int, return_right_half: bool
-    ) -> ("Dataset[T]", "Dataset[T]"):
-        start_time = time.perf_counter()
-        block_list = self._plan.execute()
-        left_blocks, left_metadata, right_blocks, right_metadata = _split_at_index(
-            block_list,
-            index,
-            return_right_half,
-        )
-        split_duration = time.perf_counter() - start_time
-        left_meta_for_stats = [
-            BlockMetadata(
-                num_rows=m.num_rows,
-                size_bytes=m.size_bytes,
-                schema=m.schema,
-                input_files=m.input_files,
-                exec_stats=None,
-            )
-            for m in left_metadata
-        ]
-        left_dataset_stats = DatasetStats(
-            stages={"split": left_meta_for_stats},
-            parent=self._plan.stats(),
-        )
-        left_dataset_stats.time_total_s = split_duration
-        left = Dataset(
-            ExecutionPlan(
-                BlockList(
-                    left_blocks,
-                    left_metadata,
-                    owned_by_consumer=block_list._owned_by_consumer,
-                ),
-                left_dataset_stats,
-                run_by_consumer=block_list._owned_by_consumer,
-            ),
-            self._epoch,
-            self._lazy,
-        )
-        if return_right_half:
-            right_meta_for_stats = [
-                BlockMetadata(
-                    num_rows=m.num_rows,
-                    size_bytes=m.size_bytes,
-                    schema=m.schema,
-                    input_files=m.input_files,
-                    exec_stats=None,
-                )
-                for m in right_metadata
-            ]
-            right_dataset_stats = DatasetStats(
-                stages={"split": right_meta_for_stats},
-                parent=self._plan.stats(),
-            )
-            right_dataset_stats.time_total_s = split_duration
-            right = Dataset(
-                ExecutionPlan(
-                    BlockList(
-                        right_blocks,
-                        right_metadata,
-                        owned_by_consumer=block_list._owned_by_consumer,
-                    ),
-                    right_dataset_stats,
-                    run_by_consumer=block_list._owned_by_consumer,
-                ),
-                self._epoch,
-                self._lazy,
-            )
-        else:
-            right = None
-        return left, right
-
     def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
         block_list = self._plan.execute()
         left, right = block_list.divide(block_idx)
@@ -3540,6 +3573,82 @@ class Dataset(Generic[T]):
             self._lazy,
         )
         return l_ds, r_ds
+
+    def default_batch_format(self) -> Type:
+        """Return this dataset's default batch format.
+
+        The default batch format describes what batches of data look like. To learn more
+        about batch formats, read
+        :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
+
+        Example:
+
+            If your dataset represents a list of Python objects, then the default batch
+            format is ``list``.
+
+            >>> ds = ray.data.range(100)
+            >>> ds  # doctest: +SKIP
+            Dataset(num_blocks=20, num_rows=100, schema=<class 'int'>)
+            >>> ds.default_batch_format()
+            <class 'list'>
+            >>> next(ds.iter_batches(batch_size=4))
+            [0, 1, 2, 3]
+
+            If your dataset contains a single ``TensorDtype`` or ``ArrowTensorType``
+            column named ``__value__`` (as created by :func:`ray.data.from_numpy`), then
+            the default batch format is ``np.ndarray``. For more information on tensor
+            datasets, read the :ref:`tensor support guide <datasets_tensor_support>`.
+
+            >>> ds = ray.data.range_tensor(100)
+            >>> ds  # doctest: +SKIP
+            Dataset(num_blocks=20, num_rows=100, schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})
+            >>> ds.default_batch_format()
+            <class 'numpy.ndarray'>
+            >>> next(ds.iter_batches(batch_size=4))
+            array([[0],
+                   [1],
+                   [2],
+                   [3]])
+
+            If your dataset represents tabular data and doesn't only consist of a
+            ``__value__`` tensor column (such as is created by
+            :meth:`ray.data.from_numpy`), then the default batch format is
+            ``pd.DataFrame``.
+
+            >>> import pandas as pd
+            >>> df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
+            >>> ds = ray.data.from_pandas(df)
+            >>> ds  # doctest: +SKIP
+            Dataset(num_blocks=1, num_rows=2, schema={foo: object, bar: int64})
+            >>> ds.default_batch_format()
+            <class 'pandas.core.frame.DataFrame'>
+            >>> next(ds.iter_batches(batch_size=4))
+              foo  bar
+            0   a    0
+            1   b    1
+
+        .. seealso::
+
+            :meth:`~Dataset.map_batches`
+                Call this function to transform batches of data.
+
+            :meth:`~Dataset.iter_batches`
+                Call this function to iterate over batches of data.
+
+        """  # noqa: E501
+        import pandas as pd
+        import pyarrow as pa
+
+        schema = self.schema()
+        assert isinstance(schema, (type, PandasBlockSchema, pa.Schema))
+
+        if isinstance(schema, type):
+            return list
+
+        if isinstance(schema, (PandasBlockSchema, pa.Schema)):
+            if schema.names == [VALUE_COL_NAME]:
+                return np.ndarray
+            return pd.DataFrame
 
     def _dataset_format(self) -> str:
         """Determine the format of the dataset. Possible values are: "arrow",
@@ -3627,6 +3736,83 @@ class Dataset(Generic[T]):
                 return list(result.values())[0]
         else:
             return result
+
+    def _ipython_display_(self):
+        try:
+            from ipywidgets import HTML, VBox, Layout
+        except ImportError:
+            logger.warn(
+                "'ipywidgets' isn't installed. Run `pip install ipywidgets` to "
+                "enable notebook widgets."
+            )
+            return None
+
+        from IPython.display import display
+
+        title = HTML(f"<h2>{self.__class__.__name__}</h2>")
+        display(VBox([title, self._tab_repr_()], layout=Layout(width="100%")))
+
+    def _tab_repr_(self):
+        try:
+            from tabulate import tabulate
+            from ipywidgets import Tab, HTML
+        except ImportError:
+            logger.info(
+                "For rich Dataset reprs in notebooks, run "
+                "`pip install tabulate ipywidgets`."
+            )
+            return ""
+
+        metadata = {
+            "num_blocks": self._plan.initial_num_blocks(),
+            "num_rows": self._meta_count(),
+        }
+
+        schema = self.schema()
+        if schema is None:
+            schema_repr = Template("rendered_html_common.html.j2").render(
+                content="<h5>Unknown schema</h5>"
+            )
+        elif isinstance(schema, type):
+            schema_repr = Template("rendered_html_common.html.j2").render(
+                content=f"<h5>Data type: <code>{html.escape(str(schema))}</code></h5>"
+            )
+        else:
+            schema_data = {}
+            for sname, stype in zip(schema.names, schema.types):
+                schema_data[sname] = getattr(stype, "__name__", str(stype))
+
+            schema_repr = Template("scrollableTable.html.j2").render(
+                table=tabulate(
+                    tabular_data=schema_data.items(),
+                    tablefmt="html",
+                    showindex=False,
+                    headers=["Name", "Type"],
+                ),
+                max_height="300px",
+            )
+
+        tab = Tab()
+        children = []
+
+        tab.set_title(0, "Metadata")
+        children.append(
+            Template("scrollableTable.html.j2").render(
+                table=tabulate(
+                    tabular_data=metadata.items(),
+                    tablefmt="html",
+                    showindex=False,
+                    headers=["Field", "Value"],
+                ),
+                max_height="300px",
+            )
+        )
+
+        tab.set_title(1, "Schema")
+        children.append(schema_repr)
+
+        tab.children = [HTML(child) for child in children]
+        return tab
 
     def __repr__(self) -> str:
         schema = self.schema()

@@ -458,6 +458,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
   /// task starts executing, or "" if we do not want to drop into the debugger.
   /// should capture parent's placement group implicilty.
+  /// \param[in] serialized_retry_exception_allowlist A serialized exception list
+  /// that serves as an allowlist of frontend-language exceptions/errors that should be
+  /// retried. Default is an empty string, which will be treated as an allow-all in the
+  /// language worker.
   /// \return ObjectRefs returned by this task.
   std::vector<rpc::ObjectReference> SubmitTask(
       const RayFunction &function,
@@ -466,7 +470,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       int max_retries,
       bool retry_exceptions,
       const rpc::SchedulingStrategy &scheduling_strategy,
-      const std::string &debugger_breakpoint);
+      const std::string &debugger_breakpoint,
+      const std::string &serialized_retry_exception_allowlist = "");
 
   /// Create an actor.
   ///
@@ -933,7 +938,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::shared_ptr<ResourceMappingType> &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
                      ReferenceCounter::ReferenceTableProto *borrowed_refs,
-                     bool *is_application_level_error);
+                     bool *is_retryable_error);
 
   /// Put an object in the local plasma store.
   Status PutInLocalPlasmaStore(const RayObject &object,
@@ -1272,18 +1277,40 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
         GUARDED_BY(tasks_counter_mutex_);
     absl::flat_hash_map<std::string, int> finished_tasks_counter_map_
         GUARDED_BY(tasks_counter_mutex_);
+    int64_t running_total_ GUARDED_BY(tasks_counter_mutex_) = 0;
 
-    void Add(TaskStatusType type, const std::string &func_name, int value) {
-      tasks_counter_mutex_.AssertHeld();
-      if (type == kPending) {
-        pending_tasks_counter_map_[func_name] += value;
-      } else if (type == kRunning) {
-        running_tasks_counter_map_[func_name] += value;
-      } else if (type == kFinished) {
-        finished_tasks_counter_map_[func_name] += value;
-      } else {
-        RAY_CHECK(false) << "This line should not be reached.";
-      }
+    void IncPending(const std::string &func_name) {
+      absl::MutexLock l(&tasks_counter_mutex_);
+      pending_tasks_counter_map_[func_name] += 1;
+    }
+
+    void MovePendingToRunning(const std::string &func_name) {
+      absl::MutexLock l(&tasks_counter_mutex_);
+      pending_tasks_counter_map_[func_name] -= 1;
+      running_tasks_counter_map_[func_name] += 1;
+      running_total_ += 1;
+      UpdateStats();
+    }
+
+    void MoveRunningToFinished(const std::string &func_name) {
+      absl::MutexLock l(&tasks_counter_mutex_);
+      running_tasks_counter_map_[func_name] -= 1;
+      finished_tasks_counter_map_[func_name] += 1;
+      running_total_ -= 1;
+      UpdateStats();
+    }
+
+    void UpdateStats() EXCLUSIVE_LOCKS_REQUIRED(&tasks_counter_mutex_) {
+      // Note that we set a Source=executor label so that metrics reported here don't
+      // conflict with metrics reported from task_manager.cc.
+      ray::stats::STATS_tasks.Record(
+          running_total_,
+          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
+           {"Source", "executor"}});
+      ray::stats::STATS_tasks.Record(
+          -running_total_,
+          {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::WAITING_FOR_EXECUTION)},
+           {"Source", "executor"}});
     }
   };
   TaskCounter task_counter_;

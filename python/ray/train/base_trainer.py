@@ -41,10 +41,10 @@ class BaseTrainer(abc.ABC):
     Note: The base ``BaseTrainer`` class cannot be instantiated directly. Only
     one of its subclasses can be used.
 
-    How does a trainer work?
+    **How does a trainer work?**
 
     - First, initialize the Trainer. The initialization runs locally,
-      so heavyweight setup should not be done in __init__.
+      so heavyweight setup should not be done in ``__init__``.
     - Then, when you call ``trainer.fit()``, the Trainer is serialized
       and copied to a remote Ray actor. The following methods are then
       called in sequence on the remote actor.
@@ -84,16 +84,17 @@ class BaseTrainer(abc.ABC):
                 # preprocessed by self.preprocessor
                 dataset = self.datasets["train"]
 
-                torch_ds = dataset.to_torch(label_column="y")
+                torch_ds = dataset.iter_torch_batches(dtypes=torch.float)
                 loss_fn = torch.nn.MSELoss()
 
                 for epoch_idx in range(10):
                     loss = 0
                     num_batches = 0
-                    for X, y in iter(torch_ds):
+                    for batch in torch_ds:
+                        X, y = torch.unsqueeze(batch["x"], 1), batch["y"]
                         # Compute prediction error
                         pred = self.model(X)
-                        batch_loss = loss_fn(pred, y.float())
+                        batch_loss = loss_fn(pred, y)
 
                         # Backpropagation
                         self.optimizer.zero_grad()
@@ -182,7 +183,7 @@ class BaseTrainer(abc.ABC):
         return f"<{self.__class__.__name__}>"
 
     def __new__(cls, *args, **kwargs):
-        """Store the init args as attributes so this can be merged with Tune hparams."""
+        # Store the init args as attributes so this can be merged with Tune hparams.
         trainer = super(BaseTrainer, cls).__new__(cls)
         parameters = inspect.signature(cls.__init__).parameters
         parameters = list(parameters.keys())
@@ -213,14 +214,25 @@ class BaseTrainer(abc.ABC):
                 f"`ray.data.Dataset` objects, "
                 f"found {type(self.datasets)} with value `{self.datasets}`."
             )
-        elif any(
-            not isinstance(ds, ray.data.Dataset) and not callable(ds)
-            for ds in self.datasets.values()
-        ):
-            raise ValueError(
-                f"At least one value in the `datasets` dict is not a "
-                f"`ray.data.Dataset`: {self.datasets}"
-            )
+        else:
+            for key, dataset in self.datasets.items():
+                if isinstance(dataset, ray.data.DatasetPipeline):
+                    raise ValueError(
+                        f"The Dataset under '{key}' key is a "
+                        f"`ray.data.DatasetPipeline`. Only `ray.data.Dataset` are "
+                        f"allowed to be passed in.  Pipelined/streaming ingest can be "
+                        f"configured via the `dataset_config` arg. See "
+                        "https://docs.ray.io/en/latest/ray-air/check-ingest.html#enabling-streaming-ingest"  # noqa: E501
+                        "for an example."
+                    )
+                elif not isinstance(dataset, ray.data.Dataset) and not callable(
+                    dataset
+                ):
+                    raise ValueError(
+                        f"The Dataset under '{key}' key is not a `ray.data.Dataset`. "
+                        f"Received {dataset} instead."
+                    )
+
         # Preprocessor
         if self.preprocessor is not None and not isinstance(
             self.preprocessor, ray.data.Preprocessor
@@ -251,7 +263,7 @@ class BaseTrainer(abc.ABC):
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
 
-        Note: this method is run on a remote process.
+        .. note:: This method is run on a remote process.
 
         This method will not be called on the driver, so any expensive setup
         operations should be placed here and not in ``__init__``.
@@ -264,7 +276,7 @@ class BaseTrainer(abc.ABC):
     def preprocess_datasets(self) -> None:
         """Called during fit() to preprocess dataset attributes with preprocessor.
 
-        Note: This method is run on a remote process.
+        .. note:: This method is run on a remote process.
 
         This method is called prior to entering the training_loop.
 
@@ -300,7 +312,7 @@ class BaseTrainer(abc.ABC):
     def training_loop(self) -> None:
         """Loop called by fit() to run training and report results to Tune.
 
-        Note: this method runs on a remote process.
+        .. note:: This method runs on a remote process.
 
         ``self.datasets`` have already been preprocessed by ``self.preprocessor``.
 
@@ -309,15 +321,16 @@ class BaseTrainer(abc.ABC):
         this training loop.
 
         Example:
-            .. code-block: python
 
-                from ray.train.trainer import BaseTrainer
+        .. code-block:: python
 
-                class MyTrainer(BaseTrainer):
-                    def training_loop(self):
-                        for epoch_idx in range(5):
-                            ...
-                            session.report({"epoch": epoch_idx})
+            from ray.train.trainer import BaseTrainer
+
+            class MyTrainer(BaseTrainer):
+                def training_loop(self):
+                    for epoch_idx in range(5):
+                        ...
+                        session.report({"epoch": epoch_idx})
 
         """
         raise NotImplementedError

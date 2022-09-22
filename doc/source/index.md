@@ -66,15 +66,15 @@ You can often [parallelize](ray-core/walkthrough.rst) single machine code with l
 **Deploy large-scale workloads with**\
 **<img src="ray-overview/images/ray_svg_logo.svg" alt="ray" width="50px">Clusters**
 ^^^
-With a Ray cluster you can deploy your workloads on [AWS, GCP, Azure](cluster/quickstart) or 
-[on premise](cluster/cloud.html#cluster-private-setup).
-You can also use [Ray Cluster Managers](cluster/deploy) to run Ray on your existing
-[Kubernetes](cluster/kubernetes),
-[YARN](cluster/yarn),
-or [Slurm](cluster/slurm) clusters.
+With a Ray cluster you can deploy your workloads on [AWS, GCP, Azure](cluster/getting-started) or 
+[on premise](cluster/vms/user-guides/launching-clusters/on-premises).
+You can also use Ray cluster managers to run Ray on your existing
+[Kubernetes](cluster/kubernetes/index),
+[YARN](cluster/vms/user-guides/community/yarn),
+or [Slurm](cluster/vms/user-guides/community/slurm) clusters.
 +++
 
-```{link-button} cluster/quickstart
+```{link-button} cluster/getting-started
 :type: ref
 :text: Get Started
 :classes: btn-outline-info btn-block
@@ -85,7 +85,7 @@ or [Slurm](cluster/slurm) clusters.
 
 Ray is a unified framework for scaling AI and Python applications.
 Ray consists of a core distributed runtime and a toolkit of libraries (Ray AIR) for
-accelerating ML workloads:
+simplifying ML compute:
 
 <img src="images/what-is-ray-padded.svg" alt="what-is-ray">
 
@@ -103,8 +103,16 @@ Or more about [Ray Core](ray-core/walkthrough) and its key abstractions:
 - [Actors](ray-core/actors): Stateful worker processes created in the cluster.
 - [Objects](ray-core/objects): Immutable values accessible across the cluster.
 
-Ray runs on any machine, cluster, cloud provider, and Kubernetes, and also features a growing
+Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
 [ecosystem of community integrations](ray-overview/ray-libraries).
+
+## Why Ray?
+
+Today's ML workloads are increasingly compute-intensive. As convenient as they are, single-node development environments such as your laptop cannot scale to meet these demands.
+
+Ray is a unified way to scale Python and AI applications from a laptop to a cluster.
+
+With Ray, you can seamlessly scale the same code from a laptop to a cluster. Ray is designed to be general-purpose, meaning that it can performantly run any kind of workload. If your application is written in Python, you can scale it with Ray, no other infrastructure required.
 
 ## How to get involved?
 
