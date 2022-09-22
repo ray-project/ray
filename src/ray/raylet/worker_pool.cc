@@ -1187,6 +1187,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         state.starting_workers_to_tasks[startup_token] = std::move(task_info);
       }
     } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
+      // TODO(jjyao) As an optimization, we don't need to delete the runtime env
+      // but reuse it the next time we retry the request.
       DeleteRuntimeEnvIfPossible(task_spec.SerializedRuntimeEnv());
       state.pending_pop_worker_requests.emplace_back(
           PopWorkerRequest{task_spec, callback, allocated_instances_serialized_json});
