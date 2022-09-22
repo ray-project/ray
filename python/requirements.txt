@@ -51,6 +51,7 @@ gradio; platform_system != "Windows"
 pyarrow >= 6.0.1, < 7.0.0
 # Used for Dataset tests.
 polars
+ale-py`
 azure-cli-core==2.29.1
 azure-identity==1.7.0
 azure-mgmt-compute==23.1.0
@@ -64,6 +65,8 @@ feather-format
 google-api-python-client
 google-cloud-storage
 gym-minigrid==1.0.3
+gym[atari]
+autorom[accept-rom-license]
 kubernetes
 lxml
 moto[s3,server] >= 4.0.0
