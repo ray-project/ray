@@ -7,7 +7,11 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 import ray.experimental.internal_kv as internal_kv
-from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_ERROR,
+    DEBUG_AUTOSCALING_STATUS,
+    gcs_actor_scheduling_enabled,
+)
 from ray._private.test_utils import (
     convert_actor_state,
     generate_system_config_map,
@@ -668,6 +672,11 @@ def test_placement_group_removal_leak_regression(ray_start_cluster):
     wait_for_condition(check_bundle_leaks)
 
 
+@pytest.mark.skipif(
+    gcs_actor_scheduling_enabled(),
+    reason="gcs actor scheduler with `AffinityWithBundleSchedule` "
+    + "does not support GPU filter.",
+)
 def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
     """Please refer to https://github.com/ray-project/ray/pull/19911
     for more details.

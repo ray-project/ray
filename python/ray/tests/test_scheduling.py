@@ -22,6 +22,7 @@ from ray._private.test_utils import (
     object_memory_usage,
     wait_for_condition,
 )
+from ray._private.ray_constants import gcs_actor_scheduling_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -632,6 +633,11 @@ def test_head_node_without_cpu(ray_start_cluster):
         time.sleep(1)
 
 
+@pytest.mark.skipif(
+    gcs_actor_scheduling_enabled(),
+    reason="gcs actor scheduler with `AffinityWithBundleSchedule` "
+    + "does not support GPU filter.",
+)
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_gpu_scheduling_liveness(ray_start_cluster):
     """Check if the GPU scheduling is in progress when
