@@ -324,9 +324,9 @@ def _mosaic_train_loop_per_worker(config):
     if "loggers" in config:
         if not isinstance(config["loggers"], List):
             config["loggers"] = [config["loggers"]]
-        config["loggers"].append(RayLogger())
+        config["loggers"].append(RayLogger(keys=config.pop("log_keys", [])))
     else:
-        config["loggers"] = [RayLogger()]
+        config["loggers"] = [RayLogger(keys=config.pop("log_keys", []))]
 
     in_memory_logger = []
     for logger in config["loggers"]:
@@ -353,7 +353,10 @@ def _mosaic_train_loop_per_worker(config):
     if not is_report_call_added:
         trainer.state.callbacks.append(
             RayTrainReportCallback(
-                in_memory_logger=in_memory_logger, folder="ray_tmp", overwrite=True
+                in_memory_logger=in_memory_logger,
+                folder="ray_tmp",
+                overwrite=True,
+                weights_only=True,
             )
         )
 

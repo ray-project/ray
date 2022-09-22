@@ -63,9 +63,13 @@ class RayLogger(LoggerDestination):
         log_level: the granuality to log data. The default value is ``LogLevel.BATCH``
     """
 
-    def __init__(self, log_level: Union[str, int, LogLevel] = LogLevel.BATCH) -> None:
+    def __init__(
+        self, log_level: Union[str, int, LogLevel] = LogLevel.BATCH, keys=[]
+    ) -> None:
         self.log_level = LogLevel(log_level)
         self.data = {}
+        for key in keys:
+            self.data[key] = None
 
     def log_data(self, state: State, log_level: LogLevel, data: Dict[str, Any]):
         if log_level > self.log_level:
