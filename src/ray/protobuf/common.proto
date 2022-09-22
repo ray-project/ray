@@ -560,9 +560,11 @@ enum TaskStatus {
   PENDING_NODE_ASSIGNMENT = 2;
   // The task has been tentatively assigned to a node, but Ray is waiting for enough
   // object store memory on the node to free up for downloading task dependencies.
+  // This state is a sub-state of PENDING_NODE_ASSIGNMENT and used for metrics only.
   PENDING_OBJ_STORE_MEM_AVAIL = 3;
   // The task has been tentatively assigned to a node, and its dependencies are being
   // actively downloaded onto the node.
+  // This state is a sub-state of PENDING_NODE_ASSIGNMENT and used for metrics only.
   PENDING_ARGS_FETCH = 4;
   // A node / worker for the task has been selected, and the task has been submitted
   // to the worker. It will be executed shortly. For actor tasks, execution may be
@@ -571,8 +573,10 @@ enum TaskStatus {
   // The task is running on a worker.
   RUNNING = 6;
   // The task is running on a worker, but is blocked in a ray.get() call.
+  // This state is a sub-state of RUNNING and used for metrics only.
   RUNNING_IN_RAY_GET = 7;
   // The task is running on a worker, but is blocked in a ray.wait() call.
+  // This state is a sub-state of RUNNING and used for metrics only.
   RUNNING_IN_RAY_WAIT = 8;
   // The task has finished.
   FINISHED = 9;
