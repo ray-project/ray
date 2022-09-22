@@ -2917,9 +2917,14 @@ class Dataset(Generic[T]):
 
         Args:
             meta: An empty pandas DataFrame or Series that matches the dtypes and column
-                names of the Dataset. By default, this will be inferred from the
-                underlying Dataset schema, with this argument supplying an optional
-                override.
+                names of the Dataset. This metadata is necessary for many algorithms in
+                dask dataframe to work. For ease of use, some alternative inputs are
+                also available. Instead of a DataFrame, a dict of ``{name: dtype}`` or
+                iterable of ``(name, dtype)`` can be provided (note that the order of
+                the names should match the order of the columns). Instead of a series, a
+                tuple of ``(name, dtype)`` can be used.
+                By default, this will be inferred from the underlying Dataset schema,
+                with this argument supplying an optional override.
 
         Returns:
             A Dask DataFrame created from this dataset.
@@ -2962,9 +2967,6 @@ class Dataset(Generic[T]):
                 )
             elif pa is not None and isinstance(schema, pa.Schema):
                 meta = schema.empty_table().to_pandas()
-            else:
-                # Simple dataset or schema not available.
-                meta = None
 
         ddf = dd.from_delayed(
             [block_to_df(block) for block in self.get_internal_block_refs()],
