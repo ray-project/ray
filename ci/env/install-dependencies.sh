@@ -80,7 +80,7 @@ install_miniconda() {
     conda="$(command -v conda || true)"
   fi
 
-  if [ ! -x "${conda}" ]; then  # If no conda is found, install it
+  if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
     case "${OSTYPE}" in
       linux*) miniconda_dir="/opt/miniconda";;
@@ -115,6 +115,9 @@ install_miniconda() {
         conda="${miniconda_dir}\Scripts\conda.exe"
         ;;
       *)
+        if [ "${MINIMAL_INSTALL-}" = 1 ]; then
+          rm -rf "${miniconda_dir}"
+        fi
         mkdir -p -- "${miniconda_dir}"
         # We're forced to pass -b for non-interactive mode.
         # Unfortunately it inhibits PATH modifications as a side effect.
@@ -285,23 +288,7 @@ download_mnist() {
   unzip "${HOME}/data/mnist.zip" -d "${HOME}/data"
 }
 
-install_dependencies() {
-
-  install_bazel
-  install_base
-  install_toolchains
-
-  install_upgrade_pip
-  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ] || [ "${MINIMAL_INSTALL-}" = "1" ]; then
-    install_miniconda
-    # Upgrade the miniconda pip.
-    install_upgrade_pip
-  fi
-
-  install_nvm
-  if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
-    install_node
-  fi
+install_pip_packages() {
 
   # Install modules needed in all jobs.
   alias pip="python -m pip"
@@ -310,9 +297,9 @@ install_dependencies() {
     pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
   fi
 
-  if [ -n "${PYTHON-}" ] && [ "${MINIMAL_INSTALL-}" != 1 ]; then
+  if { [ -n "${PYTHON-}" ] || [ "${DL-}" = "1" ]; } && [ "${MINIMAL_INSTALL-}" != 1 ]; then
     # Remove this entire section once Serve dependencies are fixed.
-    if [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
+    if { [ -z "${BUILDKITE-}" ] || [ "${DL-}" = "1" ]; } && [ "${DOC_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
       # We want to install the CPU version only.
       pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_dl.txt
     fi
@@ -390,7 +377,7 @@ install_dependencies() {
   # dependencies with Modin.
   if [ "${INSTALL_LUDWIG-}" = 1 ]; then
     # TODO: eventually pin this to master.
-    pip install -U "ludwig[test]">=0.4 jsonschema>=4
+    pip install -U "ludwig[test]>=0.4" "jsonschema>=4"
   fi
 
   # Data processing test dependencies.
@@ -442,6 +429,32 @@ install_dependencies() {
   fi
 
   CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+}
+
+install_dependencies() {
+  install_bazel
+
+  # Only install on buildkite if requested
+  if [ -z "${BUILDKITE-}" ] || [ "${BUILD-}" = "1" ]; then
+    install_base
+    install_toolchains
+  fi
+
+  if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ] || [ "${MINIMAL_INSTALL-}" = "1" ]; then
+    install_miniconda
+  fi
+
+  install_upgrade_pip
+
+  # Only install on buildkite if requested
+  if [ -z "${BUILDKITE-}" ] || [ "${BUILD-}" = "1" ]; then
+    install_nvm
+    if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
+      install_node
+    fi
+  fi
+
+  install_pip_packages
 }
 
 install_dependencies "$@"
