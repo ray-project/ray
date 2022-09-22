@@ -9,6 +9,7 @@ import pytest
 from freezegun import freeze_time
 
 import ray
+import ray.cloudpickle as pickle
 from ray import tune
 from ray.tune import TuneError
 from ray.tune.syncer import Syncer, _DefaultSyncer, _validate_upload_dir
@@ -471,6 +472,19 @@ def test_trainable_syncer_custom_command(ray_start_2_cpus, temp_data_dirs):
     ray.get(trainable.delete_checkpoint.remote(checkpoint_dir))
 
     assert_file(False, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
+
+
+def test_syncer_serialize(temp_data_dirs):
+    """Check that syncing up and down works"""
+    tmp_source, tmp_target = temp_data_dirs
+
+    syncer = _DefaultSyncer()
+
+    syncer.sync_up(
+        local_dir=tmp_source, remote_dir="memory:///test/test_syncer_sync_up_down"
+    )
+
+    pickle.dumps(syncer)
 
 
 if __name__ == "__main__":
