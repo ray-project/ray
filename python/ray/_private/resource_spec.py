@@ -90,17 +90,12 @@ class ResourceSpec(
         """
         assert self.resolved()
 
-        memory_units = ray_constants.to_memory_units(self.memory, round_up=False)
-        object_store_memory_units = ray_constants.to_memory_units(
-            self.object_store_memory, round_up=False
-        )
-
         resources = dict(
             self.resources,
             CPU=self.num_cpus,
             GPU=self.num_gpus,
-            memory=memory_units,
-            object_store_memory=object_store_memory_units,
+            memory=int(self.memory),
+            object_store_memory=int(self.object_store_memory),
         )
 
         resources = {
