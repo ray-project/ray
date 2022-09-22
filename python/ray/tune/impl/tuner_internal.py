@@ -4,6 +4,7 @@ import math
 import warnings
 import shutil
 import tempfile
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING, Tuple
 
@@ -210,7 +211,7 @@ class TunerInternal:
 
             # Update local_dir
             experiment_path = Path(self._experiment_checkpoint_dir)
-            self._run_config.local_dir = str(experiment_path.parents[0])
+            self._run_config.local_dir = str(experiment_path.parent)
         else:
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
@@ -222,6 +223,14 @@ class TunerInternal:
                 file_dir.replace(new_exp_path / file_dir.name)
             shutil.rmtree(experiment_checkpoint_path)
             self._experiment_checkpoint_dir = str(new_exp_path)
+
+            # TODO(justinvyu): Move this out to a util function
+            # s3://parents/of/exp_dir -> s3://parents/of
+            parsed_uri = urlparse(path_or_uri)
+            new_upload_dir = "://".join(
+                [parsed_uri.scheme, str(Path(parsed_uri.path).parent)]
+            )
+            self._run_config.sync_config.upload_dir = new_upload_dir
 
     def _maybe_sync_down_tuner_state(self, restore_path: str) -> Tuple[bool, str]:
         """Sync down trainable state from remote storage.

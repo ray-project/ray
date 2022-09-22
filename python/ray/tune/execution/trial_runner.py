@@ -332,9 +332,9 @@ class TrialRunner:
         self,
         search_alg: Optional[SearchAlgorithm] = None,
         scheduler: Optional[TrialScheduler] = None,
-        root_dir: Optional[str] = None,
-        local_checkpoint_dir: Optional[str] = None,
-        remote_checkpoint_dir: Optional[str] = None,
+        local_dir: Optional[str] = None,
+        remote_dir: Optional[str] = None,
+        relative_checkpoint_dir: Optional[str] = None,
         sync_config: Optional[SyncConfig] = None,
         stopper: Optional[Stopper] = None,
         resume: Union[str, bool] = False,
@@ -426,13 +426,12 @@ class TrialRunner:
         self._stop_queue = []
         self._should_stop_experiment = False  # used by TuneServer
 
-        self._root_dir = root_dir
-        self._relative_local_checkpoint_dir = local_checkpoint_dir
+        self._local_dir = local_dir
+        self._remote_dir = remote_dir
+        self._relative_checkpoint_dir = relative_checkpoint_dir
 
         if self._local_checkpoint_dir:
             os.makedirs(self._local_checkpoint_dir, exist_ok=True)
-
-        self._remote_checkpoint_dir = remote_checkpoint_dir
 
         self._syncer = get_node_to_storage_syncer(sync_config)
         self._stopper = stopper or NoopStopper()
@@ -751,8 +750,14 @@ class TrialRunner:
 
     @property
     def _local_checkpoint_dir(self):
-        if self._root_dir and self._relative_local_checkpoint_dir:
-            return os.path.join(self._root_dir, self._relative_local_checkpoint_dir)
+        if self._local_dir and self._relative_checkpoint_dir:
+            return os.path.join(self._local_dir, self._relative_checkpoint_dir)
+        return None
+
+    @property
+    def _remote_checkpoint_dir(self):
+        if self._remote_dir and self._relative_checkpoint_dir:
+            return os.path.join(self._remote_dir, self._relative_checkpoint_dir)
         return None
 
     @property
@@ -803,15 +808,24 @@ class TrialRunner:
             )
         )
 
-        restore_root_dir = self._root_dir
+        restore_local_dir = self._local_dir
+        restore_remote_dir = self._remote_dir
         self.__setstate__(runner_state["runner_data"])
-        if self._root_dir != restore_root_dir:
+
+        if self._local_dir != restore_local_dir:
             logger.info(
-                f"Experiment parent directory has changed from {self._root_dir} to "
-                f"{restore_root_dir}. Resuming using checkpoints relative to the new "
+                f"Experiment `local_dir` has moved from {self._local_dir} to "
+                f"{restore_local_dir}. Resuming using checkpoints relative to the new "
                 "directory."
             )
-            self._root_dir = restore_root_dir
+            self._local_dir = restore_local_dir
+        if self._remote_dir != restore_remote_dir:
+            logger.info(
+                f"Experiment `remote_dir` has moved from {self._remote_dir} to "
+                f"{restore_remote_dir}. Resuming using checkpoints relative to the new "
+                "URI."
+            )
+            self._remote_dir = restore_remote_dir
 
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
