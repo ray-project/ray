@@ -13,7 +13,7 @@ from pettingzoo.classic import rps_v2
 import random
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms.pg import (
     PG,
     PGTF2Policy,
@@ -76,7 +76,9 @@ def run_same_policy(args, stop):
         "framework": args.framework,
     }
 
-    results = tune.run("PG", config=config, stop=stop, verbose=1)
+    results = tune.Tuner(
+        "PG", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+    ).fit()
 
     if args.as_test:
         # Check vs 0.0 as we are playing a zero-sum game.

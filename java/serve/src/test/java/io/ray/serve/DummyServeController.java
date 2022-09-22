@@ -4,22 +4,18 @@ import io.ray.serve.controller.ServeController;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.poll.LongPollRequest;
-import io.ray.serve.poll.LongPollResult;
+import io.ray.serve.util.ServeProtoUtil;
 import java.util.Map;
 
 public class DummyServeController implements ServeController {
-
   private Map<String, EndpointInfo> endpoints;
 
-  private LongPollResult longPollResult;
+  private byte[] longPollResult;
 
   private String rootUrl;
 
-  private String checkpointPath;
-
-  public DummyServeController(String rootUrl, String checkpointPath) {
+  public DummyServeController(String rootUrl) {
     this.rootUrl = rootUrl;
-    this.checkpointPath = checkpointPath;
   }
 
   @Override
@@ -29,17 +25,17 @@ public class DummyServeController implements ServeController {
     return builder.build().toByteArray();
   }
 
-  public void setEndpoints(Map<String, EndpointInfo> endpoints) {
-    this.endpoints = endpoints;
+  public void setEndpoints(byte[] endpoints) {
+    this.endpoints = ServeProtoUtil.parseEndpointSet(endpoints);
   }
 
-  public boolean setLongPollResult(LongPollResult longPollResult) {
+  public boolean setLongPollResult(byte[] longPollResult) {
     this.longPollResult = longPollResult;
     return true;
   }
 
   @Override
-  public LongPollResult listenForChange(LongPollRequest longPollRequest) {
+  public byte[] listenForChange(LongPollRequest longPollRequest) {
     return longPollResult;
   }
 
@@ -50,10 +46,5 @@ public class DummyServeController implements ServeController {
 
   public void setRootUrl(String rootUrl) {
     this.rootUrl = rootUrl;
-  }
-
-  @Override
-  public String getCheckpointPath() {
-    return checkpointPath;
   }
 }

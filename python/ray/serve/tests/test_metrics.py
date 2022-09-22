@@ -6,7 +6,7 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve.utils import block_until_http_ready
+from ray.serve._private.utils import block_until_http_ready
 import ray.experimental.state.api as state_api
 
 
@@ -15,11 +15,10 @@ def test_serve_metrics_for_successful_connection(serve_instance):
     async def f(request):
         return "hello"
 
-    f.deploy()
+    handle = serve.run(f.bind())
 
     # send 10 concurrent requests
     url = "http://127.0.0.1:8000/metrics"
-    handle = f.get_handle()
     ray.get([block_until_http_ready.remote(url) for _ in range(10)])
     ray.get([handle.remote(url) for _ in range(10)])
 
@@ -30,6 +29,9 @@ def test_serve_metrics_for_successful_connection(serve_instance):
         except requests.ConnectionError:
             return False
 
+        # NOTE: These metrics should be documented at
+        # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
+        # Any updates to here should be reflected there too.
         expected_metrics = [
             # counter
             "serve_num_router_requests",
@@ -47,6 +49,7 @@ def test_serve_metrics_for_successful_connection(serve_instance):
             # handle
             "serve_handle_request_counter",
         ]
+
         for metric in expected_metrics:
             # For the final error round
             if do_assert:
@@ -64,6 +67,10 @@ def test_serve_metrics_for_successful_connection(serve_instance):
 
 
 def test_http_metrics(serve_instance):
+
+    # NOTE: These metrics should be documented at
+    # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
+    # Any updates here should be reflected there too.
     expected_metrics = ["serve_num_http_requests", "serve_num_http_error_requests"]
 
     def verify_metrics(expected_metrics, do_assert=False):
@@ -92,6 +99,9 @@ def test_http_metrics(serve_instance):
     except RuntimeError:
         verify_metrics(expected_metrics, True)
 
+    # NOTE: This metric should be documented at
+    # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
+    # Any updates here should be reflected there too.
     expected_metrics.append("serve_num_deployment_http_error_requests")
 
     @serve.deployment(name="A")
@@ -103,7 +113,7 @@ def test_http_metrics(serve_instance):
             # Trigger RayActorError
             os._exit(0)
 
-    A.deploy()
+    serve.run(A.bind())
     requests.get("http://127.0.0.1:8000/A/")
     requests.get("http://127.0.0.1:8000/A/")
     try:

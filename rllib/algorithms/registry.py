@@ -1,8 +1,15 @@
 """Registry of algorithm names for `rllib train --run=<alg_name>`"""
 
+import importlib
+import re
 import traceback
+from typing import Tuple, Type, TYPE_CHECKING, Union
 
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm import Algorithm
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 def _import_a2c():
@@ -80,7 +87,7 @@ def _import_cql():
 def _import_crr():
     from ray.rllib.algorithms import crr
 
-    return crr.CRR, crr.CRRConfig
+    return crr.CRR, crr.CRRConfig().to_dict()
 
 
 def _import_ddpg():
@@ -105,6 +112,12 @@ def _import_dreamer():
     import ray.rllib.algorithms.dreamer as dreamer
 
     return dreamer.Dreamer, dreamer.DreamerConfig().to_dict()
+
+
+def _import_dt():
+    import ray.rllib.algorithms.dt as dt
+
+    return dt.DT, dt.DTConfig().to_dict()
 
 
 def _import_es():
@@ -214,6 +227,7 @@ ALGORITHMS = {
     "DDPPO": _import_ddppo,
     "DQN": _import_dqn,
     "Dreamer": _import_dreamer,
+    "DT": _import_dt,
     "IMPALA": _import_impala,
     "APPO": _import_appo,
     "AlphaStar": _import_alpha_star,
@@ -233,7 +247,10 @@ ALGORITHMS = {
 }
 
 
-def get_algorithm_class(alg: str, return_config=False) -> type:
+def get_algorithm_class(
+    alg: str,
+    return_config=False,
+) -> Union[Type["Algorithm"], Tuple[Type["Algorithm"], "AlgorithmConfig"]]:
     """Returns the class of a known Trainer given its name."""
 
     try:
@@ -282,3 +299,103 @@ def _get_algorithm_class(alg: str, return_config=False) -> type:
     if return_config:
         return class_, config
     return class_
+
+
+# Mapping from policy name to where it is located, relative to rllib.algorithms.
+# TODO(jungong) : Finish migrating all the policies to PolicyV2, so we can list
+# all the TF eager policies here.
+POLICIES = {
+    "A3CTF1Policy": "a3c.a3c_tf_policy",
+    "A3CTF2Policy": "a3c.a3c_tf_policy",
+    "A3CTorchPolicy": "a3c.a3c_torch_policy",
+    "AlphaZeroPolicy": "alpha_zero.alpha_zero_policy",
+    "APPOTF1Policy": "appo.appo_tf_policy",
+    "APPOTF2Policy": "appo.appo_tf_policy",
+    "APPOTorchPolicy": "appo.appo_torch_policy",
+    "ARSTFPolicy": "ars.ars_tf_policy",
+    "ARSTorchPolicy": "ars.ars_torch_policy",
+    "BanditTFPolicy": "bandit.bandit_tf_policy",
+    "BanditTorchPolicy": "bandit.bandit_torch_policy",
+    "CQLTFPolicy": "cql.cql_tf_policy",
+    "CQLTorchPolicy": "cql.cql_torch_policy",
+    "CRRTorchPolicy": "crr.torch.crr_torch_policy",
+    "DDPGTF1Policy": "ddpg.ddpg_tf_policy",
+    "DDPGTF2Policy": "ddpg.ddpg_tf_policy",
+    "DDPGTorchPolicy": "ddpg.ddpg_torch_policy",
+    "DQNTFPolicy": "dqn.dqn_tf_policy",
+    "DQNTorchPolicy": "dqn.dqn_torch_policy",
+    "DreamerTorchPolicy": "dreamer.dreamer_torch_policy",
+    "DTTorchPolicy": "dt.dt_torch_policy",
+    "ESTFPolicy": "es.es_tf_policy",
+    "ESTorchPolicy": "es.es_torch_policy",
+    "ImpalaTF1Policy": "impala.impala_tf_policy",
+    "ImpalaTF2Policy": "impala.impala_tf_policy",
+    "ImpalaTorchPolicy": "impala.impala_torch_policy",
+    "MADDPGTFPolicy": "maddpg.maddpg_tf_policy",
+    "MAMLTF1Policy": "maml.maml_tf_policy",
+    "MAMLTF2Policy": "maml.maml_tf_policy",
+    "MAMLTorchPolicy": "maml.maml_torch_policy",
+    "MARWILTF1Policy": "marwil.marwil_tf_policy",
+    "MARWILTF2Policy": "marwil.marwil_tf_policy",
+    "MARWILTorchPolicy": "marwil.marwil_torch_policy",
+    "MBMPOTorchPolicy": "mbmpo.mbmpo_torch_policy",
+    "PGTF1Policy": "pg.pg_tf_policy",
+    "PGTF2Policy": "pg.pg_tf_policy",
+    "PGTorchPolicy": "pg.pg_torch_policy",
+    "QMixTorchPolicy": "qmix.qmix_policy",
+    "R2D2TFPolicy": "r2d2.r2d2_tf_policy",
+    "R2D2TorchPolicy": "r2d2.r2d2_torch_policy",
+    "SACTFPolicy": "sac.sac_tf_policy",
+    "SACTorchPolicy": "sac.sac_torch_policy",
+    "RNNSACTorchPolicy": "sac.rnnsac_torch_policy",
+    "SimpleQTF1Policy": "simple_q.simple_q_tf_policy",
+    "SimpleQTF2Policy": "simple_q.simple_q_tf_policy",
+    "SimpleQTorchPolicy": "simple_q.simple_q_torch_policy",
+    "SlateQTFPolicy": "slateq.slateq_tf_policy",
+    "SlateQTorchPolicy": "slateq.slateq_torch_policy",
+    "PPOTF1Policy": "ppo.ppo_tf_policy",
+    "PPOTF2Policy": "ppo.ppo_tf_policy",
+    "PPOTorchPolicy": "ppo.ppo_torch_policy",
+}
+
+
+def get_policy_class_name(policy_class: type):
+    """Returns a string name for the provided policy class.
+
+    Args:
+        policy_class: RLlib policy class, e.g. A3CTorchPolicy, DQNTFPolicy, etc.
+
+    Returns:
+        A string name uniquely mapped to the given policy class.
+    """
+    # TF2 policy classes may get automatically converted into new class types
+    # that have eager tracing capability.
+    # These policy classes have the "_traced" postfix in their names.
+    # When checkpointing these policy classes, we should save the name of the
+    # original policy class instead. So that users have the choice of turning
+    # on eager tracing during inference time.
+    name = re.sub("_traced$", "", policy_class.__name__)
+    if name in POLICIES:
+        return name
+    return None
+
+
+def get_policy_class(name: str):
+    """Return an actual policy class given the string name.
+
+    Args:
+        name: string name of the policy class.
+
+    Returns:
+        Actual policy class for the given name.
+    """
+    if name not in POLICIES:
+        return None
+
+    path = POLICIES[name]
+    module = importlib.import_module("ray.rllib.algorithms." + path)
+
+    if not hasattr(module, name):
+        return None
+
+    return getattr(module, name)

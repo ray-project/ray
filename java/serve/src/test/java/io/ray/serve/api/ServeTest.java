@@ -12,10 +12,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class ServeTest extends BaseTest {
-
   @Test
   public void replicaContextTest() {
-
     try {
       // Test context setting and getting.
       String deploymentName = "deploymentName";
@@ -52,7 +50,7 @@ public class ServeTest extends BaseTest {
           CommonUtil.formatActorName(
               Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       ActorHandle<DummyServeController> actorHandle =
-          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
       Serve.setInternalReplicaContext(null, null, controllerName, null, null);
       client = Serve.getGlobalClient();
       Assert.assertNotNull(client);

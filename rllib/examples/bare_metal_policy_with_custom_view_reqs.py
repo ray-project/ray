@@ -6,7 +6,7 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.examples.policy.bare_metal_policy_with_custom_view_reqs import (
     BareMetalPolicyWithCustomViewReqs,
 )
-from ray import tune
+from ray import air, tune
 
 
 def get_cli_args():
@@ -78,5 +78,10 @@ if __name__ == "__main__":
     }
 
     # Train the Algorithm with our policy.
-    results = tune.run(BareMetalPolicyAlgorithm, config=config, stop=stop)
-    print(results)
+    tuner = tune.Tuner(
+        BareMetalPolicyAlgorithm,
+        param_space=config,
+        run_config=air.RunConfig(stop=stop),
+    )
+    results = tuner.fit()
+    print(results.get_best_result())

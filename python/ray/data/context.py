@@ -10,6 +10,10 @@ from ray.util.scheduling_strategies import SchedulingStrategyT
 _default_context: "Optional[DatasetContext]" = None
 _context_lock = threading.Lock()
 
+# An estimate of what fraction of the object store a Dataset can use without too high
+# a risk of triggering spilling. This is used to generate user warnings only.
+ESTIMATED_SAFE_MEMORY_FRACTION = 0.25
+
 # The max target block size in bytes for reads and transformations.
 # We choose 512MiB as 8x less than the typical memory:core ratio of 4:1.
 DEFAULT_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
@@ -61,6 +65,19 @@ DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
 # Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False
 
+# Whether to estimate in-memory decoding data size for data source.
+DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
+
+# Whether to automatically cast NumPy ndarray columns in Pandas DataFrames to tensor
+# extension columns.
+DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
+
+# Use this to prefix important warning messages for the user.
+WARN_PREFIX = "⚠️ "
+
+# Use this to prefix important success messages for the user.
+OK_PREFIX = "✔️ "
+
 
 @DeveloperAPI
 class DatasetContext:
@@ -87,7 +104,9 @@ class DatasetContext:
         pipeline_push_based_shuffle_reduce_tasks: bool,
         scheduling_strategy: SchedulingStrategyT,
         use_polars: bool,
+        decoding_size_estimation: bool,
         min_parallelism: bool,
+        enable_tensor_extension_casting: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_owner = block_owner
@@ -107,7 +126,9 @@ class DatasetContext:
         )
         self.scheduling_strategy = scheduling_strategy
         self.use_polars = use_polars
+        self.decoding_size_estimation = decoding_size_estimation
         self.min_parallelism = min_parallelism
+        self.enable_tensor_extension_casting = enable_tensor_extension_casting
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -140,7 +161,11 @@ class DatasetContext:
                     pipeline_push_based_shuffle_reduce_tasks=True,
                     scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY,
                     use_polars=DEFAULT_USE_POLARS,
+                    decoding_size_estimation=DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED,
                     min_parallelism=DEFAULT_MIN_PARALLELISM,
+                    enable_tensor_extension_casting=(
+                        DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
+                    ),
                 )
 
             if (

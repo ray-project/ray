@@ -3,7 +3,7 @@
 
 import abc
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
 import gym
 
@@ -38,25 +38,27 @@ class ConnectorContext:
     def __init__(
         self,
         config: AlgorithmConfigDict = None,
-        model_initial_states: List[TensorType] = None,
+        initial_states: List[TensorType] = None,
         observation_space: gym.Space = None,
         action_space: gym.Space = None,
         view_requirements: Dict[str, ViewRequirement] = None,
+        is_policy_recurrent: bool = False,
     ):
         """Construct a ConnectorContext instance.
 
         Args:
-            model_initial_states: States that are used for constructing
+            initial_states: States that are used for constructing
                 the initial input dict for RNN models. [] if a model is not recurrent.
             action_space_struct: a policy's action space, in python
                 data format. E.g., python dict instead of DictSpace, python tuple
                 instead of TupleSpace.
         """
-        self.config = config
-        self.initial_states = model_initial_states or []
+        self.config = config or {}
+        self.initial_states = initial_states or []
         self.observation_space = observation_space
         self.action_space = action_space
         self.view_requirements = view_requirements
+        self.is_policy_recurrent = is_policy_recurrent
 
     @staticmethod
     def from_policy(policy: "Policy") -> "ConnectorContext":
@@ -69,11 +71,12 @@ class ConnectorContext:
             A ConnectorContext instance.
         """
         return ConnectorContext(
-            policy.config,
-            policy.get_initial_state(),
-            policy.observation_space,
-            policy.action_space,
-            policy.view_requirements,
+            config=policy.config,
+            initial_states=policy.get_initial_state(),
+            observation_space=policy.observation_space,
+            action_space=policy.action_space,
+            view_requirements=policy.view_requirements,
+            is_policy_recurrent=policy.is_recurrent(),
         )
 
 
@@ -87,23 +90,26 @@ class Connector(abc.ABC):
     Connectors may be training-aware, for example, behave slightly differently
     during training and inference.
 
-    All connectors are required to be serializable and implement to_config().
+    All connectors are required to be serializable and implement to_state().
     """
 
     def __init__(self, ctx: ConnectorContext):
-        # This gets flipped to False for inference.
+        # Default is training mode.
         self._is_training = True
 
-    def is_training(self, is_training: bool):
-        self._is_training = is_training
+    def in_training(self):
+        self._is_training = True
+
+    def in_eval(self):
+        self._is_training = False
 
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
 
-    def to_config(self) -> Tuple[str, List[Any]]:
+    def to_state(self) -> Tuple[str, List[Any]]:
         """Serialize a connector into a JSON serializable Tuple.
 
-        to_config is required, so that all Connectors are serializable.
+        to_state is required, so that all Connectors are serializable.
 
         Returns:
             A tuple of connector's name and its serialized states.
@@ -112,10 +118,10 @@ class Connector(abc.ABC):
         return NotImplementedError
 
     @staticmethod
-    def from_config(self, ctx: ConnectorContext, params: List[Any]) -> "Connector":
+    def from_state(self, ctx: ConnectorContext, params: List[Any]) -> "Connector":
         """De-serialize a JSON params back into a Connector.
 
-        from_config is required, so that all Connectors are serializable.
+        from_state is required, so that all Connectors are serializable.
 
         Args:
             ctx: Context for constructing this connector.
@@ -263,11 +269,11 @@ class ActionConnector(Connector):
     to user environments.
 
     An action connector transforms a single piece of policy output in
-    ActionConnectorDataType format, which is basically PolicyOutputType
-    plus env and agent IDs.
+    ActionConnectorDataType format, which is basically PolicyOutputType plus env and
+    agent IDs.
 
-    Any functions that operates directly on PolicyOutputType can be
-    easily adpated into an ActionConnector by using register_lambda_action_connector.
+    Any functions that operate directly on PolicyOutputType can be easily adapted
+    into an ActionConnector by using register_lambda_action_connector.
 
     Example:
     .. code-block:: python
@@ -311,6 +317,17 @@ class ActionConnector(Connector):
 class ConnectorPipeline(abc.ABC):
     """Utility class for quick manipulation of a connector pipeline."""
 
+    def __init__(self, ctx: ConnectorContext, connectors: List[Connector]):
+        self.connectors = connectors
+
+    def in_training(self):
+        for c in self.connectors:
+            c.in_training()
+
+    def in_eval(self):
+        for c in self.connectors:
+            c.in_eval()
+
     def remove(self, name: str):
         """Remove a connector by <name>
 
@@ -318,14 +335,15 @@ class ConnectorPipeline(abc.ABC):
             name: name of the connector to be removed.
         """
         idx = -1
-        for idx, c in enumerate(self.connectors):
+        for i, c in enumerate(self.connectors):
             if c.__class__.__name__ == name:
+                idx = i
                 break
-        if idx < 0:
-            raise ValueError(f"Can not find connector {name}")
-        del self.connectors[idx]
-
-        logger.info(f"Removed connector {name} from {self.__class__.__name__}.")
+        if idx >= 0:
+            del self.connectors[idx]
+            logger.info(f"Removed connector {name} from {self.__class__.__name__}.")
+        else:
+            logger.warning(f"Trying to remove a non-existent connector {name}.")
 
     def insert_before(self, name: str, connector: Connector):
         """Insert a new connector before connector <name>
@@ -401,6 +419,44 @@ class ConnectorPipeline(abc.ABC):
             + [c.__str__(indentation + 4) for c in self.connectors]
         )
 
+    def __getitem__(self, key: Union[str, int, type]):
+        """Returns a list of connectors that fit 'key'.
+
+        If key is a number n, we return a list with the nth element of this pipeline.
+        If key is a Connector class or a string matching the class name of a
+        Connector class, we return a list of all connectors in this pipeline matching
+        the specified class.
+
+        Args:
+            key: The key to index by
+
+        Returns: The Connector at index `key`.
+        """
+        # In case key is a class
+        if not isinstance(key, str):
+            if isinstance(key, slice):
+                raise NotImplementedError(
+                    "Slicing of ConnectorPipeline is currently not supported."
+                )
+            elif isinstance(key, int):
+                return [self.connectors[key]]
+            elif isinstance(key, type):
+                key = key.__name__
+            else:
+                raise NotImplementedError(
+                    "Indexing by {} is currently not supported.".format(type(key))
+                )
+
+        results = []
+        for c in self.connectors:
+            if c.__class__.__name__ == key:
+                results.append(c)
+
+        if len(results) == 0:
+            return []
+
+        return results
+
 
 @PublicAPI(stability="alpha")
 def register_connector(name: str, cls: Connector):
@@ -429,4 +485,4 @@ def get_connector(ctx: ConnectorContext, name: str, params: Tuple[Any]) -> Conne
     if not _global_registry.contains(RLLIB_CONNECTOR, name):
         raise NameError("connector not found.", name)
     cls = _global_registry.get(RLLIB_CONNECTOR, name)
-    return cls.from_config(ctx, params)
+    return cls.from_state(ctx, params)

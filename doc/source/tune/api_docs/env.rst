@@ -6,9 +6,6 @@ Environment variables
 Some of Ray Tune's behavior can be configured using environment variables.
 These are the environment variables Ray Tune currently considers:
 
-* **TUNE_CLUSTER_SSH_KEY**: SSH key used by the Tune driver process to connect
-  to remote cluster machines for checkpoint syncing. If this is not set,
-  ``~/ray_bootstrap_key.pem`` will be used.
 * **TUNE_DISABLE_AUTO_CALLBACK_LOGGERS**: Ray Tune automatically adds a CSV and
   JSON logger callback if they haven't been passed. Setting this variable to
   `1` disables this automatic creation. Please note that this will most likely
@@ -24,7 +21,7 @@ These are the environment variables Ray Tune currently considers:
   directories when the name is not specified explicitly or the trainable isn't passed
   as a string. Setting this environment variable to ``1`` disables adding these date strings.
 * **TUNE_DISABLE_STRICT_METRIC_CHECKING**: When you report metrics to Tune via
-  ``session.report()`` and passed a ``metric`` parameter to ``tune.run()``, a scheduler,
+  ``session.report()`` and passed a ``metric`` parameter to ``Tuner()``, a scheduler,
   or a search algorithm, Tune will error
   if the metric was not reported in the result. Setting this environment variable
   to ``1`` will disable this check.
@@ -35,7 +32,7 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_FORCE_TRIAL_CLEANUP_S**: By default, Ray Tune will gracefully terminate trials,
   letting them finish the current training step and any user-defined cleanup.
   Setting this variable to a non-zero, positive integer will cause trials to be forcefully
-  terminated after a grace period of that many seconds. Defaults to ``0``.
+  terminated after a grace period of that many seconds. Defaults to ``600`` (seconds).
 * **TUNE_GET_EXECUTOR_EVENT_WAIT_S**: The time that TrialRunner waits for the
   next ExecutorEvent in a blocking fashion. Defaults to ``5``.
 * **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
@@ -49,7 +46,7 @@ These are the environment variables Ray Tune currently considers:
   for any other search algorithms.
 * **TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED**: Ray Tune cleans up existing placement groups
   with the ``_tune__`` prefix in their name before starting a run. This is used to make sure
-  that scheduled placement groups are removed when multiple calls to ``tune.run()`` are
+  that scheduled placement groups are removed when multiple calls to ``Tuner.fit()`` are
   done in the same script. You might want to disable this if you run multiple Tune runs in
   parallel from different scripts. Set to 1 to disable.
 * **TUNE_PLACEMENT_GROUP_PREFIX**: Prefix for placement groups created by Ray Tune. This prefix is used
@@ -60,6 +57,8 @@ These are the environment variables Ray Tune currently considers:
   In normal circumstances these shouldn't differ anyway, but reconcilation makes sure to capture cases when
   placement groups are manually destroyed. Reconcilation doesn't take much time, but it can add up when
   running a large number of short trials. Defaults to every ``5`` (seconds).
+* **TUNE_PRINT_ALL_TRIAL_ERRORS**: If ``1``, will print all trial errors as they come up. Otherwise, errors
+  will only be saved as text files to the trial directory and not printed. Defaults to ``1``.
 * **TUNE_RESULT_DIR**: Directory where Ray Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
 * **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed

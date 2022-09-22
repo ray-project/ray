@@ -44,8 +44,8 @@ class AlgorithmConfig:
         >>> config = AlgorithmConfig()
         >>> config.training(lr=tune.grid_search([0.01, 0.001]))
         >>> # Use `to_dict()` method to get the legacy plain python config dict
-        >>> # for usage with `tune.run()`.
-        >>> tune.run("[registered trainer class]", config=config.to_dict())
+        >>> # for usage with `tune.Tuner().fit()`.
+        >>> tune.Tuner("[registered trainer class]", param_space=config.to_dict()).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -126,6 +126,8 @@ class AlgorithmConfig:
         self.observation_filter = "NoFilter"
         self.synchronize_filters = True
         self.compress_observations = False
+        self.enable_tf1_exec_eagerly = False
+        self.sampler_perf_stats_ema_coef = None
 
         # `self.training()`
         self.gamma = 0.99
@@ -181,6 +183,7 @@ class AlgorithmConfig:
         self.evaluation_num_workers = 0
         self.custom_evaluation_function = None
         self.always_attach_evaluation_results = False
+        self.enable_async_evaluation = False
         # TODO: Set this flag still in the config or - much better - in the
         #  RolloutWorker as a property.
         self.in_evaluation = False
@@ -238,7 +241,7 @@ class AlgorithmConfig:
 
         Returns:
             A complete AlgorithmConfigDict, usable in backward-compatible Tune/RLlib
-            use cases, e.g. w/ `tune.run()`.
+            use cases, e.g. w/ `tune.Tuner().fit()`.
         """
         config = copy.deepcopy(vars(self))
         config.pop("algo_class")
@@ -447,8 +450,8 @@ class AlgorithmConfig:
 
     def environment(
         self,
-        *,
         env: Optional[Union[str, EnvType]] = None,
+        *,
         env_config: Optional[EnvConfigDict] = None,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
@@ -550,6 +553,8 @@ class AlgorithmConfig:
         observation_filter: Optional[str] = None,
         synchronize_filter: Optional[bool] = None,
         compress_observations: Optional[bool] = None,
+        enable_tf1_exec_eagerly: Optional[bool] = None,
+        sampler_perf_stats_ema_coef: Optional[float] = None,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -660,6 +665,14 @@ class AlgorithmConfig:
             synchronize_filter: Whether to synchronize the statistics of remote filters.
             compress_observations: Whether to LZ4 compress individual observations
                 in the SampleBatches collected during rollouts.
+            enable_tf1_exec_eagerly: Explicitly tells the rollout worker to enable
+                TF eager execution. This is useful for example when framework is
+                "torch", but a TF2 policy needs to be restored for evaluation or
+                league-based purposes.
+            sampler_perf_stats_ema_coef: If specified, perf stats are in EMAs. This
+                is the coeff of how much new data points contribute to the averages.
+                Default is None, which uses simple global average instead.
+                The EMA update rule is: updated = (1 - ema_coef) * old + ema_coef * new
 
         Returns:
             This updated AlgorithmConfig object.
@@ -712,6 +725,10 @@ class AlgorithmConfig:
             self.synchronize_filters = synchronize_filter
         if compress_observations is not None:
             self.compress_observations = compress_observations
+        if enable_tf1_exec_eagerly is not None:
+            self.enable_tf1_exec_eagerly = enable_tf1_exec_eagerly
+        if sampler_perf_stats_ema_coef is not None:
+            self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
 
         return self
 
@@ -802,7 +819,7 @@ class AlgorithmConfig:
         self,
         *,
         evaluation_interval: Optional[int] = None,
-        evaluation_duration: Optional[int] = None,
+        evaluation_duration: Optional[Union[int, str]] = None,
         evaluation_duration_unit: Optional[str] = None,
         evaluation_sample_timeout_s: Optional[float] = None,
         evaluation_parallel_to_training: Optional[bool] = None,
@@ -813,6 +830,7 @@ class AlgorithmConfig:
         evaluation_num_workers: Optional[int] = None,
         custom_evaluation_function: Optional[Callable] = None,
         always_attach_evaluation_results: Optional[bool] = None,
+        enable_async_evaluation: Optional[bool] = None,
     ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
 
@@ -877,6 +895,10 @@ class AlgorithmConfig:
                 results are always attached to a step result dict. This may be useful
                 if Tune or some other meta controller needs access to evaluation metrics
                 all the time.
+            enable_async_evaluation: If True, use an AsyncRequestsManager for
+                the evaluation workers and use this manager to send `sample()` requests
+                to the evaluation workers. This way, the Algorithm becomes more robust
+                against long running episodes and/or failing (and restarting) workers.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -898,15 +920,15 @@ class AlgorithmConfig:
             else:
                 self.evaluation_config = evaluation_config
         if off_policy_estimation_methods is not None:
-            self.evaluation_config[
-                "off_policy_estimation_methods"
-            ] = off_policy_estimation_methods
+            self.off_policy_estimation_methods = off_policy_estimation_methods
         if evaluation_num_workers is not None:
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not None:
             self.custom_evaluation_function = custom_evaluation_function
         if always_attach_evaluation_results:
             self.always_attach_evaluation_results = always_attach_evaluation_results
+        if enable_async_evaluation:
+            self.enable_async_evaluation = enable_async_evaluation
 
         return self
 
@@ -917,8 +939,7 @@ class AlgorithmConfig:
         input_config=None,
         actions_in_input_normalized=None,
         input_evaluation=None,
-        off_policy_estimation_methods=None,
-        postprocess_inputs=None,  # `def postprocess_trajectory()`
+        postprocess_inputs=None,
         shuffle_buffer_size=None,
         output=None,
         output_config=None,
@@ -991,7 +1012,7 @@ class AlgorithmConfig:
             self.input_config = input_config
         if actions_in_input_normalized is not None:
             self.actions_in_input_normalized = actions_in_input_normalized
-        if input_evaluation is not None or off_policy_estimation_methods is not None:
+        if input_evaluation is not None:
             deprecation_warning(
                 old="offline_data(input_evaluation={})".format(input_evaluation),
                 new="evaluation(off_policy_estimation_methods={})".format(

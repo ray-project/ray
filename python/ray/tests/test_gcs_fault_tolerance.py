@@ -1,9 +1,12 @@
 import sys
+import os
+import threading
 from time import sleep
 
 import pytest
 
 import ray
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     convert_actor_state,
@@ -30,7 +33,8 @@ def increase(x):
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -61,7 +65,8 @@ def test_gcs_server_restart(ray_start_regular_with_external_redis):
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -97,7 +102,8 @@ def test_gcs_server_restart_during_actor_creation(
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=2, gcs_rpc_server_reconnect_timeout_s=60
+            gcs_failover_worker_reconnect_timeout=2,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -162,7 +168,8 @@ def test_node_failure_detector_when_gcs_server_restart(
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -202,7 +209,8 @@ def test_actor_raylet_resubscription(ray_start_regular_with_external_redis):
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -238,7 +246,8 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -302,7 +311,8 @@ def test_worker_raylet_resubscription(tmp_path, ray_start_regular_with_external_
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -342,7 +352,8 @@ def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_re
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -377,25 +388,68 @@ def test_detached_actor_restarts(ray_start_regular_with_external_redis):
 @pytest.mark.parametrize("auto_reconnect", [True, False])
 def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconnect):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = (
-        gcs_utils.GcsClient(address=gcs_address)
-        if auto_reconnect
-        else gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=0)
+    gcs_client = gcs_utils.GcsClient(
+        address=gcs_address, nums_reconnect_retry=20 if auto_reconnect else 0
     )
 
     gcs_client.internal_kv_put(b"a", b"b", True, None)
-    gcs_client.internal_kv_get(b"a", None) == b"b"
+    assert gcs_client.internal_kv_get(b"a", None) == b"b"
+
+    passed = [False]
+
+    def kv_get():
+        if not auto_reconnect:
+            with pytest.raises(Exception):
+                gcs_client.internal_kv_get(b"a", None)
+        else:
+            assert gcs_client.internal_kv_get(b"a", None) == b"b"
+        passed[0] = True
 
     ray._private.worker._global_node.kill_gcs_server()
+    t = threading.Thread(target=kv_get)
+    t.start()
+    sleep(5)
     ray._private.worker._global_node.start_gcs_server()
-    if auto_reconnect is False:
-        # This may flake: when GCS server restarted quickly, there would be no
-        # connection error when calling internal_kv_get().
-        # with pytest.raises(Exception):
-        #     gcs_client.internal_kv_get(b"a", None)
-        pass
-    else:
-        assert gcs_client.internal_kv_get(b"a", None) == b"b"
+    t.join()
+    assert passed[0]
+
+
+@pytest.mark.parametrize("auto_reconnect", [True, False])
+def test_gcs_aio_client_reconnect(
+    ray_start_regular_with_external_redis, auto_reconnect
+):
+    gcs_address = ray._private.worker.global_worker.gcs_client.address
+    gcs_client = gcs_utils.GcsClient(address=gcs_address)
+
+    gcs_client.internal_kv_put(b"a", b"b", True, None)
+    assert gcs_client.internal_kv_get(b"a", None) == b"b"
+
+    passed = [False]
+
+    async def async_kv_get():
+        gcs_aio_client = gcs_utils.GcsAioClient(
+            address=gcs_address, nums_reconnect_retry=20 if auto_reconnect else 0
+        )
+        if not auto_reconnect:
+            with pytest.raises(Exception):
+                await gcs_aio_client.internal_kv_get(b"a", None)
+        else:
+            assert await gcs_aio_client.internal_kv_get(b"a", None) == b"b"
+        return True
+
+    def kv_get():
+        import asyncio
+
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        passed[0] = asyncio.get_event_loop().run_until_complete(async_kv_get())
+
+    ray._private.worker._global_node.kill_gcs_server()
+    t = threading.Thread(target=kv_get)
+    t.start()
+    sleep(5)
+    ray._private.worker._global_node.start_gcs_server()
+    t.join()
+    assert passed[0]
 
 
 @pytest.mark.parametrize(
@@ -403,7 +457,8 @@ def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconn
     [
         {
             **generate_system_config_map(
-                num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=3600
+                gcs_failover_worker_reconnect_timeout=20,
+                gcs_rpc_server_reconnect_timeout_s=3600,
             ),
             "namespace": "actor",
         }
@@ -435,8 +490,6 @@ def test_actor_workloads(ray_start_regular_with_external_redis):
 
     assert ray.get(c.r.remote(10)) == 10
     ray._private.worker._global_node.start_gcs_server()
-
-    import threading
 
     def f():
         assert ray.get(cc.r.remote(10)) == 10
@@ -474,7 +527,7 @@ assert ray.get(a.r.remote(10)) == 10
     [
         {
             **generate_system_config_map(
-                num_heartbeats_timeout=20,
+                gcs_failover_worker_reconnect_timeout=20,
                 gcs_rpc_server_reconnect_timeout_s=3600,
                 gcs_server_request_timeout_seconds=10,
             ),
@@ -516,7 +569,8 @@ def test_named_actor_workloads(ray_start_regular_with_external_redis):
     [
         {
             **generate_system_config_map(
-                num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=3600
+                gcs_failover_worker_reconnect_timeout=20,
+                gcs_rpc_server_reconnect_timeout_s=3600,
             ),
             "namespace": "actor",
         }
@@ -541,7 +595,9 @@ def test_pg_actor_workloads(ray_start_regular_with_external_redis):
 
             return os.getpid()
 
-    c = Counter.options(placement_group=pg).remote()
+    c = Counter.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+    ).remote()
     r = ray.get(c.r.remote(10))
     assert r == 10
 
@@ -557,8 +613,37 @@ def test_pg_actor_workloads(ray_start_regular_with_external_redis):
         assert pid == ray.get(c.pid.remote())
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=60,
+            gcs_server_request_timeout_seconds=10,
+        )
+    ],
+    indirect=True,
+)
+def test_get_actor_when_gcs_is_down(ray_start_regular_with_external_redis):
+    @ray.remote
+    def create_actor():
+        @ray.remote
+        class A:
+            def pid(self):
+                return os.getpid()
+
+        a = A.options(lifetime="detached", name="A").remote()
+        ray.get(a.pid.remote())
+
+    ray.get(create_actor.remote())
+
+    ray._private.worker._global_node.kill_gcs_server()
+
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get_actor("A")
+
+
 if __name__ == "__main__":
-    import os
 
     import pytest
 

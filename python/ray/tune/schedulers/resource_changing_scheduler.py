@@ -11,7 +11,7 @@ from ray.tune.execution import trial_runner
 from ray.tune.resources import Resources
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.experiment import Trial
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.execution.placement_groups import PlacementGroupFactory, _sum_bundles
 
 logger = logging.getLogger(__name__)
 
@@ -117,8 +117,7 @@ class DistributeResources:
         """Get total sums of resources in bundles"""
         if not bundles:
             return {"CPU": 0, "GPU": 0}
-        pgf = PlacementGroupFactory(bundles)
-        return pgf.required_resources
+        return _sum_bundles(bundles)
 
     def _is_bundle_empty(self, bundle: Dict[str, float]) -> bool:
         return not (bundle.get("CPU", 0) or bundle.get("GPU", 0))
@@ -537,7 +536,7 @@ class DistributeResourcesToTopJob(DistributeResources):
             raise ValueError(
                 "The metric parameter cannot be None. The parameter can be set in "
                 "either `DistributeResourcesToTopJob`, the base scheduler or in "
-                "`tune.run` (highest to lowest priority)."
+                "`tune.TuneConfig()` (highest to lowest priority)."
             )
 
         free_cpus = total_available_cpus - used_cpus
@@ -608,7 +607,7 @@ class ResourceChangingScheduler(TrialScheduler):
     If the Trainable (class) API is used, you can obtain the current trial
     resources through the ``Trainable.trial_resources`` property.
 
-    Cannot be used if ``reuse_actors`` is True in ``tune.run``. A ValueError
+    Cannot be used if ``reuse_actors`` is True in ``tune.TuneConfig()``. A ValueError
     will be raised in that case.
 
     Args:
@@ -771,7 +770,7 @@ class ResourceChangingScheduler(TrialScheduler):
             raise ValueError(
                 "ResourceChangingScheduler cannot be used with "
                 "`reuse_actors=True`. FIX THIS by setting "
-                "`reuse_actors=False` in `tune.run`."
+                "`reuse_actors=False` in `tune.TuneConfig()`."
             )
 
         any_resources_changed = False

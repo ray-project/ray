@@ -14,7 +14,7 @@ import logging
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.tune import register_env
 from ray.rllib.algorithms.qmix import QMixConfig
 from ray.rllib.env.multi_agent_env import ENV_STATE
@@ -115,7 +115,7 @@ if __name__ == "__main__":
             "env_config": {
                 "actions_are_logits": True,
             },
-            "replay_buffer_config": {"learning_starts": 100},
+            "num_steps_sampled_before_learning_starts": 100,
             "multiagent": {
                 "policies": {
                     "pol1": PolicySpec(
@@ -169,7 +169,11 @@ if __name__ == "__main__":
         "training_iteration": args.stop_iters,
     }
 
-    results = tune.run(args.run, stop=stop, config=config, verbose=2)
+    results = tune.Tuner(
+        args.run,
+        run_config=air.RunConfig(stop=stop, verbose=2),
+        param_space=config,
+    ).fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

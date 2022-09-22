@@ -355,6 +355,10 @@ install_dependencies() {
     # For Ray Core and Ray Serve DAG visualization docs test
     sudo apt-get install -y graphviz
     pip install -U pydot  # For DAG visualization
+    # For the dataset examples
+    sudo apt-get install -y tesseract-ocr
+    pip install -U pytesseract "spacy>=3" spacy_langdetect
+    python -m spacy download en_core_web_sm
   fi
 
   # Additional RLlib test dependencies.
@@ -415,6 +419,18 @@ install_dependencies() {
   # RLlib testing with TF 1.x.
   if [ "${RLLIB_TESTING-}" = 1 ] && { [ -n "${TF_VERSION-}" ] || [ -n "${TFP_VERSION-}" ]; }; then
     pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}"
+  fi
+
+  # Inject our own mirror for the CIFAR10 dataset
+  if [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
+    SITE_PACKAGES=$(python -c 'from distutils.sysconfig import get_python_lib; print(get_python_lib())')
+    TF_CIFAR="${SITE_PACKAGES}/tensorflow/python/keras/datasets/cifar10.py"
+    TORCH_CIFAR="${SITE_PACKAGES}/torchvision/datasets/cifar.py"
+
+    [ -f "$TF_CIFAR" ] && sed -i 's https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz https://air-example-data.s3.us-west-2.amazonaws.com/cifar-10-python.tar.gz g' \
+      "$TF_CIFAR"
+    [ -f "$TORCH_CIFAR" ] &&sed -i 's https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz https://air-example-data.s3.us-west-2.amazonaws.com/cifar-10-python.tar.gz g' \
+      "$TORCH_CIFAR"
   fi
 
   # Additional Tune dependency for Horovod.

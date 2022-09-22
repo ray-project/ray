@@ -13,6 +13,7 @@ from typing import Dict, Optional, Sequence, Union, Callable, List
 import uuid
 
 import ray
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
@@ -43,7 +44,6 @@ from ray.tune.utils import date_str, flatten_dict
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 from ray._private.utils import binary_to_hex, hex_to_binary
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)
@@ -167,7 +167,7 @@ class _TrialInfo:
         self._trial_resources = new_resources
 
 
-def create_unique_logdir_name(root: str, relative_logdir: str) -> str:
+def _create_unique_logdir_name(root: str, relative_logdir: str) -> str:
     candidate = Path(root).expanduser().joinpath(relative_logdir)
     if candidate.exists():
         relative_logdir_old = relative_logdir
@@ -213,12 +213,12 @@ class Trial:
         trainable_name: Name of the trainable object to be executed.
         config: Provided configuration dictionary with evaluated params.
         trial_id: Unique identifier for the trial.
-        local_dir: ``local_dir`` as passed to ``tune.run`` joined
+        local_dir: ``local_dir`` as passed to ``air.RunConfig()`` joined
             with the name of the experiment.
         logdir: Directory where the trial logs are saved.
         relative_logdir: Same as ``logdir``, but relative to the parent of
             the ``local_dir`` (equal to ``local_dir`` argument passed
-            to ``tune.run``).
+            to ``air.RunConfig()``).
         evaluated_params: Evaluated parameters by search algorithm,
         experiment_tag: Identifying trial name to show in the console
         status: One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
@@ -451,6 +451,17 @@ class Trial:
     def last_result(self, val: dict):
         self._last_result = val
 
+    def get_runner_ip(self) -> Optional[str]:
+        if self.location.hostname:
+            return self.location.hostname
+
+        if not self.runner:
+            return None
+
+        hostname, pid = ray.get(self.runner.get_current_ip_pid.remote())
+        self.location = _Location(hostname, pid)
+        return self.location.hostname
+
     @property
     def logdir(self):
         if not self.relative_logdir:
@@ -559,7 +570,7 @@ class Trial:
     def init_logdir(self):
         """Init logdir."""
         if not self.relative_logdir:
-            self.relative_logdir = create_unique_logdir_name(
+            self.relative_logdir = _create_unique_logdir_name(
                 self.local_dir, self._generate_dirname()
             )
         assert self.logdir

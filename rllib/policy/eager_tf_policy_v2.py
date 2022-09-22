@@ -3,12 +3,11 @@
 It supports both traced and non-traced eager execution modes.
 """
 
+import gym
 import logging
 import threading
-from typing import Dict, List, Optional, Tuple, Type, Union
-
-import gym
 import tree  # pip install dm_tree
+from typing import Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
@@ -20,7 +19,7 @@ from ray.rllib.policy.eager_tf_policy import (
     _OptimizerWrapper,
     _traced_eager_policy,
 )
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
@@ -667,7 +666,8 @@ class EagerTFPolicyV2(Policy):
         return []
 
     @override(Policy)
-    def get_state(self):
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def get_state(self) -> PolicyState:
         state = super().get_state()
         state["global_timestep"] = state["global_timestep"].numpy()
         if self._optimizer and len(self._optimizer.variables()) > 0:
@@ -677,8 +677,9 @@ class EagerTFPolicyV2(Policy):
         return state
 
     @override(Policy)
-    def set_state(self, state):
-        # Set optimizer vars first.
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def set_state(self, state: PolicyState) -> None:
+        # Set optimizer vars.
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars and self._optimizer.variables():
             logger.warning(
@@ -692,9 +693,12 @@ class EagerTFPolicyV2(Policy):
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
-        # Weights and global_timestep (tf vars).
-        self.set_weights(state["weights"])
+
+        # Restore glbal timestep (tf vars).
         self.global_timestep.assign(state["global_timestep"])
+
+        # Then the Policy's (NN) weights and connectors.
+        super().set_state(state)
 
     @override(Policy)
     def export_checkpoint(self, export_dir):

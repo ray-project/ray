@@ -18,23 +18,27 @@ from typing import (
 )
 
 import ray
+from ray.air._internal.util import find_free_port, StartTraceback
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.types import ObjectRef
-from ray.util.ml_utils.util import find_free_port
+
 
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
 
-def check_for_failure(remote_values: List[ObjectRef]) -> bool:
+def check_for_failure(
+    remote_values: List[ObjectRef],
+) -> Tuple[bool, Optional[Exception]]:
     """Check for actor failure when retrieving the remote values.
 
     Args:
         remote_values: List of object references from Ray actor methods.
 
     Returns:
+        A tuple of (bool, Exception). The bool is
         True if evaluating all object references is successful, False otherwise.
     """
     unfinished = remote_values.copy()
@@ -50,12 +54,14 @@ def check_for_failure(remote_values: List[ObjectRef]) -> bool:
             try:
                 ray.get(object_ref)
             except RayActorError as exc:
-                logger.exception(str(exc))
                 failed_actor_rank = remote_values.index(object_ref)
                 logger.info(f"Worker {failed_actor_rank} has failed.")
-                return False
+                return False, exc
+            except Exception as exc:
+                # Other (e.g. training) errors should be directly raised
+                raise StartTraceback from exc
 
-    return True
+    return True, None
 
 
 def get_address_and_port() -> Tuple[str, int]:
@@ -137,7 +143,10 @@ def construct_train_func(
         # Those returns are inaccesible with AIR anyway.
         @functools.wraps(train_func)
         def discard_return_wrapper(*args, **kwargs):
-            train_func(*args, **kwargs)
+            try:
+                train_func(*args, **kwargs)
+            except Exception as e:
+                raise StartTraceback from e
 
         wrapped_train_func = discard_return_wrapper
     else:
@@ -151,9 +160,24 @@ def construct_train_func(
         raise ValueError(err_msg)
     elif num_params == 1:
         config = {} if config is None else config
-        return lambda: wrapped_train_func(config)
+
+        @functools.wraps(wrapped_train_func)
+        def train_fn():
+            try:
+                return wrapped_train_func(config)
+            except Exception as e:
+                raise StartTraceback from e
+
     else:  # num_params == 0
-        return wrapped_train_func
+
+        @functools.wraps(wrapped_train_func)
+        def train_fn():
+            try:
+                return wrapped_train_func()
+            except Exception as e:
+                raise StartTraceback from e
+
+    return train_fn
 
 
 class Singleton(abc.ABCMeta):

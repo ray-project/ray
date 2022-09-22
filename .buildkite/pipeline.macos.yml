@@ -13,8 +13,9 @@ prelude_commands: &prelude_commands |-
   cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
   (which bazel && bazel clean) || true;
   . ./ci/ci.sh init && source ~/.zshrc
-  . ./ci/ci.sh build
+  ./ci/ci.sh build
   ./ci/env/install-dependencies.sh
+  ./ci/env/env_info.sh
 
 epilogue_commands: &epilogue_commands |-
   # Cleanup runtime environment to save storage
@@ -44,9 +45,9 @@ steps:
     - export MAC_JARS=1
     - export RAY_INSTALL_JAVA=1
     - . ./ci/ci.sh init && source ~/.zshrc
-    - . ./ci/ci.sh build
+    - ./ci/ci.sh build
     # Test wheels
-    - . ./ci/ci.sh test_wheels
+    - ./ci/ci.sh test_wheels
     # Build jars
     - bash ./java/build-jar-multiplatform.sh darwin
     # Upload the wheels and jars
@@ -61,16 +62,16 @@ steps:
     - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
 
 
-- label: ":mac: :apple: Ray Core, Dashboard and Serve"
+- label: ":mac: :apple: Ray Core Unit Tests and Dashboard"
   <<: *common
-  conditions: ["RAY_CI_SERVE_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
+  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
   commands:
     - *prelude_commands
     - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
     # Use --dynamic_mode=off until MacOS CI runs on Big Sur or newer. Otherwise there are problems with running tests
     # with dynamic linking.
     - bazel test --config=ci --dynamic_mode=off --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-post_wheel_build --
-      //:all python/ray/serve/... python/ray/dashboard/... -rllib/... -core_worker_test
+      //:all python/ray/dashboard/... -python/ray/serve/... -rllib/... -core_worker_test
     - *epilogue_commands
 
 
@@ -105,7 +106,7 @@ steps:
   conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - *prelude_commands
-    - . ./ci/ci.sh test_large
+    - ./ci/ci.sh test_large
     - *epilogue_commands
 
 - label: ":mac: :apple: Medium A-J"

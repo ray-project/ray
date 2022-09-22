@@ -9,12 +9,15 @@ import uuid
 import warnings
 from functools import partial
 from numbers import Number
-from typing import Any, Callable, Dict, Optional, Type
+from typing import Any, Callable, Dict, Optional, Type, Union
 
+from ray.air._internal.util import StartTraceback
+from ray.tune.resources import Resources
 from six.moves import queue
 
 from ray.air.checkpoint import Checkpoint
 from ray.tune import TuneError
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import session
 from ray.tune.result import (
     DEFAULT_METRIC,
@@ -24,9 +27,9 @@ from ray.tune.result import (
 )
 from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.utils import (
-    detect_checkpoint_function,
-    detect_config_single,
-    detect_reporter,
+    _detect_checkpoint_function,
+    _detect_config_single,
+    _detect_reporter,
 )
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -288,12 +291,12 @@ class _RunnerThread(threading.Thread):
         except StopIteration:
             logger.debug(
                 (
-                    "Thread runner raised StopIteration. Interperting it as a "
+                    "Thread runner raised StopIteration. Interpreting it as a "
                     "signal to terminate the thread without error."
                 )
             )
         except Exception as e:
-            logger.exception("Runner Thread raised error.")
+            logger.error("Runner Thread raised error")
             try:
                 # report the error but avoid indefinite blocking which would
                 # prevent the exception from being propagated in the unlikely
@@ -345,7 +348,7 @@ class FunctionTrainable(Trainable):
         )
         self._last_result = {}
 
-        session.init(self._status_reporter)
+        session._init(self._status_reporter)
         self._runner = None
         self._restore_tmpdir = None
         self.temp_checkpoint_dir = None
@@ -357,11 +360,14 @@ class FunctionTrainable(Trainable):
 
     def _start(self):
         def entrypoint():
-            return self._trainable_func(
-                self.config,
-                self._status_reporter,
-                self._status_reporter.get_checkpoint(),
-            )
+            try:
+                return self._trainable_func(
+                    self.config,
+                    self._status_reporter,
+                    self._status_reporter.get_checkpoint(),
+                )
+            except Exception as e:
+                raise StartTraceback from e
 
         # the runner thread is not started until the first call to _train
         self._runner = _RunnerThread(entrypoint, self._error_queue)
@@ -549,7 +555,7 @@ class FunctionTrainable(Trainable):
 
         # Check for any errors that might have been missed.
         self._report_thread_runner_error()
-        session.shutdown()
+        session._shutdown()
 
         if self.temp_checkpoint_dir is not None and os.path.exists(
             self.temp_checkpoint_dir
@@ -584,11 +590,12 @@ class FunctionTrainable(Trainable):
     def _report_thread_runner_error(self, block=False):
         try:
             e = self._error_queue.get(block=block, timeout=ERROR_FETCH_TIMEOUT)
-            raise e
+            raise StartTraceback from e
         except queue.Empty:
             pass
 
 
+@DeveloperAPI
 def wrap_function(
     train_func: Callable[[Any], Any], warn: bool = True, name: Optional[str] = None
 ) -> Type["FunctionTrainable"]:
@@ -598,9 +605,9 @@ def wrap_function(
         inherit_from = train_func.__mixins__ + inherit_from
 
     func_args = inspect.getfullargspec(train_func).args
-    use_checkpoint = detect_checkpoint_function(train_func)
-    use_config_single = detect_config_single(train_func)
-    use_reporter = detect_reporter(train_func)
+    use_checkpoint = _detect_checkpoint_function(train_func)
+    use_config_single = _detect_config_single(train_func)
+    use_reporter = _detect_reporter(train_func)
 
     if not any([use_checkpoint, use_config_single, use_reporter]):
         # use_reporter is hidden
@@ -640,6 +647,8 @@ def wrap_function(
                     warning_msg,
                     DeprecationWarning,
                 )
+
+    resources = getattr(train_func, "_resources", None)
 
     class ImplicitFunc(*inherit_from):
         _name = name or (
@@ -684,5 +693,13 @@ def wrap_function(
             # with the keyword RESULT_DUPLICATE -- see tune/trial_runner.py.
             reporter(**{RESULT_DUPLICATE: True})
             return output
+
+        @classmethod
+        def default_resource_request(
+            cls, config: Dict[str, Any]
+        ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+            if not isinstance(resources, PlacementGroupFactory) and callable(resources):
+                return resources(config)
+            return resources
 
     return ImplicitFunc

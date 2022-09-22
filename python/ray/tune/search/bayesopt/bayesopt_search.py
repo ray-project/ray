@@ -95,7 +95,14 @@ class BayesOptSearch(Searcher):
         }
 
         bayesopt = BayesOptSearch(metric="mean_loss", mode="min")
-        tune.run(my_func, config=config, search_alg=bayesopt)
+        tuner = tune.Tuner(
+            my_func,
+            tune_config=tune.TuneConfig(
+                search_alg=baysopt,
+            ),
+            param_space=config,
+        )
+        tuner.fit()
 
     If you would like to pass the search space manually, the code would
     look like this:
@@ -110,7 +117,13 @@ class BayesOptSearch(Searcher):
             'height': (-100, 100),
         }
         bayesopt = BayesOptSearch(space, metric="mean_loss", mode="min")
-        tune.run(my_func, search_alg=bayesopt)
+        tuner = tune.Tuner(
+            my_func,
+            tune_config=tune.TuneConfig(
+                search_alg=bayesopt,
+            ),
+        )
+        tuner.fit()
 
     """
 

@@ -63,6 +63,7 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
   TaskOptions options{};
   options.name = call_options.name;
   options.resources = call_options.resources;
+  options.serialized_runtime_env_info = call_options.serialized_runtime_env_info;
   std::optional<std::vector<rpc::ObjectReference>> return_refs;
   if (invocation.task_type == TaskType::ACTOR_TASK) {
     return_refs = core_worker.SubmitActorTask(
@@ -120,17 +121,19 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
         bundle_id.second);
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
-  ray::core::ActorCreationOptions actor_options{create_options.max_restarts,
-                                                /*max_task_retries=*/0,
-                                                create_options.max_concurrency,
-                                                create_options.resources,
-                                                resources,
-                                                /*dynamic_worker_options=*/{},
-                                                /*is_detached=*/std::nullopt,
-                                                name,
-                                                ray_namespace,
-                                                /*is_asyncio=*/false,
-                                                scheduling_strategy};
+  ray::core::ActorCreationOptions actor_options{
+      create_options.max_restarts,
+      /*max_task_retries=*/0,
+      create_options.max_concurrency,
+      create_options.resources,
+      resources,
+      /*dynamic_worker_options=*/{},
+      /*is_detached=*/std::nullopt,
+      name,
+      ray_namespace,
+      /*is_asyncio=*/false,
+      scheduling_strategy,
+      create_options.serialized_runtime_env_info};
   ActorID actor_id;
   auto status = core_worker.CreateActor(
       BuildRayFunction(invocation), invocation.args, actor_options, "", &actor_id);
@@ -167,7 +170,8 @@ ray::PlacementGroup NativeTaskSubmitter::CreatePlacementGroup(
       create_options.name,
       (ray::core::PlacementStrategy)create_options.strategy,
       create_options.bundles,
-      false);
+      false,
+      1.0);
   ray::PlacementGroupID placement_group_id;
   auto status = CoreWorkerProcess::GetCoreWorker().CreatePlacementGroup(
       options, &placement_group_id);

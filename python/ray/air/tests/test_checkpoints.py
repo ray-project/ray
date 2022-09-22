@@ -1,13 +1,34 @@
 import os
 import pickle
+import re
 import shutil
 import tempfile
 import unittest
 from typing import Any
 
 import ray
-from ray.air.checkpoint import Checkpoint, _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
 from ray.air._internal.remote_storage import delete_at_uri, _ensure_directory
+from ray.air.checkpoint import Checkpoint, _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
+from ray.air.constants import MAX_REPR_LENGTH, PREPROCESSOR_KEY
+from ray.data import Preprocessor
+
+
+class DummyPreprocessor(Preprocessor):
+    def __init__(self, multiplier):
+        self.multiplier = multiplier
+
+    def transform_batch(self, df):
+        return df * self.multiplier
+
+
+def test_repr():
+    checkpoint = Checkpoint(data_dict={"foo": "bar"})
+
+    representation = repr(checkpoint)
+
+    assert len(representation) < MAX_REPR_LENGTH
+    pattern = re.compile("^Checkpoint\\((.*)\\)$")
+    assert pattern.match(representation)
 
 
 class CheckpointsConversionTest(unittest.TestCase):
@@ -104,13 +125,11 @@ class CheckpointsConversionTest(unittest.TestCase):
         checkpoint = self._prepare_dict_checkpoint()
 
         # Convert into dict checkpoint
-        obj_ref = checkpoint.to_object_ref()
+        obj_ref = ray.put(checkpoint)
         self.assertIsInstance(obj_ref, ray.ObjectRef)
 
         # Create from dict
-        checkpoint = Checkpoint.from_object_ref(obj_ref)
-        self.assertTrue(checkpoint._obj_ref)
-
+        checkpoint = ray.get(obj_ref)
         self._assert_dict_checkpoint(checkpoint)
 
     def test_dict_checkpoint_uri(self):
@@ -243,12 +262,10 @@ class CheckpointsConversionTest(unittest.TestCase):
         checkpoint = self._prepare_fs_checkpoint()
 
         # Convert into obj ref checkpoint
-        obj_ref = checkpoint.to_object_ref()
+        obj_ref = ray.put(checkpoint)
 
         # Create from object ref
-        checkpoint = Checkpoint.from_object_ref(obj_ref)
-        self.assertIsInstance(checkpoint._obj_ref, ray.ObjectRef)
-
+        checkpoint = ray.get(obj_ref)
         self._assert_fs_checkpoint(checkpoint)
 
     def test_fs_checkpoint_uri(self):
@@ -317,14 +334,14 @@ class CheckpointsConversionTest(unittest.TestCase):
         checkpoint = self._prepare_dict_checkpoint()
 
         # Convert into obj ref checkpoint
-        obj_ref = checkpoint.to_object_ref()
+        obj_ref = ray.put(checkpoint)
 
         # Create from object ref
-        checkpoint = Checkpoint.from_object_ref(obj_ref)
+        checkpoint = ray.get(obj_ref)
 
         with checkpoint.as_directory() as checkpoint_dir:
             assert os.path.exists(checkpoint_dir)
-            assert checkpoint_dir.endswith(obj_ref.hex())
+            assert checkpoint_dir.endswith(checkpoint._uuid.hex)
 
         assert not os.path.exists(checkpoint_dir)
 
@@ -464,10 +481,81 @@ class CheckpointsSerdeTest(unittest.TestCase):
         # store, but they have their own data representation (the obj ref).
         # We thus compare with the actual obj ref checkpoint.
         source_checkpoint = Checkpoint.from_dict({"checkpoint_data": 5})
-        obj_ref = source_checkpoint.to_object_ref()
-        checkpoint = Checkpoint.from_object_ref(obj_ref)
+        obj_ref = ray.put(source_checkpoint)
+        checkpoint = ray.get(obj_ref)
 
         self._testCheckpointSerde(checkpoint, *checkpoint.get_internal_representation())
+
+
+class PreprocessorCheckpointTest(unittest.TestCase):
+    def testDictCheckpointWithoutPreprocessor(self):
+        data = {"metric": 5}
+        checkpoint = Checkpoint.from_dict(data)
+        preprocessor = checkpoint.get_preprocessor()
+        assert preprocessor is None
+
+    def testDictCheckpointWithPreprocessor(self):
+        preprocessor = DummyPreprocessor(1)
+        data = {"metric": 5, PREPROCESSOR_KEY: preprocessor}
+        checkpoint = Checkpoint.from_dict(data)
+        preprocessor = checkpoint.get_preprocessor()
+        assert preprocessor.multiplier == 1
+
+    def testDictCheckpointWithPreprocessorAsDir(self):
+        preprocessor = DummyPreprocessor(1)
+        data = {"metric": 5, PREPROCESSOR_KEY: preprocessor}
+        checkpoint = Checkpoint.from_dict(data)
+        checkpoint_path = checkpoint.to_directory()
+        checkpoint = Checkpoint.from_directory(checkpoint_path)
+        preprocessor = checkpoint.get_preprocessor()
+        assert preprocessor.multiplier == 1
+
+    def testDirCheckpointWithoutPreprocessor(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data = {"metric": 5}
+            checkpoint_dir = os.path.join(tmpdir, "existing_checkpoint")
+            os.mkdir(checkpoint_dir, 0o755)
+            with open(os.path.join(checkpoint_dir, "test_data.pkl"), "wb") as fp:
+                pickle.dump(data, fp)
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            preprocessor = checkpoint.get_preprocessor()
+            assert preprocessor is None
+
+    def testDirCheckpointWithPreprocessor(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            preprocessor = DummyPreprocessor(1)
+            data = {"metric": 5}
+            checkpoint_dir = os.path.join(tmpdir, "existing_checkpoint")
+            os.mkdir(checkpoint_dir, 0o755)
+            with open(os.path.join(checkpoint_dir, "test_data.pkl"), "wb") as fp:
+                pickle.dump(data, fp)
+            with open(os.path.join(checkpoint_dir, PREPROCESSOR_KEY), "wb") as fp:
+                pickle.dump(preprocessor, fp)
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            preprocessor = checkpoint.get_preprocessor()
+            assert preprocessor.multiplier == 1
+
+    def testDirCheckpointWithPreprocessorAsDict(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            preprocessor = DummyPreprocessor(1)
+            data = {"metric": 5}
+            checkpoint_dir = os.path.join(tmpdir, "existing_checkpoint")
+            os.mkdir(checkpoint_dir, 0o755)
+            with open(os.path.join(checkpoint_dir, "test_data.pkl"), "wb") as fp:
+                pickle.dump(data, fp)
+            with open(os.path.join(checkpoint_dir, PREPROCESSOR_KEY), "wb") as fp:
+                pickle.dump(preprocessor, fp)
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            checkpoint_dict = checkpoint.to_dict()
+            checkpoint = checkpoint.from_dict(checkpoint_dict)
+            preprocessor = checkpoint.get_preprocessor()
+            assert preprocessor.multiplier == 1
+
+    def testAttrPath(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = Checkpoint.from_directory(tmpdir)
+            with self.assertRaises(TypeError):
+                os.path.exists(checkpoint)
 
 
 if __name__ == "__main__":

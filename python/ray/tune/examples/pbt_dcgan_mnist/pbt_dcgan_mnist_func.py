@@ -3,7 +3,7 @@
 Example of training DCGAN on MNIST using PBT with Tune's function API.
 """
 import ray
-from ray import tune
+from ray import air, tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining
@@ -140,30 +140,29 @@ if __name__ == "__main__":
     )
 
     tune_iter = 5 if args.smoke_test else 300
-    analysis = tune.run(
+    tuner = tune.Tuner(
         dcgan_train,
-        name="pbt_dcgan_mnist",
-        scheduler=scheduler,
-        verbose=1,
-        stop={
-            "training_iteration": tune_iter,
-        },
-        metric="is_score",
-        mode="max",
-        num_samples=8,
-        config={
+        run_config=air.RunConfig(
+            name="pbt_dcgan_mnist",
+            stop={"training_iteration": tune_iter},
+            verbose=1,
+        ),
+        tune_config=tune.TuneConfig(
+            metric="is_score",
+            mode="max",
+            num_samples=8,
+            scheduler=scheduler,
+        ),
+        param_space={
             "netG_lr": tune.choice([0.0001, 0.0002, 0.0005]),
             "netD_lr": tune.choice([0.0001, 0.0002, 0.0005]),
             "mnist_model_ref": mnist_model_ref,
         },
     )
+    results = tuner.fit()
     # __tune_end__
 
     # demo of the trained Generators
     if not args.smoke_test:
-        all_trials = analysis.trials
-        checkpoint_paths = [
-            os.path.join(analysis.get_best_checkpoint(t), "checkpoint")
-            for t in all_trials
-        ]
-        demo_gan(analysis, checkpoint_paths)
+        checkpoint_paths = [result.checkpoint.to_directory() for result in results]
+        demo_gan(checkpoint_paths)

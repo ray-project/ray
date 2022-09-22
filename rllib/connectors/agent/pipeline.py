@@ -15,13 +15,7 @@ from ray.util.annotations import PublicAPI
 @PublicAPI(stability="alpha")
 class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
     def __init__(self, ctx: ConnectorContext, connectors: List[Connector]):
-        super().__init__(ctx)
-        self.connectors = connectors
-
-    def is_training(self, is_training: bool):
-        self._is_training = is_training
-        for c in self.connectors:
-            c.is_training(is_training)
+        super().__init__(ctx, connectors)
 
     def reset(self, env_id: str):
         for c in self.connectors:
@@ -39,11 +33,11 @@ class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
             ret = c(ret)
         return ret
 
-    def to_config(self):
-        return AgentConnectorPipeline.__name__, [c.to_config() for c in self.connectors]
+    def to_state(self):
+        return AgentConnectorPipeline.__name__, [c.to_state() for c in self.connectors]
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: List[Any]):
         assert (
             type(params) == list
         ), "AgentConnectorPipeline takes a list of connector params."

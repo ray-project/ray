@@ -59,4 +59,7 @@ if __name__ == "__main__":
         "framework": args.framework,
     }
     resources = PPO.default_resource_request(config)
-    tune.run(my_train_fn, resources_per_trial=resources, config=config)
+    tuner = tune.Tuner(
+        tune.with_resources(my_train_fn, resources=resources), param_space=config
+    )
+    tuner.fit()

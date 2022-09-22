@@ -13,12 +13,12 @@ https://docs.ray.io/en/master/rllib-algorithms.html#distributed-prioritized-expe
 """  # noqa: E501
 import copy
 import platform
-import queue
 import random
 from collections import defaultdict
 from typing import Callable, Dict, List, Optional, Type
 
 import ray
+from ray._private.dict import merge_dicts
 from ray.actor import ActorHandle
 from ray.rllib import Policy
 from ray.rllib.algorithms import Algorithm
@@ -48,7 +48,6 @@ from ray.rllib.utils.typing import (
 )
 from ray.tune.trainable import Trainable
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.util.ml_utils.dict import merge_dicts
 
 
 class ApexDQNConfig(DQNConfig):
@@ -76,15 +75,16 @@ class ApexDQNConfig(DQNConfig):
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = ApexDQNConfig()
         >>> config.training(num_atoms=tune.grid_search(list(range(1, 11)))
         >>> config.environment(env="CartPole-v1")
-        >>> tune.run(
+        >>> tune.Tuner(
         >>>     "APEX",
-        >>>     stop={"episode_reward_mean":200},
-        >>>     config=config.to_dict()
-        >>> )
+        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        >>>     param_space=config.to_dict()
+        >>> ).fit()
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
@@ -133,6 +133,10 @@ class ApexDQNConfig(DQNConfig):
         self.train_batch_size = 512
         self.target_network_update_freq = 500000
         self.training_intensity = 1
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        self.num_steps_sampled_before_learning_starts = 50000
 
         # max number of inflight requests to each sampling worker
         # see the AsyncRequestsManager class for more details
@@ -162,7 +166,6 @@ class ApexDQNConfig(DQNConfig):
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
-            "learning_starts": 50000,
             # Whether all shards of the replay buffer must be co-located
             # with the learner process (running the execution plan).
             # This is preferred b/c the learner process should have quick
@@ -242,7 +245,6 @@ class ApexDQNConfig(DQNConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "learning_starts": 1000,
                 "capacity": 50000,
                 "replay_batch_size": 32,
                 "replay_sequence_length": 1,
@@ -413,7 +415,6 @@ class ApexDQN(DQN):
         weights = self.workers.local_worker().get_weights()
         self.curr_learner_weights = ray.put(weights)
         self.curr_num_samples_collected = 0
-        self.replay_sample_batches = []
         self._num_ts_trained_since_last_target_update = 0
 
     @classmethod
@@ -443,12 +444,19 @@ class ApexDQN(DQN):
         # only do this if there are remote workers (config["num_workers"] > 1)
         if self.workers.remote_workers():
             self.update_workers(worker_samples_collected)
-        # trigger a sample from the replay actors and enqueue operation to the
-        # learner thread.
-        self.sample_from_replay_buffer_place_on_learner_queue_non_blocking(
-            worker_samples_collected
-        )
-        self.update_replay_sample_priority()
+
+        # Update target network every `target_network_update_freq` sample steps.
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+        ]
+
+        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+            # trigger a sample from the replay actors and enqueue operation to the
+            # learner thread.
+            self.sample_from_replay_buffer_place_on_learner_queue_non_blocking(
+                worker_samples_collected
+            )
+            self.update_replay_sample_priority()
 
         return copy.deepcopy(self.learner_thread.learner_info)
 
@@ -563,14 +571,15 @@ class ApexDQN(DQN):
             If the timeout is None, then block on the actors indefinitely.
             """
             _replay_samples_ready = self._replay_actor_manager.get_ready()
-
+            replay_sample_batches = []
             for _replay_actor, _sample_batches in _replay_samples_ready.items():
                 for _sample_batch in _sample_batches:
-                    self.replay_sample_batches.append((_replay_actor, _sample_batch))
+                    replay_sample_batches.append((_replay_actor, _sample_batch))
+            return replay_sample_batches
 
         num_samples_collected = sum(num_samples_collected.values())
         self.curr_num_samples_collected += num_samples_collected
-        wait_on_replay_actors()
+        replay_sample_batches = wait_on_replay_actors()
         if self.curr_num_samples_collected >= self.config["train_batch_size"]:
             training_intensity = int(self.config["training_intensity"] or 1)
             num_requests_to_launch = (
@@ -583,21 +592,17 @@ class ApexDQN(DQN):
                     lambda actor, num_items: actor.sample(num_items),
                     fn_args=[self.config["train_batch_size"]],
                 )
-            wait_on_replay_actors()
+            replay_sample_batches.extend(wait_on_replay_actors())
 
         # add the sample batches to the learner queue
-        while self.replay_sample_batches:
-            try:
-                item = self.replay_sample_batches[0]
-                # the replay buffer returns none if it has not been filled to
-                # the minimum threshold yet.
-                if item:
-                    self.learner_thread.inqueue.put(
-                        self.replay_sample_batches[0], timeout=0.001
-                    )
-                    self.replay_sample_batches.pop(0)
-            except queue.Full:
-                break
+        for item in replay_sample_batches:
+            # Setting block = True prevents the learner thread,
+            # the main thread, and the gpu loader threads from
+            # thrashing when there are more samples than the
+            # learner can reasonable process.
+            # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
+            self.learner_thread.inqueue.put(item, block=True)
+        del replay_sample_batches
 
     def update_replay_sample_priority(self) -> None:
         """Update the priorities of the sample batches with new priorities that are

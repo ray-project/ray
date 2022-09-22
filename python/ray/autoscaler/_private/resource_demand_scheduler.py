@@ -14,7 +14,6 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler._private.util import (
@@ -30,8 +29,6 @@ from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     NODE_KIND_UNMANAGED,
     NODE_KIND_WORKER,
-    NODE_TYPE_LEGACY_HEAD,
-    NODE_TYPE_LEGACY_WORKER,
     TAG_RAY_NODE_KIND,
     TAG_RAY_USER_NODE_TYPE,
 )
@@ -53,7 +50,7 @@ class ResourceDemandScheduler:
         upscaling_speed: float = 1,
     ) -> None:
         self.provider = provider
-        self.node_types = _convert_memory_unit(node_types)
+        self.node_types = copy.deepcopy(node_types)
         self.node_resource_updated = set()
         self.max_workers = max_workers
         self.head_node_type = head_node_type
@@ -85,48 +82,12 @@ class ResourceDemandScheduler:
         For legacy yamls, it merges previous state and new state to make sure
         inferered resources are not lost.
         """
-        new_node_types = copy.deepcopy(node_types)
-        final_node_types = _convert_memory_unit(new_node_types)
-        if self.is_legacy_yaml(new_node_types):  # If new configs are legacy.
-            if self.is_legacy_yaml():  # If old configs were legacy.
-
-                def _update_based_on_node_config(node_type: NodeType) -> None:
-                    if (
-                        self.node_types[node_type]["node_config"]
-                        == new_node_types[node_type]["node_config"]
-                    ):  # If node config didnt change.
-                        if self.node_types[node_type]["resources"]:
-                            # If we already know the resources, do not
-                            # overwrite them. This helps also if in legacy
-                            # yamls the user provides "resources" field.
-                            del new_node_types[node_type]["resources"]
-                        self.node_types[node_type].update(new_node_types[node_type])
-                    else:
-                        self.node_types[node_type] = new_node_types[node_type]
-
-                _update_based_on_node_config(NODE_TYPE_LEGACY_HEAD)
-                _update_based_on_node_config(NODE_TYPE_LEGACY_WORKER)
-                final_node_types = self.node_types
-
         self.provider = provider
-        self.node_types = copy.deepcopy(final_node_types)
+        self.node_types = copy.deepcopy(node_types)
         self.node_resource_updated = set()
         self.max_workers = max_workers
         self.head_node_type = head_node_type
         self.upscaling_speed = upscaling_speed
-
-    def is_legacy_yaml(
-        self, node_types: Dict[NodeType, NodeTypeConfigDict] = None
-    ) -> bool:
-        """Returns if the node types came from a legacy yaml.
-
-        A legacy yaml is one that was originally without available_node_types
-        and was autofilled with available_node_types."""
-        node_types = node_types or self.node_types
-        return (
-            NODE_TYPE_LEGACY_HEAD in node_types
-            and NODE_TYPE_LEGACY_WORKER in node_types
-        )
 
     def is_feasible(self, bundle: ResourceDict) -> bool:
         for node_type, config in self.node_types.items():
@@ -175,11 +136,6 @@ class ResourceDemandScheduler:
             Dict of count to add for each node type, and residual of resources
             that still cannot be fulfilled.
         """
-        if self.is_legacy_yaml():
-            # When using legacy yaml files we need to infer the head & worker
-            # node resources from the static node resources from LoadMetrics.
-            self._infer_legacy_node_resources_if_needed(nodes, max_resources_by_ip)
-
         self._update_node_resources_from_runtime(nodes, max_resources_by_ip)
 
         node_resources: List[ResourceDict]
@@ -207,6 +163,21 @@ class ResourceDemandScheduler:
         # Step 3: get resource demands of placement groups and return the
         # groups that should be strictly spread.
         logger.debug(f"Placement group demands: {pending_placement_groups}")
+        # TODO(Clark): Refactor placement group bundle demands such that their placement
+        # group provenance is mantained, since we need to keep an accounting of the
+        # cumulative CPU cores allocated as fulfilled during bin packing in order to
+        # ensure that a placement group's cumulative allocation is under the placement
+        # group's max CPU fraction per node. Without this, and placement group with many
+        # bundles might not be schedulable, but will fail to trigger scale-up since the
+        # max CPU fraction is properly applied to the cumulative bundle requests for a
+        # single node.
+        #
+        # placement_group_demand_vector: List[Tuple[List[ResourceDict], double]]
+        #
+        # bin_pack_residual() can keep it's packing priority; we just need to account
+        # for (1) the running CPU allocation for the bundle's placement group for that
+        # particular node, and (2) the max CPU cores allocatable for a single placement
+        # group for that particular node.
         (
             placement_group_demand_vector,
             strict_spreads,
@@ -216,41 +187,21 @@ class ResourceDemandScheduler:
         # nodes to add) with pg_demands_nodes_max_launch_limit calculated later
         resource_demands = placement_group_demand_vector + resource_demands
 
-        if (
-            self.is_legacy_yaml()
-            and not self.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]
-        ):
-            # Need to launch worker nodes to later infer their
-            # resources.
-            # We add request_resources() demands here to make sure we launch
-            # a single worker sometimes even if min_workers = 0 and resource
-            # demands is empty.
-            if ensure_min_cluster_size:
-                request_resources_demands = ensure_min_cluster_size
-            else:
-                request_resources_demands = []
-            return (
-                self._legacy_worker_node_to_launch(
-                    nodes,
-                    launching_nodes,
-                    node_resources,
-                    resource_demands + request_resources_demands,
-                ),
-                [],
-            )
-
         (
             spread_pg_nodes_to_add,
             node_resources,
             node_type_counts,
         ) = self.reserve_and_allocate_spread(
-            strict_spreads, node_resources, node_type_counts
+            strict_spreads,
+            node_resources,
+            node_type_counts,
         )
 
         # Calculate the nodes to add for bypassing max launch limit for
         # placement groups and spreads.
         unfulfilled_placement_groups_demands, _ = get_bin_pack_residual(
-            node_resources, placement_group_demand_vector
+            node_resources,
+            placement_group_demand_vector,
         )
         # Add 1 to account for the head node.
         max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
@@ -307,48 +258,13 @@ class ResourceDemandScheduler:
         logger.debug("Node requests: {}".format(total_nodes_to_add))
         return total_nodes_to_add, final_unfulfilled
 
-    def _legacy_worker_node_to_launch(
-        self,
-        nodes: List[NodeID],
-        launching_nodes: Dict[NodeType, int],
-        node_resources: List[ResourceDict],
-        resource_demands: List[ResourceDict],
-    ) -> Dict[NodeType, int]:
-        """Get worker nodes to launch when resources missing in legacy yamls.
-
-        If there is unfulfilled demand and we don't know the resources of the
-        workers, it returns max(1, min_workers) worker nodes from which we
-        later calculate the node resources.
-        """
-        # Populate worker list.
-        _, worker_nodes = self._get_head_and_workers(nodes)
-
-        if self.max_workers == 0:
-            return {}
-        elif sum(launching_nodes.values()) + len(worker_nodes) > 0:
-            # If we are already launching a worker node, wait for its resources
-            # to be known.
-            # TODO(ameer): Note that if first worker node fails this will never
-            # launch any more nodes.
-            return {}
-        else:
-            unfulfilled, _ = get_bin_pack_residual(node_resources, resource_demands)
-            workers_to_add = min(
-                self.node_types[NODE_TYPE_LEGACY_WORKER].get("min_workers", 0),
-                self.node_types[NODE_TYPE_LEGACY_WORKER].get("max_workers", 0),
-            )
-            if workers_to_add > 0 or unfulfilled:
-                return {NODE_TYPE_LEGACY_WORKER: max(1, workers_to_add)}
-            else:
-                return {}
-
     def _update_node_resources_from_runtime(
         self, nodes: List[NodeID], max_resources_by_ip: Dict[NodeIP, ResourceDict]
     ):
         """Update static node type resources with runtime resources
 
         This will update the cached static node type resources with the runtime
-        resources. Because we can not know the correctly memory or
+        resources. Because we can not know the exact autofilled memory or
         object_store_memory from config file.
         """
         need_update = len(self.node_types) != len(self.node_resource_updated)
@@ -388,41 +304,6 @@ class ResourceDemandScheduler:
                     # node needs to configure redis memory which is not needed
                     # for worker nodes.
                     self.node_resource_updated.add(node_type)
-
-    def _infer_legacy_node_resources_if_needed(
-        self, nodes: List[NodeIP], max_resources_by_ip: Dict[NodeIP, ResourceDict]
-    ) -> (bool, Dict[NodeType, int]):
-        """Infers node resources for legacy config files.
-
-        Updates the resources of the head and worker node types in
-        self.node_types.
-        Args:
-            nodes: List of all node ids in the cluster
-            max_resources_by_ip: Mapping from ip to static node resources.
-        """
-        head_node, worker_nodes = self._get_head_and_workers(nodes)
-        # We fill the head node resources only once.
-        if not self.node_types[NODE_TYPE_LEGACY_HEAD]["resources"]:
-            try:
-                head_ip = self.provider.internal_ip(head_node)
-                self.node_types[NODE_TYPE_LEGACY_HEAD]["resources"] = copy.deepcopy(
-                    max_resources_by_ip[head_ip]
-                )
-            except (IndexError, KeyError):
-                logger.exception("Could not reach the head node.")
-        # We fill the worker node resources only once.
-        if not self.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]:
-            # Set the node_types here in case we already launched a worker node
-            # from which we can directly get the node_resources.
-            worker_node_ips = [
-                self.provider.internal_ip(node_id) for node_id in worker_nodes
-            ]
-            for ip in worker_node_ips:
-                if ip in max_resources_by_ip:
-                    self.node_types[NODE_TYPE_LEGACY_WORKER][
-                        "resources"
-                    ] = copy.deepcopy(max_resources_by_ip[ip])
-                    break
 
     def _get_concurrent_resource_demand_to_launch(
         self,
@@ -646,24 +527,6 @@ class ResourceDemandScheduler:
                 out += " ({} pending)".format(pending_nodes[node_type])
 
         return out
-
-
-def _convert_memory_unit(
-    node_types: Dict[NodeType, NodeTypeConfigDict]
-) -> Dict[NodeType, NodeTypeConfigDict]:
-    """Convert memory and object_store_memory to memory unit"""
-    node_types = copy.deepcopy(node_types)
-    for node_type in node_types:
-        res = node_types[node_type].get("resources", {})
-        if "memory" in res:
-            size = float(res["memory"])
-            res["memory"] = ray_constants.to_memory_units(size, False)
-        if "object_store_memory" in res:
-            size = float(res["object_store_memory"])
-            res["object_store_memory"] = ray_constants.to_memory_units(size, False)
-        if res:
-            node_types[node_type]["resources"] = res
-    return node_types
 
 
 def _node_type_counts_to_node_resources(

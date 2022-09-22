@@ -31,14 +31,20 @@ py_test_run_all_notebooks(
     include = ["*.ipynb"],
     exclude = [
         "huggingface_text_classification.ipynb",
-        "torch_incremental_learning.ipynb",
         "feast_example.ipynb",  # REGRESSION
-        "rl_offline_example.ipynb",  # REGRESSION
-        "rl_online_example.ipynb",  # REGRESSION
-        "tfx_tabular_train_to_serve.ipynb", # REGRESSION
+        "upload_to_comet_ml.ipynb",  # Needs credentials
+        "upload_to_wandb.ipynb",  # Needs credentials
     ],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air"],
+)
+
+py_test_run_all_notebooks(
+    size = "large",
+    include = ["upload_to_*.ipynb"],
+    exclude = [],
+    data = ["//doc/source/ray-air/examples:air_examples"],
+    tags = ["exclusive", "team:ml", "ray_air", "needs_credentials"],
 )
 
 
@@ -47,9 +53,7 @@ py_test_run_all_notebooks(
 py_test_run_all_notebooks(
     size = "large",
     include = ["huggingface_text_classification.ipynb"],
-    exclude = [
-        "torch_incremental_learning.ipynb" # REGRESSION!
-    ],
+    exclude = [],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "gpu", "ray_air"],
 )

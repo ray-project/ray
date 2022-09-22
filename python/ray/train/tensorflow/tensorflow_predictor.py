@@ -1,15 +1,15 @@
 import logging
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Union
 
 import numpy as np
 import tensorflow as tf
 
 from ray.util import log_once
 from ray.train.predictor import DataBatchType
-from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.air.checkpoint import Checkpoint
-from ray.train.data_parallel_trainer import _load_checkpoint
+from ray.air._internal.tensorflow_utils import convert_ndarray_batch_to_tf_tensor_batch
 from ray.train._internal.dl_predictor import DLPredictor
+from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TensorflowPredictor(DLPredictor):
     """A predictor for TensorFlow models.
 
@@ -41,7 +41,6 @@ class TensorflowPredictor(DLPredictor):
     ):
         self.model_definition = model_definition
         self.model_weights = model_weights
-        self.preprocessor = preprocessor
 
         self.use_gpu = use_gpu
         # TensorFlow model objects cannot be pickled, therefore we use
@@ -56,23 +55,30 @@ class TensorflowPredictor(DLPredictor):
                 self._model = self.model_definition()
         else:
             self._model = self.model_definition()
-
-        if (
-            not use_gpu
-            and len(get_tf_gpu_devices()) > 0
-            and log_once("tf_predictor_not_using_gpu")
-        ):
-            logger.warning(
-                "You have `use_gpu` as False but there are "
-                f"{len(get_tf_gpu_devices())} GPUs detected on host where "
-                "prediction will only use CPU. Please consider explicitly "
-                "setting `TensorflowPredictor(use_gpu=True)` or "
-                "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
-                "enable GPU prediction."
-            )
+            gpu_devices = tf.config.list_physical_devices("GPU")
+            if len(gpu_devices) > 0 and log_once("tf_predictor_not_using_gpu"):
+                logger.warning(
+                    "You have `use_gpu` as False but there are "
+                    f"{len(gpu_devices)} GPUs detected on host where "
+                    "prediction will only use CPU. Please consider explicitly "
+                    "setting `TensorflowPredictor(use_gpu=True)` or "
+                    "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
+                    "enable GPU prediction."
+                )
 
         if model_weights is not None:
             self._model.set_weights(model_weights)
+        super().__init__(preprocessor)
+
+    def __repr__(self):
+        fn_name = getattr(self.model_definition, "__name__", self.model_definition)
+        return (
+            f"{self.__class__.__name__}("
+            f"model_definition={fn_name}, "
+            f"preprocessor={self._preprocessor!r}, "
+            f"model_weights={self.model_weights!r}, "
+            f"use_gpu={self.use_gpu!r})"
+        )
 
     @classmethod
     def from_checkpoint(
@@ -92,9 +98,9 @@ class TensorflowPredictor(DLPredictor):
             model_definition: A callable that returns a TensorFlow Keras model
                 to use. Model weights will be loaded from the checkpoint.
         """
-        # Cannot use TensorFlow load_checkpoint here
-        # due to instantiated models not being pickleable
-        model_weights, preprocessor = _load_checkpoint(checkpoint, "TensorflowTrainer")
+        checkpoint = TensorflowCheckpoint.from_checkpoint(checkpoint)
+        model_weights = checkpoint.get_model_weights()
+        preprocessor = checkpoint.get_preprocessor()
         return cls(
             model_definition=model_definition,
             model_weights=model_weights,
@@ -102,24 +108,46 @@ class TensorflowPredictor(DLPredictor):
             use_gpu=use_gpu,
         )
 
-    def _array_to_tensor(
-        self, numpy_array: np.ndarray, dtype: tf.dtypes.DType
-    ) -> tf.Tensor:
-        tf_tensor = tf.convert_to_tensor(numpy_array, dtype=dtype)
-
-        # Off-the-shelf Keras Modules expect the input size to have at least 2
-        # dimensions (batch_size, feature_size). If the tensor for the column
-        # is flattened, then we unqueeze it to add an extra dimension.
-        if len(tf_tensor.shape) == 1:
-            tf_tensor = tf.expand_dims(tf_tensor, axis=1)
-        return tf_tensor
-
-    def _tensor_to_array(self, tensor: tf.Tensor) -> np.ndarray:
-        return tensor.numpy()
-
-    def _model_predict(
+    def call_model(
         self, tensor: Union[tf.Tensor, Dict[str, tf.Tensor]]
-    ) -> Union[tf.Tensor, Dict[str, tf.Tensor], List[tf.Tensor], Tuple[tf.Tensor]]:
+    ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
+        """Runs inference on a single batch of tensor data.
+
+        This method is called by `TorchPredictor.predict` after converting the
+        original data batch to torch tensors.
+
+        Override this method to add custom logic for processing the model input or
+        output.
+
+        Example:
+
+            .. code-block:: python
+
+                # List outputs are not supported by default TensorflowPredictor.
+                def build_model() -> tf.keras.Model:
+                    input = tf.keras.layers.Input(shape=1)
+                    model = tf.keras.models.Model(inputs=input, outputs=[input, input])
+                    return model
+
+                # Use a custom predictor to format model output as a dict.
+                class CustomPredictor(TensorflowPredictor):
+                    def call_model(self, tensor):
+                        model_output = super().call_model(tensor)
+                        return {
+                            str(i): model_output[i] for i in range(len(model_output))
+                        }
+
+                predictor = CustomPredictor(model_definition=build_model)
+                predictions = predictor.predict(data_batch)
+
+        Args:
+            tensor: A batch of data to predict on, represented as either a single
+                PyTorch tensor or for multi-input models, a dictionary of tensors.
+
+        Returns:
+            The model outputs, either as a single tensor or a dictionary of tensors.
+
+        """
         if self.use_gpu:
             with tf.device("GPU:0"):
                 return self._model(tensor)
@@ -150,47 +178,66 @@ class TensorflowPredictor(DLPredictor):
 
         Examples:
 
-        .. code-block:: python
+            >>> import numpy as np
+            >>> import tensorflow as tf
+            >>> from ray.train.tensorflow import TensorflowPredictor
+            >>>
+            >>> def build_model():
+            ...     return tf.keras.Sequential(
+            ...         [
+            ...             tf.keras.layers.InputLayer(input_shape=()),
+            ...             tf.keras.layers.Flatten(),
+            ...             tf.keras.layers.Dense(1),
+            ...         ]
+            ...     )
+            >>>
+            >>> weights = [np.array([[2.0]]), np.array([0.0])]
+            >>> predictor = TensorflowPredictor(
+            ...     model_definition=build_model, model_weights=weights)
+            >>>
+            >>> data = np.asarray([1, 2, 3])
+            >>> predictions = predictor.predict(data) # doctest: +SKIP
 
-            import numpy as np
-            import tensorflow as tf
-            from ray.train.predictors.tensorflow import TensorflowPredictor
-
-            def build_model(self):
-                return tf.keras.Sequential(
-                    [
-                        tf.keras.layers.InputLayer(input_shape=(2,)),
-                        tf.keras.layers.Dense(1),
-                    ]
-                )
-
-            predictor = TensorflowPredictor(model_definition=build_model)
-
-            data = np.array([[1, 2], [3, 4]])
-            predictions = predictor.predict(data)
-
-        .. code-block:: python
-
-            import pandas as pd
-            import tensorflow as tf
-            from ray.train.predictors.tensorflow import TensorflowPredictor
-
-            def build_model(self):
-                input1 = tf.keras.layers.Input(shape=(1,), name="A")
-                input2 = tf.keras.layers.Input(shape=(1,), name="B")
-                merged = keras.layers.Concatenate(axis=1)([input1, input2])
-                output = keras.layers.Dense(2, input_dim=2)(merged)
-                return keras.models.Model(inputs=[input1, input2], output=output)
-
-            predictor = TensorflowPredictor(model_definition=build_model)
-
-            # Pandas dataframe.
-            data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
-
-            predictions = predictor.predict(data)
+            >>> import pandas as pd
+            >>> import tensorflow as tf
+            >>> from ray.train.tensorflow import TensorflowPredictor
+            >>>
+            >>> def build_model():
+            ...     input1 = tf.keras.layers.Input(shape=(1,), name="A")
+            ...     input2 = tf.keras.layers.Input(shape=(1,), name="B")
+            ...     merged = tf.keras.layers.Concatenate(axis=1)([input1, input2])
+            ...     output = tf.keras.layers.Dense(2, input_dim=2)(merged)
+            ...     return tf.keras.models.Model(
+            ...         inputs=[input1, input2], outputs=output)
+            >>>
+            >>> predictor = TensorflowPredictor(model_definition=build_model)
+            >>>
+            >>> # Pandas dataframe.
+            >>> data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
+            >>>
+            >>> predictions = predictor.predict(data) # doctest: +SKIP
 
         Returns:
             DataBatchType: Prediction result. The return type will be the same as the
                 input type.
         """
         return super(TensorflowPredictor, self).predict(data=data, dtype=dtype)
+
+    def _arrays_to_tensors(
+        self,
+        numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
+        dtypes: Union[tf.dtypes.DType, Dict[str, tf.dtypes.DType]],
+    ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
+        return convert_ndarray_batch_to_tf_tensor_batch(numpy_arrays, dtypes=dtypes)
+
+    def _tensor_to_array(self, tensor: tf.Tensor) -> np.ndarray:
+        if not isinstance(tensor, tf.Tensor):
+            raise ValueError(
+                "Expected the model to return either a tf.Tensor or a "
+                f"dict of tf.Tensor, but got {type(tensor)} instead. "
+                f"To support models with different output types, subclass "
+                f"TensorflowPredictor and override the `call_model` method "
+                f"to process the output into either torch.Tensor or Dict["
+                f"str, torch.Tensor]."
+            )
+        return tensor.numpy()

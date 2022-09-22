@@ -13,7 +13,7 @@ import numpy as np
 from scipy.stats import sem
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms import slateq
 from ray.rllib.algorithms import dqn
 from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
@@ -45,7 +45,7 @@ parser.add_argument(
     choices=["interest-evolution", "interest-exploration", "long-term-satisfaction"],
     help=("Select the RecSim env to use."),
 )
-parser.add_argument("--learning-starts", type=int, default=20000)
+
 parser.add_argument(
     "--random-test-episodes",
     type=int,
@@ -71,6 +71,15 @@ parser.add_argument(
     "`--env-slate-size` from each timestep. These candidates will be "
     "sampled by the environment's built-in document sampler model.",
 )
+
+parser.add_argument(
+    "--num-steps-sampled-before-learning_starts",
+    type=int,
+    default=20000,
+    help="Number of timesteps to collect from rollout workers before we start "
+    "sampling from replay buffers for learning..",
+)
+
 parser.add_argument(
     "--env-slate-size",
     type=int,
@@ -126,9 +135,7 @@ def main():
         "num_gpus": args.num_gpus,
         "num_workers": args.num_workers,
         "env_config": env_config,
-        "replay_buffer_config": {
-            "learning_starts": args.learning_starts,
-        },
+        "num_steps_sampled_before_learning_starts": args.num_steps_sampled_before_learning_starts,  # noqa E501
     }
 
     # Perform a test run on the env with a random agent to see, what
@@ -165,13 +172,17 @@ def main():
             "episode_reward_mean": args.stop_reward,
         }
 
-        results = tune.run(
+        results = tune.Tuner(
             args.run,
-            stop=stop,
-            config=config,
-            num_samples=args.tune_num_samples,
-            verbose=2,
-        )
+            run_config=air.RunConfig(
+                stop=stop,
+                verbose=2,
+            ),
+            param_space=config,
+            tune_config=tune.TuneConfig(
+                num_samples=args.tune_num_samples,
+            ),
+        ).fit()
 
         if args.as_test:
             check_learning_achieved(results, args.stop_reward)
@@ -181,7 +192,7 @@ def main():
         if args.run == "DQN":
             trainer = dqn.DQN(config=config)
         else:
-            trainer = slateq.SlateQTrainer(config=config)
+            trainer = slateq.SlateQ(config=config)
         for i in range(10):
             result = trainer.train()
             print(pretty_print(result))

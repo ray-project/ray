@@ -1,15 +1,125 @@
 import os
 import time
+from typing import Tuple
 
 import pytest
 import pandas as pd
 import numpy as np
 
 import ray
-from ray.data.context import DatasetContext
+from ray.data import dataset
+from ray.data._internal.arrow_block import ArrowRow
+from ray.data.context import DatasetContext, WARN_PREFIX, OK_PREFIX
+from ray.data.dataset import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
 
 from ray.tests.conftest import *  # noqa
+
+
+class MockLogger:
+    def __init__(self):
+        self.warnings = []
+        self.infos = []
+
+    def warning(self, msg):
+        self.warnings.append(msg)
+        print("warning:", msg)
+
+    def info(self, msg):
+        self.infos.append(msg)
+        print("info:", msg)
+
+    def debug(self, msg):
+        print("debug:", msg)
+
+
+def test_warnings(shutdown_only):
+    ray.init(num_cpus=2)
+
+    # Test parallelism warning.
+    dataset.logger = MockLogger()
+    ray.data.range(10, parallelism=10).window(blocks_per_window=1)
+    print(dataset.logger.warnings)
+    print(dataset.logger.infos)
+    assert dataset.logger.warnings == [
+        f"{WARN_PREFIX} This pipeline's parallelism is limited by its blocks per "
+        "window to "
+        "~1 concurrent tasks per window. To maximize "
+        "performance, increase the blocks per window to at least 2. This "
+        "may require increasing the base dataset's parallelism and/or "
+        "adjusting the windowing parameters."
+    ]
+    assert dataset.logger.infos == [
+        "Created DatasetPipeline with 10 windows: 8b min, 8b max, 8b mean",
+        "Blocks per window: 1 min, 1 max, 1 mean",
+        f"{OK_PREFIX} This pipeline's windows likely fit in object store memory "
+        "without spilling.",
+    ]
+
+    try:
+        res_dict = ray.cluster_resources()
+        res_dict["object_store_memory"] = 1000
+        old = ray.cluster_resources
+        ray.cluster_resources = lambda: res_dict
+
+        # Test window memory warning.
+        dataset.logger = MockLogger()
+        ray.data.range(100000, parallelism=100).window(blocks_per_window=10)
+        print(dataset.logger.warnings)
+        print(dataset.logger.infos)
+        assert dataset.logger.warnings == [
+            f"{WARN_PREFIX} This pipeline's windows are ~0.08MiB in size each and "
+            "may not fit in "
+            "object store memory without spilling. To improve performance, "
+            "consider reducing the size of each window to 250b or less."
+        ]
+        assert dataset.logger.infos == [
+            "Created DatasetPipeline with 10 windows: 0.08MiB min, 0.08MiB max, "
+            "0.08MiB mean",
+            "Blocks per window: 10 min, 10 max, 10 mean",
+            f"{OK_PREFIX} This pipeline's per-window parallelism is high enough "
+            "to fully "
+            "utilize the cluster.",
+        ]
+
+        # Test warning on both.
+        dataset.logger = MockLogger()
+        ray.data.range(100000, parallelism=1).window(bytes_per_window=100000)
+        print(dataset.logger.warnings)
+        print(dataset.logger.infos)
+        assert dataset.logger.warnings == [
+            f"{WARN_PREFIX} This pipeline's parallelism is limited by its blocks "
+            "per window "
+            "to ~1 concurrent tasks per window. To maximize performance, increase "
+            "the blocks per window to at least 2. This may require increasing the "
+            "base dataset's parallelism and/or adjusting the windowing parameters.",
+            f"{WARN_PREFIX} This pipeline's windows are ~0.76MiB in size each and may "
+            "not fit "
+            "in object store memory without spilling. To improve performance, "
+            "consider reducing the size of each window to 250b or less.",
+        ]
+        assert dataset.logger.infos == [
+            "Created DatasetPipeline with 1 windows: 0.76MiB min, 0.76MiB max, "
+            "0.76MiB mean",
+            "Blocks per window: 1 min, 1 max, 1 mean",
+        ]
+    finally:
+        ray.cluster_resources = old
+
+    # Test no warning.
+    dataset.logger = MockLogger()
+    ray.data.range(10, parallelism=10).window(blocks_per_window=10)
+    print(dataset.logger.warnings)
+    print(dataset.logger.infos)
+    assert dataset.logger.warnings == []
+    assert dataset.logger.infos == [
+        "Created DatasetPipeline with 1 windows: 80b min, 80b max, 80b mean",
+        "Blocks per window: 10 min, 10 max, 10 mean",
+        f"{OK_PREFIX} This pipeline's per-window parallelism is high enough to fully "
+        "utilize the cluster.",
+        f"{OK_PREFIX} This pipeline's windows likely fit in object store memory "
+        "without spilling.",
+    ]
 
 
 def test_pipeline_actors(shutdown_only):
@@ -183,10 +293,22 @@ def test_basic_pipeline(ray_start_regular_shared):
     pipe = ds.window(blocks_per_window=1)
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=2)"
     assert pipe.count() == 10
+    pipe = ds.window(blocks_per_window=1)
+    pipe.show()
 
     pipe = ds.window(blocks_per_window=1).map(lambda x: x).map(lambda x: x)
     assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=4)"
     assert pipe.take() == list(range(10))
+
+    pipe = (
+        ds.window(blocks_per_window=1).map(lambda x: x).flat_map(lambda x: [x, x + 1])
+    )
+    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=4)"
+    assert pipe.count() == 20
+
+    pipe = ds.window(blocks_per_window=1).filter(lambda x: x % 2 == 0)
+    assert str(pipe) == "DatasetPipeline(num_windows=10, num_stages=3)"
+    assert pipe.count() == 5
 
     pipe = ds.window(blocks_per_window=999)
     assert str(pipe) == "DatasetPipeline(num_windows=1, num_stages=2)"
@@ -197,6 +319,8 @@ def test_basic_pipeline(ray_start_regular_shared):
     assert pipe.count() == 100
     pipe = ds.repeat(10)
     assert pipe.sum() == 450
+    pipe = ds.repeat(10)
+    assert len(pipe.take_all()) == 100
 
 
 def test_window(ray_start_regular_shared):
@@ -278,7 +402,7 @@ def test_repartition(ray_start_regular_shared):
 
 def test_iter_batches_basic(ray_start_regular_shared):
     pipe = ray.data.range(10, parallelism=10).window(blocks_per_window=2)
-    batches = list(pipe.iter_batches())
+    batches = list(pipe.iter_batches(batch_size=None))
     assert len(batches) == 10
     assert all(len(e) == 1 for e in batches)
 
@@ -394,15 +518,40 @@ def test_split_at_indices(ray_start_regular_shared):
     )
 
 
-def test_parquet_write(ray_start_regular_shared, tmp_path):
+def _prepare_dataset_to_write(tmp_dir: str) -> Tuple[Dataset[ArrowRow], pd.DataFrame]:
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
     ds = ds.window(blocks_per_window=1)
-    path = os.path.join(tmp_path, "test_parquet_dir")
-    os.mkdir(path)
+    os.mkdir(tmp_dir)
     ds._set_uuid("data")
+    return (ds, df)
+
+
+def test_json_write(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_json_dir")
+    ds, df = _prepare_dataset_to_write(path)
+    ds.write_json(path)
+    path1 = os.path.join(path, "data_000000_000000.json")
+    path2 = os.path.join(path, "data_000001_000000.json")
+    dfds = pd.concat([pd.read_json(path1, lines=True), pd.read_json(path2, lines=True)])
+    assert df.equals(dfds)
+
+
+def test_csv_write(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_csv_dir")
+    ds, df = _prepare_dataset_to_write(path)
+    ds.write_csv(path)
+    path1 = os.path.join(path, "data_000000_000000.csv")
+    path2 = os.path.join(path, "data_000001_000000.csv")
+    dfds = pd.concat([pd.read_csv(path1), pd.read_csv(path2)])
+    assert df.equals(dfds)
+
+
+def test_parquet_write(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_parquet_dir")
+    ds, df = _prepare_dataset_to_write(path)
     ds.write_parquet(path)
     path1 = os.path.join(path, "data_000000_000000.parquet")
     path2 = os.path.join(path, "data_000001_000000.parquet")
@@ -449,66 +598,33 @@ def test_count_sum_on_infinite_pipeline(ray_start_regular_shared):
     assert 9 == pipe.sum()
 
 
+def test_sort_each_window(ray_start_regular_shared):
+    pipe = (
+        ray.data.range(12, parallelism=12)
+        .window(blocks_per_window=3)
+        .sort_each_window()
+    )
+    assert pipe.take() == list(range(12))
+
+    pipe = (
+        ray.data.range(12, parallelism=12)
+        .window(blocks_per_window=3)
+        .sort_each_window(descending=True)
+    )
+    assert pipe.take() == [2, 1, 0, 5, 4, 3, 8, 7, 6, 11, 10, 9]
+
+    pipe = (
+        ray.data.range(12, parallelism=12)
+        .window(blocks_per_window=3)
+        .sort_each_window(key=lambda x: -x, descending=True)
+    )
+    assert pipe.take() == list(range(12))
+
+
 def test_randomize_block_order_each_window(ray_start_regular_shared):
     pipe = ray.data.range(12).repartition(6).window(blocks_per_window=3)
     pipe = pipe.randomize_block_order_each_window(seed=0)
     assert pipe.take() == [0, 1, 4, 5, 2, 3, 6, 7, 10, 11, 8, 9]
-
-
-def test_preserve_whether_base_datasets_can_be_cleared(ray_start_regular_shared):
-    ds = ray.data.from_items([1, 3, 4, 5])
-    pipe = ds.repeat()
-    # pipe is directly consuming blocks of dataset, so cannot clear base dataset.
-    assert not pipe._base_datasets_can_be_cleared
-    # pipe has no transformation, so output blocks are blocks of dataset, so cannot
-    # be cleared.
-    assert not pipe._can_clear_output_blocks_after_read()
-
-    pipe = ds.repeat().map_batches(lambda x: x)
-    assert not pipe._base_datasets_can_be_cleared
-    # pipe now has transformation, so output blocks are created on-the-fly and can
-    # be cleared.
-    assert pipe._can_clear_output_blocks_after_read()
-
-    # rewindow(): collapse previous stages when creating new DatasetPipeline.
-    pipe = ds.repeat().map_batches(lambda x: x).rewindow(blocks_per_window=1)
-    assert len(pipe._stages) == 0
-    # The base datasets are generated by a pipeline prior to rewindow, so we
-    # can clear them.
-    assert pipe._base_datasets_can_be_cleared
-    # When base datasets can be cleared, we can surely clear output blocks from this
-    # pipeline.
-    assert pipe._can_clear_output_blocks_after_read()
-
-    # split(): Similar to rewindow, pipeline splitting will also collapse previous
-    # stages, so we expect same.
-    p1, p2 = ds.repeat().map_batches(lambda x: x).split(2)
-    assert len(p1._stages) == 0
-    assert len(p2._stages) == 0
-    assert p1._base_datasets_can_be_cleared
-    assert p2._base_datasets_can_be_cleared
-    assert p1._can_clear_output_blocks_after_read()
-    assert p2._can_clear_output_blocks_after_read()
-
-    # foreach_window(): will preserve the _base_datasets_can_be_cleared.
-    p1 = ds.repeat()
-    p2 = p1.foreach_window(lambda x: x)
-    assert p1._base_datasets_can_be_cleared == p2._base_datasets_can_be_cleared
-    assert not p2._base_datasets_can_be_cleared
-    p1 = ds.repeat().map_batches(lambda x: x).rewindow(blocks_per_window=1)
-    p2 = p1.foreach_window(lambda x: x)
-    assert p1._base_datasets_can_be_cleared == p2._base_datasets_can_be_cleared
-    assert p2._base_datasets_can_be_cleared
-
-    # repeat(): will preserve the _base_datasets_can_be_cleared.
-    p1 = ds.window(blocks_per_window=1)
-    p2 = p1.repeat()
-    assert p1._base_datasets_can_be_cleared == p2._base_datasets_can_be_cleared
-    assert not p2._base_datasets_can_be_cleared
-    p1 = ds.window(blocks_per_window=1).map_batches(lambda x: x)
-    p2 = p1.repeat()
-    assert p1._base_datasets_can_be_cleared == p2._base_datasets_can_be_cleared
-    assert not p2._base_datasets_can_be_cleared
 
 
 def test_drop_columns(ray_start_regular_shared):
@@ -516,6 +632,137 @@ def test_drop_columns(ray_start_regular_shared):
     ds = ray.data.from_pandas(df)
     pipe = ds.repeat()
     assert pipe.drop_columns(["col2"]).take(1) == [{"col1": 1, "col3": 3}]
+
+
+def test_in_place_transformation_doesnt_clear_objects(ray_start_regular_shared):
+    ds = ray.data.from_items([1, 2, 3, 4, 5, 6])
+
+    def verify_integrity(p):
+        # The pipeline's output blocks are from original dataset (i.e. not created
+        # by the pipeline itself), so those blocks must not be cleared -- verified
+        # below by re-reading the dataset.
+        for b in p.iter_batches():
+            pass
+        # Verify the integrity of the blocks of original dataset.
+        assert ds.take_all() == [1, 2, 3, 4, 5, 6]
+
+    verify_integrity(ds.repeat(10).randomize_block_order_each_window())
+    verify_integrity(
+        ds.repeat(10)
+        .randomize_block_order_each_window()
+        .randomize_block_order_each_window()
+    )
+    # Mix in-place and non-in place transforms.
+    verify_integrity(
+        ds.repeat(10).map_batches(lambda x: x).randomize_block_order_each_window()
+    )
+    verify_integrity(
+        ds.repeat(10).randomize_block_order_each_window().map_batches(lambda x: x)
+    )
+
+
+def test_in_place_transformation_split_doesnt_clear_objects(ray_start_regular_shared):
+    ds = ray.data.from_items([1, 2, 3, 4, 5, 6], parallelism=3)
+
+    @ray.remote
+    def consume(p):
+        for batch in p.iter_batches():
+            pass
+
+    def verify_integrity(p):
+        # Divide 3 blocks ([1, 2], [3, 4] and [5, 6]) into 2 splits equally must
+        # have one block got splitted. Since the blocks are not created by the
+        # pipeline (randomize_block_order_each_window() didn't create new
+        # blocks since it's in-place), so the block splitting will not clear
+        # the input block -- verified below by re-reading the dataset.
+        splits = p.split(2, equal=True)
+        ray.get([consume.remote(p) for p in splits])
+        # Verify the integrity of the blocks of original dataset
+        assert ds.take_all() == [1, 2, 3, 4, 5, 6]
+
+    verify_integrity(ds.repeat(10).randomize_block_order_each_window())
+    verify_integrity(
+        ds.repeat(10)
+        .randomize_block_order_each_window()
+        .randomize_block_order_each_window()
+    )
+    verify_integrity(
+        ds.repeat(10).randomize_block_order_each_window().rewindow(blocks_per_window=1)
+    )
+    # Mix in-place and non-in place transforms.
+    verify_integrity(
+        ds.repeat(10)
+        .randomize_block_order_each_window()
+        .randomize_block_order_each_window()
+        .map_batches(lambda x: x)
+    )
+    verify_integrity(
+        ds.repeat(10)
+        .map_batches(lambda x: x)
+        .randomize_block_order_each_window()
+        .randomize_block_order_each_window()
+    )
+
+
+def test_pipeline_executor_cannot_serialize_once_started(ray_start_regular_shared):
+    class Iterable:
+        def __init__(self, iter):
+            self._iter = iter
+
+        def __next__(self):
+            ds = next(self._iter)
+            return lambda: ds
+
+    p1 = ray.data.range(10).repeat()
+    p2 = DatasetPipeline.from_iterable(Iterable(p1.iter_datasets()))
+    with pytest.raises(RuntimeError) as error:
+        p2.split(2)
+    assert "PipelineExecutor is not serializable once it has started" in str(error)
+
+
+def test_if_blocks_owned_by_consumer(ray_start_regular_shared):
+    ds = ray.data.from_items([1, 2, 3, 4, 5, 6], parallelism=3)
+    assert not ds._plan.execute()._owned_by_consumer
+    assert not ds.randomize_block_order()._plan.execute()._owned_by_consumer
+    assert not ds.map_batches(lambda x: x)._plan.execute()._owned_by_consumer
+
+    def verify_blocks(pipe, owned_by_consumer):
+        for ds in pipe.iter_datasets():
+            assert ds._plan.execute()._owned_by_consumer == owned_by_consumer
+
+    verify_blocks(ds.repeat(1), False)
+    verify_blocks(ds.repeat(1).randomize_block_order_each_window(), False)
+    verify_blocks(ds.repeat(1).randomize_block_order_each_window().repeat(2), False)
+    verify_blocks(
+        ds.repeat(1).randomize_block_order_each_window().map_batches(lambda x: x), True
+    )
+    verify_blocks(ds.repeat(1).map_batches(lambda x: x), True)
+    verify_blocks(ds.repeat(1).map(lambda x: x), True)
+    verify_blocks(ds.repeat(1).filter(lambda x: x > 3), True)
+    verify_blocks(ds.repeat(1).sort_each_window(), True)
+    verify_blocks(ds.repeat(1).random_shuffle_each_window(), True)
+    verify_blocks(ds.repeat(1).repartition_each_window(2), True)
+    verify_blocks(ds.repeat(1).rewindow(blocks_per_window=1), False)
+    verify_blocks(ds.repeat(1).rewindow(blocks_per_window=1).repeat(2), False)
+    verify_blocks(
+        ds.repeat(1).map_batches(lambda x: x).rewindow(blocks_per_window=1), True
+    )
+    verify_blocks(
+        ds.repeat(1).rewindow(blocks_per_window=1).map_batches(lambda x: x), True
+    )
+
+    @ray.remote
+    def consume(pipe, owned_by_consumer):
+        verify_blocks(pipe, owned_by_consumer)
+
+    splits = ds.repeat(1).split(2)
+    ray.get([consume.remote(splits[0], False), consume.remote(splits[1], False)])
+
+    splits = ds.repeat(1).randomize_block_order_each_window().split(2)
+    ray.get([consume.remote(splits[0], False), consume.remote(splits[1], False)])
+
+    splits = ds.repeat(1).map_batches(lambda x: x).split(2)
+    ray.get([consume.remote(splits[0], True), consume.remote(splits[1], True)])
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
+    override,
     OverrideToImplementCustomLogic,
     PublicAPI,
 )
@@ -52,12 +53,41 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         self.legacy_callbacks = legacy_callbacks_dict or {}
 
     @OverrideToImplementCustomLogic
+    def on_algorithm_init(
+        self,
+        *,
+        algorithm: "Algorithm",
+        **kwargs,
+    ) -> None:
+        """Callback run when a new algorithm instance has finished setup.
+
+        This method gets called at the end of Algorithm.setup() after all
+        the initialization is done, and before actually training starts.
+
+        Args:
+            algorithm: Reference to the trainer instance.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_create_policy(self, *, policy_id: PolicyID, policy: Policy) -> None:
+        """Callback run whenever a new policy is added to an algorithm.
+
+        Args:
+            policy_id: ID of the newly created policy.
+            policy: the policy just created.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
     def on_sub_environment_created(
         self,
         *,
         worker: "RolloutWorker",
         sub_environment: EnvType,
         env_context: EnvContext,
+        env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
         """Callback run when a new sub-environment has been created.
@@ -78,19 +108,26 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         pass
 
     @OverrideToImplementCustomLogic
-    def on_algorithm_init(
+    def before_sub_environment_reset(
         self,
         *,
-        algorithm: "Algorithm",
+        worker: "RolloutWorker",
+        sub_environment: EnvType,
+        env_index: int,
         **kwargs,
     ) -> None:
-        """Callback run when a new algorithm instance has finished setup.
+        """Callback run before a sub-environment is reset.
 
-        This method gets called at the end of Algorithm.setup() after all
-        the initialization is done, and before actually training starts.
+        This method gets called before every `try_reset()` is called by RLlib
+        on a sub-environment (usually a gym.Env). This includes the very first (initial)
+        reset performed on each sub-environment.
 
         Args:
-            algorithm: Reference to the trainer instance.
+            worker: Reference to the current rollout worker.
+            sub_environment: The sub-environment instance that we are about to reset.
+                This is usually a gym.Env object.
+            env_index: The index of the sub-environment that is about to be reset
+                (within the vector of sub-environments of the BaseEnv).
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -103,6 +140,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         base_env: BaseEnv,
         policies: Dict[PolicyID, Policy],
         episode: Union[Episode, EpisodeV2],
+        env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
         """Callback run on the rollout worker before each episode starts.
@@ -118,6 +156,8 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+            env_index: The index of the sub-environment that started the episode
+                (within the vector of sub-environments of the BaseEnv).
             kwargs: Forward compatibility placeholder.
         """
 
@@ -138,6 +178,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         base_env: BaseEnv,
         policies: Optional[Dict[PolicyID, Policy]] = None,
         episode: Union[Episode, EpisodeV2],
+        env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
         """Runs on each episode step.
@@ -154,6 +195,8 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
+            env_index: The index of the sub-environment that stepped the episode
+                (within the vector of sub-environments of the BaseEnv).
             kwargs: Forward compatibility placeholder.
         """
 
@@ -170,6 +213,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         base_env: BaseEnv,
         policies: Dict[PolicyID, Policy],
         episode: Union[Episode, EpisodeV2, Exception],
+        env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
         """Runs when an episode is done.
@@ -190,6 +234,8 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 that gets thrown from the environment before the episode finishes.
                 Users of this callback may then handle these error cases properly
                 with their custom logics.
+            env_index: The index of the sub-environment that ended the episode
+                (within the vector of sub-environments of the BaseEnv).
             kwargs: Forward compatibility placeholder.
         """
 
@@ -201,6 +247,43 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                     "episode": episode,
                 }
             )
+
+    @OverrideToImplementCustomLogic
+    def on_evaluate_start(
+        self,
+        *,
+        algorithm: "Algorithm",
+        **kwargs,
+    ) -> None:
+        """Callback before evaluation starts.
+
+        This method gets called at the beginning of Algorithm.evaluate().
+
+        Args:
+            algorithm: Reference to the algorithm instance.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
+
+    @OverrideToImplementCustomLogic
+    def on_evaluate_end(
+        self,
+        *,
+        algorithm: "Algorithm",
+        evaluation_metrics: dict,
+        **kwargs,
+    ) -> None:
+        """Runs when the evaluation is done.
+
+        Runs at the end of Algorithm.evaluate().
+
+        Args:
+            algorithm: Reference to the algorithm instance.
+            evaluation_metrics: Results dict to be returned from algorithm.evaluate().
+                You can mutate this object to add additional metrics.
+            kwargs: Forward compatibility placeholder.
+        """
+        pass
 
     @OverrideToImplementCustomLogic
     def on_postprocess_trajectory(
@@ -290,7 +373,6 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
             result: A results dict to add custom metrics to.
             kwargs: Forward compatibility placeholder.
         """
-
         pass
 
     @OverrideToImplementCustomLogic
@@ -357,6 +439,7 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
         # Will track the top 10 lines where memory is allocated
         tracemalloc.start(10)
 
+    @override(DefaultCallbacks)
     def on_episode_end(
         self,
         *,
@@ -423,16 +506,24 @@ class MultiCallbacks(DefaultCallbacks):
     def on_trainer_init(self, *args, **kwargs):
         raise DeprecationWarning
 
+    @override(DefaultCallbacks)
     def on_algorithm_init(self, *, algorithm: "Algorithm", **kwargs) -> None:
         for callback in self._callback_list:
             callback.on_algorithm_init(algorithm=algorithm, **kwargs)
 
+    @override(DefaultCallbacks)
+    def on_create_policy(self, *, policy_id: PolicyID, policy: Policy) -> None:
+        for callback in self._callback_list:
+            callback.on_create_policy(policy_id=policy_id, policy=policy)
+
+    @override(DefaultCallbacks)
     def on_sub_environment_created(
         self,
         *,
         worker: "RolloutWorker",
         sub_environment: EnvType,
         env_context: EnvContext,
+        env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
         for callback in self._callback_list:
@@ -443,6 +534,24 @@ class MultiCallbacks(DefaultCallbacks):
                 **kwargs,
             )
 
+    @override(DefaultCallbacks)
+    def before_sub_environment_reset(
+        self,
+        *,
+        worker: "RolloutWorker",
+        sub_environment: EnvType,
+        env_index: Optional[int] = None,
+        **kwargs,
+    ) -> None:
+        for callback in self._callback_list:
+            callback.before_sub_environment_reset(
+                worker=worker,
+                sub_environment=sub_environment,
+                env_index=env_index,
+                **kwargs,
+            )
+
+    @override(DefaultCallbacks)
     def on_episode_start(
         self,
         *,
@@ -463,6 +572,7 @@ class MultiCallbacks(DefaultCallbacks):
                 **kwargs,
             )
 
+    @override(DefaultCallbacks)
     def on_episode_step(
         self,
         *,
@@ -483,6 +593,7 @@ class MultiCallbacks(DefaultCallbacks):
                 **kwargs,
             )
 
+    @override(DefaultCallbacks)
     def on_episode_end(
         self,
         *,
@@ -503,6 +614,35 @@ class MultiCallbacks(DefaultCallbacks):
                 **kwargs,
             )
 
+    @override(DefaultCallbacks)
+    def on_evaluate_start(
+        self,
+        *,
+        algorithm: "Algorithm",
+        **kwargs,
+    ) -> None:
+        for callback in self._callback_list:
+            callback.on_evaluate_start(
+                algorithm=algorithm,
+                **kwargs,
+            )
+
+    @override(DefaultCallbacks)
+    def on_evaluate_end(
+        self,
+        *,
+        algorithm: "Algorithm",
+        evaluation_metrics: dict,
+        **kwargs,
+    ) -> None:
+        for callback in self._callback_list:
+            callback.on_evaluate_end(
+                algorithm=algorithm,
+                evaluation_metrics=evaluation_metrics,
+                **kwargs,
+            )
+
+    @override(DefaultCallbacks)
     def on_postprocess_trajectory(
         self,
         *,
@@ -527,12 +667,14 @@ class MultiCallbacks(DefaultCallbacks):
                 **kwargs,
             )
 
+    @override(DefaultCallbacks)
     def on_sample_end(
         self, *, worker: "RolloutWorker", samples: SampleBatch, **kwargs
     ) -> None:
         for callback in self._callback_list:
             callback.on_sample_end(worker=worker, samples=samples, **kwargs)
 
+    @override(DefaultCallbacks)
     def on_learn_on_batch(
         self, *, policy: Policy, train_batch: SampleBatch, result: dict, **kwargs
     ) -> None:
@@ -541,6 +683,7 @@ class MultiCallbacks(DefaultCallbacks):
                 policy=policy, train_batch=train_batch, result=result, **kwargs
             )
 
+    @override(DefaultCallbacks)
     def on_train_result(
         self, *, algorithm=None, result: dict, trainer=None, **kwargs
     ) -> None:
@@ -579,6 +722,7 @@ class RE3UpdateCallbacks(DefaultCallbacks):
         self._rms = _MovingMeanStd()
         super().__init__(*args, **kwargs)
 
+    @override(DefaultCallbacks)
     def on_learn_on_batch(
         self,
         *,
@@ -610,6 +754,7 @@ class RE3UpdateCallbacks(DefaultCallbacks):
                 train_batch[Postprocessing.VALUE_TARGETS] + states_entropy
             )
 
+    @override(DefaultCallbacks)
     def on_train_result(
         self, *, result: dict, algorithm=None, trainer=None, **kwargs
     ) -> None:

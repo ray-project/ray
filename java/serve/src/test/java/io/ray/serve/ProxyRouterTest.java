@@ -6,6 +6,7 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.handle.RayServeHandle;
 import io.ray.serve.proxy.ProxyRouter;
 import io.ray.serve.util.CommonUtil;
@@ -16,7 +17,6 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class ProxyRouterTest extends BaseTest {
-
   @Test
   public void test() {
     init();
@@ -33,14 +33,15 @@ public class ProxyRouterTest extends BaseTest {
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
       Map<String, EndpointInfo> endpointInfos = new HashMap<>();
       endpointInfos.put(
           endpointName1,
           EndpointInfo.newBuilder().setEndpointName(endpointName1).setRoute(route1).build());
       endpointInfos.put(
           endpointName2, EndpointInfo.newBuilder().setEndpointName(endpointName2).build());
-      controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
+      EndpointSet endpointSet = EndpointSet.newBuilder().putAllEndpoints(endpointInfos).build();
+      controllerHandle.task(DummyServeController::setEndpoints, endpointSet.toByteArray()).remote();
 
       Serve.setInternalReplicaContext(null, null, controllerName, null, config);
 

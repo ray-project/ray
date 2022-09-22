@@ -1,26 +1,19 @@
 .. _air-ingest:
 
-Setting up Data Ingest
-======================
+Configuring Training Datasets
+=============================
 
-This page is a guide for setting up, understanding, and diagnosing data ingest problems in Ray AIR.
+AIR builds its training data pipeline on :ref:`Ray Datasets <datasets>`, which is a scalable, framework-agnostic data loading and preprocessing library. Datasets enables AIR to seamlessly load data for local and distributed training with Train.
 
-Data ingest is the process of loading data from storage, apply preprocessing steps, and feeding the data into Trainers in AIR.
-For datasets that are small, ingest is usually not an issue. However, ingest can be tricky to set up when datasets grow
-large enough so that they may not fit fully in memory on a single node, or even in aggregate cluster memory.
+This page describes how to setup and configure these datasets in Train under different scenarios and scales.
 
-AIR builds its ingest pipeline on :ref:`Ray Datasets <datasets>`, which is a framework-agnostic distributed data loading library. If you have
-an existing ingest pipeline (e.g., based on TF data), there is some upfront effort porting your loading code to Datasets.
-In return, AIR provides portability across ML frameworks as well as advanced capabilities such as global random shuffles,
-which are not possible in less general ML data preprocessing libraries.
-
-Ingest Basics
--------------
+Overview
+--------
 
 .. _ingest_basics:
 
 The following figure illustrates a simple Ray AIR training job that (1) loads parquet data from S3, (2) applies a simple
-user-defined function to preprocess batches of data, and (3) runs an AIR Trainer with the given dataset and preprocessor.
+:ref:`user-defined function <transform_datasets_writing_udfs>` to preprocess batches of data, and (3) runs an AIR Trainer with the given dataset and preprocessor.
 
 .. figure:: images/ingest.svg
 
@@ -29,29 +22,33 @@ user-defined function to preprocess batches of data, and (3) runs an AIR Trainer
 
 Let's walk through the stages of what happens when ``Trainer.fit()`` is called.
 
-**Read**: First, AIR will read the Dataset into the Ray object store by calling ``ds.fully_executed()`` on the datasets
-that you pass to the Trainer. Dataset blocks that don't fit into memory will be spilled to disk. Note that when you create
-the dataset initially, typically only the first block and block metadata is read into memory. The rest of the blocks are
-not loaded until ``fit`` is called.
+**Preprocessing**: First, AIR will ``fit`` the preprocessor (e.g., compute statistics) on the
+``"train"`` dataset, and then ``transform`` all given datasets with the fitted preprocessor. This is done by calling
+:py:meth:`prep.fit_transform() <ray.data.preprocessor.Preprocessor.fit_transform>`
+on the train dataset passed to the Trainer, followed by :py:meth:`prep.transform() <ray.data.preprocessor.Preprocessor.transform>`
+on remaining datasets.
 
-**Preprocessing**: Next, if a preprocessor is defined, AIR will by default ``fit`` the preprocessor (e.g., compute statistics) on the
-``"train"`` dataset, and then ``transform`` all given datasets with the fitted preprocessor. This is done by calling ``prep.fit_transform()``
-on the train dataset passed to the Trainer, followed by ``prep.transform()`` on remaining datasets. Preprocessors use Dataset APIs to execute
-preprocessing in a parallelized way across the cluster. Both read and preprocessing stages use Ray tasks under the hood.
+**Training**: Then, AIR passes the preprocessed dataset to Train workers (Ray actors) launched by the Trainer. Each worker calls :py:func:`get_dataset_shard <ray.air.session.get_dataset_shard>` to get a handle to its assigned data shard, and then calls one of :py:meth:`iter_batches() <ray.data.Dataset.iter_batches>`, :py:meth:`iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`, or :py:meth:`iter_tf_batches() <ray.data.Dataset.iter_tf_batches>` to loop over the data.
 
-**Training**: Finally, AIR passes a reference to the preprocessed dataset to Train workers (Ray actors) launched by the Trainer. Each worker then
-typically calls ``iter_batches``, ``to_tf``, or ``to_torch`` to iterate over the dataset reader retrieved by ``get_dataset_shard``.
-These read methods load blocks of the dataset into the local worker's memory in a streaming fashion, only fetching / prefetching a
-limited number of blocks at once. Workers loop over the dataset blocks repeatedly until training completes.
+Getting Started
+---------------
 
-Configuring Ingest Per-Dataset
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The following is a simple example of how to configure ingest for a dummy :py:class:`~ray.train.torch.TorchTrainer`. Below, we are passing a small tensor dataset to the Trainer via the ``datasets`` argument. In the Trainer's ``train_loop_per_worker``, we access the preprocessed dataset using
+:py:func:`~ray.air.session.get_dataset_shard()`.
 
-It is common to customize processing per-dataset. For example, you may want to enable sharding
-on a validation dataset, disable preprocessing of an auxiliary dataset, or adjust ingest strategy per dataset.
+.. literalinclude:: doc_code/air_ingest.py
+    :language: python
+    :start-after: __config_4__
+    :end-before: __config_4_end__
 
-Each DataParallelTrainer has a default per-dataset config given by a ``Trainer._dataset_config`` class field. It is a mapping
-from dataset names to ``DatasetConfig`` objects, and implements the default behavior described in :ref:`Ingest Basics <ingest_basics>`:
+.. _air-configure-ingest:
+
+Configuring Ingest
+------------------
+You can use the :py:class:`~ray.air.config.DatasetConfig` object to configure how Datasets are preprocessed and split across training workers.
+Each :py:class:`~ray.train.data_parallel_trainer.DataParallelTrainer` takes in a ``dataset_config`` constructor argument that takes in a mapping
+from Dataset name to a :py:class:`~ray.air.config.DatasetConfig` object. If no ``dataset_config`` is passed in,
+the default configuration is used:
 
 .. code:: python
 
@@ -66,126 +63,184 @@ from dataset names to ``DatasetConfig`` objects, and implements the default beha
         "*": DatasetConfig(),
     }
 
-These configs can be overriden via the ``dataset_config`` kwarg, which is recursively merged with the Trainer defaults.
 Here are some examples of configuring Dataset ingest options and what they do:
 
-.. tabbed:: Split All
+.. _air-streaming-ingest:
 
-    This example shows overriding the split config for the "valid" and "test" datasets. This means that
-    both the valid and test datasets here will be ``.split()`` across the training workers.
-
-    .. literalinclude:: doc_code/air_ingest.py
-        :language: python
-        :start-after: __config_1__
-        :end-before: __config_1_end__
-
-.. tabbed:: Disable Transform
-
-    This example shows overriding the transform config for the "side" dataset. This means that
-    the original dataset will be returned by ``.get_dataset_shard("side")``.
-
-    .. literalinclude:: doc_code/air_ingest.py
-        :language: python
-        :start-after: __config_2__
-        :end-before: __config_2_end__
-
-
-Bulk vs Streaming Reads
------------------------
-
-Bulk Ingest
-~~~~~~~~~~~
-
-By default, AIR loads all Dataset blocks into the object store at the start of training. This provides the best performance if the
-cluster has enough aggregate memory to fit all the data blocks in object store memory, or if your preprocessing step is expensive
-and you don't want it to be re-run on each epoch. Note that data often requires more space
-when loaded uncompressed in memory than when resident in storage.
-
-If there is insufficient object store memory, blocks may be spilled to disk during reads or preprocessing. Ray will print log messages
-if spilling is occuring, and you can check this as well with the ``ray memory --stats-only`` utility. If spilling is happening, take
-care to ensure the cluster has enough disk space to handle the spilled blocks. Alternatively, consider using machine with more memory /
-more machines to avoid spilling.
-
-Streaming Ingest
-~~~~~~~~~~~~~~~~
-
-AIR also supports streaming ingest via the DatasetPipeline feature. Streaming ingest is preferable when you are using large datasets
-that don't fit into memory, and prefer to read *windows* of data from storage to minimize the active memory required for data ingest.
-Note that streaming ingest will re-execute preprocessing on each pass over the data. If preprocessing is a bottleneck, consider
-using bulk ingest instead for better performance.
-
-To enable streaming ingest, set ``use_stream_api=True`` in the dataset config. By default, this will configure streaming ingest with a window
-size of 1GiB, which means AIR will load ~1 GiB of data at a time from the datasource.
-Performance can be increased with larger window sizes, which can be adjusted using the ``stream_window_size`` config.
-A reasonable stream window size is something like 20% of available object store memory. Note that the data may be larger
-once deserialized in memory, or if individual files are larger than the window size.
-
-If the window size is set to -1, then an infinite window size will be used. This case is equivalent to using bulk loading
-(including the performance advantages of caching preprocessed blocks), but still exposing a DatasetPipeline reader.
-
-.. warning::
-
-    In AIR alpha, streaming ingest only applies to preprocessor transform, not preprocessor fitting.
-    This means that the preprocessor will be initially fit in bulk, after which data will be transformed
-    as it is loaded in a streaming manner.
-
-Reading Data
-~~~~~~~~~~~~
-
-The ``get_dataset_shard`` method returns a reader object that is either a ``Dataset`` or ``DatasetPipeline``, depending on whether the ``use_stream_api``
-option is set. The former is a finite set of records, and the latter represents an infinite stream of records.
-See the following examples for clarification:
+Enabling Streaming Ingest
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabbed:: Bulk Ingest
 
-    This example shows bulk ingest (the default). Data is bulk loaded and made available
-    directly via a ``Dataset`` object that can be looped over manually.
+    By default, AIR loads all datasets into the Ray object store at the start of training.
+    This provides the best performance if the cluster can fit the datasets
+    entirely in memory, or if the preprocessing step is expensive to run more than once.
 
     .. literalinclude:: doc_code/air_ingest.py
         :language: python
         :start-after: __config_4__
         :end-before: __config_4_end__
 
-.. tabbed:: Streaming Ingest
+    You should use bulk ingest when:
 
-    This example shows enabling streaming ingest for the "train" dataset with a *N-byte* window.
-    This means that AIR will only load *N* bytes of data from the datasource at a time (the data
-    may be larger once deserialized in memory or if individual files are larger than the window).
+     * you have enough memory to fit data blocks in cluster object store;
+     * your preprocessing step is expensive per each epoch; and
+     * you want best performance when both or either the above conditions are met.
+
+.. tabbed:: Streaming Ingest (experimental)
+
+    In streaming ingest mode, :py:func:`~ray.air.session.get_dataset_shard` returns a :py:class:`~ray.data.dataset_pipeline.DatasetPipeline` pipeline that
+    can be used to read data in a streaming way.
+    To enable streaming ingest, set ``use_stream_api=True`` in the dataset config.
+
+    By default, this will tell AIR to load *windows* of 1GiB of data into memory at a time.
+    Performance can be increased with larger window sizes, which can be adjusted using the
+    ``stream_window_size`` config.
+    A reasonable stream window size is something like 20% of available object store memory.
 
     .. literalinclude:: doc_code/air_ingest.py
         :language: python
         :start-after: __config_5__
         :end-before: __config_5_end__
 
+    Use streaming ingest when:
 
-Ingest and Ray Tune
--------------------
+     * you have large datasets that don't fit into memory;
+     * you want to process small chunks or blocks per window;
+     * you can use small windows with small data blocks minimizing or avoiding memory starvation or OOM errors; and
+     * your preprocessing step is not a bottleneck or not an expensive operation since it's re-executed on each pass over the data.
 
-.. note::
+.. _air-shuffle:
 
-    Train always uses Tune as the execution backend under the hood, even when running just ``Trainer.fit()`` directly (this is treated as a single-trial experiment). This ensures consistency of execution.
+Shuffling Data
+~~~~~~~~~~~~~~
 
-Placement Group Behavior
-~~~~~~~~~~~~~~~~~~~~~~~~
+Shuffling or data randomization is important for training high-quality models. By default, AIR will randomize the order the data files (blocks) are read from. AIR also offers options for further randomizing data records within each file:
 
-Tune typically creates a placement group reserving resource for each of its trials. These placement groups only reserve resources for the Train actors, however. By default, Dataset preprocessing tasks run using "spare" CPU resources in the cluster, which enables better autoscaling and utilization of resources. It is also possible to configure the Dataset tasks to run within the Tune trial placement groups.
+.. tabbed:: Local Shuffling
 
-.. warning::
+    Local shuffling is the recommended approach for randomizing data order. To use local shuffle,
+    simply specify a non-zero ``local_shuffle_buffer_size`` as an argument to :py:meth:`iter_batches() <ray.data.Dataset.iter_batches>`.
+    The iterator will then use a local buffer of the given size to randomize record order. The
+    larger the buffer size, the more randomization will be applied, but it will also use more
+    memory.
 
-    If trial placement groups reserve all the CPUs in the cluster, then it may be that no CPUs are left for Datasets to use, and trials can hang. This can easily happen when using CPU-only trainers. For example, if you can change the above ingest example to use ``ray.init(num_cpus=2)``, such a hang will happen.
+    See :meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` for more details.
 
-Refer to the :ref:`Datasets in Tune Example <datasets_tune>` to understand each of these options and how to configure them. We recommend starting with the default of allowing tasks to run using spare cluster resources, and only changing this if you encounter resource contention or want more performance predictability.
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __local_shuffling_start__
+        :end-before: __local_shuffling_end__
 
-Dataset Sharing
-~~~~~~~~~~~~~~~
+    You should use local shuffling when:
 
-When you pass Datasets to a Tuner, it is important to understand that the Datasets are executed independently per-trial. This could potentially duplicate data reads in the cluster. To share Dataset blocks between trials, call `ds = ds.fully_executed()` prior to passing the Dataset to the Tuner. This ensures that the initial read operation will not be repeated per trial.
+     * a small in-memory buffer provides enough randomization; or
+     * you want the highest possible ingest performance; or
+     * your model is not overly sensitive to shuffle quality
+
+.. tabbed:: Global Shuffling (slower)
+
+    Global shuffling provides more uniformly random (decorrelated) samples and is carried
+    out via a distributed map-reduce operation. This higher quality shuffle can often lead
+    to more precision gain per training step, but it is also an expensive distributed
+    operation and will decrease the ingest throughput. As long as the shuffled ingest
+    throughput matches or exceeds the model training (forward pass, backward pass, gradient sync)
+    throughput, this higher-quality shuffle shouldn't slow down the overall training.
+
+    If global shuffling *is* causing the ingest throughput to become the training
+    bottleneck, local shuffling may be a better option.
+
+    .. literalinclude:: doc_code/air_ingest.py
+        :language: python
+        :start-after: __global_shuffling_start__
+        :end-before: __global_shuffling_end__
+
+    You should use global shuffling when:
+
+     * you suspect high-quality shuffles may significantly improve model quality; and
+     * absolute ingest performance is less of a concern
+
+.. _air-splitting-aux-datasets:
+
+Splitting Auxiliary Datasets
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+During data parallel training, the datasets are split so that each model replica is training on a different shard of data.
+By default, only the `"train"` dataset is split. All the other Datasets are not split and the entire dataset is returned by
+:py:func:`~ray.air.session.get_dataset_shard`.
+
+However, you may want to split a large validation dataset example to also do data parallel validation.
+This example shows overriding the split config for the "valid" and "test" datasets. This means that
+both the valid and test datasets here will be :py:meth:`.split() <ray.data.Dataset.split>` across the training workers.
+
+.. literalinclude:: doc_code/air_ingest.py
+    :language: python
+    :start-after: __config_1__
+    :end-before: __config_1_end__
+
+
+Disabling Preprocessor Transforms
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, the provided :py:class:`~ray.data.preprocessor.Preprocessor` is fit on the `"train"` dataset and is then used to
+transform all the datasets. However, you may want to disable the preprocessor transforms for certain datasets.
+
+This example shows overriding the transform config for the "side" dataset. This means that
+the original dataset will be returned by ``.get_dataset_shard("side")``.
+
+.. literalinclude:: doc_code/air_ingest.py
+    :language: python
+    :start-after: __config_2__
+    :end-before: __config_2_end__
+
+Dataset Resources
+~~~~~~~~~~~~~~~~~
+
+Datasets uses Ray tasks to execute data processing operations. These tasks use CPU resources in the cluster during execution, which may compete with resources needed for Training.
+
+.. tabbed:: Unreserved CPUs
+
+    By default, Dataset tasks use cluster CPU resources for execution. This can sometimes
+    conflict with Trainer resource requests. For example, if Trainers allocate all CPU resources
+    in the cluster, then no Datasets tasks can run.
+
+    .. literalinclude:: ./doc_code/air_ingest.py
+      :language: python
+      :start-after: __resource_allocation_1_begin__
+      :end-before: __resource_allocation_1_end__
+
+    Unreserved CPUs work well when:
+
+     * you are running only one Trainer and the cluster has enough CPUs; or
+     * your Trainers are configured to use GPUs and not CPUs
+
+.. tabbed:: Using Reserved CPUs (experimental)
+
+    The ``_max_cpu_fraction_per_node`` option can be used to exclude CPUs from placement
+    group scheduling. In the below example, setting this parameter to ``0.8`` enables Tune
+    trials to run smoothly without risk of deadlock by reserving 20% of node CPUs for
+    Dataset execution.
+
+    .. literalinclude:: ./doc_code/air_ingest.py
+      :language: python
+      :start-after: __resource_allocation_2_begin__
+      :end-before: __resource_allocation_2_end__
+
+    You should use reserved CPUs when:
+
+     * you are running multiple concurrent CPU Trainers using Tune; or
+     * you want to ensure predictable Datasets performance
+
+    .. warning::
+
+        ``_max_cpu_fraction_per_node`` is experimental and not currently recommended for use with
+        autoscaling clusters (scale-up will not trigger properly).
 
 Debugging Ingest with the ``DummyTrainer``
 ------------------------------------------
 
 Data ingest problems can be challenging to debug when combined in a full training pipeline. To isolate data
-ingest issues from other possible training problems, we provide the ``ray.air.util.check_ingest.DummyTrainer``
+ingest issues from other possible training problems, we provide the :py:class:`~ray.air.util.check_ingest.DummyTrainer`
 utility class that can be used to debug ingest problems. Let's walk through using DummyTrainer to understand
 and resolve an ingest misconfiguration.
 
@@ -201,7 +256,7 @@ keep data local, but we'll use a cluster for illustrative purposes.
     :start-after: __check_ingest_1__
     :end-before: __check_ingest_1_end__
 
-Next, we instantiate and fit a ``DummyTrainer`` with a single training worker and no GPUs. You can customize
+Next, we instantiate and fit a :py:class:`~ray.air.util.check_ingest.DummyTrainer` with a single training worker and no GPUs. You can customize
 these parameters to simulate your use training use cases (e.g., 16 trainers each with GPUs enabled).
 
 .. literalinclude:: doc_code/air_ingest.py
@@ -251,7 +306,7 @@ Let's break it down:
 
 * **Batch delay**: Time the trainer spents waiting for the next data batch to be fetched. Ideally
   this value is as close to zero as possible. If it is too high, Ray may be spending too much time
-  loading data from disk.
+  downloading data from remote nodes to the trainer node.
 * **Num epochs read**: The number of times the trainer read the dataset during the run.
 * **Num batches read**: The number of batches read.
 * **Num bytes read**: The number of bytes read.
@@ -313,4 +368,30 @@ Performance Tips
 
 **Autoscaling**: We generally recommend first trying out AIR training with a fixed size cluster. This makes it easier to understand and debug issues. Autoscaling can be enabled after you are happy with performance to autoscale experiment sweeps with Tune, etc. We also recommend starting with autoscaling with a single node type. Autoscaling with hetereogeneous clusters can optimize costs, but may complicate performance debugging.
 
-**Partitioning**: By default, Datasets will create up to 200 blocks per Dataset, or less if there are fewer base files for the Dataset. If you run into out-of-memory errors during preprocessing, consider increasing the number of blocks to reduce their size. To increase the max number of partitions, set the ``parallelism`` option when calling ``ray.data.read_*()``. To change the number of partitions at runtime, use ``ds.repartition(N)``. As a rule of thumb, blocks should be not more than 1-2GiB each.
+**Partitioning**: By default, Datasets will automatically select the read parallelism based on the current cluster size and number of files. If you run into out-of-memory errors during preprocessing, consider increasing the number of blocks to reduce their size. To increase the max number of partitions, you can manually set the ``parallelism`` option when calling ``ray.data.read_*()``. To change the number of partitions at runtime, use ``ds.repartition(N)``. As a rule of thumb, blocks should be no more than 1-2GiB each.
+
+Dataset Sharing
+~~~~~~~~~~~~~~~
+
+When you pass Datasets to a Tuner, Datasets are executed independently per-trial. This could potentially duplicate data reads in the cluster. To share Dataset blocks between trials, call ``ds = ds.fully_executed()`` prior to passing the Dataset to the Tuner. This ensures that the initial read operation will not be repeated per trial.
+
+
+FAQ
+---
+
+How do I pass in a :py:class:`~ray.data.dataset_pipeline.DatasetPipeline` to my ``Trainer``?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The Trainer interface only accepts a standard :py:class:`~ray.data.dataset.Dataset` and not a :py:class:`~ray.data.dataset_pipeline.DatasetPipeline`.
+Instead, you can configure the ingest via the ``dataset_config`` that is passed to your ``Trainer``. Internally, Ray AIR will
+convert the provided :py:class:`~ray.data.dataset.Dataset` into a :py:class:`~ray.data.dataset_pipeline.DatasetPipeline` with the specified configurations.
+
+See the :ref:`Enabling Streaming Ingest <air-streaming-ingest>` and :ref:`Shuffling Data <air-shuffle>` sections for full examples.
+
+How do I shard validation and test datasets?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default only the `"train"` Dataset is sharded. To also shard validation and test datasets, you can configure the ``dataset_config``
+that is passed to your ``Trainer``.
+See the :ref:`Splitting Auxiliary Datasets <air-splitting-aux-datasets>` section for a full example.
+

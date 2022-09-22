@@ -101,7 +101,14 @@ class HEBOSearch(Searcher):
         }
 
         hebo = HEBOSearch(metric="mean_loss", mode="min")
-        tune.run(my_func, config=config, search_alg=hebo)
+        tuner = tune.Tuner(
+            trainable_function,
+            tune_config=tune.TuneConfig(
+                search_alg=hebo
+            ),
+            param_space=config
+        )
+        tuner.fit()
 
     Alternatively, you can pass a HEBO `DesignSpace` object manually to the
     Searcher:
@@ -119,7 +126,13 @@ class HEBOSearch(Searcher):
         space = DesignSpace().parse(space_config)
 
         hebo = HEBOSearch(space, metric="mean_loss", mode="min")
-        tune.run(my_func, search_alg=hebo)
+        tuner = tune.Tuner(
+            trainable_function,
+            tune_config=tune.TuneConfig(
+                search_alg=hebo
+            )
+        )
+        tuner.fit()
 
     """
 
@@ -205,7 +218,7 @@ class HEBOSearch(Searcher):
             raise ValueError(
                 f"Invalid search space: {type(self._space)}. Either pass a "
                 f"valid search space to the `HEBOSearch` class or pass "
-                f"a `config` parameter to `tune.run()`"
+                f"a `param_space` parameter to `tune.Tuner()`"
             )
 
         if self._space.num_paras <= 0:

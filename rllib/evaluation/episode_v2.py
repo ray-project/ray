@@ -4,17 +4,17 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.collectors.simple_list_collector import (
-    _AgentCollector,
     _PolicyCollector,
     _PolicyCollectorGroup,
 )
+from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import AgentID, EnvID, PolicyID, TensorType
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.callbacks import DefaultCallbacks
+    from ray.rllib.algorithms.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 
@@ -49,10 +49,10 @@ class EpisodeV2:
         # Summed reward across all agents in this episode.
         self.total_reward: float = 0.0
         # Active (uncollected) # of env steps taken by this episode.
-        # Start from -1, since after add_init_obs(), we will be at 0 step.
+        # Start from -1. After add_init_obs(), we will be at 0 step.
         self.active_env_steps: int = -1
         # Total # of env steps taken by this episode.
-        # Start from -1, since after add_init_obs(), we will be at 0 step.
+        # Start from -1, After add_init_obs(), we will be at 0 step.
         self.total_env_steps: int = -1
         # Active (uncollected) agent steps.
         self.active_agent_steps: int = 0
@@ -80,7 +80,7 @@ class EpisodeV2:
         ] = policy_mapping_fn
         # Per-agent data collectors.
         self._agent_to_policy: Dict[AgentID, PolicyID] = {}
-        self._agent_collectors: Dict[AgentID, _AgentCollector] = {}
+        self._agent_collectors: Dict[AgentID, AgentCollector] = {}
 
         self._next_agent_index: int = 0
         self._agent_to_index: Dict[AgentID, int] = {}
@@ -177,8 +177,13 @@ class EpisodeV2:
 
         # Add initial obs to Trajectory.
         assert agent_id not in self._agent_collectors
-        self._agent_collectors[agent_id] = _AgentCollector(
-            policy.view_requirements, policy
+        self._agent_collectors[agent_id] = AgentCollector(
+            policy.view_requirements,
+            max_seq_len=policy.config["model"]["max_seq_len"],
+            disable_action_flattening=policy.config.get(
+                "_disable_action_flattening", False
+            ),
+            is_policy_recurrent=policy.is_recurrent(),
         )
         self._agent_collectors[agent_id].add_init_obs(
             episode_id=self.episode_id,
@@ -254,7 +259,7 @@ class EpisodeV2:
                 continue
             pid = self.policy_for(agent_id)
             policy = self.policy_map[pid]
-            pre_batch = collector.build(policy.view_requirements)
+            pre_batch = collector.build_for_training(policy.view_requirements)
             pre_batches[agent_id] = (pid, policy, pre_batch)
 
         for agent_id, (pid, policy, pre_batch) in pre_batches.items():

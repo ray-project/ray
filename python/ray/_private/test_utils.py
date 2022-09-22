@@ -1,5 +1,5 @@
 import asyncio
-import dataclasses
+from datetime import datetime
 import fnmatch
 import functools
 import io
@@ -14,12 +14,16 @@ import tempfile
 import time
 import timeit
 import traceback
+from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from typing import Any, Dict, List, Optional
 
 import grpc
 import numpy as np
 import psutil  # We must import psutil after ray because we bundle it with ray.
+from ray._private import (
+    ray_constants,
+)
 import yaml
 from grpc._channel import _InactiveRpcError
 
@@ -35,6 +39,10 @@ from ray._raylet import GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
+from ray.experimental.state.state_manager import StateDataSourceClient
+
+
+logger = logging.getLogger(__name__)
 
 try:
     from prometheus_client.parser import text_string_to_metric_families
@@ -355,8 +363,8 @@ def wait_for_condition(
         try:
             if condition_predictor(**kwargs):
                 return
-        except Exception as ex:
-            last_ex = ex
+        except Exception:
+            last_ex = ray._private.utils.format_error_message(traceback.format_exc())
         time.sleep(retry_interval_ms / 1000.0)
     message = "The condition wasn't met before the timeout expired."
     if last_ex is not None:
@@ -475,7 +483,7 @@ def wait_until_succeeded_without_exception(
 
     Args:
         func: A function to run.
-        exceptions(tuple): Exceptions that are supposed to occur.
+        exceptions: Exceptions that are supposed to occur.
         args: arguments to pass for a given func
         timeout_ms: Maximum timeout in milliseconds.
         retry_interval_ms: Retry interval in milliseconds.
@@ -810,6 +818,22 @@ def fetch_prometheus(prom_addresses):
                     if "Component" in sample.labels:
                         components_dict[address].add(sample.labels["Component"])
     return components_dict, metric_names, metric_samples
+
+
+def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
+    """Return prometheus metrics from the given addresses.
+
+    Args:
+        prom_addresses: List of metrics_agent addresses to collect metrics from.
+
+    Returns:
+        Dict mapping from metric name to list of samples for the metric.
+    """
+    _, _, samples = fetch_prometheus(prom_addresses)
+    samples_by_name = defaultdict(list)
+    for sample in samples:
+        samples_by_name[sample.name].append(sample)
+    return samples_by_name
 
 
 def load_test_config(config_file_name):
@@ -1377,22 +1401,55 @@ def find_free_port():
     return port
 
 
-@dataclasses.dataclass
-class TestRayActivityResponse:
+def wandb_setup_api_key_hook():
     """
-    Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
-    used in test_component_activities_hook to mimic typical
-    usage of redefining or extending response type.
+    Example external hook to set up W&B API key in
+    WandbIntegrationTest.testWandbLoggerConfig
     """
+    return "abcd"
 
-    is_active: str
-    reason: Optional[str] = None
-    timestamp: Optional[float] = None
+
+# Get node stats from node manager.
+def get_node_stats(raylet, num_retry=5, timeout=2):
+    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    channel = ray._private.utils.init_grpc_channel(raylet_address)
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    for _ in range(num_retry):
+        try:
+            reply = stub.GetNodeStats(
+                node_manager_pb2.GetNodeStatsRequest(), timeout=timeout
+            )
+            break
+        except grpc.RpcError:
+            continue
+    assert reply is not None
+    return reply
+
+
+# Creates a state api client assuming the head node (gcs) is local.
+def get_local_state_client():
+    hostname = ray.worker._global_node.gcs_address
+
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        hostname, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=True
+    )
+
+    gcs_aio_client = gcs_utils.GcsAioClient(address=hostname, nums_reconnect_retry=0)
+    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        ip = node["NodeManagerAddress"]
+        port = int(node["NodeManagerPort"])
+        client.register_raylet_client(node_id, ip, port)
+        client.register_agent_client(node_id, ip, port)
+
+    return client
 
 
 # Global counter to test different return values
 # for external_ray_cluster_activity_hook1.
 ray_cluster_activity_hook_counter = 0
+ray_cluster_activity_hook_5_counter = 0
 
 
 def external_ray_cluster_activity_hook1():
@@ -1404,10 +1461,25 @@ def external_ray_cluster_activity_hook1():
     """
     global ray_cluster_activity_hook_counter
     ray_cluster_activity_hook_counter += 1
+
+    from pydantic import BaseModel, Extra
+
+    class TestRayActivityResponse(BaseModel, extra=Extra.allow):
+        """
+        Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
+        used in test_component_activities_hook to mimic typical
+        usage of redefining or extending response type.
+        """
+
+        is_active: str
+        reason: Optional[str] = None
+        timestamp: float
+
     return {
         "test_component1": TestRayActivityResponse(
             is_active="ACTIVE",
             reason=f"Counter: {ray_cluster_activity_hook_counter}",
+            timestamp=datetime.now().timestamp(),
         )
     }
 
@@ -1439,3 +1511,21 @@ def external_ray_cluster_activity_hook4():
     Errors during execution.
     """
     raise Exception("Error in external cluster activity hook")
+
+
+def external_ray_cluster_activity_hook5():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns valid response and increments counter in `reason`
+    field on each call.
+    """
+    global ray_cluster_activity_hook_5_counter
+    ray_cluster_activity_hook_5_counter += 1
+    return {
+        "test_component5": {
+            "is_active": "ACTIVE",
+            "reason": f"Counter: {ray_cluster_activity_hook_5_counter}",
+            "timestamp": datetime.now().timestamp(),
+        }
+    }

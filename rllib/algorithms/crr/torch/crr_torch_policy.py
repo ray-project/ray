@@ -248,7 +248,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
                 q_vals = torch.minimum(q_vals, q_twins)
 
             probs = pi_s_t.dist.probs
-            v_t = (q_t * probs).sum(-1, keepdims=True)
+            v_t = (q_vals * probs).sum(-1, keepdims=True)
         else:
             policy_actions = pi_s_t.dist.sample((n_action_sample,))  # samples
 

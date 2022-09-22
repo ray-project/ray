@@ -1,20 +1,21 @@
 import gym
-import pickle
-from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
+import ray.cloudpickle as pickle
+from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
     AgentConnectorsOutput,
     PartialAlgorithmConfigDict,
     PolicyID,
-    PolicyOutputType,
     PolicyState,
     TensorStructType,
+    TensorType,
 )
 from ray.util.annotations import PublicAPI
 
@@ -138,9 +139,17 @@ def load_policies_from_checkpoint(
             continue
 
         merged_config = merge_dicts(policy_config, policy_spec.config or {})
+        # Similar to PolicyMap.create_policy(), we need to wrap a TF2 policy
+        # automatically into an eager traced policy class if necessary.
+        # Basically, PolicyMap handles this step automatically for training,
+        # and we handle it automatically here for inference use cases.
+        policy_class = get_tf_eager_cls_if_necessary(
+            policy_spec.policy_class, merged_config
+        )
+
         policy = create_policy_for_framework(
             id,
-            policy_spec.policy_class,
+            policy_class,
             merged_config,
             policy_spec.observation_space,
             policy_spec.action_space,
@@ -153,17 +162,21 @@ def load_policies_from_checkpoint(
 
 
 @PublicAPI(stability="alpha")
-def policy_inference(
+def local_policy_inference(
     policy: "Policy",
     env_id: str,
     agent_id: str,
     obs: TensorStructType,
-) -> List[PolicyOutputType]:
+) -> TensorStructType:
     """Run a connector enabled policy using environment observation.
 
     policy_inference manages policy and agent/action connectors,
     so the user does not have to care about RNN state buffering or
     extra fetch dictionaries.
+    Note that connectors are intentionally run separately from
+    compute_actions_from_input_dict(), so we can have the option
+    of running per-user connectors on the client side in a
+    server-client deployment.
 
     Args:
         policy: Policy.
@@ -176,9 +189,13 @@ def policy_inference(
     """
     assert (
         policy.agent_connectors
-    ), "policy_inference only works with connected enabled policies."
+    ), "policy_inference only works with connector enabled policies."
 
-    policy.agent_connectors.is_training(False)
+    # Put policy in inference mode, so we don't spend time on training
+    # only transformations.
+    policy.agent_connectors.in_eval()
+    policy.action_connectors.in_eval()
+
     # TODO(jungong) : support multiple env, multiple agent inference.
     input_dict = {SampleBatch.NEXT_OBS: obs}
     acd_list: List[AgentConnectorDataType] = [
@@ -187,9 +204,55 @@ def policy_inference(
     ac_outputs: List[AgentConnectorsOutput] = policy.agent_connectors(acd_list)
     outputs = []
     for ac in ac_outputs:
-        policy_output = policy.compute_actions_from_input_dict(ac.data.for_action)
+        policy_output = policy.compute_actions_from_input_dict(ac.data.sample_batch)
+
+        action_connector_data = ActionConnectorDataType(
+            env_id, agent_id, ac.data.raw_dict, policy_output
+        )
+
         if policy.action_connectors:
-            acd = ActionConnectorDataType(env_id, agent_id, policy_output)
-            acd = policy.action_connectors(acd)
-        outputs.append(acd.output)
+            acd = policy.action_connectors(action_connector_data)
+            actions = acd.output
+        else:
+            actions = policy_output[0]
+
+        outputs.append(actions)
+
+        # Notify agent connectors with this new policy output.
+        # Necessary for state buffering agent connectors, for example.
+        policy.agent_connectors.on_policy_output(action_connector_data)
     return outputs
+
+
+@PublicAPI
+def compute_log_likelihoods_from_input_dict(
+    policy: "Policy", batch: Union[SampleBatch, Dict[str, TensorStructType]]
+):
+    """Returns log likelihood for actions in given batch for policy.
+
+    Computes likelihoods by passing the observations through the current
+    policy's `compute_log_likelihoods()` method
+
+    Args:
+        batch: The SampleBatch or MultiAgentBatch to calculate action
+            log likelihoods from. This batch/batches must contain OBS
+            and ACTIONS keys.
+
+    Returns:
+        The probabilities of the actions in the batch, given the
+        observations and the policy.
+    """
+    num_state_inputs = 0
+    for k in batch.keys():
+        if k.startswith("state_in_"):
+            num_state_inputs += 1
+    state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
+    log_likelihoods: TensorType = policy.compute_log_likelihoods(
+        actions=batch[SampleBatch.ACTIONS],
+        obs_batch=batch[SampleBatch.OBS],
+        state_batches=[batch[k] for k in state_keys],
+        prev_action_batch=batch.get(SampleBatch.PREV_ACTIONS),
+        prev_reward_batch=batch.get(SampleBatch.PREV_REWARDS),
+        actions_normalized=policy.config.get("actions_in_input_normalized", False),
+    )
+    return log_likelihoods

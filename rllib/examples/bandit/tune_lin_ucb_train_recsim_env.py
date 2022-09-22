@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 import pandas as pd
 import time
 
-from ray import tune
+from ray import air, tune
 import ray.rllib.examples.env.recommender_system_envs_with_recsim  # noqa
 
 
@@ -42,26 +42,33 @@ if __name__ == "__main__":
     }
 
     # Actual env timesteps per `train()` call will be
-    # 10 * min_sample_timesteps_per_iteration (100 by default) = 1,000
-    training_iterations = 5000
+    # 100 * min_sample_timesteps_per_iteration (100 by default) = 10,000
+    training_iterations = 100
 
     print("Running training for %s time steps" % training_iterations)
 
     start_time = time.time()
-    analysis = tune.run(
+    tuner = tune.Tuner(
         "BanditLinUCB",
-        config=config,
-        stop={"training_iteration": training_iterations},
-        num_samples=1,
-        checkpoint_at_end=False,
+        param_space=config,
+        run_config=air.RunConfig(
+            stop={"training_iteration": training_iterations},
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_at_end=False,
+            ),
+        ),
+        tune_config=tune.TuneConfig(
+            num_samples=1,
+        ),
     )
+    results = tuner.fit()
 
     print("The trials took", time.time() - start_time, "seconds\n")
 
     # Analyze cumulative regrets of the trials
     frame = pd.DataFrame()
-    for key, df in analysis.trial_dataframes.items():
-        frame = frame.append(df, ignore_index=True)
+    for result in results:
+        frame = frame.append(result.metrics_dataframe, ignore_index=True)
     x = frame.groupby("agent_timesteps_total")["episode_reward_mean"].aggregate(
         ["mean", "max", "min", "std"]
     )

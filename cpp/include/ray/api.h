@@ -17,12 +17,14 @@
 #include <ray/api/actor_creator.h>
 #include <ray/api/actor_handle.h>
 #include <ray/api/actor_task_caller.h>
+#include <ray/api/function_manager.h>
 #include <ray/api/logging.h>
 #include <ray/api/object_ref.h>
 #include <ray/api/ray_config.h>
 #include <ray/api/ray_remote.h>
 #include <ray/api/ray_runtime.h>
 #include <ray/api/ray_runtime_holder.h>
+#include <ray/api/runtime_env.h>
 #include <ray/api/task_caller.h>
 #include <ray/api/wait_result.h>
 
@@ -134,7 +136,7 @@ boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name,
 /// It is used to disconnect an actor and exit the worker.
 /// \Throws RayException if the current process is a driver or the current worker is not
 /// an actor.
-inline void ExitActor() { ray::internal::GetRayRuntime()->ExitActor(); }
+void ExitActor();
 
 template <typename T>
 std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids);
@@ -161,6 +163,9 @@ PlacementGroup GetPlacementGroup(const std::string &name);
 
 /// Returns true if the current actor was restarted, otherwise false.
 bool WasCurrentActorRestarted();
+
+/// Get the namespace of this job.
+std::string GetNamespace();
 
 // --------- inline implementation ------------
 
@@ -266,7 +271,8 @@ inline ray::internal::TaskCaller<F> Task(F func) {
   static_assert(!ray::internal::is_python_v<F>, "Must be a cpp function.");
   static_assert(!std::is_member_function_pointer_v<F>,
                 "Incompatible type: member function cannot be called with ray::Task.");
-  ray::internal::RemoteFunctionHolder remote_func_holder(std::move(func));
+  auto func_name = internal::FunctionManager::Instance().GetFunctionName(func);
+  ray::internal::RemoteFunctionHolder remote_func_holder(std::move(func_name));
   return ray::internal::TaskCaller<F>(ray::internal::GetRayRuntime().get(),
                                       std::move(remote_func_holder));
 }
@@ -274,7 +280,8 @@ inline ray::internal::TaskCaller<F> Task(F func) {
 /// Creating an actor.
 template <typename F>
 inline ray::internal::ActorCreator<F> Actor(F create_func) {
-  ray::internal::RemoteFunctionHolder remote_func_holder(std::move(create_func));
+  auto func_name = internal::FunctionManager::Instance().GetFunctionName(create_func);
+  ray::internal::RemoteFunctionHolder remote_func_holder(std::move(func_name));
   return ray::internal::ActorCreator<F>(ray::internal::GetRayRuntime().get(),
                                         std::move(remote_func_holder));
 }
@@ -299,6 +306,8 @@ boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name,
   return ActorHandle<T>(actor_id);
 }
 
+inline void ExitActor() { ray::internal::GetRayRuntime()->ExitActor(); }
+
 inline PlacementGroup CreatePlacementGroup(
     const ray::PlacementGroupCreationOptions &create_options) {
   return ray::internal::GetRayRuntime()->CreatePlacementGroup(create_options);
@@ -322,6 +331,10 @@ inline PlacementGroup GetPlacementGroup(const std::string &name) {
 
 inline bool WasCurrentActorRestarted() {
   return ray::internal::GetRayRuntime()->WasCurrentActorRestarted();
+}
+
+inline std::string GetNamespace() {
+  return ray::internal::GetRayRuntime()->GetNamespace();
 }
 
 }  // namespace ray

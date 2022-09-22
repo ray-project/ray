@@ -18,7 +18,7 @@ from typing import Tuple
 import boto3
 import mlflow
 import pandas as pd
-from ray.air.config import DatasetConfig
+from ray.air.config import DatasetConfig, ScalingConfig
 from ray.train.torch.torch_trainer import TorchTrainer
 import torch
 import torch.nn as nn
@@ -625,7 +625,7 @@ if __name__ == "__main__":
         train_func,
         train_loop_config=config,
         datasets=datasets,
-        scaling_config=dict(
+        scaling_config=ScalingConfig(
             num_workers=num_workers,
             use_gpu=use_gpu,
             resources_per_worker=resources_per_worker,

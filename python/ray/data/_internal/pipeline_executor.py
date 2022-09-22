@@ -29,12 +29,6 @@ class PipelineExecutor:
             len(self._pipeline._optimized_stages) + 1
         )
         self._iter = iter(self._pipeline._base_iterable)
-        self._pool = concurrent.futures.ThreadPoolExecutor(
-            max_workers=len(self._stages)
-        )
-        self._stages[0] = self._pool.submit(
-            lambda n: pipeline_stage(n), next(self._iter)
-        )
 
         if self._pipeline._length and self._pipeline._length != float("inf"):
             length = self._pipeline._length
@@ -49,10 +43,23 @@ class PipelineExecutor:
         else:
             self._bars = None
 
+        # The creation of execution thread pool is deferred until this is
+        # actually being iterated. This will make the Python objects containing
+        # a PipelineExecutor serializable (as long as the PipelineExecutor has not
+        # been iterated at the point of serialization), which otherwise are not
+        # because the thread pool contains locks which are not serializable.
+        # The motivation use case is to support pipe.rewindow().split().
+        self._pool = None
+
     def __del__(self):
         for f in self._stages:
             if f is not None:
                 f.cancel()
+
+        # Thread pool wasn't created during the lifetime of PipelineExecutor.
+        if not self._pool:
+            return
+
         self._pool.shutdown(wait=False)
 
         # Signal to all remaining threads to shut down.
@@ -75,10 +82,29 @@ class PipelineExecutor:
                 "complete or when the driver exits"
             )
 
+    def __reduce__(self):
+        if self._pool is not None:
+            raise RuntimeError(
+                "PipelineExecutor is not serializable once it has started."
+            )
+        return (self.__class__, (self._pipeline,))
+
+    def _create_thread_pool(self):
+        if self._pool is None:
+            self._pool = concurrent.futures.ThreadPoolExecutor(
+                max_workers=len(self._stages)
+            )
+            self._stages[0] = self._pool.submit(
+                lambda n: pipeline_stage(n), next(self._iter)
+            )
+
     def __iter__(self):
         return self
 
     def __next__(self):
+        if self._pool is None:
+            self._create_thread_pool()
+
         output = None
         start = time.perf_counter()
 

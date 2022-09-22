@@ -96,10 +96,6 @@ class Node:
             if len(external_redis) == 1:
                 external_redis.append(external_redis[0])
             [primary_redis_ip, port] = external_redis[0].split(":")
-            ray._private.services.wait_for_redis_to_start(
-                primary_redis_ip, port, password=ray_params.redis_password
-            )
-
             ray_params.external_addresses = external_redis
             ray_params.num_redis_shards = len(external_redis) - 1
 
@@ -337,6 +333,7 @@ class Node:
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
+        self._record_stats()
 
     @staticmethod
     def validate_ip_port(ip_port):
@@ -362,9 +359,7 @@ class Node:
         """
         import ray._private.usage.usage_lib as ray_usage_lib
 
-        cluster_metadata = ray_usage_lib.get_cluster_metadata(
-            self.get_gcs_client(), num_retries=NUM_REDIS_GET_RETRIES
-        )
+        cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
         if cluster_metadata is None:
             return
         ray._private.utils.check_version_info(cluster_metadata)
@@ -587,12 +582,6 @@ class Node:
     def is_head(self):
         return self.head
 
-    def create_redis_client(self):
-        """Create a redis client."""
-        return ray._private.services.create_redis_client(
-            self.redis_address, self._ray_params.redis_password
-        )
-
     def get_gcs_client(self):
         if self._gcs_client is None:
             for _ in range(NUM_REDIS_GET_RETRIES):
@@ -601,6 +590,7 @@ class Node:
                 try:
                     gcs_address = self.gcs_address
                     self._gcs_client = GcsClient(address=gcs_address)
+                    break
                 except Exception:
                     last_ex = traceback.format_exc()
                     logger.debug(f"Connecting to GCS: {last_ex}")
@@ -851,38 +841,6 @@ class Node:
                 process_info,
             ]
 
-    def start_or_configure_redis(self):
-        """Starts local Redis or configures external Redis."""
-        assert self._redis_address is None
-        redis_log_files = []
-        if self._ray_params.external_addresses is None:
-            redis_log_files = [self.get_log_file_handles("redis", unique=True)]
-            for i in range(self._ray_params.num_redis_shards):
-                redis_log_files.append(
-                    self.get_log_file_handles(f"redis-shard_{i}", unique=True)
-                )
-
-        (
-            self._redis_address,
-            redis_shards,
-            process_infos,
-        ) = ray._private.services.start_redis(
-            self._node_ip_address,
-            redis_log_files,
-            self.get_resource_spec(),
-            self.get_session_dir_path(),
-            port=self._ray_params.redis_port,
-            redis_shard_ports=self._ray_params.redis_shard_ports,
-            num_redis_shards=self._ray_params.num_redis_shards,
-            redis_max_clients=self._ray_params.redis_max_clients,
-            password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share,
-            external_addresses=self._ray_params.external_addresses,
-            port_denylist=self._ray_params.reserved_ports,
-        )
-        assert ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes
-        self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = process_infos
-
     def start_log_monitor(self):
         """Start the log monitor."""
         process_info = ray._private.services.start_log_monitor(
@@ -898,16 +856,20 @@ class Node:
             process_info,
         ]
 
-    def start_dashboard(self, require_dashboard: bool):
+    def start_api_server(self, *, include_dashboard: bool, raise_on_failure: bool):
         """Start the dashboard.
 
         Args:
-            require_dashboard: If true, this will raise an exception
-                if we fail to start the dashboard. Otherwise it will print
-                a warning if we fail to start the dashboard.
+            include_dashboard: If true, this will load all dashboard-related modules
+                when starting the API server. Otherwise, it will only
+                start the modules that are not relevant to the dashboard.
+            raise_on_failure: If true, this will raise an exception
+                if we fail to start the API server. Otherwise it will print
+                a warning if we fail to start the API server.
         """
-        self._webui_url, process_info = ray._private.services.start_dashboard(
-            require_dashboard,
+        self._webui_url, process_info = ray._private.services.start_api_server(
+            include_dashboard,
+            raise_on_failure,
             self._ray_params.dashboard_host,
             self.gcs_address,
             self._temp_dir,
@@ -1079,7 +1041,7 @@ class Node:
         # Make sure the cluster metadata wasn't reported before.
         import ray._private.usage.usage_lib as ray_usage_lib
 
-        ray_usage_lib.put_cluster_metadata(self.get_gcs_client(), NUM_REDIS_GET_RETRIES)
+        ray_usage_lib.put_cluster_metadata(self.get_gcs_client())
 
     def start_head_processes(self):
         """Start head processes on the node."""
@@ -1091,13 +1053,7 @@ class Node:
         assert self._gcs_client is None
 
         if self._ray_params.external_addresses is not None:
-            # This only configures external Redis and does not start local
-            # Redis, when external Redis address is specified.
-            # TODO(mwtian): after GCS bootstrapping is default and stable,
-            # only keep external Redis configuration logic in the function.
-            self.start_or_configure_redis()
-            # Wait for Redis to become available.
-            self.create_redis_client()
+            self._redis_address = self._ray_params.external_addresses[0]
 
         self.start_gcs_server()
         assert self._gcs_client is not None
@@ -1109,10 +1065,21 @@ class Node:
         if self._ray_params.ray_client_server_port:
             self.start_ray_client_server()
 
-        if self._ray_params.include_dashboard:
-            self.start_dashboard(require_dashboard=True)
-        elif self._ray_params.include_dashboard is None:
-            self.start_dashboard(require_dashboard=False)
+        if self._ray_params.include_dashboard is None:
+            # Default
+            include_dashboard = True
+            raise_on_api_server_failure = False
+        elif self._ray_params.include_dashboard is False:
+            include_dashboard = False
+            raise_on_api_server_failure = False
+        else:
+            include_dashboard = True
+            raise_on_api_server_failure = True
+
+        self.start_api_server(
+            include_dashboard=include_dashboard,
+            raise_on_failure=raise_on_api_server_failure,
+        )
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""
@@ -1506,3 +1473,17 @@ class Node:
 
         external_storage.setup_external_storage(deserialized_config, self.session_name)
         external_storage.reset_external_storage()
+
+    def _record_stats(self):
+        # Initialize the internal kv so that the metrics can be put
+        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+
+        if not ray.experimental.internal_kv._internal_kv_initialized():
+            ray.experimental.internal_kv._initialize_internal_kv(self.get_gcs_client)
+        assert ray.experimental.internal_kv._internal_kv_initialized()
+        if self.head:
+            # record head node stats
+            gcs_storage_type = (
+                "redis" if os.environ.get("RAY_REDIS_ADDRESS") is not None else "memory"
+            )
+            record_extra_usage_tag(TagKey.GCS_STORAGE, gcs_storage_type)

@@ -11,6 +11,7 @@ import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.proxy.HttpProxy;
 import io.ray.serve.proxy.ProxyActor;
 import io.ray.serve.replica.DummyReplica;
@@ -30,7 +31,6 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class ProxyActorTest extends BaseTest {
-
   @Test
   public void test() throws IOException {
     init();
@@ -50,12 +50,13 @@ public class ProxyActorTest extends BaseTest {
 
       // Controller
       ActorHandle<DummyServeController> controller =
-          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
       Map<String, EndpointInfo> endpointInfos = new HashMap<>();
       endpointInfos.put(
           endpointName,
           EndpointInfo.newBuilder().setEndpointName(endpointName).setRoute(route).build());
-      controller.task(DummyServeController::setEndpoints, endpointInfos).remote();
+      EndpointSet endpointSet = EndpointSet.newBuilder().putAllEndpoints(endpointInfos).build();
+      controller.task(DummyServeController::setEndpoints, endpointSet.toByteArray()).remote();
 
       // Replica
       DeploymentWrapper deploymentWrapper =
@@ -95,7 +96,6 @@ public class ProxyActorTest extends BaseTest {
                   + route);
       try (CloseableHttpResponse httpResponse =
           (CloseableHttpResponse) httpClient.execute(httpPost)) {
-
         int status = httpResponse.getCode();
         Assert.assertEquals(status, HttpURLConnection.HTTP_OK);
         Object result =

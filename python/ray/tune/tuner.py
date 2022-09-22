@@ -1,30 +1,42 @@
-from typing import Any, Callable, Dict, Optional, Type, Union
+from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
 import ray
 
 from ray.air.config import RunConfig
-from ray.train.trainer import BaseTrainer
 from ray.tune import TuneError
+from ray.tune.execution.trial_runner import _ResumeConfig
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal
 from ray.tune.tune_config import TuneConfig
+from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
-from ray.util.ml_utils.node import force_on_current_node
+
+if TYPE_CHECKING:
+    from ray.train.trainer import BaseTrainer
 
 ClientActorHandle = Any
 
-try:
-    from ray.util.client.common import ClientActorHandle
-except Exception:
-    pass
+# try:
+#     # Breaks lint right now.
+#     from ray.util.client.common import ClientActorHandle
+# except Exception:
+#     pass
 
 # The magic key that is used when instantiating Tuner during resume.
 _TUNER_INTERNAL = "_tuner_internal"
 _SELF = "self"
 
 
-@PublicAPI(stability="alpha")
+_TUNER_FAILED_MSG = (
+    "The Ray Tune run failed. Please inspect the previous error messages for a "
+    "cause. After fixing the issue, you can restart the run from scratch or "
+    "continue this run. To continue this run, you can use "
+    '`tuner = Tuner.restore("{path}")`.'
+)
+
+
+@PublicAPI(stability="beta")
 class Tuner:
     """Tuner is the recommended way of launching hyperparameter tuning jobs with Ray Tune.
 
@@ -46,7 +58,7 @@ class Tuner:
 
         from ray import tune
         from ray.data import from_pandas
-        from ray.air.config import RunConfig
+        from ray.air.config import RunConfig, ScalingConfig
         from ray.train.xgboost import XGBoostTrainer
         from ray.tune.tuner import Tuner
 
@@ -64,12 +76,12 @@ class Tuner:
         )
 
         param_space = {
-            "scaling_config": {
-                "num_workers": tune.grid_search([2, 4]),
-                "resources_per_worker": {
+            "scaling_config": ScalingConfig(
+                num_workers=tune.grid_search([2, 4]),
+                resources_per_worker={
                     "CPU": tune.grid_search([1, 2]),
                 },
-            },
+            ),
             # You can even grid search various datasets in Tune.
             # "datasets": {
             #     "train": tune.grid_search(
@@ -111,9 +123,10 @@ class Tuner:
                 str,
                 Callable,
                 Type[Trainable],
-                BaseTrainer,
+                "BaseTrainer",
             ]
         ] = None,
+        *,
         param_space: Optional[Dict[str, Any]] = None,
         tune_config: Optional[TuneConfig] = None,
         run_config: Optional[RunConfig] = None,
@@ -138,32 +151,70 @@ class Tuner:
             if not self._is_ray_client:
                 self._local_tuner = TunerInternal(**kwargs)
             else:
-                self._remote_tuner = force_on_current_node(
+                self._remote_tuner = _force_on_current_node(
                     ray.remote(num_cpus=0)(TunerInternal)
                 ).remote(**kwargs)
 
     @classmethod
-    def restore(cls, path: str) -> "Tuner":
+    def restore(
+        cls,
+        path: str,
+        resume_unfinished: bool = True,
+        resume_errored: bool = False,
+        restart_errored: bool = False,
+    ) -> "Tuner":
         """Restores Tuner after a previously failed run.
 
+        All trials from the existing run will be added to the result table. The
+        argument flags control how existing but unfinished or errored trials are
+        resumed.
+
+        Finished trials are always added to the overview table. They will not be
+        resumed.
+
+        Unfinished trials can be controlled with the ``resume_unfinished`` flag.
+        If ``True`` (default), they will be continued. If ``False``, they will
+        be added as terminated trials (even if they were only created and never
+        trained).
+
+        Errored trials can be controlled with the ``resume_errored`` and
+        ``restart_errored`` flags. The former will resume errored trials from
+        their latest checkpoints. The latter will restart errored trials from
+        scratch and prevent loading their last checkpoints.
+
         Args:
-           path: The path where the previous failed run is checkpointed.
-               This information could be easily located near the end of the
-               console output of previous run.
-               Note: depending on whether ray client mode is used or not,
-               this path may or may not exist on your local machine.
+            path: The path where the previous failed run is checkpointed.
+                This information could be easily located near the end of the
+                console output of previous run.
+                Note: depending on whether ray client mode is used or not,
+                this path may or may not exist on your local machine.
+            resume_unfinished: If True, will continue to run unfinished trials.
+            resume_errored: If True, will re-schedule errored trials and try to
+                restore from their latest checkpoints.
+            restart_errored: If True, will re-schedule errored trials but force
+                restarting them from scratch (no checkpoint will be loaded).
+
         """
         # TODO(xwjiang): Add some comments to clarify the config behavior across
         #  retored runs.
         #  For example, is callbacks supposed to be automatically applied
         #  when a Tuner is restored and fit again?
+
+        resume_config = _ResumeConfig(
+            resume_unfinished=resume_unfinished,
+            resume_errored=resume_errored,
+            restart_errored=restart_errored,
+        )
+
         if not ray.util.client.ray.is_connected():
-            tuner_internal = TunerInternal(restore_path=path)
+            tuner_internal = TunerInternal(
+                restore_path=path, resume_config=resume_config
+            )
             return Tuner(_tuner_internal=tuner_internal)
         else:
-            tuner_internal = force_on_current_node(
+            tuner_internal = _force_on_current_node(
                 ray.remote(num_cpus=0)(TunerInternal)
-            ).remote(restore_path=path)
+            ).remote(restore_path=path, resume_config=resume_config)
             return Tuner(_tuner_internal=tuner_internal)
 
     def fit(self) -> ResultGrid:
@@ -183,7 +234,8 @@ class Tuner:
         to resume.
 
         Raises:
-            RayTaskError when the exception happens in trainable else TuneError.
+            RayTaskError: If user-provided trainable raises an exception
+            TuneError: General Ray Tune error.
         """
 
         if not self._is_ray_client:
@@ -191,9 +243,9 @@ class Tuner:
                 return self._local_tuner.fit()
             except Exception as e:
                 raise TuneError(
-                    f"Tune run failed. "
-                    f'Please use tuner = Tuner.restore("'
-                    f'{self._local_tuner.get_experiment_checkpoint_dir()}") to resume.'
+                    _TUNER_FAILED_MSG.format(
+                        path=self._local_tuner.get_experiment_checkpoint_dir()
+                    )
                 ) from e
         else:
             experiment_checkpoint_dir = ray.get(
@@ -203,7 +255,5 @@ class Tuner:
                 return ray.get(self._remote_tuner.fit.remote())
             except Exception as e:
                 raise TuneError(
-                    f"Tune run failed. "
-                    f'Please use tuner = Tuner.restore("'
-                    f'{experiment_checkpoint_dir}") to resume.'
+                    _TUNER_FAILED_MSG.format(path=experiment_checkpoint_dir)
                 ) from e

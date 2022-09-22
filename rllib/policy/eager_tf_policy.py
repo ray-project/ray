@@ -5,14 +5,13 @@ It supports both traced and non-traced eager execution modes."""
 import functools
 import logging
 import threading
-from typing import Dict, List, Optional, Tuple
-
 import tree  # pip install dm_tree
+from typing import Dict, List, Optional, Tuple
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
@@ -697,7 +696,7 @@ def _build_eager_tf_policy(
             return []
 
         @override(Policy)
-        def get_state(self):
+        def get_state(self) -> PolicyState:
             state = super().get_state()
             state["global_timestep"] = state["global_timestep"].numpy()
             if self._optimizer and len(self._optimizer.variables()) > 0:
@@ -707,7 +706,7 @@ def _build_eager_tf_policy(
             return state
 
         @override(Policy)
-        def set_state(self, state):
+        def set_state(self, state: PolicyState) -> None:
             # Set optimizer vars first.
             optimizer_vars = state.get("_optimizer_variables", None)
             if optimizer_vars and self._optimizer.variables():
@@ -722,9 +721,12 @@ def _build_eager_tf_policy(
             # Set exploration's state.
             if hasattr(self, "exploration") and "_exploration_state" in state:
                 self.exploration.set_state(state=state["_exploration_state"])
-            # Weights and global_timestep (tf vars).
-            self.set_weights(state["weights"])
+
+            # Restore glbal timestep (tf vars).
             self.global_timestep.assign(state["global_timestep"])
+
+            # Then the Policy's (NN) weights and connectors.
+            super().set_state(state)
 
         @override(Policy)
         def export_checkpoint(self, export_dir):

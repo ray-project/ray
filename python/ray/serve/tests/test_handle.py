@@ -36,14 +36,13 @@ def test_sync_handle_serializable(serve_instance):
     def f():
         return "hello"
 
-    f.deploy()
+    handle = serve.run(f.bind())
 
     @ray.remote
     def task(handle):
         return ray.get(handle.remote())
 
     # Test pickling via ray.remote()
-    handle = f.get_handle(sync=True)
     result_ref = task.remote(handle)
     assert ray.get(result_ref) == "hello"
 
@@ -67,10 +66,9 @@ def test_handle_serializable_in_deployment_init(serve_instance):
         def __call__(self, *args):
             return {"count": self.count}
 
-    RayServer1.deploy()
-    for sync in [True, False]:
-        rs1_handle = RayServer1.get_handle(sync=sync)
-        RayServer2.deploy(rs1_handle)
+    rs1 = RayServer1.bind()
+    rs2 = RayServer2.bind(rs1)
+    serve.run(rs2)
 
 
 def test_sync_handle_in_thread(serve_instance):
@@ -78,7 +76,7 @@ def test_sync_handle_in_thread(serve_instance):
     def f():
         return "hello"
 
-    f.deploy()
+    handle = serve.run(f.bind())
 
     def thread_get_handle(deploy):
         handle = deploy.get_handle(sync=True)
@@ -98,14 +96,15 @@ def test_handle_in_endpoint(serve_instance):
 
     @serve.deployment
     class Endpoint2:
-        def __init__(self):
-            self.handle = Endpoint1.get_handle()
+        def __init__(self, handle):
+            self.handle = handle
 
-        def __call__(self, _):
-            return ray.get(self.handle.remote())
+        async def __call__(self, _):
+            return await (await self.handle.remote())
 
-    Endpoint1.deploy()
-    Endpoint2.deploy()
+    end_p1 = Endpoint1.bind()
+    end_p2 = Endpoint2.bind(end_p1)
+    serve.run(end_p2)
 
     assert requests.get("http://127.0.0.1:8000/Endpoint2").text == "hello"
 
@@ -145,16 +144,13 @@ def test_handle_option_chaining(serve_instance):
         def __call__(self):
             return "__call__"
 
-    MultiMethod.deploy()
+    handle1 = serve.run(MultiMethod.bind())
+    assert ray.get(handle1.remote()) == "__call__"
 
-    # get_handle should give you a clean handle
-    handle1 = MultiMethod.get_handle().options(method_name="method_a")
-    handle2 = MultiMethod.get_handle()
-    # options().options() override should work
+    handle2 = handle1.options(method_name="method_a")
+    assert ray.get(handle2.remote()) == "method_a"
+
     handle3 = handle1.options(method_name="method_b")
-
-    assert ray.get(handle1.remote()) == "method_a"
-    assert ray.get(handle2.remote()) == "__call__"
     assert ray.get(handle3.remote()) == "method_b"
 
 

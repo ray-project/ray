@@ -25,7 +25,7 @@ from ray._private.client_mode_hook import disable_client_hook
 from ray._private.gcs_utils import GcsClient
 from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
-from ray._private.services import canonicalize_bootstrap_address
+from ray._private.services import canonicalize_bootstrap_address_or_die
 from ray._private.tls_utils import add_port_to_grpc_server
 from ray.job_config import JobConfig
 from ray.util.client.common import (
@@ -167,31 +167,64 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
     @_use_response_cache
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
-        with disable_client_hook():
-            already_exists = ray.experimental.internal_kv._internal_kv_put(
-                request.key, request.value, overwrite=request.overwrite
-            )
+        try:
+            with disable_client_hook():
+                already_exists = ray.experimental.internal_kv._internal_kv_put(
+                    request.key,
+                    request.value,
+                    overwrite=request.overwrite,
+                    namespace=request.namespace,
+                )
+        except Exception as e:
+            return_exception_in_context(e, context)
+            already_exists = False
         return ray_client_pb2.KVPutResponse(already_exists=already_exists)
 
     def KVGet(self, request, context=None) -> ray_client_pb2.KVGetResponse:
-        with disable_client_hook():
-            value = ray.experimental.internal_kv._internal_kv_get(request.key)
+        try:
+            with disable_client_hook():
+                value = ray.experimental.internal_kv._internal_kv_get(
+                    request.key, namespace=request.namespace
+                )
+        except Exception as e:
+            return_exception_in_context(e, context)
+            value = b""
         return ray_client_pb2.KVGetResponse(value=value)
 
     @_use_response_cache
     def KVDel(self, request, context=None) -> ray_client_pb2.KVDelResponse:
-        with disable_client_hook():
-            ray.experimental.internal_kv._internal_kv_del(request.key)
-        return ray_client_pb2.KVDelResponse()
+        try:
+            with disable_client_hook():
+                deleted_num = ray.experimental.internal_kv._internal_kv_del(
+                    request.key,
+                    del_by_prefix=request.del_by_prefix,
+                    namespace=request.namespace,
+                )
+        except Exception as e:
+            return_exception_in_context(e, context)
+            deleted_num = 0
+        return ray_client_pb2.KVDelResponse(deleted_num=deleted_num)
 
     def KVList(self, request, context=None) -> ray_client_pb2.KVListResponse:
-        with disable_client_hook():
-            keys = ray.experimental.internal_kv._internal_kv_list(request.prefix)
+        try:
+            with disable_client_hook():
+                keys = ray.experimental.internal_kv._internal_kv_list(
+                    request.prefix, namespace=request.namespace
+                )
+        except Exception as e:
+            return_exception_in_context(e, context)
+            keys = []
         return ray_client_pb2.KVListResponse(keys=keys)
 
     def KVExists(self, request, context=None) -> ray_client_pb2.KVExistsResponse:
-        with disable_client_hook():
-            exists = ray.experimental.internal_kv._internal_kv_exists(request.key)
+        try:
+            with disable_client_hook():
+                exists = ray.experimental.internal_kv._internal_kv_exists(
+                    request.key, namespace=request.namespace
+                )
+        except Exception as e:
+            return_exception_in_context(e, context)
+            exists = False
         return ray_client_pb2.KVExistsResponse(exists=exists)
 
     def ListNamedActors(
@@ -799,7 +832,7 @@ def try_create_gcs_client(
     Try to create a gcs client based on the the command line args or by
     autodetecting a running Ray cluster.
     """
-    address = canonicalize_bootstrap_address(address)
+    address = canonicalize_bootstrap_address_or_die(address)
     return GcsClient(address=address)
 
 

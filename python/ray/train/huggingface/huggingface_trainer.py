@@ -1,22 +1,32 @@
+import importlib.util
 import inspect
 import os
 import shutil
+import sys
 import tempfile
 import warnings
-from distutils.version import LooseVersion
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
+
+try:
+    from packaging.version import Version
+except ImportError:
+    from distutils.version import LooseVersion as Version
+
 
 import transformers
 import transformers.modeling_utils
 import transformers.trainer
 import transformers.training_args
+from transformers.trainer_utils import IntervalStrategy
+from transformers.utils import is_datasets_available
 from torch.utils.data import Dataset as TorchDataset
 
 from ray.air import session
 from ray.air._internal.checkpointing import (
     save_preprocessor_to_dir,
 )
+from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.constants import (
@@ -38,10 +48,33 @@ from ray.train.trainer import GenDataset
 from ray.tune.trainable import Trainable
 from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
 from ray.util import PublicAPI, get_node_ip_address
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+
+# Due to HF Dataset's dynamic module system, we need to dynamically import the
+# datasets_modules module on every actor when training.
+# We accomplish this by simply running the following bit of code directly
+# in module you are currently viewing. This ensures that when we
+# unpickle the HuggingFaceTrainer, it will be ran before pickle tries to
+# import datasets_modules and prevents an exception from being thrown.
+# Same logic is present inside HF Transformers Ray integration:
+# https://github.com/huggingface/transformers/blob/\
+# 7d5fde991d598370d961be8cb7add6541e2b59ce/src/transformers/integrations.py#L271
+# Also see https://github.com/ray-project/ray/issues/28084
+if "datasets_modules" not in sys.modules and is_datasets_available():
+    import datasets.load
+
+    dynamic_modules_path = os.path.join(
+        datasets.load.init_dynamic_modules(), "__init__.py"
+    )
+    # load dynamic_modules from path
+    spec = importlib.util.spec_from_file_location(
+        "datasets_modules", dynamic_modules_path
+    )
+    datasets_modules = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = datasets_modules
+    spec.loader.exec_module(datasets_modules)
 
 # This trainer uses a special checkpoint syncing logic.
 # Because HF checkpoints are very large dirs (at least several GBs),
@@ -71,11 +104,16 @@ class _SyncedTrackedCheckpoint(_TrackedCheckpoint):
         target_ip = get_node_ip_address()
 
         if source_ip == target_ip:
-            # Move contents of source_path, but not source_path
-            # itself. shutil.move is already recursive.
-            for inner in Path(source_path).iterdir():
-                shutil.move(str(inner.absolute()), str(path))
-            shutil.rmtree(source_path, ignore_errors=True)
+            source_path = Path(source_path)
+            for inner in source_path.iterdir():
+                try:
+                    shutil.move(str(inner.absolute()), str(path.absolute()))
+                except OSError:
+                    # This file may have already been moved by another rank worker.
+                    # Disregard, as the files are identical across all ranks.
+                    pass
+            # No need to file lock here as each rank worker has its own folder.
+            shutil.rmtree(str(source_path.absolute()), ignore_errors=True)
         else:
             sync_dir_between_nodes(
                 source_ip=source_ip,
@@ -114,12 +152,16 @@ class HuggingFaceTrainer(TorchTrainer):
     This Trainer runs the ``transformers.Trainer.train()`` method on multiple
     Ray Actors. The training is carried out in a distributed fashion through PyTorch
     DDP. These actors already have the necessary torch process group already
-    configured for distributed PyTorch training.
+    configured for distributed PyTorch training. If you have PyTorch >= 1.12.0
+    installed, you can also run FSDP training by specifying the ``fsdp`` argument
+    in ``TrainingArguments``. For more information on configuring FSDP,
+    refer to `Hugging Face documentation <https://huggingface.co/docs/transformers/\
+main/en/main_classes/trainer#transformers.TrainingArguments>`__.
 
     The training function ran on every Actor will first run the
     specified ``trainer_init_per_worker`` function to obtain an instantiated
     ``transformers.Trainer`` object. The ``trainer_init_per_worker`` function
-    will have access to preprocessed train and evaluation datsets.
+    will have access to preprocessed train and evaluation datasets.
 
     If the ``datasets`` dict contains a training dataset (denoted by
     the "train" key), then it will be split into multiple dataset
@@ -135,8 +177,7 @@ class HuggingFaceTrainer(TorchTrainer):
     argument in ``TrainingArguments`` will be automatically set. Please note
     that if you want to use CPU training, you will need to set the ``no_cuda``
     argument in ``TrainingArguments`` manually - otherwise, an exception
-    (segfault) may be thrown. Furthermore, 'steps' value for ``save_strategy``,
-    ``logging_strategy`` and ``evaluation_strategy`` is not yet supported.
+    (segfault) may be thrown.
 
     This Trainer requires ``transformers>=4.19.0`` package.
 
@@ -153,6 +194,7 @@ class HuggingFaceTrainer(TorchTrainer):
 
             import ray
             from ray.train.huggingface import HuggingFaceTrainer
+            from ray.air.config import ScalingConfig
 
             model_checkpoint = "gpt2"
             tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
@@ -197,7 +239,7 @@ class HuggingFaceTrainer(TorchTrainer):
             )
             ray_train_ds = ray.data.from_huggingface(lm_datasets["train"])
             ray_evaluation_ds = ray.data.from_huggingface(
-                lm_datasets["evaluation"]
+                lm_datasets["validation"]
             )
 
             def trainer_init_per_worker(train_dataset, eval_dataset, **config):
@@ -206,6 +248,8 @@ class HuggingFaceTrainer(TorchTrainer):
                 args = transformers.TrainingArguments(
                     output_dir=f"{model_checkpoint}-wikitext2",
                     evaluation_strategy="epoch",
+                    save_strategy="epoch",
+                    logging_strategy="epoch",
                     learning_rate=2e-5,
                     weight_decay=0.01,
                 )
@@ -216,9 +260,9 @@ class HuggingFaceTrainer(TorchTrainer):
                     eval_dataset=eval_dataset,
                 )
 
-            scaling_config = {"num_workers": 3}
+            scaling_config = ScalingConfig(num_workers=3)
             # If using GPUs, use the below scaling config instead.
-            # scaling_config = {"num_workers": 3, "use_gpu": True}
+            # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
             trainer = HuggingFaceTrainer(
                 trainer_init_per_worker=trainer_init_per_worker,
                 scaling_config=scaling_config,
@@ -257,7 +301,11 @@ class HuggingFaceTrainer(TorchTrainer):
     _checkpoint_manager_cls = _DataParallelSyncingCheckpointManager
 
     _dataset_config = {
-        "train": DatasetConfig(fit=True, split=False, required=True),
+        # training dataset should be split by us
+        "train": DatasetConfig(fit=True, split=True, required=True),
+        # do not split eval dataset, as HF has a system to parallelize
+        # evaluation across workers, and it requires each worker
+        # to have the full eval dataset
         "evaluation": DatasetConfig(split=False),
     }
 
@@ -279,7 +327,7 @@ class HuggingFaceTrainer(TorchTrainer):
 
         # Functionality required for HuggingFaceTrainer only added in this
         # version
-        if LooseVersion(transformers.__version__) < LooseVersion("4.19.0"):
+        if Version(transformers.__version__) < Version("4.19.0"):
             raise RuntimeError(
                 "HuggingFaceTrainer requires transformers>=4.19.0, but you "
                 f"have {transformers.__version__} which is incompatible. "
@@ -325,7 +373,7 @@ class HuggingFaceTrainer(TorchTrainer):
                 raise ValueError(
                     "HuggingFaceTrainer does not support `use_stream_api`."
                 )
-        gpus_per_worker = self.scaling_config.get("num_gpus_per_worker", 0)
+        gpus_per_worker = self.scaling_config.num_gpus_per_worker
         if gpus_per_worker > 1:
             raise ValueError(
                 f"You have assigned {gpus_per_worker} GPUs per worker. "
@@ -423,22 +471,61 @@ def _huggingface_train_loop_per_worker(config):
         train_torch_dataset, eval_torch_dataset, **config
     )
 
+    strategies = [
+        strategy
+        for strategy in (trainer.args.evaluation_strategy, trainer.args.save_strategy)
+        if strategy not in ("no", IntervalStrategy.NO)
+    ]
+    strategies = [trainer.args.logging_strategy] + strategies
+    if not all(strategy == strategies[0] for strategy in strategies[1:]):
+        raise ValueError(
+            "When using Ray AIR,`logging_strategy`, `evaluation_strategy` "
+            "and `save_strategy` must all be set to the same value. "
+            "`evaluation_strategy` or `save_strategy` may also be set to 'no'.\n"
+            f"Got `logging_strategy`={trainer.args.logging_strategy}\n"
+            f"`evaluation_strategy`={trainer.args.evaluation_strategy}\n"
+            f"`save_strategy`={trainer.args.save_strategy}"
+        )
+
+    if trainer.args.save_strategy in ("steps", IntervalStrategy.STEPS):
+        if (
+            trainer.args.save_steps < trainer.args.logging_steps
+            or trainer.args.save_steps % trainer.args.logging_steps != 0
+        ):
+            raise ValueError(
+                "When using 'steps' `save_strategy`, `save_steps` must be "
+                "equal or bigger to `logging_steps`, and must be divisible "
+                "by `logging_steps` (so that saving occurs at the same time "
+                f"logging does). Got `save_steps`={trainer.args.save_steps}, "
+                f"`logging_steps`={trainer.args.logging_steps}."
+            )
+
+    if trainer.args.evaluation_strategy in ("steps", IntervalStrategy.STEPS):
+        if trainer.args.logging_steps != trainer.args.eval_steps:
+            raise ValueError(
+                "`logging_steps` must be equal to `eval_steps`. "
+                f"Got `logging_steps`={trainer.args.logging_steps}, "
+                f"`eval_steps`={trainer.args.eval_steps}"
+            )
+
+    if trainer.args.load_best_model_at_end:
+        raise ValueError(
+            "As Ray AIR replaces Hugging Face checkpointing, "
+            "`load_best_model_at_end` must be set to False.\n"
+            "You can obtain the AIR Checkpoint with "
+            "`Result.checkpoint` returned by the `fit()` method "
+            "of this Trainer, and the model itself by calling "
+            "`Checkpoint.get_model()`.\n"
+            "You can configure the checkpointing by setting "
+            "`run_config.checkpoint_config`."
+        )
+
     if trainer.args.push_to_hub and not trainer.args.hub_token:
         warnings.warn(
             "You have set `push_to_hub=True` but didn't specify `hub_token`. "
             "Pushing to hub will most likely fail, as the credentials will not "
             "be automatically propagated from the local enviroment to the Ray Actors. "
             "If that happens, specify `hub_token` in `TrainingArguments`."
-        )
-
-    if (
-        trainer.args.evaluation_strategy == "steps"
-        or trainer.args.save_strategy == "steps"
-        or trainer.args.logging_strategy == "steps"
-    ):
-        raise ValueError(
-            "'steps' value for `evaluation_strategy`, `logging_strategy` "
-            "or `save_strategy` is not yet supported."
         )
 
     trainer = wrap_transformers_trainer(trainer)

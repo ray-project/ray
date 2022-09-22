@@ -23,6 +23,7 @@ class TD3Config(DDPGConfig):
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.td3 import TD3Config
+        >>> from ray import air
         >>> from ray import tune
         >>> config = TD3Config()
         >>> # Print out some default values.
@@ -34,11 +35,11 @@ class TD3Config(DDPGConfig):
         >>> config.environment(env="Pendulum-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "TD3",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -71,9 +72,12 @@ class TD3Config(DDPGConfig):
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
             "capacity": 1000000,
-            "learning_starts": 10000,
             "worker_side_prioritization": False,
         }
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        self.num_steps_sampled_before_learning_starts = 10000
 
         # .exploration()
         # TD3 uses Gaussian Noise by default.

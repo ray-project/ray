@@ -15,7 +15,7 @@ from pydantic import (
 )
 
 from ray import cloudpickle
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
     DEFAULT_HEALTH_CHECK_PERIOD_S,
@@ -31,8 +31,10 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray._private import ray_option_utils
 from ray._private.utils import resources_from_ray_options
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
+@PublicAPI(stability="stable")
 class AutoscalingConfig(BaseModel):
     # Please keep these options in sync with those in
     # `src/ray/protobuf/serve.proto`.
@@ -84,7 +86,7 @@ class AutoscalingConfig(BaseModel):
 
 
 def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bool):
-    """From Serve client API's perspective, decide whehter pickling is needed."""
+    """From Serve client API's perspective, decide whether pickling is needed."""
     if deployment_language == DeploymentLanguage.PYTHON and not is_cross_language:
         # Python client deploying Python replicas.
         return True
@@ -96,6 +98,7 @@ def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bo
         return False
 
 
+@PublicAPI(stability="stable")
 class DeploymentConfig(BaseModel):
     """Configuration options for a deployment, to be set by the user.
 
@@ -107,7 +110,7 @@ class DeploymentConfig(BaseModel):
             a response. Defaults to 100.
         user_config (Optional[Any]): Arguments to pass to the reconfigure
             method of the deployment. The reconfigure method is called if
-            user_config is not None.
+            user_config is not None. Must be json-serializable.
         graceful_shutdown_wait_loop_s (Optional[float]): Duration
             that deployment replicas will wait until there is no more work to
             be done before shutting down.
@@ -160,6 +163,18 @@ class DeploymentConfig(BaseModel):
         else:
             if v <= 0:
                 raise ValueError("max_concurrent_queries must be >= 0")
+        return v
+
+    @validator("user_config", always=True)
+    def user_config_json_serializable(cls, v):
+        if isinstance(v, bytes):
+            return v
+        if v is not None:
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError(f"user_config is not JSON-serializable: {str(e)}.")
+
         return v
 
     def needs_pickle(self):
@@ -256,6 +271,7 @@ class DeploymentConfig(BaseModel):
         return config
 
 
+@DeveloperAPI
 class ReplicaConfig:
     """Configuration for a deployment's replicas.
 
@@ -374,7 +390,8 @@ class ReplicaConfig:
                 f'Got invalid type "{type(self.ray_actor_options)}" for '
                 "ray_actor_options. Expected a dictionary."
             )
-
+        # Please keep this in sync with the docstring for the ray_actor_options
+        # kwarg in api.py.
         allowed_ray_actor_options = {
             # Resource options
             "accelerator_type",
@@ -454,8 +471,8 @@ class ReplicaConfig:
         return ReplicaConfig(
             proto.deployment_def_name,
             proto.deployment_def,
-            proto.init_args,
-            proto.init_kwargs,
+            proto.init_args if proto.init_args != b"" else None,
+            proto.init_kwargs if proto.init_kwargs != b"" else None,
             json.loads(proto.ray_actor_options),
             needs_pickle,
         )
@@ -478,6 +495,7 @@ class ReplicaConfig:
         return self.to_proto().SerializeToString()
 
 
+@DeveloperAPI
 class DeploymentMode(str, Enum):
     NoServer = "NoServer"
     HeadOnly = "HeadOnly"
@@ -485,6 +503,7 @@ class DeploymentMode(str, Enum):
     FixedNumber = "FixedNumber"
 
 
+@PublicAPI(stability="beta")
 class HTTPOptions(pydantic.BaseModel):
     # Documentation inside serve.start for user's convenience.
     host: Optional[str] = DEFAULT_HTTP_HOST

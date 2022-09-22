@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+import subprocess
 import tempfile
 from typing import List, Optional
 
@@ -98,6 +99,54 @@ class CustomSyncer(Syncer):
         pass
 
 
+class CustomCommandSyncer(Syncer):
+    def __init__(
+        self,
+        sync_up_template: str,
+        sync_down_template: str,
+        delete_template: str,
+        sync_period: float = 300.0,
+    ):
+        self.sync_up_template = sync_up_template
+        self.sync_down_template = sync_down_template
+        self.delete_template = delete_template
+
+        super().__init__(sync_period=sync_period)
+
+    def sync_up(
+        self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
+    ) -> bool:
+        cmd_str = self.sync_up_template.format(
+            source=local_dir,
+            target=remote_dir,
+        )
+        subprocess.check_call(cmd_str, shell=True)
+        return True
+
+    def sync_down(
+        self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
+    ) -> bool:
+        cmd_str = self.sync_down_template.format(
+            source=remote_dir,
+            target=local_dir,
+        )
+        subprocess.check_call(cmd_str, shell=True)
+        return True
+
+    def delete(self, remote_dir: str) -> bool:
+        cmd_str = self.delete_template.format(
+            target=remote_dir,
+        )
+        subprocess.check_call(cmd_str, shell=True)
+        return True
+
+    def retry(self):
+        raise NotImplementedError
+
+    def wait(self):
+        pass
+
+
 def test_sync_string_invalid_uri():
     with pytest.raises(ValueError):
         _validate_upload_dir(tune.SyncConfig(upload_dir="invalid://some/url"))
@@ -140,6 +189,38 @@ def test_syncer_sync_up_down(temp_data_dirs):
     assert_file(True, tmp_target, "subdir/nested/level2.txt")
     assert_file(True, tmp_target, "subdir_nested_level2_exclude.txt")
     assert_file(True, tmp_target, "subdir_exclude/something/somewhere.txt")
+
+
+def test_syncer_sync_up_down_custom(temp_data_dirs):
+    """Check that syncing up and down works"""
+    tmp_source, tmp_target = temp_data_dirs
+
+    syncer = CustomCommandSyncer(
+        sync_up_template="cp -rf {source} `echo '{target}' | cut -c 8-`",
+        sync_down_template="cp -rf `echo '{source}' | cut -c 8-` {target}",
+        delete_template="rm -rf `echo '{target}' | cut -c 8-`",
+    )
+
+    # remove target dir (otherwise OS will copy into)
+    shutil.rmtree(tmp_target)
+
+    syncer.sync_up(local_dir=tmp_source, remote_dir=f"file://{tmp_target}")
+    syncer.wait()
+
+    # remove target dir to test sync down
+    shutil.rmtree(tmp_source)
+
+    syncer.sync_down(remote_dir=f"file://{tmp_target}", local_dir=tmp_source)
+    syncer.wait()
+
+    # Target dir should have all files
+    assert_file(True, tmp_source, "level0.txt")
+    assert_file(True, tmp_source, "level0_exclude.txt")
+    assert_file(True, tmp_source, "subdir/level1.txt")
+    assert_file(True, tmp_source, "subdir/level1_exclude.txt")
+    assert_file(True, tmp_source, "subdir/nested/level2.txt")
+    assert_file(True, tmp_source, "subdir_nested_level2_exclude.txt")
+    assert_file(True, tmp_source, "subdir_exclude/something/somewhere.txt")
 
 
 def test_syncer_sync_exclude(temp_data_dirs):
@@ -368,6 +449,28 @@ def test_trainable_syncer_custom(ray_start_2_cpus, temp_data_dirs):
 
     assert_file(False, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
     assert_file(False, tmp_target, os.path.join(checkpoint_dir, "custom_syncer.txt"))
+
+
+def test_trainable_syncer_custom_command(ray_start_2_cpus, temp_data_dirs):
+    """Check that Trainable.save() triggers syncing using custom syncer"""
+    tmp_source, tmp_target = temp_data_dirs
+
+    trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}",
+        custom_syncer=CustomCommandSyncer(
+            sync_up_template="cp -rf {source} `echo '{target}' | cut -c 8-`",
+            sync_down_template="cp -rf `echo '{source}' | cut -c 8-` {target}",
+            delete_template="rm -rf `echo '{target}' | cut -c 8-`",
+        ),
+    )
+
+    checkpoint_dir = ray.get(trainable.save.remote())
+
+    assert_file(True, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
+
+    ray.get(trainable.delete_checkpoint.remote(checkpoint_dir))
+
+    assert_file(False, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
 
 
 if __name__ == "__main__":

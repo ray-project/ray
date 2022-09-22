@@ -12,6 +12,7 @@ from ray.exceptions import GetTimeoutError
 from ray import serve
 from ray._private.test_utils import SignalActor
 from ray.serve.context import get_global_client
+from ray.serve.drivers import DAGDriver
 
 
 @pytest.fixture
@@ -54,23 +55,25 @@ def test_np_in_composed_model(serve_instance):
     # in cloudpickle _from_numpy_buffer
 
     @serve.deployment
-    def sum_model(data):
-        return np.sum(data)
+    class Sum:
+        def __call__(self, data):
+            return np.sum(data)
 
     @serve.deployment(name="model")
     class ComposedModel:
-        def __init__(self):
-            self.model = sum_model.get_handle(sync=False)
+        def __init__(self, handle):
+            self.model = handle
 
-        async def __call__(self, _request):
+        async def __call__(self):
             data = np.ones((10, 10))
-            ref = await self.model.remote(data)
-            return await ref
+            return await (await self.model.remote(data))
 
-    sum_model.deploy()
-    ComposedModel.deploy()
+    sum_d = Sum.bind()
+    cm_d = ComposedModel.bind(sum_d)
+    dag = DAGDriver.bind(cm_d)
+    serve.run(dag)
 
-    result = requests.get("http://127.0.0.1:8000/model")
+    result = requests.get("http://127.0.0.1:8000/")
     assert result.status_code == 200
     assert result.json() == 100.0
 
@@ -83,8 +86,7 @@ def test_replica_memory_growth(serve_instance):
         gc.collect()
         return len(gc.garbage)
 
-    gc_unreachable_objects.deploy()
-    handle = gc_unreachable_objects.get_handle()
+    handle = serve.run(gc_unreachable_objects.bind())
 
     # We are checking that there's constant number of object in gc.
     known_num_objects = ray.get(handle.remote())
@@ -109,8 +111,7 @@ def test_ref_in_handle_input(serve_instance):
     async def blocked_by_ref(data):
         assert not isinstance(data, ray.ObjectRef)
 
-    blocked_by_ref.deploy()
-    handle = blocked_by_ref.get_handle()
+    handle = serve.run(blocked_by_ref.bind())
 
     # Pass in a ref that's not ready yet
     ref = unblock_worker_signal.wait.remote()
@@ -138,7 +139,7 @@ def test_nested_actors(serve_instance):
         def __init__(self) -> None:
             self.a = CustomActor.remote()
 
-    A.deploy()
+    serve.run(A.bind())
 
     # The nested actor should start successfully.
     ray.get(signal.wait.remote(), timeout=10)
@@ -152,8 +153,7 @@ def test_handle_cache_out_of_scope(serve_instance):
     def f():
         return "hi"
 
-    f.deploy()
-    handle = serve.get_deployment("f").get_handle()
+    handle = serve.run(f.bind())
 
     handle_cache = get_global_client().handle_cache
     assert len(handle_cache) == initial_num_cached + 1
@@ -184,36 +184,39 @@ def test_out_of_order_chaining(serve_instance):
     collector = Collector.remote()
 
     @serve.deployment
-    async def composed_model(_id: int):
-        first_func_h = first_func.get_handle()
-        second_func_h = second_func.get_handle()
-        first_res_h = first_func_h.remote(_id=_id)
-        ref = second_func_h.remote(_id=first_res_h)
-        await ref
+    class Combine:
+        def __init__(self, m1, m2):
+            self.m1 = m1
+            self.m2 = m2
+
+        async def run(self, _id):
+            r1_task: asyncio.Task = self.m1.compute.remote(_id)
+            r2_ref = await self.m2.compute.remote(r1_task)
+            await r2_ref
 
     @serve.deployment
-    async def first_func(_id):
-        if _id == 0:
-            await asyncio.sleep(1000)
-        print(f"First output: {_id}")
-        ray.get(collector.append.remote(f"first-{_id}"))
-        return _id
+    class FirstModel:
+        async def compute(self, _id):
+            if _id == 0:
+                await asyncio.sleep(1000)
+            print(f"First output: {_id}")
+            ray.get(collector.append.remote(f"first-{_id}"))
+            return _id
 
     @serve.deployment
-    async def second_func(_id):
-        print(f"Second output: {_id}")
-        ray.get(collector.append.remote(f"second-{_id}"))
-        return _id
+    class SecondModel:
+        async def compute(self, _id):
+            print(f"Second output: {_id}")
+            ray.get(collector.append.remote(f"second-{_id}"))
+            return _id
 
-    serve.start(detached=True)
+    m1 = FirstModel.bind()
+    m2 = SecondModel.bind()
+    combine = Combine.bind(m1, m2)
+    handle = serve.run(combine)
 
-    composed_model.deploy()
-    first_func.deploy()
-    second_func.deploy()
-
-    main_p = composed_model.get_handle()
-    main_p.remote(_id=0)
-    ray.get(main_p.remote(_id=1))
+    handle.run.remote(_id=0)
+    ray.get(handle.run.remote(_id=1))
 
     assert ray.get(collector.get.remote()) == ["first-1", "second-1"]
 
@@ -241,9 +244,9 @@ def test_healthcheck_timeout(serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        _health_check_timeout_s=2,
-        _health_check_period_s=1,
-        _graceful_shutdown_timeout_s=0,
+        health_check_timeout_s=2,
+        health_check_period_s=1,
+        graceful_shutdown_timeout_s=0,
     )
     class A:
         def check_health(self):
@@ -252,8 +255,7 @@ def test_healthcheck_timeout(serve_instance):
         def __call__(self):
             ray.get(signal.wait.remote())
 
-    A.deploy()
-    handle = A.get_handle()
+    handle = serve.run(A.bind())
     ref = handle.remote()
     # without the proper fix, the ref will fail with actor died error.
     with pytest.raises(GetTimeoutError):

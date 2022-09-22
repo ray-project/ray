@@ -342,5 +342,98 @@ def test_nil_node(enable_test_module, disable_aiohttp_cache, ray_start_with_dash
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
 
+def test_actor_cleanup(
+    disable_aiohttp_cache, reduce_actor_cache, ray_start_with_dashboard
+):
+    @ray.remote
+    class Foo:
+        def __init__(self, num):
+            self.num = num
+
+        def do_task(self):
+            return self.num
+
+    @ray.remote(num_gpus=1)
+    class InfeasibleActor:
+        pass
+
+    infeasible_actor = InfeasibleActor.remote()  # noqa
+
+    foo_actors = [
+        Foo.remote(1),
+        Foo.remote(2),
+        Foo.remote(3),
+        Foo.remote(4),
+        Foo.remote(5),
+        Foo.remote(6),
+    ]
+    results = [actor.do_task.remote() for actor in foo_actors]  # noqa
+    webui_url = ray_start_with_dashboard["webui_url"]
+    assert wait_until_server_available(webui_url)
+    webui_url = format_web_url(webui_url)
+
+    timeout_seconds = 8
+    start_time = time.time()
+    last_ex = None
+    while True:
+        time.sleep(1)
+        try:
+            resp = requests.get(f"{webui_url}/logical/actors")
+            resp_json = resp.json()
+            resp_data = resp_json["data"]
+            actors = resp_data["actors"]
+            # Although max cache is 3, there should be 7 actors
+            # because they are all still alive.
+            assert len(actors) == 7
+
+            break
+        except Exception as ex:
+            last_ex = ex
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                ex_stack = (
+                    traceback.format_exception(
+                        type(last_ex), last_ex, last_ex.__traceback__
+                    )
+                    if last_ex
+                    else []
+                )
+                ex_stack = "".join(ex_stack)
+                raise Exception(f"Timed out while testing, {ex_stack}")
+
+    # kill
+    ray.kill(infeasible_actor)
+    [ray.kill(foo_actor) for foo_actor in foo_actors]
+    # Wait 5 seconds for cleanup to finish
+    time.sleep(5)
+
+    # Check only three remaining in cache
+    start_time = time.time()
+    while True:
+        time.sleep(1)
+        try:
+            resp = requests.get(f"{webui_url}/logical/actors")
+            resp_json = resp.json()
+            resp_data = resp_json["data"]
+            actors = resp_data["actors"]
+            # Max cache is 3 so only 3 actors should be left.
+            assert len(actors) == 3
+
+            break
+        except Exception as ex:
+            last_ex = ex
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                ex_stack = (
+                    traceback.format_exception(
+                        type(last_ex), last_ex, last_ex.__traceback__
+                    )
+                    if last_ex
+                    else []
+                )
+                ex_stack = "".join(ex_stack)
+                raise Exception(f"Timed out while testing, {ex_stack}")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

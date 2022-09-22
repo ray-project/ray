@@ -22,7 +22,6 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class RayServeReplicaTest extends BaseTest {
-
   @SuppressWarnings("unused")
   @Test
   public void test() throws IOException {
@@ -37,7 +36,7 @@ public class RayServeReplicaTest extends BaseTest {
       config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
 
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       DeploymentConfig deploymentConfig =
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
@@ -66,7 +65,7 @@ public class RayServeReplicaTest extends BaseTest {
               .task(
                   RayServeWrappedReplica::handleRequest,
                   requestMetadata.build().toByteArray(),
-                  requestWrapper.build().toByteArray())
+                  new Object[0])
               .remote();
       Assert.assertEquals((String) resultRef.get(), "1");
 
@@ -82,7 +81,7 @@ public class RayServeReplicaTest extends BaseTest {
               .task(
                   RayServeWrappedReplica::handleRequest,
                   requestMetadata.build().toByteArray(),
-                  requestWrapper.build().toByteArray())
+                  new Object[0])
               .remote();
       Assert.assertEquals((String) resultRef.get(), "1");
 
@@ -95,7 +94,7 @@ public class RayServeReplicaTest extends BaseTest {
               .task(
                   RayServeWrappedReplica::handleRequest,
                   requestMetadata.build().toByteArray(),
-                  requestWrapper.build().toByteArray())
+                  new Object[0])
               .remote();
       Assert.assertEquals((String) resultRef.get(), "101");
 

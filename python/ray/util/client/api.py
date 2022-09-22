@@ -4,7 +4,7 @@ and the overall ray module API.
 import json
 import logging
 from concurrent.futures import Future
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Union
 
 from ray._private import ray_option_utils
 from ray.util.client.runtime_context import _ClientWorkerPropertyAPI
@@ -312,27 +312,57 @@ class _ClientAPI:
         # initialized yet.
         return True
 
-    def _internal_kv_exists(self, key: bytes) -> bool:
+    def _internal_kv_exists(
+        self, key: Union[str, bytes], *, namespace: Optional[Union[str, bytes]] = None
+    ) -> bool:
         """Hook for internal_kv._internal_kv_exists."""
-        return self.worker.internal_kv_exists(_as_bytes(key))
+        return self.worker.internal_kv_exists(
+            _as_bytes(key), namespace=_as_bytes(namespace)
+        )
 
-    def _internal_kv_get(self, key: bytes) -> bytes:
+    def _internal_kv_get(
+        self, key: Union[str, bytes], *, namespace: Optional[Union[str, bytes]] = None
+    ) -> bytes:
         """Hook for internal_kv._internal_kv_get."""
-        return self.worker.internal_kv_get(_as_bytes(key))
+        return self.worker.internal_kv_get(
+            _as_bytes(key), namespace=_as_bytes(namespace)
+        )
 
     def _internal_kv_put(
-        self, key: bytes, value: bytes, overwrite: bool = False
+        self,
+        key: Union[str, bytes],
+        value: Union[str, bytes],
+        overwrite: bool = True,
+        *,
+        namespace: Optional[Union[str, bytes]] = None,
     ) -> bool:
         """Hook for internal_kv._internal_kv_put."""
-        return self.worker.internal_kv_put(_as_bytes(key), _as_bytes(value), overwrite)
+        return self.worker.internal_kv_put(
+            _as_bytes(key), _as_bytes(value), overwrite, namespace=_as_bytes(namespace)
+        )
 
-    def _internal_kv_del(self, key: bytes) -> None:
+    def _internal_kv_del(
+        self,
+        key: Union[str, bytes],
+        *,
+        del_by_prefix: bool = False,
+        namespace: Optional[Union[str, bytes]] = None,
+    ) -> int:
         """Hook for internal_kv._internal_kv_del."""
-        return self.worker.internal_kv_del(_as_bytes(key))
+        return self.worker.internal_kv_del(
+            _as_bytes(key), del_by_prefix=del_by_prefix, namespace=_as_bytes(namespace)
+        )
 
-    def _internal_kv_list(self, prefix: bytes) -> bytes:
+    def _internal_kv_list(
+        self,
+        prefix: Union[str, bytes],
+        *,
+        namespace: Optional[Union[str, bytes]] = None,
+    ) -> List[bytes]:
         """Hook for internal_kv._internal_kv_list."""
-        return self.worker.internal_kv_list(_as_bytes(prefix))
+        return self.worker.internal_kv_list(
+            _as_bytes(prefix), namespace=_as_bytes(namespace)
+        )
 
     def _pin_runtime_env_uri(self, uri: str, expiration_s: int) -> None:
         """Hook for internal_kv._pin_runtime_env_uri."""

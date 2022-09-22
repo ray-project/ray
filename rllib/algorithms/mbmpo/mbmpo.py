@@ -23,7 +23,7 @@ from ray.rllib.execution.common import (
 )
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
 from ray.rllib.utils.annotations import Deprecated, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
@@ -50,6 +50,7 @@ class MBMPOConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.mbmpo import MBMPOConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = MBMPOConfig()
         >>> # Print out some default values.
@@ -60,11 +61,11 @@ class MBMPOConfig(AlgorithmConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "AlphaStar",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -547,7 +548,7 @@ class MBMPO(Algorithm):
                 metrics = post_process_metrics(prefix, workers, metrics)
 
                 if len(split) > num_inner_steps:
-                    out = SampleBatch.concat_samples(buf)
+                    out = concat_samples(buf)
                     out["split"] = np.array(split)
                     buf = []
                     split = []

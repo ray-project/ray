@@ -1,10 +1,9 @@
-import logging
-from typing import Dict, List, Union
-
 import gym
+import logging
+from typing import Dict
 
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils.annotations import DeveloperAPI, override
@@ -182,14 +181,14 @@ class KLCoeffMixin:
             self.kl_coeff.assign(self.kl_coeff_val, read_value=False)
 
     @override(Policy)
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_state(self) -> PolicyState:
         state = super().get_state()
         # Add current kl-coeff value.
         state["current_kl_coeff"] = self.kl_coeff_val
         return state
 
     @override(Policy)
-    def set_state(self, state: dict) -> None:
+    def set_state(self, state: PolicyState) -> None:
         # Set current kl-coeff value first.
         self._set_kl_coeff(state.pop("current_kl_coeff", self.config["kl_coeff"]))
         # Call super's set_state with rest of the state dict.
@@ -241,10 +240,6 @@ class TargetNetworkMixin:
         if not hasattr(self, "_target_q_func_vars"):
             self._target_q_func_vars = self.target_model.variables()
         return self._target_q_func_vars
-
-    @override(TFPolicy)
-    def variables(self):
-        return self.q_func_vars + self.target_q_func_vars
 
 
 class ValueNetworkMixin:
@@ -326,6 +321,26 @@ class ValueNetworkMixin:
 
         self._cached_extra_action_fetches = self._extra_action_out_impl()
         return self._cached_extra_action_fetches
+
+
+class GradStatsMixin:
+    def __init__(self):
+        pass
+
+    def grad_stats_fn(
+        self, train_batch: SampleBatch, grads: ModelGradients
+    ) -> Dict[str, TensorType]:
+        # We have support for more than one loss (list of lists of grads).
+        if self.config.get("_tf_policy_handles_more_than_one_loss"):
+            grad_gnorm = [tf.linalg.global_norm(g) for g in grads]
+        # Old case: We have a single list of grads (only one loss term and
+        # optimizer).
+        else:
+            grad_gnorm = tf.linalg.global_norm(grads)
+
+        return {
+            "grad_gnorm": grad_gnorm,
+        }
 
 
 # TODO: find a better place for this util, since it's not technically MixIns.

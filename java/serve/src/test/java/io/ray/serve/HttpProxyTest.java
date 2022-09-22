@@ -6,6 +6,7 @@ import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.proxy.HttpProxy;
 import io.ray.serve.proxy.ProxyRouter;
 import io.ray.serve.util.CommonUtil;
@@ -22,7 +23,6 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class HttpProxyTest extends BaseTest {
-
   @Test
   public void test() throws IOException {
     init();
@@ -38,13 +38,14 @@ public class HttpProxyTest extends BaseTest {
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       Map<String, EndpointInfo> endpointInfos = new HashMap<>();
       endpointInfos.put(
           endpointName,
           EndpointInfo.newBuilder().setEndpointName(endpointName).setRoute(route).build());
-      controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
+      EndpointSet endpointSet = EndpointSet.newBuilder().putAllEndpoints(endpointInfos).build();
+      controllerHandle.task(DummyServeController::setEndpoints, endpointSet.toByteArray()).remote();
 
       Serve.setInternalReplicaContext(null, null, controllerName, null, config);
 
@@ -61,7 +62,6 @@ public class HttpProxyTest extends BaseTest {
       HttpPost httpPost = new HttpPost("http://localhost:" + httpProxy.getPort() + route);
       try (CloseableHttpResponse httpResponse =
           (CloseableHttpResponse) httpClient.execute(httpPost)) {
-
         // No replica, so error is expected.
         int status = httpResponse.getCode();
         Assert.assertEquals(status, HttpURLConnection.HTTP_INTERNAL_ERROR);

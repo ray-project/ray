@@ -23,7 +23,11 @@ Function API
 
 With the Function API, you can report intermediate metrics by simply calling ``session.report`` within the provided function.
 
+
 .. code-block:: python
+
+    from ray import tune
+    from ray.air import session
 
     def trainable(config):
         # config (dict): A dict of hyperparameters.
@@ -33,12 +37,13 @@ With the Function API, you can report intermediate metrics by simply calling ``s
 
             session.report({"score": intermediate_score})  # This sends the score to Tune.
 
-    analysis = tune.run(
+    tuner = tune.Tuner(
         trainable,
-        config={"a": 2, "b": 4}
+        param_space={"a": 2, "b": 4}
     )
+    results = tuner.fit()
 
-    print("best config: ", analysis.get_best_config(metric="score", mode="max"))
+    print("best config: ", results.get_best_result(metric="score", mode="max").config)
 
 .. tip:: Do not use ``session.report`` within a ``Trainable`` class.
 
@@ -58,12 +63,13 @@ such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an 
 
         return {"score": final_score}  # This sends the score to Tune.
 
-    analysis = tune.run(
+    tuner = tune.Tuner(
         trainable,
-        config={"a": 2, "b": 4}
+        param_space={"a": 2, "b": 4}
     )
+    results = tuner.fit()
 
-    print("best config: ", analysis.get_best_config(metric="score", mode="max"))
+    print("best config: ", results.get_best_result(metric="score", mode="max").config)
 
 
 .. _tune-function-checkpointing:
@@ -94,23 +100,12 @@ You can save and load checkpoint in Ray Tune in the following manner:
                 checkpoint = Checkpoint.from_dict({"step": step})
                 session.report({"message": "Hello world Ray Tune!"}, checkpoint=checkpoint)
 
-        tune.run(train_func)
+        tuner = tune.Tuner(train_func)
+        results = tuner.fit()
 
-.. note:: ``checkpoint_freq`` and ``checkpoint_at_end`` will not work with Function API checkpointing.
+.. note:: ``checkpoint_frequency`` and ``checkpoint_at_end`` will not work with Function API checkpointing.
 
 In this example, checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<step>``.
-You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)``:
-
-.. code-block:: python
-
-        analysis = tune.run(
-            train,
-            config={
-                "max_iter": 5
-            },
-        ).trials
-        last_ckpt = trial.checkpoint.dir_or_data
-        analysis = tune.run(train, config={"max_iter": 10}, restore=last_ckpt)
 
 Tune also may copy or move checkpoints during the course of tuning. For this purpose,
 it is important not to depend on absolute paths in the implementation of ``save``.
@@ -140,15 +135,16 @@ The Trainable **class API** will require users to subclass ``ray.tune.Trainable`
             self.x += 1
             return {"score": score}
 
-    analysis = tune.run(
+    tuner = tune.Tuner(
         Trainable,
-        stop={"training_iteration": 20},
-        config={
+        tune_config=air.RunConfig(stop={"training_iteration": 20}),
+        param_space={
             "a": 2,
             "b": 4
         })
+    results = tuner.fit()
 
-    print('best config: ', analysis.get_best_config(metric="score", mode="max"))
+    print('best config: ', results.get_best_result(metric="score", mode="max").config)
 
 As a subclass of ``tune.Trainable``, Tune will create a ``Trainable`` object on a
 separate process (using the :ref:`Ray Actor API <actor-guide>`).
@@ -185,7 +181,8 @@ You can also implement checkpoint/restore using the Trainable Class API:
             checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.pth")
             self.model.load_state_dict(torch.load(checkpoint_path))
 
-    tune.run(MyTrainableClass, checkpoint_freq=2)
+    tuner = tune.Tuner(MyTrainableClass, run_config=air.RunConfig(checkpoint_config=air.CheckpointConfig(checkpoint_frequency=2)))
+    results = tuner.fit()
 
 You can checkpoint with three different mechanisms: manually, periodically, and at termination.
 
@@ -204,29 +201,32 @@ This can be especially helpful in spot instances:
 
 
 **Periodic Checkpointing**: periodic checkpointing can be used to provide fault-tolerance for experiments.
-This can be enabled by setting ``checkpoint_freq=<int>`` and ``max_failures=<int>`` to checkpoint trials
+This can be enabled by setting ``checkpoint_frequency=<int>`` and ``max_failures=<int>`` to checkpoint trials
 every *N* iterations and recover from up to *M* crashes per trial, e.g.:
 
 .. code-block:: python
 
-    tune.run(
+    tuner = tune.Tuner(
         my_trainable,
-        checkpoint_freq=10,
-        max_failures=5,
+        run_config=air.RunConfig(
+            checkpoint_config=air.CheckpointConfig(checkpoint_frequency=10),
+            failure_config=air.FailureConfig(max_failures=5))
     )
+    results = tuner.fit()
 
-**Checkpointing at Termination**: The checkpoint_freq may not coincide with the exact end of an experiment.
+**Checkpointing at Termination**: The checkpoint_frequency may not coincide with the exact end of an experiment.
 If you want a checkpoint to be created at the end of a trial, you can additionally set the ``checkpoint_at_end=True``:
 
 .. code-block:: python
    :emphasize-lines: 5
 
-    tune.run(
+    tuner = tune.Tuner(
         my_trainable,
-        checkpoint_freq=10,
-        checkpoint_at_end=True,
-        max_failures=5,
+        run_config=air.RunConfig(
+            checkpoint_config=air.CheckpointConfig(checkpoint_frequency=10, checkpoint_at_end=True),
+            failure_config=air.FailureConfig(max_failures=5))
     )
+    results = tuner.fit()
 
 
 Use ``validate_save_restore`` to catch ``save_checkpoint``/``load_checkpoint`` errors before execution.
@@ -247,7 +247,7 @@ Advanced: Reusing Actors
 .. note:: This feature is only for the Trainable Class API.
 
 Your Trainable can often take a long time to start.
-To avoid this, you can do ``tune.run(reuse_actors=True)`` to reuse the same Trainable Python process and
+To avoid this, you can do ``tune.TuneConfig(reuse_actors=True)`` (which is taken in by ``Tuner``) to reuse the same Trainable Python process and
 object for multiple hyperparameters.
 
 This requires you to implement ``Trainable.reset_config``, which provides a new set of hyperparameters.
@@ -290,20 +290,19 @@ then you should use this:
 .. code-block:: python
    :emphasize-lines: 4-10
 
-    tune.run(
-        my_trainable,
-        name="my_trainable",
-        resources_per_trial=tune.PlacementGroupFactory([
+    tuner = tune.Tuner(
+        tune.with_resources(my_trainable, tune.PlacementGroupFactory([
             {"CPU": 1, "GPU": 1},
             {"GPU": 1},
             {"GPU": 1},
             {"GPU": 1},
             {"GPU": 1}
-        ])
+        ])),
+        run_config=air.RunConfig(name="my_trainable")
     )
 
 The ``Trainable`` also provides the ``default_resource_requests`` interface to automatically
-declare the ``resources_per_trial`` based on the given configuration.
+declare the resources per trial based on the given configuration.
 
 It is also possible to specify memory (``"memory"``, in bytes) and custom resource requirements.
 

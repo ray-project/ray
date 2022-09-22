@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 from dataclasses import dataclass
 from typing import (
@@ -29,6 +30,10 @@ try:
 except ImportError:
     resource = None
 
+if sys.version_info >= (3, 8):
+    from typing import Protocol
+else:
+    from typing_extensions import Protocol
 
 if TYPE_CHECKING:
     import pandas
@@ -39,8 +44,8 @@ if TYPE_CHECKING:
     from ray.data.aggregate import AggregateFn
 
 
-T = TypeVar("T")
-U = TypeVar("U")
+T = TypeVar("T", contravariant=True)
+U = TypeVar("U", covariant=True)
 KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
 
@@ -101,14 +106,19 @@ DataBatch = Union[Block, np.ndarray, Dict[str, np.ndarray]]
 # A class type that implements __call__.
 CallableClass = type
 
+
+class _CallableClassProtocol(Protocol[T, U]):
+    def __call__(self, __arg: T) -> U:
+        ...
+
+
 # A UDF on data batches.
 BatchUDF = Union[
     # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constraint batch
     # UDF type.
     # Callable[[DataBatch, ...], DataBatch]
     Callable[[DataBatch], DataBatch],
-    Callable[..., DataBatch],
-    CallableClass,
+    _CallableClassProtocol,
 ]
 
 # A UDF on data rows.
@@ -117,8 +127,7 @@ RowUDF = Union[
     # UDF type.
     # Callable[[T, ...], U]
     Callable[[T], U],
-    Callable[..., U],
-    CallableClass,
+    _CallableClassProtocol[T, U],
 ]
 
 # A list of block references pending computation by a single task. For example,
@@ -133,7 +142,7 @@ BlockPartitionMetadata = "BlockMetadata"
 # by default. When block splitting is off, the type is a plain block.
 MaybeBlockPartition = Union[Block, BlockPartition]
 
-VALID_BATCH_FORMATS = ["native", "pandas", "pyarrow", "numpy"]
+VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy"]
 
 
 @DeveloperAPI
@@ -256,6 +265,17 @@ class BlockAccessor(Generic[T]):
         """
         raise NotImplementedError
 
+    def take(self, indices: List[int]) -> Block:
+        """Return a new block containing the provided row indices.
+
+        Args:
+            indices: The row indices to return.
+
+        Returns:
+            A new block containing the provided row indices.
+        """
+        raise NotImplementedError
+
     def random_shuffle(self, random_seed: Optional[int]) -> Block:
         """Randomly shuffle this block."""
         raise NotImplementedError
@@ -282,8 +302,8 @@ class BlockAccessor(Generic[T]):
         """Return the base block that this accessor wraps."""
         raise NotImplementedError
 
-    def to_native(self) -> Block:
-        """Return the native data format for this accessor."""
+    def to_default(self) -> Block:
+        """Return the default data format for this accessor."""
         return self.to_block()
 
     def to_batch_format(self, batch_format: str) -> DataBatch:
@@ -295,8 +315,8 @@ class BlockAccessor(Generic[T]):
         Returns:
             This block formatted as the provided batch format.
         """
-        if batch_format == "native":
-            return self.to_native()
+        if batch_format == "default" or batch_format == "native":
+            return self.to_default()
         elif batch_format == "pandas":
             return self.to_pandas()
         elif batch_format == "pyarrow":

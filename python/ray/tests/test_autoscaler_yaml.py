@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import tempfile
+from typing import Dict, Any
 import unittest
 import urllib
 from unittest.mock import MagicMock, Mock, patch
@@ -22,13 +23,11 @@ from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProv
 from ray.autoscaler._private.gcp import config as gcp_config
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
 from ray.autoscaler._private.util import (
-    _get_default_config,
     fill_node_type_min_max_workers,
     merge_setup_commands,
     prepare_config,
     validate_config,
 )
-from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 from ray.autoscaler._private._kubernetes.config import get_autodetected_resources
 
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
@@ -89,11 +88,19 @@ worker_setup_commands: []
 """  # noqa E501
 
 
+def fake_fillout_available_node_types_resources(config: Dict[str, Any]) -> None:
+    """A cheap way to fill out the resources field (the same way a node
+    provider would autodetect them) as far as schema validation is concerned."""
+    available_node_types = config.get("available_node_types", {})
+    for label, value in available_node_types.items():
+        value["resources"] = value.get("resources", {"filler": 1})
+
+
 class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
         for config_path in CONFIG_PATHS:
             try:
-                if "aws/example-multi-node-type.yaml" in config_path:
+                if os.path.join("aws", "example-multi-node-type.yaml") in config_path:
                     # aws tested in testValidateDefaultConfigAWSMultiNodeTypes.
                     continue
                 if "local" in config_path:
@@ -112,6 +119,8 @@ class AutoscalingConfigTest(unittest.TestCase):
                     KubernetesNodeProvider.fillout_available_node_types_resources(
                         config
                     )
+                if config["provider"]["type"] == "aws":
+                    fake_fillout_available_node_types_resources(config)
                 validate_config(config)
             except Exception:
                 logging.exception("")
@@ -292,7 +301,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         ] = 0
         assert prepared_config == expected_prepared
 
-    def testValidateNetworkConfig(self):
+    def testValidateNetworkConfigForBackwardsCompatibility(self):
         web_yaml = (
             "https://raw.githubusercontent.com/ray-project/ray/"
             "master/python/ray/autoscaler/aws/example-full.yaml"
@@ -413,44 +422,6 @@ class AutoscalingConfigTest(unittest.TestCase):
             == 2
         )
 
-    def testFillEdgeLegacyConfigs(self):
-        # Test edge cases: legacy configs which specify workers but not head
-        # or vice-versa.
-        no_head = load_test_config("test_no_head.yaml")
-        aws_defaults = _get_default_config(no_head["provider"])
-        head_prepared = prepare_config(no_head)
-        assert (
-            head_prepared["available_node_types"]["ray-legacy-head-node-type"][
-                "node_config"
-            ]
-            == aws_defaults["available_node_types"]["ray.head.default"]["node_config"]
-        )
-        assert head_prepared["head_node"] == {}
-        # Custom worker config preserved
-        node_types = head_prepared["available_node_types"]
-        worker_type = node_types["ray-legacy-worker-node-type"]
-        assert (
-            worker_type["node_config"]
-            == head_prepared["worker_nodes"]
-            == {"foo": "bar"}
-        )
-
-        no_workers = load_test_config("test_no_workers.yaml")
-        workers_prepared = prepare_config(no_workers)
-        assert (
-            workers_prepared["available_node_types"]["ray-legacy-worker-node-type"][
-                "node_config"
-            ]
-            == aws_defaults["available_node_types"]["ray.worker.default"]["node_config"]
-        )
-        assert workers_prepared["worker_nodes"] == {}
-        # Custom head config preserved
-        node_types = workers_prepared["available_node_types"]
-        head_type = node_types["ray-legacy-head-node-type"]
-        assert (
-            head_type["node_config"] == workers_prepared["head_node"] == {"baz": "qux"}
-        )
-
     @pytest.mark.skipif(sys.platform.startswith("win"), reason="Fails on Windows.")
     def testExampleFull(self):
         """
@@ -466,58 +437,6 @@ class AutoscalingConfigTest(unittest.TestCase):
             merge_setup_commands(config_copy)
             fill_node_type_min_max_workers(config_copy)
             assert config_copy == prepare_config(config)
-
-    @pytest.mark.skipif(sys.platform.startswith("win"), reason="Fails on Windows.")
-    def testLegacyYaml(self):
-        # Test correct default-merging behavior for legacy yamls.
-        providers = ["aws", "azure"]
-        for provider in providers:
-            path = os.path.join(
-                RAY_PATH, "autoscaler", provider, "example-full-legacy.yaml"
-            )
-            legacy_config = yaml.safe_load(open(path).read())
-            # custom head and workers
-            legacy_config["head_node"] = {"blahblah": 0}
-            legacy_config["worker_nodes"] = {"halbhalhb": 0}
-            legacy_config_copy = copy.deepcopy(legacy_config)
-            prepared_legacy = prepare_config(legacy_config_copy)
-            assert (
-                prepared_legacy["available_node_types"][NODE_TYPE_LEGACY_HEAD][
-                    "max_workers"
-                ]
-                == 0
-            )
-            assert (
-                prepared_legacy["available_node_types"][NODE_TYPE_LEGACY_HEAD][
-                    "min_workers"
-                ]
-                == 0
-            )
-            assert (
-                prepared_legacy["available_node_types"][NODE_TYPE_LEGACY_HEAD][
-                    "node_config"
-                ]
-                == legacy_config["head_node"]
-            )
-
-            assert (
-                prepared_legacy["available_node_types"][NODE_TYPE_LEGACY_WORKER][
-                    "max_workers"
-                ]
-                == 2
-            )
-            assert (
-                prepared_legacy["available_node_types"][NODE_TYPE_LEGACY_WORKER][
-                    "min_workers"
-                ]
-                == 0
-            )
-            assert (
-                prepared_legacy["available_node_types"][NODE_TYPE_LEGACY_WORKER][
-                    "node_config"
-                ]
-                == legacy_config["worker_nodes"]
-            )
 
     @pytest.mark.skipif(sys.platform.startswith("win"), reason="Fails on Windows.")
     def testAzureKeyPair(self):

@@ -6,7 +6,7 @@ import numpy as np
 
 import ray
 from ray.actor import ActorHandle
-from ray.data._internal.batcher import Batcher
+from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
@@ -36,8 +36,10 @@ def batch_blocks(
     prefetch_blocks: int = 0,
     clear_block_after_read: bool = False,
     batch_size: Optional[int] = None,
-    batch_format: str = "native",
+    batch_format: str = "default",
     drop_last: bool = False,
+    shuffle_buffer_min_size: Optional[int] = None,
+    shuffle_seed: Optional[int] = None,
 ) -> Iterator[BatchType]:
     """Create batches of data from 1 or more blocks.
 
@@ -56,24 +58,53 @@ def batch_blocks(
             the block will never be accessed again.
         batch_size: Record batch size, or None to let the system pick.
         batch_format: The format in which to return each batch.
-            Specify "native" to use the current block format (promoting
+            Specify "default" to use the current block format (promoting
             Arrow to pandas automatically), "pandas" to
             select ``pandas.DataFrame`` or "pyarrow" to select
-            ``pyarrow.Table``. Default is "native".
+            ``pyarrow.Table``. Default is "default".
         drop_last: Whether to drop the last batch if it's incomplete.
+        shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
+            local in-memory shuffle buffer, and this value will serve as the minimum
+            number of rows that must be in the local in-memory shuffle buffer in order
+            to yield a batch.
+        shuffle_seed: The seed to use for the local random shuffle.
 
     Returns:
         An iterator over record batches.
     """
-    batcher = Batcher(batch_size=batch_size)
+    if shuffle_buffer_min_size is not None:
+        batcher = ShufflingBatcher(
+            batch_size=batch_size,
+            shuffle_buffer_min_size=shuffle_buffer_min_size,
+            shuffle_seed=shuffle_seed,
+        )
+    else:
+        batcher = Batcher(batch_size=batch_size)
 
-    def batch_block(block: ObjectRef[Block]):
-        with stats.iter_get_s.timer():
-            block = ray.get(block)
-        batcher.add(block)
+    def get_batches(block: Optional[ObjectRef[Block]] = None) -> Iterator[BatchType]:
+        if block is not None:
+            with stats.iter_get_s.timer():
+                block = ray.get(block)
+            # NOTE: Since we add one block at a time and then immediately consume
+            # batches, we don't need to check batcher.can_add() before adding the block;
+            # it will always be True, and batcher.add() will assert this internally.
+            batcher.add(block)
+        else:
+            batcher.done_adding()
         while batcher.has_batch():
+            # While the batcher has full batches, yield batches.
+            with stats.iter_next_batch_s.timer():
+                batch = batcher.next_batch()
             with stats.iter_format_batch_s.timer():
-                result = _format_batch(batcher.next_batch(), batch_format)
+                result = _format_batch(batch, batch_format)
+            with stats.iter_user_s.timer():
+                yield result
+        # Handle remainder batches.
+        if block is None and not drop_last and batcher.has_any():
+            with stats.iter_next_batch_s.timer():
+                batch = batcher.next_batch()
+            with stats.iter_format_batch_s.timer():
+                result = _format_batch(batch, batch_format)
             with stats.iter_user_s.timer():
                 yield result
 
@@ -87,29 +118,27 @@ def batch_blocks(
         prefetcher = ActorBlockPrefetcher()
     else:
         prefetcher = WaitBlockPrefetcher()
+
+    # Batch blocks over the prefetch windows.
     for block_window in _sliding_window(
         blocks, prefetch_blocks + 1, clear_block_after_read
     ):
         block_window = list(block_window)
         with stats.iter_wait_s.timer():
             prefetcher.prefetch_blocks(block_window)
-        yield from batch_block(block_window[0])
+        yield from get_batches(block_window[0])
 
     # Consume remainder of final block window.
     for block in block_window[1:]:
-        yield from batch_block(block)
+        yield from get_batches(block)
 
-    # Yield any remainder batches.
-    if batcher.has_any() and not drop_last:
-        with stats.iter_format_batch_s.timer():
-            result = _format_batch(batcher.next_batch(), batch_format)
-        with stats.iter_user_s.timer():
-            yield result
+    # Consume any remaining batches, now that we're done adding blocks to the batcher.
+    yield from get_batches()
 
 
 def _format_batch(batch: Block, batch_format: str) -> BatchType:
-    if batch_format == "native":
-        batch = BlockAccessor.for_block(batch).to_native()
+    if batch_format == "default" or batch_format == "native":
+        batch = BlockAccessor.for_block(batch).to_default()
     elif batch_format == "pandas":
         batch = BlockAccessor.for_block(batch).to_pandas()
     elif batch_format == "pyarrow":

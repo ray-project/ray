@@ -6,13 +6,6 @@ Ecosystem
 This page lists libraries that have integrations with Ray for distributed execution.
 If you'd like to add your project to this list, feel free to file a pull request or open an issue on GitHub.
 
-Airflow |airflow|
------------------
-
-Airflow is a platform created by the community to programmatically author, schedule and monitor workflows. The Airflow/Ray integration allows Airflow users to keep all of their Ray code in Python functions and define task dependencies by moving data through python functions.
-
-[`Link to integration <https://registry.astronomer.io/providers/ray>`__] [`Link to announcement <https://www.astronomer.io/blog/airflow-ray-data-science-story>`__]
-
 ClassyVision |classyvision|
 ---------------------------
 
@@ -26,7 +19,7 @@ Dask |dask|
 
 Dask provides advanced parallelism for analytics, enabling performance at scale for the tools you love. Dask uses existing Python APIs and data structures to make it easy to switch between Numpy, Pandas, Scikit-learn to their Dask-powered equivalents.
 
-[`Link to integration <../data/dask-on-ray.html>`__]
+[:ref:`Link to integration <dask-on-ray>`]
 
 Flambe |flambe|
 ---------------
@@ -81,7 +74,7 @@ MARS |mars|
 
 Mars is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn. Mars can scale in to a single machine, and scale out to a cluster with thousands of machines.
 
-[`Link to integration <../data/mars-on-ray.html>`__]
+[:ref:`Link to integration <mars-on-ray>`]
 
 Modin |modin|
 -------------
@@ -143,10 +136,6 @@ LightGBM is a high-performance gradient boosting library for classification and 
 
 [`Link to integration <https://github.com/ray-project/lightgbm_ray>`__]
 
-
-.. |airflow| image:: ../images/airflow.png
-    :class: inline-figure
-    :height: 30
 
 .. |classyvision| image:: ../images/classyvision.png
     :class: inline-figure

@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+import dataclasses
 import json
 import logging
 import os
@@ -6,10 +8,11 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List
 from unittest import mock
 
 import pytest
+from ray.runtime_env.runtime_env import RuntimeEnvConfig
 import requests
 
 import ray
@@ -69,6 +72,32 @@ def test_get_release_wheel_url():
             for version, commit in test_commits.items():
                 url = get_release_wheel_url(commit, sys_platform, version, py_version)
                 assert requests.head(url).status_code == 200, url
+
+
+def test_compatible_with_dataclasses():
+    """Test that the output of RuntimeEnv.to_dict() can be used as a dataclass field."""
+    config = RuntimeEnvConfig(setup_timeout_seconds=1)
+    runtime_env = RuntimeEnv(
+        pip={
+            "packages": ["tensorflow", "requests"],
+            "pip_check": False,
+            "pip_version": "==22.0.2;python_version=='3.8.11'",
+        },
+        env_vars={"FOO": "BAR"},
+        config=config,
+    )
+
+    @dataclass
+    class RuntimeEnvDataClass:
+        runtime_env: Dict[str, Any]
+
+    dataclasses.asdict(RuntimeEnvDataClass(runtime_env.to_dict()))
+
+    @dataclass
+    class RuntimeEnvConfigDataClass:
+        config: Dict[str, Any]
+
+    dataclasses.asdict(RuntimeEnvConfigDataClass(config.to_dict()))
 
 
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
@@ -258,44 +287,6 @@ def test_failed_job_env_no_hang(shutdown_only, runtime_env_class):
     # Task with no runtime env should inherit the bad job env.
     with pytest.raises(RuntimeEnvSetupError):
         ray.get(f.remote())
-
-
-@pytest.fixture
-def set_agent_failure_env_var():
-    os.environ["_RAY_AGENT_FAILING"] = "1"
-    yield
-    del os.environ["_RAY_AGENT_FAILING"]
-
-
-# TODO(SongGuyang): Fail the agent which is in different node from driver.
-@pytest.mark.skip(
-    reason="Agent failure will lead to raylet failure and driver failure."
-)
-@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
-def test_runtime_env_broken(
-    set_agent_failure_env_var, runtime_env_class, ray_start_cluster_head
-):
-    @ray.remote
-    class A:
-        def ready(self):
-            pass
-
-    @ray.remote
-    def f():
-        pass
-
-    runtime_env = runtime_env_class(env_vars={"TF_WARNINGS": "none"})
-    """
-    Test task raises an exception.
-    """
-    with pytest.raises(ray.exceptions.LocalRayletDiedError):
-        ray.get(f.options(runtime_env=runtime_env).remote())
-    """
-    Test actor task raises an exception.
-    """
-    a = A.options(runtime_env=runtime_env).remote()
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(a.ready.remote())
 
 
 class TestURICache:
@@ -599,7 +590,7 @@ class MyPlugin(RuntimeEnvPlugin):
 @pytest.mark.parametrize(
     "set_runtime_env_plugins",
     [
-        MY_PLUGIN_CLASS_PATH,
+        '[{"class":"' + MY_PLUGIN_CLASS_PATH + '"}]',
     ],
     indirect=True,
 )

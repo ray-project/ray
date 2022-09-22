@@ -26,6 +26,7 @@ from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
@@ -74,6 +75,7 @@ class ImpalaConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.impala import ImpalaConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = ImpalaConfig()
         >>> # Print out some default values.
@@ -84,11 +86,11 @@ class ImpalaConfig(AlgorithmConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "IMPALA",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -778,7 +780,7 @@ class Impala(Algorithm):
                 sum(b.count for b in self.batch_being_built)
                 >= self.config["train_batch_size"]
             ):
-                batch_to_add = SampleBatch.concat_samples(self.batch_being_built)
+                batch_to_add = concat_samples(self.batch_being_built)
                 self.batches_to_place_on_learner.append(batch_to_add)
                 self.batch_being_built = []
 
@@ -810,7 +812,12 @@ class Impala(Algorithm):
         while self.batches_to_place_on_learner:
             batch = self.batches_to_place_on_learner[0]
             try:
-                self._learner_thread.inqueue.put(batch, block=False)
+                # Setting block = True prevents the learner thread,
+                # the main thread, and the gpu loader threads from
+                # thrashing when there are more samples than the
+                # learner can reasonable process.
+                # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
+                self._learner_thread.inqueue.put(batch, block=True)
                 self.batches_to_place_on_learner.pop(0)
                 self._counters["num_samples_added_to_queue"] += (
                     batch.agent_steps() if self._by_agent_steps else batch.count

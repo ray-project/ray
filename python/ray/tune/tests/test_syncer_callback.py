@@ -8,17 +8,19 @@ import pytest
 from freezegun import freeze_time
 
 import ray.util
+from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.tune import TuneError
-from ray.tune.result import NODE_IP
+from ray.tune.logger import NoopLogger
 from ray.tune.syncer import (
     DEFAULT_SYNC_PERIOD,
     SyncConfig,
     SyncerCallback,
     _BackgroundProcess,
 )
-from ray.tune.utils.callback import create_default_callbacks
+from ray.tune.trainable import wrap_function
+from ray.tune.trainable.function_trainable import NULL_MARKER
+from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 
 @pytest.fixture
@@ -69,11 +71,14 @@ def assert_file(exists: bool, root: str, path: str):
 class MockTrial:
     def __init__(self, trial_id: str, logdir: str):
         self.trial_id = trial_id
-        self.last_result = {NODE_IP: ray.util.get_node_ip_address()}
         self.uses_cloud_checkpointing = False
         self.sync_on_checkpoint = True
 
         self.logdir = logdir
+        self._local_ip = ray.util.get_node_ip_address()
+
+    def get_runner_ip(self):
+        return self._local_ip
 
 
 class TestSyncerCallback(SyncerCallback):
@@ -118,7 +123,7 @@ class MaybeFailingProcess(_BackgroundProcess):
 
 def test_syncer_callback_disabled():
     """Check that syncer=None disables callback"""
-    callbacks = create_default_callbacks(
+    callbacks = _create_default_callbacks(
         callbacks=[], sync_config=SyncConfig(syncer=None)
     )
     syncer_callback = None
@@ -147,7 +152,7 @@ def test_syncer_callback_disabled():
 
 def test_syncer_callback_noop_on_trial_cloud_checkpointing():
     """Check that trial using cloud checkpointing disables sync to driver"""
-    callbacks = create_default_callbacks(callbacks=[], sync_config=SyncConfig())
+    callbacks = _create_default_callbacks(callbacks=[], sync_config=SyncConfig())
     syncer_callback = None
     for cb in callbacks:
         if isinstance(cb, SyncerCallback):
@@ -174,7 +179,7 @@ def test_syncer_callback_noop_on_trial_cloud_checkpointing():
 
 def test_syncer_callback_op_on_no_cloud_checkpointing():
     """Check that without cloud checkpointing sync to driver is enabled"""
-    callbacks = create_default_callbacks(callbacks=[], sync_config=SyncConfig())
+    callbacks = _create_default_callbacks(callbacks=[], sync_config=SyncConfig())
     syncer_callback = None
     for cb in callbacks:
         if isinstance(cb, SyncerCallback):
@@ -195,6 +200,29 @@ def test_syncer_callback_sync(ray_start_2_cpus, temp_data_dirs):
     syncer_callback = TestSyncerCallback(local_logdir_override=tmp_target)
 
     trial1 = MockTrial(trial_id="a", logdir=tmp_source)
+
+    syncer_callback.on_trial_result(iteration=1, trials=[], trial=trial1, result={})
+    syncer_callback.wait_for_all()
+
+    assert_file(True, tmp_target, "level0.txt")
+    assert_file(True, tmp_target, "level0_exclude.txt")
+    assert_file(True, tmp_target, "subdir/level1.txt")
+    assert_file(True, tmp_target, "subdir/level1_exclude.txt")
+    assert_file(True, tmp_target, "subdir/nested/level2.txt")
+    assert_file(True, tmp_target, "subdir_nested_level2_exclude.txt")
+    assert_file(True, tmp_target, "subdir_exclude/something/somewhere.txt")
+
+
+def test_syncer_callback_sync_with_invalid_ip(ray_start_2_cpus, temp_data_dirs):
+    """Check that the sync client updates the IP correctly"""
+    tmp_source, tmp_target = temp_data_dirs
+
+    syncer_callback = TestSyncerCallback(local_logdir_override=tmp_target)
+
+    trial1 = MockTrial(trial_id="a", logdir=tmp_source)
+
+    syncer_callback._trial_ips[trial1.trial_id] = "invalid"
+    syncer_callback.on_trial_start(iteration=0, trials=[], trial=trial1)
 
     syncer_callback.on_trial_result(iteration=1, trials=[], trial=trial1, result={})
     syncer_callback.wait_for_all()
@@ -395,6 +423,58 @@ def test_syncer_callback_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
 
     syncer_callback.wait_for_all()
     assert_file(True, tmp_target, "level0.txt")
+
+
+def test_sync_directory_exclude(ray_start_2_cpus, temp_data_dirs):
+    tmp_source, tmp_target = temp_data_dirs
+
+    def logger_creator(config):
+        return NoopLogger(config, tmp_source)
+
+    def train_fn(config):
+        pass
+
+    trainable_cls = wrap_function(train_fn)
+    trainable = ray.remote(trainable_cls).remote(
+        config={}, logger_creator=logger_creator
+    )
+
+    ray.get(trainable.save_to_object.remote())
+
+    # Temporary directory exists
+    assert_file(True, tmp_source, "checkpoint_-00001/" + NULL_MARKER)
+    assert_file(True, tmp_source, "checkpoint_-00001")
+
+    # Create some bogus test directories for testing
+    os.mkdir(os.path.join(tmp_source, "checkpoint_tmp123"))
+    os.link(
+        os.path.join(tmp_source, "level0.txt"),
+        os.path.join(tmp_source, "checkpoint_tmp123", "some_content.txt"),
+    )
+    os.mkdir(os.path.join(tmp_source, "save_to_object1234"))
+    os.link(
+        os.path.join(tmp_source, "level0.txt"),
+        os.path.join(tmp_source, "save_to_object1234", "some_content.txt"),
+    )
+
+    # Sanity check
+    assert_file(True, tmp_source, "checkpoint_tmp123")
+    assert_file(True, tmp_source, "save_to_object1234")
+
+    trial1 = MockTrial(trial_id="a", logdir=tmp_source)
+    syncer_callback = TestSyncerCallback(
+        sync_period=0,
+        local_logdir_override=tmp_target,
+    )
+    syncer_callback.on_trial_complete(iteration=1, trials=[], trial=trial1)
+
+    # Regular files are synced
+    assert_file(True, tmp_target, "level0.txt")
+    # Temporary checkpoints are not synced
+    assert_file(False, tmp_target, "checkpoint_-00001/" + NULL_MARKER)
+    assert_file(False, tmp_target, "checkpoint_-00001")
+    assert_file(False, tmp_target, "checkpoint_tmp123")
+    assert_file(False, tmp_target, "save_to_object1234")
 
 
 if __name__ == "__main__":

@@ -7,9 +7,9 @@ from transformers.pipelines.table_question_answering import (
     TableQuestionAnsweringPipeline,
 )
 
-from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.data_batch_type import DataBatchType
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
@@ -35,7 +35,13 @@ class HuggingFacePredictor(Predictor):
         preprocessor: Optional["Preprocessor"] = None,
     ):
         self.pipeline = pipeline
-        self.preprocessor = preprocessor
+        super().__init__(preprocessor)
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(pipeline={self.pipeline!r}, "
+            f"preprocessor={self._preprocessor!r})"
+        )
 
     @classmethod
     def from_checkpoint(
@@ -66,8 +72,8 @@ class HuggingFacePredictor(Predictor):
                 "If `pipeline_cls` is not specified, 'task' must be passed as a kwarg."
             )
         pipeline_cls = pipeline_cls or pipeline_factory
+        preprocessor = checkpoint.get_preprocessor()
         with checkpoint.as_directory() as checkpoint_path:
-            preprocessor = load_preprocessor_from_dir(checkpoint_path)
             # Tokenizer will be loaded automatically (no need to specify
             # `tokenizer=checkpoint_path`)
             pipeline = pipeline_cls(model=checkpoint_path, **pipeline_kwargs)
@@ -109,12 +115,12 @@ class HuggingFacePredictor(Predictor):
             columns = columns[0]
         return columns
 
-    def _predict_pandas(
+    def predict(
         self,
-        data: "pd.DataFrame",
-        feature_columns: Optional[List[str]] = None,
-        **pipeline_call_kwargs,
-    ) -> "pd.DataFrame":
+        data: DataBatchType,
+        feature_columns: Optional[Union[List[str], List[int]]] = None,
+        **predict_kwargs,
+    ) -> DataBatchType:
         """Run inference on data batch.
 
         The data is converted into a list (unless ``pipeline`` is a
@@ -131,35 +137,42 @@ class HuggingFacePredictor(Predictor):
                 ``pipeline`` object.
 
         Examples:
-
-        .. code-block:: python
-
-            import pandas as pd
-            from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-            from transformers.pipelines import pipeline
-            from ray.train.huggingface import HuggingFacePredictor
-
-            model_checkpoint = "gpt2"
-            tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
-            tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
-
-            model_config = AutoConfig.from_pretrained(model_checkpoint)
-            model = AutoModelForCausalLM.from_config(model_config)
-            predictor = HuggingFacePredictor(
-                pipeline=pipeline(
-                    task="text-generation", model=model, tokenizer=tokenizer
-                )
-            )
-
-            prompts = pd.DataFrame(
-                ["Complete me", "And me", "Please complete"], columns=["sentences"]
-            )
-            predictions = predictor.predict(prompts)
+            >>> import pandas as pd
+            >>> from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+            >>> from transformers.pipelines import pipeline
+            >>> from ray.train.huggingface import HuggingFacePredictor
+            >>>
+            >>> model_checkpoint = "gpt2"
+            >>> tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
+            >>> tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
+            >>>
+            >>> model_config = AutoConfig.from_pretrained(model_checkpoint)
+            >>> model = AutoModelForCausalLM.from_config(model_config)
+            >>> predictor = HuggingFacePredictor(
+            ...     pipeline=pipeline(
+            ...         task="text-generation", model=model, tokenizer=tokenizer
+            ...     )
+            ... )
+            >>>
+            >>> prompts = pd.DataFrame(
+            ...     ["Complete me", "And me", "Please complete"], columns=["sentences"]
+            ... )
+            >>> predictions = predictor.predict(prompts)
 
 
         Returns:
             Prediction result.
         """
+        return Predictor.predict(
+            self, data, feature_columns=feature_columns, **predict_kwargs
+        )
+
+    def _predict_pandas(
+        self,
+        data: "pd.DataFrame",
+        feature_columns: Optional[List[str]] = None,
+        **pipeline_call_kwargs,
+    ) -> "pd.DataFrame":
         if TENSOR_COLUMN_NAME in data:
             arr = data[TENSOR_COLUMN_NAME].to_numpy()
             if feature_columns:

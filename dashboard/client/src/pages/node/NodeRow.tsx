@@ -1,33 +1,26 @@
-import { IconButton, TableCell, TableRow, Tooltip } from "@material-ui/core";
-import { createStyles, makeStyles } from "@material-ui/core/styles";
+import {
+  Box,
+  IconButton,
+  TableCell,
+  TableRow,
+  Tooltip,
+} from "@material-ui/core";
 import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import { sortBy } from "lodash";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import rowStyles from "../../common/RowStyles";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
 import { getNodeDetail } from "../../service/node";
 import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
+import { NodeGPUView, WorkerGPU } from "./GPUColumn";
+import { NodeGRAM, WorkerGRAM } from "./GRAMColumn";
 
-const useNodeRowStyles = makeStyles((theme) =>
-  createStyles({
-    expandCollapseIcon: {
-      color: theme.palette.text.secondary,
-      fontSize: "1.5em",
-      verticalAlign: "middle",
-    },
-    idCol: {
-      display: "block",
-      width: "50px",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-    },
-  }),
-);
+const TEXT_COL_MIN_WIDTH = 100;
 
 type NodeRowProps = Pick<NodeRowsProps, "node"> & {
   /**
@@ -56,7 +49,7 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
     logUrl,
   } = node;
 
-  const classes = useNodeRowStyles();
+  const classes = rowStyles();
 
   const objectStoreTotalMemory =
     raylet.objectStoreAvailableMemory + raylet.objectStoreUsedMemory;
@@ -72,6 +65,9 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
           )}
         </IconButton>
       </TableCell>
+      <TableCell align="center">
+        <Box minWidth={TEXT_COL_MIN_WIDTH}>{hostname}</Box>
+      </TableCell>
       <TableCell>
         <StatusChip type="node" status={raylet.state} />
       </TableCell>
@@ -82,8 +78,9 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
           </Link>
         </Tooltip>
       </TableCell>
-      <TableCell align="center">{hostname}</TableCell>
-      <TableCell align="center">{ip}</TableCell>
+      <TableCell align="center">
+        <Box minWidth={TEXT_COL_MIN_WIDTH}>{ip}</Box>
+      </TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
           {cpu}%
@@ -97,6 +94,12 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
             %)
           </PercentageBar>
         )}
+      </TableCell>
+      <TableCell>
+        <NodeGPUView node={node} />
+      </TableCell>
+      <TableCell>
+        <NodeGRAM node={node} />
       </TableCell>
       <TableCell>
         {raylet && raylet.objectStoreUsedMemory && (
@@ -141,7 +144,7 @@ type WorkerRowProps = {
  * A single row that represents the data of a Worker
  */
 const WorkerRow = ({ node, worker }: WorkerRowProps) => {
-  const classes = useNodeRowStyles();
+  const classes = rowStyles();
 
   const { mem, logUrl } = node;
   const {
@@ -162,6 +165,7 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       <TableCell>
         {/* Empty because workers do not have an expand / unexpand button. */}
       </TableCell>
+      <TableCell align="center">{cmdline[0]}</TableCell>
       <TableCell>
         <StatusChip type="worker" status="ALIVE" />
       </TableCell>
@@ -172,7 +176,6 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
           </Tooltip>
         )}
       </TableCell>
-      <TableCell align="center">{cmdline[0]}</TableCell>
       <TableCell align="center">{pid}</TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
@@ -187,6 +190,12 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
             %)
           </PercentageBar>
         )}
+      </TableCell>
+      <TableCell>
+        <WorkerGPU worker={worker} />
+      </TableCell>
+      <TableCell>
+        <WorkerGRAM worker={worker} node={node} />
       </TableCell>
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>
@@ -210,13 +219,21 @@ type NodeRowsProps = {
    * Whether the node row should refresh data about its workers.
    */
   isRefreshing: boolean;
+  /**
+   * Whether the row should start expanded. By default, this is false.
+   */
+  startExpanded?: boolean;
 };
 
 /**
  * The rows related to a node and its workers. Expandable to show information about workers.
  */
-export const NodeRows = ({ node, isRefreshing }: NodeRowsProps) => {
-  const [isExpanded, setExpanded] = useState(false);
+export const NodeRows = ({
+  node,
+  isRefreshing,
+  startExpanded = false,
+}: NodeRowsProps) => {
+  const [isExpanded, setExpanded] = useState(startExpanded);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const tot = useRef<NodeJS.Timeout>();
 
