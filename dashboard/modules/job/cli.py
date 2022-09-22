@@ -202,7 +202,6 @@ def submit(
         runtime_env_json=runtime_env_json,
         working_dir=working_dir,
     )
-    cli_logger.print(f"Using num_cpis={num_cpus}, num_gpus={num_gpus}, ")
     job_id = client.submit_job(
         entrypoint=list2cmdline(entrypoint),
         submission_id=submission_id,
