@@ -1,19 +1,18 @@
 from math import ceil
 import sys
 import time
-import os
 
 import psutil
 import pytest
 
 import ray
-from ray._private import test_utils
 from ray._private.test_utils import get_node_stats, wait_for_condition
 
 
 memory_usage_threshold_fraction = 0.5
 memory_monitor_interval_ms = 100
 metrics_report_interval_ms = 100
+
 
 @pytest.fixture
 def ray_with_memory_monitor_no_oom_retries(shutdown_only):
@@ -44,6 +43,7 @@ def ray_with_memory_monitor_two_oom_retries(shutdown_only):
     ):
         yield
 
+
 # TODO(clarng): enable tests for actor retry
 # @ray.remote(max_restarts = 1, max_task_retries=-1)
 # class OneActorRetryAlloc:
@@ -56,6 +56,7 @@ def ray_with_memory_monitor_two_oom_retries(shutdown_only):
 #         self.leaks.append(new_list)
 #         time.sleep(sleep_s)
 
+
 @ray.remote(max_retries=0)
 def no_retry_alloc_then_sleep(
     allocate_bytes: int,
@@ -66,6 +67,7 @@ def no_retry_alloc_then_sleep(
     time.sleep(1000)
     print(chunks)
 
+
 @ray.remote(max_retries=1)
 def one_retry_alloc_then_sleep(
     allocate_bytes: int,
@@ -75,6 +77,7 @@ def one_retry_alloc_then_sleep(
     chunks = [0] * ceil(bytes_per_chunk)
     time.sleep(1000)
     print(chunks)
+
 
 def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> None:
     node_mem = psutil.virtual_memory()
@@ -119,11 +122,14 @@ def test_no_oom_retry_use_task_retry_for_oom(ray_with_memory_monitor_no_oom_retr
         value=2.0,
     )
 
+
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_no_task_retry_dont_use_oom_retry_for_oom(ray_with_memory_monitor_two_oom_retries):
+def test_no_task_retry_dont_use_oom_retry_for_oom(
+    ray_with_memory_monitor_two_oom_retries,
+):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
 
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
@@ -137,11 +143,14 @@ def test_no_task_retry_dont_use_oom_retry_for_oom(ray_with_memory_monitor_two_oo
         value=1.0,
     )
 
+
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_two_oom_retry_use_oom_retry_and_task_retry_for_oom(ray_with_memory_monitor_two_oom_retries):
+def test_two_oom_retry_use_oom_retry_and_task_retry_for_oom(
+    ray_with_memory_monitor_two_oom_retries,
+):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
 
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
@@ -155,11 +164,14 @@ def test_two_oom_retry_use_oom_retry_and_task_retry_for_oom(ray_with_memory_moni
         value=4.0,
     )
 
+
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_no_oom_retry_no_task_retry_fail_immediately(ray_with_memory_monitor_no_oom_retries):
+def test_no_oom_retry_no_task_retry_fail_immediately(
+    ray_with_memory_monitor_no_oom_retries,
+):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
 
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
@@ -172,6 +184,7 @@ def test_no_oom_retry_no_task_retry_fail_immediately(ray_with_memory_monitor_no_
         tag="MemoryManager.TaskEviction.Total",
         value=1.0,
     )
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

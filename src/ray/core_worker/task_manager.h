@@ -172,7 +172,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] task_id ID of the task to be retried.
   /// \param[in] task_failed_due_to_oom last task attempt failed due to node running out
-  /// of memory. \return true if task is scheduled to be retried.
+  /// of memory.
+  /// \return true if task is scheduled to be retried.
   bool RetryTaskIfPossible(const TaskID &task_id, bool task_failed_due_to_oom) override;
 
   /// A pending task failed. This will either retry the task or mark the task
