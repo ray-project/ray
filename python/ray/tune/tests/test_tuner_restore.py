@@ -6,7 +6,11 @@ import pytest
 import ray
 from ray import tune
 from ray.air import RunConfig, Checkpoint, session, FailureConfig
-from ray.air._internal.remote_storage import download_from_uri
+from ray.air._internal.remote_storage import (
+    download_from_uri,
+    delete_at_uri,
+    upload_to_uri,
+)
 from ray.tune import Callback
 from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.experiment import Trial
@@ -398,6 +402,58 @@ def test_tuner_restore_from_new_path(ray_start_2_cpus, tmpdir):
 
     # Make sure that we did not create a logdir in the old location
     assert not (tmpdir / "ray_results").exists()
+
+
+def test_tuner_restore_from_new_cloud_path(ray_start_2_cpus, tmpdir):
+    """Check that restoring Tuner() objects from a moved directory works"""
+    fail_marker = tmpdir / "fail_marker"
+    fail_marker.write_text("", encoding="utf-8")
+
+    # Use fsspec Filesystem to mimic cloud checkpoint storage
+    cloud_uri = "memory:///test/restore"
+    tuner = Tuner(
+        _train_fn_sometimes_failing,
+        tune_config=TuneConfig(
+            num_samples=1,
+        ),
+        run_config=RunConfig(
+            name="exp_dir",
+            local_dir=str(tmpdir / "ray_results"),
+            sync_config=tune.SyncConfig(upload_dir=cloud_uri),
+        ),
+        param_space={
+            "failing_hanging": (fail_marker, None),
+        },
+    )
+    results = tuner.fit()
+    assert len(results.errors) == 1
+    # Only 1 session.report finished before erroring out
+    training_iteration = results[0].metrics["it"]
+    assert training_iteration == 1, training_iteration
+
+    # Move from memory:///test/restore -> memory:///moved/restore
+    check_path = tmpdir / "check_save"
+    download_from_uri(cloud_uri, str(check_path))
+    delete_at_uri(cloud_uri)
+    new_cloud_uri = "memory:///moved/restore"
+    upload_to_uri(check_path, new_cloud_uri)
+
+    # Remove fail_marker so that the restored Tuner doesn't error again
+    del tuner
+    fail_marker.remove(ignore_errors=True)
+
+    # Restore from moved experiment directory
+    tuner = Tuner.restore(os.path.join(new_cloud_uri, "exp_dir"), resume_errored=True)
+    # Should be able to fit using the restored Tuner
+    results = tuner.fit()
+
+    assert len(results.errors) == 0
+    training_iteration = results[0].metrics["it"]
+    # Check that we loaded iter=1, then 2 calls to session.report -> iter=3
+    assert training_iteration == 3, training_iteration
+
+    # Make sure that we did not create a logdir in the old location
+    # assert not (tmpdir / "ray_results").exists()
 
 
 if __name__ == "__main__":
