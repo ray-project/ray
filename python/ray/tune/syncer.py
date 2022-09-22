@@ -446,7 +446,7 @@ class _BackgroundSyncer(Syncer):
 
     def __getstate__(self):
         state = self.__dict__.copy()
-        state.pop("_sync_process", None)
+        state["_sync_process"] = None
         return state
 
 
