@@ -4217,6 +4217,25 @@
     type: sdk_command
     file_manager: sdk
 
+- name: read_benchmark
+  group: core-dataset-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: multi
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: read_benchmark_compute.yaml
+
+  run:
+    timeout: 1800
+    script: python read_benchmark.py
+    wait_for_nodes:
+      num_nodes: 10
+
+    type: sdk_command
+    file_manager: sdk
+
 - name: pipelined_training_50_gb
   group: core-dataset-tests
   working_dir: nightly_tests/dataset
