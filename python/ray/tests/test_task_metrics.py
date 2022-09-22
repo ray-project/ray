@@ -366,14 +366,38 @@ ray.get(a)
     )
 
 
-def test_task_wait_on_object_store_mem(shutdown_only):
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
-    # TODO
+def test_pull_manager_stats(shutdown_only):
+    info = ray.init(num_cpus=2, object_store_memory=100_000_000, **METRIC_CONFIG)
 
+    driver = """
+import ray
+import time
+import numpy as np
 
-def test_task_wait_on_arg_fetch(shutdown_only):
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
-    # TODO
+ray.init("auto")
+
+# Spill a lot of 10MiB objects. The object store is 100MiB, so pull manager will
+# only be able to pull ~9 total into memory at once, including running tasks.
+buf = []
+for _ in range(100):
+    buf.append(ray.put(np.ones(10 * 1024 * 1024, dtype=np.uint8)))
+
+@ray.remote
+def f(x):
+    time.sleep(999)
+
+ray.get([f.remote(x) for x in buf])"""
+
+    proc = run_string_as_driver_nonblocking(driver)
+    expected = {
+        "RUNNING": 2.0,
+        "PENDING_ARGS_FETCH": 7.0,
+        "PENDING_OBJ_STORE_MEM_AVAIL": 91.0,
+    }
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+    )
+    proc.kill()
 
 
 if __name__ == "__main__":
