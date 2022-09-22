@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING, Optional, Union, Dict
 import numpy as np
 
 from ray.data import Dataset
-from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.util.data_batch_conversion import convert_batch_type_to_numpy
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -262,7 +260,10 @@ class Preprocessor(abc.ABC):
             )
 
     def _transform_batch(self, data: "DataBatchType") -> "DataBatchType":
+        # For minimal install to locally import air modules
         import pandas as pd
+        from ray.air.constants import TENSOR_COLUMN_NAME
+        from ray.air.util.data_batch_conversion import convert_batch_type_to_numpy
 
         try:
             import pyarrow
