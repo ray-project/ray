@@ -246,5 +246,9 @@ $ kubectl describe rayservice rayservice-sample
 In the status, you can see that the `RayService` is preparing a pending cluster.
 After the pending cluster is healthy, it becomes the active cluster and the previous cluster is terminated.
 
+## Next Steps
+
+Check out [the end-to-end fault tolerance guide](serve-e2e-ft) to learn more about Serve's failure conditions and how to guard against them.
+
 [KubeRay]: https://ray-project.github.io/kuberay/
 [RayService]: https://ray-project.github.io/kuberay/guidance/rayservice/
