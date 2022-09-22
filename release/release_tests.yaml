@@ -3605,6 +3605,9 @@
 
   run:
     timeout: 7200
+    wait_for_nodes:
+      num_nodes: 101
+
     script: python stress_tests/test_many_tasks.py
     type: sdk_command
     file_manager: sdk
