@@ -19,7 +19,7 @@ def ray_start_4_cpus():
 def ray_start_runtime_env():
     # Requires at least torch 1.11 to pass
     # TODO update torch version in requirements instead
-    runtime_env = {"pip": ["torch==1.10.2"]}
+    runtime_env = {"pip": ["torch==1.11.0"]}
     address_info = ray.init(runtime_env=runtime_env)
     yield address_info
     # The code after the yield will run as teardown code.
