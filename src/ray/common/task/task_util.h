@@ -108,6 +108,7 @@ class TaskSpecBuilder {
       const TaskID &caller_id,
       const rpc::Address &caller_address,
       uint64_t num_returns,
+      bool returns_dynamic,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       const std::string &debugger_breakpoint,
@@ -125,6 +126,7 @@ class TaskSpecBuilder {
     message_->set_caller_id(caller_id.Binary());
     message_->mutable_caller_address()->CopyFrom(caller_address);
     message_->set_num_returns(num_returns);
+    message_->set_returns_dynamic(returns_dynamic);
     message_->mutable_required_resources()->insert(required_resources.begin(),
                                                    required_resources.end());
     message_->mutable_required_placement_resources()->insert(

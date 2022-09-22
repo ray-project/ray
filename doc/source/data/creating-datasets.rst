@@ -179,6 +179,20 @@ Supported File Formats
 
   See the API docs for :func:`read_binary_files() <ray.data.read_binary_files>`.
 
+.. tabbed:: TFRecords
+
+  Call :func:`~ray.data.read_tfrecords` to read TFRecord files into a tabular
+  :class:`~ray.data.Dataset`.
+
+  .. warning::
+      Only `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
+      records are supported.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __read_tfrecords_begin__
+    :end-before: __read_tfrecords_end__
+
 .. _dataset_reading_remote_storage:
 
 Reading from Remote Storage
