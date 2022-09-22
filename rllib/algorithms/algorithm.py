@@ -1994,13 +1994,13 @@ class Algorithm(Trainable):
         """
         config1 = copy.deepcopy(config1)
         if "callbacks" in config2 and type(config2["callbacks"]) is dict:
-            legacy_callbacks_dict = config2["callbacks"]
+            deprecation_warning(
+                "callbacks dict interface",
+                "a class extending rllib.algorithms.callbacks.DefaultCallbacks; "
+                "see `rllib/examples/custom_metrics_and_callbacks.py` for an example.",
+                error=True,
+            )
 
-            def make_callbacks():
-                # Deprecation warning will be logged by DefaultCallbacks.
-                return DefaultCallbacks(legacy_callbacks_dict=legacy_callbacks_dict)
-
-            config2["callbacks"] = make_callbacks
         if _allow_unknown_configs is None:
             _allow_unknown_configs = cls._allow_unknown_configs
         return deep_update(

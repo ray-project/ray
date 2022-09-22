@@ -2727,15 +2727,6 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_metrics_and_callbacks_legacy",
-    main = "examples/custom_metrics_and_callbacks_legacy.py",
-    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_UtoZ"],
-    size = "small",
-    srcs = ["examples/custom_metrics_and_callbacks_legacy.py"],
-    args = ["--stop-iters=2"]
-)
-
-py_test(
     name = "examples/custom_model_api_tf",
     main = "examples/custom_model_api.py",
     tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_UtoZ"],
