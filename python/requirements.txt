@@ -98,7 +98,6 @@ pytest-virtualenv
 redis >= 3.5.0, < 4.0.0
 scikit-learn
 smart_open[s3]
-starlette
 tqdm
 testfixtures
 werkzeug<2.2.0
