@@ -1259,7 +1259,7 @@ class RolloutWorker(ParallelIteratorWorker):
             )
 
             self.filters[policy_id] = get_filter(
-                config.get("observation_filter", "NoFilter"), filter_shape
+                (config or {}).get("observation_filter", "NoFilter"), filter_shape
             )
 
         if connectors_enabled and policy_id in self.policy_map:
