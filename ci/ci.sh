@@ -755,10 +755,7 @@ build() {
   fi
 }
 
-test_minimal() {
-  ./ci/env/install-minimal.sh "$1"
-  ./ci/env/env_info.sh
-  python ./ci/env/check_minimal_install.py
+run_minimal_test() {
   BAZEL_EXPORT_OPTIONS="$(./ci/run/bazel_export_options)"
   # Ignoring shellcheck is necessary because if ${BAZEL_EXPORT_OPTIONS} is wrapped by the double quotation,
   # bazel test cannot recognize the option.
@@ -807,6 +804,19 @@ test_minimal() {
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_usage_stats
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_usage_stats
+}
+
+test_minimal() {
+  ./ci/env/install-minimal.sh "$1"
+  ./ci/env/env_info.sh
+  python ./ci/env/check_minimal_install.py
+  run_minimal_test
+}
+
+
+test_latest_core_dependencies() {
+  ./ci/env/install-core-prerelease-dependencies.sh
+  run_minimal_test
 }
 
 _main() {
