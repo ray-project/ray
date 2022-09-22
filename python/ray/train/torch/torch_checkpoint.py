@@ -112,7 +112,7 @@ class TorchCheckpoint(Checkpoint):
             if model:
                 warnings.warn(
                     "TorchCheckpoint already contains all information needed. "
-                    "Discarding provided `model_definition`. This means: "
+                    "Discarding provided `model` argument. This means: "
                     "If you are using BatchPredictor, you should do "
                     "`BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)` by"
                     "removing kwargs `model=`. "
