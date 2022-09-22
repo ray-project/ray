@@ -207,7 +207,7 @@ def h_function(x, epsilon=1.0):
 
 
 def h_inverse(x, epsilon=1.0):
-    """Inverse if the above h-function, described in the paper [1].
+    """Inverse of the above h-function, described in the paper [1].
 
     If x > 0.0:
     h-1(x) = [2eps * x + (2eps + 1) - sqrt(4eps x + (2eps + 1)^2)] /
