@@ -1,4 +1,5 @@
 import os
+import shutil
 import time
 
 import pytest
@@ -350,6 +351,53 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir):
     # Overwriting should work
     tuner3 = Tuner.restore("memory:///test/restore/exp_dir")
     tuner3.fit()
+
+
+def test_tuner_restore_from_new_path(ray_start_2_cpus, tmpdir):
+    """Check that restoring Tuner() objects from a moved directory works"""
+    fail_marker = tmpdir / "fail_marker"
+    fail_marker.write_text("", encoding="utf-8")
+
+    tuner = Tuner(
+        _train_fn_sometimes_failing,
+        tune_config=TuneConfig(
+            num_samples=1,
+        ),
+        run_config=RunConfig(
+            name="exp_dir",
+            local_dir=str(tmpdir / "ray_results"),
+        ),
+        param_space={
+            "failing_hanging": (fail_marker, None),
+        },
+    )
+    results = tuner.fit()
+    assert len(results.errors) == 1
+    # Only 1 session.report finished before erroring out
+    training_iteration = results[0].metrics["it"]
+    assert training_iteration == 1, training_iteration
+
+    # Move from tmpdir/ray_results -> tmpdir/moved_ray_results
+    shutil.move(tmpdir / "ray_results", tmpdir / "moved_ray_results")
+
+    # Remove fail_marker so that the restored Tuner doesn't error again
+    del tuner
+    fail_marker.remove(ignore_errors=True)
+
+    # Restore from moved experiment directory
+    tuner = Tuner.restore(
+        str(tmpdir / "moved_ray_results" / "exp_dir"), resume_errored=True
+    )
+    # Should be able to fit using the restored Tuner
+    results = tuner.fit()
+
+    assert len(results.errors) == 0
+    training_iteration = results[0].metrics["it"]
+    # Check that we loaded iter=1, then 2 calls to session.report -> iter=3
+    assert training_iteration == 3, training_iteration
+
+    # Make sure that we did not create a logdir in the old location
+    assert not (tmpdir / "ray_results").exists()
 
 
 if __name__ == "__main__":
