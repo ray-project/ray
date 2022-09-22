@@ -46,7 +46,7 @@ class RayError(Exception):
                 return pickle.loads(ray_exception.serialized_exception)
             except Exception as e:
                 msg = "Failed to unpickle serialized exception"
-                msg += "-- original error message is: "
+                msg += " -- original error message is: "
                 msg += ray_exception.formatted_exception_string
                 raise RuntimeError(msg) from e
         else:
