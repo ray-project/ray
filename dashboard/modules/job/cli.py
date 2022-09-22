@@ -352,7 +352,7 @@ def logs(address: Optional[str], job_id: str, follow: bool):
             asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
         else:
             cli_logger.warning(
-                "Tailing logs is not enabled for job sdk client version "
+                "Tailing logs is not enabled for the Jobs SDK client version "
                 f"{sdk_version}. Please upgrade your ray to latest version "
                 "for this feature."
             )

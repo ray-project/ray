@@ -535,7 +535,7 @@ class JobManager:
                 case needed.
             num_cpus: The quantity of CPU cores to reserve for the execution
                 of the entrypoint command. Defaults to 0.
-            num_gpus: The quantity of GPUs to reserve for the execution of
+            num_gpus: The quantity of GPUs to reserve for
                 the entrypoint command. Defaults to 0.
             resources: The quantity of various custom resources
                 to reserve for the entrypoint command.
@@ -559,7 +559,7 @@ class JobManager:
         elif await self._job_info_client.get_status(submission_id) is not None:
             raise RuntimeError(f"Job {submission_id} already exists.")
 
-        logger.error(f"Starting job with submission_id: {submission_id}")
+        logger.info(f"Starting job with submission_id: {submission_id}")
         job_info = JobInfo(
             entrypoint=entrypoint,
             status=JobStatus.PENDING,
