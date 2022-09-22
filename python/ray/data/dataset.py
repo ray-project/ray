@@ -2,6 +2,7 @@ import collections
 import itertools
 import logging
 import os
+import sys
 import time
 import html
 from typing import (
@@ -97,6 +98,11 @@ from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.widgets import Template
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 if TYPE_CHECKING:
     import dask
@@ -312,8 +318,8 @@ class Dataset(Generic[T]):
         fn: BatchUDF,
         *,
         batch_size: Optional[int] = 4096,
-        compute: Union[str, ComputeStrategy] = None,
-        batch_format: str = "default",
+        compute: Optional[Union[str, ComputeStrategy]] = None,
+        batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -2549,7 +2555,7 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> for batch in ray.data.range( # doctest: +SKIP
             ...     12,
-            ... ).iter_torch_batches(batch_size=4):
+            ... ).iter_tf_batches(batch_size=4):
             ...     print(batch.shape) # doctest: +SKIP
             (4, 1)
             (4, 1)
@@ -3627,14 +3633,16 @@ class Dataset(Generic[T]):
 
             >>> ds = ray.data.range(100)
             >>> ds  # doctest: +SKIP
-            Dataset(num_blocks=17, num_rows=100, schema=<class 'int'>)
+            Dataset(num_blocks=20, num_rows=100, schema=<class 'int'>)
             >>> ds.default_batch_format()
             <class 'list'>
             >>> next(ds.iter_batches(batch_size=4))
             [0, 1, 2, 3]
 
-            If your dataset contains a single column of ``TensorDtype`` or
-            ``ArrowTensorType``, then the default batch format is ``ndarray``.
+            If your dataset contains a single ``TensorDtype`` or ``ArrowTensorType``
+            column named ``__value__`` (as created by :func:`ray.data.from_numpy`), then
+            the default batch format is ``np.ndarray``. For more information on tensor
+            datasets, read the :ref:`tensor support guide <datasets_tensor_support>`.
 
             >>> ds = ray.data.range_tensor(100)
             >>> ds  # doctest: +SKIP
@@ -3647,8 +3655,10 @@ class Dataset(Generic[T]):
                    [2],
                    [3]])
 
-            If your dataset represents structured data and the default batch format
-            isn't ``ndarray``, then the default batch format is ``DataFrame``.
+            If your dataset represents tabular data and doesn't only consist of a
+            ``__value__`` tensor column (such as is created by
+            :meth:`ray.data.from_numpy`), then the default batch format is
+            ``pd.DataFrame``.
 
             >>> import pandas as pd
             >>> df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
