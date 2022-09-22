@@ -11,7 +11,7 @@ Your Ray application may have dependencies that exist outside of your Ray script
 
 One frequent problem when running on a cluster is that Ray expects these "dependencies" to exist on each Ray node. If these are not present, you may run into issues such as ``ModuleNotFoundError``, ``FileNotFoundError`` and so on.
 
-To address this problem, you can (1) prepare your dependencies on the cluster in advance using the Ray :ref:`Cluster Launcher <ref-cluster-quick-start>`, or (2) use Ray's :ref:`runtime environments<runtime-environments>` to install them on the fly.
+To address this problem, you can (1) prepare your dependencies on the cluster in advance using the Ray :ref:`Cluster Launcher <vm-cluster-quick-start>`, or (2) use Ray's :ref:`runtime environments <runtime-environments>` to install them on the fly.
 
 For production usage or non-changing environments, we recommend installing your dependencies into a container image and specifying the image using the Cluster Launcher.
 For dynamic environments (e.g. for development and experimentation), we recommend using runtime environments.
@@ -28,7 +28,7 @@ Concepts
 
 - **Packages**: External libraries or executables required by your Ray application, often installed via ``pip`` or ``conda``.
 
-- **Local machine** and **Cluster**.  Usually, you may want to separate the Ray cluster compute machines/pods from the machine/pod that handles and submits the application. You can submit a Ray Job via :ref:`the Ray Job Submission mechanism <jobs-overview>`, or the :ref:`Ray Client<ray-client>` to connect to a cluster interactively. We call the machine submitting the job your *local machine*.
+- **Local machine** and **Cluster**.  Usually, you may want to separate the Ray cluster compute machines/pods from the machine/pod that handles and submits the application. You can submit a Ray Job via :ref:`the Ray Job Submission mechanism <jobs-overview>`, or the :ref:`Ray Client <ray-client-ref>` to connect to a cluster interactively. We call the machine submitting the job your *local machine*.
 
 - **Job**.  A period of execution between connecting to a cluster with ``ray.init()`` and disconnecting by calling ``ray.shutdown()`` or exiting the Ray script.
 
@@ -38,9 +38,9 @@ Preparing an environment using the Ray Cluster launcher
 
 The first way to set up dependencies is to is to prepare a single environment across the cluster before starting the Ray runtime.
 
-- You can build all your files and dependencies into a container image and specify this in your your :ref:`Cluster YAML Configuration<cluster-config>`.
+- You can build all your files and dependencies into a container image and specify this in your your :ref:`Cluster YAML Configuration <cluster-config>`.
 
-- You can also install packages using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference<cluster-configuration-setup-commands>`); these commands will be run as each node joins the cluster.
+- You can also install packages using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference <cluster-configuration-setup-commands>`); these commands will be run as each node joins the cluster.
   Note that for production settings, it is recommended to build any necessary packages into a container image instead.
 
 - You can push local files to the cluster using ``ray rsync_up`` (:ref:`reference<ray-rsync>`).
@@ -97,7 +97,7 @@ or use :class:`ray.runtime_env.RuntimeEnv <ray.runtime_env.RuntimeEnv>`, and her
    :start-after: __strong_typed_api_runtime_env_conda_def_start__
    :end-before: __strong_typed_api_runtime_env_conda_def_end__
 
-For more examples, jump to the :ref:`API Reference<runtime-environments-api-ref>`.
+For more examples, jump to the :ref:`API Reference <runtime-environments-api-ref>`.
 
 
 There are two primary scopes for which you can specify a runtime environment:
@@ -110,7 +110,7 @@ There are two primary scopes for which you can specify a runtime environment:
 Specifying a Runtime Environment Per-Job
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using :ref:`Ray Job submission <jobs-overview>`, or using :ref:`Ray Client<ray-client>`:
+You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using :ref:`Ray Job submission <jobs-overview>`, or using :ref:`Ray Client <ray-client-ref>`:
 
 .. literalinclude:: /ray-core/doc_code/runtime_env_example.py
    :language: python
@@ -228,7 +228,7 @@ However, using runtime environments you can dynamically specify packages to be a
 
 You may also specify your ``pip`` dependencies either via a Python list or a ``requirements.txt`` file.
 Alternatively, you can specify a ``conda`` environment, either as a Python dictionary or via a ``environment.yml`` file.  This conda environment can include ``pip`` packages.
-For details, head to the :ref:`API Reference<runtime-environments-api-ref>`.
+For details, head to the :ref:`API Reference <runtime-environments-api-ref>`.
 
 .. warning::
 
@@ -475,22 +475,28 @@ If you want to specify this directory as a local path, your ``runtime_env`` dict
 
 Suppose instead you want to host your files in your ``/some_path/example_dir`` directory remotely and provide a remote URI.
 You would need to first compress the ``example_dir`` directory into a zip file.
-You can use the following command in the Terminal to do so:
-
-.. code-block:: bash
-
-    zip -r example.zip /some_path/example_dir
-
-In general, to compress a directory called ``directory_to_zip`` into a zip file called ``zip_file_name.zip``, the command is:
-
-.. code-block:: bash
-
-    # General command
-    zip -r zip_file_name.zip directory_to_zip
 
 There should be no other files or directories at the top level of the zip file, other than ``example_dir``.
+You can use the following command in the Terminal to do this:
+
+.. code-block:: bash
+
+    cd /some_path
+    zip -r zip_file_name.zip example_dir
+
+Note that this command must be run from the *parent directory* of the desired ``working_dir`` to ensure that the resulting zip file contains a single top-level directory.
 In general, the zip file's name and the top-level directory's name can be anything.
 The top-level directory's contents will be used as the ``working_dir`` (or ``py_module``).
+
+You can check that the zip file contains a single top-level directory by running the following command in the Terminal:
+
+.. code-block:: bash
+
+  zipinfo -1 zip_file_name.zip
+  # example_dir/
+  # example_dir/my_file_1.txt
+  # example_dir/subdir/my_file_2.txt
+
 Suppose you upload the compressed ``example_dir`` directory to AWS S3 at the S3 URI ``s3://example_bucket/example.zip``.
 Your ``runtime_env`` dictionary should contain:
 
@@ -504,7 +510,7 @@ Your ``runtime_env`` dictionary should contain:
   You can inspect a zip file's contents by running the ``zipinfo -1 zip_file_name.zip`` command in the Terminal.
   Some zipping methods can cause hidden files or metadata directories to appear in the zip file at the top level.
   This will cause Ray to throw an error because the structure of the zip file is invalid since there is more than a single directory at the top level.
-  You can avoid this by using the ``zip -r`` command directly on the directory you want to compress.
+  You can avoid this by using the ``zip -r`` command directly on the directory you want to compress. Make sure to run the command from that directory's parent.
 
 Currently, three types of remote URIs are supported for hosting ``working_dir`` and ``py_modules`` packages:
 
@@ -671,7 +677,7 @@ the error message in detail.
     a = A.options(runtime_env=bad_env).remote()
     ray.get(a.f.remote())
 
-You can also enable ``runtime_env`` debugging log streaming by setting an environment variable ``RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED=1`` on each node before starting Ray, for example using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference<cluster-configuration-setup-commands>`).
+You can also enable ``runtime_env`` debugging log streaming by setting an environment variable ``RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED=1`` on each node before starting Ray, for example using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference <cluster-configuration-setup-commands>`).
 This will print the full ``runtime_env`` setup log messages to the driver (the script that calls ``ray.init()``).
 
 Example log output:

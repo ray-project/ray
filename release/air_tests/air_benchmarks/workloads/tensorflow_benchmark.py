@@ -39,12 +39,7 @@ def build_cnn_model() -> tf.keras.Model:
 
 
 def train_func(use_ray: bool, config: dict):
-    if use_ray:
-        from ray.air.callbacks.keras import Callback as TrainCheckpointReportCallback
-
-        callbacks = [TrainCheckpointReportCallback(frequency=0)]
-    else:
-        callbacks = []
+    local_start_time = time.monotonic()
 
     per_worker_batch_size = config.get("batch_size", 64)
     epochs = config.get("epochs", 3)
@@ -69,6 +64,18 @@ def train_func(use_ray: bool, config: dict):
             metrics=["accuracy"],
         )
 
+    if use_ray:
+        from ray.air.callbacks.keras import Callback as TrainCheckpointReportCallback
+
+        class CustomReportCallback(TrainCheckpointReportCallback):
+            def _handle(self, logs: dict, when: str = None):
+                logs["local_time_taken"] = time.monotonic() - local_start_time
+                super()._handle(logs, when)
+
+        callbacks = [CustomReportCallback(frequency=0)]
+    else:
+        callbacks = []
+
     history = multi_worker_model.fit(
         multi_worker_dataset,
         epochs=epochs,
@@ -79,10 +86,11 @@ def train_func(use_ray: bool, config: dict):
     loss = results["loss"][-1]
 
     if not use_ray:
+        local_time_taken = time.monotonic() - local_start_time
         print(f"Reporting loss: {loss:.4f}")
         if local_rank == 0:
             with open(VANILLA_RESULT_JSON, "w") as f:
-                json.dump({"loss": loss}, f)
+                json.dump({"loss": loss, "local_time_taken": local_time_taken}, f)
 
     return results
 
@@ -93,7 +101,7 @@ def train_tf_ray_air(
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
-) -> Tuple[float, float]:
+) -> Tuple[float, float, float]:
     # This function is kicked off by the main() function and runs a full training
     # run using Ray AIR.
     from ray.train.tensorflow import TensorflowTrainer
@@ -117,7 +125,7 @@ def train_tf_ray_air(
     time_taken = time.monotonic() - start_time
 
     print(f"Last result: {result.metrics}")
-    return time_taken, result.metrics["loss"]
+    return time_taken, result.metrics["local_time_taken"], result.metrics["loss"]
 
 
 def train_tf_vanilla_worker(
@@ -147,12 +155,12 @@ def train_tf_vanilla(
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
-) -> Tuple[float, float]:
+) -> Tuple[float, float, float]:
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_tf_vanilla_worker() on the worker nodes.
     from benchmark_util import (
         upload_file_to_all_nodes,
-        create_actors_with_resources,
+        create_actors_with_options,
         run_commands_on_actors,
         run_fn_on_actors,
         get_ip_port_actors,
@@ -163,7 +171,7 @@ def train_tf_vanilla(
 
     num_epochs = config["epochs"]
 
-    actors = create_actors_with_resources(
+    actors = create_actors_with_options(
         num_actors=num_workers,
         resources={
             "CPU": cpus_per_worker,
@@ -205,13 +213,14 @@ def train_tf_vanilla(
     run_commands_on_actors(actors=actors, cmds=cmds)
     time_taken = time.monotonic() - start_time
 
-    loss = 0.0
+    loss = local_time_taken = 0.0
     if os.path.exists(VANILLA_RESULT_JSON):
         with open(VANILLA_RESULT_JSON, "r") as f:
             result = json.load(f)
         loss = result["loss"]
+        local_time_taken = result["local_time_taken"]
 
-    return time_taken, loss
+    return time_taken, local_time_taken, loss
 
 
 @click.group(help="Run Tensorflow benchmarks")
@@ -253,15 +262,17 @@ def run(
     run_command_on_all_nodes(["python", path])
 
     times_ray = []
+    times_local_ray = []
     losses_ray = []
     times_vanilla = []
+    times_local_vanilla = []
     losses_vanilla = []
     for run in range(1, num_runs + 1):
         time.sleep(2)
 
         print(f"[Run {run}/{num_runs}] Running Tensorflow Ray benchmark")
 
-        time_ray, loss_ray = train_tf_ray_air(
+        time_ray, time_local_ray, loss_ray = train_tf_ray_air(
             num_workers=num_workers,
             cpus_per_worker=cpus_per_worker,
             use_gpu=use_gpu,
@@ -270,7 +281,8 @@ def run(
 
         print(
             f"[Run {run}/{num_runs}] Finished Ray training ({num_epochs} epochs) in "
-            f"{time_ray:.2f} seconds. Observed loss = {loss_ray:.4f}"
+            f"{time_ray:.2f} seconds (local training time: {time_local_ray:.2f}s). "
+            f"Observed loss = {loss_ray:.4f}"
         )
 
         time.sleep(2)
@@ -279,10 +291,10 @@ def run(
 
         # Todo: Vanilla runs are sometimes failing. We just retry here, but we should
         # get to the bottom of it.
-        time_vanilla = loss_vanilla = 0.0
+        time_vanilla = time_local_vanilla = loss_vanilla = 0.0
         for i in range(3):
             try:
-                time_vanilla, loss_vanilla = train_tf_vanilla(
+                time_vanilla, time_local_vanilla, loss_vanilla = train_tf_vanilla(
                     num_workers=num_workers,
                     cpus_per_worker=cpus_per_worker,
                     use_gpu=use_gpu,
@@ -297,40 +309,58 @@ def run(
 
         print(
             f"[Run {run}/{num_runs}] Finished vanilla training ({num_epochs} epochs) "
-            f"in {time_vanilla:.2f} seconds. Observed loss = {loss_vanilla:.4f}"
+            f"in {time_vanilla:.2f} seconds "
+            f"(local training time: {time_local_vanilla:.2f}s). "
+            f"Observed loss = {loss_vanilla:.4f}"
         )
 
         print(
             f"[Run {run}/{num_runs}] Observed results: ",
             {
                 "tensorflow_mnist_ray_time_s": time_ray,
+                "tensorflow_mnist_ray_local_time_s": time_local_ray,
                 "tensorflow_mnist_ray_loss": loss_ray,
                 "tensorflow_mnist_vanilla_time_s": time_vanilla,
+                "tensorflow_mnist_vanilla_local_time_s": time_local_vanilla,
                 "tensorflow_mnist_vanilla_loss": loss_vanilla,
             },
         )
 
         times_ray.append(time_ray)
+        times_local_ray.append(time_local_ray)
         losses_ray.append(loss_ray)
         times_vanilla.append(time_vanilla)
+        times_local_vanilla.append(time_local_vanilla)
         losses_vanilla.append(loss_vanilla)
 
     times_ray_mean = np.mean(times_ray)
     times_ray_sd = np.std(times_ray)
 
+    times_local_ray_mean = np.mean(times_local_ray)
+    times_local_ray_sd = np.std(times_local_ray)
+
     times_vanilla_mean = np.mean(times_vanilla)
     times_vanilla_sd = np.std(times_vanilla)
+
+    times_local_vanilla_mean = np.mean(times_local_vanilla)
+    times_local_vanilla_sd = np.std(times_local_vanilla)
 
     result = {
         "tensorflow_mnist_ray_num_runs": num_runs,
         "tensorflow_mnist_ray_time_s_all": times_ray,
         "tensorflow_mnist_ray_time_s_mean": times_ray_mean,
         "tensorflow_mnist_ray_time_s_sd": times_ray_sd,
+        "tensorflow_mnist_ray_time_local_s_all": times_local_ray,
+        "tensorflow_mnist_ray_time_local_s_mean": times_local_ray_mean,
+        "tensorflow_mnist_ray_time_local_s_sd": times_local_ray_sd,
         "tensorflow_mnist_ray_loss_mean": np.mean(losses_ray),
         "tensorflow_mnist_ray_loss_sd": np.std(losses_ray),
         "tensorflow_mnist_vanilla_time_s_all": times_vanilla,
         "tensorflow_mnist_vanilla_time_s_mean": times_vanilla_mean,
         "tensorflow_mnist_vanilla_time_s_sd": times_vanilla_sd,
+        "tensorflow_mnist_vanilla_local_time_s_all": times_local_vanilla,
+        "tensorflow_mnist_vanilla_local_time_s_mean": times_local_vanilla_mean,
+        "tensorflow_mnist_vanilla_local_time_s_sd": times_local_vanilla_sd,
         "tensorflow_mnist_vanilla_loss_mean": np.mean(losses_vanilla),
         "tensorflow_mnist_vanilla_loss_std": np.std(losses_vanilla),
     }
@@ -341,18 +371,22 @@ def run(
         json.dump(result, f)
 
     target_ratio = 1.2
-    ratio = (times_ray_mean / times_vanilla_mean) if times_vanilla_mean != 0.0 else 1.0
+    ratio = (
+        (times_local_ray_mean / times_local_vanilla_mean)
+        if times_local_vanilla_mean != 0.0
+        else 1.0
+    )
     if ratio > target_ratio:
         raise RuntimeError(
-            f"Training on Ray took an average of {times_ray_mean:.2f} seconds, "
+            f"Training on Ray took an average of {times_local_ray_mean:.2f} seconds, "
             f"which is more than {target_ratio:.2f}x of the average vanilla training "
-            f"time of {times_vanilla_mean:.2f} seconds ({ratio:.2f}x). FAILED"
+            f"time of {times_local_vanilla_mean:.2f} seconds ({ratio:.2f}x). FAILED"
         )
 
     print(
-        f"Training on Ray took an average of {times_ray_mean:.2f} seconds, "
+        f"Training on Ray took an average of {times_local_ray_mean:.2f} seconds, "
         f"which is less than {target_ratio:.2f}x of the average vanilla training "
-        f"time of {times_vanilla_mean:.2f} seconds ({ratio:.2f}x). PASSED"
+        f"time of {times_local_vanilla_mean:.2f} seconds ({ratio:.2f}x). PASSED"
     )
 
 

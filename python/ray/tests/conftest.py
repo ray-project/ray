@@ -21,6 +21,7 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 import ray.util.client.server.server as ray_client_server
+from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env.pip import PipProcessor
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.services import (
@@ -193,6 +194,15 @@ def external_redis(request):
 def shutdown_only(maybe_external_redis):
     yield None
     # The code after the yield will run as teardown code.
+    ray.shutdown()
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
+
+
+# Provide a shared Ray instance for a test class
+@pytest.fixture(scope="class")
+def class_ray_instance():
+    yield ray.init()
     ray.shutdown()
     # Delete the cluster address just in case.
     ray._private.utils.reset_ray_address()

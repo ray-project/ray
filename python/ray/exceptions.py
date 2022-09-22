@@ -298,6 +298,7 @@ class RayActorError(RayError):
                     "The actor never ran - it was cancelled before it started running."
                 )
             self.error_msg = "\n".join(error_msg_lines)
+            self.actor_id = ActorID(cause.actor_id).hex()
 
     @property
     def actor_init_failed(self) -> bool:
@@ -604,7 +605,7 @@ class RuntimeEnvSetupError(RayError):
         self.error_message = error_message
 
     def __str__(self):
-        msgs = ["Failed to setup runtime environment."]
+        msgs = ["Failed to set up runtime environment."]
         if self.error_message:
             msgs.append(self.error_message)
         return "\n".join(msgs)

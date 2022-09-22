@@ -1,17 +1,45 @@
 A Guide To Using Checkpoints
 ============================
 
+.. _tune-two-types-of-ckpt:
+
+Two different types of Tune checkpoints
+---------------------------------------
+
+There are mainly two types of checkpoints that Tune maintains: Experiment-level checkpoints and Trial-level
+checkpoints.
+Experiment-level checkpoints save the experiment state. This includes the state of the searcher/scheduler,
+the list of trials with their statuses (PENDING, RUNNING, TERMINATED, ERROR), and the
+metadata that is pertained to each trial (hyperparameter configuration, trial logdir, etc).
+
+The experiment-level checkpoint is saved by the driver.
+The frequency at which it is conducted is automatically
+adjusted so that at least 95% of the time is used for handling training results and scheduling.
+This time can also be adjusted with the
+:ref:`TUNE_GLOBAL_CHECKPOINT_S environment variable <tune-env-vars>`.
+
+The purpose of the experiment checkpoint is to maintain a global state from which the whole Ray Tune experiment
+can be resumed from if it is interrupted or failed.
+It can also be used to analyze tuning results after a Ray Tune finished.
+
+Trial-level checkpoints capture the per-trial state. They are saved by the trainable itself.
+Commonly, this includes the model and optimizer states. This is useful mostly for three reasons:
+
+- If the trial is interrupted for some reason (e.g. on spot instances), it can be resumed from the
+  last state. No training time is lost.
+- Some searchers/schedulers pause trials to free resources so that other trials can train in
+  the meantime. This only makes sense if the trials can then continue training from the latest state.
+- The checkpoint can be later used for other downstream tasks like batch inference.
+
+Everything that is reported by ``session.report()`` is a trial-level checkpoint.
+See :ref:`here for more information on saving checkpoints <air-checkpoint-ref>`.
+
 .. _tune-checkpoint-syncing:
 
 Checkpointing and synchronization
 ---------------------------------
 
-When running a hyperparameter search, Tune can automatically and periodically save/checkpoint your model.
-This allows you to:
-
-* save intermediate models throughout training
-* use pre-emptible machines (by automatically restoring from last checkpoint)
-* Pausing trials when using Trial Schedulers such as HyperBand and PBT.
+This topic is mostly relevant to Trial checkpoint.
 
 Tune stores checkpoints on the node where the trials are executed. If you are training on more than one node,
 this means that some trial checkpoints may be on the head node and others are not.
@@ -317,7 +345,7 @@ Distributed Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node.
-This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also
+This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-index>` and also
 requires rsync to be installed.
 
 Note that you must use the ``session.report`` API to trigger syncing

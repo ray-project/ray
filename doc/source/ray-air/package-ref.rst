@@ -17,15 +17,86 @@ Preprocessor
 .. autoclass:: ray.data.preprocessor.Preprocessor
     :members:
 
-Built-in Preprocessors
-######################
+Generic Preprocessors
+#####################
 
-.. automodule:: ray.data.preprocessors
-    :members:
+.. autoclass:: ray.data.preprocessors.BatchMapper
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.Chain
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.Concatenator
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.SimpleImputer
     :show-inheritance:
 
 .. automethod:: ray.data.Dataset.train_test_split
     :noindex:
+
+Categorical Encoders
+####################
+
+.. autoclass:: ray.data.preprocessors.Categorizer
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.LabelEncoder
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.MultiHotEncoder
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.OneHotEncoder
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.OrdinalEncoder
+    :show-inheritance:
+
+Feature Scalers
+###############
+
+.. autoclass:: ray.data.preprocessors.MaxAbsScaler
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.MinMaxScaler
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.Normalizer
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.PowerTransformer
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.RobustScaler
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.StandardScaler
+    :show-inheritance:
+
+K-Bins Discretizers
+###################
+
+.. autoclass:: ray.data.preprocessors.CustomKBinsDiscretizer
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.UniformKBinsDiscretizer
+    :show-inheritance:
+
+Text Encoders
+#############
+
+.. autoclass:: ray.data.preprocessors.CountVectorizer
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.FeatureHasher
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.HashingVectorizer
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.Tokenizer
+    :show-inheritance:
 
 .. _air-abstract-trainer-ref:
 
@@ -59,6 +130,8 @@ Training Result
 
 .. automodule:: ray.air.result
     :members:
+
+.. _air-session-ref:
 
 Training Session
 ################
@@ -137,14 +210,17 @@ XGBoost
 .. autoclass:: ray.train.xgboost.XGBoostTrainer
     :members:
     :show-inheritance:
+    :noindex:
 
     .. automethod:: __init__
+        :noindex:
 
 
 .. automodule:: ray.train.xgboost
     :members:
     :exclude-members: XGBoostTrainer
     :show-inheritance:
+    :noindex:
 
 LightGBM
 ########
@@ -152,14 +228,17 @@ LightGBM
 .. autoclass:: ray.train.lightgbm.LightGBMTrainer
     :members:
     :show-inheritance:
+    :noindex:
 
     .. automethod:: __init__
+        :noindex:
 
 
 .. automodule:: ray.train.lightgbm
     :members:
     :exclude-members: LightGBMTrainer
     :show-inheritance:
+    :noindex:
 
 TensorFlow
 ##########
@@ -167,14 +246,17 @@ TensorFlow
 .. autoclass:: ray.train.tensorflow.TensorflowTrainer
     :members:
     :show-inheritance:
+    :noindex:
 
     .. automethod:: __init__
+        :noindex:
 
 
 .. automodule:: ray.train.tensorflow
     :members:
     :exclude-members: TensorflowTrainer
     :show-inheritance:
+    :noindex:
 
 .. _air-pytorch-ref:
 
@@ -184,14 +266,17 @@ PyTorch
 .. autoclass:: ray.train.torch.TorchTrainer
     :members:
     :show-inheritance:
+    :noindex:
 
     .. automethod:: __init__
+        :noindex:
 
 
 .. automodule:: ray.train.torch
     :members:
     :exclude-members: TorchTrainer
     :show-inheritance:
+    :noindex:
 
 Alpa (Experimental)
 ###################
@@ -214,14 +299,17 @@ Horovod
 .. autoclass:: ray.train.horovod.HorovodTrainer
     :members:
     :show-inheritance:
+    :noindex:
 
     .. automethod:: __init__
+        :noindex:
 
 
 .. automodule:: ray.train.horovod
     :members:
     :exclude-members: HorovodTrainer
     :show-inheritance:
+    :noindex:
 
 HuggingFace
 ###########
@@ -229,14 +317,17 @@ HuggingFace
 .. autoclass:: ray.train.huggingface.HuggingFaceTrainer
     :members:
     :show-inheritance:
+    :noindex:
 
     .. automethod:: __init__
+        :noindex:
 
 
 .. automodule:: ray.train.huggingface
     :members:
     :exclude-members: HuggingFaceTrainer
     :show-inheritance:
+    :noindex:
 
 Scikit-Learn
 ############
@@ -244,14 +335,17 @@ Scikit-Learn
 .. autoclass:: ray.train.sklearn.SklearnTrainer
     :members:
     :show-inheritance:
+    :noindex:
 
     .. automethod:: __init__
+        :noindex:
 
 
 .. automodule:: ray.train.sklearn
     :members:
     :exclude-members: SklearnTrainer
     :show-inheritance:
+    :noindex:
 
 
 Reinforcement Learning (RLlib)
@@ -260,6 +354,7 @@ Reinforcement Learning (RLlib)
 .. automodule:: ray.train.rl
     :members:
     :show-inheritance:
+    :noindex:
 
 .. _air-builtin-callbacks:
 
@@ -286,5 +381,3 @@ Weights and Biases
 ##################
 
 .. autoclass:: ray.air.callbacks.wandb.WandbLoggerCallback
-
-.. _air-session-ref:

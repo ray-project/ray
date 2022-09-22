@@ -45,7 +45,7 @@ parser.add_argument(
     choices=["interest-evolution", "interest-exploration", "long-term-satisfaction"],
     help=("Select the RecSim env to use."),
 )
-parser.add_argument("--learning-starts", type=int, default=20000)
+
 parser.add_argument(
     "--random-test-episodes",
     type=int,
@@ -71,6 +71,15 @@ parser.add_argument(
     "`--env-slate-size` from each timestep. These candidates will be "
     "sampled by the environment's built-in document sampler model.",
 )
+
+parser.add_argument(
+    "--num-steps-sampled-before-learning_starts",
+    type=int,
+    default=20000,
+    help="Number of timesteps to collect from rollout workers before we start "
+    "sampling from replay buffers for learning..",
+)
+
 parser.add_argument(
     "--env-slate-size",
     type=int,
@@ -126,9 +135,7 @@ def main():
         "num_gpus": args.num_gpus,
         "num_workers": args.num_workers,
         "env_config": env_config,
-        "replay_buffer_config": {
-            "learning_starts": args.learning_starts,
-        },
+        "num_steps_sampled_before_learning_starts": args.num_steps_sampled_before_learning_starts,  # noqa E501
     }
 
     # Perform a test run on the env with a random agent to see, what

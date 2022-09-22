@@ -7,7 +7,7 @@ import subprocess
 import threading
 import time
 from collections import Counter, defaultdict, namedtuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
@@ -35,6 +35,10 @@ from ray.autoscaler._private.local.node_provider import (
     record_local_head_state_if_needed,
 )
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher, NodeLauncher
+from ray.autoscaler._private.node_provider_availability_tracker import (
+    NodeAvailabilitySummary,
+    NodeProviderAvailabilityTracker,
+)
 from ray.autoscaler._private.node_tracker import NodeTracker
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.providers import _get_node_provider
@@ -100,12 +104,16 @@ class AutoscalerSummary:
     pending_nodes: List[Tuple[NodeIP, NodeType, NodeStatus]]
     pending_launches: Dict[NodeType, int]
     failed_nodes: List[Tuple[NodeIP, NodeType]]
+    node_availability_summary: NodeAvailabilitySummary = field(
+        default_factory=lambda: NodeAvailabilitySummary({})
+    )
 
 
 class NonTerminatedNodes:
     """Class to extract and organize information on non-terminated nodes."""
 
     def __init__(self, provider: NodeProvider):
+        start_time = time.time()
         # All non-terminated nodes
         self.all_node_ids = provider.non_terminated_nodes({})
 
@@ -121,8 +129,15 @@ class NonTerminatedNodes:
             elif node_kind == NODE_KIND_HEAD:
                 self.head_id = node
 
-        # Note: For typical use-cases,
-        # self.all_node_ids == self.worker_ids + [self.head_id]
+        # Note: For typical use-cases, self.all_node_ids == self.worker_ids +
+        # [self.head_id]. The difference being in the case of unmanaged nodes.
+
+        # Record the time of the non_terminated nodes call. This typically
+        # translates to a "describe" or "list" call on most cluster managers
+        # which can be quite expensive. Note that we include the processing
+        # time because on some clients, there may be pagination and the
+        # underlying api calls may be done lazily.
+        self.non_terminated_nodes_time = time.time() - start_time
 
     def remove_terminating_nodes(self, terminating_nodes: List[NodeID]) -> None:
         """Remove nodes we're in the process of terminating from internal
@@ -151,9 +166,8 @@ class StandardAutoscaler:
     `ray start --head --autoscaling-config=/path/to/config.yaml` on a instance
     that has permission to launch other instances, or you can also use `ray up
     /path/to/config.yaml` from your laptop, which will configure the right
-    AWS/Cloud roles automatically. See the documentation for a full definition
-    of autoscaling behavior:
-    https://docs.ray.io/en/master/cluster/autoscaling.html
+    AWS/Cloud roles automatically. See the Ray documentation
+    (https://docs.ray.io/en/latest/) for a full definition of autoscaling behavior.
     StandardAutoscaler's `update` method is periodically called in
     `monitor.py`'s monitoring loop.
 
@@ -208,6 +222,7 @@ class StandardAutoscaler:
         else:
             self.config_reader = config_reader
 
+        self.node_provider_availability_tracker = NodeProviderAvailabilityTracker()
         # Prefix each line of info string with cluster name if True
         self.prefix_cluster_info = prefix_cluster_info
         # Keep this before self.reset (self.provider needs to be created
@@ -295,9 +310,10 @@ class StandardAutoscaler:
             self.foreground_node_launcher = BaseNodeLauncher(
                 provider=self.provider,
                 pending=self.pending_launches,
+                event_summarizer=self.event_summarizer,
+                node_provider_availability_tracker=self.node_provider_availability_tracker,  # noqa: E501 Flake and black disagree how to format this.
                 node_types=self.available_node_types,
                 prom_metrics=self.prom_metrics,
-                event_summarizer=self.event_summarizer,
             )
         else:
             self.launch_queue = queue.Queue()
@@ -308,9 +324,10 @@ class StandardAutoscaler:
                     queue=self.launch_queue,
                     index=i,
                     pending=self.pending_launches,
+                    event_summarizer=self.event_summarizer,
+                    node_provider_availability_tracker=self.node_provider_availability_tracker,  # noqa: E501 Flake and black disagreee how to format this.
                     node_types=self.available_node_types,
                     prom_metrics=self.prom_metrics,
-                    event_summarizer=self.event_summarizer,
                 )
                 node_launcher.daemon = True
                 node_launcher.start()
@@ -1320,13 +1337,8 @@ class StandardAutoscaler:
         )
         return True
 
-    def launch_new_node(self, count: int, node_type: Optional[str]) -> None:
+    def launch_new_node(self, count: int, node_type: str) -> None:
         logger.info("StandardAutoscaler: Queue {} new nodes for launch".format(count))
-        self.event_summarizer.add(
-            "Adding {} nodes of type " + str(node_type) + ".",
-            quantity=count,
-            aggregate=operator.add,
-        )
         self.pending_launches.inc(node_type, count)
         self.prom_metrics.pending_nodes.set(self.pending_launches.value)
         config = copy.deepcopy(self.config)
@@ -1424,6 +1436,7 @@ class StandardAutoscaler:
             pending_nodes=pending_nodes,
             pending_launches=pending_launches,
             failed_nodes=failed_nodes,
+            node_availability_summary=self.node_provider_availability_tracker.summary(),
         )
 
     def info_string(self):

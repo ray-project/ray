@@ -10,12 +10,13 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
 import ray
+from ray.air import Checkpoint, session
 from ray.cluster_utils import Cluster
 
 import ray.train as train
 from ray.train import Trainer, TrainingCallback
 from ray.air.config import ScalingConfig
-from ray.train.constants import TRAINING_ITERATION
+from ray.train.constants import TRAINING_ITERATION, DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
 )
@@ -32,8 +33,9 @@ from ray.train.tests.test_tune import (
     tune_tensorflow_mnist,
 )
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
-from ray.train.torch import TorchConfig
+from ray.train.torch.config import TorchConfig, _TorchBackend
 from ray.train.torch.torch_trainer import TorchTrainer
+from ray.train._internal.worker_group import WorkerGroup
 
 
 @pytest.fixture
@@ -324,6 +326,27 @@ def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
     trainer.shutdown()
 
 
+@pytest.mark.parametrize("nccl_socket_ifname", ["", "ens3"])
+def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_gpus, nccl_socket_ifname):
+    worker_group = WorkerGroup(num_workers=2, num_gpus_per_worker=1)
+
+    if nccl_socket_ifname:
+
+        def set_env_var():
+            os.environ["NCCL_SOCKET_IFNAME"] = nccl_socket_ifname
+
+        worker_group.execute(set_env_var)
+
+    def assert_env_var_set():
+        value = nccl_socket_ifname if nccl_socket_ifname else DEFAULT_NCCL_SOCKET_IFNAME
+        assert os.environ["NCCL_SOCKET_IFNAME"] == value
+
+    torch_backend = _TorchBackend()
+    torch_backend.on_start(worker_group, backend_config=TorchConfig(backend="nccl"))
+
+    worker_group.execute(assert_env_var_set)
+
+
 # TODO: Refactor as a backend test.
 def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
     """Tests if GPU tensors are auto converted to CPU on driver."""
@@ -440,6 +463,23 @@ def test_horovod_torch_mnist_gpu(ray_start_4_cpus_2_gpus):
     results = trainer.fit()
     result = results.metrics
     assert result[TRAINING_ITERATION] == num_workers
+
+
+def test_horovod_torch_mnist_gpu_checkpoint(ray_start_4_cpus_2_gpus):
+    def checkpointing_func(config):
+        net = torch.nn.Linear(in_features=8, out_features=16)
+        net.to("cuda")
+
+        checkpoint = Checkpoint.from_dict({"model": net.state_dict()})
+        session.report({"metric": 1}, checkpoint=checkpoint)
+
+    num_workers = 2
+    trainer = HorovodTrainer(
+        checkpointing_func,
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
+    )
+    result = trainer.fit()
+    assert not result.error
 
 
 def test_tune_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):

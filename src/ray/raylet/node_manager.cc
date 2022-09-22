@@ -334,6 +334,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       ray_syncer_(io_service_, self_node_id_.Binary()),
       ray_syncer_service_(ray_syncer_),
       memory_monitor_(std::make_unique<MemoryMonitor>(
+          io_service,
           RayConfig::instance().memory_usage_threshold_fraction(),
           RayConfig::instance().memory_monitor_interval_ms(),
           CreateMemoryUsageRefreshCallback())) {
@@ -2398,6 +2399,26 @@ std::string NodeManager::DebugString() const {
   return result.str();
 }
 
+std::string NodeManager::WorkersDebugString(
+    const std::vector<std::shared_ptr<WorkerInterface>> workers,
+    int64_t num_workers) const {
+  std::stringstream result;
+  int64_t index = 1;
+  for (auto &worker : workers) {
+    auto pid = worker->GetProcess().GetId();
+    auto used_memory = memory_monitor_->GetProcessMemoryBytes(pid);
+    result << "Worker " << index << ": task assigned time counter "
+           << worker->GetAssignedTaskTime().time_since_epoch().count() << " memory used "
+           << used_memory << " task spec "
+           << worker->GetAssignedTask().GetTaskSpecification().DebugString() << "\n";
+    index += 1;
+    if (index > num_workers) {
+      break;
+    }
+  }
+  return result.str();
+}
+
 // Summarizes a Census view and tag values into a compact string, e.g.,
 // "Tag1:Value1,Tag2:Value2,Tag3:Value3".
 std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
@@ -2447,7 +2468,6 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
                                      rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> object_ids;
   object_ids.reserve(request.object_ids_size());
-  const auto &owner_address = request.owner_address();
   for (const auto &object_id_binary : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
@@ -2475,8 +2495,11 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
       }
     }
     // Wait for the object to be freed by the owner, which keeps the ref count.
+    ObjectID generator_id = request.has_generator_id()
+                                ? ObjectID::FromBinary(request.generator_id())
+                                : ObjectID::Nil();
     local_object_manager_.PinObjectsAndWaitForFree(
-        object_ids, std::move(results), owner_address);
+        object_ids, std::move(results), request.owner_address(), generator_id);
   }
   RAY_CHECK_EQ(request.object_ids_size(), reply->successes_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -2879,14 +2902,16 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
 // memory usage of each process and kill enough processes to put it
 // below the memory threshold.
 MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
-  return [this](bool is_usage_above_threshold) {
+  return [this](bool is_usage_above_threshold,
+                MemorySnapshot system_memory,
+                float usage_threshold) {
     if (high_memory_eviction_target_ != nullptr) {
       if (!high_memory_eviction_target_->GetProcess().IsAlive()) {
+        RAY_LOG(INFO) << "Worker evicted and process killed to reclaim memory. "
+                      << "worker pid: "
+                      << high_memory_eviction_target_->GetProcess().GetId()
+                      << " task: " << high_memory_eviction_target_->GetAssignedTaskId();
         high_memory_eviction_target_ = nullptr;
-        std::chrono::duration<double> duration =
-            std::chrono::high_resolution_clock::now() - high_memory_eviction_start_time_;
-        RAY_LOG(INFO) << "Worker evicted approximately after " << duration.count()
-                      << "s to reclaim memory.";
       }
     }
     if (is_usage_above_threshold) {
@@ -2897,29 +2922,84 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
             << "worker pid: " << high_memory_eviction_target_->GetProcess().GetId()
             << "task: " << high_memory_eviction_target_->GetAssignedTaskId();
       } else {
-        auto newest_task_start_time = std::chrono::high_resolution_clock::time_point();
-        std::shared_ptr<WorkerInterface> latest_worker = nullptr;
-        for (const auto &worker : worker_pool_.GetAllRegisteredWorkers()) {
-          if (worker->GetAssignedTaskTime() > newest_task_start_time) {
-            newest_task_start_time = worker->GetAssignedTaskTime();
-            latest_worker = worker;
-          }
-        }
-        if (latest_worker != nullptr) {
-          RAY_LOG(INFO) << "Killing worker with the newest started task "
-                        << "to free up memory. "
-                        << "worker pid: " << latest_worker->GetProcess().GetId()
-                        << "task: " << latest_worker->GetAssignedTaskId();
+        auto workers = this->WorkersWithLatestSubmittedTasks();
+        if (!workers.empty()) {
+          std::shared_ptr<WorkerInterface> latest_worker = workers.front();
           high_memory_eviction_target_ = latest_worker;
-          DestroyWorker(
-              latest_worker,
-              rpc::WorkerExitType::USER_ERROR,
-              absl::StrCat("Ray OOM killer terminating worker to prevent system OOM"),
-              true /* force */);
+
+          float usage_fraction =
+              static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
+          std::string used_bytes_gb = FormatFloat(
+              static_cast<float>(system_memory.used_bytes) / 1024 / 1024 / 1024, 2);
+          std::string total_bytes_gb = FormatFloat(
+              static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024, 2);
+          std::stringstream id_ss;
+          if (latest_worker->GetActorId().IsNil()) {
+            id_ss << "task ID " << latest_worker->GetAssignedTaskId();
+          } else {
+            id_ss << "actor ID " << latest_worker->GetActorId();
+          }
+          std::stringstream worker_exit_message_ss;
+          worker_exit_message_ss
+              << "System memory low at node with IP " << latest_worker->IpAddress()
+              << ". Used memory (" << used_bytes_gb << "GB) / total capacity ("
+              << total_bytes_gb << "GB) (" << usage_fraction << ") exceeds threshold "
+              << usage_threshold << ", killing latest task with name "
+              << latest_worker->GetAssignedTask().GetTaskSpecification().GetName()
+              << " and " << id_ss.str() << " to avoid running out of memory.\n"
+              << "This may indicate a memory leak in a task or actor, or that too many "
+                 "tasks are running in parallel.\n";
+          std::string worker_exit_message = worker_exit_message_ss.str();
+
+          std::stringstream error_log_ss;
+          error_log_ss
+              << worker_exit_message
+              << "To find the highest memory consumers, use `ray logs raylet.out -ip "
+              << latest_worker->IpAddress() << "`.\n"
+              << "Consider provisioning more memory on this node or reducing task "
+                 "parallelism by requesting more CPUs per task. "
+              << "To adjust the eviction threshold, set the environment variable "
+                 "`RAY_memory_usage_threshold_fraction` when starting Ray. "
+              << "To disable worker eviction, set the environment variable "
+                 "`RAY_memory_monitor_interval_ms` to zero.";
+          /// TODO: (clarng) add a link to the oom killer / memory manager documentation
+          RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << error_log_ss.str();
+
+          const static int64_t max_to_print = 10;
+          RAY_LOG(INFO) << "Latest 10 worker details:\n"
+                        << this->WorkersDebugString(workers, max_to_print);
+
+          /// TODO: (clarng) right now destroy is called after the messages are created
+          /// since we print the process memory in the message. Destroy should be called
+          /// as soon as possible to free up memory.
+          DestroyWorker(high_memory_eviction_target_,
+                        rpc::WorkerExitType::USER_ERROR,
+                        worker_exit_message,
+                        true /* force */);
+
+          if (latest_worker->GetActorId().IsNil()) {
+            ray::stats::STATS_memory_manager_worker_eviction_total.Record(
+                1, "MemoryManager.TaskEviction.Total");
+          } else {
+            ray::stats::STATS_memory_manager_worker_eviction_total.Record(
+                1, "MemoryManager.ActorEviction.Total");
+          }
         }
       }
     }
   };
+}
+
+const std::vector<std::shared_ptr<WorkerInterface>>
+NodeManager::WorkersWithLatestSubmittedTasks() const {
+  auto workers = worker_pool_.GetAllRegisteredWorkers();
+  std::sort(workers.begin(),
+            workers.end(),
+            [](std::shared_ptr<WorkerInterface> const &left,
+               std::shared_ptr<WorkerInterface> const &right) -> bool {
+              return left->GetAssignedTaskTime() > right->GetAssignedTaskTime();
+            });
+  return workers;
 }
 
 }  // namespace raylet

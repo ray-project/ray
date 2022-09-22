@@ -13,6 +13,7 @@ py_library(
 py_test_module_list(
   files = [
     "test_dashboard.py",
+    "test_metrics_head.py",
     "test_ray_cluster_with_external_redis.py",
   ],
   size = "large",
@@ -116,6 +117,7 @@ py_test_module_list(
     "test_memory_scheduling.py",
     "test_memory_pressure.py",
     "test_metrics.py",
+    "test_task_metrics.py",
     "test_multi_node.py",
     "test_multi_node_2.py",
     "test_multinode_failures.py",
@@ -214,6 +216,7 @@ py_test_module_list(
     "test_coordinator_server.py",
     "test_k8s_operator_unit_tests.py",
     "test_monitor.py",
+    "test_node_provider_availability_tracker.py",
     "test_response_cache.py",
     "kuberay/test_autoscaling_config.py"
   ],
@@ -307,6 +310,7 @@ py_test_module_list(
   files = [
     "test_runtime_env.py",
     "test_runtime_env_2.py",
+    "test_runtime_env_failure.py",
     "test_runtime_env_working_dir.py",
     "test_runtime_env_working_dir_2.py",
     "test_runtime_env_working_dir_3.py",

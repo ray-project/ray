@@ -257,6 +257,7 @@ struct GcsServerMocker {
     void PinObjectIDs(
         const rpc::Address &caller_address,
         const std::vector<ObjectID> &object_ids,
+        const ObjectID &generator_id,
         const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {}
 
     /// DependencyWaiterInterface
@@ -343,6 +344,8 @@ struct GcsServerMocker {
   class MockedGcsPlacementGroupScheduler : public gcs::GcsPlacementGroupScheduler {
    public:
     using gcs::GcsPlacementGroupScheduler::GcsPlacementGroupScheduler;
+
+    size_t GetWaitingRemovedBundlesSize() { return waiting_removed_bundles_.size(); }
   };
   class MockedGcsActorTable : public gcs::GcsActorTable {
    public:
