@@ -227,7 +227,7 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
                             else main
                         )
 
-                # Set the weights of the new polic(y/ies).
+                # Set the weights of the new policy(y/ies).
                 if initializing_exploiters:
                     main_state = algorithm.get_policy("main").get_state()
                     pol_map = algorithm.workers.local_worker().policy_map
@@ -249,6 +249,7 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
                     new_policy = algorithm.add_policy(
                         policy_id=new_pol_id,
                         policy_cls=type(algorithm.get_policy(policy_id)),
+                        config=self.config,
                         policy_mapping_fn=policy_mapping_fn,
                         policies_to_train=self.trainable_policies,
                     )
