@@ -503,7 +503,7 @@ class Algorithm(Trainable):
 
             # Evaluation duration unit: episodes.
             # Switch on `complete_episode` rollouts. Also, make sure
-            # rollout fragments are short so we never have more than one
+            # rollout fragments are short, so we never have more than one
             # episode in one rollout.
             if eval_config["evaluation_duration_unit"] == "episodes":
                 eval_config.update(
