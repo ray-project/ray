@@ -69,16 +69,17 @@ class TaskCounter {
  public:
   TaskCounter() {
     // Track the number of running tasks per name.
-    counter_.SetOnChangeCallback([this](const std::pair<std::string, TaskStatusType> &key,
-                                        int64_t value) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (key.second == kRunning) {
-        RefreshRunningMetric(key.first, value);
-      }
-    });
+    counter_.SetOnChangeCallback(
+        [this](const std::pair<std::string, TaskStatusType> &key, int64_t value)
+            EXCLUSIVE_LOCKS_REQUIRED(mu_) mutable {
+              if (key.second == kRunning) {
+                RefreshRunningMetric(key.first, value);
+              }
+            });
     // Track the sub-state of tasks running but blocked in ray.get().
     running_in_get_counter_.SetOnChangeCallback(
         [this](const std::string &func_name, int64_t value)
-            EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+            EXCLUSIVE_LOCKS_REQUIRED(mu_) mutable {
               ray::stats::STATS_tasks.Record(
                   value,
                   {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
@@ -89,7 +90,7 @@ class TaskCounter {
     // Track the sub-state of tasks running but blocked in ray.wait().
     running_in_wait_counter_.SetOnChangeCallback(
         [this](const std::string &func_name, int64_t value)
-            EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+            EXCLUSIVE_LOCKS_REQUIRED(mu_) mutable {
               ray::stats::STATS_tasks.Record(
                   value,
                   {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
@@ -160,7 +161,7 @@ class TaskCounter {
 
     counter_.ForEachEntry(
         [&total_counts](const std::pair<std::string, TaskStatusType> &key,
-                        int64_t value) {
+                        int64_t value) mutable {
           total_counts[key.first].resize(3, 0);
           if (key.second == kPending) {
             total_counts[key.first][0] = value;
@@ -181,7 +182,7 @@ class TaskCounter {
   // Tracks all tasks submitted to this worker by state.
   Counter<std::pair<std::string, TaskStatusType>> counter_ GUARDED_BY(&mu_);
 
-  // Additionally track the sub-states of RUNNING_IN_RAY_GET/WAIT. The counters here
+  // Additionally tracks the sub-states of RUNNING_IN_RAY_GET/WAIT. The counters here
   // overlap with those of counter_.
   Counter<std::string> running_in_get_counter_ GUARDED_BY(&mu_);
   Counter<std::string> running_in_wait_counter_ GUARDED_BY(&mu_);

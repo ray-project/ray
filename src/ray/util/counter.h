@@ -17,8 +17,8 @@
 #include <list>
 
 // TODO: add docs, unit test
-#include "ray/util/macros.h"
 #include "absl/container/flat_hash_map.h"
+#include "ray/util/macros.h"
 /// \class Counter
 ///
 /// This container implements counter behavior on top of an absl hash table. Counter
@@ -26,13 +26,13 @@
 template <typename K>
 class Counter {
  public:
-  Counter() {};
+  Counter(){};
 
   Counter(const Counter &other) = delete;
 
   Counter &operator=(const Counter &other) = delete;
 
-  void SetOnChangeCallback(std::function<void(const K&, int64_t)> on_change) {
+  void SetOnChangeCallback(std::function<void(const K &, int64_t)> on_change) {
     on_change_ = on_change;
   }
 
@@ -73,17 +73,15 @@ class Counter {
     }
   }
 
-  size_t Size() const {
-    return counters_.size();
-  }
+  size_t Size() const { return counters_.size(); }
 
-  void ForEachEntry(std::function<void(const K&, int64_t)> callback) {
-    for (const auto& it : counters_) {
-      callback(it->first, it->second);
+  void ForEachEntry(std::function<void(const K &, int64_t)> callback) const {
+    for (const auto &it : counters_) {
+      callback(it.first, it.second);
     }
   }
 
  private:
   absl::flat_hash_map<K, int64_t> counters_;
-  std::function<void(const K&, int64_t)> on_change_;
+  std::function<void(const K &, int64_t)> on_change_;
 };
