@@ -88,6 +88,9 @@ def train_loop_per_worker(config):
                     % (epoch + 1, i + 1, running_loss / epoch_steps)
                 )
 
+            if config["smoke_test"]:
+                break
+
         checkpoint = Checkpoint.from_dict(
             dict(
                 model_state=net.state_dict(),
@@ -149,7 +152,8 @@ if __name__ == "__main__":
             "train_loop_config": {
                 "lr": 0.1
                 if args.smoke_test
-                else tune.grid_search([0.1 * i for i in range(1, 10)])
+                else tune.grid_search([0.1 * i for i in range(1, 10)]),
+                "smoke_test": args.smoke_test,
             }
         },
         tune_config=TuneConfig(
