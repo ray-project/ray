@@ -5,15 +5,15 @@ if [ -z "$1" ]; then
     PYTHON_VERSION=${PYTHON-3.7}
 else
     if [ "$1" = "3.6" ]; then
-        PYTHON_VERSION=${PYTHON-3.6}
+        PYTHON_VERSION="3.6"
     elif [ "$1" = "3.7" ]; then
-        PYTHON_VERSION=${PYTHON-3.7}
+        PYTHON_VERSION="3.7"
     elif [ "$1" = "3.8" ]; then
-        PYTHON_VERSION=${PYTHON-3.8}
+        PYTHON_VERSION="3.8"
     elif [ "$1" = "3.9" ]; then
-        PYTHON_VERSION=${PYTHON-3.9}
+        PYTHON_VERSION="3.9"
     elif [ "$1" = "3.10" ]; then
-        PYTHON_VERSION=${PYTHON-3.10}
+        PYTHON_VERSION="3.10"
     else
         echo "Unsupported Python version."
         exit 1

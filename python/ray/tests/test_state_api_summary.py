@@ -14,7 +14,7 @@ from ray.experimental.state.api import (
 from ray._private.test_utils import wait_for_condition
 from ray._raylet import ActorID, TaskID, ObjectID
 
-if sys.version_info > (3, 7, 0):
+if sys.version_info >= (3, 8, 0):
     from unittest.mock import AsyncMock
 else:
     from asyncmock import AsyncMock

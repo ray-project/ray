@@ -790,8 +790,13 @@ test_minimal() {
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_2
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_complicated
+
+  # Todo: Make compatible with python 3.9/3.10
+  if [ "$1" != "3.9" ] && [ "$1" != "3.10" ]; then
+    # shellcheck disable=SC2086
+    bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_complicated
+  fi
+
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_validation
   # shellcheck disable=SC2086
