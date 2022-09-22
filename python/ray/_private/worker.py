@@ -2311,12 +2311,12 @@ def put(
 
     Args:
         value: The Python object to be stored.
-        _owner (Experimental): The actor that should own this object. This
+        _owner [Experimental]: The actor that should own this object. This
             allows creating objects with lifetimes decoupled from that of the
-            creating process. The owner actor must be passed a reference to
-            the object prior to the object creator exiting, otherwise the
-            reference will still be lost. *Note that this argument is an
-            experimental API and should be avoided if possible.*
+            creating process. The owner actor must be passed a reference to the
+            object prior to the object creator exiting, otherwise the reference
+            will still be lost. *Note that this argument is an experimental API
+            and should be avoided if possible.*
 
     Returns:
         The object ref assigned to this value.
