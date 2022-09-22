@@ -249,6 +249,7 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
                     new_policy = algorithm.add_policy(
                         policy_id=new_pol_id,
                         policy_cls=type(algorithm.get_policy(policy_id)),
+                        config=self.config,
                         policy_mapping_fn=policy_mapping_fn,
                         policies_to_train=self.trainable_policies,
                     )

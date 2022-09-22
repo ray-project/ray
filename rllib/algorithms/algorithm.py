@@ -1548,10 +1548,10 @@ class Algorithm(Trainable):
         self,
         policy_id: PolicyID,
         policy_cls: Type[Policy],
+        config: Optional[PartialAlgorithmConfigDict],
         *,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
-        config: Optional[PartialAlgorithmConfigDict] = None,
         policy_state: Optional[PolicyState] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -1569,11 +1569,11 @@ class Algorithm(Trainable):
             policy_id: ID of the policy to add.
             policy_cls: The Policy class to use for
                 constructing the new Policy.
+            config: The config for the policy to add.
             observation_space: The observation space of the policy to add.
                 If None, try to infer this space from the environment.
             action_space: The action space of the policy to add.
                 If None, try to infer this space from the environment.
-            config: The config overrides for the policy to add.
             policy_state: Optional state dict to apply to the new
                 policy instance, right after its construction.
             policy_mapping_fn: An optional (updated) policy mapping function

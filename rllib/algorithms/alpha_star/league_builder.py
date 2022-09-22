@@ -367,6 +367,7 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
                 self.trainer.add_policy(
                     policy_id=new_pol_id,
                     policy_cls=type(self.trainer.get_policy(policy_id)),
+                    config=self.config,
                     policy_state=state,
                     policy_mapping_fn=policy_mapping_fn,
                     policies_to_train=trainable_policies,
