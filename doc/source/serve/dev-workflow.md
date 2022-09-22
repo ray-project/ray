@@ -77,8 +77,6 @@ After you're done testing, you can shut down Ray Serve by interrupting the `serv
 (ServeController pid=9865) INFO 2022-08-11 11:47:19,929 controller 9865 deployment_state.py:1257 - Removing 1 replicas from deployment 'HelloDeployment'.
 ```
 
-Note that rerunning `serve run` will redeploy all deployments. To prevent redeploying those deployments whose code hasn't changed, you can use `serve deploy`; see the [Production Guide](serve-in-production) for details.
-
 ## Testing on a remote cluster
 
 To test on a remote cluster, you'll use `serve run` again, but this time you'll pass in an `--address` argument to specify the address of the Ray cluster to connect to.  For remote clusters, this address has the form `ray://<head-node-ip-address>:10001`; see [Ray Client](ray-client-ref) for more information.

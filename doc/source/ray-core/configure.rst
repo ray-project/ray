@@ -12,8 +12,6 @@ and from the command line. Take a look at the ``ray.init`` `documentation
 .. important:: For the multi-node setting, you must first run ``ray start`` on the command line to start the Ray cluster services on the machine before ``ray.init`` in Python to connect to the cluster services. On a single machine, you can run ``ray.init()`` without ``ray start``, which will both start the Ray cluster services and connect to them.
 
 
-.. _cluster-resources:
-
 Cluster Resources
 -----------------
 

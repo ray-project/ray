@@ -503,10 +503,10 @@ class AlphaStar(appo.APPO):
         self,
         policy_id: PolicyID,
         policy_cls: Type[Policy],
-        config: PartialAlgorithmConfigDict,
         *,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
+        config: Optional[PartialAlgorithmConfigDict] = None,
         policy_state: Optional[PolicyState] = None,
         **kwargs,
     ) -> Policy:
@@ -515,9 +515,9 @@ class AlphaStar(appo.APPO):
         new_policy = super().add_policy(
             policy_id,
             policy_cls,
-            config=config,
             observation_space=observation_space,
             action_space=action_space,
+            config=config,
             policy_state=policy_state,
             **kwargs,
         )

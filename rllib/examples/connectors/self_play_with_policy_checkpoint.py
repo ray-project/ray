@@ -75,9 +75,9 @@ class AddPolicyCallback(DefaultCallbacks):
         algorithm.add_policy(
             policy_id="opponent",
             policy_cls=policy_spec.policy_class,
-            config=config,
             observation_space=policy_spec.observation_space,
             action_space=policy_spec.action_space,
+            config=config,
             policy_state=policy_state,
             evaluation_workers=True,
         )

@@ -317,9 +317,7 @@ def deployment(
             a '/' unless they're the root (just '/'), which acts as a
             catch-all.
         ray_actor_options: Options to be passed to the Ray actor
-            constructor such as resource requirements. Valid options are
-            `accelerator_type`, `memory`, `num_cpus`, `num_gpus`,
-            `object_store_memory`, `resources`, and `runtime_env`.
+            constructor such as resource requirements.
         user_config (Optional[Any]): Config to pass to the
             reconfigure method of the deployment. This can be updated
             dynamically without changing the version of the deployment and

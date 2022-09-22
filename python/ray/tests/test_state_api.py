@@ -1,7 +1,6 @@
 import time
 import json
 import sys
-from collections import Counter
 from dataclasses import dataclass
 from typing import List, Tuple
 from unittest.mock import MagicMock
@@ -1571,53 +1570,34 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-class TestListActors:
-    def test_list_get_actors(self, class_ray_instance):
-        @ray.remote
-        class A:
-            pass
+def test_list_get_actors(shutdown_only):
+    ray.init()
 
-        a = A.remote()  # noqa
+    @ray.remote
+    class A:
+        pass
 
-        def verify():
-            # Test list
-            actors = list_actors()
-            assert len(actors) == 1
-            assert actors[0]["state"] == "ALIVE"
-            assert is_hex(actors[0]["actor_id"])
-            assert a._actor_id.hex() == actors[0]["actor_id"]
+    a = A.remote()  # noqa
 
-            # Test get
-            actors = list_actors(detail=True)
-            for actor in actors:
-                get_actor_data = get_actor(actor["actor_id"])
-                assert get_actor_data is not None
-                assert get_actor_data == actor
-
-            return True
-
-        wait_for_condition(verify)
-        print(list_actors())
-
-    def test_list_actors_namespace(self, class_ray_instance):
-        """Check that list_actors returns namespaces."""
-
-        @ray.remote
-        class A:
-            pass
-
-        A.options(namespace="x").remote()
-        A.options(namespace="y").remote()
-
+    def verify():
+        # Test list
         actors = list_actors()
-        namespaces = Counter([actor["ray_namespace"] for actor in actors])
-        assert namespaces["x"] == 1
-        assert namespaces["y"] == 1
+        assert len(actors) == 1
+        assert actors[0]["state"] == "ALIVE"
+        assert is_hex(actors[0]["actor_id"])
+        assert a._actor_id.hex() == actors[0]["actor_id"]
 
-        # Check that we can filter by namespace
-        x_actors = list_actors(filters=[("ray_namespace", "=", "x")])
-        assert len(x_actors) == 1
-        assert x_actors[0]["ray_namespace"] == "x"
+        # Test get
+        actors = list_actors(detail=True)
+        for actor in actors:
+            get_actor_data = get_actor(actor["actor_id"])
+            assert get_actor_data is not None
+            assert get_actor_data == actor
+
+        return True
+
+    wait_for_condition(verify)
+    print(list_actors())
 
 
 @pytest.mark.skipif(

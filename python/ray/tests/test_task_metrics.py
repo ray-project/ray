@@ -1,5 +1,4 @@
 from collections import defaultdict
-import sys
 import os
 
 import pytest
@@ -8,7 +7,6 @@ import ray
 
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
-    run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
@@ -17,12 +15,6 @@ from ray._private.test_utils import (
 METRIC_CONFIG = {
     "_system_config": {
         "metrics_report_interval_ms": 100,
-    }
-}
-
-SLOW_METRIC_CONFIG = {
-    "_system_config": {
-        "metrics_report_interval_ms": 3000,
     }
 }
 
@@ -66,6 +58,7 @@ ray.get(a)
         "SCHEDULED": 8.0,
         "WAITING_FOR_DEPENDENCIES": 0.0,
     }
+    # TODO(ekl) optimize the reporting interval to be faster for testing
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
@@ -275,42 +268,6 @@ ray.get([a.f.remote() for _ in range(40)])
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
     proc.kill()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
-def test_metrics_export_now(shutdown_only):
-    info = ray.init(num_cpus=2, **SLOW_METRIC_CONFIG)
-
-    driver = """
-import ray
-import time
-
-ray.init("auto")
-
-@ray.remote
-def f():
-    pass
-a = [f.remote() for _ in range(10)]
-ray.get(a)
-"""
-
-    # If force export at process death is broken, we won't see the recently completed
-    # tasks from the drivers.
-    for i in range(10):
-        print("Run job", i)
-        run_string_as_driver(driver)
-        tasks_by_state(info)
-
-    expected = {
-        "RUNNING": 0.0,
-        "WAITING_FOR_EXECUTION": 0.0,
-        "SCHEDULED": 0.0,
-        "WAITING_FOR_DEPENDENCIES": 0.0,
-        "FINISHED": 100.0,
-    }
-    wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
-    )
 
 
 if __name__ == "__main__":

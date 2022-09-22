@@ -304,8 +304,6 @@ class GetLogOptions:
             )
 
 
-# See the ActorTableData message in gcs.proto for all potential options that
-# can be included in this class.
 # TODO(sang): Replace it with Pydantic or gRPC schema (once interface is finalized).
 @dataclass(init=True)
 class ActorState(StateSchema):
@@ -335,8 +333,6 @@ class ActorState(StateSchema):
     name: Optional[str] = state_column(filterable=True)
     #: The pid of the actor. 0 if it is not created yet.
     pid: int = state_column(filterable=True)
-    #: The namespace of the actor.
-    ray_namespace: str = state_column(filterable=True)
     #: The runtime environment information of the actor.
     serialized_runtime_env: str = state_column(filterable=False, detail=True)
     #: The resource requirement of the actor.

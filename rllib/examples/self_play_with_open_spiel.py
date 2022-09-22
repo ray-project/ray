@@ -147,7 +147,6 @@ class SelfPlayCallback(DefaultCallbacks):
             new_policy = algorithm.add_policy(
                 policy_id=new_pol_id,
                 policy_cls=type(algorithm.get_policy("main")),
-                config=self.config,
                 policy_mapping_fn=policy_mapping_fn,
             )
 
