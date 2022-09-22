@@ -120,6 +120,30 @@ def test_predict_feature_columns_pandas():
     assert predictor.get_preprocessor().has_preprocessed
 
 
+@pytest.mark.parametrize("to_string", [True, False])
+def test_predict_feature_columns_pandas_categorical(to_string: bool):
+    pandas_data = pd.DataFrame(dummy_data, columns=["A", "B"])
+    if to_string:
+        pandas_data["A"] = [str(x) for x in pandas_data["A"]]
+    pandas_data["A"] = pandas_data["A"].astype("category")
+    pandas_target = pd.Series(dummy_target)
+    pandas_model = (
+        lgbm.LGBMClassifier(n_estimators=10).fit(pandas_data, pandas_target).booster_
+    )
+    preprocessor = DummyPreprocessor()
+    predictor = LightGBMPredictor(model=pandas_model, preprocessor=preprocessor)
+    data_batch = pd.DataFrame(
+        np.array([[1, 2, 2], [3, 4, 8], [5, 6, 9]]), columns=["A", "B", "C"]
+    )
+    if to_string:
+        data_batch["A"] = [str(x) for x in data_batch["A"]]
+    data_batch["A"] = data_batch["A"].astype("category")
+    predictions = predictor.predict(data_batch, feature_columns=["A", "B"])
+
+    assert len(predictions) == 3
+    assert predictor.get_preprocessor().has_preprocessed
+
+
 def test_predict_no_preprocessor_no_training():
     checkpoint = LightGBMCheckpoint.from_model(booster=model)
     predictor = LightGBMPredictor.from_checkpoint(checkpoint)
