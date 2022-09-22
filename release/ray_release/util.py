@@ -42,7 +42,11 @@ def dict_hash(dt: Dict[Any, Any]) -> str:
 
 
 def url_exists(url: str) -> bool:
-    return requests.head(url, allow_redirects=True).status_code == 200
+    try:
+        return requests.head(url, allow_redirects=True).status_code == 200
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"Failed to get requests: {e}")
+        return False
 
 
 def resolve_url(url: str) -> str:
