@@ -25,6 +25,8 @@ class BatchMapper(Preprocessor):
         Use :class:`BatchMapper` to apply arbitrary operations like dropping a column.
 
         >>> import pandas as pd
+        >>> import numpy as np
+        >>> from typing import Dict
         >>> import ray
         >>> from ray.data.preprocessors import BatchMapper
         >>>
@@ -37,9 +39,17 @@ class BatchMapper(Preprocessor):
         >>> preprocessor = BatchMapper(fn)
         >>> preprocessor.transform(ds)  # doctest: +SKIP
         Dataset(num_blocks=1, num_rows=3, schema={X: int64})
+        >>>
+        >>> def fn_numpy(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        ...     return {"X": batch["X"]}
+        >>> preprocessor = BatchMapper(fn_numpy, batch_format="numpy")
+        >>> preprocessor.transform(ds)  # doctest: +SKIP
+        Dataset(num_blocks=1, num_rows=3, schema={X: int64})
 
     Args:
         fn: The function to apply to data batches.
+        batch_format: The preferred batch format to use in UDF. If not given,
+            default to pandas.
     """
 
     _is_fittable = False
@@ -69,6 +79,12 @@ class BatchMapper(Preprocessor):
 
     def _transform_pandas(self, df: "pandas.DataFrame") -> "pandas.DataFrame":
         return self.fn(df)
+
+    def _determine_transform_to_use(self, data_format: str):
+        if self.batch_format:
+            return self.batch_format
+        else:
+            return super()._determine_transform_to_use(data_format)
 
     def __repr__(self):
         fn_name = getattr(self.fn, "__name__", self.fn)
