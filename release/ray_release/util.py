@@ -44,8 +44,8 @@ def dict_hash(dt: Dict[Any, Any]) -> str:
 def url_exists(url: str) -> bool:
     try:
         return requests.head(url, allow_redirects=True).status_code == 200
-    except requests.exceptions.RequestException as e:
-        logger.warning(f"Failed to get requests: {e}")
+    except requests.exceptions.RequestException:
+        logger.exception(f"Failed to check url exists: {url}")
         return False
 
 
