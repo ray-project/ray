@@ -3620,6 +3620,8 @@
 
     run:
       timeout: 3600
+      wait_for_nodes:
+        num_nodes: 5
       script: python stress_tests/test_many_tasks.py --num-nodes=4 --smoke-test
 
 - name: stress_test_dead_actors
