@@ -2193,7 +2193,7 @@
 
   alert: default
 
-- name: jobs_long_running_many_jobs
+- name: jobs_long_running
   group: Jobs tests
   working_dir: jobs_tests
 
