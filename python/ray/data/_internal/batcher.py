@@ -49,11 +49,12 @@ class Batcher(BatcherInterface):
     # zero-copy views, we sacrifice what should be a small performance hit for better
     # readability.
 
-    def __init__(self, batch_size: Optional[int]):
+    def __init__(self, batch_size: Optional[int], zero_copy: bool = True):
         self._batch_size = batch_size
         self._buffer = []
         self._buffer_size = 0
         self._done_adding = False
+        self._zero_copy = zero_copy
 
     def add(self, block: Block):
         """Add a block to the block buffer.
@@ -94,6 +95,10 @@ class Batcher(BatcherInterface):
         if self._batch_size is None:
             assert len(self._buffer) == 1
             block = self._buffer[0]
+            if not self._zero_copy:
+                # Copy block if not zero-copy.
+                block = BlockAccessor.for_block(block)
+                block = block.slice(0, block.num_rows(), copy=True)
             self._buffer = []
             self._buffer_size = 0
             return block
@@ -110,13 +115,19 @@ class Batcher(BatcherInterface):
                 # We need this entire block to fill out a batch.
                 # We need to call `accessor.slice()` to ensure
                 # the subsequent block's type are the same.
-                output.add_block(accessor.slice(0, accessor.num_rows()))
+                output.add_block(
+                    accessor.slice(0, accessor.num_rows(), copy=not self._zero_copy)
+                )
                 needed -= accessor.num_rows()
             else:
                 # We only need part of the block to fill out a batch.
-                output.add_block(accessor.slice(0, needed))
+                output.add_block(accessor.slice(0, needed, copy=not self._zero_copy))
                 # Add the rest of the block to the leftovers.
-                leftover.append(accessor.slice(needed, accessor.num_rows()))
+                leftover.append(
+                    accessor.slice(
+                        needed, accessor.num_rows(), copy=not self._zero_copy
+                    )
+                )
                 needed = 0
 
         # Move the leftovers into the block buffer so they're the first

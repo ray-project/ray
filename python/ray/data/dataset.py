@@ -527,7 +527,9 @@ class Dataset(Generic[T]):
         ) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
-            batcher = Batcher(batch_size)
+            # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
+            # TODO(Clark): Expose this zero-copy behavior as a map_batches parameter.
+            batcher = Batcher(batch_size, zero_copy=False)
             for block in blocks:
                 batcher.add(block)
             batcher.done_adding()

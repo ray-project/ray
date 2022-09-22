@@ -205,7 +205,7 @@ def test_callable_classes(shutdown_only):
     assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
     # map batches
-    actor_reuse = ds.map_batches(StatefulFn, compute="actors").take()
+    actor_reuse = ds.map_batches(StatefulFn, batch_size=1, compute="actors").take()
     assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
     class StatefulFn:
@@ -2686,6 +2686,33 @@ def test_map_batches_actors_preserves_order(ray_start_regular_shared):
     assert ds.map_batches(lambda x: x, compute="actors").take() == list(range(10))
 
 
+@pytest.mark.parametrize(
+    "num_rows,num_blocks,batch_size",
+    [
+        (10, 5, 2),
+        (10, 1, 10),
+        (10, 1, None),
+        (12, 3, 2),
+    ],
+)
+def test_map_batches_batch_mutation(
+    ray_start_regular_shared, num_rows, num_blocks, batch_size
+):
+    # Test that batch mutation works without encountering a read-only error (e.g. if the
+    # batch is a zero-copy view on data in the object store).
+    def mutate(df):
+        df["value"] += 1
+        return df
+
+    ds = ray.data.range_table(num_rows, parallelism=num_blocks).repartition(num_blocks)
+    # Convert to Pandas blocks.
+    ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
+
+    # Apply UDF that mutates the batches.
+    ds = ds.map_batches(mutate, batch_size=batch_size)
+    assert [row["value"] for row in ds.iter_rows()] == list(range(1, num_rows + 1))
+
+
 def test_union(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
 
@@ -4162,8 +4189,13 @@ def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
     assert ds1._block_num_rows() == [100]
 
     # ds2 has 30 blocks, but only 3 of them are non-empty
-    ds2 = ray.data.from_items(xs).repartition(30).sort().map_batches(lambda x: x)
-    assert len(ds2._block_num_rows()) == 30
+    ds2 = (
+        ray.data.from_items(xs)
+        .repartition(30)
+        .sort()
+        .map_batches(lambda x: x, batch_size=1)
+    )
+    assert len(ds2._block_num_rows()) == 3
     count = sum(1 for x in ds2._block_num_rows() if x > 0)
     assert count == 3
 
@@ -5128,7 +5160,9 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
     num_cpus = 5
     ray.init(num_cpus=num_cpus)
     compute_strategy = ray.data.ActorPoolStrategy()
-    ray.data.range(10, parallelism=10).map_batches(f, compute=compute_strategy)
+    ray.data.range(10, parallelism=10).map_batches(
+        f, batch_size=1, compute=compute_strategy
+    )
     expected_max_num_workers = math.ceil(
         num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
     )

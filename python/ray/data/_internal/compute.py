@@ -83,22 +83,7 @@ class TaskPoolStrategy(ComputeStrategy):
         blocks = block_list.get_blocks_with_metadata()
         # Bin blocks by target block size.
         if target_block_size is not None:
-            binned_blocks = []
-            curr_bin = []
-            curr_bin_size = 0
-            for b, m in blocks:
-                num_rows = m.num_rows
-                if num_rows is None:
-                    num_rows = float("inf")
-                if curr_bin_size > 0 and curr_bin_size + num_rows > target_block_size:
-                    binned_blocks.append(curr_bin)
-                    curr_bin = []
-                    curr_bin_size = 0
-                curr_bin.append((b, m))
-                curr_bin_size += num_rows
-            if curr_bin:
-                binned_blocks.append(curr_bin)
-            binned_blocks = [tuple(zip(*block_bin)) for block_bin in binned_blocks]
+            binned_blocks = _bin_blocks_up_to_size(blocks, target_block_size)
         else:
             binned_blocks = [((b,), (m,)) for b, m in blocks]
         del blocks
@@ -258,22 +243,7 @@ class ActorPoolStrategy(ComputeStrategy):
         blocks_in = block_list.get_blocks_with_metadata()
         # Bin blocks by target block size.
         if target_block_size is not None:
-            binned_blocks = []
-            curr_bin = []
-            curr_bin_size = 0
-            for b, m in blocks_in:
-                num_rows = m.num_rows
-                if num_rows is None:
-                    num_rows = float("inf")
-                if curr_bin_size > 0 and curr_bin_size + num_rows > target_block_size:
-                    binned_blocks.append(curr_bin)
-                    curr_bin = []
-                    curr_bin_size = 0
-                curr_bin.append((b, m))
-                curr_bin_size += num_rows
-            if curr_bin:
-                binned_blocks.append(curr_bin)
-            binned_blocks = [tuple(zip(*block_bin)) for block_bin in binned_blocks]
+            binned_blocks = _bin_blocks_up_to_size(blocks_in, target_block_size)
         else:
             binned_blocks = [((b,), (m,)) for b, m in blocks_in]
         del blocks_in
@@ -512,3 +482,28 @@ def _map_block_nosplit(
     return new_block, accessor.get_metadata(
         input_files=input_files, exec_stats=stats.build()
     )
+
+
+def _bin_blocks_up_to_size(
+    blocks: List[Tuple[Block, BlockMetadata]],
+    target_size: int,
+) -> List[Tuple[List[Block], List[BlockMetadata]]]:
+    """Group blocks into bins that are up to (but not exceeding) the provided target
+    size.
+    """
+    binned_blocks = []
+    curr_bin = []
+    curr_bin_size = 0
+    for b, m in blocks:
+        num_rows = m.num_rows
+        if num_rows is None:
+            num_rows = float("inf")
+        if curr_bin_size > 0 and curr_bin_size + num_rows > target_size:
+            binned_blocks.append(curr_bin)
+            curr_bin = []
+            curr_bin_size = 0
+        curr_bin.append((b, m))
+        curr_bin_size += num_rows
+    if curr_bin:
+        binned_blocks.append(curr_bin)
+    return [tuple(zip(*block_bin)) for block_bin in binned_blocks]

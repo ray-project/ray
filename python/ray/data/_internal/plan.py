@@ -941,7 +941,6 @@ def _adapt_for_multiple_blocks(
 ) -> Callable[..., Iterable[Block]]:
     @functools.wraps(fn)
     def wrapper(blocks: Iterable[Block], *args, **kwargs):
-        print("blocks:", blocks)
         for block in blocks:
             yield from fn(block, *args, **kwargs)
 
