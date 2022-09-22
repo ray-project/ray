@@ -196,7 +196,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    runtime_env = {"pip": ["torch==1.10.2"]}
+    # Requires at least torch 1.11 to pass
+    runtime_env = {"pip": ["torch==1.11.0"]}
     if args.address:
         ray.init(args.address, runtime_env=runtime_env)
     else:
