@@ -2431,8 +2431,8 @@ std::string NodeManager::WorkersDebugString(
     auto pid = worker->GetProcess().GetId();
     auto used_memory = memory_monitor_->GetProcessMemoryBytes(pid);
     result << "Worker " << index << ": task assigned time counter "
-           << worker->GetAssignedTaskTime().time_since_epoch().count() << " memory used "
-           << used_memory << " task spec "
+           << worker->GetAssignedTaskTime().time_since_epoch().count() << " worker id "
+           << worker->WorkerId() << " memory used " << used_memory << " task spec "
            << worker->GetAssignedTask().GetTaskSpecification().DebugString() << "\n";
     index += 1;
     if (index > num_workers) {

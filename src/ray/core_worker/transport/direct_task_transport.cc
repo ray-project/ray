@@ -602,7 +602,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
         }
         if (status.ok()) {
           if (!task_spec.GetMessage().retry_exceptions() || !reply.is_retryable_error() ||
-              !task_finisher_->RetryTaskIfPossible(task_id)) {
+              !task_finisher_->RetryTaskIfPossible(task_id,
+                                                   /*task_failed_due_to_oom*/ false)) {
             task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
           }
         }
