@@ -1,7 +1,7 @@
 meta:
   section-titles: true
   container: container pb-12
-  column: col-md-9 px-2 py-2
+  column: col-md-12 px-2 py-2
   img-top-cls: pt-5 w-50 d-block mx-auto
 
 buttons:
@@ -54,13 +54,16 @@ projects:
     image: ../images/hugging.png
   - name: Intel Analytics Zoo Integration
     section_title: Intel Analytics Zoo
-    description: Analytics Zoo seamlessly scales TensorFlow, Keras and PyTorch to distributed big data (using Spark, Flink & Ray).
+    description: Analytics Zoo seamlessly scales TensorFlow, Keras and PyTorch
+      to distributed big data (using Spark, Flink & Ray).
     website: https://analytics-zoo.github.io/master/#ProgrammingGuide/rayonspark/
     repo: https://github.com/intel-analytics/analytics-zoo
     image: ../images/zoo.png
   - name: NLU Integration
     section_title: John Snow Labs' NLU
-    description: The power of 350+ pre-trained NLP models, 100+ Word Embeddings, 50+ Sentence Embeddings, and 50+ Classifiers in 46 languages with 1 line of Python code.
+    description: The power of 350+ pre-trained NLP models, 100+ Word Embeddings,
+      50+ Sentence Embeddings, and 50+ Classifiers in 46 languages
+      with 1 line of Python code.
     website: https://nlu.johnsnowlabs.com/docs/en/predict_api#modin-dataframe
     repo: https://github.com/JohnSnowLabs/nlu
     image: ../images/nlu.png
