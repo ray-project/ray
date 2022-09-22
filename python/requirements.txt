@@ -93,7 +93,6 @@ scikit-learn
 testfixtures
 werkzeug<2.2.0
 xlrd
-starlette
 fastapi
 smart_open[s3]
 tqdm
