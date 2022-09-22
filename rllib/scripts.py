@@ -31,7 +31,7 @@ def get_help(key: str) -> str:
     If e.g. 'resource_group' is provided, we return the entry for '--resource-group'."""
     key = "--" + key
     key = key.replace("_", "-")
-    if not key in PARSER_HELP.keys():
+    if key not in PARSER_HELP.keys():
         raise ValueError(f"Key {key} not found in parser.")
     return PARSER_HELP.get(key).help
 

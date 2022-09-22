@@ -37,3 +37,5 @@ starlette==0.18.0
 onnx==1.9.0
 onnxruntime==1.9.0
 tf2onnx==1.8.5
+typer==0.6.1
+rich==12.5.1
