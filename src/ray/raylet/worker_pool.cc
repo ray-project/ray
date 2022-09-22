@@ -392,6 +392,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     // We pass the job ID to worker processes via an environment variable, so we don't
     // need to add a new CLI parameter for both Python and Java workers.
     env.emplace(kEnvVarKeyJobId, job_id.Hex());
+    RAY_LOG(DEBUG) << "Launch worker with " << kEnvVarKeyJobId << " " << job_id.Hex();
   }
   env.emplace(kEnvVarKeyRayletPid, std::to_string(GetPID()));
 
