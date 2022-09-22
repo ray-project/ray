@@ -573,7 +573,7 @@
 
 - label: ":cold_face: :python: Ray Python 3.6 ML compatibility tests"
   conditions:
-    ["RAY_CI_TUNE_AFFECTED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_ML_AFFECTED", ]
+    ["ALWAYS", "RAY_CI_TUNE_AFFECTED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_ML_AFFECTED", ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - PYTHON=3.6 ./ci/env/install-dependencies.sh
