@@ -796,6 +796,8 @@ class EnvRunnerV2:
         # If reset is async, we will get its result in some future poll.
         elif resetted_obs != ASYNC_RESET_RETURN:
             new_episode: EpisodeV2 = self._active_episodes[env_id]
+            self._call_on_episode_start(new_episode, env_id)
+
             per_policy_resetted_obs: Dict[PolicyID, List] = defaultdict(list)
             # types: AgentID, EnvObsType
             for agent_id, raw_obs in resetted_obs[env_id].items():
