@@ -325,30 +325,35 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/ci.sh test_minimal 3.6
+    - ./ci/ci.sh test_latest_core_dependencies 3.6
 
 - label: ":python: Minimal install 3.7"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/ci.sh test_minimal 3.7
+    - ./ci/ci.sh test_latest_core_dependencies 3.7
 
 - label: ":python: Minimal install 3.8"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/ci.sh test_minimal 3.8
+    - ./ci/ci.sh test_latest_core_dependencies 3.8
 
 - label: ":python: Minimal install 3.9"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/ci.sh test_minimal 3.9
+    - ./ci/ci.sh test_latest_core_dependencies 3.9
 
 - label: ":python: Minimal install 3.10"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/ci.sh test_minimal 3.10
+    - ./ci/ci.sh test_latest_core_dependencies 3.10
 
 - label: ":python: Core Latest Dependency 3.6"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
