@@ -22,7 +22,7 @@ Here are the key design choices we will make this in guide:
 Read support
 ------------
 To implement :meth:`create_reader() <ray.data.datasource.create_reader>` and support read, the major work will be subclassing :class:`<ray.data.datasource.datasource.Reader>`
-for MongoDB. What it does is creating a list of :class:`<ray.data.ReadTask>` for the given list of MongDB queries. Each ``ReadTask`` will return a list of
+ for MongoDB. What it does is creating a list of :class:`<ray.data.ReadTask>` for the given list of MongDB queries. Each ``ReadTask`` will return a list of
 ``ray.data.Block`` when called, and they are executed in remote functions to parallelize the execution.
 
 First of all, let's handle a single MongDB query, as this is the execution unit in ``ReadTask``. We need to connect to MongDB, execute the query against it,
@@ -60,8 +60,7 @@ To write multiple blocks in parallel, we again use Ray remote functions to launc
 ------------
 Put together
 ------------
-With ``_MongoDatasourceReader`` and ``_write_multiple_blocks`` above, we are ready to implement :meth:`create_reader() <ray.data.datasource.create_reader>` and write support with
-:meth:`do_write() <ray.data.datasource.do_write>`, and put together a ``MongoDatasource``.
+With ``_MongoDatasourceReader`` and ``_write_multiple_blocks`` above, we are ready to implement :meth:`create_reader() <ray.data.datasource.create_reader>` and :meth:`do_write() <ray.data.datasource.do_write>`, and put together a ``MongoDatasource``.
 
 .. literalinclude:: ./doc_code/custom_datasource.py
     :language: python
