@@ -13,23 +13,11 @@ from ray.air.util.data_batch_conversion import (
     convert_pandas_to_batch_type,
     convert_batch_type_to_pandas,
 )
-from ray.data.preprocessor import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.torch import TorchCheckpoint, TorchPredictor
 
-
-@pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-class DummyPreprocessor(Preprocessor):
-    def transform_batch(self, df):
-        return df * 2
+from dummy_preprocessor import DummyPreprocessor
 
 
 class DummyModelSingleTensor(torch.nn.Module):
@@ -165,7 +153,8 @@ def test_predict_array_with_preprocessor(model, preprocessor, use_gpu):
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert predictions.flatten().tolist() == [4, 8, 12]
+    assert predictions.flatten().tolist() == [2, 4, 6]
+    assert predictor.get_preprocessor().has_preprocessed
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])

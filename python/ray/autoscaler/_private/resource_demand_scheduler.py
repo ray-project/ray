@@ -14,7 +14,6 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler._private.util import (
@@ -51,7 +50,7 @@ class ResourceDemandScheduler:
         upscaling_speed: float = 1,
     ) -> None:
         self.provider = provider
-        self.node_types = _convert_memory_unit(node_types)
+        self.node_types = copy.deepcopy(node_types)
         self.node_resource_updated = set()
         self.max_workers = max_workers
         self.head_node_type = head_node_type
@@ -84,7 +83,7 @@ class ResourceDemandScheduler:
         inferered resources are not lost.
         """
         self.provider = provider
-        self.node_types = _convert_memory_unit(node_types)
+        self.node_types = copy.deepcopy(node_types)
         self.node_resource_updated = set()
         self.max_workers = max_workers
         self.head_node_type = head_node_type
@@ -528,24 +527,6 @@ class ResourceDemandScheduler:
                 out += " ({} pending)".format(pending_nodes[node_type])
 
         return out
-
-
-def _convert_memory_unit(
-    node_types: Dict[NodeType, NodeTypeConfigDict]
-) -> Dict[NodeType, NodeTypeConfigDict]:
-    """Convert memory and object_store_memory to memory unit"""
-    node_types = copy.deepcopy(node_types)
-    for node_type in node_types:
-        res = node_types[node_type].get("resources", {})
-        if "memory" in res:
-            size = float(res["memory"])
-            res["memory"] = ray_constants.to_memory_units(size, False)
-        if "object_store_memory" in res:
-            size = float(res["object_store_memory"])
-            res["object_store_memory"] = ray_constants.to_memory_units(size, False)
-        if res:
-            node_types[node_type]["resources"] = res
-    return node_types
 
 
 def _node_type_counts_to_node_resources(

@@ -766,6 +766,7 @@ def test_user_error(ray_start_2_cpus):
             train.report(loss=1)
         raise NotImplementedError
 
+    trainer.start()
     with pytest.raises(StartTraceback) as exc:
         trainer.run(fail_train_2)
     assert "NotImplementedError" in str(exc.value)
@@ -780,7 +781,7 @@ def test_worker_failure_1(ray_start_2_cpus):
     def train_actor_failure():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
@@ -804,7 +805,7 @@ def test_worker_failure_2(ray_start_2_cpus):
             train.report(loss=1)
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
@@ -824,7 +825,7 @@ def test_worker_failure_local_rank(ray_start_2_cpus):
     def train_actor_failure():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
         return train.local_rank()
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
@@ -865,7 +866,7 @@ def test_max_failures(ray_start_2_cpus):
     def train_func():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     trainer = Trainer(test_config, num_workers=2)
     trainer.start()
@@ -883,7 +884,7 @@ def test_start_max_failures(ray_start_2_cpus):
     def init_hook_fail():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     with pytest.raises(RuntimeError):
         trainer.start(initialization_hook=init_hook_fail)
@@ -1011,25 +1012,6 @@ def test_multiple_run(ray_start_2_cpus):
     assert output_2 == [2, 2]
 
 
-def test_run_after_user_error(ray_start_2_cpus):
-    config = TestConfig()
-
-    def fail_train():
-        raise NotImplementedError
-
-    trainer = Trainer(config, num_workers=2)
-    trainer.start()
-    with pytest.raises(StartTraceback) as exc:
-        trainer.run(fail_train)
-    assert "NotImplementedError" in str(exc.value)
-
-    def train_func():
-        return 1
-
-    output = trainer.run(train_func)
-    assert output == [1, 1]
-
-
 def check_dataset_output(num_data, num_epochs, data_all_epochs):
     assert all(len(worker_data) == num_epochs for worker_data in data_all_epochs)
     for i in range(num_epochs):
@@ -1119,7 +1101,7 @@ def test_dataset_pipeline(ray_start_4_cpus):
         for _ in range(num_epochs):
             dataset_this_epoch = next(pipeline_iterator)
             data_this_epoch = []
-            for batch in dataset_this_epoch.iter_batches(batch_format="native"):
+            for batch in dataset_this_epoch.iter_batches(batch_format="default"):
                 data_this_epoch.extend(batch)
             data_all_epochs.append(data_this_epoch)
         return data_all_epochs
@@ -1144,7 +1126,7 @@ def test_dataset_pipeline_shuffle(ray_start_4_cpus):
         for _ in range(2):
             dataset_this_epoch = next(pipeline_iterator)
             data_this_epoch = []
-            for batch in dataset_this_epoch.iter_batches(batch_format="native"):
+            for batch in dataset_this_epoch.iter_batches(batch_format="default"):
                 data_this_epoch.extend(batch)
 
             if len(data_all_epochs) > 0:
@@ -1172,7 +1154,7 @@ def test_dataset_fault_tolerance(ray_start_4_cpus):
     def train_actor_failure():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
