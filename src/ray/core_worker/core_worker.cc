@@ -3445,23 +3445,9 @@ const rpc::JobConfig &CoreWorker::GetJobConfig() const { return *job_config_; }
 
 bool CoreWorker::IsExiting() const { return exiting_; }
 
-std::unordered_map<std::string, std::vector<uint64_t>> CoreWorker::GetActorCallStats()
+std::unordered_map<std::string, std::vector<int64_t>> CoreWorker::GetActorCallStats()
     const {
-  absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
-  std::unordered_map<std::string, std::vector<uint64_t>> total_counts;
-
-  for (const auto &count : task_counter_.pending_tasks_counter_map_) {
-    total_counts[count.first].resize(3, 0);
-    total_counts[count.first][0] = count.second;
-  }
-  for (const auto &count : task_counter_.running_tasks_counter_map_) {
-    total_counts[count.first][1] = count.second;
-  }
-  for (const auto &count : task_counter_.finished_tasks_counter_map_) {
-    total_counts[count.first][2] = count.second;
-  }
-
-  return total_counts;
+  return task_counter_.AsMap();
 }
 
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {

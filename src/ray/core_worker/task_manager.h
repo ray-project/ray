@@ -21,29 +21,13 @@
 #include "ray/common/task/task.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/stats/metric_defs.h"
+#include "ray/util/counter.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace core {
-
-/// This class tracks the number of tasks at a particular state for the
-/// purpose of emitting Prometheus metrics.
-class TaskStatusCounter {
- public:
-  /// Construct a new TaskStatusCounter.
-  TaskStatusCounter();
-
-  /// Track the change of the status of a task from old to new status.
-  void Swap(const std::string &name, rpc::TaskStatus old_status, rpc::TaskStatus new_status);
-
-  /// Increment the number of tasks at a specific status by one.
-  void Increment(const std::string &name, rpc::TaskStatus status);
-
- private:
-  absl::flat_hash_map<std::pair<std::string, rpc::TaskStatus>, int64_t> counters_;
-};
 
 class TaskFinisherInterface {
  public:
@@ -92,6 +76,7 @@ class TaskResubmissionInterface {
   virtual ~TaskResubmissionInterface() {}
 };
 
+using TaskStatusCounter = Counter<std::pair<std::string, rpc::TaskStatus>>;
 using PutInLocalPlasmaCallback =
     std::function<void(const RayObject &object, const ObjectID &object_id)>;
 using RetryTaskCallback = std::function<void(TaskSpecification &spec, bool delay)>;
@@ -115,6 +100,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         retry_task_callback_(retry_task_callback),
         push_error_callback_(push_error_callback),
         max_lineage_bytes_(max_lineage_bytes) {
+    task_counter_.SetOnChangeCallback(
+        [](const std::pair<std::string, rpc::TaskStatus> key, int64_t value) {
+          ray::stats::STATS_tasks.Record(value,
+                                         {{"State", rpc::TaskStatus_Name(key.second)},
+                                          {"Name", key.first},
+                                          {"Source", "owner"}});
+        });
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
           return RemoveLineageReference(object_id, ids_to_release);
@@ -308,11 +300,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
-      counter.Increment(spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL);
+      counter.Increment({spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL});
     }
 
     void SetStatus(rpc::TaskStatus new_status) {
-      counter.Swap(spec.GetName(), status, new_status);
+      counter.Swap({spec.GetName(), status}, {spec.GetName(), new_status});
       status = new_status;
     }
 

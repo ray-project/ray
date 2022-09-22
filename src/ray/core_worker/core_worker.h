@@ -61,97 +61,130 @@ JobID GetProcessJobID(const CoreWorkerOptions &options);
 
 /// Simple container for per function task counters. The counters will be
 /// keyed by the function name in task spec.
-struct TaskCounter {
+class TaskCounter {
   /// A task can only be one of the following state. Received state in particular
   /// covers from the point of RPC call to beginning execution.
   enum TaskStatusType { kPending, kRunning, kFinished };
 
-  /// This mutex should be used by caller to ensure consistency when transitioning
-  /// a task's state.
-  mutable absl::Mutex tasks_counter_mutex_;
-  absl::flat_hash_map<std::string, int> pending_tasks_counter_map_
-      GUARDED_BY(tasks_counter_mutex_);
-  absl::flat_hash_map<std::string, int> running_tasks_counter_map_
-      GUARDED_BY(tasks_counter_mutex_);
-  absl::flat_hash_map<std::string, int> finished_tasks_counter_map_
-      GUARDED_BY(tasks_counter_mutex_);
+ public:
+  TaskCounter() {
+    // Track the number of running tasks per name.
+    counter_.SetOnChangeCallback([this](const std::pair<std::string, TaskStatusType> &key,
+                                        int64_t value) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (key.second == kRunning) {
+        RefreshRunningMetric(key.first, value);
+      }
+    });
+    // Track the sub-state of tasks running but blocked in ray.get().
+    running_in_get_counter_.SetOnChangeCallback(
+        [this](const std::string &func_name, int64_t value)
+            EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+              ray::stats::STATS_tasks.Record(
+                  value,
+                  {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
+                   {"Name", func_name},
+                   {"Source", "executor"}});
+              RefreshRunningMetric(func_name, counter_.Get({func_name, kRunning}));
+            });
+    // Track the sub-state of tasks running but blocked in ray.wait().
+    running_in_wait_counter_.SetOnChangeCallback(
+        [this](const std::string &func_name, int64_t value)
+            EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+              ray::stats::STATS_tasks.Record(
+                  value,
+                  {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
+                   {"Name", func_name},
+                   {"Source", "executor"}});
+              RefreshRunningMetric(func_name, counter_.Get({func_name, kRunning}));
+            });
+  }
 
-  /// Tracks the total number of running tasks on this process.
-  int64_t running_total_ GUARDED_BY(tasks_counter_mutex_) = 0;
-
-  // Tracks tasks blocked in ray.get() and wait(). These counters overlap
-  // the counts of running_total_.
-  int64_t running_in_get_total_ GUARDED_BY(tasks_counter_mutex_) = 0;
-  int64_t running_in_wait_total_ GUARDED_BY(tasks_counter_mutex_) = 0;
+  void RefreshRunningMetric(const std::string func_name, int64_t running_total)
+      EXCLUSIVE_LOCKS_REQUIRED(&task_counter_mutex) {
+    // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract them
+    // out to avoid double-counting.
+    ray::stats::STATS_tasks.Record(
+        running_total - running_in_get_counter_.Get(func_name) -
+            running_in_wait_counter_.Get(func_name),
+        {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
+         {"Name", func_name},
+         {"Source", "executor"}});
+    // Negate the metrics recorded from the submitter process for these tasks.
+    ray::stats::STATS_tasks.Record(
+        -running_total,
+        {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
+         {"Name", func_name},
+         {"Source", "executor"}});
+  }
 
   void IncPending(const std::string &func_name) {
-    absl::MutexLock l(&tasks_counter_mutex_);
-    pending_tasks_counter_map_[func_name] += 1;
+    absl::MutexLock l(&mu_);
+    counter_.Increment({func_name, kPending});
   }
 
   void MovePendingToRunning(const std::string &func_name) {
-    absl::MutexLock l(&tasks_counter_mutex_);
-    pending_tasks_counter_map_[func_name] -= 1;
-    running_tasks_counter_map_[func_name] += 1;
-    running_total_ += 1;
-    UpdateStats();
+    absl::MutexLock l(&mu_);
+    counter_.Swap({func_name, kPending}, {func_name, kRunning});
   }
 
   void MoveRunningToFinished(const std::string &func_name) {
-    absl::MutexLock l(&tasks_counter_mutex_);
-    running_tasks_counter_map_[func_name] -= 1;
-    finished_tasks_counter_map_[func_name] += 1;
-    running_total_ -= 1;
-    UpdateStats();
+    absl::MutexLock l(&mu_);
+    counter_.Swap({func_name, kRunning}, {func_name, kFinished});
   }
 
   void SetMetricStatus(const std::string &func_name, rpc::TaskStatus status) {
-    // TODO(ekl) track and report per-name status.
+    absl::MutexLock l(&mu_);
     if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
-      running_in_get_total_ += 1;
+      running_in_get_counter_.Increment(func_name);
     } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
-      running_in_wait_total_ += 1;
+      running_in_wait_counter_.Increment(func_name);
     } else {
       RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
     }
-    UpdateStats();
   }
 
   void UnsetMetricStatus(const std::string &func_name, rpc::TaskStatus status) {
+    absl::MutexLock l(&mu_);
     if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
-      running_in_get_total_ -= 1;
+      running_in_get_counter_.Decrement(func_name);
     } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
-      running_in_wait_total_ -= 1;
+      running_in_wait_counter_.Decrement(func_name);
     } else {
       RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
     }
-    UpdateStats();
   }
 
-  void UpdateStats() EXCLUSIVE_LOCKS_REQUIRED(&tasks_counter_mutex_) {
-    // Note that we set a Source=executor label so that metrics reported here don't
-    // conflict with metrics reported from task_manager.cc.
-    ray::stats::STATS_tasks.Record(
-        running_total_ - running_in_get_total_ - running_in_wait_total_,
-        {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
-         {"Name", "TODO"},
-         {"Source", "executor"}});
-    ray::stats::STATS_tasks.Record(
-        running_in_get_total_,
-        {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
-         {"Name", "TODO"},
-         {"Source", "executor"}});
-    ray::stats::STATS_tasks.Record(
-        running_in_wait_total_,
-        {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
-         {"Name", "TODO"},
-         {"Source", "executor"}});
-    ray::stats::STATS_tasks.Record(
-        -running_total_,
-        {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
-         {"Name", "TODO"},
-         {"Source", "executor"}});
+  std::unordered_map<std::string, std::vector<int64_t>> AsMap() const {
+    absl::MutexLock l(&mu_);
+    std::unordered_map<std::string, std::vector<int64_t>> total_counts;
+
+    counter_.ForEachEntry(
+        [&total_counts](const std::pair<std::string, TaskStatusType> &key,
+                        int64_t value) {
+          total_counts[key.first].resize(3, 0);
+          if (key.second == kPending) {
+            total_counts[key.first][0] = value;
+          } else if (key.second == kRunning) {
+            total_counts[key.first][1] = value;
+          } else if (key.second == kFinished) {
+            total_counts[key.first][2] = value;
+          } else {
+            RAY_CHECK(false) << "Invalid task status type " << key.second;
+          }
+        });
+
+    return total_counts;
   }
+
+ private:
+  mutable absl::Mutex mu_;
+  // Tracks all tasks submitted to this worker by state.
+  Counter<std::pair<std::string, TaskStatusType>> counter_ GUARDED_BY(&mu_);
+
+  // Additionally track the sub-states of RUNNING_IN_RAY_GET/WAIT. The counters here
+  // overlap with those of counter_.
+  Counter<std::string> running_in_get_counter_ GUARDED_BY(&mu_);
+  Counter<std::string> running_in_wait_counter_ GUARDED_BY(&mu_);
 };
 
 /// The root class that contains all the core and language-independent functionalities
@@ -943,7 +976,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return an unordered_map mapping function name to list of (num_received,
   /// num_executing, num_executed). It is a std map instead of absl due to its
   /// interface with language bindings.
-  std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
+  std::unordered_map<std::string, std::vector<int64_t>> GetActorCallStats() const;
 
  private:
   static json OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent);

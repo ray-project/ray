@@ -28,51 +28,6 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
-TaskStatusCounter::TaskStatusCounter() {}
-
-void TaskStatusCounter::Swap(const std::string &name, rpc::TaskStatus old_status, rpc::TaskStatus new_status) {
-  if (old_status == new_status) {
-    return;
-  }
-  // Increment new.
-  auto new_key = std::make_pair(name, new_status);
-  counters_[new_status] += 1;
-  // Decrement and erase old.
-  auto old_key = std::make_pair(name, old_status);
-  int64_t old_value = 0;
-  auto it = counters_.find(old_key);
-  RAY_CHECK(it != counters_.end());
-  it->second -= 1;
-  if (it->second <= 0) {
-    counters_.erase(it);
-    old_value = 0;
-  } else {
-    old_value = it->second;
-  }
-  // Note that we set a Source=owner label so that metrics reported here don't
-  // conflict with metrics reported from core_worker.h.
-  ray::stats::STATS_tasks.Record(
-      old_value,
-      {{"State", rpc::TaskStatus_Name(old_status)},
-       {"Name", name},
-       {"Source", "owner"}});
-  ray::stats::STATS_tasks.Record(
-      counters_[new_key],
-      {{"State", rpc::TaskStatus_Name(new_status)},
-       {"Name", name},
-       {"Source", "owner"}});
-}
-
-void TaskStatusCounter::Increment(const std::string &name, rpc::TaskStatus status) {
-  auto key = std::make_pair(name, status);
-  counters_[key] += 1;
-  ray::stats::STATS_tasks.Record(
-      counters_[key], {
-      {"State", rpc::TaskStatus_Name(status)},
-      {"Name", name},
-      {"Source", "owner"}});
-}
-
 std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     const rpc::Address &caller_address,
     const TaskSpecification &spec,
