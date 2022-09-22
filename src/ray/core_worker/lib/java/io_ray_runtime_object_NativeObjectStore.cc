@@ -74,7 +74,10 @@ Status PutSerializedObject(JNIEnv *env,
           *out_object_id, pin_object, owner_address));
     } else {
       RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealExisting(
-          *out_object_id, /* pin_object = */ false, owner_address));
+          *out_object_id,
+          /* pin_object = */ false,
+          /* generator_id = */ ObjectID::Nil(),
+          owner_address));
     }
   }
   return Status::OK();
