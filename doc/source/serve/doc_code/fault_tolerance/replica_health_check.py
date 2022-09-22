@@ -1,12 +1,13 @@
 from ray import serve
 
 # Stubs
-connect_to_db = lambda *args: None
+def connect_to_db(*args, **kwargs):
+    pass
+
 
 # __health_check_start__
 @serve.deployment(health_check_period_s=10, health_check_timeout_s=30)
 class MyDeployment:
-
     def __init__(self, db_addr: str):
         self._my_db_connection = connect_to_db(db_addr)
 
