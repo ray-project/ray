@@ -206,6 +206,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 submission_id=request_submission_id,
                 runtime_env=submit_request.runtime_env,
                 metadata=submit_request.metadata,
+                num_cpus=submit_request.num_cpus,
+                num_gpus=submit_request.num_gpus,
+                resources=submit_request.resources,
             )
 
             resp = JobSubmitResponse(job_id=submission_id, submission_id=submission_id)

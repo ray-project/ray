@@ -76,6 +76,12 @@ class JobInfo:
     metadata: Optional[Dict[str, str]] = None
     #: The runtime environment for the job.
     runtime_env: Optional[Dict[str, Any]] = None
+    #: The quantity of CPU cores to reserve for the entrypoint command.
+    num_cpus: Optional[Union[int, float]] = None
+    #: The number of GPUs to reserve for the entrypoint command.
+    num_gpus: Optional[Union[int, float]] = None
+    #: The quantity of various custom resources to reserve for the entrypoint command.
+    resources: Optional[Dict[str, float]] = None
 
     def __post_init__(self):
         if self.message is None:
@@ -217,7 +223,7 @@ class JobSubmitRequest:
     # of the entrypoint command.
     num_gpus: Optional[Union[int, float]] = None
     # The quantity of various custom resources
-    # to reserve for the execution of the entrypoint command.
+    # to reserve for the entrypoint command.
     resources: Optional[Dict[str, float]] = None
 
     def __post_init__(self):

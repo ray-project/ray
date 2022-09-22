@@ -26,7 +26,7 @@ from ray.dashboard.modules.job.common import (
     JobInfoStorageClient,
 )
 from ray.dashboard.modules.job.utils import file_tail_iterator
-from ray.exceptions import RuntimeEnvSetupError
+from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -430,6 +430,7 @@ class JobManager:
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
                 is_alive = False
+                job_info = await self._job_info_client.get_info(job_id)
                 job_status = await self._job_info_client.get_status(job_id)
                 if job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
@@ -441,6 +442,22 @@ class JobManager:
                         job_id,
                         JobStatus.FAILED,
                         message=f"runtime_env setup failed: {e}",
+                    )
+                elif isinstance(e, ActorUnschedulableError):
+                    logger.info(
+                        f"Failed to schedule job {job_id} because the supervisor actor "
+                        f"could not be scheduled: {e}"
+                    )
+                    # TODO(architkulkarni): Once job entrypoints run on worker nodes,
+                    # make this error message more actionable, distinguishing between
+                    # the two cases driver_on_current_node = True or False.
+                    await self._job_info_client.put_status(
+                        job_id,
+                        JobStatus.FAILED,
+                        message=f"Could not fulfill resource request {{'CPU': "
+                        f"{job_info.num_cpus}, 'GPU': {job_info.num_gpus}, "
+                        f"'resources': {job_info.resources}}} for "
+                        f"the entrypoint command.",
                     )
                 else:
                     logger.warning(
@@ -521,7 +538,7 @@ class JobManager:
             num_gpus: The quantity of GPUs to reserve for the execution of
                 the entrypoint command. Defaults to 0.
             resources: The quantity of various custom resources
-                to reserve for the execution of the entrypoint command.
+                to reserve for the entrypoint command.
             entrypoint_resources: Resources to allocate for the driver.
             _start_signal_actor: Used in testing only to capture state
                 transitions between PENDING -> RUNNING. Regular user shouldn't
@@ -542,13 +559,16 @@ class JobManager:
         elif await self._job_info_client.get_status(submission_id) is not None:
             raise RuntimeError(f"Job {submission_id} already exists.")
 
-        logger.info(f"Starting job with submission_id: {submission_id}")
+        logger.error(f"Starting job with submission_id: {submission_id}")
         job_info = JobInfo(
             entrypoint=entrypoint,
             status=JobStatus.PENDING,
             start_time=int(time.time() * 1000),
             metadata=metadata,
             runtime_env=runtime_env,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            resources=resources,
         )
         await self._job_info_client.put_info(submission_id, job_info)
 

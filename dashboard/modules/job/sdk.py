@@ -148,7 +148,6 @@ class JobSubmissionClient(SubmissionClient):
         runtime_env = RuntimeEnv(**runtime_env).to_dict()
 
         submission_id = submission_id or job_id
-
         req = JobSubmitRequest(
             entrypoint=entrypoint,
             submission_id=submission_id,

@@ -128,21 +128,20 @@ def job_cli_group():
     "--num-cpus",
     required=False,
     type=float,
-    help="the number of CPU cores to "
-    "reserve for the execution of the entrypoint command",
+    help="the number of CPU cores to " "reserve for the entrypoint command",
 )
 @click.option(
     "--num-gpus",
     required=False,
     type=float,
-    help="the number of GPUs to " "reserve for the execution of the entrypoint command",
+    help="the number of GPUs to " "reserve for the entrypoint command",
 )
 @click.option(
     "--resources",
     required=False,
     type=str,
     help="a JSON serialized dictionary mapping resource name to resource quantity "
-    "describing resources to reserve for the execution of the entrypoint command",
+    "describing resources to reserve for the entrypoint command",
 )
 @click.option(
     "--no-wait",
@@ -203,7 +202,7 @@ def submit(
         runtime_env_json=runtime_env_json,
         working_dir=working_dir,
     )
-
+    cli_logger.print(f"Using num_cpis={num_cpus}, num_gpus={num_gpus}, ")
     job_id = client.submit_job(
         entrypoint=list2cmdline(entrypoint),
         submission_id=submission_id,
