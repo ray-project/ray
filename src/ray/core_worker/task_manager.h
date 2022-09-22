@@ -36,13 +36,13 @@ class TaskStatusCounter {
   TaskStatusCounter();
 
   /// Track the change of the status of a task from old to new status.
-  void Swap(rpc::TaskStatus old_status, rpc::TaskStatus new_status);
+  void Swap(const std::string &name, rpc::TaskStatus old_status, rpc::TaskStatus new_status);
 
   /// Increment the number of tasks at a specific status by one.
-  void Increment(rpc::TaskStatus status);
+  void Increment(const std::string &name, rpc::TaskStatus status);
 
  private:
-  int64_t counters_[rpc::TaskStatus_ARRAYSIZE] = {};
+  absl::flat_hash_map<std::pair<std::string, rpc::TaskStatus>, int64_t> counters_;
 };
 
 class TaskFinisherInterface {
@@ -308,11 +308,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
-      counter.Increment(rpc::TaskStatus::PENDING_ARGS_AVAIL);
+      counter.Increment(spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL);
     }
 
     void SetStatus(rpc::TaskStatus new_status) {
-      counter.Swap(status, new_status);
+      counter.Swap(spec.GetName(), status, new_status);
       status = new_status;
     }
 

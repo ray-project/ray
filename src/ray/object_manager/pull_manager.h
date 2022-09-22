@@ -269,14 +269,17 @@ class PullManager {
       ray::stats::STATS_tasks.Record(
           -static_cast<int64_t>(requests.size()),
           {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
+           {"Name", "TODO"},
            {"Source", "pull_manager"}});
       ray::stats::STATS_tasks.Record(
           inactive_requests.size(),
           {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
+           {"Name", "TODO"},
            {"Source", "pull_manager"}});
       ray::stats::STATS_tasks.Record(
           active_requests.size(),
           {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
+           {"Name", "TODO"},
            {"Source", "pull_manager"}});
     }
 

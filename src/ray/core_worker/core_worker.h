@@ -134,18 +134,22 @@ struct TaskCounter {
     ray::stats::STATS_tasks.Record(
         running_total_ - running_in_get_total_ - running_in_wait_total_,
         {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
+         {"Name", "TODO"},
          {"Source", "executor"}});
     ray::stats::STATS_tasks.Record(
         running_in_get_total_,
         {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
+         {"Name", "TODO"},
          {"Source", "executor"}});
     ray::stats::STATS_tasks.Record(
         running_in_wait_total_,
         {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
+         {"Name", "TODO"},
          {"Source", "executor"}});
     ray::stats::STATS_tasks.Record(
         -running_total_,
         {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
+         {"Name", "TODO"},
          {"Source", "executor"}});
   }
 };
