@@ -357,6 +357,11 @@ class Dataset(Generic[T]):
             >>> ds.default_batch_format()
             <class 'pandas.core.frame.DataFrame'>
 
+            .. tip::
+
+                Datasets created from tabular data like Arrow tables yield
+                ``pd.DataFrame`` batches.
+
             Once you know the batch type, define a function that transforms batches
             of data. ``ds.map_batches`` applies the function in parallel.
 
