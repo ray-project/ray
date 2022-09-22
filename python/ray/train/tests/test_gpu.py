@@ -54,6 +54,7 @@ def ray_start_1_cpu_1_gpu():
 
 @pytest.fixture
 def shutdown_only():
+    yield None
     ray.shutdown()
 
 
