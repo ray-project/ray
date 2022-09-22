@@ -12,19 +12,14 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.common import (
-    STEPS_TRAINED_COUNTER,
-    STEPS_TRAINED_THIS_ITER_COUNTER,
     _get_global_vars,
     _get_shared_metrics,
 )
-from ray.rllib.execution.concurrency_ops import Concurrently, Dequeue, Enqueue
 from ray.rllib.execution.learner_thread import LearnerThread
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts
-from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.actors import create_colocated_actors
@@ -544,74 +539,72 @@ class Impala(Algorithm):
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
 
-        # TODO (avnishn): Remove the execution plan API by q1 2023
-        if self.config["_disable_execution_plan_api"]:
-            # Create extra aggregation workers and assign each rollout worker to
-            # one of them.
-            self.batches_to_place_on_learner = []
-            self.batch_being_built = []
-            if self.config["num_aggregation_workers"] > 0:
-                # This spawns `num_aggregation_workers` actors that aggregate
-                # experiences coming from RolloutWorkers in parallel. We force
-                # colocation on the same node (localhost) to maximize data bandwidth
-                # between them and the learner.
-                localhost = platform.node()
-                assert localhost != "", (
-                    "ERROR: Cannot determine local node name! "
-                    "`platform.node()` returned empty string."
-                )
-                all_co_located = create_colocated_actors(
-                    actor_specs=[
-                        # (class, args, kwargs={}, count=1)
-                        (
-                            AggregatorWorker,
-                            [
-                                self.config,
-                            ],
-                            {},
-                            self.config["num_aggregation_workers"],
-                        )
-                    ],
-                    node=localhost,
-                )
-                self._aggregator_workers = [
-                    actor for actor_groups in all_co_located for actor in actor_groups
-                ]
-                self._aggregator_actor_manager = AsyncRequestsManager(
-                    self._aggregator_workers,
-                    max_remote_requests_in_flight_per_worker=self.config[
-                        "max_requests_in_flight_per_aggregator_worker"
-                    ],
-                    ray_wait_timeout_s=self.config["timeout_s_aggregator_manager"],
-                )
-
-            else:
-                # Create our local mixin buffer if the num of aggregation workers is 0.
-                self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
-                    capacity=(
-                        self.config["replay_buffer_num_slots"]
-                        if self.config["replay_buffer_num_slots"] > 0
-                        else 1
-                    ),
-                    replay_ratio=self.config["replay_ratio"],
-                    replay_mode=ReplayMode.LOCKSTEP,
-                )
-
-            self._sampling_actor_manager = AsyncRequestsManager(
-                self.workers.remote_workers(),
-                max_remote_requests_in_flight_per_worker=self.config[
-                    "max_requests_in_flight_per_sampler_worker"
+        # Create extra aggregation workers and assign each rollout worker to
+        # one of them.
+        self.batches_to_place_on_learner = []
+        self.batch_being_built = []
+        if self.config["num_aggregation_workers"] > 0:
+            # This spawns `num_aggregation_workers` actors that aggregate
+            # experiences coming from RolloutWorkers in parallel. We force
+            # colocation on the same node (localhost) to maximize data bandwidth
+            # between them and the learner.
+            localhost = platform.node()
+            assert localhost != "", (
+                "ERROR: Cannot determine local node name! "
+                "`platform.node()` returned empty string."
+            )
+            all_co_located = create_colocated_actors(
+                actor_specs=[
+                    # (class, args, kwargs={}, count=1)
+                    (
+                        AggregatorWorker,
+                        [
+                            self.config,
+                        ],
+                        {},
+                        self.config["num_aggregation_workers"],
+                    )
                 ],
-                return_object_refs=True,
-                ray_wait_timeout_s=self.config["timeout_s_sampler_manager"],
+                node=localhost,
+            )
+            self._aggregator_workers = [
+                actor for actor_groups in all_co_located for actor in actor_groups
+            ]
+            self._aggregator_actor_manager = AsyncRequestsManager(
+                self._aggregator_workers,
+                max_remote_requests_in_flight_per_worker=self.config[
+                    "max_requests_in_flight_per_aggregator_worker"
+                ],
+                ray_wait_timeout_s=self.config["timeout_s_aggregator_manager"],
             )
 
-            # Create and start the learner thread.
-            self._learner_thread = make_learner_thread(
-                self.workers.local_worker(), self.config
+        else:
+            # Create our local mixin buffer if the num of aggregation workers is 0.
+            self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
+                capacity=(
+                    self.config["replay_buffer_num_slots"]
+                    if self.config["replay_buffer_num_slots"] > 0
+                    else 1
+                ),
+                replay_ratio=self.config["replay_ratio"],
+                replay_mode=ReplayMode.LOCKSTEP,
             )
-            self._learner_thread.start()
-            self.workers_that_need_updates = set()
+
+        self._sampling_actor_manager = AsyncRequestsManager(
+            self.workers.remote_workers(),
+            max_remote_requests_in_flight_per_worker=self.config[
+                "max_requests_in_flight_per_sampler_worker"
+            ],
+            return_object_refs=True,
+            ray_wait_timeout_s=self.config["timeout_s_sampler_manager"],
+        )
+
+        # Create and start the learner thread.
+        self._learner_thread = make_learner_thread(
+            self.workers.local_worker(), self.config
+        )
+        self._learner_thread.start()
+        self.workers_that_need_updates = set()
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
@@ -648,65 +641,6 @@ class Impala(Algorithm):
             self.update_workers_if_necessary()
 
         return train_results
-
-    @staticmethod
-    @override(Algorithm)
-    def execution_plan(workers, config, **kwargs):
-        # TODO (avnishn): Remove the execution plan API by q1 2023
-        assert (
-            len(kwargs) == 0
-        ), "IMPALA execution_plan does NOT take any additional parameters"
-
-        if config["num_aggregation_workers"] > 0:
-            train_batches = gather_experiences_tree_aggregation(workers, config)
-        else:
-            train_batches = gather_experiences_directly(workers, config)
-
-        # Start the learner thread.
-        learner_thread = make_learner_thread(workers.local_worker(), config)
-        learner_thread.start()
-
-        # This sub-flow sends experiences to the learner.
-        enqueue_op = train_batches.for_each(Enqueue(learner_thread.inqueue))
-        # Only need to update workers if there are remote workers.
-        if workers.remote_workers():
-            enqueue_op = enqueue_op.zip_with_source_actor().for_each(
-                BroadcastUpdateLearnerWeights(
-                    learner_thread,
-                    workers,
-                    broadcast_interval=config["broadcast_interval"],
-                )
-            )
-
-        def record_steps_trained(item):
-            env_steps, agent_steps, fetches = item
-            metrics = _get_shared_metrics()
-            # Manually update the steps trained counter since the learner
-            # thread is executing outside the pipeline.
-            metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = env_steps
-            metrics.counters[STEPS_TRAINED_COUNTER] += env_steps
-            return item
-
-        # This sub-flow updates the steps trained counter based on learner
-        # output.
-        dequeue_op = Dequeue(
-            learner_thread.outqueue, check=learner_thread.is_alive
-        ).for_each(record_steps_trained)
-
-        merged_op = Concurrently(
-            [enqueue_op, dequeue_op], mode="async", output_indexes=[1]
-        )
-
-        # Callback for APPO to use to update KL, target network periodically.
-        # The input to the callback is the learner fetches dict.
-        if config["after_train_step"]:
-            merged_op = merged_op.for_each(lambda t: t[2]).for_each(
-                config["after_train_step"](workers, config)
-            )
-
-        return StandardMetricsReporting(merged_op, workers, config).for_each(
-            learner_thread.add_learner_metrics
-        )
 
     @classmethod
     @override(Algorithm)
@@ -936,12 +870,10 @@ class Impala(Algorithm):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
-        # TODO (avnishn): Remove the execution plan API by q1 2023
-        if self.config["_disable_execution_plan_api"]:
-            self._sampling_actor_manager.remove_workers(
-                removed_workers, remove_in_flight_requests=True
-            )
-            self._sampling_actor_manager.add_workers(new_workers)
+        self._sampling_actor_manager.remove_workers(
+            removed_workers, remove_in_flight_requests=True
+        )
+        self._sampling_actor_manager.add_workers(new_workers)
 
     @override(Algorithm)
     def _compile_iteration_results(self, *args, **kwargs):
