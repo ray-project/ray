@@ -444,6 +444,11 @@ class _BackgroundSyncer(Syncer):
         self._sync_process = _BackgroundProcess(cmd)
         self._sync_process.start(**kwargs)
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state.pop("_sync_process", None)
+        return state
+
 
 class _DefaultSyncer(_BackgroundSyncer):
     """Default syncer between local storage and remote URI."""
