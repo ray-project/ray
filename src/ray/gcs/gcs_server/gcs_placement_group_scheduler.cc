@@ -620,11 +620,7 @@ bool IsPlacementGroupWildcardResource(const std::string &resource_name) {
 
   // The length of {placement_group_id} is fixed, so we just need to check that if the
   // length and the pos of `_group_` match.
-  if (resource_name_view.size() > pattern.size() + 2 * PlacementGroupID::Size()) {
-    return false;
-  }
-
-  auto idx = resource_name_view.size() - (pattern.size() + PlacementGroupID::Size());
+  auto idx = resource_name_view.size() - (pattern.size() + 2 * PlacementGroupID::Size());
   return resource_name_view.substr(idx, pattern.size()) == pattern;
 }
 
