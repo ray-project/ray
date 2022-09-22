@@ -209,7 +209,8 @@ class TunerInternal:
             # If we didn't sync, use the restore_path local dir
             self._experiment_checkpoint_dir = os.path.expanduser(path_or_uri)
 
-            # Update local_dir
+            # Update local_dir to use the parent of the experiment path
+            # provided to `Tuner.restore`
             experiment_path = Path(self._experiment_checkpoint_dir)
             self._run_config.local_dir = str(experiment_path.parent)
         else:

@@ -78,23 +78,23 @@ def _load_trial_from_checkpoint(
     local_dir_changed = local_dir and checkpoint_local_dir != local_dir
 
     # NOTE: Skip initializing the logdir if local_dir has changed, since it will create
-    # a directory at the old path (i.e. moving the experiment directory, then resuming)
+    # a directory at the old path
     new_trial.__setstate__(trial_cp, skip_init_logdir=local_dir_changed)
 
     if local_dir_changed:
-        # Update checkpoint dir_or_data by joining the new local_dir with the
-        # relative checkpoint path (relative to the old local_dir)
-        new_checkpoint_dir = os.path.relpath(
-            new_trial.checkpoint.dir_or_data, new_trial.local_dir
-        )
-        relative_checkpoint_dir_or_data = new_checkpoint_dir
-        new_trial.checkpoint.dir_or_data = os.path.join(
-            local_dir, relative_checkpoint_dir_or_data
-        )
+        # Update the dir_or_data of all trial checkpoints by joining the new local_dir
+        # with the relative checkpoint path (relative to the old local_dir)
+        old_local_dir = new_trial.local_dir
+        for checkpoint in new_trial.get_trial_checkpoints():
+            assert checkpoint.storage_mode == CheckpointStorage.PERSISTENT
+            relative_checkpoint_dir = os.path.relpath(
+                checkpoint.dir_or_data, old_local_dir
+            )
+            checkpoint.dir_or_data = os.path.join(local_dir, relative_checkpoint_dir)
 
         logger.info(
-            f"Updated {new_trial} checkpoint directory to match the new "
-            f"local_dir: {new_trial.checkpoint.dir_or_data}"
+            f"Updated {new_trial} checkpoint directories to match the new "
+            f"local_dir: {local_dir}"
         )
 
         # Update trial local_dir
