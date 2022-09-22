@@ -43,7 +43,8 @@ class AffinityWithBundleSchedulingPolicy : public ISchedulingPolicy {
 
  private:
   bool IsNodeFeasibleAndAvailable(const scheduling::NodeID &node_id,
-                                  const ResourceRequest &resource_request);
+                                  const ResourceRequest &resource_request,
+                                  bool avoid_gpu_nodes);
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray
