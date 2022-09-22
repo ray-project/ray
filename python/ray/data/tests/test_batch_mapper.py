@@ -35,7 +35,7 @@ def ds_arrow_single_column_tensor_format():
     return ds
 
 
-def def_arrow_multi_column_format():
+def ds_arrow_multi_column_format():
     ds = ray.data.from_arrow(
         pa.table(
             {
@@ -48,16 +48,13 @@ def def_arrow_multi_column_format():
 
 
 # ===== Numpy dataset formats =====
-def def_numpy_single_column_tensor_format():
-    old_column = np.array([1, 2, 3, 4])
-    ds = ray.data.from_numpy(old_column)
+def ds_numpy_single_column_tensor_format():
+    ds = ray.data.from_numpy(np.array([1, 2, 3, 4]))
     return ds
 
 
-def def_numpy_list_of_ndarray_tensor_format():
-    old_column = np.array([1, 2, 3, 4])
-    to_be_modified = np.array([1, -1, 1, -1])
-    ds = ray.data.from_numpy([old_column, to_be_modified])
+def ds_numpy_list_of_ndarray_tensor_format():
+    ds = ray.data.from_numpy([np.array([1, 2, 3, 4]), np.array([1, -1, 1, -1])])
     return ds
 
 
@@ -177,7 +174,7 @@ def test_batch_mapper_pandas_data_format(ds_with_expected_pandas_numpy_df):
             ),
         ),
         (
-            def_arrow_multi_column_format(),
+            ds_arrow_multi_column_format(),
             pd.DataFrame(
                 {
                     "column_1": [2, 3, 4, 5],
@@ -218,6 +215,86 @@ def test_batch_mapper_arrow_data_format(ds_with_expected_pandas_numpy_df):
             data["column_1"] = data["column_1"] + 1
             if "column_2" in data:
                 data["column_2"] = data["column_2"] * 2
+        return data
+
+    # Test map_batches
+    transformed = ds.map_batches(add_and_modify_udf_pandas, batch_format="pandas")
+    out_df_map_batches = transformed.to_pandas()
+    assert_frame_equal(out_df_map_batches, expected_df)
+
+    transformed = ds.map_batches(add_and_modify_udf_numpy, batch_format="numpy")
+    out_df_map_batches = transformed.to_pandas()
+    assert_frame_equal(out_df_map_batches, expected_numpy_df)
+
+    # Test BatchMapper
+    batch_mapper = BatchMapper(fn=add_and_modify_udf_pandas, batch_format="pandas")
+    batch_mapper.fit(ds)
+    transformed = batch_mapper.transform(ds)
+    out_df = transformed.to_pandas()
+    assert_frame_equal(out_df, expected_df)
+
+    batch_mapper = BatchMapper(fn=add_and_modify_udf_numpy, batch_format="numpy")
+    batch_mapper.fit(ds)
+    transformed = batch_mapper.transform(ds)
+    out_df = transformed.to_pandas()
+    assert_frame_equal(out_df, expected_numpy_df)
+
+
+@pytest.mark.parametrize(
+    "ds_with_expected_pandas_numpy_df",
+    [
+        (
+            ds_numpy_single_column_tensor_format(),
+            pd.DataFrame(
+                {
+                    # Single column pandas automatically converts `VALUE_COL_NAME`
+                    # In UDFs
+                    VALUE_COL_NAME: [2, 3, 4, 5]
+                }
+            ),
+            pd.DataFrame(
+                {
+                    # Single column pandas automatically converts `VALUE_COL_NAME`
+                    # In UDFs
+                    VALUE_COL_NAME: [2, 3, 4, 5]
+                }
+            ),
+        ),
+        (
+            ds_numpy_list_of_ndarray_tensor_format(),
+            pd.DataFrame(
+                {
+                    # Single column pandas automatically converts `VALUE_COL_NAME`
+                    # In UDFs
+                    VALUE_COL_NAME: [2, 3, 4, 5, 2, 0, 2, 0]
+                }
+            ),
+            pd.DataFrame(
+                {
+                    # Single column pandas automatically converts `VALUE_COL_NAME`
+                    # In UDFs
+                    VALUE_COL_NAME: [2, 3, 4, 5, 2, 0, 2, 0]
+                }
+            ),
+        ),
+    ],
+)
+def test_batch_mapper_numpy_data_format(ds_with_expected_pandas_numpy_df):
+    """Tests batch mapper functionality for numpy data format.
+
+    Note:
+        For single column pandas dataframes, we automatically convert it to
+        single column tensor with column name as `__value__`.
+    """
+    ds, expected_df, expected_numpy_df = ds_with_expected_pandas_numpy_df
+
+    def add_and_modify_udf_pandas(df: "pd.DataFrame"):
+        col_name = list(df.columns)[0]
+        df[col_name] = df[col_name] + 1
+        return df
+
+    def add_and_modify_udf_numpy(data: Union[np.ndarray, Dict[str, np.ndarray]]):
+        data = data + 1
         return data
 
     # Test map_batches
