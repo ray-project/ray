@@ -1,5 +1,5 @@
 from enum import Enum, auto
-from typing import Union, List
+from typing import Dict, Union, List
 
 import numpy as np
 import pandas as pd
@@ -106,6 +106,59 @@ def convert_pandas_to_batch_type(
     else:
         raise ValueError(
             f"Received type {type}, but expected it to be one of {DataType}"
+        )
+
+
+@DeveloperAPI
+def convert_batch_type_to_numpy(
+    data: DataBatchType,
+) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+    """Convert the provided data to a NumPy ndarray or dict of ndarrays.
+
+    Args:
+        data: Data of type DataBatchType
+
+    Returns:
+        A numpy representation of the input data.
+    """
+    from ray.data.extensions.tensor_extension import ArrowTensorType, TensorDtype
+
+    if isinstance(data, np.ndarray):
+        return data
+    elif isinstance(data, dict):
+        if data.keys() == {TENSOR_COLUMN_NAME} and isinstance(
+            data[TENSOR_COLUMN_NAME], np.ndarray
+        ):
+            return data[TENSOR_COLUMN_NAME]
+        else:
+            return data
+    elif pyarrow is not None and isinstance(data, pyarrow.Table):
+        if data.column_names == [TENSOR_COLUMN_NAME] and isinstance(
+            data.schema.types[0], ArrowTensorType
+        ):
+            # If representing a tensor dataset, return as a single numpy array.
+            return data[0].to_numpy()
+        else:
+            output_dict = {}
+            for col_name in data.column_names:
+                output_dict[col_name] = data[col_name].to_numpy()
+            return output_dict
+    elif isinstance(data, pd.DataFrame):
+        if list(data.columns) == [TENSOR_COLUMN_NAME] and isinstance(
+            next(iter(data.dtypes)), TensorDtype
+        ):
+            # If representing a tensor dataset, return as a single numpy array.
+            return data.iloc[:, 0].to_numpy()
+        else:
+            # Else return as a dict of numpy arrays.
+            output_dict = {}
+            for column_name in data:
+                output_dict[column_name] = data[column_name].to_numpy()
+            return output_dict
+    else:
+        raise ValueError(
+            f"Received data of type: {type(data)}, but expected it to be one "
+            f"of {DataBatchType}"
         )
 
 

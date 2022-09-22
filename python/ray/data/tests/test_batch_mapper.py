@@ -8,7 +8,7 @@ from pandas.testing import assert_frame_equal
 
 import ray
 from ray.data.preprocessors import BatchMapper
-from ray.data._internal.table_block import VALUE_COL_NAME
+from ray.air.constants import TENSOR_COLUMN_NAME
 
 
 # ===== Pandas dataset formats =====
@@ -31,7 +31,7 @@ def ds_arrow_single_column_format():
 
 
 def ds_arrow_single_column_tensor_format():
-    ds = ray.data.from_arrow(pa.table({VALUE_COL_NAME: [1, 2, 3, 4]}))
+    ds = ray.data.from_arrow(pa.table({TENSOR_COLUMN_NAME: [1, 2, 3, 4]}))
     return ds
 
 
@@ -70,9 +70,9 @@ def ds_numpy_list_of_ndarray_tensor_format():
             ),
             pd.DataFrame(
                 {
-                    # Single column pandas automatically converts `VALUE_COL_NAME`
+                    # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
                     # In UDFs
-                    VALUE_COL_NAME: [2, 3, 4, 5],
+                    TENSOR_COLUMN_NAME: [2, 3, 4, 5],
                 }
             ),
         ),
@@ -152,9 +152,9 @@ def test_batch_mapper_pandas_data_format(ds_with_expected_pandas_numpy_df):
             ),
             pd.DataFrame(
                 {
-                    # Single column pandas automatically converts `VALUE_COL_NAME`
+                    # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
                     # In UDFs
-                    VALUE_COL_NAME: [2, 3, 4, 5],
+                    TENSOR_COLUMN_NAME: [2, 3, 4, 5],
                 }
             ),
         ),
@@ -162,14 +162,14 @@ def test_batch_mapper_pandas_data_format(ds_with_expected_pandas_numpy_df):
             ds_arrow_single_column_tensor_format(),
             pd.DataFrame(
                 {
-                    VALUE_COL_NAME: [2, 3, 4, 5],
+                    TENSOR_COLUMN_NAME: [2, 3, 4, 5],
                 }
             ),
             pd.DataFrame(
                 {
-                    # Single column pandas automatically converts `VALUE_COL_NAME`
+                    # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
                     # In UDFs
-                    VALUE_COL_NAME: [2, 3, 4, 5],
+                    TENSOR_COLUMN_NAME: [2, 3, 4, 5],
                 }
             ),
         ),
@@ -247,16 +247,16 @@ def test_batch_mapper_arrow_data_format(ds_with_expected_pandas_numpy_df):
             ds_numpy_single_column_tensor_format(),
             pd.DataFrame(
                 {
-                    # Single column pandas automatically converts `VALUE_COL_NAME`
+                    # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
                     # In UDFs
-                    VALUE_COL_NAME: [2, 3, 4, 5]
+                    TENSOR_COLUMN_NAME: [2, 3, 4, 5]
                 }
             ),
             pd.DataFrame(
                 {
-                    # Single column pandas automatically converts `VALUE_COL_NAME`
+                    # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
                     # In UDFs
-                    VALUE_COL_NAME: [2, 3, 4, 5]
+                    TENSOR_COLUMN_NAME: [2, 3, 4, 5]
                 }
             ),
         ),
@@ -264,16 +264,16 @@ def test_batch_mapper_arrow_data_format(ds_with_expected_pandas_numpy_df):
             ds_numpy_list_of_ndarray_tensor_format(),
             pd.DataFrame(
                 {
-                    # Single column pandas automatically converts `VALUE_COL_NAME`
+                    # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
                     # In UDFs
-                    VALUE_COL_NAME: [2, 3, 4, 5, 2, 0, 2, 0]
+                    TENSOR_COLUMN_NAME: [2, 3, 4, 5, 2, 0, 2, 0]
                 }
             ),
             pd.DataFrame(
                 {
-                    # Single column pandas automatically converts `VALUE_COL_NAME`
+                    # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
                     # In UDFs
-                    VALUE_COL_NAME: [2, 3, 4, 5, 2, 0, 2, 0]
+                    TENSOR_COLUMN_NAME: [2, 3, 4, 5, 2, 0, 2, 0]
                 }
             ),
         ),

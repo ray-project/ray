@@ -6,13 +6,12 @@ from typing import TYPE_CHECKING, Optional, Union, Dict
 import numpy as np
 
 from ray.data import Dataset
-from ray.data._internal.table_block import VALUE_COL_NAME
-from ray.data.extensions.tensor_extension import ArrowTensorType, TensorDtype
+from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.util.data_batch_conversion import convert_batch_type_to_numpy
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
-    import pyarrow
 
     from ray.air.data_batch_type import DataBatchType
 
@@ -291,76 +290,29 @@ class Preprocessor(abc.ABC):
             else:
                 return self._transform_pandas(data.to_pandas())
         elif transform_type == "numpy":
+            transformed_numpy_data = self._transform_numpy(
+                convert_batch_type_to_numpy(data)
+            )
             if data_format == "numpy":
-                return self._numpy_data_transform_numpy(data)
+                return transformed_numpy_data
             elif data_format == "arrow":
-                return self._arrow_data_transform_numpy(data)
+                if len(data.column_names) == 1 and data.column_names != [
+                    TENSOR_COLUMN_NAME
+                ]:
+                    # Single-column table is perserved as a table if not
+                    # explicted named as with tensor column name.
+                    return pyarrow.Table.from_pydict(transformed_numpy_data)
+                else:
+                    return transformed_numpy_data
             elif data_format == "pandas":
-                return self._pandas_data_transform_numpy(data)
-
-    def _numpy_data_transform_numpy(
-        self, data: Union[np.ndarray, Dict[str, np.ndarray]]
-    ):
-        """Transform data batch with `numpy` format to `numpy` format.
-
-        Single-column dictionary will need to be preserved as dict unless
-        it's using the Datasets scheme for representing "tensor datasets"
-        """
-        if (
-            isinstance(data, dict)
-            and data.keys() == {VALUE_COL_NAME}
-            and isinstance(data[VALUE_COL_NAME], np.ndarray)
-        ):
-            return self._transform_numpy(data[VALUE_COL_NAME])
-        else:
-            return self._transform_numpy(data)
-
-    def _arrow_data_transform_numpy(self, data: "pyarrow.Table"):
-        """Transform data batch with `arrow` format to `numpy` format.
-
-        Single-column tables will need to be preserved as tables unless
-        it's using the Datasets scheme for representing "tensor datasets"
-        """
-        import pyarrow
-
-        if data.column_names == [VALUE_COL_NAME] and isinstance(
-            data.schema.types[0], ArrowTensorType
-        ):
-            # If representing a tensor dataset, return as a single numpy array.
-            return self._transform_numpy(data[0].to_numpy())
-        else:
-            output_dict = {}
-            for col_name in data.column_names:
-                output_dict[col_name] = data[col_name].to_numpy()
-            if len(data.column_names) == 1:
-                # Otherwise, single-column table is perserved as a table.
-                return pyarrow.Table.from_pydict(self._transform_numpy(output_dict))
-            else:
-                return self._transform_numpy(output_dict)
-
-    def _pandas_data_transform_numpy(self, data: "pd.DataFrame"):
-        """Transform data batch with `pandas` format to `numpy` format.
-
-        Single-column tables will need to be preserved as tables unless
-        it's using the Datasets scheme for representing "tensor datasets"
-        """
-        import pandas as pd
-
-        if list(data.columns) == [VALUE_COL_NAME] and isinstance(
-            next(iter(data.dtypes)), TensorDtype
-        ):
-            # If representing a tensor dataset, return as a single numpy array.
-            return self._transform_numpy(data.iloc[:, 0].to_numpy())
-        else:
-            # Else return as a dict of numpy arrays.
-            output_dict = {}
-            for column_name in data:
-                output_dict[column_name] = data[column_name].to_numpy()
-            if len(data.columns) == 1:
-                # Otherwise, single-column table is perserved as a table.
-                return pd.DataFrame.from_dict(self._transform_numpy(output_dict))
-            else:
-                return self._transform_numpy(output_dict)
+                if len(data.columns) == 1 and list(data.columns) != [
+                    TENSOR_COLUMN_NAME
+                ]:
+                    # Single-column table is perserved as a table if not
+                    # explicted named as with tensor column name.
+                    return pd.DataFrame.from_dict(transformed_numpy_data)
+                else:
+                    return transformed_numpy_data
 
     @DeveloperAPI
     def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
