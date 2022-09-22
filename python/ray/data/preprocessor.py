@@ -263,7 +263,7 @@ class Preprocessor(abc.ABC):
         # For minimal install to locally import air modules
         import pandas as pd
         from ray.air.constants import TENSOR_COLUMN_NAME
-        from ray.air.util.data_batch_conversion import convert_batch_type_to_numpy
+        from ray.air.util.data_batch_conversion import _convert_batch_type_to_numpy
 
         try:
             import pyarrow
@@ -292,7 +292,7 @@ class Preprocessor(abc.ABC):
                 return self._transform_pandas(data.to_pandas())
         elif transform_type == "numpy":
             transformed_numpy_data = self._transform_numpy(
-                convert_batch_type_to_numpy(data)
+                _convert_batch_type_to_numpy(data)
             )
             if data_format == "numpy":
                 return transformed_numpy_data
@@ -301,7 +301,7 @@ class Preprocessor(abc.ABC):
                     TENSOR_COLUMN_NAME
                 ]:
                     # Single-column table is perserved as a table if not
-                    # explicted named as with tensor column name.
+                    # explicted named as the tensor column name.
                     return pyarrow.Table.from_pydict(transformed_numpy_data)
                 else:
                     return transformed_numpy_data
@@ -310,7 +310,7 @@ class Preprocessor(abc.ABC):
                     TENSOR_COLUMN_NAME
                 ]:
                     # Single-column table is perserved as a table if not
-                    # explicted named as with tensor column name.
+                    # explicted named as the tensor column name.
                     return pd.DataFrame.from_dict(transformed_numpy_data)
                 else:
                     return transformed_numpy_data

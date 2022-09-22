@@ -109,8 +109,7 @@ def convert_pandas_to_batch_type(
         )
 
 
-@DeveloperAPI
-def convert_batch_type_to_numpy(
+def _convert_batch_type_to_numpy(
     data: DataBatchType,
 ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
     """Convert the provided data to a NumPy ndarray or dict of ndarrays.
