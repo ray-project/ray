@@ -10,12 +10,15 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import tune
+from ray.air import Checkpoint
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.air.config import FailureConfig, RunConfig, CheckpointConfig
 from ray.tune import Trainable
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.tune_config import TuneConfig
 from ray._private.test_utils import object_memory_usage
 
 
@@ -263,6 +266,102 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
                 == 33
             )
         )
+
+    def testExploitWhileSavingTrial(self):
+        """Tests a synch PBT failure mode where a trial misses its `SAVING_RESULT` event
+        book-keeping due to being stopped by the PBT algorithm (to exploit another
+        trial).
+
+        Trials checkpoint ever N iterations, and the perturbation interval is every N
+        iterations. (N = 2 in the test.)
+
+        Raises a `TimeoutError` if hanging for a specified `timeout`.
+
+        1. Trial 0 comes in with training result
+        2. Trial 0 begins saving checkpoint (which may take a long time, 5s here)
+        3. Trial 1 comes in with result
+        4. Trial 1 forcefully stops Trial 0 via exploit, while trial_0.is_saving
+        5. Trial 0 should resume training properly with Trial 1's checkpoint
+        """
+
+        class MockTrainable(tune.Trainable):
+            def setup(self, config):
+                self.reset_config(config)
+
+            def step(self):
+                time.sleep(self.training_time)
+                return {"score": self.score}
+
+            def save_checkpoint(self, checkpoint_dir):
+                checkpoint = Checkpoint.from_dict({"a": self.a})
+                checkpoint_path = checkpoint.to_directory(path=checkpoint_dir)
+                time.sleep(self.saving_time)
+                return checkpoint_path
+
+            def load_checkpoint(self, checkpoint_dir):
+                checkpoint_dict = Checkpoint.from_directory(checkpoint_dir).to_dict()
+                self.a = checkpoint_dict["a"]
+
+            def reset_config(self, new_config):
+                self.a = new_config["a"]
+                self.score = new_config["score"]
+                self.training_time = new_config["training_time"]
+                self.saving_time = new_config["saving_time"]
+                return True
+
+        perturbation_interval = 2
+        scheduler = PopulationBasedTraining(
+            time_attr="training_iteration",
+            metric="score",
+            mode="max",
+            perturbation_interval=perturbation_interval,
+            hyperparam_mutations={
+                "a": tune.uniform(0, 1),
+            },
+            synch=True,
+        )
+
+        class TimeoutExceptionStopper(tune.stopper.TimeoutStopper):
+            def stop_all(self):
+                decision = super().stop_all()
+                if decision:
+                    raise TimeoutError("Trials are hanging! Timeout reached...")
+                return decision
+
+        timeout = 30.0
+        training_times = [0.1, 0.15]
+        saving_times = [5.0, 0.1]
+        tuner = tune.Tuner(
+            MockTrainable,
+            param_space={
+                "a": tune.uniform(0, 1),
+                "score": tune.grid_search([0, 1]),
+                "training_time": tune.sample_from(
+                    lambda spec: training_times[spec.config["score"]]
+                ),
+                "saving_time": tune.sample_from(
+                    lambda spec: saving_times[spec.config["score"]]
+                ),
+            },
+            tune_config=TuneConfig(
+                num_samples=1,
+                scheduler=scheduler,
+            ),
+            run_config=RunConfig(
+                stop=tune.stopper.CombinedStopper(
+                    tune.stopper.MaximumIterationStopper(5),
+                    TimeoutExceptionStopper(timeout),
+                ),
+                failure_config=FailureConfig(fail_fast=True),
+                checkpoint_config=CheckpointConfig(
+                    # Match `checkpoint_interval` with `perturbation_interval`
+                    checkpoint_frequency=perturbation_interval,
+                ),
+            ),
+        )
+        random.seed(100)
+        np.random.seed(1000)
+        tuner.fit()
 
 
 class PopulationBasedTrainingConfigTest(unittest.TestCase):

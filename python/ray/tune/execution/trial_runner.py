@@ -977,10 +977,9 @@ class TrialRunner:
     def _post_process_on_training_saving_result(self, trial):
         # `self._queued_trial_decisions` now contains a final decision
         # based on all results
-        if trial not in self._cached_trial_decisions:
-            final_decision = self._queued_trial_decisions.pop(trial.trial_id, None)
-            if final_decision:
-                self._execute_action(trial, final_decision)
+        final_decision = self._queued_trial_decisions.pop(trial.trial_id, None)
+        if final_decision:
+            self._execute_action(trial, final_decision)
 
     def _on_executor_error(self, trial, e: Union[RayTaskError, TuneError]):
         error_msg = f"Trial {trial}: Error processing event."
@@ -1295,7 +1294,7 @@ class TrialRunner:
         if decision == TrialScheduler.CONTINUE:
             self.trial_executor.continue_training(trial)
         elif decision == TrialScheduler.PAUSE:
-            self.trial_executor.pause_trial(trial)
+            self.pause_trial(trial)
         elif decision == TrialScheduler.STOP:
             self.stop_trial(trial)
         elif decision == TrialScheduler.NOOP:
@@ -1426,6 +1425,19 @@ class TrialRunner:
         while self._stop_queue:
             t = self._stop_queue.pop()
             self.stop_trial(t)
+
+    def pause_trial(self, trial: Trial, should_checkpoint: bool = True):
+        """Pause a trial and reset the necessary state variables for resuming later.
+
+        Args:
+            trial: Trial to pause.
+            should_checkpoint: Whether or not an in-memory checkpoint should be created
+                for this paused trial. Defaults to True.
+        """
+        # NOTE: The cached trial decision is not needed since we will overrule this
+        # decision with PAUSE.
+        self._cached_trial_decisions.pop(trial.trial_id, None)
+        self.trial_executor.pause_trial(trial, should_checkpoint=should_checkpoint)
 
     def stop_trial(self, trial):
         """The canonical implementation of stopping a trial.
