@@ -125,6 +125,26 @@ def job_cli_group():
     ),
 )
 @click.option(
+    "--num-cpus",
+    required=False,
+    type=float,
+    help="the number of CPU cores to "
+    "reserve for the execution of the entrypoint command",
+)
+@click.option(
+    "--num-gpus",
+    required=False,
+    type=float,
+    help="the number of GPUs to " "reserve for the execution of the entrypoint command",
+)
+@click.option(
+    "--resources",
+    required=False,
+    type=str,
+    help="a JSON serialized dictionary mapping resource name to resource quantity "
+    "describing resources to reserve for the execution of the entrypoint command",
+)
+@click.option(
     "--no-wait",
     is_flag=True,
     type=bool,
@@ -170,6 +190,9 @@ def submit(
             runtime_env_json=runtime_env_json,
             working_dir=working_dir,
             entrypoint=entrypoint,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            resources=resources,
             no_wait=no_wait,
         )
 
@@ -185,6 +208,9 @@ def submit(
         entrypoint=list2cmdline(entrypoint),
         submission_id=submission_id,
         runtime_env=final_runtime_env,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        resources=resources,
     )
 
     _log_big_success_msg(f"Job '{job_id}' submitted successfully")
@@ -214,7 +240,7 @@ def submit(
         else:
             cli_logger.warning(
                 "Tailing logs is not enabled for job sdk client version "
-                f"{sdk_version}. Please upgrade your ray to latest version "
+                f"{sdk_version}. Please upgrade Ray to the latest version "
                 "for this feature."
             )
 
