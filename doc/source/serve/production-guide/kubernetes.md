@@ -33,12 +33,10 @@ Install the operator using `kubectl apply` and check that the controller pod is 
 $ kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
 $ kubectl get deployments -n ray-system
 NAME                READY   UP-TO-DATE   AVAILABLE   AGE
-kuberay-apiserver   1/1     1            1           13s
 kuberay-operator    1/1     1            1           13s
 
 $ kubectl get pods -n ray-system
 NAME                                 READY   STATUS    RESTARTS   AGE
-kuberay-apiserver-799bc6dd95-787w7   1/1     Running   0          42s
 kuberay-operator-68c75b5d5f-m8xd7    1/1     Running   0          42s
 ```
 
