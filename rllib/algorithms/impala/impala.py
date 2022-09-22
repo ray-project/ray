@@ -544,6 +544,7 @@ class Impala(Algorithm):
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
 
+        # TODO (avnishn): Remove the execution plan API by q1 2023
         if self.config["_disable_execution_plan_api"]:
             # Create extra aggregation workers and assign each rollout worker to
             # one of them.
@@ -651,6 +652,7 @@ class Impala(Algorithm):
     @staticmethod
     @override(Algorithm)
     def execution_plan(workers, config, **kwargs):
+        # TODO (avnishn): Remove the execution plan API by q1 2023
         assert (
             len(kwargs) == 0
         ), "IMPALA execution_plan does NOT take any additional parameters"
@@ -934,6 +936,7 @@ class Impala(Algorithm):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
+        # TODO (avnishn): Remove the execution plan API by q1 2023
         if self.config["_disable_execution_plan_api"]:
             self._sampling_actor_manager.remove_workers(
                 removed_workers, remove_in_flight_requests=True

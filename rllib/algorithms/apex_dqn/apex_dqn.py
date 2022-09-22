@@ -351,6 +351,7 @@ class ApexDQN(DQN):
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
 
+        # TODO (avnishn): Remove the execution plan API by q1 2023
         # Shortcut: If execution_plan, thread and buffer will be created in there.
         if self.config["_disable_execution_plan_api"] is False:
             return
@@ -666,6 +667,7 @@ class ApexDQN(DQN):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
+        # TODO (avnishn): Remove the execution plan API by q1 2023
         if self.config["_disable_execution_plan_api"]:
             self._sampling_actor_manager.remove_workers(
                 removed_workers, remove_in_flight_requests=True

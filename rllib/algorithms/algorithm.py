@@ -453,6 +453,7 @@ class Algorithm(Trainable):
             # By default, collect metrics for all remote workers.
             self._remote_workers_for_metrics = self.workers.remote_workers()
 
+            # TODO (avnishn): Remove the execution plan API by q1 2023
             # Function defining one single training iteration's behavior.
             if self.config["_disable_execution_plan_api"]:
                 # Ensure remote workers are initially in sync with the local worker.
@@ -695,6 +696,7 @@ class Algorithm(Trainable):
                     "sync_filters_on_rollout_workers_timeout_s"
                 ],
             )
+            # TODO (avnishn): Remove the execution plan API by q1 2023
             # Collect worker metrics and add combine them with `results`.
             if self.config["_disable_execution_plan_api"]:
                 episodes_this_iter, self._episodes_to_be_collected = collect_episodes(
@@ -2593,6 +2595,7 @@ class Algorithm(Trainable):
             while not train_iter_ctx.should_stop(results):
                 # Try to train one step.
                 try:
+                    # TODO (avnishn): Remove the execution plan API by q1 2023
                     with self._timers[TRAINING_ITERATION_TIMER]:
                         if self.config["_disable_execution_plan_api"]:
                             results = self.training_step()
