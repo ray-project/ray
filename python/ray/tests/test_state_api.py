@@ -693,7 +693,7 @@ async def test_api_manager_list_workers(state_api_manager):
 
 
 @pytest.mark.skipif(
-    sys.version_info <= (3, 7, 0),
+    sys.version_info < (3, 8, 0),
     reason=("Not passing in CI although it works locally. Will handle it later."),
 )
 @pytest.mark.asyncio
@@ -784,7 +784,7 @@ async def test_api_manager_list_tasks(state_api_manager):
 
 
 @pytest.mark.skipif(
-    sys.version_info <= (3, 7, 0),
+    sys.version_info < (3, 8, 0),
     reason=("Not passing in CI although it works locally. Will handle it later."),
 )
 @pytest.mark.asyncio
@@ -896,7 +896,7 @@ async def test_api_manager_list_objects(state_api_manager):
 
 
 @pytest.mark.skipif(
-    sys.version_info <= (3, 7, 0),
+    sys.version_info < (3, 8, 0),
     reason=("Not passing in CI although it works locally. Will handle it later."),
 )
 @pytest.mark.asyncio
