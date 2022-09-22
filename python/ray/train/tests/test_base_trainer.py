@@ -9,6 +9,7 @@ import pytest
 
 import ray
 from ray import tune
+from ray.air import session
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.data.preprocessor import Preprocessor
 from ray.tune.impl import tuner_internal
@@ -67,7 +68,7 @@ class DummyGBDTTrainer(GBDTTrainer):
 
 def test_trainer_fit(ray_start_4_cpus):
     def training_loop(self):
-        tune.report(my_metric=1)
+        session.report(dict(my_metric=1))
 
     trainer = DummyTrainer(train_loop=training_loop)
     result = trainer.fit()
@@ -83,6 +84,22 @@ def test_preprocess_datasets(ray_start_4_cpus):
         training_loop, datasets=datasets, preprocessor=DummyPreprocessor()
     )
     trainer.fit()
+
+
+def test_validate_datasets(ray_start_4_cpus):
+    with pytest.raises(ValueError) as e:
+        DummyTrainer(train_loop=None, datasets=1)
+    assert "`datasets` should be a dict mapping" in str(e.value)
+
+    with pytest.raises(ValueError) as e:
+        DummyTrainer(train_loop=None, datasets={"train": 1})
+    assert "The Dataset under train key is not a `ray.data.Dataset`"
+
+    with pytest.raises(ValueError) as e:
+        DummyTrainer(
+            train_loop=None, datasets={"train": ray.data.from_items([1]).repeat()}
+        )
+    assert "The Dataset under train key is a `ray.data.DatasetPipeline`."
 
 
 def test_resources(ray_start_4_cpus):
