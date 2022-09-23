@@ -12,7 +12,6 @@ import ray
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     SpaceStruct,
@@ -75,9 +74,7 @@ def apply_grad_clipping(
         return {}
 
 
-@Deprecated(
-    old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True
-)
+@Deprecated(old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True)
 def atanh(x: TensorType) -> TensorType:
     pass
 

@@ -158,7 +158,6 @@ class AlgorithmConfig:
         self.policy_mapping_fn = None
         self.policies_to_train = None
         self.observation_fn = None
-        self.replay_mode = "independent"
         self.count_steps_by = "env_steps"
 
         # `self.offline_data()`
@@ -228,6 +227,7 @@ class AlgorithmConfig:
         self.replay_batch_size = DEPRECATED_VALUE
         # -1 = DEPRECATED_VALUE is a valid value for replay_sequence_length
         self.replay_sequence_length = None
+        self.replay_mode = DEPRECATED_VALUE
         self.prioritized_replay_alpha = DEPRECATED_VALUE
         self.prioritized_replay_beta = DEPRECATED_VALUE
         self.prioritized_replay_eps = DEPRECATED_VALUE
@@ -256,7 +256,7 @@ class AlgorithmConfig:
             config["input"] = getattr(self, "input_")
             config.pop("input_")
 
-        # Setup legacy multiagent sub-dict:
+        # Setup legacy multi-agent sub-dict:
         config["multiagent"] = {}
         for k in [
             "policies",
@@ -265,7 +265,6 @@ class AlgorithmConfig:
             "policy_mapping_fn",
             "policies_to_train",
             "observation_fn",
-            "replay_mode",
             "count_steps_by",
         ]:
             config["multiagent"][k] = config.pop(k)
@@ -1045,8 +1044,8 @@ class AlgorithmConfig:
         policy_mapping_fn=None,
         policies_to_train=None,
         observation_fn=None,
-        replay_mode=None,
         count_steps_by=None,
+        replay_mode=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's multi-agent settings.
 
@@ -1072,11 +1071,6 @@ class AlgorithmConfig:
             observation_fn: Optional function that can be used to enhance the local
                 agent observations to include more state. See
                 rllib/evaluation/observation_function.py for more info.
-            replay_mode: When replay_mode=lockstep, RLlib will replay all the agent
-                transitions at a particular timestep together in a batch. This allows
-                the policy to implement differentiable shared computations between
-                agents it controls at that timestep. When replay_mode=independent,
-                transitions are replayed independently per policy.
             count_steps_by: Which metric to use as the "batch size" when building a
                 MultiAgentBatch. The two supported values are:
                 "env_steps": Count each time the env is "stepped" (no matter how many
@@ -1099,8 +1093,13 @@ class AlgorithmConfig:
             self.policies_to_train = policies_to_train
         if observation_fn is not None:
             self.observation_fn = observation_fn
-        if replay_mode is not None:
-            self.replay_mode = replay_mode
+        if replay_mode != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.multi_agent(replay_mode=..)",
+                new="AlgorithmConfig.training("
+                "replay_buffer_config={'replay_mode': ..})",
+                error=True,
+            )
         if count_steps_by is not None:
             self.count_steps_by = count_steps_by
 
