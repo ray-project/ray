@@ -159,7 +159,7 @@ def test_actor_summary(serve_instance):
         pass
 
     serve.run(f.bind())
-    actors = state_api.list_actors()
+    actors = state_api.list_actors(filters=[("state", "=", "ALIVE")])
     class_names = {actor["class_name"] for actor in actors}
     assert class_names.issuperset(
         {"ServeController", "HTTPProxyActor", "ServeReplica:f"}

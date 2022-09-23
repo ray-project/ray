@@ -195,6 +195,13 @@ ray_files += [
     for filename in filenames
 ]
 
+# Dashboard metrics files.
+ray_files += [
+    os.path.join(dirpath, filename)
+    for dirpath, dirnames, filenames in os.walk("ray/dashboard/modules/metrics/export")
+    for filename in filenames
+]
+
 # html templates for notebook integration
 ray_files += [
     p.as_posix() for p in pathlib.Path("ray/widgets/templates/").glob("*.html.j2")
@@ -233,7 +240,7 @@ if setup_spec.type == SetupType.RAY:
             "prometheus_client >= 0.7.1, < 0.14.0",
             "smart_open",
         ],
-        "serve": ["uvicorn==0.16.0", "requests", "starlette", "fastapi", "aiorwlock"],
+        "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
