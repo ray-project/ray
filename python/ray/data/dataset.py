@@ -336,10 +336,6 @@ class Dataset(Generic[T]):
         To learn more about writing functions for :meth:`~Dataset.map_batches`, read
         :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
 
-        .. note::
-            This is a blocking operation. The time complexity is :math:`O(n/p)`, where
-            :math:`n` is the dataset size and :math:`p` is the parallelism.
-
         .. tip::
             If you're using :ref:`Ray AIR <air>` for training or batch inference,
             consider using :class:`~ray.data.preprocessors.BatchMapper`. It's more
