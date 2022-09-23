@@ -1,7 +1,7 @@
 import json
 import os
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import jsonschema
 import yaml
@@ -71,6 +71,13 @@ def validate_release_test_collection(test_collection: List[Test]):
             )
             num_errors += 1
 
+        error = validate_test_cluster_compute(test)
+        if error:
+            logger.error(
+                f"Failed to validate test {test.get('name', '(unnamed)')}: {error}"
+            )
+            num_errors += 1
+
     if num_errors > 0:
         raise ReleaseTestConfigError(
             f"Release test configuration error: Found {num_errors} test "
@@ -87,6 +94,25 @@ def validate_test(test: Test, schema: Optional[Dict] = None) -> Optional[str]:
         return str(e.message)
     except Exception as e:
         return str(e)
+
+
+def validate_test_cluster_compute(test: Test) -> Optional[str]:
+    from ray_release.template import load_test_cluster_compute
+
+    cluster_compute = load_test_cluster_compute(test)
+    return validate_cluster_compute(cluster_compute)
+
+
+def validate_cluster_compute(cluster_compute: Dict[str, Any]) -> Optional[str]:
+    aws = cluster_compute.get("aws")
+    if aws:
+        for block_device_mapping in aws.get("BlockDeviceMappings", []):
+            ebs = block_device_mapping.get("Ebs")
+            if not ebs:
+                continue
+
+            if not ebs.get("DeleteOnTermination", False) is True:
+                return "Ebs volume does not have `DeleteOnTermination: true` set"
 
 
 def find_test(test_collection: List[Test], test_name: str) -> Optional[Test]:
