@@ -31,7 +31,7 @@ class TextDatasource(BinaryDatasource):
     ) -> "pyarrow.Table":
         import pyarrow as pa
 
-        return pa.Table.from_pydict({self._COLUMN_NAME: block})
+        return pa.table({self._COLUMN_NAME: block})
 
     def _rows_per_file(self):
         return None

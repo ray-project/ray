@@ -49,7 +49,6 @@ class BinaryDatasource(FileBasedDatasource):
     def _convert_block_to_tabular_block(
         self, block: List[Union[bytes, Tuple[bytes, str]]]
     ) -> "pyarrow.Table":
-        import pandas as pd
         import pyarrow as pa
 
         assert len(block) == 1
@@ -57,11 +56,9 @@ class BinaryDatasource(FileBasedDatasource):
 
         if isinstance(record, tuple):
             path, data = record
-            df = pd.DataFrame({self._COLUMN_NAME: [data], "path": [path]})
-            return pa.Table.from_pandas(df)
+            return pa.table({self._COLUMN_NAME: [data], "path": [path]})
 
-        df = pd.DataFrame({self._COLUMN_NAME: [record]})
-        return pa.Table.from_pandas(df)
+        return pa.table({self._COLUMN_NAME: [record]})
 
     def _rows_per_file(self):
         return 1

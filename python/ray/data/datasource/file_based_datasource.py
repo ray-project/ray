@@ -523,17 +523,31 @@ def _add_partitions(
 def _add_partitions_to_table(
     table: "pyarrow.Table", partitions: Dict[str, Any]
 ) -> "pyarrow.Table":
-    for field in table.column_names:
-        if field in partitions:
-            raise RuntimeError(
-                f"{field} is a partition key, but it's also the name of a column in the"
-                "read dataset."
-            )
+    import pyarrow as pa
+    import pyarrow.compute as pc
 
-    num_columns = table.num_columns
-    for i, (field, value) in enumerate(partitions.items()):
-        column = [[value] * len(table)]
-        table = table.add_column(num_columns + i, field, column)
+    column_names = set(table.column_names)
+    for field, value in partitions.items():
+        column = pa.array([value] * len(table))
+        if field in column_names:
+            # TODO: Handle cast error.
+            column_type = table.schema.field(field).type
+            column = column.cast(column_type)
+
+            values_are_equal = pc.all(pc.equal(column, table[field]))
+            values_are_equal = values_are_equal.as_py()
+
+            if not values_are_equal:
+                raise ValueError(
+                    f"Partition column {field} exists in table data, but partition "
+                    f"value '{value}' is different from in-data values: "
+                    f"{table[field].unique().to_pylist()}."
+                )
+
+            i = table.schema.get_field_index(field)
+            table = table.set_column(i, field, column)
+        else:
+            table = table.append_column(field, column)
 
     return table
 
@@ -543,17 +557,22 @@ def _add_partitions_to_dataframe(
 ) -> "pd.DataFrame":
     import pandas as pd
 
-    for field in df.columns:
-        if field in partitions:
-            raise RuntimeError(
-                f"{field} is a partition key, but it's also the name of a column in the"
-                "read dataset."
-            )
+    for field, value in partitions.items():
+        column = pd.Series(data=[value] * len(df), name=field)
 
-    partitions = pd.DataFrame(
-        {key: [value] * len(df) for key, value in partitions.items()}
-    )
-    return pd.concat([df, partitions], axis=1)
+        if field in df:
+            column = column.astype(df[field].dtype)
+            mask = df[field].notna()
+            if not df[field][mask].equals(column[mask]):
+                raise ValueError(
+                    f"Partition column {field} exists in table data, but partition "
+                    f"value '{value}' is different from in-data values: "
+                    f"{list(df[field].unique())}."
+                )
+
+        df[field] = column
+
+    return df
 
 
 # TODO(Clark): Add unit test coverage of _resolve_paths_and_filesystem and
