@@ -69,11 +69,13 @@ class JobSubmissionClient(SubmissionClient):
             )
 
         if create_cluster_if_needed:
+            # Cluster may not be running, so can't connect to get the API server URL.
             if address is None and "RAY_ADDRESS" in os.environ:
                 address = os.environ["RAY_ADDRESS"]
-            else:
-                # Get the API Server URL (e.g. http://localhost:8265)
-                address = ray_address_to_api_server_url(address)
+        else:
+            # Cluster needs to be running already.
+            # Get the API Server URL (e.g. http://localhost:8265)
+            address = ray_address_to_api_server_url(address)
 
         super().__init__(
             address=address,
