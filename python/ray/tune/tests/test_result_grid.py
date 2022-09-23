@@ -7,9 +7,12 @@ import pytest
 import pandas as pd
 
 import ray
+from ray.air import CheckpointConfig, RunConfig, session
+from ray.air.checkpoint import Checkpoint
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray import tune
-from ray.air.checkpoint import Checkpoint
+from ray.tune.tune_config import TuneConfig
+from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
 from ray.tune.experiment import Trial
@@ -281,6 +284,62 @@ def test_num_errors_terminated(tmpdir):
     assert result_grid.num_errors == 3
     assert result_grid.num_terminated == 2
     shutil.rmtree(experiment_dir)
+
+
+@pytest.mark.parametrize("checkpoint_interval", [1, 2])
+def test_result_grid_moved_experiment_path(
+    ray_start_2_cpus, tmpdir, checkpoint_interval
+):
+    def train_func(config):
+        checkpoint_interval = config.get("checkpoint_interval")
+        data = {"it": 0}
+        if session.get_checkpoint():
+            data = session.get_checkpoint().to_dict()
+
+        while True:
+            data["it"] += 1
+            checkpoint = None
+            if data["it"] % checkpoint_interval == 0:
+                checkpoint = Checkpoint.from_dict(data)
+            session.report(data, checkpoint=checkpoint)
+
+    total_iters = 6
+    tuner = tune.Tuner(
+        train_func,
+        tune_config=TuneConfig(
+            num_samples=1,
+        ),
+        run_config=RunConfig(
+            name="exp_dir",
+            local_dir=str(tmpdir / "ray_results"),
+            stop={"it": total_iters},
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=total_iters,
+            ),
+        ),
+        param_space={
+            "checkpoint_interval": checkpoint_interval,
+        },
+    )
+    result_grid = tuner.fit()
+
+    assert result_grid[0].checkpoint
+    for (checkpoint, metric) in result_grid[0].best_checkpoints:
+        assert checkpoint
+        print(metric["it"])
+    assert len(result_grid[0].best_checkpoints) == total_iters // checkpoint_interval
+
+    # Move local dir from tmpdir/ray_results -> tmpdir/moved_ray_results
+    shutil.move(tmpdir / "ray_results", tmpdir / "moved_ray_results")
+
+    result_grid = ResultGrid(
+        ExperimentAnalysis(str(tmpdir / "moved_ray_results" / "exp_dir"))
+    )
+    assert result_grid[0].checkpoint
+    for (checkpoint, _) in result_grid[0].best_checkpoints:
+        assert checkpoint
+        assert "moved_ray_results" in checkpoint._local_path
+    assert len(result_grid[0].best_checkpoints) == total_iters // checkpoint_interval
 
 
 if __name__ == "__main__":
