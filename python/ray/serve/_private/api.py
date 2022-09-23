@@ -86,6 +86,30 @@ def list_deployments() -> Dict[str, Deployment]:
     return deployments
 
 
+def _check_http_options(
+    client: ServeControllerClient, http_options: Union[dict, HTTPOptions]
+) -> None:
+    if http_options:
+        client_http_options = client.http_config
+        new_http_options = (
+            http_options
+            if isinstance(http_options, HTTPOptions)
+            else HTTPOptions.parse_obj(http_options)
+        )
+        different_fields = []
+        all_http_option_fields = new_http_options.__dict__
+        for field in all_http_option_fields:
+            if getattr(new_http_options, field) != getattr(client_http_options, field):
+                different_fields.append(field)
+
+        if len(different_fields):
+            logger.warning(
+                "The new client HTTP config differs from the existing one "
+                f"in the following fields: {different_fields}. "
+                "The new HTTP config is ignored."
+            )
+
+
 def serve_start(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
@@ -150,7 +174,8 @@ def serve_start(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".',
             " New http options will not be applied.",
         )
-
+        if http_options:
+            _check_http_options(client, http_options)
         return client
     except RayServeException:
         pass

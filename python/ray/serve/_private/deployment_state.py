@@ -10,7 +10,7 @@ import traceback
 from collections import defaultdict, OrderedDict
 from copy import copy
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray import ObjectRef, cloudpickle
@@ -184,7 +184,7 @@ class ActorReplicaWrapper:
         # Spread replicas to avoid correlated failures on a single node.
         # This is a soft spread, so if there is only space on a single node
         # the replicas will be placed there.
-        scheduling_strategy="SPREAD",
+        scheduling_strategy: Union[str, NodeAffinitySchedulingStrategy] = "SPREAD",
     ):
         self._actor_name = actor_name
         self._detached = detached
@@ -660,7 +660,7 @@ class DeploymentReplica(VersionedReplica):
         # Spread replicas to avoid correlated failures on a single node.
         # This is a soft spread, so if there is only space on a single node
         # the replicas will be placed there.
-        scheduling_strategy="SPREAD",
+        scheduling_strategy: Union[str, NodeAffinitySchedulingStrategy] = "SPREAD",
     ):
         self._actor = ActorReplicaWrapper(
             f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",

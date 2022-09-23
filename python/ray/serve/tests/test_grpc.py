@@ -1,6 +1,6 @@
 import pytest
 
-from ray.serve.drivers import gRPCDriver
+from ray.serve.drivers import DefaultgRPCDriver
 import ray
 from ray import serve
 import os
@@ -15,8 +15,8 @@ pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture
-def serve_start_shutdown():
-    os.environ["EXPERIMENT_DISABLE_HTTP_PROXY"] = "1"
+def serve_start_shutdown(monkeypatch):
+    monkeypatch.setenv("EXPERIMENT_DISABLE_HTTP_PROXY", "1")
     ray.init()
     yield
     serve.shutdown()
@@ -24,8 +24,8 @@ def serve_start_shutdown():
 
 
 @pytest.fixture
-def ray_cluster():
-    os.environ["EXPERIMENT_DISABLE_HTTP_PROXY"] = "1"
+def ray_cluster(monkeypatch):
+    monkeypatch.setenv("EXPERIMENT_DISABLE_HTTP_PROXY", "1")
     cluster = Cluster()
     yield Cluster()
     serve.shutdown()
@@ -39,7 +39,7 @@ async def test_deploy_basic(serve_start_shutdown):
         def __call__(self, input):
             return input["a"]
 
-    serve.run(gRPCDriver.bind(D1.bind()))
+    serve.run(DefaultgRPCDriver.bind(D1.bind()))
 
     async def send_request():
         async with grpc.aio.insecure_channel("localhost:9000") as channel:
@@ -60,7 +60,7 @@ def test_controller_without_http(serve_start_shutdown):
         def __call__(self, input):
             return input["a"]
 
-    serve.run(gRPCDriver.bind(D1.bind()))
+    serve.run(DefaultgRPCDriver.bind(D1.bind()))
     assert (
         ray.get(serve.context._global_client._controller.get_http_proxies.remote())
         == {}
@@ -77,11 +77,11 @@ def test_deploy_grpc_driver_to_node(ray_cluster):
         def __call__(self, input):
             return input["a"]
 
-    serve.run(gRPCDriver.bind(D1.bind()))
+    serve.run(DefaultgRPCDriver.bind(D1.bind()))
     replicas = ray.get(
         serve.context._global_client._controller._all_running_replicas.remote()
     )
-    assert len(replicas["gRPCDriver"]) == 1
+    assert len(replicas["DefaultgRPCDriver"]) == 1
 
     cluster.add_node(num_cpus=2)
 
@@ -89,7 +89,7 @@ def test_deploy_grpc_driver_to_node(ray_cluster):
         lambda: len(
             ray.get(
                 serve.context._global_client._controller._all_running_replicas.remote()
-            )["gRPCDriver"]
+            )["DefaultgRPCDriver"]
         )
         == 2
     )

@@ -1,8 +1,10 @@
 import functools
 import inspect
+import logging
 from abc import abstractmethod
 from typing import Any, Callable, Optional, Type, Union, Dict
 from pydantic import BaseModel
+import ray
 from ray.serve._private.utils import install_serve_encoders_to_fastapi
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -19,11 +21,12 @@ import sys
 import asyncio
 import grpc
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve._private.constants import DEFAULT_GRPC_PORT
-
+from ray.serve._private.constants import DEFAULT_GRPC_PORT, SERVE_LOGGER_NAME
 
 DEFAULT_HTTP_ADAPTER = "ray.serve.http_adapters.starlette_request"
 HTTPAdapterFn = Callable[[Any], Any]
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def _load_http_adapter(
@@ -192,25 +195,27 @@ class gRPCIngress:
         self.server = grpc.aio.server()
         self.port = port
 
-        def register_servicer():
-            """
-            protobuf Schema gRPC should generate bind function
-            (e.g. add_PredictAPIsServiceServicer_to_server) to bind gRPC server
-            and schema interface
-            """
-            bind_function_name = "add_{}_to_server"
-            module_name = self.__class__.__bases__[1].__module__
-            servicer_name = self.__class__.__bases__[1].__name__
-            getattr(sys.modules[module_name], bind_function_name.format(servicer_name))(
-                self, self.server
-            )
-
-        register_servicer()
+        # protobuf Schema gRPC should generate bind function
+        # (e.g. add_PredictAPIsServiceServicer_to_server) to bind gRPC server
+        # and schema interface
+        bind_function_name = "add_{}_to_server"
+        module_name = self.__class__.__bases__[1].__module__
+        servicer_name = self.__class__.__bases__[1].__name__
+        getattr(sys.modules[module_name], bind_function_name.format(servicer_name))(
+            self, self.server
+        )
 
         self.setup_complete = asyncio.Event()
         self.running_task = asyncio.get_event_loop().create_task(self.run())
 
     async def run(self):
+        """Start gRPC Server"""
+
+        logger.info(
+            "Starting gRPC server with on node:{} "
+            "listening on port {}".format(ray.util.get_node_ip_address(), self.port)
+        )
+
         self.server.add_insecure_port("[::]:{}".format(self.port))
         self.setup_complete.set()
         await self.server.start()
@@ -222,21 +227,21 @@ if not isinstance(serve_pb2_grpc.PredictAPIsServiceServicer, type):
     # PredictAPIsServiceServicer and it will cause the metaclass conflict issue
     # from multiple inheritance.
     @serve.deployment
-    class gRPCDriver:
+    class DefaultgRPCDriver:
         def __init__(self):
             raise Exception("gRPC driver Placeholder, it is not expected to be used")
 
 else:
 
     @serve.deployment(driver_deployment=True, ray_actor_options={"num_cpus": 0})
-    class gRPCDriver(gRPCIngress, serve_pb2_grpc.PredictAPIsServiceServicer):
+    class DefaultgRPCDriver(gRPCIngress, serve_pb2_grpc.PredictAPIsServiceServicer):
         """
         gRPC Driver that responsible for redirecting the gRPC requests
         and hold dag handle
         """
 
         def __init__(self, dags: RayServeDAGHandle, port=DEFAULT_GRPC_PORT):
-            """Create a gRPCDriver.
+            """Create a grpc driver based on the PredictAPIsService schema.
 
             Args:
                 dags: a handle to a Ray Serve DAG or a dictionary of handles.
