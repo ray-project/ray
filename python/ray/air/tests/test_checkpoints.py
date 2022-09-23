@@ -192,10 +192,10 @@ class CheckpointsConversionTest(unittest.TestCase):
         # Create checkpoint from fs
         checkpoint = StubCheckpoint.from_directory(self.checkpoint_dir)
         # The `foo` attribute should be serialized.
-        self.assertTrue("foo" in StubCheckpoint._SERIALIZED_ATTRS)
+        self.assertIn("foo", StubCheckpoint._SERIALIZED_ATTRS)
         checkpoint.foo = "bar"
         # The `baz` attribute shouldn't be serialized.
-        self.assertFalse("baz" in StubCheckpoint._SERIALIZED_ATTRS)
+        self.assertNotIn("baz", StubCheckpoint._SERIALIZED_ATTRS)
         checkpoint.baz = "qux"
 
         self.assertTrue(checkpoint._local_path, str)
