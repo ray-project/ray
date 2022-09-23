@@ -9,6 +9,7 @@ from ray._private.gcs_utils import ErrorType
 from ray._raylet import (
     MessagePackSerializedObject,
     MessagePackSerializer,
+    ObjectRefGenerator,
     Pickle5SerializedObject,
     Pickle5Writer,
     RawSerializedObject,
@@ -123,6 +124,14 @@ class SerializationContext:
             )
 
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
+
+        def object_ref_generator_reducer(obj):
+            return ObjectRefGenerator, (obj._refs,)
+
+        self._register_cloudpickle_reducer(
+            ObjectRefGenerator, object_ref_generator_reducer
+        )
+
         serialization_addons.apply(self)
 
     def _register_cloudpickle_reducer(self, cls, reducer):
@@ -219,21 +228,6 @@ class SerializationContext:
         return ray_error_info
 
     def _deserialize_actor_died_error(self, data, metadata_fields):
-        if not data:
-            return RayActorError()
-        ray_error_info = self._deserialize_error_info(data, metadata_fields)
-        assert ray_error_info.HasField("actor_died_error")
-        if ray_error_info.actor_died_error.HasField("creation_task_failure_context"):
-            return RayError.from_ray_exception(
-                ray_error_info.actor_died_error.creation_task_failure_context
-            )
-        else:
-            assert ray_error_info.actor_died_error.HasField("actor_died_error_context")
-            return RayActorError(
-                cause=ray_error_info.actor_died_error.actor_died_error_context
-            )
-
-    def _deserialize_oom_error(self, data, metadata_fields):
         if not data:
             return RayActorError()
         ray_error_info = self._deserialize_error_info(data, metadata_fields)

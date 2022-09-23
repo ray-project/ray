@@ -636,7 +636,13 @@ CoreWorkerDirectTaskSubmitter::CreateGetTaskFailureCauseCallback(
                      << " node id: " << addr.raylet_id << " ip: " << addr.ip_address;
       task_error_type = rpc::ErrorType::NODE_DIED;
       std::stringstream buffer;
-      buffer << "Node died, node id: " << addr.raylet_id << " ip: " << addr.ip_address;
+      buffer << "Task failed due to the node dying.\n\nThe node (IP: " << addr.ip_address
+             << ", node ID: " << addr.raylet_id
+             << ") where this task was running crashed unexpectedly. "
+             << "This can happen if: (1) the instance where the node was running failed, "
+                "(2) raylet crashes unexpectedly (OOM, preempted node, etc).\n\n"
+             << "To see more information about the crash, use `ray logs raylet.out -ip "
+             << addr.ip_address << "`";
       error_info = std::make_unique<rpc::RayErrorInfo>();
       error_info->set_error_message(buffer.str());
       error_info->set_error_type(rpc::ErrorType::NODE_DIED);
