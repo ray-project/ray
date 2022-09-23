@@ -1,31 +1,11 @@
-from collections import Counter
 import unittest
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks, MultiCallbacks
 import ray.rllib.algorithms.dqn as dqn
-from ray.rllib.algorithms.pg import PG
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
-
-
-class EpisodeAndSampleCallbacks(DefaultCallbacks):
-    def __init__(self):
-        super().__init__()
-        self.counts = Counter()
-
-    def on_episode_start(self, *args, **kwargs):
-        self.counts.update({"start": 1})
-
-    def on_episode_step(self, *args, **kwargs):
-        self.counts.update({"step": 1})
-
-    def on_episode_end(self, *args, **kwargs):
-        self.counts.update({"end": 1})
-
-    def on_sample_end(self, *args, **kwargs):
-        self.counts.update({"sample": 1})
 
 
 class OnSubEnvironmentCreatedCallback(DefaultCallbacks):
@@ -44,7 +24,7 @@ class OnSubEnvironmentCreatedCallback(DefaultCallbacks):
         )
 
 
-class OnEpisodeCreatedCallback(DefaultCallbacks):
+class BeforeSubEnvironmentResetCallback(DefaultCallbacks):
     def __init__(self):
         super().__init__()
         self._reset_counter = 0
@@ -73,27 +53,6 @@ class TestCallbacks(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
-
-    def test_episode_and_sample_callbacks(self):
-        for fw in framework_iterator(frameworks=("tf", "torch")):
-            pg = PG(
-                env="CartPole-v0",
-                config={
-                    "num_workers": 0,
-                    "rollout_fragment_length": 50,
-                    "train_batch_size": 50,
-                    "callbacks": EpisodeAndSampleCallbacks,
-                    "framework": fw,
-                },
-            )
-            pg.train()
-            pg.train()
-            callback_obj = pg.workers.local_worker().callbacks
-            self.assertGreater(callback_obj.counts["sample"], 0)
-            self.assertGreater(callback_obj.counts["start"], 0)
-            self.assertGreater(callback_obj.counts["end"], 0)
-            self.assertGreater(callback_obj.counts["step"], 0)
-            pg.stop()
 
     def test_on_sub_environment_created(self):
         base_config = {
@@ -179,7 +138,7 @@ class TestCallbacks(unittest.TestCase):
                 },
             )
             .rollouts(num_envs_per_worker=2, num_rollout_workers=1)
-            .callbacks(OnEpisodeCreatedCallback)
+            .callbacks(BeforeSubEnvironmentResetCallback)
         )
 
         # Test with and without Connectors.
