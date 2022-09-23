@@ -97,6 +97,16 @@ class Categorical(TFActionDistribution):
         return action_space.n
 
 
+def get_categorical_with_temperature(t: float):
+    """Categorical distribution class that has customized default temperature."""
+
+    class CategoricalWithTemperature(Categorical):
+        def __init__(self, inputs, model=None, temperature=t):
+            super().__init__(inputs, model, temperature)
+
+    return CategoricalWithTemperature
+
+
 @DeveloperAPI
 class MultiCategorical(TFActionDistribution):
     """MultiCategorical distribution for MultiDiscrete action spaces."""
