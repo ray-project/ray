@@ -458,7 +458,7 @@ def test_pin_runtime_env_uri(start_cluster, source, expiration_s, monkeypatch):
     if expiration_s > 0:
         assert not check_internal_kv_gced()
         wait_for_condition(check_internal_kv_gced, timeout=4 * expiration_s)
-        time_until_gc  = time.time() - start
+        time_until_gc = time.time() - start
         assert expiration_s < time_until_gc < 4 * expiration_s
         print("Internal KV was GC'ed at time ", time_until_gc)
     else:
