@@ -366,21 +366,19 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_train_result(
         self,
         *,
-        algorithm: Optional["Algorithm"] = None,
+        algorithm: "Algorithm",
         result: dict,
-        trainer=None,
         **kwargs,
     ) -> None:
-        """Called at the end of Trainable.train().
+        """Called at the end of Algorithm.train().
 
         Args:
-            algorithm: Current trainer instance.
-            result: Dict of results returned from trainer.train() call.
+            algorithm: Current Algorithm instance.
+            result: Dict of results returned from Algorithm.train() call.
                 You can mutate this object to add additional metrics.
             kwargs: Forward compatibility placeholder.
         """
-        if trainer is not None:
-            algorithm = trainer
+        pass
 
     @Deprecated(
         old="on_trainer_init(trainer, **kwargs)",
