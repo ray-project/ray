@@ -245,11 +245,11 @@ How do I restore from a Policy checkpoint?
 Assume you would like to serve your trained policy(ies) in production and would therefore
 like to use only the RLlib Policy instance, without all the other functionality that
 normally comes with the Algorithm object, like different ``RolloutWorkers`` for collecting
-training samples or for evaluation, including RL environment copies, etc..
+training samples or for evaluation (both of which include RL environment copies), etc..
 
 In this case, it would be quite useful if you had a way to restore just the Policy
-from either a Policy checkpoint or an Algorithm checkpoint (which contains the
-Policy checkpoint).
+from either a Policy checkpoint or an Algorithm checkpoint, which - as we learned above -
+contains all its Policies' checkpoints.
 
 Here is how you can do this:
 
@@ -259,10 +259,18 @@ Here is how you can do this:
     :end-before: __restore-policy-end__
 
 
+How do I restore a multi-agent Algorithm with a subset of the original policies?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Imagine you have trained a multi-agent Algorithm with e.g. 100 different Policies and created
+a checkpoint from this algorithm. The checkpoint now includes 100 sub-directories in the
+``policies/`` dir, named after the different policies' IDs.
+
+After careful evaluation of the different policies, you would like to restore the Algorithm
+and continue training, but only with a subset of the original 100 policies, for example only with
+the policies "polA" and "polB".
 
 
-How do I restore a multi-agent Algorithm with a set of the original policies?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 
