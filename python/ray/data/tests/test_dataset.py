@@ -2569,14 +2569,46 @@ def test_from_dask(ray_start_regular_shared):
     assert df.equals(dfds)
 
 
-def test_to_dask(ray_start_regular_shared):
+@pytest.mark.parametrize("ds_format", ["pandas", "arrow"])
+def test_to_dask(ray_start_regular_shared, ds_format):
     from ray.util.dask import ray_dask_get
 
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
+    if ds_format == "arrow":
+        ds = ds.map_batches(lambda df: df, batch_format="pyarrow", batch_size=None)
     ddf = ds.to_dask()
+    meta = ddf._meta
+    # Check metadata.
+    assert isinstance(meta, pd.DataFrame)
+    assert meta.empty
+    assert list(meta.columns) == ["one", "two"]
+    assert list(meta.dtypes) == [np.int64, object]
+    # Explicit Dask-on-Ray
+    assert df.equals(ddf.compute(scheduler=ray_dask_get))
+    # Implicit Dask-on-Ray.
+    assert df.equals(ddf.compute())
+
+    # Explicit metadata.
+    df1["two"] = df1["two"].astype(pd.StringDtype())
+    df2["two"] = df2["two"].astype(pd.StringDtype())
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([df1, df2])
+    if ds_format == "arrow":
+        ds = ds.map_batches(lambda df: df, batch_format="pyarrow", batch_size=None)
+    ddf = ds.to_dask(
+        meta=pd.DataFrame(
+            {"one": pd.Series(dtype=np.int16), "two": pd.Series(dtype=pd.StringDtype())}
+        ),
+    )
+    meta = ddf._meta
+    # Check metadata.
+    assert isinstance(meta, pd.DataFrame)
+    assert meta.empty
+    assert list(meta.columns) == ["one", "two"]
+    assert list(meta.dtypes) == [np.int16, pd.StringDtype()]
     # Explicit Dask-on-Ray
     assert df.equals(ddf.compute(scheduler=ray_dask_get))
     # Implicit Dask-on-Ray.
