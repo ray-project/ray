@@ -2336,7 +2336,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(data_path, "test1.csv")
     df1.to_csv(path1, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv(path1, filesystem=fs)
+    ds = ray.data.read_csv(path1, filesystem=fs, partitioning=None)
     dsdf = ds.to_pandas()
     assert df1.equals(dsdf)
     # Test metadata ops.
@@ -2348,7 +2348,9 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(data_path, "test2.csv")
     df2.to_csv(path2, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv([path1, path2], parallelism=2, filesystem=fs)
+    ds = ray.data.read_csv(
+        [path1, path2], parallelism=2, filesystem=fs, partitioning=None
+    )
     dsdf = ds.to_pandas()
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
@@ -2360,7 +2362,9 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
     path3 = os.path.join(data_path, "test3.csv")
     df3.to_csv(path3, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv([path1, path2, path3], parallelism=2, filesystem=fs)
+    ds = ray.data.read_csv(
+        [path1, path2, path3], parallelism=2, filesystem=fs, partitioning=None
+    )
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
