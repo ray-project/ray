@@ -38,6 +38,7 @@ class Counter {
 
   void Increment(const K &key) {
     counters_[key] += 1;
+    total_ += 1;
     if (on_change_ != nullptr) {
       on_change_(key, counters_[key]);
     }
@@ -47,6 +48,7 @@ class Counter {
     auto it = counters_.find(key);
     RAY_CHECK(it != counters_.end());
     it->second -= 1;
+    total_ -= 1;
     int64_t new_value = it->second;
     if (new_value <= 0) {
       counters_.erase(it);
@@ -74,6 +76,7 @@ class Counter {
   }
 
   size_t Size() const { return counters_.size(); }
+  size_t Total() const { return total_; }
 
   void ForEachEntry(std::function<void(const K &, int64_t)> callback) const {
     for (const auto &it : counters_) {
@@ -84,4 +87,5 @@ class Counter {
  private:
   absl::flat_hash_map<K, int64_t> counters_;
   std::function<void(const K &, int64_t)> on_change_;
+  size_t total_ = 0;
 };

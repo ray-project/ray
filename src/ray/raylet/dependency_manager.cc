@@ -77,7 +77,7 @@ void DependencyManager::StartOrUpdateWaitRequest(
       it->second.dependent_wait_requests.insert(worker_id);
       if (it->second.wait_request_id == 0) {
         it->second.wait_request_id =
-            object_manager_.Pull({ref}, BundlePriority::WAIT_REQUEST);
+            object_manager_.Pull({ref}, BundlePriority::WAIT_REQUEST, "");
         RAY_LOG(DEBUG) << "Started pull for wait request for object " << obj_id
                        << " request: " << it->second.wait_request_id;
       }
@@ -132,7 +132,7 @@ void DependencyManager::StartOrUpdateGetRequest(
     }
     // Pull the new dependencies before canceling the old request, in case some
     // of the old dependencies are still being fetched.
-    uint64_t new_request_id = object_manager_.Pull(refs, BundlePriority::GET_REQUEST);
+    uint64_t new_request_id = object_manager_.Pull(refs, BundlePriority::GET_REQUEST, "");
     if (get_request.second != 0) {
       RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
                      << " request: " << get_request.second;
@@ -167,7 +167,9 @@ void DependencyManager::CancelGetRequest(const WorkerID &worker_id) {
 
 /// Request dependencies for a queued task.
 bool DependencyManager::RequestTaskDependencies(
-    const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
+    const TaskID &task_id,
+    const std::vector<rpc::ObjectReference> &required_objects,
+    std::string task_name) {
   RAY_LOG(DEBUG) << "Adding dependencies for task " << task_id
                  << ". Required objects length: " << required_objects.size();
 
@@ -194,7 +196,7 @@ bool DependencyManager::RequestTaskDependencies(
 
   if (!required_objects.empty()) {
     task_entry.pull_request_id =
-        object_manager_.Pull(required_objects, BundlePriority::TASK_ARGS);
+        object_manager_.Pull(required_objects, BundlePriority::TASK_ARGS, task_name);
     RAY_LOG(DEBUG) << "Started pull for dependencies of task " << task_id
                    << " request: " << task_entry.pull_request_id;
   }

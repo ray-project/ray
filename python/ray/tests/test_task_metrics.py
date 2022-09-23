@@ -39,6 +39,7 @@ def tasks_by_state(info) -> dict:
     if "ray_tasks" in res:
         states = defaultdict(int)
         for sample in res["ray_tasks"]:
+            print(sample)
             states[sample.labels["State"]] += sample.value
             if states[sample.labels["State"]] == 0:
                 del states[sample.labels["State"]]
