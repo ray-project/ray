@@ -3,31 +3,30 @@ set -x
 set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")"; pwd)
 
+arg1="${1-}"
+
+achitecture="${HOSTTYPE}"
+platform="unknown"
+case "${OSTYPE}" in
+  msys)
+    echo "Platform is Windows."
+    platform="windows"
+    # No installer for Windows
+    ;;
+  darwin*)
+    echo "Platform is Mac OS X."
+    platform="darwin"
+    ;;
+  linux*)
+    echo "Platform is Linux (or WSL)."
+    platform="linux"
+    ;;
+  *)
+    echo "Unrecognized platform."
+    exit 1
+esac
 
 if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
-  arg1="${1-}"
-
-  achitecture="${HOSTTYPE}"
-  platform="unknown"
-  case "${OSTYPE}" in
-    msys)
-      echo "Platform is Windows."
-      platform="windows"
-      # No installer for Windows
-      ;;
-    darwin*)
-      echo "Platform is Mac OS X."
-      platform="darwin"
-      ;;
-    linux*)
-      echo "Platform is Linux (or WSL)."
-      platform="linux"
-      ;;
-    *)
-      echo "Unrecognized platform."
-      exit 1
-  esac
-
   # Sanity check: Verify we have symlinks where we expect them, or Bazel can produce weird "missing input file" errors.
   # This is most likely to occur on Windows, where symlinks are sometimes disabled by default.
   { git ls-files -s 2>/dev/null || true; } | (
