@@ -15,12 +15,13 @@ from ray.data.datasource import (
     FastFileMetadataProvider,
     PartitionStyle,
     PathPartitionEncoder,
-    PathPartitionFilter
+    PathPartitionFilter,
 )
 
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
+
 
 def test_read_binary_files(ray_start_regular_shared):
     with gen_bin_files(10) as (_, paths):
@@ -52,6 +53,7 @@ def test_read_binary_files_with_paths(ray_start_regular_shared):
             expected = open(paths[i], "rb").read()
             assert expected == item
 
+
 # TODO(Clark): Hitting S3 in CI is currently broken due to some AWS
 # credentials issue, unskip this test once that's fixed or once ported to moto.
 @pytest.mark.skip(reason="Shouldn't hit S3 in CI")
@@ -62,6 +64,7 @@ def test_read_binary_files_s3(ray_start_regular_shared):
         "https://anyscale-data.s3.us-west-2.amazonaws.com/small-files/0.dat"
     ).content
     assert item == expected
+
 
 def test_read_binary_snappy(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_binary_snappy")

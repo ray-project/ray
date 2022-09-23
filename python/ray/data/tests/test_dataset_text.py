@@ -1,7 +1,6 @@
 import os
 
 import pandas as pd
-import pyarrow as pa
 import pytest
 
 import ray
@@ -11,7 +10,7 @@ from ray.data.datasource import (
     FastFileMetadataProvider,
     PartitionStyle,
     PathPartitionEncoder,
-    PathPartitionFilter
+    PathPartitionFilter,
 )
 
 from ray.data.tests.conftest import *  # noqa
