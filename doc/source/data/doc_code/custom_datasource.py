@@ -41,8 +41,12 @@ class _MongoDatasourceReader(Reader):
                 exec_stats=None,
             )
             read_task = ReadTask(
-                lambda uri=self._uri, database=self._database, collection=self._collection, pipeline=pipeline, schema=self._schema, kwargs=self._kwargs: [  # noqa: E501
-                    _read_single_query(uri, database, collection, pipeline, schema, kwargs)
+                lambda uri=self._uri, database=self._database,
+                       collection=self._collection, pipeline=pipeline,
+                       schema=self._schema, kwargs=self._kwargs: [
+                    _read_single_query(
+                        uri, database, collection, pipeline, schema, kwargs
+                    )
                 ],
                 metadata,
             )
@@ -104,6 +108,8 @@ class MongoDatasource(Datasource):
         database,
         collection,
     ) -> List[ObjectRef[Any]]:
-        return _write_multiple_blocks(blocks, metadata, ray_remote_args, uri, database, collection)
+        return _write_multiple_blocks(
+            blocks, metadata, ray_remote_args, uri, database, collection
+        )
 # __mongo_datasource_end__
 # fmt: on
