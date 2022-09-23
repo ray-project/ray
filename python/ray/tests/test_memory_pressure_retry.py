@@ -44,17 +44,16 @@ def ray_with_memory_monitor_two_oom_retries(shutdown_only):
         yield
 
 
-# TODO(clarng): enable tests for actor retry
-# @ray.remote(max_restarts = 1, max_task_retries=-1)
-# class OneActorRetryAlloc:
-#     def __init__(self):
-#         self.leaks = []
+@ray.remote(max_restarts=1)
+class OneActorRetryAlloc:
+    def __init__(self):
+        self.leaks = []
 
-#     def allocate(self, allocate_bytes: int, sleep_s = 0):
-#         # divide by 8 as each element in the array occupies 8 bytes
-#         new_list = [0] * ceil(allocate_bytes / 8)
-#         self.leaks.append(new_list)
-#         time.sleep(sleep_s)
+    def allocate(self, allocate_bytes: int, sleep_s=0):
+        # divide by 8 as each element in the array occupies 8 bytes
+        new_list = [0] * ceil(allocate_bytes / 8)
+        self.leaks.append(new_list)
+        time.sleep(sleep_s)
 
 
 @ray.remote(max_retries=0)
@@ -94,14 +93,34 @@ def has_metric_tagged_with_value(tag, value) -> bool:
         for measure in view.measures:
             if tag in measure.tags:
                 if hasattr(measure, "int_value"):
-                    print(measure.int_value)
                     if measure.int_value == value:
                         return True
                 if hasattr(measure, "double_value"):
-                    print(measure.double_value)
                     if measure.double_value == value:
                         return True
     return False
+
+
+# TODO(clarng): make this test pass.
+# @pytest.mark.skipif(
+#     sys.platform != "linux" and sys.platform != "linux2",
+#     reason="memory monitor only on linux currently",
+# )
+# def test_no_oom_retry_use_actor_retry_for_oom(ray_with_memory_monitor_no_oom_retries):
+#     actor = OneActorRetryAlloc.remote()
+
+#     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
+#     for _ in range(2):
+#         with pytest.raises(ray.exceptions.RayActorError) as _:
+#             ray.get(actor.allocate.remote(bytes_to_alloc))
+
+#     wait_for_condition(
+#         has_metric_tagged_with_value,
+#         timeout=10,
+#         retry_interval_ms=100,
+#         tag="MemoryManager.ActorEviction.Total",
+#         value=2.0,
+#     )
 
 
 @pytest.mark.skipif(
