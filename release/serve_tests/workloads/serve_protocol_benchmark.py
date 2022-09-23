@@ -1,7 +1,7 @@
 import grpc
 import time
 from ray import serve
-from ray.serve.drivers import gRPCDriver, DAGDriver
+from ray.serve.drivers import DefaultgRPCDriver, DAGDriver
 import asyncio
 import aiohttp
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
@@ -96,7 +96,7 @@ def main(http_test: Optional[bool], data_size: Optional[int]):
             trial(measure_http_throughput_tps, data_size=data_size)
         )
     else:
-        serve.run(gRPCDriver.bind(D.bind()))
+        serve.run(DefaultgRPCDriver.bind(D.bind()))
         throughput_mean_tps, throughput_std_tps = loop.run_until_complete(
             trial(measure_grpc_throughput_tps, data_size=data_size)
         )

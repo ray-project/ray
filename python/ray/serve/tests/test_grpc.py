@@ -3,7 +3,6 @@ import pytest
 from ray.serve.drivers import DefaultgRPCDriver
 import ray
 from ray import serve
-import os
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 import grpc
 from ray.cluster_utils import Cluster
