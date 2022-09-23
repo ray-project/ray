@@ -737,7 +737,8 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
 
 void GcsActorManager::DestroyActor(const ActorID &actor_id,
                                    const rpc::ActorDeathCause &death_cause,
-                                   bool force_kill) {
+                                   bool force_kill,
+                                   bool actor_scheduling_canceled) {
   RAY_LOG(INFO) << "Destroying actor, actor id = " << actor_id
                 << ", job id = " << actor_id.JobId();
   actor_to_register_callbacks_.erase(actor_id);
@@ -806,7 +807,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         // worker exit to avoid process and resource leak.
         NotifyCoreWorkerToKillActor(actor, death_cause, force_kill);
       }
-      CancelActorInScheduling(actor, TaskID::ForActorCreationTask(actor_id));
+      if (!actor_scheduling_canceled) {
+        CancelActorInScheduling(actor, TaskID::ForActorCreationTask(actor_id));
+      }
     }
   }
 
@@ -1138,6 +1141,7 @@ void GcsActorManager::OnActorSchedulingFailed(
 
   std::string error_msg;
   ray::rpc::ActorDeathCause death_cause;
+  bool actor_scheduling_canceled = false;
   switch (failure_type) {
   case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED:
     error_msg =
@@ -1154,6 +1158,13 @@ void GcsActorManager::OnActorSchedulingFailed(
   case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE:
     death_cause.mutable_actor_unschedulable_context()->set_error_message(
         scheduling_failure_message);
+    // With gcs actor scheduler, `SCHEDULING_CANCELLED_UNSCHEDULABLE` means the actor has
+    // been erased from the gcs' scheduling queue. Therefore, set
+    // `actor_scheduling_canceled` true here so that it can be handled specially when
+    // destroying the actor later.
+    if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+      actor_scheduling_canceled = true;
+    }
     break;
   default:
     RAY_LOG(FATAL) << "Unknown error, failure type "
@@ -1162,7 +1173,8 @@ void GcsActorManager::OnActorSchedulingFailed(
     break;
   }
 
-  DestroyActor(actor->GetActorID(), death_cause);
+  DestroyActor(
+      actor->GetActorID(), death_cause, /*force_kill=*/true, actor_scheduling_canceled);
 }
 
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,

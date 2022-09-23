@@ -37,10 +37,10 @@ bool AffinityWithBundleSchedulingPolicy::IsNodeFeasibleAndAvailable(
   const auto &node_total = nodes_.at(node_id).GetLocalView().total;
   for (const auto &resource_id : node_total.ResourceIds()) {
     if (resource_id.Binary().size() > pg_suffix_len) {
-      std::string_view resource_name_view(resource_id.Binary());
+      auto resource_name = resource_id.Binary();
       // Combine the right prefix and suffix for the gpu wildcard resource name.
-      gpu_wildcard_resource_name += resource_name_view.substr(
-          resource_name_view.size() - pg_suffix_len, pg_suffix_len);
+      gpu_wildcard_resource_name +=
+          resource_name.substr(resource_name.size() - pg_suffix_len, pg_suffix_len);
       break;
     }
   }
@@ -68,7 +68,7 @@ scheduling::NodeID AffinityWithBundleSchedulingPolicy::Schedule(
     const PlacementGroupID &pg_id = bundle_id.first;
     const auto &bundle_locations_opt = bundle_location_index_.GetBundleLocations(pg_id);
     if (bundle_locations_opt) {
-      // Find a target with gpu nodes avoided.
+      // Find a target with gpu nodes avoided (if required).
       if (options.avoid_gpu_nodes) {
         for (const auto &iter : *(bundle_locations_opt.value())) {
           auto target_node_id = scheduling::NodeID(iter.second.first.Binary());
