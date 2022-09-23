@@ -1514,6 +1514,9 @@ class RolloutWorker(ParallelIteratorWorker):
         return {
             "filters": filters,
             "state": state,
+            # Also store current mapping fn and which policies to train.
+            "policy_mapping_fn": self.policy_mapping_fn,
+            "is_policy_to_train": self.is_policy_to_train,
         }
 
     @DeveloperAPI
@@ -1564,6 +1567,10 @@ class RolloutWorker(ParallelIteratorWorker):
                     )
             if pid in self.policy_map:
                 self.policy_map[pid].set_state(policy_state)
+
+        # Also restore mapping fn and which policies to train.
+        self.set_policy_mapping_fn(state["policy_mapping_fn"])
+        self.set_is_policy_to_train(state["is_policy_to_train"])
 
     @DeveloperAPI
     def get_weights(

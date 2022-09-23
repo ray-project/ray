@@ -2699,6 +2699,7 @@ class Algorithm(Trainable):
 
         if hasattr(self, "workers"):
             state["worker"] = self.workers.local_worker().get_state()
+
         # TODO: Experimental functionality: Store contents of replay buffer
         #  to checkpoint, only if user has configured this.
         if self.local_replay_buffer is not None and self.config.get(
@@ -2808,7 +2809,21 @@ class Algorithm(Trainable):
             # Old style: Create algo first, then call its `restore()` method.
             if not v0_checkpoint_file:
                 # TODO: Remove filters once they are part of policies (via connectors).
-                policies = policies if policies is not None else state["filters"].keys()
+                policies = set(
+                    policies if policies is not None else state["filters"].keys()
+                )
+
+                filters = state.pop("filters")
+                # Remove policies entirely from filters that are not in `policies`.
+                filters = {
+                    pid: filter for pid, filter in filters.items() if pid in policies
+                }
+                # Remove policies from multiagent dict that are not in `policies`.
+                policies_dict = state["config"]["multiagent"]["policies"]
+                policies_dict = {
+                    pid: spec for pid, spec in policies_dict.items() if pid in policies
+                }
+                state["config"]["multiagent"]["policies"] = policies_dict
 
                 # Prepare local `worker` state to add policies' states into it read from
                 # separate policy checkpoint files.
@@ -2817,7 +2832,7 @@ class Algorithm(Trainable):
                     "state": {},
                     # TODO: Remove filters once they are part of policies
                     #  (via connectors).
-                    "filters": state.pop("filters"),
+                    "filters": filters,
                 }
                 for pid in policies:
                     policy_state_file = os.path.join(
