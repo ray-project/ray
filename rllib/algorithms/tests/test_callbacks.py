@@ -3,6 +3,7 @@ import unittest
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks, MultiCallbacks
 import ray.rllib.algorithms.dqn as dqn
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -28,11 +29,20 @@ class BeforeSubEnvironmentResetCallback(DefaultCallbacks):
         super().__init__()
         self._reset_counter = 0
 
-    def before_sub_environment_reset(
-        self, *, worker, sub_environment, env_index, **kwargs
+    def on_episode_created(
+        self, *, worker, base_env, policies, env_index, episode, **kwargs
     ):
         print(f"Sub-env {env_index} is going to be reset.")
         self._reset_counter += 1
+
+        # Make sure the passed in episode is really brand new.
+        assert episode.env_id == env_index
+        if isinstance(episode, Episode):
+            assert episode.length == 0
+            assert episode.started is False
+        else:
+            assert episode.length == -1
+        assert episode.worker is worker
 
 
 class TestCallbacks(unittest.TestCase):
@@ -115,7 +125,7 @@ class TestCallbacks(unittest.TestCase):
                 self.assertTrue(sum_sub_env_vector_indices[2] == 6)
                 algo.stop()
 
-    def test_before_sub_environment_reset(self):
+    def test_on_episode_created(self):
         # 1000 steps sampled (2.5 episodes on each sub-environment) before training
         # starts.
         config = (
@@ -131,7 +141,9 @@ class TestCallbacks(unittest.TestCase):
             .callbacks(BeforeSubEnvironmentResetCallback)
         )
 
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+        # Test with and without Connectors.
+        for connector in [True, False]:
+            config.rollouts(enable_connectors=connector)
             algo = config.build()
             algo.train()
             # Two sub-environments share 1000 steps in the first training iteration
@@ -139,7 +151,7 @@ class TestCallbacks(unittest.TestCase):
             # -> 1000 / 2 [sub-envs] = 500 [per sub-env]
             # -> 1 episode = 200 timesteps
             # -> 2.5 episodes per sub-env
-            # -> 3 resets [per sub-env] = 6 resets total
+            # -> 3 episodes created [per sub-env] = 6 episodes total
             self.assertTrue(
                 6
                 == ray.get(
