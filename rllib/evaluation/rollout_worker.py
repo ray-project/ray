@@ -1281,15 +1281,11 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.filters[policy_id] = get_filter(self.observation_filter, filter_shape)
 
-        if (
-            self.policy_config.get("enable_connectors")
-            and policy_id in self.policy_map
-            and not (
-                self.policy_map[policy_id].agent_connectors
-                or self.policy_map[policy_id].action_connectors
-            )
-        ):
-            create_connectors_for_policy(self.policy_map[policy_id], self.policy_config)
+        # Create connectors for the new policy, if necessary.
+        # Only if connectors are enables and we created the new policy from scratch
+        # (it was not provided to us via the `policy` arg.
+        if policy is None and self.policy_config.get("enable_connectors"):
+            create_connectors_for_policy(new_policy, self.policy_config)
 
         self.set_policy_mapping_fn(policy_mapping_fn)
         if policies_to_train is not None:
