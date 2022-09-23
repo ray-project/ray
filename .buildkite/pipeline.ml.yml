@@ -316,8 +316,6 @@
 
 - label: ":octopus: Tune tests {A-R; no RLlib}"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
@@ -328,8 +326,6 @@
 
 - label: ":octopus: Tune tests {S-Z; no RLlib}"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
@@ -342,8 +338,6 @@
 
 - label: ":octopus: Tune examples {w/o tf/pytorch; no RLlib}"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
@@ -352,8 +346,6 @@
 
 - label: ":octopus: Tune examples {w/ tf/pytorch; no RLlib}"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
@@ -363,8 +355,6 @@
 
 - label: ":octopus: :brain: Tune tests and examples {using RLlib}"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_RLLIB_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
@@ -373,8 +363,6 @@
 
 - label: ":steam_locomotive: Train tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TRAIN_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
@@ -383,8 +371,6 @@
 
 - label: ":steam_locomotive: :octopus: Train + Tune tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
@@ -393,8 +379,6 @@
 
 - label: ":octopus: Tune tests and examples. Python 3.7"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
@@ -403,8 +387,6 @@
 
 - label: ":octopus: ML library integrations tests and examples. Python 3.7"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
@@ -423,8 +405,6 @@
 
 - label: ":tropical_fish: ML Libraries w/ Ray Client Examples (Python 3.7)."
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
@@ -434,8 +414,6 @@
 
 - label: ":potable_water: Dataset library integrations tests and examples. Python 3.7"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
@@ -446,8 +424,6 @@
 
 - label: ":potable_water: Dataset tests (Python 3.7)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
@@ -456,8 +432,6 @@
 
 - label: ":potable_water: Workflow tests (Python 3.7)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
@@ -467,8 +441,6 @@
 - label: ":book: Doc tests and examples (excluding Ray AIR examples)"
   conditions:
     ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_ML_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
@@ -478,8 +450,6 @@
 - label: ":book: :airplane: Ray AIR examples"
   conditions:
     ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_ML_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
@@ -488,8 +458,6 @@
 
 - label: ":book: Doc examples with authentication "
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_BRANCH_BUILD"]  
-  agents:
-    aws:instance-type: m5.2xlarge
   commands:
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
