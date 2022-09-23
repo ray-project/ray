@@ -1764,7 +1764,7 @@
   run:
     timeout: 86400
     prepare: ray stop 
-    script: RAY_RAYLET_NODE_ID="" python workloads/actor_deaths.py
+    script: python workloads/actor_deaths.py
     long_running: true
     type: sdk_command
     file_manager: sdk
@@ -1854,7 +1854,7 @@
   run:
     timeout: 86400
     prepare: ray stop 
-    script: RAY_RAYLET_NODE_ID="" python workloads/many_actor_tasks.py
+    script: python workloads/many_actor_tasks.py
     long_running: true
     type: sdk_command
     file_manager: sdk
@@ -1883,7 +1883,7 @@
   run:
     timeout: 86400
     prepare: ray stop 
-    script: RAY_RAYLET_NODE_ID="" python workloads/many_drivers.py --iteration-num=4000
+    script: python workloads/many_drivers.py --iteration-num=4000
     long_running: true
     type: sdk_command
     file_manager: sdk
@@ -1946,7 +1946,7 @@
   run:
     timeout: 86400
     prepare: ray stop 
-    script: RAY_RAYLET_NODE_ID="" python workloads/many_tasks.py
+    script: python workloads/many_tasks.py
     long_running: true
     type: sdk_command
     file_manager: sdk
@@ -1975,7 +1975,7 @@
   run:
     timeout: 86400
     prepare: ray stop 
-    script: RAY_RAYLET_NODE_ID="" python workloads/many_tasks_serialized_ids.py
+    script: python workloads/many_tasks_serialized_ids.py
     long_running: true
     type: sdk_command
     file_manager: sdk
@@ -2004,7 +2004,7 @@
   run:
     timeout: 86400
     prepare: ray stop 
-    script: RAY_RAYLET_NODE_ID="" python workloads/node_failures.py
+    script: python workloads/node_failures.py
     long_running: true
     type: sdk_command
     file_manager: sdk
@@ -2034,7 +2034,7 @@
   run:
     timeout: 86400
     prepare: ray stop
-    script: RAY_RAYLET_NODE_ID="" python workloads/pbt.py
+    script: python workloads/pbt.py
     long_running: true
     type: sdk_command
     file_manager: sdk
@@ -2063,7 +2063,7 @@
   run:
     timeout: 86400
     prepare: ray stop
-    script: RAY_RAYLET_NODE_ID="" python workloads/serve.py
+    script: python workloads/serve.py
     long_running: true
     type: sdk_command
     file_manager: job
@@ -2095,7 +2095,7 @@
   run:
     timeout: 86400
     prepare: ray stop 
-    script: RAY_RAYLET_NODE_ID="" python workloads/serve_failure.py
+    script: python workloads/serve_failure.py
     long_running: true
     type: sdk_command
     file_manager: job

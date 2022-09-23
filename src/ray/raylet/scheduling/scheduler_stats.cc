@@ -34,7 +34,6 @@ void SchedulerStats::ComputeStats() {
   size_t num_waiting_for_remote_node_resources = 0;
   size_t num_worker_not_started_by_job_config_not_exist = 0;
   size_t num_worker_not_started_by_registration_timeout = 0;
-  size_t num_worker_not_started_by_process_rate_limit = 0;
   size_t num_tasks_waiting_for_workers = 0;
   size_t num_cancelled_tasks = 0;
 
@@ -52,7 +51,6 @@ void SchedulerStats::ComputeStats() {
                                &num_waiting_for_remote_node_resources,
                                &num_worker_not_started_by_job_config_not_exist,
                                &num_worker_not_started_by_registration_timeout,
-                               &num_worker_not_started_by_process_rate_limit,
                                &num_tasks_waiting_for_workers,
                                &num_cancelled_tasks](
                                   size_t state,
@@ -82,9 +80,6 @@ void SchedulerStats::ComputeStats() {
       } else if (work->GetUnscheduledCause() ==
                  internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT) {
         num_worker_not_started_by_registration_timeout += 1;
-      } else if (work->GetUnscheduledCause() ==
-                 internal::UnscheduledWorkCause::WORKER_NOT_FOUND_RATE_LIMITED) {
-        num_worker_not_started_by_process_rate_limit += 1;
       }
     }
     return state + pair.second.size();
@@ -108,8 +103,6 @@ void SchedulerStats::ComputeStats() {
       num_worker_not_started_by_job_config_not_exist;
   num_worker_not_started_by_registration_timeout_ =
       num_worker_not_started_by_registration_timeout;
-  num_worker_not_started_by_process_rate_limit_ =
-      num_worker_not_started_by_process_rate_limit;
   num_tasks_waiting_for_workers_ = num_tasks_waiting_for_workers;
   num_cancelled_tasks_ = num_cancelled_tasks;
   num_infeasible_tasks_ = num_infeasible_tasks;
@@ -177,8 +170,6 @@ std::string SchedulerStats::ComputeAndReportDebugStr() {
          << num_worker_not_started_by_job_config_not_exist_ << "\n";
   buffer << "num_worker_not_started_by_registration_timeout: "
          << num_worker_not_started_by_registration_timeout_ << "\n";
-  buffer << "num_worker_not_started_by_process_rate_limit: "
-         << num_worker_not_started_by_process_rate_limit_ << "\n";
   buffer << "num_tasks_waiting_for_workers: " << num_tasks_waiting_for_workers_ << "\n";
   buffer << "num_cancelled_tasks: " << num_cancelled_tasks_ << "\n";
   buffer << "cluster_resource_scheduler state: "
