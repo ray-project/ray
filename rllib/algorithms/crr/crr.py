@@ -122,11 +122,12 @@ class CRRConfig(AlgorithmConfig):
             critic_hidden_activation: The activation used in the critic's fc network.
             tau: Polyak averaging coefficient
                 (making it 1 is reduces it to a hard update).
-            td_error_loss_fn: "huber" or "mse". loss function for calculating critic error.
+            td_error_loss_fn: "huber" or "mse".
+                Loss function for calculating critic error.
             categorical_distribution_temperature: Set the temperature parameter used
                 by Categorical action distribution. A valid temperature is in the range
-                of [0, 1]. Note that this mostly affects evaluation since critic error uses
-                argmax for return calculation.
+                of [0, 1]. Note that this mostly affects evaluation since critic error
+                uses selected action for return calculation.
             **kwargs: forward compatibility kwargs
 
         Returns:
