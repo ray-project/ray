@@ -13,6 +13,8 @@
 # - Learning tests/regression, tagged:
 # -- "learning_tests_[discrete|continuous]": distinguish discrete
 #    actions vs continuous actions.
+# -- "crashing_cartpole" and "stateless_cartpole" to distinguish between
+#    simple CartPole and more advanced variants of it.
 # -- "fake_gpus": Tests that run using 2 fake GPUs.
 
 # - Quick algo compilation/tune-train tests, tagged "quick_train".
@@ -513,7 +515,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_crashing_pg",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-crashing-pg.yaml"],
@@ -523,7 +525,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_crashing_with_remote_envs_pg",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-crashing-with-remote-envs-pg.yaml"],
@@ -533,7 +535,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_crashing_restart_sub_envs_pg",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/multi-agent-cartpole-crashing-restart-sub-envs-pg.yaml"],
@@ -543,7 +545,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_crashing_with_remote_envs_pg",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/multi-agent-cartpole-crashing-with-remote-envs-pg.yaml"],
@@ -646,7 +648,7 @@ py_test(
 py_test(
     name = "learning_tests_stateless_cartpole_r2d2",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "stateless_cartpole"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/r2d2/stateless-cartpole-r2d2.yaml"],
@@ -656,7 +658,7 @@ py_test(
 py_test(
     name = "learning_tests_stateless_cartpole_r2d2_fake_gpus",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "fake_gpus"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "stateless_cartpole", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/r2d2/stateless-cartpole-r2d2-fake-gpus.yaml"],
