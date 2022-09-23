@@ -230,6 +230,14 @@ message ReportResourceUsageReply {
   GcsStatus status = 1;
 }
 
+message GetGcsSchedulingStatsRequest {}
+
+message GetGcsSchedulingStatsReply {
+  GcsStatus status = 1;
+  repeated TaskSpec infeasible_tasks = 2;
+  repeated TaskSpec ready_tasks = 3;
+}
+
 // Service for heartbeat info access.
 service HeartbeatInfoGcsService {
   // Report heartbeat of a node to GCS Service.
@@ -583,6 +591,10 @@ message GetAllResourceUsageRequest {}
 message GetAllResourceUsageReply {
   GcsStatus status = 1;
   ResourceUsageBatchData resource_usage_data = 2;
+  /// True if gcs finds infeasible or pending actor creation tasks
+  /// locally (when gcs actor scheduler is enabled). This field is
+  /// expected to help triggering auto-scaling.
+  bool cluster_full_of_actors_detected_by_gcs = 3;
 }
 
 // Service for node resource info access.
@@ -596,6 +608,9 @@ service NodeResourceInfoGcsService {
   rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
+  // Get current scheduling stats (e.g., pending tasks) of gcs server.
+  rpc GetGcsSchedulingStats(GetGcsSchedulingStatsRequest)
+      returns (GetGcsSchedulingStatsReply);
 }
 
 message GcsStatus {

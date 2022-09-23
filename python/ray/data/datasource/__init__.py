@@ -36,6 +36,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionParser,
     Partitioning,
 )
+from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data.datasource.tensorflow_datasource import SimpleTensorFlowDatasource
 from ray.data.datasource.text_datasource import TextDatasource
 from ray.data.datasource.torch_datasource import SimpleTorchDatasource
@@ -72,6 +73,7 @@ __all__ = [
     "SimpleTensorFlowDatasource",
     "SimpleTorchDatasource",
     "TextDatasource",
+    "TFRecordDatasource",
     "WriteResult",
     "_S3FileSystemWrapper",
 ]
