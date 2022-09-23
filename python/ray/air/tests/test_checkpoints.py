@@ -1,5 +1,6 @@
 import os
 import pickle
+import pytest
 import re
 import shutil
 import tempfile
@@ -39,6 +40,45 @@ class StubCheckpoint(Checkpoint):
         self.foo = None
         self.baz = None
         super().__init__(*args, **kwargs)
+
+
+class OtherStubCheckpoint(Checkpoint):
+    pass
+
+
+class TestCheckpointTypeCasting:
+    def test_dict(self):
+        data = StubCheckpoint.from_dict({"foo": "bar"}).to_dict()
+        assert isinstance(Checkpoint.from_dict(data), StubCheckpoint)
+
+        data = Checkpoint.from_dict({"foo": "bar"}).to_dict()
+        assert isinstance(StubCheckpoint.from_dict(data), StubCheckpoint)
+
+        with pytest.raises(ValueError):
+            data = OtherStubCheckpoint.from_dict({"foo": "bar"}).to_dict()
+            StubCheckpoint.from_dict(data)
+
+    def test_directory(self):
+        path = StubCheckpoint.from_dict({"foo": "bar"}).to_directory()
+        assert isinstance(Checkpoint.from_directory(path), StubCheckpoint)
+
+        path = Checkpoint.from_dict({"foo": "bar"}).to_directory()
+        assert isinstance(StubCheckpoint.from_directory(path), StubCheckpoint)
+
+        with pytest.raises(ValueError):
+            path = OtherStubCheckpoint.from_dict({"foo": "bar"}).to_directory()
+            StubCheckpoint.from_directory(path)
+
+    def test_uri(self):
+        uri = StubCheckpoint.from_dict({"foo": "bar"}).to_uri("memory://1/")
+        assert isinstance(Checkpoint.from_uri(uri), StubCheckpoint)
+
+        uri = Checkpoint.from_dict({"foo": "bar"}).to_uri("memory://2/")
+        assert isinstance(StubCheckpoint.from_uri(uri), StubCheckpoint)
+
+        with pytest.raises(ValueError):
+            uri = OtherStubCheckpoint.from_dict({"foo": "bar"}).to_uri("memory://3/")
+            StubCheckpoint.from_uri(uri)
 
 
 class CheckpointsConversionTest(unittest.TestCase):
