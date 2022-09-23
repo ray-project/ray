@@ -174,7 +174,7 @@ class SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     # TODO(jungong) : Remove this API call once we completely move to
-    # connector based sample collection.
+    #  connector based sample collection.
     @abstractmethod
     def get_inference_input_dict(self, policy_id: PolicyID) -> \
             Dict[str, TensorType]:
