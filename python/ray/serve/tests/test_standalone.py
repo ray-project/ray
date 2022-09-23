@@ -661,7 +661,7 @@ def test_recovering_controller_no_redeploy():
 
     serve.run(f.bind())
 
-    num_actors = len(list_actors(address))
+    num_actors = len(list_actors(address, filters=[("state", "=", "ALIVE")]))
     assert num_actors > 0
 
     pid = ray.get(client._controller.get_pid.remote())
@@ -673,7 +673,8 @@ def test_recovering_controller_no_redeploy():
     # Confirm that no new deployment is deployed over the next 5 seconds
     with pytest.raises(RuntimeError):
         wait_for_condition(
-            lambda: len(list_actors(address)) > num_actors,
+            lambda: len(list_actors(address, filters=[("state", "=", "ALIVE")]))
+            > num_actors,
             timeout=5,
         )
 

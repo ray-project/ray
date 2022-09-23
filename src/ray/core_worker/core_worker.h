@@ -57,6 +57,8 @@
 namespace ray {
 namespace core {
 
+JobID GetProcessJobID(const CoreWorkerOptions &options);
+
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
@@ -338,11 +340,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id Object ID corresponding to the object.
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.
+  /// \param[in] generator_id For dynamically created objects, this is the ID
+  /// of the object that wraps the dynamically created ObjectRefs in a
+  /// generator. We use this to notify the owner of the dynamically created
+  /// objects.
   /// \param[in] owner_address Address of the owner of the object who will be contacted by
   /// the raylet if the object is pinned. If not provided, defaults to this worker.
   /// \return Status.
   Status SealExisting(const ObjectID &object_id,
                       bool pin_object,
+                      const ObjectID &generator_id = ObjectID::Nil(),
                       const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
@@ -632,8 +639,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] return_id Object ID of the return value.
   /// \param[in] return_object RayObject containing the buffer written info.
   /// \return Status.
+  /// \param[in] generator_id For dynamically created objects, this is the ID
+  /// of the object that wraps the dynamically created ObjectRefs in a
+  /// generator. We use this to notify the owner of the dynamically created
+  /// objects.
   Status SealReturnObject(const ObjectID &return_id,
-                          std::shared_ptr<RayObject> return_object);
+                          std::shared_ptr<RayObject> return_object,
+                          const ObjectID &generator_id);
 
   /// Pin the local copy of the return object, if one exists.
   ///
@@ -641,8 +653,23 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] return_object The object that was pinned.
   /// \return success if the object still existed and was pinned. Note that
   /// pinning is done asynchronously.
+  /// \param[in] generator_id For dynamically created objects, this is the ID
+  /// of the object that wraps the dynamically created ObjectRefs in a
+  /// generator. We use this to notify the owner of the dynamically created
+  /// objects.
   bool PinExistingReturnObject(const ObjectID &return_id,
-                               std::shared_ptr<RayObject> *return_object);
+                               std::shared_ptr<RayObject> *return_object,
+                               const ObjectID &generator_id);
+
+  /// Dynamically allocate an object.
+  ///
+  /// This should be used during task execution, if the task wants to return an
+  /// object to the task caller and have the resulting ObjectRef be owned by
+  /// the caller. This is in contrast to static allocation, where the caller
+  /// decides at task invocation time how many returns the task should have.
+  ///
+  /// \param[out] The ObjectID that the caller should use to store the object.
+  ObjectID AllocateDynamicReturnId();
 
   /// Get a handle to an actor.
   ///
@@ -849,7 +876,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const rpc::Address &address,
       const RayFunction &function,
       const std::vector<std::unique_ptr<TaskArg>> &args,
-      uint64_t num_returns,
+      int64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       const std::string &debugger_breakpoint,
@@ -927,18 +954,25 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///                 worker. If nullptr, reuse the previously assigned
   ///                 resources.
   /// \param results[out] return_objects Result objects that should be returned
-  ///                     by value (not via plasma).
+  /// to the caller.
+  /// \param results[out] dynamic_return_objects Result objects whose
+  /// ObjectRefs were dynamically allocated during task execution by using a
+  /// generator. The language-level ObjectRefs should be returned inside the
+  /// statically allocated return_objects.
   /// \param results[out] borrowed_refs Refs that this task (or a nested task)
   ///                     was or is still borrowing. This includes all
   ///                     objects whose IDs we passed to the task in its
   ///                     arguments and recursively, any object IDs that were
   ///                     contained in those objects.
   /// \return Status.
-  Status ExecuteTask(const TaskSpecification &task_spec,
-                     const std::shared_ptr<ResourceMappingType> &resource_ids,
-                     std::vector<std::shared_ptr<RayObject>> *return_objects,
-                     ReferenceCounter::ReferenceTableProto *borrowed_refs,
-                     bool *is_retryable_error);
+  Status ExecuteTask(
+      const TaskSpecification &task_spec,
+      const std::shared_ptr<ResourceMappingType> &resource_ids,
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
+          *dynamic_return_objects,
+      ReferenceCounter::ReferenceTableProto *borrowed_refs,
+      bool *is_retryable_error);
 
   /// Put an object in the local plasma store.
   Status PutInLocalPlasmaStore(const RayObject &object,
@@ -1026,7 +1060,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void AddSpilledObjectLocationOwner(const ObjectID &object_id,
                                      const std::string &spilled_url,
-                                     const NodeID &spilled_node_id);
+                                     const NodeID &spilled_node_id,
+                                     const std::optional<ObjectID> &generator_id);
 
   void AddObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
 
