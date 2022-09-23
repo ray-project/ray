@@ -179,6 +179,7 @@ parts:
                   - file: serve/production-guide/kubernetes
                   - file: serve/production-guide/monitoring
                   - file: serve/production-guide/failures
+                  - file: serve/production-guide/fault-tolerance
               - file: serve/performance
               - file: serve/handling-dependencies
               - file: serve/managing-java-deployments
