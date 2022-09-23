@@ -193,14 +193,10 @@ class WorkerPoolMock : public WorkerPool {
     return total;
   }
 
-  int NumWorkerProcessesStarting() const {
+  int NumPendingPopWorkerRequests() const {
     int total = 0;
     for (auto &entry : states_by_lang_) {
-      for (auto process : entry.second.worker_processes) {
-        if (process.second.is_pending_registration) {
-          total += 1;
-        }
-      }
+      total += entry.second.pending_pop_worker_requests.size();
     }
     return total;
   }
@@ -472,17 +468,15 @@ class WorkerPoolTest : public ::testing::Test {
       PopWorkerStatus status;
       worker_pool_->StartWorkerProcess(
           language, rpc::WorkerType::WORKER, JOB_ID, &status);
-      ASSERT_TRUE(worker_pool_->NumWorkerProcessesStarting() <=
-                  expected_worker_process_count);
+      ASSERT_TRUE(worker_pool_->NumWorkersStarting() <= expected_worker_process_count);
       Process prev = worker_pool_->LastStartedWorkerProcess();
       if (std::equal_to<Process>()(last_started_worker_process, prev)) {
-        ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(),
-                  expected_worker_process_count);
+        ASSERT_EQ(worker_pool_->NumWorkersStarting(), expected_worker_process_count);
         ASSERT_TRUE(i >= expected_worker_process_count);
       }
     }
     // Check number of starting workers
-    ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), expected_worker_process_count);
+    ASSERT_EQ(worker_pool_->NumWorkersStarting(), expected_worker_process_count);
   }
 
   void StartMockAgent() {
@@ -593,7 +587,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   for (const auto &worker : workers) {
     // Check that there's still a starting worker process
     // before all workers have been registered
-    ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 1);
+    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 1);
     // Check that we cannot lookup the worker before it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(
@@ -603,7 +597,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
   }
   // Check that there's no starting worker process
-  ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 0);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 0);
   for (const auto &worker : workers) {
     worker_pool_->DisconnectWorker(
         worker, /*disconnect_type=*/rpc::WorkerExitType::INTENDED_USER_EXIT);
@@ -644,7 +638,6 @@ TEST_F(WorkerPoolTest, StartupJavaWorkerProcessCount) {
 
 TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 0);
-  ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 0);
 }
 
 TEST_F(WorkerPoolTest, TestPrestartingWorkers) {
@@ -652,19 +645,15 @@ TEST_F(WorkerPoolTest, TestPrestartingWorkers) {
   // Prestarts 2 workers.
   worker_pool_->PrestartWorkers(task_spec, 2, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
-  ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 2);
   // Prestarts 1 more worker.
   worker_pool_->PrestartWorkers(task_spec, 3, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
-  ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 3);
   // No more needed.
   worker_pool_->PrestartWorkers(task_spec, 1, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
-  ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 3);
   // Capped by soft limit of 5.
   worker_pool_->PrestartWorkers(task_spec, 20, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 5);
-  ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 5);
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
@@ -841,15 +830,17 @@ TEST_F(WorkerPoolTest, MaximumStartupConcurrency) {
     RAY_CHECK(last_process.IsValid());
     started_processes.push_back(last_process);
   }
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
+  ASSERT_EQ(0, worker_pool_->NumPendingPopWorkerRequests());
 
   // Can't start a new worker process at this point.
-  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
   worker_pool_->PopWorker(
       task_spec,
       [](const std::shared_ptr<WorkerInterface> worker,
          PopWorkerStatus status,
          const std::string &runtime_env_setup_error_message) -> bool { return true; });
-  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
+  ASSERT_EQ(1, worker_pool_->NumPendingPopWorkerRequests());
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   // Call `RegisterWorker` to emulate worker registration.
@@ -860,28 +851,56 @@ TEST_F(WorkerPoolTest, MaximumStartupConcurrency) {
         worker, process.GetId(), worker_pool_->GetStartupToken(process), [](Status, int) {
         }));
     // Calling `RegisterWorker` won't affect the counter of starting worker processes.
-    ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
+    ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
+    ASSERT_EQ(1, worker_pool_->NumPendingPopWorkerRequests());
     workers.push_back(worker);
   }
 
   // Can't start a new worker process at this point.
-  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
   worker_pool_->PopWorker(
       task_spec,
       [](const std::shared_ptr<WorkerInterface> worker,
          PopWorkerStatus status,
          const std::string &runtime_env_setup_error_message) -> bool { return true; });
-  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
+  ASSERT_EQ(2, worker_pool_->NumPendingPopWorkerRequests());
 
   // Call `OnWorkerStarted` to emulate worker port announcement.
-  for (size_t i = 0; i < workers.size(); i++) {
-    worker_pool_->OnWorkerStarted(workers[i]);
-    // Calling `OnWorkerStarted` will affect the counter of starting worker processes.
-    ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY - i - 1,
-              worker_pool_->NumWorkerProcessesStarting());
-  }
+  worker_pool_->OnWorkerStarted(workers[0]);
+  worker_pool_->PushWorker(workers[0]);
+  // Calling `OnWorkerStarted` will affect the counter of starting worker processes.
+  // One pending pop worker request now can be fulfilled.
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY + 1, worker_pool_->GetProcessSize());
+  ASSERT_EQ(1, worker_pool_->NumPendingPopWorkerRequests());
 
-  ASSERT_EQ(0, worker_pool_->NumWorkerProcessesStarting());
+  // Can't start a new worker process at this point.
+  worker_pool_->PopWorker(
+      task_spec,
+      [](const std::shared_ptr<WorkerInterface> worker,
+         PopWorkerStatus status,
+         const std::string &runtime_env_setup_error_message) -> bool { return true; });
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY + 1, worker_pool_->GetProcessSize());
+  ASSERT_EQ(2, worker_pool_->NumPendingPopWorkerRequests());
+
+  // Return a worker.
+  worker_pool_->PushWorker(workers[0]);
+  // One more pending pop worker request can be fulfilled.
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY + 1, worker_pool_->GetProcessSize());
+  ASSERT_EQ(1, worker_pool_->NumPendingPopWorkerRequests());
+  ASSERT_EQ(0, worker_pool_->GetIdleWorkerSize());
+
+  // Disconnect a worker.
+  worker_pool_->DisconnectWorker(workers[1], rpc::WorkerExitType::SYSTEM_ERROR);
+  // One more pending pop worker request can be fulfilled.
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY + 2, worker_pool_->GetProcessSize());
+  ASSERT_EQ(0, worker_pool_->NumPendingPopWorkerRequests());
+  ASSERT_EQ(0, worker_pool_->GetIdleWorkerSize());
+
   worker_pool_->ClearProcesses();
 }
 
@@ -1696,35 +1715,10 @@ TEST_F(WorkerPoolTest, PopWorkerStatus) {
   std::shared_ptr<WorkerInterface> popped_worker;
   PopWorkerStatus status;
 
-  /* Test PopWorkerStatus TooManyStartingWorkerProcesses */
-  // Startup worker processes to maximum.
-  for (int i = 0; i < MAXIMUM_STARTUP_CONCURRENCY; i++) {
-    auto task_spec = ExampleTaskSpec();
-    worker_pool_->PopWorker(
-        task_spec,
-        [](const std::shared_ptr<WorkerInterface> worker,
-           PopWorkerStatus status,
-           const std::string &runtime_env_setup_error_message) -> bool { return true; });
-  }
-  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
-
-  // PopWorker failed and the status is `TooManyStartingWorkerProcesses`.
-  auto task_spec = ExampleTaskSpec();
-  popped_worker = worker_pool_->PopWorkerSync(task_spec, false, &status);
-  ASSERT_EQ(popped_worker, nullptr);
-  ASSERT_EQ(status, PopWorkerStatus::TooManyStartingWorkerProcesses);
-
-  // PopWorker success after push workers and reduce the starting processes.
-  worker_pool_->PushWorkers();
-  ASSERT_EQ(0, worker_pool_->NumWorkerProcessesStarting());
-  popped_worker = worker_pool_->PopWorkerSync(task_spec, true, &status);
-  ASSERT_NE(popped_worker, nullptr);
-  ASSERT_EQ(status, PopWorkerStatus::OK);
-
   /* Test PopWorkerStatus JobConfigMissing */
   // Create a task by unregistered job id.
   auto job_id = JobID::FromInt(123);
-  task_spec = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id);
+  auto task_spec = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id);
   popped_worker = worker_pool_->PopWorkerSync(task_spec, true, &status);
   // PopWorker failed and the status is `JobConfigMissing`.
   ASSERT_EQ(popped_worker, nullptr);
