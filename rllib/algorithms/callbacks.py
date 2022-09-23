@@ -665,17 +665,11 @@ class MultiCallbacks(DefaultCallbacks):
             )
 
     @override(DefaultCallbacks)
-    def on_train_result(
-        self, *, algorithm=None, result: dict, trainer=None, **kwargs
-    ) -> None:
-        if trainer is not None:
-            algorithm = trainer
+    def on_train_result(self, *, algorithm=None, result: dict, **kwargs) -> None:
 
         for callback in self._callback_list:
             # TODO: Remove `trainer` arg at some point to fully deprecate the old term.
-            callback.on_train_result(
-                algorithm=algorithm, result=result, trainer=algorithm, **kwargs
-            )
+            callback.on_train_result(algorithm=algorithm, result=result, **kwargs)
 
 
 # This Callback is used by the RE3 exploration strategy.
@@ -736,15 +730,9 @@ class RE3UpdateCallbacks(DefaultCallbacks):
             )
 
     @override(DefaultCallbacks)
-    def on_train_result(
-        self, *, result: dict, algorithm=None, trainer=None, **kwargs
-    ) -> None:
-        if trainer is not None:
-            algorithm = trainer
+    def on_train_result(self, *, result: dict, algorithm=None, **kwargs) -> None:
         # TODO(gjoliver): Remove explicit _step tracking and pass
         # trainer._iteration as a parameter to on_learn_on_batch() call.
         RE3UpdateCallbacks._step = result["training_iteration"]
         # TODO: Remove `trainer` arg at some point to fully deprecate the old term.
-        super().on_train_result(
-            algorithm=algorithm, result=result, trainer=algorithm, **kwargs
-        )
+        super().on_train_result(algorithm=algorithm, result=result, **kwargs)
