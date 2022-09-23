@@ -2381,7 +2381,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(path, "data1.csv")
     df2.to_csv(path2, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv(path, filesystem=fs)
+    ds = ray.data.read_csv(path, filesystem=fs, partitioning=None)
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
