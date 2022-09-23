@@ -1,5 +1,4 @@
 import argparse
-from concurrent.futures import process
 
 import numpy as np
 import torch
@@ -17,8 +16,6 @@ from ray.train._internal.backend_executor import BackendExecutor
 from ray.train.torch import TorchConfig
 from ray.train import TrainingIterator
 from ray.train._internal.checkpoint import CheckpointManager
-from ray.train._internal.dataset_spec import DataParallelIngestSpec
-from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train._internal.dataset_spec import RayDatasetSpec
 from ray.util.queue import Queue
 
@@ -40,15 +37,9 @@ class LinearDataset(torch.utils.data.Dataset):
 
 
 def train_func(config):
-    data_size = config.get("data_size", 1000)
-    batch_size = config.get("batch_size", 32)
     hidden_size = config.get("hidden_size", 1)
+    queue = config["queues"][session.get_local_rank()]
     lr = config.get("lr", 1e-2)
-    epochs = config.get("epochs", 3)
-
-    train_dataset = LinearDataset(2, 5, size=data_size)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
-    train_loader = train.torch.prepare_data_loader(train_loader)
     device = train.torch.get_device()
 
     pg1 = torch.distributed.new_group(list(range(session.get_world_size())))
@@ -69,28 +60,36 @@ def train_func(config):
     optimizer2 = torch.optim.SGD(model2.parameters(), lr=lr)
 
     results = []
-    for idx in range(epochs):
+    counter = 0
+    while 1:
+        data = queue.get()
+        x_s, y_s = [], []
+        for _x, _y in data:
+            x_s.append(_x)
+            y_s.append(_y)
+        X = torch.stack(x_s)
+        y = torch.stack(y_s)
+        X = X.to(device)
+        y = y.to(device)
+        # Compute prediction error
+        pred = model(X)
+        pred2 = model2(X)
+        loss = loss_fn(pred, y)
+        loss2 = loss_fn2(pred2, y)
 
-        for X, y in train_loader:
-            # Compute prediction error
-            pred = model(X)
-            pred2 = model2(X)
-            loss = loss_fn(pred, y)
-            loss2 = loss_fn2(pred2, y)
+        # Backpropagation
+        optimizer.zero_grad()
+        loss.backward()
+        model1_grad = model_grad_norm(model)
+        optimizer.step()
 
-            # Backpropagation
-            optimizer.zero_grad()
-            loss.backward()
-            model1_grad = model_grad_norm(model)
-            optimizer.step()
+        optimizer2.zero_grad()
+        loss2.backward()
+        model2_grad = model_grad_norm(model2)
+        optimizer2.step()
 
-            optimizer2.zero_grad()
-            loss2.backward()
-            model2_grad = model_grad_norm(model2)
-            optimizer2.step()
-
-        print(f"epoch: {idx}, rank: {session.get_local_rank()}, model1_grad: {model1_grad}, model2_grad: {model2_grad}")
-
+        print(f"training_step: {counter}, rank: {session.get_local_rank()}, model1_grad: {model1_grad}, model2_grad: {model2_grad}")
+        counter += 1
 
         result = {"loss" : loss.item(), "loss2" : loss2.item()}
 
@@ -103,10 +102,10 @@ def train_func(config):
 
 
 def train_linear(num_workers=2, use_gpu=True, epochs=3):
-    queue = Queue(maxsize=100)
     scaling_config = ScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
+    queues = [Queue(maxsize=1) for _ in range(num_workers)]
     backend_config = TorchConfig()
-    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs, "queue": queue}
+    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs, "queues": queues}
     train_loop_per_worker = construct_train_func(
         train_func,
         config,
@@ -141,8 +140,26 @@ def train_linear(num_workers=2, use_gpu=True, epochs=3):
         checkpoint_strategy=None,
     )
 
-    for results in training_iterator:
-        first_worker_results = results
+    data_size = config.get("data_size", 1000)
+    batch_size = config.get("batch_size", 32)
+    train_dataset_factory = lambda: LinearDataset(2, 5, size=data_size)
+    # train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
+    epochs = config.get("epochs", 3)
+
+    from ray.data.datasource import SimpleTorchDatasource
+
+    dataset = ray.data.read_datasource(
+        SimpleTorchDatasource(), parallelism=1, dataset_factory=train_dataset_factory
+    )
+    shards = dataset.repartition(num_blocks=scaling_config.num_workers).split(scaling_config.num_workers)
+
+
+    for i in range(3):
+        batches = [shard.take(batch_size) for shard in shards]
+        for queue, batch in zip(queues, batches):
+            queue.put(batch)
+        next(training_iterator)
+
 
 
 def model_grad_norm(model):
