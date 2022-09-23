@@ -102,7 +102,7 @@ def _write_multiple_blocks(
 
 # fmt: off
 # __mongo_datasource_start__
-# MongoDB datasource, for reading froma and writing to MongoDB.
+# MongoDB datasource, for reading from and writing to MongoDB.
 class MongoDatasource(Datasource):
     def create_reader(
         self, uri, database, collection, pipelines, schema, kwargs
