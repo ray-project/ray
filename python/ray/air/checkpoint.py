@@ -199,6 +199,42 @@ class Checkpoint:
         parameter, argument = self.get_internal_representation()
         return f"{self.__class__.__name__}({parameter}={argument})"
 
+    @property
+    def uri(self) -> Optional[str]:
+        """Return checkpoint URI, if available.
+
+        This will return a URI to cloud storage if this checkpoint is
+        persisted on cloud, or a local ``file://`` URI if this checkpoint
+        is persisted on local disk and available on the current node.
+
+        In all other cases, this will return None. Users can then choose to
+        persist to cloud.
+
+        Example:
+
+            .. code-block:: python
+
+                if not checkpoint.uri:
+                    uri = checkpoint.to_uri("s3://some-bucket/some-location")
+                else:
+                    uri = checkpoint.uri
+
+                print("Checkpoint is at", uri)
+
+        Returns:
+            Checkpoint URI if this URI is reachable from the current node (e.g.
+            cloud storage or locally available file URI).
+
+
+        """
+        if self._uri:
+            return self._uri
+
+        if self._local_path and Path(self._local_path).exists():
+            return "file://" + self._local_path
+
+        return None
+
     @classmethod
     def from_bytes(cls, data: bytes) -> "Checkpoint":
         """Create a checkpoint from the given byte string.
