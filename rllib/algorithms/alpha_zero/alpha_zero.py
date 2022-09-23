@@ -350,7 +350,6 @@ class AlphaZero(Algorithm):
             self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
             # Store new samples in the replay buffer
-            # Use deprecated add_batch() to support old replay buffers for now
             if self.local_replay_buffer is not None:
                 self.local_replay_buffer.add(batch)
 

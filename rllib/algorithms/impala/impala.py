@@ -876,7 +876,7 @@ class Impala(Algorithm):
             batches = ray.get(batches)
         for batch in batches:
             batch = batch.decompress_if_needed()
-            self.local_mixin_buffer.add_batch(batch)
+            self.local_mixin_buffer.add(batch)
             batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
             if batch:
                 processed_batches.append(batch)
@@ -971,7 +971,7 @@ class AggregatorWorker:
 
     def process_episodes(self, batch: SampleBatchType) -> SampleBatchType:
         batch = batch.decompress_if_needed()
-        self._mixin_buffer.add_batch(batch)
+        self._mixin_buffer.add(batch)
         processed_batches = self._mixin_buffer.replay(_ALL_POLICIES)
         return processed_batches
 
