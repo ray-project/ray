@@ -1818,7 +1818,7 @@ class DeploymentStateManager:
             ) = cloudpickle.loads(checkpoint)
 
             for deployment_tag, checkpoint_data in deployment_state_info.items():
-                if checkpoint_data.info.driver_deployment:
+                if checkpoint_data.info.is_driver_deployment:
                     deployment_state = self._create_driver_deployment_state(
                         deployment_tag
                     )
@@ -1932,7 +1932,7 @@ class DeploymentStateManager:
             del self._deleted_deployment_metadata[deployment_name]
 
         if deployment_name not in self._deployment_states:
-            if deployment_info.driver_deployment:
+            if deployment_info.is_driver_deployment:
                 self._deployment_states[
                     deployment_name
                 ] = self._create_driver_deployment_state(deployment_name)

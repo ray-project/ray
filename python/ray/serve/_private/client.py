@@ -257,7 +257,7 @@ class ServeControllerClient:
                     config=deployment["config"],
                     version=deployment["version"],
                     route_prefix=deployment["route_prefix"],
-                    driver_deployment=deployment["driver_deployment"],
+                    is_driver_deployment=deployment["is_driver_deployment"],
                 )
             )
 
@@ -430,7 +430,7 @@ class ServeControllerClient:
         config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
         version: Optional[str] = None,
         route_prefix: Optional[str] = None,
-        driver_deployment: Optional[str] = None,
+        is_driver_deployment: Optional[str] = None,
     ) -> Dict:
         """
         Takes a deployment's configuration, and returns the arguments needed
@@ -485,7 +485,7 @@ class ServeControllerClient:
             "replica_config_proto_bytes": replica_config.to_proto_bytes(),
             "route_prefix": route_prefix,
             "deployer_job_id": ray.get_runtime_context().job_id,
-            "driver_deployment": driver_deployment,
+            "is_driver_deployment": is_driver_deployment,
         }
 
         return controller_deploy_args

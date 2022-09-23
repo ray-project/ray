@@ -167,7 +167,7 @@ class DeploymentInfo:
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
         autoscaling_policy: Optional[AutoscalingPolicy] = None,
-        driver_deployment: Optional[bool] = False,
+        is_driver_deployment: Optional[bool] = False,
     ):
         self.deployment_config = deployment_config
         self.replica_config = replica_config
@@ -183,7 +183,7 @@ class DeploymentInfo:
         # ephermal state
         self._cached_actor_def = None
 
-        self.driver_deployment = driver_deployment
+        self.is_driver_deployment = is_driver_deployment
 
     def __getstate__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()

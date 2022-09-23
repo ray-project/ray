@@ -233,7 +233,7 @@ if not isinstance(serve_pb2_grpc.PredictAPIsServiceServicer, type):
 
 else:
 
-    @serve.deployment(driver_deployment=True, ray_actor_options={"num_cpus": 0})
+    @serve.deployment(is_driver_deployment=True, ray_actor_options={"num_cpus": 0})
     class DefaultgRPCDriver(gRPCIngress, serve_pb2_grpc.PredictAPIsServiceServicer):
         """
         gRPC Driver that responsible for redirecting the gRPC requests

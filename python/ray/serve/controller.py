@@ -348,7 +348,7 @@ class ServeController:
         replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
         deployer_job_id: Union["ray._raylet.JobID", bytes],
-        driver_deployment: Optional[bool] = False,
+        is_driver_deployment: Optional[bool] = False,
     ) -> bool:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
@@ -381,7 +381,7 @@ class ServeController:
             deployer_job_id=deployer_job_id,
             start_time_ms=int(time.time() * 1000),
             autoscaling_policy=autoscaling_policy,
-            driver_deployment=driver_deployment,
+            is_driver_deployment=is_driver_deployment,
         )
         # TODO(architkulkarni): When a deployment is redeployed, even if
         # the only change was num_replicas, the start_time_ms is refreshed.
