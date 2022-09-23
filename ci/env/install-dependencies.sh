@@ -31,7 +31,7 @@ install_bazel() {
       new_version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${SCRIPT_DIR}/../../python/setup.py")"
       if [[ "$current_version" == "$new_version" ]]; then
         echo "Bazel of the same version already exists, skipping the install"
-        return
+        export BAZEL_CONFIG_ONLY=1
       fi
     fi
   fi
