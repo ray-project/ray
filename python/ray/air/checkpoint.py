@@ -46,16 +46,34 @@ logger = logging.getLogger(__name__)
 @DeveloperAPI
 @dataclass
 class CheckpointMetadata:
+    """Metadata about a checkpoint.
+
+    Attributes:
+        checkpoint_type: The checkpoint class. For example, ``TorchCheckpoint``.
+        checkpoint_state: A dictionary that maps object attributes to their values. When
+            you load a serialized checkpoint, restore these values.
+    """
+
     checkpoint_type: Type["Checkpoint"]
     checkpoint_state: Dict[str, Any]
-    ray_version: str = ray.__version__
 
 
 @DeveloperAPI
 class CheckpointDict(dict):
+    """A ``dict`` that represents a checkpoint.
+
+    Args:
+        metadata: Metadata about the checkpoint that this ``dict`` represents.
+    """
+
     def __init__(self, *args, metadata: CheckpointMetadata, **kwargs):
-        self.metadata = metadata
+        self._metadata = metadata
         super().__init__(*args, **kwargs)
+
+    @property
+    def metadata(self) -> CheckpointMetadata:
+        """Metadata about the checkpoint that this ``dict`` represents."""
+        return self._metadata
 
 
 @PublicAPI(stability="beta")
@@ -270,8 +288,7 @@ class Checkpoint:
         """
         state = {}
         if isinstance(data, CheckpointDict):
-            cls._check_type_compatability(data.metadata.checkpoint_type)
-            cls = data.metadata.checkpoint_type
+            cls = cls._get_constructor_cls(data.metadata.checkpoint_type)
             state = data.metadata.checkpoint_state
 
         checkpoint = cls(data_dict=data)
@@ -415,8 +432,7 @@ class Checkpoint:
         if os.path.exists(checkpoint_metadata_path):
             with open(checkpoint_metadata_path, "rb") as file:
                 metadata = pickle.load(file)
-                cls._check_type_compatability(metadata.checkpoint_type)
-                cls = metadata.checkpoint_type
+                cls = cls._get_constructor_cls(metadata.checkpoint_type)
                 state = metadata.checkpoint_state
 
         checkpoint = cls(local_path=path)
@@ -443,15 +459,6 @@ class Checkpoint:
             uri=other._uri,
             obj_ref=other._obj_ref,
         )
-
-    @classmethod
-    def _check_type_compatability(cls, serialized_type: Type["Checkpoint"]):
-        if not issubclass(serialized_type, cls):
-            raise ValueError(
-                "The checkpoint data you passed in was created by a "
-                f"`{serialized_type.__name__}` object, but "
-                f"`{serialized_type.__name__}` isn't compatible with `{cls.__name__}`."
-            )
 
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir."""
@@ -640,8 +647,7 @@ class Checkpoint:
         try:
             checkpoint_metadata_uri = os.path.join(uri, _CHECKPOINT_METADATA_FILE_NAME)
             metadata = pickle.loads(read_file_from_uri(checkpoint_metadata_uri))
-            cls._check_type_compatability(metadata.checkpoint_type)
-            cls = metadata.checkpoint_type
+            cls = cls._get_constructor_cls(metadata.checkpoint_type)
             state = metadata.checkpoint_state
         except FileNotFoundError:
             pass
@@ -746,6 +752,24 @@ class Checkpoint:
                 preprocessor = load_preprocessor_from_dir(checkpoint_path)
 
         return preprocessor
+
+    @classmethod
+    def _get_constructor_cls(
+        cls, serialized_cls: Type["Checkpoint"]
+    ) -> Type["Checkpoint"]:
+        """Return the class that's a subclass of the other class, if one exists.
+
+        Raises:
+            ValueError: If neither class is a subclass of the other.
+        """
+        if issubclass(cls, serialized_cls):
+            return cls
+        if issubclass(serialized_cls, cls):
+            return serialized_cls
+        raise ValueError(
+            f"You're trying to load a serialized `{serialized_cls.__name__}`, but "
+            f"`{serialized_cls.__name__}` isn't compatible with `{cls.__name__}`."
+        )
 
 
 def _get_local_path(path: Optional[str]) -> Optional[str]:
