@@ -1763,7 +1763,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
+    prepare: ray stop 
     script: python workloads/actor_deaths.py
     long_running: true
     type: sdk_command
@@ -1853,7 +1853,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
+    prepare: ray stop 
     script: python workloads/many_actor_tasks.py
     long_running: true
     type: sdk_command
@@ -1882,7 +1882,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
+    prepare: ray stop 
     script: python workloads/many_drivers.py --iteration-num=4000
     long_running: true
     type: sdk_command
@@ -1945,7 +1945,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
+    prepare: ray stop 
     script: python workloads/many_tasks.py
     long_running: true
     type: sdk_command
@@ -1974,7 +1974,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
+    prepare: ray stop 
     script: python workloads/many_tasks_serialized_ids.py
     long_running: true
     type: sdk_command
@@ -2003,7 +2003,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
+    prepare: ray stop 
     script: python workloads/node_failures.py
     long_running: true
     type: sdk_command
@@ -2094,7 +2094,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
+    prepare: ray stop 
     script: python workloads/serve_failure.py
     long_running: true
     type: sdk_command
@@ -3563,6 +3563,8 @@
 
     run:
       timeout: 3600
+      wait_for_nodes:
+        num_nodes: 5
       script: python stress_tests/test_state_api_scale.py --smoke-test
 
 
@@ -4194,6 +4196,23 @@
     script: python data_ingest_benchmark.py --dataset-size-gb=200 --num-workers=20 --streaming
     wait_for_nodes:
       num_nodes: 20
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: aggregate_benchmark
+  group: core-dataset-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: multi
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: aggregate_benchmark_compute.yaml
+
+  run:
+    timeout: 1800
+    script: python aggregate_benchmark.py
 
     type: sdk_command
     file_manager: sdk
