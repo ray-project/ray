@@ -4,6 +4,8 @@
 # __read_single_query_start__
 from ray.data.block import Block
 
+# This connects to MongoDB, executes the query against it, converts the result into
+# Arrow format and returns the result as a Block.
 def _read_single_query(uri, database, collection, query, schema, kwargs) -> Block:
     import pymongo
     from pymongoarrow.api import aggregate_arrow_all
@@ -22,6 +24,8 @@ from ray.data.datasource.datasource import Datasource, Reader, ReadTask
 from ray.data.block import BlockMetadata
 
 class _MongoDatasourceReader(Reader):
+    # This is constructed by the MongoDatasource, which will supply these args
+    # about MongoDB.
     def __init__(self, uri, database, collection, pipelines, schema, kwargs):
         self._uri = uri
         self._database = database
@@ -30,14 +34,18 @@ class _MongoDatasourceReader(Reader):
         self._schema = schema
         self._kwargs = kwargs
 
+    # Create a list of ``ReadTask``, one for each query (i.e. pipeline in MongoDB's
+    # specific context). Those tasks will be executed in parallel.
+    # The ``parallelism`` which is supposed to indicate how many ``ReadTask`` to
+    # return will have no effect here, since we map each query into a ``ReadTask``.
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         read_tasks: List[ReadTask] = []
         for pipeline in self._pipelines:
             metadata = BlockMetadata(
                 num_rows=None,
                 size_bytes=None,
-                schema=None,
-                input_files=None,
+                schema=self._schema,
+                input_files=pipeline,
                 exec_stats=None,
             )
             read_task = ReadTask(
@@ -57,6 +65,7 @@ class _MongoDatasourceReader(Reader):
 
 # fmt: off
 # __write_single_block_start__
+# This connects to MongoDB and writes a block into it.
 def _write_single_block(uri, database, collection, block: Block):
     import pymongo
     from pymongoarrow.api import write
@@ -71,6 +80,8 @@ def _write_single_block(uri, database, collection, block: Block):
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.types import ObjectRef
 
+# This writes a list of blocks into MongoDB. Each block is handled by a task and tasks
+# are executed in parallel.
 def _write_multiple_blocks(
     self,
     blocks: List[ObjectRef[Block]],
@@ -91,6 +102,7 @@ def _write_multiple_blocks(
 
 # fmt: off
 # __mongo_datasource_start__
+# MongoDB datasource, for reading froma and writing to MongoDB.
 class MongoDatasource(Datasource):
     def create_reader(
         self, uri, database, collection, pipelines, schema, kwargs

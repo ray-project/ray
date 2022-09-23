@@ -4,7 +4,7 @@
 Supporting Custom Datasource
 ============================
 
-Ray Datasets supports a wide range of `input formats <https://docs.ray.io/en/latest/data/dataset.html#supported-input-formats>`__ 
+Ray Datasets supports multiple ways to :ref:`create Datasets <creating_datasets>`
 so you can easily read from those data sources and create Dataset. However, if the 
 datasource you want to read from is not in the list, don't worry, you can implement 
 a custom one for your use case. In this guide, we will walk you through how to build 
@@ -89,6 +89,7 @@ any other data sources!
 .. code-block:: python
 
     # Read from MongoDB datasource.
+    # The args are passed to MongoDatasource.create_reader().
     ds = ray.data.read_datasource(
         MongoDatasource(),
         uri=MY_URI, database=MY_DATABASE,
@@ -99,6 +100,7 @@ any other data sources!
     # ....
 
     # Write to MongoDB datasource.
+    # The args are passed to MongoDatasource.do_write().
     ds.write_datasource(
         MongoDatasource(), uri=MY_URI, database=MY_DATABASE, collection=MY_COLLECTION
     )
