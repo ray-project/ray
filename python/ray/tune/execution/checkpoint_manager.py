@@ -99,9 +99,13 @@ class _CheckpointManager(CommonCheckpointManager):
         )
 
     @property
-    def checkpoint(self):
-        """Returns the newest checkpoint."""
-        checkpoints = [self.newest_memory_checkpoint, self.newest_persistent_checkpoint]
+    def newest_checkpoint(self):
+        """Returns the newest checkpoint.
+
+        Prefers the persistent checkpoint over the memory checkpoint when
+        checkpoint id's are equal.
+        """
+        checkpoints = [self.newest_persistent_checkpoint, self.newest_memory_checkpoint]
         newest_checkpoint = max(checkpoints, key=lambda c: c.id)
         return newest_checkpoint
 

@@ -502,7 +502,7 @@ class Trial:
         if self.status == Trial.ERROR:
             checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
         else:
-            checkpoint = self.checkpoint_manager.checkpoint
+            checkpoint = self.checkpoint_manager.newest_checkpoint
         if checkpoint.dir_or_data is None:
             checkpoint = _TrackedCheckpoint(
                 dir_or_data=self.restore_path,
