@@ -18,8 +18,7 @@
 
 namespace ray {
 
-class CounterTest : public ::testing::Test {
-};
+class CounterTest : public ::testing::Test {};
 
 TEST_F(CounterTest, TestBasic) {
   auto c = Counter<std::string>();
@@ -52,10 +51,10 @@ TEST_F(CounterTest, TestCallback) {
   int num_calls = 0;
   std::string last_call_key;
   int64_t last_call_value;
-  c.SetOnChangeCallback([&](const std::string& key, int64_t value) mutable {
-      num_calls += 1;
-      last_call_key = key;
-      last_call_value = value;
+  c.SetOnChangeCallback([&](const std::string &key, int64_t value) mutable {
+    num_calls += 1;
+    last_call_key = key;
+    last_call_value = value;
   });
 
   c.Increment("k1");
@@ -90,13 +89,13 @@ TEST_F(CounterTest, TestIterate) {
   c.Increment("k1");
   c.Increment("k1");
   c.Increment("k2");
-  c.ForEachEntry([&](const std::string& key, int64_t value) mutable {
-      num_keys += 1;
-      if (key == "k1") {
-        EXPECT_EQ(value, 2);
-      } else {
-        EXPECT_EQ(value, 1);
-      }
+  c.ForEachEntry([&](const std::string &key, int64_t value) mutable {
+    num_keys += 1;
+    if (key == "k1") {
+      EXPECT_EQ(value, 2);
+    } else {
+      EXPECT_EQ(value, 1);
+    }
   });
   EXPECT_EQ(num_keys, 2);
 }

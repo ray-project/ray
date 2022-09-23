@@ -23,7 +23,8 @@
 ///
 /// This container implements counter behavior on top of an absl hash table. Counter
 /// entries will be automatically cleaned up when they fall back to zero. Counter
-/// entries are not allowed to be negative.
+/// entries are not allowed to be negative. A callback can be set to run when any
+/// counter entry changes.
 ///
 /// For example, this can be used to track the number of running tasks broken down
 /// by their function name, or track the number of tasks by (name, state) pairs.
