@@ -157,11 +157,13 @@ class MultiAgentEnv(gym.Env):
                     )
             return True
 
-        logger.warning("observation_space_contains() of {} has not been implemented. "
-                       "You "
-                       "can either implement it yourself or bring the observation "
-                       "space into the preferred format of a mapping from agent ids "
-                       "to their individual observation spaces. ".format(self))
+        logger.warning(
+            "observation_space_contains() of {} has not been implemented. "
+            "You "
+            "can either implement it yourself or bring the observation "
+            "space into the preferred format of a mapping from agent ids "
+            "to their individual observation spaces. ".format(self)
+        )
         return True
 
     @ExperimentalAPI
@@ -190,7 +192,8 @@ class MultiAgentEnv(gym.Env):
                 "You "
                 "can either implement it yourself or bring the observation "
                 "space into the preferred format of a mapping from agent ids "
-                "to their individual observation spaces. ".format(self))
+                "to their individual observation spaces. ".format(self)
+            )
         return True
 
     @ExperimentalAPI
@@ -227,7 +230,8 @@ class MultiAgentEnv(gym.Env):
             "You "
             "can either implement it yourself or bring the observation "
             "space into the preferred format of a mapping from agent ids "
-            "to their individual observation spaces. ".format(self))
+            "to their individual observation spaces. ".format(self)
+        )
         return {}
 
     @ExperimentalAPI
@@ -264,7 +268,8 @@ class MultiAgentEnv(gym.Env):
                 "You "
                 "can either implement it yourself or bring the observation "
                 "space into the preferred format of a mapping from agent ids "
-                "to their individual observation spaces. ".format(self))
+                "to their individual observation spaces. ".format(self)
+            )
         return {}
 
     @PublicAPI
