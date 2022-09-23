@@ -154,12 +154,3 @@ class A3CTorchPolicy(
         self, optimizer: "torch.optim.Optimizer", loss: TensorType
     ) -> Dict[str, TensorType]:
         return apply_grad_clipping(self, optimizer, loss)
-
-
-@Deprecated(
-    old="rllib.algorithms.a3c.a3c_torch_policy.add_advantages",
-    new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
-    error=True,
-)
-def add_advantages(*args, **kwargs):
-    pass

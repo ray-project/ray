@@ -257,7 +257,7 @@ def validate_buffer_config(config: dict) -> None:
         deprecation_warning(
             old="config['multiagent']['replay_mode']",
             help="config['replay_buffer_config']['replay_mode']",
-            error=False,
+            error=True,
         )
         config["replay_buffer_config"]["replay_mode"] = replay_mode
 
@@ -270,7 +270,7 @@ def validate_buffer_config(config: dict) -> None:
             old="config['learning_starts'] or"
             "config['replay_buffer_config']['learning_starts']",
             help="config['num_steps_sampled_before_learning_starts']",
-            error=False,
+            error=True,
         )
         config["num_steps_sampled_before_learning_starts"] = learning_starts
 
@@ -287,7 +287,7 @@ def validate_buffer_config(config: dict) -> None:
             help="Replay sequence length specified at new "
             "location config['replay_buffer_config']["
             "'replay_sequence_length'] will be overwritten.",
-            error=False,
+            error=True,
         )
 
     replay_buffer_config = config["replay_buffer_config"]

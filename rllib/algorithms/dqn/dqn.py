@@ -455,7 +455,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.dqn.dqn.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.dqn.dqn.DQNConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)
@@ -464,6 +464,6 @@ class _deprecated_default_config(dict):
 DEFAULT_CONFIG = _deprecated_default_config()
 
 
-@Deprecated(new="Sub-class directly from `DQN` and override its methods", error=False)
+@Deprecated(new="Sub-class directly from `DQN` and override its methods", error=True)
 class GenericOffPolicyTrainer(SimpleQ):
     pass

@@ -604,7 +604,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.mbmpo.mbmpo.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.mbmpo.mbmpo.MBMPOConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

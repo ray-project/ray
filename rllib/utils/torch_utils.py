@@ -76,13 +76,10 @@ def apply_grad_clipping(
 
 
 @Deprecated(
-    old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=False
+    old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True
 )
 def atanh(x: TensorType) -> TensorType:
-    """Atanh function for PyTorch."""
-    return 0.5 * torch.log(
-        (1 + x).clamp(min=SMALL_NUMBER) / (1 - x).clamp(min=SMALL_NUMBER)
-    )
+    pass
 
 
 @PublicAPI
@@ -114,32 +111,9 @@ def concat_multi_gpu_td_errors(
     }
 
 
-@Deprecated(new="ray/rllib/utils/numpy.py::convert_to_numpy", error=False)
+@Deprecated(new="ray/rllib/utils/numpy.py::convert_to_numpy", error=True)
 def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
-    """Converts values in `stats` to non-Tensor numpy or python types.
-
-    Args:
-        stats: Any (possibly nested) struct, the values in which will be
-            converted and returned as a new struct with all torch tensors
-            being converted to numpy types.
-
-    Returns:
-        Any: A new struct with the same structure as `stats`, but with all
-            values converted to non-torch Tensor types.
-    """
-
-    # The mapping function used to numpyize torch Tensors.
-    def mapping(item):
-        if isinstance(item, torch.Tensor):
-            return (
-                item.cpu().item()
-                if len(item.size()) == 0
-                else item.detach().cpu().numpy()
-            )
-        else:
-            return item
-
-    return tree.map_structure(mapping, stats)
+    pass
 
 
 @PublicAPI

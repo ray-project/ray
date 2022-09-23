@@ -505,7 +505,7 @@ class Impala(Algorithm):
 
         if config["num_data_loader_buffers"] != DEPRECATED_VALUE:
             deprecation_warning(
-                "num_data_loader_buffers", "num_multi_gpu_tower_stacks", error=False
+                "num_data_loader_buffers", "num_multi_gpu_tower_stacks", error=True
             )
             config["num_multi_gpu_tower_stacks"] = config["num_data_loader_buffers"]
 
@@ -996,7 +996,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.impala.impala::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.impala.impala::IMPALAConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

@@ -186,12 +186,3 @@ def get_a3c_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
 
 A3CTF1Policy = get_a3c_tf_policy("A3CTF1Policy", DynamicTFPolicyV2)
 A3CTF2Policy = get_a3c_tf_policy("A3CTF2Policy", EagerTFPolicyV2)
-
-
-@Deprecated(
-    old="rllib.algorithms.a3c.a3c_tf_policy.postprocess_advantages",
-    new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
-    error=True,
-)
-def postprocess_advantages(*args, **kwargs):
-    pass
