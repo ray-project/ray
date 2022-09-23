@@ -29,28 +29,6 @@ class TestAlgorithm(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_validate_config_idempotent(self):
-        """
-        Asserts that validate_config run multiple
-        times on COMMON_CONFIG will be idempotent
-        """
-        # Given:
-        standard_config = copy.deepcopy(COMMON_CONFIG)
-        algo = pg.PG(env="CartPole-v0", config=standard_config)
-
-        # When (we validate config 2 times).
-        # Try deprecated `Algorithm._validate_config()` method (static).
-        algo._validate_config(standard_config, algo)
-        config_v1 = copy.deepcopy(standard_config)
-        # Try new method: `Algorithm.validate_config()` (non-static).
-        algo.validate_config(standard_config)
-        config_v2 = copy.deepcopy(standard_config)
-
-        # Make sure nothing changed.
-        self.assertEqual(config_v1, config_v2)
-
-        algo.stop()
-
     def test_add_delete_policy(self):
         config = pg.DEFAULT_CONFIG.copy()
         config.update(
