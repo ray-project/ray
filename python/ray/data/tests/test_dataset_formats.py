@@ -1,5 +1,4 @@
 import os
-from io import BytesIO
 from typing import Any, Dict, List, Union
 
 import pandas as pd
@@ -8,23 +7,15 @@ import pyarrow.parquet as pq
 import pytest
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 
-import requests
-import snappy
 from fsspec.implementations.local import LocalFileSystem
 from fsspec.implementations.http import HTTPFileSystem
 
 import ray
-from ray.data.tests.util import gen_bin_files, Counter
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource import (
-    BaseFileMetadataProvider,
     Datasource,
     DummyOutputDatasource,
-    FastFileMetadataProvider,
-    PartitionStyle,
-    PathPartitionEncoder,
-    PathPartitionFilter,
     SimpleTensorFlowDatasource,
     SimpleTorchDatasource,
     WriteResult,
@@ -176,253 +167,6 @@ def test_read_example_data(ray_start_regular_shared, tmp_path):
     ]
 
 
-def test_read_binary_files(ray_start_regular_shared):
-    with gen_bin_files(10) as (_, paths):
-        ds = ray.data.read_binary_files(paths, parallelism=10)
-        for i, item in enumerate(ds.iter_rows()):
-            expected = open(paths[i], "rb").read()
-            assert expected == item
-        # Test metadata ops.
-        assert ds.count() == 10
-        assert "bytes" in str(ds.schema()), ds
-        assert "bytes" in str(ds), ds
-
-
-def test_read_binary_files_with_fs(ray_start_regular_shared):
-    with gen_bin_files(10) as (tempdir, paths):
-        # All the paths are absolute, so we want the root file system.
-        fs, _ = pa.fs.FileSystem.from_uri("/")
-        ds = ray.data.read_binary_files(paths, filesystem=fs, parallelism=10)
-        for i, item in enumerate(ds.iter_rows()):
-            expected = open(paths[i], "rb").read()
-            assert expected == item
-
-
-def test_read_binary_files_with_paths(ray_start_regular_shared):
-    with gen_bin_files(10) as (_, paths):
-        ds = ray.data.read_binary_files(paths, include_paths=True, parallelism=10)
-        for i, (path, item) in enumerate(ds.iter_rows()):
-            assert path == paths[i]
-            expected = open(paths[i], "rb").read()
-            assert expected == item
-
-
-# TODO(Clark): Hitting S3 in CI is currently broken due to some AWS
-# credentials issue, unskip this test once that's fixed or once ported to moto.
-@pytest.mark.skip(reason="Shouldn't hit S3 in CI")
-def test_read_binary_files_s3(ray_start_regular_shared):
-    ds = ray.data.read_binary_files(["s3://anyscale-data/small-files/0.dat"])
-    item = ds.take(1).pop()
-    expected = requests.get(
-        "https://anyscale-data.s3.us-west-2.amazonaws.com/small-files/0.dat"
-    ).content
-    assert item == expected
-
-
-def test_read_text(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "test_text")
-    os.mkdir(path)
-    with open(os.path.join(path, "file1.txt"), "w") as f:
-        f.write("hello\n")
-        f.write("world")
-    with open(os.path.join(path, "file2.txt"), "w") as f:
-        f.write("goodbye")
-    with open(os.path.join(path, "file3.txt"), "w") as f:
-        f.write("ray\n")
-    ds = ray.data.read_text(path)
-    assert sorted(ds.take()) == ["goodbye", "hello", "ray", "world"]
-    ds = ray.data.read_text(path, drop_empty_lines=False)
-    assert ds.count() == 5
-
-
-def test_read_text_meta_provider(
-    ray_start_regular_shared,
-    tmp_path,
-):
-    path = os.path.join(tmp_path, "test_text")
-    os.mkdir(path)
-    path = os.path.join(path, "file1.txt")
-    with open(path, "w") as f:
-        f.write("hello\n")
-        f.write("world\n")
-        f.write("goodbye\n")
-        f.write("ray\n")
-    ds = ray.data.read_text(path, meta_provider=FastFileMetadataProvider())
-    assert sorted(ds.take()) == ["goodbye", "hello", "ray", "world"]
-    ds = ray.data.read_text(path, drop_empty_lines=False)
-    assert ds.count() == 5
-
-    with pytest.raises(NotImplementedError):
-        ray.data.read_text(
-            path,
-            meta_provider=BaseFileMetadataProvider(),
-        )
-
-
-def test_read_text_partitioned_with_filter(
-    ray_start_regular_shared,
-    tmp_path,
-    write_base_partitioned_df,
-    assert_base_partitioned_ds,
-):
-    def df_to_text(dataframe, path, **kwargs):
-        dataframe.to_string(path, index=False, header=False, **kwargs)
-
-    partition_keys = ["one"]
-    kept_file_counter = Counter.remote()
-    skipped_file_counter = Counter.remote()
-
-    def skip_unpartitioned(kv_dict):
-        keep = bool(kv_dict)
-        counter = kept_file_counter if keep else skipped_file_counter
-        ray.get(counter.increment.remote())
-        return keep
-
-    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
-        base_dir = os.path.join(tmp_path, style.value)
-        partition_path_encoder = PathPartitionEncoder.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-        )
-        write_base_partitioned_df(
-            partition_keys,
-            partition_path_encoder,
-            df_to_text,
-        )
-        df_to_text(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.txt"))
-        partition_path_filter = PathPartitionFilter.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filter_fn=skip_unpartitioned,
-        )
-        ds = ray.data.read_text(base_dir, partition_filter=partition_path_filter)
-        assert_base_partitioned_ds(
-            ds,
-            schema="<class 'str'>",
-            num_computed=None,
-            sorted_values=["1 a", "1 b", "1 c", "3 e", "3 f", "3 g"],
-            ds_take_transform_fn=lambda t: t,
-        )
-        assert ray.get(kept_file_counter.get.remote()) == 2
-        assert ray.get(skipped_file_counter.get.remote()) == 1
-        ray.get(kept_file_counter.reset.remote())
-        ray.get(skipped_file_counter.reset.remote())
-
-
-def test_read_binary_snappy(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "test_binary_snappy")
-    os.mkdir(path)
-    with open(os.path.join(path, "file"), "wb") as f:
-        byte_str = "hello, world".encode()
-        bytes = BytesIO(byte_str)
-        snappy.stream_compress(bytes, f)
-    ds = ray.data.read_binary_files(
-        path,
-        arrow_open_stream_args=dict(compression="snappy"),
-    )
-    assert sorted(ds.take()) == [byte_str]
-
-
-def test_read_binary_snappy_inferred(ray_start_regular_shared, tmp_path):
-    path = os.path.join(tmp_path, "test_binary_snappy_inferred")
-    os.mkdir(path)
-    with open(os.path.join(path, "file.snappy"), "wb") as f:
-        byte_str = "hello, world".encode()
-        bytes = BytesIO(byte_str)
-        snappy.stream_compress(bytes, f)
-    ds = ray.data.read_binary_files(path)
-    assert sorted(ds.take()) == [byte_str]
-
-
-def test_read_binary_meta_provider(
-    ray_start_regular_shared,
-    tmp_path,
-):
-    path = os.path.join(tmp_path, "test_binary_snappy")
-    os.mkdir(path)
-    path = os.path.join(path, "file")
-    with open(path, "wb") as f:
-        byte_str = "hello, world".encode()
-        bytes = BytesIO(byte_str)
-        snappy.stream_compress(bytes, f)
-    ds = ray.data.read_binary_files(
-        path,
-        arrow_open_stream_args=dict(compression="snappy"),
-        meta_provider=FastFileMetadataProvider(),
-    )
-    assert sorted(ds.take()) == [byte_str]
-
-    with pytest.raises(NotImplementedError):
-        ray.data.read_binary_files(
-            path,
-            meta_provider=BaseFileMetadataProvider(),
-        )
-
-
-def test_read_binary_snappy_partitioned_with_filter(
-    ray_start_regular_shared,
-    tmp_path,
-    write_base_partitioned_df,
-    assert_base_partitioned_ds,
-):
-    def df_to_binary(dataframe, path, **kwargs):
-        with open(path, "wb") as f:
-            df_string = dataframe.to_string(index=False, header=False, **kwargs)
-            byte_str = df_string.encode()
-            bytes = BytesIO(byte_str)
-            snappy.stream_compress(bytes, f)
-
-    partition_keys = ["one"]
-    kept_file_counter = Counter.remote()
-    skipped_file_counter = Counter.remote()
-
-    def skip_unpartitioned(kv_dict):
-        keep = bool(kv_dict)
-        counter = kept_file_counter if keep else skipped_file_counter
-        ray.get(counter.increment.remote())
-        return keep
-
-    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
-        base_dir = os.path.join(tmp_path, style.value)
-        partition_path_encoder = PathPartitionEncoder.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-        )
-        write_base_partitioned_df(
-            partition_keys,
-            partition_path_encoder,
-            df_to_binary,
-        )
-        df_to_binary(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.snappy"))
-        partition_path_filter = PathPartitionFilter.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filter_fn=skip_unpartitioned,
-        )
-        ds = ray.data.read_binary_files(
-            base_dir,
-            partition_filter=partition_path_filter,
-            arrow_open_stream_args=dict(compression="snappy"),
-        )
-        assert_base_partitioned_ds(
-            ds,
-            count=2,
-            num_rows=2,
-            schema="<class 'bytes'>",
-            num_computed=None,
-            sorted_values=[b"1 a\n1 b\n1 c", b"3 e\n3 f\n3 g"],
-            ds_take_transform_fn=lambda t: t,
-        )
-        assert ray.get(kept_file_counter.get.remote()) == 2
-        assert ray.get(skipped_file_counter.get.remote()) == 1
-        ray.get(kept_file_counter.reset.remote())
-        ray.get(skipped_file_counter.reset.remote())
-
-
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_write_datasource(ray_start_regular_shared, pipelined):
     output = DummyOutputDatasource()
@@ -493,7 +237,7 @@ def test_torch_datasource(ray_start_regular_shared, local_path):
     assert actual_data == expected_data
 
 
-def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
+def test_torch_datasource_value_error(shutdown_only, local_path):
     import torchvision
 
     dataset = torchvision.datasets.MNIST(local_path, download=True)
