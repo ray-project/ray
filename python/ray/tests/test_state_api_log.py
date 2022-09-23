@@ -28,7 +28,7 @@ from ray.experimental.state.common import GetLogOptions
 from ray.experimental.state.exception import DataSourceUnavailable
 from ray.experimental.state.state_manager import StateDataSourceClient
 
-if sys.version_info > (3, 7, 0):
+if sys.version_info >= (3, 8, 0):
     from unittest.mock import AsyncMock
 else:
     from asyncmock import AsyncMock

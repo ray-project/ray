@@ -43,7 +43,7 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
         )
 
         checkpoint_path = os.popen(
-            "ls {}/default/*/checkpoint_000001/checkpoint-1".format(tmp_dir)
+            "ls {}/default/*/checkpoint_000001/state.pkl".format(tmp_dir)
         ).read()[:-1]
         if not os.path.exists(checkpoint_path):
             sys.exit(1)
@@ -189,7 +189,10 @@ def learn_test_multi_agent_plus_evaluate(algo):
         ).fit()
 
         # Find last checkpoint and use that for the rollout.
-        best_checkpoint = results.get_best_result().checkpoint
+        best_checkpoint = results.get_best_result(
+            metric="episode_reward_mean",
+            mode="max",
+        ).checkpoint
 
         ray.shutdown()
 

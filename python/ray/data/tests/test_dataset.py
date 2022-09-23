@@ -391,6 +391,51 @@ def test_batch_tensors(ray_start_regular_shared):
     assert df.to_dict().keys() == {"value"}
 
 
+def test_arrow_block_select():
+    df = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13], "three": [14, 15, 16]})
+    table = pa.Table.from_pandas(df)
+    block_accessor = BlockAccessor.for_block(table)
+
+    block = block_accessor.select(["two"])
+    assert block.schema == pa.schema([("two", pa.int64())])
+    assert block.to_pandas().equals(df[["two"]])
+
+    block = block_accessor.select(["two", "one"])
+    assert block.schema == pa.schema([("two", pa.int64()), ("one", pa.int64())])
+    assert block.to_pandas().equals(df[["two", "one"]])
+
+    with pytest.raises(ValueError):
+        block = block_accessor.select([lambda x: x % 3, "two"])
+
+
+def test_pandas_block_select():
+    df = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13], "three": [14, 15, 16]})
+    block_accessor = BlockAccessor.for_block(df)
+
+    block = block_accessor.select(["two"])
+    assert block.equals(df[["two"]])
+
+    block = block_accessor.select(["two", "one"])
+    assert block.equals(df[["two", "one"]])
+
+    with pytest.raises(ValueError):
+        block = block_accessor.select([lambda x: x % 3, "two"])
+
+
+def test_simple_block_select():
+    xs = list(range(100))
+    block_accessor = BlockAccessor.for_block(xs)
+
+    block = block_accessor.select([lambda x: x % 3])
+    assert block == [x % 3 for x in xs]
+
+    with pytest.raises(ValueError):
+        block = block_accessor.select(["foo"])
+
+    with pytest.raises(ValueError):
+        block = block_accessor.select([])
+
+
 def test_arrow_block_slice_copy():
     # Test that ArrowBlock slicing properly copies the underlying Arrow
     # table.
@@ -2524,14 +2569,46 @@ def test_from_dask(ray_start_regular_shared):
     assert df.equals(dfds)
 
 
-def test_to_dask(ray_start_regular_shared):
+@pytest.mark.parametrize("ds_format", ["pandas", "arrow"])
+def test_to_dask(ray_start_regular_shared, ds_format):
     from ray.util.dask import ray_dask_get
 
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
+    if ds_format == "arrow":
+        ds = ds.map_batches(lambda df: df, batch_format="pyarrow", batch_size=None)
     ddf = ds.to_dask()
+    meta = ddf._meta
+    # Check metadata.
+    assert isinstance(meta, pd.DataFrame)
+    assert meta.empty
+    assert list(meta.columns) == ["one", "two"]
+    assert list(meta.dtypes) == [np.int64, object]
+    # Explicit Dask-on-Ray
+    assert df.equals(ddf.compute(scheduler=ray_dask_get))
+    # Implicit Dask-on-Ray.
+    assert df.equals(ddf.compute())
+
+    # Explicit metadata.
+    df1["two"] = df1["two"].astype(pd.StringDtype())
+    df2["two"] = df2["two"].astype(pd.StringDtype())
+    df = pd.concat([df1, df2])
+    ds = ray.data.from_pandas([df1, df2])
+    if ds_format == "arrow":
+        ds = ds.map_batches(lambda df: df, batch_format="pyarrow", batch_size=None)
+    ddf = ds.to_dask(
+        meta=pd.DataFrame(
+            {"one": pd.Series(dtype=np.int16), "two": pd.Series(dtype=pd.StringDtype())}
+        ),
+    )
+    meta = ddf._meta
+    # Check metadata.
+    assert isinstance(meta, pd.DataFrame)
+    assert meta.empty
+    assert list(meta.columns) == ["one", "two"]
+    assert list(meta.dtypes) == [np.int16, pd.StringDtype()]
     # Explicit Dask-on-Ray
     assert df.equals(ddf.compute(scheduler=ray_dask_get))
     # Implicit Dask-on-Ray.

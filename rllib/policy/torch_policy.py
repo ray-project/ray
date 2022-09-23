@@ -732,7 +732,6 @@ class TorchPolicy(Policy):
     @override(Policy)
     @DeveloperAPI
     def get_state(self) -> PolicyState:
-        # Legacy Policy state (w/o torch.nn.Module and w/o PolicySpec).
         state = super().get_state()
 
         state["_optimizer_variables"] = []
@@ -757,7 +756,7 @@ class TorchPolicy(Policy):
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
 
-        # Restore glbal timestep.
+        # Restore global timestep.
         self.global_timestep = state["global_timestep"]
 
         # Then the Policy's (NN) weights and connectors.
@@ -1023,6 +1022,7 @@ class TorchPolicy(Policy):
             extra_fetches[SampleBatch.ACTION_LOGP] = logp
 
         # Update our global timestep by the batch size.
+        print(f"increasing global_timestep by {len(input_dict[SampleBatch.CUR_OBS])}")
         self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
 
         return convert_to_numpy((actions, state_out, extra_fetches))

@@ -146,12 +146,15 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             shared_ptr[CRayObject] *return_object)
         CRayStatus SealReturnObject(
             const CObjectID& return_id,
-            shared_ptr[CRayObject] return_object
+            shared_ptr[CRayObject] return_object,
+            const CObjectID& generator_id
         )
         c_bool PinExistingReturnObject(
             const CObjectID& return_id,
-            shared_ptr[CRayObject] *return_object
+            shared_ptr[CRayObject] *return_object,
+            const CObjectID& generator_id
         )
+        CObjectID AllocateDynamicReturnId()
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
@@ -217,6 +220,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
                              const unique_ptr[CAddress] &owner_address)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
+                                const CObjectID &generator_id,
                                 const unique_ptr[CAddress] &owner_address)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)
@@ -280,16 +284,17 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string stdout_file
         c_string stderr_file
         (CRayStatus(
+            const CAddress &caller_address,
             CTaskType task_type,
             const c_string name,
             const CRayFunction &ray_function,
             const unordered_map[c_string, double] &resources,
             const c_vector[shared_ptr[CRayObject]] &args,
             const c_vector[CObjectReference] &arg_refs,
-            const c_vector[CObjectID] &return_ids,
             const c_string debugger_breakpoint,
             const c_string serialized_retry_exception_allowlist,
-            c_vector[shared_ptr[CRayObject]] *returns,
+            c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
+            c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
             shared_ptr[LocalMemoryBuffer]
             &creation_task_exception_pb_bytes,
             c_bool *is_retryable_error,

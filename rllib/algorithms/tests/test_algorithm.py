@@ -53,13 +53,16 @@ class TestAlgorithm(unittest.TestCase):
 
     def test_add_delete_policy(self):
         config = pg.PGConfig()
-        config.environment(env=MultiAgentCartPole, env_config={
-            "config": {
-                "num_agents": 4,
+        config.environment(
+            env=MultiAgentCartPole,
+            env_config={
+                "config": {
+                    "num_agents": 4,
+                },
             },
-        }).rollouts(
-            num_rollout_workers=2, rollout_fragment_length=50
-        ).resources(num_cpus_per_worker=0.1).training(
+        ).rollouts(num_rollout_workers=2, rollout_fragment_length=50).resources(
+            num_cpus_per_worker=0.1
+        ).training(
             train_batch_size=100,
         ).multi_agent(
             # Start with a single policy.
@@ -68,14 +71,19 @@ class TestAlgorithm(unittest.TestCase):
             # And only two policies that can be stored in memory at a
             # time.
             policy_map_capacity=2,
-        ).evaluation(evaluation_num_workers=1, evaluation_config={
-            "num_cpus_per_worker": 0.1,
-        })
+        ).evaluation(
+            evaluation_num_workers=1,
+            evaluation_config={
+                "num_cpus_per_worker": 0.1,
+            },
+        )
         # Don't override existing model settings.
-        config.model.update({
-            "fcnet_hiddens": [5],
-            "fcnet_activation": "linear",
-        })
+        config.model.update(
+            {
+                "fcnet_hiddens": [5],
+                "fcnet_activation": "linear",
+            }
+        )
 
         obs_space = gym.spaces.Box(-2.0, 2.0, (4,))
         act_space = gym.spaces.Discrete(2)
@@ -173,6 +181,34 @@ class TestAlgorithm(unittest.TestCase):
                 )
                 self.assertTrue(pol0.action_space.contains(a))
                 test.stop()
+
+                # After having added 2 policies, try to restore the Algorithm,
+                # but only with 1 of the originally added policies (plus the initial
+                # p0).
+                if i == 2:
+                    test2 = pg.PG.from_checkpoint(checkpoint, policies=["p0", "p2"])
+
+                    # Make sure evaluation workers have the same policies.
+                    def _has_policies(w):
+                        return (
+                            w.get_policy("p0") is not None
+                            and w.get_policy("p2") is not None
+                            and w.get_policy("p1") is None
+                        )
+
+                    self.assertTrue(
+                        all(test2.evaluation_workers.foreach_worker(_has_policies))
+                    )
+
+                    # Make sure algorithm can continue training the restored policy.
+                    pol2 = test2.get_policy("p2")
+                    test2.train()
+                    # Test creating an action with the added (and restored) policy.
+                    a = test2.compute_single_action(
+                        np.zeros_like(pol2.observation_space.sample()), policy_id=pid
+                    )
+                    self.assertTrue(pol2.action_space.contains(a))
+                    test2.stop()
 
             # Delete all added policies again from Algorithm.
             for i in range(2, 0, -1):

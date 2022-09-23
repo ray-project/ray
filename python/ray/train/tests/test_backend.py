@@ -3,10 +3,12 @@ import os
 from unittest.mock import patch
 
 import pytest
+import time
 
 import ray
 import ray.train as train
 from ray.air._internal.util import StartTraceback
+from ray.air import session
 from ray.cluster_utils import Cluster
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
@@ -192,6 +194,25 @@ def test_train_failure(ray_start_2_cpus):
     assert isinstance(exc.value.__cause__, TrainBackendError)
 
     assert e.finish_training() == [1, 1]
+
+
+def test_train_single_worker_failure(ray_start_2_cpus):
+    """Tests if training fails immediately if only one worker raises an Exception."""
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=2)
+    e.start()
+
+    def single_worker_fail():
+        if session.get_world_rank() == 0:
+            raise ValueError
+        else:
+            time.sleep(1000000)
+
+    e.start_training(single_worker_fail, dataset_spec=EMPTY_RAY_DATASET_SPEC)
+
+    with pytest.raises(StartTraceback) as exc:
+        e.get_next_results()
+    assert isinstance(exc.value.__cause__, ValueError)
 
 
 def test_worker_failure(ray_start_2_cpus):

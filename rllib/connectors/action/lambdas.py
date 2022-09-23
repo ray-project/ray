@@ -44,6 +44,7 @@ def register_lambda_action_connector(
             return ActionConnectorDataType(
                 ac_data.env_id,
                 ac_data.agent_id,
+                ac_data.input_dict,
                 fn(actions, states, fetches),
             )
 
