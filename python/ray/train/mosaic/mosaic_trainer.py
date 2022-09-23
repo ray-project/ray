@@ -263,6 +263,8 @@ class MosaicTrainer(TorchTrainer):
             trainer_init_per_worker, "trainer_init_per_worker"
         )
 
+        self._validate_trainer_init_config(trainer_init_config)
+
         trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
         if "_trainer_init_per_worker" in trainer_init_config:
             raise ValueError(
@@ -291,6 +293,17 @@ class MosaicTrainer(TorchTrainer):
                 f"{fn_name} should take in at least 3 arguments, "
                 f"but it accepts {num_params} arguments instead."
             )
+
+    def _validate_trainer_init_config(self, trainer_init_config) -> None:
+        error_msg = ""
+        if "batch_size" not in trainer_init_config:
+            error_msg = 'batch size for the training dataset (key: "batch_size") '
+        if "labels" not in trainer_init_config:
+            if len(error_msg) > 0:
+                error_msg += "and "
+            error_msg += 'labels for the columns to include in batch (key: "labels" '
+        if len(error_msg) > 0:
+            raise KeyError(error_msg + "should be provided in `trainer_init_config`")
 
 
 def _mosaic_train_loop_per_worker(config):
