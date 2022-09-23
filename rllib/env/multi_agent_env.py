@@ -34,7 +34,7 @@ class MultiAgentEnv(gym.Env):
     are not to be confused with RLlib Algorithms, which are also sometimes
     referred to as "agents" or "RL agents".
 
-    The preferred format for  action- and observation space is a mapping from agent
+    The preferred format for action- and observation space is a mapping from agent
     ids to their individual spaces. If that is not provided, the respective methods'
     observation_space_contains(), action_space_contains(),
     action_space_sample() and observation_space_sample() have to be overwritten.
@@ -157,7 +157,11 @@ class MultiAgentEnv(gym.Env):
                     )
             return True
 
-        logger.warning("observation_space_contains() has not been implemented")
+        logger.warning("observation_space_contains() of {} has not been implemented. "
+                       "You "
+                       "can either implement it yourself or bring the observation "
+                       "space into the preferred format of a mapping from agent ids "
+                       "to their individual observation spaces. ".format(self))
         return True
 
     @ExperimentalAPI
@@ -181,7 +185,12 @@ class MultiAgentEnv(gym.Env):
             return all([self.action_space[agent].contains(x[agent]) for agent in x])
 
         if log_once("action_space_contains"):
-            logger.warning("action_space_contains() has not been implemented")
+            logger.warning(
+                "action_space_contains() of {} has not been implemented. "
+                "You "
+                "can either implement it yourself or bring the observation "
+                "space into the preferred format of a mapping from agent ids "
+                "to their individual observation spaces. ".format(self))
         return True
 
     @ExperimentalAPI
@@ -213,7 +222,12 @@ class MultiAgentEnv(gym.Env):
                 for agent_id in agent_ids
                 if agent_id != "__all__"
             }
-        logger.warning("action_space_sample() has not been implemented")
+        logger.warning(
+            "action_space_sample() of {} has not been implemented. "
+            "You "
+            "can either implement it yourself or bring the observation "
+            "space into the preferred format of a mapping from agent ids "
+            "to their individual observation spaces. ".format(self))
         return {}
 
     @ExperimentalAPI
@@ -245,7 +259,12 @@ class MultiAgentEnv(gym.Env):
             samples = {agent_id: samples[agent_id] for agent_id in agent_ids}
             return samples
         if log_once("observation_space_sample"):
-            logger.warning("observation_space_sample() has not been implemented")
+            logger.warning(
+                "observation_space_sample() of {} has not been implemented. "
+                "You "
+                "can either implement it yourself or bring the observation "
+                "space into the preferred format of a mapping from agent ids "
+                "to their individual observation spaces. ".format(self))
         return {}
 
     @PublicAPI
