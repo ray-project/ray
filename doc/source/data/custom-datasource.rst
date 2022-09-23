@@ -29,7 +29,7 @@ To implement :meth:`create_reader() <ray.data.Datasource.create_reader>` and sup
 read, the major work will be subclassing :class:`~ray.data.Datasource.Reader` for 
 MongoDB. What it does is creating a list of :class:`~ray.data.ReadTask` for the given 
 list of MongDB queries. Each :class:`~ray.data.ReadTask` will return a list of blocks when called, and 
-the :class:`~ray.data.ReadTask` are executed in remote functions to parallelize the execution.
+the :class:`~ray.data.ReadTask` are executed in remote workers to parallelize the execution.
 
 First of all, let's handle a single MongDB query, as this is the execution unit in 
 :class:`~ray.data.ReadTask`. We need to connect to MongDB, execute the query against it, 
@@ -61,7 +61,7 @@ the ``PyMongo`` and  ``PyMongoArrow`` are used for MongoDB interactions.
     :start-after: __write_single_block_start__
     :end-before: __write_single_block_end__
 
-To write multiple blocks in parallel, we again use Ray remote functions 
+To write multiple blocks in parallel, we again use Ray remote workers
 to launch them in parallel.
 
 .. literalinclude:: ./doc_code/custom_datasource.py
