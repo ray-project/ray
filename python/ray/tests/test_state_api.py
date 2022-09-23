@@ -1822,7 +1822,12 @@ def test_list_get_tasks(shutdown_only):
         )
         assert waiting_for_execution == 0
         scheduled = len(
-            list(filter(lambda task: task["scheduling_state"] == "PENDING_NODE_ASSIGNMENT", tasks))
+            list(
+                filter(
+                    lambda task: task["scheduling_state"] == "PENDING_NODE_ASSIGNMENT",
+                    tasks,
+                )
+            )
         )
         assert scheduled == 2
         waiting_for_dep = len(
@@ -1888,7 +1893,11 @@ def test_list_actor_tasks(shutdown_only):
         assert (
             len(
                 list(
-                    filter(lambda task: task["scheduling_state"] == "PENDING_NODE_ASSIGNMENT", tasks)
+                    filter(
+                        lambda task: task["scheduling_state"]
+                        == "PENDING_NODE_ASSIGNMENT",
+                        tasks,
+                    )
                 )
             )
             == 0
