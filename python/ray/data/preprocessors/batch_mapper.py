@@ -1,4 +1,4 @@
-from typing import Dict, Callable, Union, TYPE_CHECKING
+from typing import Dict, Callable, Optional, Union, TYPE_CHECKING
 import numpy as np
 
 from ray.data.preprocessor import Preprocessor
@@ -49,7 +49,7 @@ class BatchMapper(Preprocessor):
     Args:
         fn: The function to apply to data batches.
         batch_format: The preferred batch format to use in UDF. If not given,
-            default to pandas.
+            we will infer based on the input dataset data format.
     """
 
     _is_fittable = False
@@ -60,10 +60,10 @@ class BatchMapper(Preprocessor):
             [Union["pandas.DataFrame", np.ndarray, Dict[str, np.ndarray]]],
             Union["pandas.DataFrame", np.ndarray, Dict[str, np.ndarray]],
         ],
-        batch_format="pandas",
+        batch_format: Optional[str] = None,
         # TODO: We should reach consistency of args between BatchMapper and map_batches.
     ):
-        if batch_format not in [
+        if batch_format and batch_format not in [
             "pandas",
             "numpy",
         ]:

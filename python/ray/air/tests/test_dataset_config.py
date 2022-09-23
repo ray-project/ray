@@ -169,7 +169,7 @@ def test_fit_transform_config(ray_start_4_cpus):
     def drop_odd_numpy(rows):
         return [x for x in rows if x % 2 == 0]
 
-    prep_pandas = BatchMapper(drop_odd_pandas)
+    prep_pandas = BatchMapper(drop_odd_pandas, batch_format="pandas")
     prep_numpy = BatchMapper(drop_odd_numpy, batch_format="numpy")
 
     # Single worker basic case.

@@ -188,7 +188,7 @@ class Preprocessor(abc.ABC):
     def _determine_transform_to_use(self, data_format: str) -> str:
         """Determine which transform to use based on data format and implementation.
 
-        Otherwise, we will infer and pick the best transform to use:
+        We will infer and pick the best transform to use:
             * ``pandas`` data format prioritizes ``pandas`` transform if available.
             * ``arrow`` and ``numpy`` data format prioritizes ``numpy`` transform if available. # noqa: E501
             * Fall back to what's available if no preferred path found.
@@ -263,7 +263,10 @@ class Preprocessor(abc.ABC):
         # For minimal install to locally import air modules
         import pandas as pd
         from ray.air.constants import TENSOR_COLUMN_NAME
-        from ray.air.util.data_batch_conversion import _convert_batch_type_to_numpy
+        from ray.air.util.data_batch_conversion import (
+            convert_batch_type_to_pandas,
+            _convert_batch_type_to_numpy,
+        )
 
         try:
             import pyarrow
@@ -286,25 +289,18 @@ class Preprocessor(abc.ABC):
         transform_type = self._determine_transform_to_use(data_format)
 
         if transform_type == "pandas":
-            if data_format == "pandas":
-                return self._transform_pandas(data)
-            else:
-                return self._transform_pandas(data.to_pandas())
+            return self._transform_pandas(convert_batch_type_to_pandas(data))
         elif transform_type == "numpy":
             transformed_numpy_data = self._transform_numpy(
                 _convert_batch_type_to_numpy(data)
             )
-            if data_format == "numpy":
-                return transformed_numpy_data
-            elif data_format == "arrow":
+            if data_format == "arrow":
                 if len(data.column_names) == 1 and data.column_names != [
                     TENSOR_COLUMN_NAME
                 ]:
                     # Single-column table is perserved as a table if not
                     # explicted named as the tensor column name.
                     return pyarrow.Table.from_pydict(transformed_numpy_data)
-                else:
-                    return transformed_numpy_data
             elif data_format == "pandas":
                 if len(data.columns) == 1 and list(data.columns) != [
                     TENSOR_COLUMN_NAME
@@ -312,8 +308,7 @@ class Preprocessor(abc.ABC):
                     # Single-column table is perserved as a table if not
                     # explicted named as the tensor column name.
                     return pd.DataFrame.from_dict(transformed_numpy_data)
-                else:
-                    return transformed_numpy_data
+            return transformed_numpy_data
 
     @DeveloperAPI
     def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
