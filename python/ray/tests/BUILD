@@ -155,7 +155,7 @@ py_test_module_list(
     "test_scheduling.py",
     "test_traceback.py",
   ],
-  size = "medium",
+  size = "large",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
@@ -189,7 +189,7 @@ py_test_module_list(
     "test_scheduling_performance.py",
     "test_get_or_create_actor.py",
   ],
-  size = "small",
+  size = "large",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
