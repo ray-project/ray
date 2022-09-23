@@ -55,12 +55,6 @@ class _CheckpointManager(CommonCheckpointManager):
             checkpoint_score_order=MIN if checkpoint_score_desc else MAX,
         )
 
-        # NOTE: Determines whether the current memory checkpoint should be preferred
-        # over a persistent checkpoint. An example of when this is used when the
-        # in-memory checkpoint has been set by a scheduler, and the scheduler needs
-        # that specific checkpoint be used for trial restore.
-        self._prefer_memory_checkpoint = False
-
         super().__init__(checkpoint_strategy=checkpoint_strategy, delete_fn=delete_fn)
 
     def handle_checkpoint(self, checkpoint: _TrackedCheckpoint):
@@ -79,24 +73,8 @@ class _CheckpointManager(CommonCheckpointManager):
             )
             self._process_persistent_checkpoint(checkpoint)
 
-    def on_checkpoint(
-        self, checkpoint: _TrackedCheckpoint, prefer_memory_checkpoint: bool = False
-    ):
-        """Ray Tune's entry point to handle a checkpoint.
-
-        Args:
-            checkpoint: In-memory or persistent checkpoint for the manager to track.
-            prefer_memory_checkpoint: Whether to force the manager to use return the
-                in-memory checkpoint over the persistent checkpoint. This preference
-                will be in effect until this function gets called on another checkpoint
-                of any type. This flag can only be True if registering an in-memory
-                checkpoint.
-        """
-        self._prefer_memory_checkpoint = prefer_memory_checkpoint
-        if prefer_memory_checkpoint:
-            assert (
-                checkpoint.storage_mode == CheckpointStorage.MEMORY
-            ), "Must store an in-memory checkpoint to prefer it to be used"
+    def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
+        """Ray Tune's entry point to handle a checkpoint."""
         # Todo (krfricke): Replace with handle_checkpoint.
         self.handle_checkpoint(checkpoint)
 
@@ -122,21 +100,7 @@ class _CheckpointManager(CommonCheckpointManager):
 
     @property
     def checkpoint(self):
-        """Returns the newest checkpoint. Prefers in-memory checkpoints when
-        `_prefer_memory_checkpoints` has been on the latest call to
-        `CheckpointManager.on_checkpoint`.
-
-        `Trial.checkpoint` relies on this method to determine which checkpoint to use
-        for restore.
-        This method chooses the checkpoint to use (MEMORY or PERSISTENT) based on:
-        1.) In-memory checkpoint preference (tracked by `_prefer_memory_checkpoints`)
-        2.) Checkpoint recency (i.e. checkpoint id)
-        """
-        if self._prefer_memory_checkpoint:
-            assert (
-                self.newest_memory_checkpoint.id != -1
-            ), "Must have an in-memory checkpoint to prefer it to be used"
-            return self.newest_memory_checkpoint
+        """Returns the newest checkpoint."""
         checkpoints = [self.newest_memory_checkpoint, self.newest_persistent_checkpoint]
         newest_checkpoint = max(checkpoints, key=lambda c: c.id)
         return newest_checkpoint

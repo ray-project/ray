@@ -661,9 +661,13 @@ class PopulationBasedTraining(FIFOScheduler):
         trial.set_experiment_tag(new_tag)
         # Clone hyperparameters from the `trial_to_clone`
         trial.set_config(new_config)
-        # Resume training state from the latest checkpoint of `trial_to_clone`
-        checkpoint_to_exploit = new_state.last_checkpoint
-        trial.on_checkpoint(checkpoint_to_exploit, prefer_memory_checkpoint=True)
+        # Resume training from a shallow copy of `trial_to_clone`'s latest checkpoint
+        checkpoint_to_exploit = copy.copy(new_state.last_checkpoint)
+        # NOTE: Clear the checkpoint id (which was set by the other trial's
+        # checkpoint manager) so that the current trial's checkpoint manager marks
+        # the checkpoint as the most recent to use upon trial resume
+        checkpoint_to_exploit.id = None
+        trial.on_checkpoint(checkpoint_to_exploit)
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
@@ -903,7 +907,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         trial_executor.set_status(trial, Trial.PAUSED)
         trial.set_experiment_tag(new_tag)
         trial.set_config(new_config)
-        trial.on_checkpoint(checkpoint, prefer_memory_checkpoint=True)
+        trial.on_checkpoint(checkpoint)
 
         self.current_config = new_config
         self._num_perturbations += 1
