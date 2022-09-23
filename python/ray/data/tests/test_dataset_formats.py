@@ -41,6 +41,7 @@ from ray.data.datasource import (
     SimpleTensorFlowDatasource,
     SimpleTorchDatasource,
     WriteResult,
+    Partitioning,
 )
 from ray.data.datasource.file_based_datasource import (
     FileExtensionFilter,
@@ -1296,10 +1297,10 @@ def test_numpy_read_partitioning(ray_start_regular_shared, tmp_path):
     os.mkdir(os.path.dirname(path))
     np.save(path, np.arange(4).reshape([2, 2]))
 
-    ds = ray.data.read_numpy(path)
+    ds = ray.data.read_numpy(path, partitioning=Partitioning("hive"))
 
     assert ds.schema().names == ["__value__", "country"]
-    assert ds.to_pandas()["country"] == ["us", "us"]
+    assert list(ds.to_pandas()["country"]) == ["us", "us"]
 
 
 def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
@@ -1466,11 +1467,13 @@ def test_read_binary_files_partitioning(ray_start_regular_shared, tmp_path):
     with open(path, "wb") as f:
         f.write(b"foo")
 
-    ds = ray.data.read_binary_files(path)
+    ds = ray.data.read_binary_files(path, partitioning=Partitioning("hive"))
 
     assert ds.take() == [{"bytes": b"foo", "country": "us"}]
 
-    ds = ray.data.read_binary_files(path, include_paths=True)
+    ds = ray.data.read_binary_files(
+        path, include_paths=True, partitioning=Partitioning("hive")
+    )
 
     assert ds.take() == [{"bytes": b"foo", "path": path, "country": "us"}]
 
@@ -1528,7 +1531,7 @@ def test_read_text_partitioning(ray_start_regular_shared, tmp_path):
     with open(os.path.join(path, "file.txt"), "w") as f:
         f.write("foo\nbar\nbaz")
 
-    ds = ray.data.read_text(path)
+    ds = ray.data.read_text(path, partitioning=Partitioning("hive"))
 
     df = ds.to_pandas()
     assert list(df.columns) == ["text", "country"]
