@@ -28,11 +28,11 @@ Read support
 To implement :meth:`create_reader() <ray.data.Datasource.create_reader>` and support 
 read, the major work will be subclassing :class:`~ray.data.Datasource.Reader` for 
 MongoDB. What it does is creating a list of :class:`~ray.data.ReadTask` for the given 
-list of MongDB queries. Each ``ReadTask`` will return a list of blocks when called, and 
-the ``ReadTask`` are executed in remote functions to parallelize the execution.
+list of MongDB queries. Each :class:`~ray.data.ReadTask` will return a list of blocks when called, and 
+the :class:`~ray.data.ReadTask` are executed in remote functions to parallelize the execution.
 
 First of all, let's handle a single MongDB query, as this is the execution unit in 
-``ReadTask``. We need to connect to MongDB, execute the query against it, 
+:class:`~ray.data.ReadTask`. We need to connect to MongDB, execute the query against it, 
 and then convert results into Arrow format. The ``PyMongo`` and  ``PyMongoArrow`` are 
 used to achieve these.
 
@@ -88,7 +88,7 @@ any other data sources!
 
 .. code-block:: python
 
-    # Read from a custom datasource.
+    # Read from MongoDB datasource.
     ds = ray.data.read_datasource(
         MongoDatasource(),
         uri=MY_URI, database=MY_DATABASE,
@@ -98,7 +98,7 @@ any other data sources!
     # Data processing with Dataset APIs
     # ....
 
-    # Write to a custom datasource.
+    # Write to MongoDB datasource.
     ds.write_datasource(
         MongoDatasource(), uri=MY_URI, database=MY_DATABASE, collection=MY_COLLECTION
     )
