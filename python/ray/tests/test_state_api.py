@@ -176,7 +176,7 @@ def generate_task_entry(
     id,
     name="class",
     func_or_class="class",
-    state=TaskStatus.SCHEDULED,
+    state=TaskStatus.PENDING_NODE_ASSIGNMENT,
     type=TaskType.NORMAL_TASK,
 ):
     return TaskInfoEntry(
@@ -189,7 +189,7 @@ def generate_task_entry(
 
 
 def generate_task_data(
-    id, name="class", func_or_class="class", state=TaskStatus.SCHEDULED
+    id, name="class", func_or_class="class", state=TaskStatus.PENDING_NODE_ASSIGNMENT
 ):
     return GetTasksInfoReply(
         owned_task_info_entries=[
@@ -205,7 +205,7 @@ def generate_object_info(
     obj_id,
     size_bytes=1,
     callsite="main.py",
-    task_state=TaskStatus.SCHEDULED,
+    task_state=TaskStatus.PENDING_NODE_ASSIGNMENT,
     local_ref_count=1,
     attempt_number=1,
     pid=1234,
@@ -1822,7 +1822,7 @@ def test_list_get_tasks(shutdown_only):
         )
         assert waiting_for_execution == 0
         scheduled = len(
-            list(filter(lambda task: task["scheduling_state"] == "SCHEDULED", tasks))
+            list(filter(lambda task: task["scheduling_state"] == "PENDING_NODE_ASSIGNMENT", tasks))
         )
         assert scheduled == 2
         waiting_for_dep = len(
@@ -1888,7 +1888,7 @@ def test_list_actor_tasks(shutdown_only):
         assert (
             len(
                 list(
-                    filter(lambda task: task["scheduling_state"] == "SCHEDULED", tasks)
+                    filter(lambda task: task["scheduling_state"] == "PENDING_NODE_ASSIGNMENT", tasks)
                 )
             )
             == 0
