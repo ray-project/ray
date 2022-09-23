@@ -5,10 +5,10 @@ import pytest
 from ray_release.config import (
     read_and_validate_release_test_collection,
     Test,
-    validate_release_test_collection,
     validate_cluster_compute,
+    load_schema_file,
+    validate_test,
 )
-from ray_release.exception import ReleaseTestConfigError
 
 TEST_COLLECTION_FILE = os.path.join(
     os.path.dirname(__file__), "..", "..", "release_tests.yaml"
@@ -47,7 +47,9 @@ VALID_TEST = Test(
 def test_schema_validation():
     test = VALID_TEST.copy()
 
-    validate_release_test_collection([test])
+    schema = load_schema_file()
+
+    assert not validate_test(test, schema)
 
     # Remove some optional arguments
     del test["alert"]
@@ -55,7 +57,7 @@ def test_schema_validation():
     del test["run"]["wait_for_nodes"]
     del test["cluster"]["autosuspend_mins"]
 
-    validate_release_test_collection([test])
+    assert not validate_test(test, schema)
 
     # Add some faulty arguments
 
@@ -63,32 +65,31 @@ def test_schema_validation():
     invalid_test = test.copy()
     invalid_test["frequency"] = "invalid"
 
-    with pytest.raises(ReleaseTestConfigError):
-        validate_release_test_collection([invalid_test])
+    assert validate_test(invalid_test, schema)
 
     # Faulty job type
     invalid_test = test.copy()
     invalid_test["run"]["type"] = "invalid"
-    with pytest.raises(ReleaseTestConfigError):
-        validate_release_test_collection([invalid_test])
+
+    assert validate_test(invalid_test, schema)
 
     # Faulty file manager type
     invalid_test = test.copy()
     invalid_test["run"]["file_manager"] = "invalid"
-    with pytest.raises(ReleaseTestConfigError):
-        validate_release_test_collection([invalid_test])
+
+    assert validate_test(invalid_test, schema)
 
     # Faulty smoke test
     invalid_test = test.copy()
     del invalid_test["smoke_test"]["frequency"]
-    with pytest.raises(ReleaseTestConfigError):
-        validate_release_test_collection([invalid_test])
+
+    assert validate_test(invalid_test, schema)
 
     # Faulty Python version
     invalid_test = test.copy()
     invalid_test["python"] = "invalid"
-    with pytest.raises(ReleaseTestConfigError):
-        validate_release_test_collection([invalid_test])
+
+    assert validate_test(invalid_test, schema)
 
 
 def test_compute_config_invalid_ebs():
