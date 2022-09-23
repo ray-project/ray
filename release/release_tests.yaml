@@ -3853,7 +3853,6 @@
     type: sdk_command
     file_manager: sdk
 
-
 - name: many_nodes_actor_test
   group: core-daily-test
   working_dir: nightly_tests
