@@ -106,6 +106,7 @@ struct TaskCounter {
   }
 
   void SetMetricStatus(const std::string &func_name, rpc::TaskStatus status) {
+    absl::MutexLock l(&tasks_counter_mutex_);
     // TODO(ekl) track and report per-name status.
     if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
       running_in_get_total_ += 1;
@@ -118,6 +119,7 @@ struct TaskCounter {
   }
 
   void UnsetMetricStatus(const std::string &func_name, rpc::TaskStatus status) {
+    absl::MutexLock l(&tasks_counter_mutex_);
     if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
       running_in_get_total_ -= 1;
     } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
