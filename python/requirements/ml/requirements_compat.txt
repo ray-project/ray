@@ -12,3 +12,5 @@ pytorch-lightning==1.5.8
 # Upstream libraries
 lightgbm_ray==0.1.5
 xgboost_ray==0.1.10
+
+ray[tune,data]
