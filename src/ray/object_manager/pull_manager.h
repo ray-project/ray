@@ -241,7 +241,19 @@ class PullManager {
 
   /// A helper structure for tracking all the bundle pull requests for a particular bundle
   /// priority.
-  struct BundlePullRequestQueue {
+  class BundlePullRequestQueue {
+   public:
+    BundlePullRequestQueue() {
+      active_by_name.SetOnChangeCallback(
+          [this](std::string task_name, int64_t value) mutable {
+            RefreshMetrics(task_name);
+          });
+      inactive_by_name.SetOnChangeCallback(
+          [this](std::string task_name, int64_t value) mutable {
+            RefreshMetrics(task_name);
+          });
+    }
+
     // Key is the request id assigned to each bundle pull request.
     absl::flat_hash_map<uint64_t, BundlePullRequest> requests;
     // A bundle pull request can be in one of the three stats:
@@ -271,21 +283,26 @@ class PullManager {
     Counter<std::string> active_by_name;
     Counter<std::string> inactive_by_name;
 
-    void RecordTaskMetrics() const {
+    void RefreshMetrics(std::string task_name) const {
+      if (task_name.empty()) {
+        return;  // Don't record stats for non-task requests.
+      }
+      auto num_active = active_by_name.Get(task_name);
+      auto num_inactive = inactive_by_name.Get(task_name);
       ray::stats::STATS_tasks.Record(
-          -static_cast<int64_t>(requests.size()),
+          -static_cast<int64_t>(num_active + num_inactive),
           {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)},
-           {"Name", "TODO"},
+           {"Name", task_name},
            {"Source", "pull_manager"}});
       ray::stats::STATS_tasks.Record(
-          inactive_requests.size(),
+          num_inactive,
           {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_OBJ_STORE_MEM_AVAIL)},
-           {"Name", "TODO"},
+           {"Name", task_name},
            {"Source", "pull_manager"}});
       ray::stats::STATS_tasks.Record(
-          active_requests.size(),
+          num_active,
           {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::PENDING_ARGS_FETCH)},
-           {"Name", "TODO"},
+           {"Name", task_name},
            {"Source", "pull_manager"}});
     }
 
