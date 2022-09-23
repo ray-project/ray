@@ -226,7 +226,14 @@ void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id,
   // information from the internal state.
   RAY_LOG(DEBUG) << "Canceling worker leasing of task " << task_id;
   auto node_it = node_to_actors_when_leasing_.find(node_id);
-  RAY_CHECK(node_it != node_to_actors_when_leasing_.end());
+  if (node_it == node_to_actors_when_leasing_.end()) {
+    RAY_CHECK(RayConfig::instance().gcs_actor_scheduling_enabled());
+    RAY_LOG(DEBUG) << "In gcs actor scheduler, the lease request might have not been "
+                   << "sent out yet (if actor scheduling was canceled with "
+                   << "`SCHEDULING_CANCELLED_UNSCHEDULABLE` failure type). "
+                   << "So we do nothing in this case.";
+    return;
+  }
   node_it->second.erase(actor_id);
   if (node_it->second.empty()) {
     node_to_actors_when_leasing_.erase(node_it);
