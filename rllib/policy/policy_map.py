@@ -2,7 +2,7 @@ from collections import deque
 import gym
 import os
 import threading
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Set, Type
+from typing import Callable, Dict, Optional, Set, Type
 
 import ray.cloudpickle as pickle
 from ray.rllib.policy.policy import Policy, PolicySpec
@@ -17,9 +17,6 @@ from ray.rllib.utils.typing import (
     PolicyID,
 )
 from ray.tune.utils.util import merge_dicts
-
-if TYPE_CHECKING:
-    from ray.rllib.policy.policy import Policy
 
 tf1, tf, tfv = try_import_tf()
 
@@ -91,7 +88,9 @@ class PolicyMap(dict):
         # and the underlying structures, like self.deque and others.
         self._lock = threading.RLock()
 
-    def insert_policy(self, policy_id: PolicyID, policy: Policy, config_override=None) -> None:
+    def insert_policy(
+        self, policy_id: PolicyID, policy: Policy, config_override=None
+    ) -> None:
         self[policy_id] = policy
 
         # Store spec (class, obs-space, act-space, and config overrides) such

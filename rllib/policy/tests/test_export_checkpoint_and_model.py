@@ -9,7 +9,6 @@ import ray
 from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.files import dict_contents_to_dir, dir_contents_to_dict
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
 

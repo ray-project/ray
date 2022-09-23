@@ -732,7 +732,6 @@ class TorchPolicy(Policy):
     @override(Policy)
     @DeveloperAPI
     def get_state(self) -> PolicyState:
-        # Legacy Policy state (w/o torch.nn.Module and w/o PolicySpec).
         state = super().get_state()
 
         state["_optimizer_variables"] = []

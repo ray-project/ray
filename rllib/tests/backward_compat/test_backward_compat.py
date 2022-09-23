@@ -1,14 +1,9 @@
 import os
 from pathlib import Path
-import tempfile
 import unittest
 
 import ray
-import ray.cloudpickle as pickle
-from ray.air.checkpoint import Checkpoint
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.utils.test_utils import framework_iterator
 
 

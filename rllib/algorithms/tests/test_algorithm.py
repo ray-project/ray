@@ -53,13 +53,16 @@ class TestAlgorithm(unittest.TestCase):
 
     def test_add_delete_policy(self):
         config = pg.PGConfig()
-        config.environment(env=MultiAgentCartPole, env_config={
-            "config": {
-                "num_agents": 4,
+        config.environment(
+            env=MultiAgentCartPole,
+            env_config={
+                "config": {
+                    "num_agents": 4,
+                },
             },
-        }).rollouts(
-            num_rollout_workers=2, rollout_fragment_length=50
-        ).resources(num_cpus_per_worker=0.1).training(
+        ).rollouts(num_rollout_workers=2, rollout_fragment_length=50).resources(
+            num_cpus_per_worker=0.1
+        ).training(
             train_batch_size=100,
         ).multi_agent(
             # Start with a single policy.
@@ -68,14 +71,19 @@ class TestAlgorithm(unittest.TestCase):
             # And only two policies that can be stored in memory at a
             # time.
             policy_map_capacity=2,
-        ).evaluation(evaluation_num_workers=1, evaluation_config={
-            "num_cpus_per_worker": 0.1,
-        })
+        ).evaluation(
+            evaluation_num_workers=1,
+            evaluation_config={
+                "num_cpus_per_worker": 0.1,
+            },
+        )
         # Don't override existing model settings.
-        config.model.update({
-            "fcnet_hiddens": [5],
-            "fcnet_activation": "linear",
-        })
+        config.model.update(
+            {
+                "fcnet_hiddens": [5],
+                "fcnet_activation": "linear",
+            }
+        )
 
         obs_space = gym.spaces.Box(-2.0, 2.0, (4,))
         act_space = gym.spaces.Discrete(2)
@@ -183,8 +191,9 @@ class TestAlgorithm(unittest.TestCase):
                     # Make sure evaluation workers have the same policies.
                     def _has_policies(w):
                         return (
-                            w.get_policy("p0") is not None and w.get_policy(
-                            "p2") is not None and w.get_policy("p1") is None
+                            w.get_policy("p0") is not None
+                            and w.get_policy("p2") is not None
+                            and w.get_policy("p1") is None
                         )
 
                     self.assertTrue(
