@@ -3,8 +3,8 @@
 # sets up all the packages necessary for a /developer/ of Ray.
 #
 # In short, if you change it here, PLEASE also change it in setup.py.
-#
-# setup.py install_requires
+
+## setup.py install_requires
 aiohttp>=3.7
 aiosignal
 click >= 7.0, <= 8.0.4
@@ -28,7 +28,7 @@ requests
 smart_open
 virtualenv>=20.0.24
 
-## setup.py extras
+# setup.py extras
 dm_tree
 flask
 pygame
@@ -41,16 +41,19 @@ pandas>=1.3.0; python_version >= '3.7'
 scipy >= 1.5
 tabulate
 tensorboardX >= 1.9
-uvicorn==0.16.0
+uvicorn
 dataclasses; python_version < '3.7'
 starlette==0.18.0
 aiorwlock
 gradio; platform_system != "Windows"
 
-# Requirements for running tests
-pyarrow >= 6.0.1, < 7.0.0
-# Used for Dataset tests.
-polars
+## Requirements for running tests
+
+# General test requirements
+async-exit-stack
+async-generator
+asyncmock
+autorom[accept-rom-license]
 azure-cli-core==2.29.1
 azure-identity==1.7.0
 azure-mgmt-compute==23.1.0
@@ -58,27 +61,31 @@ azure-mgmt-network==19.0.0
 azure-mgmt-resource==20.0.0
 msrestazure==0.6.4
 boto3
+cryptography>=3.0.0
 cython >= 0.29.26
 dataclasses; python_version < '3.7'
+fastapi
 feather-format
 google-api-python-client
 google-cloud-storage
 gym-minigrid==1.0.3
+gym[atari]
 kubernetes
+# higher version of llvmlite breaks windows
+llvmlite==0.34.0
 lxml
 moto[s3,server] >= 4.0.0
 mypy
 networkx
 numba
-asyncmock
-# higher version of llvmlite breaks windows
-llvmlite==0.34.0
 openpyxl
 opentelemetry-api==1.1.0
 opentelemetry-sdk==1.1.0
 opentelemetry-exporter-otlp==1.1.0
 pexpect
 Pillow; platform_system != "Windows"
+proxy.py
+pyarrow >= 6.0.1, < 7.0.0
 pygments
 pyspark==3.1.2
 pytest==7.0.1
@@ -89,21 +96,19 @@ pytest-lazy-fixture
 pytest-timeout
 pytest-virtualenv
 redis >= 3.5.0, < 4.0.0
-scikit-learn==0.24.2
+scikit-learn
+smart_open[s3]
+tqdm
 testfixtures
 werkzeug<2.2.0
 xlrd
-starlette
-fastapi==0.76.0
-smart_open[s3]
-tqdm
-async-exit-stack
-async-generator
-cryptography>=3.0.0
-proxy.py
+
 # For doc tests
 myst-parser==0.15.2
 myst-nb==0.13.1
 jupytext==1.13.6
 pytest-docker-tools
 pytest-forked
+
+# For dataset tests
+polars

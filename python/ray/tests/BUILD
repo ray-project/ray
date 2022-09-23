@@ -13,6 +13,7 @@ py_library(
 py_test_module_list(
   files = [
     "test_dashboard.py",
+    "test_metrics_head.py",
     "test_ray_cluster_with_external_redis.py",
   ],
   size = "large",
@@ -116,6 +117,7 @@ py_test_module_list(
     "test_memory_scheduling.py",
     "test_memory_pressure.py",
     "test_metrics.py",
+    "test_task_metrics.py",
     "test_multi_node.py",
     "test_multi_node_2.py",
     "test_multinode_failures.py",

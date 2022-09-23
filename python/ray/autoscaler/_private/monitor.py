@@ -253,6 +253,12 @@ class Monitor:
 
         mirror_node_types = {}
         cluster_full = False
+        if (
+            hasattr(response, "cluster_full_of_actors_detected_by_gcs")
+            and response.cluster_full_of_actors_detected_by_gcs
+        ):
+            # GCS has detected the cluster full of actors.
+            cluster_full = True
         for resource_message in resources_batch_data.batch:
             node_id = resource_message.node_id
             # Generate node type config based on GCS reported node list.
@@ -271,7 +277,7 @@ class Monitor:
                 hasattr(resource_message, "cluster_full_of_actors_detected")
                 and resource_message.cluster_full_of_actors_detected
             ):
-                # Aggregate this flag across all batches.
+                # A worker node has detected the cluster full of actors.
                 cluster_full = True
             resource_load = dict(resource_message.resource_load)
             total_resources = dict(resource_message.resources_total)
@@ -336,10 +342,13 @@ class Monitor:
             try:
                 if self.stop_event and self.stop_event.is_set():
                     break
+                gcs_request_start_time = time.time()
                 self.update_load_metrics()
+                gcs_request_time = time.time() - gcs_request_start_time
                 self.update_resource_requests()
                 self.update_event_summary()
                 status = {
+                    "gcs_request_time": gcs_request_time,
                     "load_metrics_report": asdict(self.load_metrics.summary()),
                     "time": time.time(),
                     "monitor_pid": os.getpid(),
@@ -360,6 +369,11 @@ class Monitor:
                     autoscaler_summary = self.autoscaler.summary()
                     if autoscaler_summary:
                         status["autoscaler_report"] = asdict(autoscaler_summary)
+                        status[
+                            "non_terminated_nodes_time"
+                        ] = (
+                            self.autoscaler.non_terminated_nodes.non_terminated_nodes_time  # noqa: E501
+                        )
 
                     for msg in self.event_summarizer.summary():
                         # Need to prefix each line of the message for the lines to

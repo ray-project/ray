@@ -76,23 +76,27 @@ class JobAgentSubmissionClient:
             else:
                 await self._raise_error(resp)
 
-    async def get_job_info(self, job_id: str) -> JobDetails:
-        async with self._session.get(
-            f"{self._agent_address}/api/job_agent/jobs/{job_id}"
+    async def stop_job_internal(self, job_id: str) -> JobStopResponse:
+
+        logger.debug(f"Stopping job with job_id={job_id}.")
+
+        async with self._session.post(
+            f"{self._agent_address}/api/job_agent/jobs/{job_id}/stop"
         ) as resp:
+
             if resp.status == 200:
                 result_json = await resp.json()
-                return JobDetails(**result_json)
+                return JobStopResponse(**result_json)
             else:
-                await self._raise_error(resp)
+                self._raise_error(resp)
 
-    async def get_job_logs(self, job_id: str) -> str:
+    async def get_job_logs_internal(self, job_id: str) -> JobLogsResponse:
         async with self._session.get(
             f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs"
         ) as resp:
             if resp.status == 200:
                 result_json = await resp.json()
-                return JobLogsResponse(**result_json).logs
+                return JobLogsResponse(**result_json)
             else:
                 self._raise_error(resp)
 
@@ -254,7 +258,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/jobs/{job_or_submission_id}")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def get_job_info(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
