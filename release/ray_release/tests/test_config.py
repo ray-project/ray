@@ -117,6 +117,58 @@ def test_compute_config_invalid_ebs():
 
     assert not validate_cluster_compute(compute_config)
 
+    compute_config["head_node_type"] = {}
+    compute_config["head_node_type"]["aws_advanced_configurations"] = {
+        "BlockDeviceMappings": [
+            {
+                "DeviceName": "/dev/sda1",
+                "Ebs": {
+                    "VolumeSize": 1000,
+                },
+            }
+        ]
+    }
+
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["head_node_type"]["aws_advanced_configurations"][
+        "BlockDeviceMappings"
+    ][0]["Ebs"]["DeleteOnTermination"] = False
+
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["head_node_type"]["aws_advanced_configurations"][
+        "BlockDeviceMappings"
+    ][0]["Ebs"]["DeleteOnTermination"] = True
+
+    assert not validate_cluster_compute(compute_config)
+
+    compute_config["worker_node_types"] = [{}]
+    compute_config["worker_node_types"][0]["aws_advanced_configurations"] = {
+        "BlockDeviceMappings": [
+            {
+                "DeviceName": "/dev/sda1",
+                "Ebs": {
+                    "VolumeSize": 1000,
+                },
+            }
+        ]
+    }
+
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["worker_node_types"][0]["aws_advanced_configurations"][
+        "BlockDeviceMappings"
+    ][0]["Ebs"]["DeleteOnTermination"] = False
+
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["worker_node_types"][0]["aws_advanced_configurations"][
+        "BlockDeviceMappings"
+    ][0]["Ebs"]["DeleteOnTermination"] = True
+
+    assert not validate_cluster_compute(compute_config)
+
 
 def test_load_and_validate_test_collection_file():
     read_and_validate_release_test_collection(TEST_COLLECTION_FILE)
