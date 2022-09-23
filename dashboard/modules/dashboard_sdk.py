@@ -25,7 +25,7 @@ from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray.dashboard.modules.job.common import uri_to_http_components
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.client_builder import _split_address
+from ray._private.utils import split_address
 from ray.autoscaler._private.cli_logger import cli_logger
 
 logger = logging.getLogger(__name__)
@@ -145,18 +145,18 @@ def parse_cluster_info(
             )
             address = DEFAULT_DASHBOARD_ADDRESS
 
-    module_string, inner_address = _split_address(address, prepend_ray_if_needed=False)
-
-    if module_string == "":
-        # Default to HTTPS.
+    if "://" not in address:
+        # Default to HTTP.
         logger.info(
             "No scheme (e.g. 'http://') or module string (e.g. 'ray://') "
             f"provided in address {address}, defaulting to HTTP."
         )
-        module_string = "http"
+        address = f"http://{address}"
+
+    module_string, inner_address = split_address(address)
 
     # If user passes http(s)://, go through normal parsing.
-    if module_string in {"http", "https", "ray"}:
+    if module_string in {"http", "https"}:
         return get_job_submission_client_cluster_info(
             inner_address,
             create_cluster_if_needed=create_cluster_if_needed,

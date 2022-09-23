@@ -14,6 +14,7 @@ from ray._private.ray_constants import (
     RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
     RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE,
 )
+from ray._private.utils import split_address
 from ray._private.worker import BaseContext
 from ray._private.worker import init as ray_driver_init
 from ray.job_config import JobConfig
@@ -321,20 +322,15 @@ class _LocalClientBuilder(ClientBuilder):
         )
 
 
-def _split_address(address: str, prepend_ray_if_needed: bool = True) -> Tuple[str, str]:
+def _split_address(address: str) -> Tuple[str, str]:
     """
     Splits address into a module string (scheme) and an inner_address.
 
-    If prepend_ray_if_needed is True, and the scheme is not present, then
-    "ray://" is prepended to the address.
+    If the scheme is not present, then "ray://" is prepended to the address.
     """
-    if prepend_ray_if_needed and "://" not in address:
+    if "://" not in address:
         address = "ray://" + address
-    # NOTE: We use a custom splitting function instead of urllib because
-    # PEP allows "underscores" in a module names, while URL schemes do not
-    # allow them.
-    module_string, inner_address = address.split("://", maxsplit=1)
-    return (module_string, inner_address)
+    return split_address(address)
 
 
 def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:

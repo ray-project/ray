@@ -516,16 +516,17 @@ def async_loop_forever(interval_seconds, cancellable=False):
 
 
 def ray_address_to_api_server_url(address: Optional[str]) -> str:
-    """Parse a ray cluster bootstrap address into API server URL.
+    """Parse a Ray cluster address into API server URL.
 
     When an address is provided, it will be used to query GCS for
     API server address from GCS, so a Ray cluster must be running.
 
     When an address is not provided, it will first try to auto-detect
-    a running ray instance, or look for local GCS process.
+    a running Ray instance, or look for local GCS process.
 
     Args:
-        address: Ray cluster bootstrap address. Could also be `auto`.
+        address: Ray cluster bootstrap address or Ray Client address.
+            Could also be `auto`.
 
     Return:
         API server HTTP URL.
