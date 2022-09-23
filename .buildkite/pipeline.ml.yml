@@ -1,7 +1,5 @@
 - label: ":airplane: ML tests (ray/air)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_ML_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_ML_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
@@ -10,24 +8,32 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-gpu_only,-gpu,-needs_credentials python/ray/train/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air python/ray/data/...
 
-- label: ":brain: RLlib: Learning discr. actions TF2-static-graph"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+- label: ":brain: RLlib: Learning discr. actions (I) TF2-static-graph"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_discrete,-fake_gpus,-torch_only,-tf2_only,-no_tf_static_graph
+      --test_tag_filters=learning_tests_discrete,-crashing_cartpole,-stateless_cartpole,-fake_gpus,-torch_only,-tf2_only,-no_tf_static_graph
+      --test_arg=--framework=tf
+      rllib/...
+
+- label: ":brain: RLlib: Learning discr. actions (II) TF2-static-graph"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=crashing_cartpole,stateless_cartpole,-fake_gpus,-torch_only,-tf2_only,-no_tf_static_graph
       --test_arg=--framework=tf
       rllib/...
 
 - label: ":brain: RLlib: Learning cont. actions TF2-static-graph"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -38,24 +44,32 @@
       --test_arg=--framework=tf
       rllib/...
 
-- label: ":brain: RLlib: Learning discr. actions TF2-eager-tracing"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+- label: ":brain: RLlib: Learning discr. actions (I) TF2-eager-tracing"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_discrete,-fake_gpus,-torch_only,-multi_gpu,-no_tf_eager_tracing
+      --test_tag_filters=learning_tests_discrete,-crashing_cartpole,-stateless_cartpole,-fake_gpus,-torch_only,-multi_gpu,-no_tf_eager_tracing
+      --test_arg=--framework=tf2
+      rllib/...
+
+- label: ":brain: RLlib: Learning discr. actions (II) TF2-eager-tracing"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=crashing_cartpole,stateless_cartpole,-fake_gpus,-torch_only,-multi_gpu,-no_tf_eager_tracing
       --test_arg=--framework=tf2
       rllib/...
 
 - label: ":brain: RLlib: Learning cont. actions TF2-eager-tracing"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -66,24 +80,32 @@
       --test_arg=--framework=tf2
       rllib/...
 
-- label: ":brain: RLlib: Learning discr. actions PyTorch"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+- label: ":brain: RLlib: Learning discr. actions (I) PyTorch"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_discrete,-fake_gpus,-tf_only,-tf2_only,-multi_gpu
+      --test_tag_filters=learning_tests_discrete,-crashing_cartpole,-stateless_cartpole,-fake_gpus,-tf_only,-tf2_only,-multi_gpu
+      --test_arg=--framework=torch
+      rllib/...
+
+- label: ":brain: RLlib: Learning discr. actions (II) PyTorch"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=crashing_cartpole,stateless_cartpole,-fake_gpus,-tf_only,-tf2_only,-multi_gpu
       --test_arg=--framework=torch
       rllib/...
 
 - label: ":brain: RLlib: Learning cont. actions PyTorch"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -95,9 +117,7 @@
       rllib/...
 
 - label: ":brain: RLlib: Learning tests w/ 2 fake GPUs TF2-static-graph"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -110,9 +130,7 @@
 
 # TODO: (sven) tf2 (eager) multi-GPU
 - label: ":brain: RLlib: Learning tests w/ 2 fake GPUs PyTorch"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -124,9 +142,7 @@
       rllib/...
 
 - label: ":brain: RLlib: Memory leak tests TF2-eager-tracing"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -138,9 +154,7 @@
       rllib/...
 
 - label: ":brain: RLlib: Memory leak tests PyTorch"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -152,9 +166,7 @@
       rllib/...
 
 - label: ":brain: RLlib: Quick Agent train.py runs (TODO: obsolete)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -165,9 +177,7 @@
       rllib/...
 
 - label: ":brain: RLlib: Algorithm Tests (generic)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -180,9 +190,7 @@
       rllib/...
 
 - label: ":brain: RLlib: Algorithm Tests (specific algos)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -195,9 +203,7 @@
       rllib/...
 
 - label: ":brain: RLlib: Everything else (env-, evaluation-, ... dirs)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -211,9 +217,7 @@
       rllib/...
 
 - label: ":brain: RLlib: Examples {A..B}"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -222,9 +226,7 @@
       --test_tag_filters=examples_A,examples_B,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
 - label: ":brain: RLlib: Examples {Ca..Ct}"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -233,9 +235,7 @@
       --test_tag_filters=examples_C_AtoT,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
 - label: ":brain: RLlib: Examples {Cu..Cz}"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -243,22 +243,28 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_C_UtoZ,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
-- label: ":brain: RLlib: Examples {D..P}"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+- label: ":brain: RLlib: Examples {D..I}"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=examples_D,examples_E,examples_F,examples_G,examples_H,examples_I,examples_J,examples_K,examples_L,examples_M,examples_N,examples_O,examples_P,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      --test_tag_filters=examples_D,examples_E,examples_F,examples_G,examples_H,examples_I,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      rllib/...
+
+- label: ":brain: RLlib: Examples {J..P}"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
+      --test_tag_filters=examples_J,examples_K,examples_L,examples_M,examples_N,examples_O,examples_P,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
 - label: ":brain: RLlib: Examples {Q..Z}"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -268,9 +274,7 @@
       rllib/...
 
 - label: ":brain: RLlib: tests/ dir (A..L)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -280,9 +284,7 @@
       rllib/...
       
 - label: ":brain: RLlib: tests/ dir (M..Z (no R))"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -291,9 +293,7 @@
       --test_tag_filters=tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 - label: ":brain: RLlib: tests/ dir (R)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -303,9 +303,7 @@
       rllib/...
 
 - label: ":brain: RLlib: Documentation code/examples"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]  
-  agents:
-    aws:instance-type: m5.2xlarge
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -315,7 +313,7 @@
       rllib/...
 
 - label: ":octopus: Tune tests {A-R; no RLlib}"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]  
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
@@ -325,7 +323,7 @@
       python/ray/tune/...
 
 - label: ":octopus: Tune tests {S-Z; no RLlib}"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]  
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
@@ -337,7 +335,7 @@
 
 
 - label: ":octopus: Tune examples {w/o tf/pytorch; no RLlib}"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]  
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
@@ -345,7 +343,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=example,-tf,-pytorch,-py37,-soft_imports,-gpu_only,-rllib python/ray/tune/...
 
 - label: ":octopus: Tune examples {w/ tf/pytorch; no RLlib}"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]  
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
@@ -354,7 +352,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-soft_imports,-gpu_only,-rllib python/ray/tune/...
 
 - label: ":octopus: :brain: Tune tests and examples {using RLlib}"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_RLLIB_AFFECTED"]  
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
@@ -362,7 +360,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-gpu_only,rllib python/ray/tune/...
 
 - label: ":steam_locomotive: Train tests and examples"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]  
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TRAIN_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
@@ -370,7 +368,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-gpu_only,-minimal,-tune,-ray_air python/ray/train/...
 
 - label: ":steam_locomotive: :octopus: Train + Tune tests and examples"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]  
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
@@ -378,7 +376,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=tune,-gpu_only,-ray_air python/ray/train/...
 
 - label: ":octopus: Tune tests and examples. Python 3.7"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]  
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
@@ -386,7 +384,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=py37,-client python/ray/tune/...
 
 - label: ":octopus: ML library integrations tests and examples. Python 3.7"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]  
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
@@ -404,7 +402,7 @@
 #    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/ludwig/...
 
 - label: ":tropical_fish: ML Libraries w/ Ray Client Examples (Python 3.7)."
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]  
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
@@ -413,7 +411,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client python/ray/tune/...
 
 - label: ":potable_water: Dataset library integrations tests and examples. Python 3.7"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]  
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
@@ -423,7 +421,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/dask/...
 
 - label: ":potable_water: Dataset tests (Python 3.7)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]  
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
@@ -431,7 +429,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-ray_air python/ray/data/...
 
 - label: ":potable_water: Workflow tests (Python 3.7)"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]  
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
@@ -440,7 +438,7 @@
 
 - label: ":book: Doc tests and examples (excluding Ray AIR examples)"
   conditions:
-    ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_ML_AFFECTED"]  
+    ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_ML_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
@@ -449,7 +447,7 @@
 
 - label: ":book: :airplane: Ray AIR examples"
   conditions:
-    ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_ML_AFFECTED"]  
+    ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_ML_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
@@ -457,7 +455,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-needs_credentials,-gpu,-py37,-post_wheel_build doc/...
 
 - label: ":book: Doc examples with authentication "
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_BRANCH_BUILD"]  
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_BRANCH_BUILD"]
   commands:
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
