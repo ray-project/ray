@@ -47,8 +47,6 @@ enum class UnscheduledWorkCause {
   WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST,
   /// Waiting becasue the worker wasn't available since its registration timed out.
   WORKER_NOT_FOUND_REGISTRATION_TIMEOUT,
-  /// Waiting because the worker wasn't available since it was rate limited.
-  WORKER_NOT_FOUND_RATE_LIMITED,
 };
 
 /// Work represents all the information needed to make a scheduling decision.
