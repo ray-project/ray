@@ -375,6 +375,7 @@ class OutOfMemoryError(RayError):
     evicted to free up memory.
     """
 
+    # TODO: (clarng) expose the error message string here and format it with proto
     def __init__(self, message):
         self.message = message
 
@@ -386,6 +387,7 @@ class OutOfMemoryError(RayError):
 class NodeDiedError(RayError):
     """Indicates that the node is either dead or unreachable."""
 
+    # TODO: (clarng) expose the error message string here and format it with proto
     def __init__(self, message):
         self.message = message
 

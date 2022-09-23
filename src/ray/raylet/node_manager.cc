@@ -2960,38 +2960,39 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           } else {
             id_ss << "actor ID " << latest_worker->GetActorId();
           }
+
+          /// TODO: (clarng) expose this string in the frontend python error as well.
           std::stringstream worker_exit_message_ss;
           worker_exit_message_ss
-              << "System memory low at node with IP " << latest_worker->IpAddress()
-              << ". Used memory (" << used_bytes_gb << "GB) / total capacity ("
-              << total_bytes_gb << "GB) (" << usage_fraction << ") exceeds threshold "
-              << usage_threshold << ", killing latest task with name "
-              << latest_worker->GetAssignedTask().GetTaskSpecification().GetName()
-              << " and " << id_ss.str() << " to avoid running out of memory.\n"
-              << "This may indicate a memory leak in a task or actor, or that too many "
-                 "tasks are running in parallel.\n";
-          std::string worker_exit_message = worker_exit_message_ss.str();
-
-          std::stringstream error_log_ss;
-          error_log_ss
-              << worker_exit_message
-              << "To find the highest memory consumers, use `ray logs raylet.out -ip "
-              << latest_worker->IpAddress() << "`.\n"
+              << "Task was killed due to the node running low on memory.\n\n"
+              << "Memory on the node (IP: " << latest_worker->IpAddress()
+              << ", ID: " << this->self_node_id_ << ") where the task was running was "
+              << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
+              << "), which exceeds the memory usage threshold of " << usage_threshold
+              << ". Ray killed this worker (ID: " << latest_worker->WorkerId()
+              << ") because it was the most recently scheduled task; to see more "
+                 "information about memory usage on this node, use `ray logs raylet.out "
+                 "-ip "
+              << latest_worker->IpAddress()
+              << "`. To see the logs of the worker, use `ray logs worker-"
+              << latest_worker->WorkerId() << "*out -ip " << latest_worker->IpAddress()
+              << "`.\n\n"
               << "Consider provisioning more memory on this node or reducing task "
-                 "parallelism by requesting more CPUs per task. "
-              << "To adjust the eviction threshold, set the environment variable "
-                 "`RAY_memory_usage_threshold_fraction` when starting Ray. "
-              << "To disable worker eviction, set the environment variable "
+                 "parallelism by requesting more CPUs per task. To adjust the eviction "
+                 "threshold, set the environment variable "
+                 "`RAY_memory_usage_threshold_fraction` when starting Ray. To disable "
+                 "worker eviction, set the environment variable "
                  "`RAY_memory_monitor_interval_ms` to zero.";
+          std::string worker_exit_message = worker_exit_message_ss.str();
           /// TODO: (clarng) add a link to the oom killer / memory manager documentation
-          RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << error_log_ss.str();
+          RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << worker_exit_message;
 
           const static int64_t max_to_print = 10;
           RAY_LOG(INFO) << "Latest 10 worker details:\n"
                         << this->WorkersDebugString(workers, max_to_print);
 
           rpc::RayErrorInfo task_failure_reason;
-          task_failure_reason.set_error_message(error_log_ss.str());
+          task_failure_reason.set_error_message(worker_exit_message);
           task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
           SetTaskFailureReason(latest_worker->GetAssignedTaskId(),
                                std::move(task_failure_reason));

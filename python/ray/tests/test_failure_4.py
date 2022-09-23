@@ -672,7 +672,6 @@ def test_task_crash_after_raylet_dead_throws_node_died_error():
         with pytest.raises(ray.exceptions.NodeDiedError) as error:
             ray.get(ref)
         message = str(error)
-        assert "Node died" in message
         assert raylet["NodeManagerAddress"] in message
 
 
