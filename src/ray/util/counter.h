@@ -16,13 +16,17 @@
 
 #include <list>
 
-// TODO: add docs, unit test
 #include "absl/container/flat_hash_map.h"
-#include "ray/util/macros.h"
+#include "ray/util/logging.h"
+
 /// \class Counter
 ///
 /// This container implements counter behavior on top of an absl hash table. Counter
-/// entries will be automatically cleaned up when they fall back to zero.
+/// entries will be automatically cleaned up when they fall back to zero. Counter
+/// entries are not allowed to be negative.
+///
+/// For example, this can be used to track the number of running tasks broken down
+/// by their function name, or track the number of tasks by (name, state) pairs.
 template <typename K>
 class Counter {
  public:
@@ -32,10 +36,12 @@ class Counter {
 
   Counter &operator=(const Counter &other) = delete;
 
+  /// Set a function `f((key, count))` to run when the count for the key changes.
   void SetOnChangeCallback(std::function<void(const K &, int64_t)> on_change) {
     on_change_ = on_change;
   }
 
+  /// Increment the specified key by one.
   void Increment(const K &key) {
     counters_[key] += 1;
     total_ += 1;
@@ -44,6 +50,9 @@ class Counter {
     }
   }
 
+  /// Decrement the specified key by one. If the count for the key drops to zero,
+  /// the entry for the key is erased from the counter. It is not allowed for
+  /// the count to be decremented below zero.
   void Decrement(const K &key) {
     auto it = counters_.find(key);
     RAY_CHECK(it != counters_.end());
@@ -58,6 +67,7 @@ class Counter {
     }
   }
 
+  /// Get the current count for the key, or zero if not tracked.
   int64_t Get(const K &key) const {
     auto it = counters_.find(key);
     if (it == counters_.end()) {
@@ -68,16 +78,21 @@ class Counter {
     }
   }
 
+  /// Decrement `old_key` by one and increment `new_key` by one.
   void Swap(const K &old_key, const K &new_key) {
     if (old_key != new_key) {
-      Increment(new_key);
       Decrement(old_key);
+      Increment(new_key);
     }
   }
 
+  /// Return the number of non-zero keys tracked in this counter.
   size_t Size() const { return counters_.size(); }
+
+  /// Return the total count across all keys in this counter.
   size_t Total() const { return total_; }
 
+  /// Run the given function `f((key, count))` for every tracked entry.
   void ForEachEntry(std::function<void(const K &, int64_t)> callback) const {
     for (const auto &it : counters_) {
       callback(it.first, it.second);
