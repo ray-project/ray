@@ -368,6 +368,34 @@ class OutOfDiskError(RayError):
 
 
 @PublicAPI
+class OutOfMemoryError(RayError):
+    """Indicates that the node is running out of memory and is close to full.
+
+    This is raised if the node is low on memory and tasks or actors are being
+    evicted to free up memory.
+    """
+
+    # TODO: (clarng) expose the error message string here and format it with proto
+    def __init__(self, message):
+        self.message = message
+
+    def __str__(self):
+        return self.message
+
+
+@PublicAPI
+class NodeDiedError(RayError):
+    """Indicates that the node is either dead or unreachable."""
+
+    # TODO: (clarng) expose the error message string here and format it with proto
+    def __init__(self, message):
+        self.message = message
+
+    def __str__(self):
+        return self.message
+
+
+@PublicAPI
 class ObjectLostError(RayError):
     """Indicates that the object is lost from distributed memory, due to
     node failure or system error.

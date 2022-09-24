@@ -174,7 +174,8 @@ class CoreWorkerDirectTaskSubmitter {
       const rpc::WorkerAddress &addr,
       std::shared_ptr<WorkerLeaseInterface> lease_client,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
-      const SchedulingKey &scheduling_key) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      const SchedulingKey &scheduling_key,
+      const TaskID &task_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// This function takes care of returning a worker to the Raylet.
   /// \param[in] addr The address of the worker.
@@ -197,6 +198,15 @@ class CoreWorkerDirectTaskSubmitter {
                       const TaskSpecification &task_spec,
                       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
                           &assigned_resources);
+
+  /// Handles result from GetTaskFailureCause.
+  void HandleGetTaskFailureCause(
+      const Status &task_execution_status,
+      const bool is_actor,
+      const TaskID &task_id,
+      const rpc::WorkerAddress &addr,
+      const Status &get_task_failure_cause_reply_status,
+      const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply);
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;
@@ -253,12 +263,14 @@ class CoreWorkerDirectTaskSubmitter {
   /// (3) Whether the worker has assigned task to do.
   /// (5) The resources assigned to the worker
   /// (6) The SchedulingKey assigned to tasks that will be sent to the worker
+  /// (7) The task id used to obtain the worker lease.
   struct LeaseEntry {
     std::shared_ptr<WorkerLeaseInterface> lease_client;
     int64_t lease_expiration_time;
     bool is_busy = false;
     google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources;
     SchedulingKey scheduling_key;
+    TaskID task_id;
 
     LeaseEntry(
         std::shared_ptr<WorkerLeaseInterface> lease_client = nullptr,
@@ -266,11 +278,13 @@ class CoreWorkerDirectTaskSubmitter {
         google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources =
             google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>(),
         SchedulingKey scheduling_key =
-            std::make_tuple(0, std::vector<ObjectID>(), ActorID::Nil(), 0))
+            std::make_tuple(0, std::vector<ObjectID>(), ActorID::Nil(), 0),
+        TaskID task_id = TaskID::Nil())
         : lease_client(lease_client),
           lease_expiration_time(lease_expiration_time),
           assigned_resources(assigned_resources),
-          scheduling_key(scheduling_key) {}
+          scheduling_key(scheduling_key),
+          task_id(task_id) {}
   };
 
   // Map from worker address to a LeaseEntry struct containing the lease's metadata.

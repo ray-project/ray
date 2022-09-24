@@ -384,6 +384,21 @@ Status raylet::RayletClient::ReturnWorker(int worker_port,
   return Status::OK();
 }
 
+void raylet::RayletClient::GetTaskFailureCause(
+    const TaskID &task_id,
+    const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) {
+  rpc::GetTaskFailureCauseRequest request;
+  request.set_task_id(task_id.Binary());
+  grpc_client_->GetTaskFailureCause(
+      request,
+      [callback](const Status &status, const rpc::GetTaskFailureCauseReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(INFO) << "Error getting task result: " << status;
+        }
+        callback(status, reply);
+      });
+}
+
 void raylet::RayletClient::ReleaseUnusedWorkers(
     const std::vector<WorkerID> &workers_in_use,
     const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) {

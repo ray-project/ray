@@ -1,6 +1,7 @@
 from math import ceil
 import sys
 import time
+import os
 
 import psutil
 import pytest
@@ -12,7 +13,10 @@ from ray._private.test_utils import get_node_stats, wait_for_condition
 
 memory_usage_threshold_fraction = 0.7
 memory_monitor_interval_ms = 100
-expected_worker_eviction_message = "System memory low at node with IP"
+expected_worker_eviction_message = (
+    "Task was killed due to the node running low on memory"
+)
+task_failure_entry_ttl_ms = 2 * 60 * 1000
 
 
 @pytest.fixture
@@ -26,6 +30,7 @@ def ray_with_memory_monitor(shutdown_only):
             "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
             "memory_monitor_interval_ms": memory_monitor_interval_ms,
             "metrics_report_interval_ms": metrics_report_interval_ms,
+            "task_failure_entry_ttl_ms": task_failure_entry_ttl_ms,
         },
     ):
         yield
@@ -63,6 +68,17 @@ def no_retry(
     end = time.time()
     time.sleep(post_allocate_sleep_s)
     return end - start
+
+
+@ray.remote(max_retries=0)
+def sleeper(
+    sleep_s: float = 0,
+    crash_at_the_end: bool = False,
+):
+    time.sleep(sleep_s)
+    if crash_at_the_end:
+        os.kill(os.getpid(), 9)
+    return os.getpid()
 
 
 @ray.remote
@@ -136,7 +152,7 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
 )
 def test_memory_pressure_kill_task(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.95)
-    with pytest.raises(ray.exceptions.WorkerCrashedError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(no_retry.remote(bytes_to_alloc))
 
     wait_for_condition(
@@ -160,7 +176,7 @@ def test_memory_pressure_kill_newest_worker(ray_with_memory_monitor):
     actor_ref = Leaker.options(name="actor").remote()
     ray.get(actor_ref.allocate.remote(bytes_to_alloc))
 
-    with pytest.raises(ray.exceptions.WorkerCrashedError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(no_retry.remote(allocate_bytes=bytes_to_alloc))
 
     actors = ray.util.list_named_actors()
@@ -186,7 +202,7 @@ def test_memory_pressure_kill_task_if_actor_submitted_task_first(
     )
 
     ray.get(actor_ref.allocate.remote(bytes_to_alloc))
-    with pytest.raises(ray.exceptions.WorkerCrashedError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(task_ref)
 
     actors = ray.util.list_named_actors()
@@ -245,7 +261,7 @@ async def test_actor_oom_logs_error(ray_with_memory_monitor):
 )
 async def test_task_oom_logs_error(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
-    with pytest.raises(ray.exceptions.WorkerCrashedError) as _:
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(
             no_retry.remote(
                 allocate_bytes=bytes_to_alloc,

@@ -15,6 +15,7 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
 
 #include "ray/core_worker/transport/dependency_resolver.h"
+#include "ray/gcs/pb_util.h"
 
 namespace ray {
 namespace core {
@@ -126,11 +127,12 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
     const rpc::WorkerAddress &addr,
     std::shared_ptr<WorkerLeaseInterface> lease_client,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
-    const SchedulingKey &scheduling_key) {
+    const SchedulingKey &scheduling_key,
+    const TaskID &task_id) {
   client_cache_->GetOrConnect(addr.ToProto());
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
-  LeaseEntry new_lease_entry =
-      LeaseEntry(std::move(lease_client), expiration, assigned_resources, scheduling_key);
+  LeaseEntry new_lease_entry = LeaseEntry(
+      std::move(lease_client), expiration, assigned_resources, scheduling_key, task_id);
   worker_to_lease_entry_.emplace(addr, new_lease_entry);
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -450,7 +452,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
               auto resources_copy = reply.resource_mapping();
 
               AddWorkerLeaseClient(
-                  addr, std::move(lease_client), resources_copy, scheduling_key);
+                  addr, std::move(lease_client), resources_copy, scheduling_key, task_id);
               RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
               OnWorkerIdle(addr,
                            scheduling_key,
@@ -580,6 +582,24 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           RAY_CHECK_GE(scheduling_key_entry.num_busy_workers, 1u);
           scheduling_key_entry.num_busy_workers--;
 
+          if (!status.ok()) {
+            RAY_LOG(DEBUG) << "Getting error from raylet for task " << task_id;
+            const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> callback =
+                [this, status, is_actor, task_id, addr](
+                    const Status &get_task_failure_cause_reply_status,
+                    const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
+                  HandleGetTaskFailureCause(status,
+                                            is_actor,
+                                            task_id,
+                                            addr,
+                                            get_task_failure_cause_reply_status,
+                                            get_task_failure_cause_reply);
+                };
+            auto &lease_entry = worker_to_lease_entry_[addr];
+            RAY_CHECK(lease_entry.lease_client);
+            lease_entry.lease_client->GetTaskFailureCause(lease_entry.task_id, callback);
+          }
+
           if (!status.ok() || !is_actor_creation || reply.worker_exiting()) {
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr,
@@ -589,22 +609,55 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
                          assigned_resources);
           }
         }
-        if (!status.ok()) {
-          // TODO: It'd be nice to differentiate here between process vs node
-          // failure (e.g., by contacting the raylet). If it was a process
-          // failure, it may have been an application-level error and it may
-          // not make sense to retry the task.
-          RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-              task_id,
-              is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
-              &status));
-        } else {
+        if (status.ok()) {
           if (!task_spec.GetMessage().retry_exceptions() || !reply.is_retryable_error() ||
               !task_finisher_->RetryTaskIfPossible(task_id)) {
             task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
           }
         }
       });
+}
+
+void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
+    const Status &task_execution_status,
+    const bool is_actor,
+    const TaskID &task_id,
+    const rpc::WorkerAddress &addr,
+    const Status &get_task_failure_cause_reply_status,
+    const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
+  rpc::ErrorType task_error_type = rpc::ErrorType::WORKER_DIED;
+  std::unique_ptr<rpc::RayErrorInfo> error_info;
+  if (get_task_failure_cause_reply_status.ok()) {
+    RAY_LOG(DEBUG) << "Task failure cause "
+                   << ray::gcs::RayErrorInfoToString(
+                          get_task_failure_cause_reply.failure_cause());
+    if (get_task_failure_cause_reply.has_failure_cause()) {
+      task_error_type = get_task_failure_cause_reply.failure_cause().error_type();
+      error_info = std::make_unique<rpc::RayErrorInfo>(
+          get_task_failure_cause_reply.failure_cause());
+    }
+  } else {
+    RAY_LOG(DEBUG) << "Failed to fetch task result with status "
+                   << get_task_failure_cause_reply_status.ToString()
+                   << " node id: " << addr.raylet_id << " ip: " << addr.ip_address;
+    task_error_type = rpc::ErrorType::NODE_DIED;
+    std::stringstream buffer;
+    buffer << "Task failed due to the node dying.\n\nThe node (IP: " << addr.ip_address
+           << ", node ID: " << addr.raylet_id
+           << ") where this task was running crashed unexpectedly. "
+           << "This can happen if: (1) the instance where the node was running failed, "
+              "(2) raylet crashes unexpectedly (OOM, preempted node, etc).\n\n"
+           << "To see more information about the crash, use `ray logs raylet.out -ip "
+           << addr.ip_address << "`";
+    error_info = std::make_unique<rpc::RayErrorInfo>();
+    error_info->set_error_message(buffer.str());
+    error_info->set_error_type(rpc::ErrorType::NODE_DIED);
+  }
+  RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
+      task_id,
+      is_actor ? rpc::ErrorType::ACTOR_DIED : task_error_type,
+      &task_execution_status,
+      error_info.get()));
 }
 
 Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
