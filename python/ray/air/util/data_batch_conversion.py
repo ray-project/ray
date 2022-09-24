@@ -120,7 +120,6 @@ def _convert_batch_type_to_numpy(
     Returns:
         A numpy representation of the input data.
     """
-
     if isinstance(data, np.ndarray):
         return data
     elif isinstance(data, dict):
@@ -143,17 +142,7 @@ def _convert_batch_type_to_numpy(
                 output_dict[col_name] = data[col_name].to_numpy()
             return output_dict
     elif isinstance(data, pd.DataFrame):
-        if list(data.columns) == [TENSOR_COLUMN_NAME] and (
-            next(iter(data.dtypes)) == int or next(iter(data.dtypes)) == float
-        ):
-            # If representing a tensor dataset, return as a single numpy array.
-            return data.iloc[:, 0].to_numpy()
-        else:
-            # Else return as a dict of numpy arrays.
-            output_dict = {}
-            for column_name in data:
-                output_dict[column_name] = data[column_name].to_numpy()
-            return output_dict
+        return convert_pandas_to_batch_type(data, DataType.NUMPY)
     else:
         raise ValueError(
             f"Received data of type: {type(data)}, but expected it to be one "
