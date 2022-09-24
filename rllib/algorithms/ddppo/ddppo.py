@@ -189,9 +189,9 @@ class DDPPO(PPO):
 
         # Auto-train_batch_size: Calculate from rollout len and
         # envs-per-worker.
-        config["train_batch_size"] = config.get(
-            "rollout_fragment_length", DEFAULT_CONFIG["rollout_fragment_length"]
-        ) * config.get("num_envs_per_worker", DEFAULT_CONFIG["num_envs_per_worker"])
+        config["train_batch_size"] = (
+            config["rollout_fragment_length"] * config["num_envs_per_worker"]
+        )
 
     @classmethod
     @override(PPO)

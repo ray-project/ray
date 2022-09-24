@@ -117,12 +117,12 @@ class MixInMultiAgentReplayBuffer:
                 # Lockstep mode: Store under _ALL_POLICIES key (we will always
                 # only sample from all policies at the same time).
                 # This means storing a MultiAgentBatch to the underlying buffer
-                self.replay_buffers[_ALL_POLICIES].add(batch)
+                self.replay_buffers[_ALL_POLICIES].add_batch(batch)
                 self.last_added_batches[_ALL_POLICIES].append(batch)
             else:
                 # Store independent SampleBatches
                 for policy_id, sample_batch in batch.policy_batches.items():
-                    self.replay_buffers[policy_id].add(sample_batch)
+                    self.replay_buffers[policy_id].add_batch(sample_batch)
                     self.last_added_batches[policy_id].append(sample_batch)
 
         self.num_added += batch.count
