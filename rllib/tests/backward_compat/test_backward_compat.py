@@ -4,7 +4,8 @@ import unittest
 class TestBackwardCompatibility(unittest.TestCase):
     # Leaving this class in-tact as we will add new backward-compat tests in
     # an upcoming PR.
-    pass
+    def test_shim(self):
+        pass
 
 
 if __name__ == "__main__":

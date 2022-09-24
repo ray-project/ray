@@ -52,14 +52,14 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
     def test_traj_view_normal_case(self):
         """Tests, whether Model and Policy return the correct ViewRequirements."""
-        config = dqn.DQNConfig().rollouts(
-            num_envs_per_worker=10, rollout_fragment_length=4
+        config = (
+            dqn.DQNConfig()
+            .rollouts(num_envs_per_worker=10, rollout_fragment_length=4)
+            .environment("ray.rllib.examples.env.debug_counter_env.DebugCounterEnv")
         )
 
         for _ in framework_iterator(config):
-            algo = dqn.DQN(
-                config, env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv"
-            )
+            algo = config.build()
             policy = algo.get_policy()
             view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
@@ -85,9 +85,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].shift == 1
             rollout_worker = algo.workers.local_worker()
             sample_batch = rollout_worker.sample()
-            expected_count = (
-                config["num_envs_per_worker"] * config["rollout_fragment_length"]
-            )
+            expected_count = config.num_envs_per_worker * config.rollout_fragment_length
             assert sample_batch.count == expected_count
             for v in sample_batch.values():
                 assert len(v) == expected_count
