@@ -984,7 +984,9 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
             resources.Set(scheduling::ResourceID(resource_entry.first),
                           FixedPoint(resource_entry.second->resource_capacity()));
           }
-          ResourceCreateUpdated(node_id, resources);
+          if (ResourceCreateUpdated(node_id, resources)) {
+            cluster_task_manager_->ScheduleAndDispatchTasks();
+          }
         }
       }));
 }
@@ -1083,7 +1085,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
   }
 }
 
-void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
+bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                                         const ResourceRequest &createUpdatedResources) {
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from node id " << node_id
                  << " with created or updated resources: "
@@ -1094,8 +1096,7 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
   // Updating local node could result in a inconsistence view in cluster resource
   // scheduler which could make task hang.
   if (node_id == self_node_id_) {
-    cluster_task_manager_->ScheduleAndDispatchTasks();
-    return;
+    return false;
   }
 
   for (const auto &resource_id : createUpdatedResources.ResourceIds()) {
@@ -1105,10 +1106,10 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
         createUpdatedResources.Get(resource_id).Double());
   }
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
-  cluster_task_manager_->ScheduleAndDispatchTasks();
+  return true;
 }
 
-void NodeManager::ResourceDeleted(const NodeID &node_id,
+bool NodeManager::ResourceDeleted(const NodeID &node_id,
                                   const std::vector<std::string> &resource_names) {
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::ostringstream oss;
@@ -1124,7 +1125,7 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
   // Updating local node could result in a inconsistence view in cluster resource
   // scheduler which could make task hang.
   if (node_id == self_node_id_) {
-    return;
+    return false;
   }
 
   std::vector<scheduling::ResourceID> resource_ids;
@@ -1133,7 +1134,7 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
   }
   cluster_resource_scheduler_->GetClusterResourceManager().DeleteResources(
       scheduling::NodeID(node_id.Binary()), resource_ids);
-  return;
+  return true;
 }
 
 void NodeManager::HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &request,
@@ -1155,14 +1156,14 @@ void NodeManager::HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &req
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::UpdateResourceUsage(const NodeID &node_id,
+bool NodeManager::UpdateResourceUsage(const NodeID &node_id,
                                       const rpc::ResourcesData &resource_data) {
   if (!cluster_resource_scheduler_->GetClusterResourceManager().UpdateNode(
           scheduling::NodeID(node_id.Binary()), resource_data)) {
     RAY_LOG(INFO)
         << "[UpdateResourceUsage]: received resource usage from unknown node id "
         << node_id;
-    return;
+    return false;
   }
 
   // Trigger local GC at the next heartbeat interval.
@@ -1170,22 +1171,7 @@ void NodeManager::UpdateResourceUsage(const NodeID &node_id,
     should_local_gc_ = true;
   }
 
-  // If light resource usage report enabled, we update remote resources only when related
-  // resources map in heartbeat is not empty.
-  cluster_task_manager_->ScheduleAndDispatchTasks();
-}
-
-void NodeManager::ResourceUsageBatchReceived(
-    const ResourceUsageBatchData &resource_usage_batch) {
-  // Update load information provided by each message.
-  for (const auto &resource_usage : resource_usage_batch.batch()) {
-    const NodeID &node_id = NodeID::FromBinary(resource_usage.node_id());
-    if (node_id == self_node_id_) {
-      // Skip messages from self.
-      continue;
-    }
-    UpdateResourceUsage(node_id, resource_usage);
-  }
+  return true;
 }
 
 void NodeManager::ProcessNewClient(ClientConnection &client) {
@@ -1756,13 +1742,16 @@ void NodeManager::HandleUpdateResourceUsage(
   }
   next_resource_seq_no_ = resource_usage_batch.seq_no() + 1;
 
+  bool updated = false;
   for (const auto &resource_change_or_data : resource_usage_batch.batch()) {
     if (resource_change_or_data.has_data()) {
       const auto &resource_usage = resource_change_or_data.data();
       auto node_id = NodeID::FromBinary(resource_usage.node_id());
       // Skip messages from self.
       if (node_id != self_node_id_) {
-        UpdateResourceUsage(node_id, resource_usage);
+        if (UpdateResourceUsage(node_id, resource_usage)) {
+          updated = true;
+        }
       }
     } else if (resource_change_or_data.has_change()) {
       const auto &resource_notification = resource_change_or_data.change();
@@ -1770,14 +1759,22 @@ void NodeManager::HandleUpdateResourceUsage(
       if (resource_notification.updated_resources_size() != 0) {
         auto resources = ResourceMapToResourceRequest(
             MapFromProtobuf(resource_notification.updated_resources()), false);
-        ResourceCreateUpdated(node_id, resources);
+        if (ResourceCreateUpdated(node_id, resources)) {
+          updated = true;
+        }
       }
 
       if (resource_notification.deleted_resources_size() != 0) {
-        ResourceDeleted(node_id,
-                        VectorFromProtobuf(resource_notification.deleted_resources()));
+        if (ResourceDeleted(
+                node_id, VectorFromProtobuf(resource_notification.deleted_resources()))) {
+          updated = true;
+        }
       }
     }
+  }
+
+  if (updated) {
+    cluster_task_manager_->ScheduleAndDispatchTasks();
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -2833,7 +2830,9 @@ void NodeManager::ConsumeSyncMessage(
     rpc::ResourcesData data;
     data.ParseFromString(message->sync_message());
     NodeID node_id = NodeID::FromBinary(data.node_id());
-    UpdateResourceUsage(node_id, data);
+    if (UpdateResourceUsage(node_id, data)) {
+      cluster_task_manager_->ScheduleAndDispatchTasks();
+    }
   } else if (message->message_type() == syncer::MessageType::COMMANDS) {
     rpc::ResourcesData data;
     data.ParseFromString(message->sync_message());
