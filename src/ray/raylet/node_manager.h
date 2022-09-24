@@ -275,15 +275,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Handler for the addition or updation of a resource in the GCS
   /// \param node_id ID of the node that created or updated resources.
   /// \param createUpdatedResources Created or updated resources.
-  /// \return Void.
-  void ResourceCreateUpdated(const NodeID &node_id,
+  /// \return Whether the update is applied.
+  bool ResourceCreateUpdated(const NodeID &node_id,
                              const ResourceRequest &createUpdatedResources);
 
   /// Handler for the deletion of a resource in the GCS
   /// \param node_id ID of the node that deleted resources.
   /// \param resource_names Names of deleted resources.
-  /// \return Void.
-  void ResourceDeleted(const NodeID &node_id,
+  /// \return Whether the deletion is applied.
+  bool ResourceDeleted(const NodeID &node_id,
                        const std::vector<std::string> &resource_names);
 
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
@@ -309,13 +309,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param id The ID of the node manager that sent the resources data.
   /// \param data The resources data including load information.
-  /// \return Void.
-  void UpdateResourceUsage(const NodeID &id, const rpc::ResourcesData &data);
-
-  /// Handler for a resource usage batch notification from the GCS
-  ///
-  /// \param resource_usage_batch The batch of resource usage data.
-  void ResourceUsageBatchReceived(const ResourceUsageBatchData &resource_usage_batch);
+  /// \return Whether the node resource usage is updated.
+  bool UpdateResourceUsage(const NodeID &id, const rpc::ResourcesData &data);
 
   /// Handle a worker finishing its assigned task.
   ///
