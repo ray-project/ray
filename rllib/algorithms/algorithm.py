@@ -1768,7 +1768,7 @@ class Algorithm(Trainable):
         # Log after the callback is invoked, so that the user has a chance
         # to mutate the result.
         # TODO: Remove `trainer` arg at some point to fully deprecate the old signature.
-        self.callbacks.on_train_result(algorithm=self, result=result)
+        self.callbacks.on_train_result(algorithm=self, result=result, trainer=self)
         # Then log according to Trainable's logging logic.
         Trainable.log_result(self, result)
 
@@ -1994,13 +1994,13 @@ class Algorithm(Trainable):
         """
         config1 = copy.deepcopy(config1)
         if "callbacks" in config2 and type(config2["callbacks"]) is dict:
-            deprecation_warning(
-                "callbacks dict interface",
-                "a class extending rllib.algorithms.callbacks.DefaultCallbacks; "
-                "see `rllib/examples/custom_metrics_and_callbacks.py` for an example.",
-                error=True,
-            )
+            legacy_callbacks_dict = config2["callbacks"]
 
+            def make_callbacks():
+                # Deprecation warning will be logged by DefaultCallbacks.
+                return DefaultCallbacks(legacy_callbacks_dict=legacy_callbacks_dict)
+
+            config2["callbacks"] = make_callbacks
         if _allow_unknown_configs is None:
             _allow_unknown_configs = cls._allow_unknown_configs
         return deep_update(
