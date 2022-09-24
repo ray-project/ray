@@ -163,3 +163,11 @@ projects:
     website: https://github.com/ray-project/lightgbm_ray
     repo: https://github.com/ray-project/lightgbm_ray
     image: ../images/lightgbm_logo.png
+  - name: Flyte Integration
+    section_title: Flyte
+    description: Flyte is a Kubernetes-native workflow automation platform for complex,
+      mission-critical data and ML processes at scale. It has been battle-tested
+      at Lyft, Spotify, Freenome, and others and is truly open-source.
+    website: https://flyte.org/
+    repo: https://github.com/flyteorg/flyte
+    image: ../images/flyte.png
