@@ -219,8 +219,6 @@ class ActorPoolStrategy(ComputeStrategy):
         if fn_constructor_kwargs is None:
             fn_constructor_kwargs = {}
 
-        context = DatasetContext.get_current()
-
         blocks_in = block_list.get_blocks_with_metadata()
         owned_by_consumer = block_list._owned_by_consumer
 
@@ -344,25 +342,14 @@ class ActorPoolStrategy(ComputeStrategy):
                     and tasks_in_flight[worker] < self.max_tasks_in_flight_per_actor
                 ):
                     block, meta = blocks_in.pop()
-                    if context.block_splitting_enabled:
-                        raise NotImplementedError(
-                            "DatasetContext.block_splitting_enabled currently "
-                            'not supported with compute="actors"'
-                        )
-                        # ref = worker.map_block_split.remote(
-                        #     block,
-                        #     meta.input_files,
-                        #     *fn_args,
-                        #     **fn_kwargs,
-                        # )
-                    else:
-                        ref, meta_ref = worker.map_block_nosplit.remote(
-                            block,
-                            meta.input_files,
-                            *fn_args,
-                            **fn_kwargs,
-                        )
-                        metadata_mapping[ref] = meta_ref
+                    # TODO(swang): Support block splitting for compute="actors".
+                    ref, meta_ref = worker.map_block_nosplit.remote(
+                        block,
+                        meta.input_files,
+                        *fn_args,
+                        **fn_kwargs,
+                    )
+                    metadata_mapping[ref] = meta_ref
                     tasks[ref] = worker
                     block_indices[ref] = len(blocks_in)
                     tasks_in_flight[worker] += 1
@@ -372,16 +359,11 @@ class ActorPoolStrategy(ComputeStrategy):
             new_blocks, new_metadata = [], []
             # Put blocks in input order.
             results.sort(key=block_indices.get)
-            if context.block_splitting_enabled:
-                for result in ray.get(results):
-                    for block, metadata in result:
-                        new_blocks.append(block)
-                        new_metadata.append(metadata)
-            else:
-                for block in results:
-                    new_blocks.append(block)
-                    new_metadata.append(metadata_mapping[block])
-                new_metadata = ray.get(new_metadata)
+            # TODO(swang): Support block splitting for compute="actors".
+            for block in results:
+                new_blocks.append(block)
+                new_metadata.append(metadata_mapping[block])
+            new_metadata = ray.get(new_metadata)
             return BlockList(
                 new_blocks, new_metadata, owned_by_consumer=owned_by_consumer
             )
