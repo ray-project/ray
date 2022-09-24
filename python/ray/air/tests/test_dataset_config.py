@@ -13,7 +13,7 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 
 @pytest.fixture
 def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4, log_to_driver=True)
+    address_info = ray.init(num_cpus=4)
     yield address_info
     ray.shutdown()
 

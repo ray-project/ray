@@ -56,9 +56,12 @@ class BatchMapper(Preprocessor):
 
     def __init__(
         self,
-        fn: Callable[
-            [Union["pandas.DataFrame", np.ndarray, Dict[str, np.ndarray]]],
-            Union["pandas.DataFrame", np.ndarray, Dict[str, np.ndarray]],
+        fn: Union[
+            Callable[["pandas.DataFrame"], "pandas.DataFrame"],
+            Callable[
+                [Union[np.ndarray, Dict[str, np.ndarray]]],
+                Union[np.ndarray, Dict[str, np.ndarray]],
+            ],
         ],
         batch_format: Optional[str] = None,
         # TODO: We should reach consistency of args between BatchMapper and map_batches.

@@ -262,7 +262,6 @@ class Preprocessor(abc.ABC):
     def _transform_batch(self, data: "DataBatchType") -> "DataBatchType":
         # For minimal install to locally import air modules
         import pandas as pd
-        from ray.air.constants import TENSOR_COLUMN_NAME
         from ray.air.util.data_batch_conversion import (
             convert_batch_type_to_pandas,
             _convert_batch_type_to_numpy,
@@ -291,24 +290,7 @@ class Preprocessor(abc.ABC):
         if transform_type == "pandas":
             return self._transform_pandas(convert_batch_type_to_pandas(data))
         elif transform_type == "numpy":
-            transformed_numpy_data = self._transform_numpy(
-                _convert_batch_type_to_numpy(data)
-            )
-            if data_format == "arrow":
-                if len(data.column_names) == 1 and data.column_names != [
-                    TENSOR_COLUMN_NAME
-                ]:
-                    # Single-column table is perserved as a table if not
-                    # explicted named as the tensor column name.
-                    return pyarrow.Table.from_pydict(transformed_numpy_data)
-            elif data_format == "pandas":
-                if len(data.columns) == 1 and list(data.columns) != [
-                    TENSOR_COLUMN_NAME
-                ]:
-                    # Single-column table is perserved as a table if not
-                    # explicted named as the tensor column name.
-                    return pd.DataFrame.from_dict(transformed_numpy_data)
-            return transformed_numpy_data
+            return self._transform_numpy(_convert_batch_type_to_numpy(data))
 
     @DeveloperAPI
     def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":

@@ -120,7 +120,6 @@ def _convert_batch_type_to_numpy(
     Returns:
         A numpy representation of the input data.
     """
-    from ray.data.extensions.tensor_extension import ArrowTensorType, TensorDtype
 
     if isinstance(data, np.ndarray):
         return data
@@ -132,8 +131,9 @@ def _convert_batch_type_to_numpy(
         else:
             return data
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
-        if data.column_names == [TENSOR_COLUMN_NAME] and isinstance(
-            data.schema.types[0], ArrowTensorType
+        if data.column_names == [TENSOR_COLUMN_NAME] and (
+            pyarrow.types.is_floating(data.schema.types[0])
+            or pyarrow.types.is_integer(data.schema.types[0])
         ):
             # If representing a tensor dataset, return as a single numpy array.
             return data[0].to_numpy()
@@ -143,8 +143,8 @@ def _convert_batch_type_to_numpy(
                 output_dict[col_name] = data[col_name].to_numpy()
             return output_dict
     elif isinstance(data, pd.DataFrame):
-        if list(data.columns) == [TENSOR_COLUMN_NAME] and isinstance(
-            next(iter(data.dtypes)), TensorDtype
+        if list(data.columns) == [TENSOR_COLUMN_NAME] and (
+            next(iter(data.dtypes)) == int or next(iter(data.dtypes)) == float
         ):
             # If representing a tensor dataset, return as a single numpy array.
             return data.iloc[:, 0].to_numpy()

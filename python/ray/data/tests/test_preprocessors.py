@@ -1677,7 +1677,8 @@ def test_numpy_pandas_support_transform_batch_pandas(create_dummy_preprocessors)
     assert isinstance(with_pandas.transform_batch(df_single_column), pd.DataFrame)
 
     assert isinstance(with_numpy.transform_batch(df), (np.ndarray, dict))
-    assert isinstance(with_numpy.transform_batch(df_single_column), pd.DataFrame)
+    # We can get pd.DataFrame after returning numpy data from UDF
+    assert isinstance(with_numpy.transform_batch(df_single_column), (np.ndarray, dict))
 
     assert isinstance(with_pandas_and_numpy.transform_batch(df), pd.DataFrame)
     assert isinstance(
@@ -1708,11 +1709,15 @@ def test_numpy_pandas_support_transform_batch_arrow(create_dummy_preprocessors):
     assert isinstance(with_pandas.transform_batch(table_single_column), pd.DataFrame)
 
     assert isinstance(with_numpy.transform_batch(table), (np.ndarray, dict))
-    assert isinstance(with_numpy.transform_batch(table_single_column), pyarrow.Table)
+    # We can get pyarrow.Table after returning numpy data from UDF
+    assert isinstance(
+        with_numpy.transform_batch(table_single_column), (np.ndarray, dict)
+    )
     # Auto select data_format = "arrow" -> batch_format = "numpy" for performance
     assert isinstance(with_pandas_and_numpy.transform_batch(table), (np.ndarray, dict))
+    # We can get pyarrow.Table after returning numpy data from UDF
     assert isinstance(
-        with_pandas_and_numpy.transform_batch(table_single_column), pyarrow.Table
+        with_pandas_and_numpy.transform_batch(table_single_column), (np.ndarray, dict)
     )
 
 
