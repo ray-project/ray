@@ -12,7 +12,7 @@ This section helps you:
 :::{admonition} Relevant Guides
 :class: seealso
 This section discusses concepts from:
-* the Serve [architecture guide](serve-architecture)
+* Serve's [architecture guide](serve-architecture)
 * Serve's [Kubernetes production guide](serve-in-production-kubernetes)
 :::
 
@@ -65,6 +65,10 @@ By default the Ray head node is a single point of failure: if it crashes, the en
 In Ray 2.0, KubeRay has added experimental support for [GCS fault tolerance](https://ray-project.github.io/kuberay/guidance/gcs-ft/#ray-gcs-fault-tolerancegcs-ft-experimental), preventing the Ray cluster from crashing if the head node goes down.
 While the head node is recovering, Serve applications can still handle traffic but cannot be updated or recover from other failures (e.g. actors or worker nodes crashing).
 Once the GCS is recovered, the cluster will return to normal behavior.
+
+:::{seealso}
+Check out the KubeRay guide on [GCS fault tolerance](https://ray-project.github.io/kuberay/guidance/gcs-ft/#ray-gcs-fault-tolerancegcs-ft-experimental) for more details.
+:::
 
 (serve-e2e-ft-behavior)=
 ## Serve's fault tolerance behavior
