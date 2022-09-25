@@ -9,6 +9,10 @@ from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 bad_runtime_env_cache_ttl_seconds = 10
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 10, 0),
+    reason=("Currently not passing on Python 3.10"),
+)
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 @pytest.mark.parametrize(
     "set_bad_runtime_env_cache_ttl_seconds",

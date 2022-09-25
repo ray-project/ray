@@ -14,6 +14,7 @@ import tempfile
 import time
 import timeit
 import traceback
+from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from typing import Any, Dict, List, Optional
 
@@ -819,6 +820,22 @@ def fetch_prometheus(prom_addresses):
     return components_dict, metric_names, metric_samples
 
 
+def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
+    """Return prometheus metrics from the given addresses.
+
+    Args:
+        prom_addresses: List of metrics_agent addresses to collect metrics from.
+
+    Returns:
+        Dict mapping from metric name to list of samples for the metric.
+    """
+    _, _, samples = fetch_prometheus(prom_addresses)
+    samples_by_name = defaultdict(list)
+    for sample in samples:
+        samples_by_name[sample.name].append(sample)
+    return samples_by_name
+
+
 def load_test_config(config_file_name):
     """Loads a config yaml from tests/test_cli_patterns."""
     here = os.path.realpath(__file__)
@@ -1404,6 +1421,17 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
             continue
     assert reply is not None
     return reply
+
+
+# Send a RPC to the raylet to have it self-destruct its process.
+def kill_raylet(raylet, graceful=False):
+    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    channel = grpc.insecure_channel(raylet_address)
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    try:
+        stub.ShutdownRaylet(node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+    except _InactiveRpcError:
+        assert not graceful
 
 
 # Creates a state api client assuming the head node (gcs) is local.

@@ -9,6 +9,7 @@ from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.pandas_block import PandasRow
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
@@ -35,6 +36,7 @@ from ray.data.datasource import (
     PathPartitionFilter,
     RangeDatasource,
     ReadTask,
+    TFRecordDatasource,
 )
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
@@ -753,6 +755,82 @@ def read_numpy(
     )
 
 
+@PublicAPI(stability="alpha")
+def read_tfrecords(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+    partition_filter: Optional[PathPartitionFilter] = None,
+) -> Dataset[PandasRow]:
+    """Create a dataset from TFRecord files that contain
+    `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
+    messages.
+
+    .. warning::
+        This function exclusively supports ``tf.train.Example`` messages. If a file
+        contains a message that isn't of type ``tf.train.Example``, then this function
+        errors.
+
+    Examples:
+        >>> import os
+        >>> import tempfile
+        >>> import tensorflow as tf
+        >>> features = tf.train.Features(
+        ...     feature={
+        ...         "length": tf.train.Feature(float_list=tf.train.FloatList(value=[5.1])),
+        ...         "width": tf.train.Feature(float_list=tf.train.FloatList(value=[3.5])),
+        ...         "species": tf.train.Feature(bytes_list=tf.train.BytesList(value=[b"setosa"])),
+        ...     }
+        ... )
+        >>> example = tf.train.Example(features=features)
+        >>> path = os.path.join(tempfile.gettempdir(), "data.tfrecords")
+        >>> with tf.io.TFRecordWriter(path=path) as writer:
+        ...     writer.write(example.SerializeToString())
+
+        This function reads ``tf.train.Example`` messages into a tabular
+        :class:`~ray.data.Dataset`.
+
+        >>> import ray
+        >>> ds = ray.data.read_tfrecords(path)
+        >>> ds.to_pandas()  # doctest: +SKIP
+           length  width    species
+        0     5.1    3.5  b'setosa'
+
+    Args:
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The filesystem implementation to read from.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files in the dataset.
+        arrow_open_stream_args: Key-word arguments passed to
+            ``pyarrow.fs.FileSystem.open_input_stream``.
+        meta_provider: File metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
+        partition_filter: Path-based partition filter, if any. Can be used
+            with a custom callback to read only selected partitions of a dataset.
+            By default, this filters out any file paths whose file extension does not
+            match ``"*.tfrecords*"``.
+
+    Returns:
+        A :class:`~ray.data.Dataset` that contains the example features.
+
+    Raises:
+        ValueError: If a file contains a message that isn't a ``tf.train.Example``.
+    """  # noqa: E501
+    return read_datasource(
+        TFRecordDatasource(),
+        parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
+        open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
+        partition_filter=partition_filter,
+    )
+
+
 @PublicAPI
 def read_binary_files(
     paths: Union[str, List[str]],
@@ -1153,7 +1231,7 @@ def _get_read_tasks(
     cur_pg: Optional[PlacementGroup],
     parallelism: int,
     kwargs: dict,
-) -> (int, int, List[ReadTask]):
+) -> Tuple[int, int, List[ReadTask]]:
     """Generates read tasks.
 
     Args:

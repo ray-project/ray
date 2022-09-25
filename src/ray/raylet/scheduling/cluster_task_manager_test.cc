@@ -162,6 +162,7 @@ RayTask CreateTask(
                                  TaskID::Nil(),
                                  address,
                                  0,
+                                 /*returns_dynamic=*/false,
                                  required_resources,
                                  {},
                                  "",
@@ -946,7 +947,7 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerTest) {
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 1);
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
   ASSERT_EQ(NumRunningTasks(), 1);
-  pool_.TriggerCallbacksWithNotOKStatus(PopWorkerStatus::TooManyStartingWorkerProcesses);
+  pool_.TriggerCallbacksWithNotOKStatus(PopWorkerStatus::WorkerPendingRegistration);
   ASSERT_FALSE(callback_called);
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 0);
   ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 1);

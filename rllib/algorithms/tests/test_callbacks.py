@@ -3,6 +3,8 @@ import unittest
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks, MultiCallbacks
 import ray.rllib.algorithms.dqn as dqn
+from ray.rllib.evaluation.episode import Episode
+from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -20,6 +22,27 @@ class OnSubEnvironmentCreatedCallback(DefaultCallbacks):
             f"worker={worker.worker_index}; "
             f"vector-idx={env_context.vector_index}"
         )
+
+
+class BeforeSubEnvironmentResetCallback(DefaultCallbacks):
+    def __init__(self):
+        super().__init__()
+        self._reset_counter = 0
+
+    def on_episode_created(
+        self, *, worker, base_env, policies, env_index, episode, **kwargs
+    ):
+        print(f"Sub-env {env_index} is going to be reset.")
+        self._reset_counter += 1
+
+        # Make sure the passed in episode is really brand new.
+        assert episode.env_id == env_index
+        if isinstance(episode, Episode):
+            assert episode.length == 0
+            assert episode.started is False
+        else:
+            assert episode.length == -1
+        assert episode.worker is worker
 
 
 class TestCallbacks(unittest.TestCase):
@@ -101,6 +124,43 @@ class TestCallbacks(unittest.TestCase):
                 self.assertTrue(sum_sub_env_vector_indices[1] == 6)
                 self.assertTrue(sum_sub_env_vector_indices[2] == 6)
                 algo.stop()
+
+    def test_on_episode_created(self):
+        # 1000 steps sampled (2.5 episodes on each sub-environment) before training
+        # starts.
+        config = (
+            dqn.DQNConfig()
+            .environment(
+                RandomEnv,
+                env_config={
+                    "max_episode_len": 200,
+                    "p_done": 0.0,
+                },
+            )
+            .rollouts(num_envs_per_worker=2, num_rollout_workers=1)
+            .callbacks(BeforeSubEnvironmentResetCallback)
+        )
+
+        # Test with and without Connectors.
+        for connector in [True, False]:
+            config.rollouts(enable_connectors=connector)
+            algo = config.build()
+            algo.train()
+            # Two sub-environments share 1000 steps in the first training iteration
+            # (min_sample_timesteps_per_iteration = 1000).
+            # -> 1000 / 2 [sub-envs] = 500 [per sub-env]
+            # -> 1 episode = 200 timesteps
+            # -> 2.5 episodes per sub-env
+            # -> 3 episodes created [per sub-env] = 6 episodes total
+            self.assertTrue(
+                6
+                == ray.get(
+                    algo.workers.remote_workers()[0].apply.remote(
+                        lambda w: w.callbacks._reset_counter
+                    )
+                )
+            )
+            algo.stop()
 
 
 if __name__ == "__main__":
