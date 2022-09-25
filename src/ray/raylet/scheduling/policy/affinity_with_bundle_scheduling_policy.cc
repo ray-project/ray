@@ -30,20 +30,17 @@ bool AffinityWithBundleSchedulingPolicy::IsNodeFeasibleAndAvailable(
     return true;
   }
 
-  // This function is used by request with no bundle id specified, so we only
-  // focus on the gpu wildcard resource (of the pg) when avoiding gpu nodes.
-  std::string gpu_wildcard_resource_name = "GPU_group_";
+  // Avoiding gpu nodes is only needed for requests with no bundle id specified, so we
+  // only avoid the nodes with the PG's gpu wildcard resource.
+  const auto &resource_name = resource_request.ResourceIds().begin()->Binary();
   size_t pg_suffix_len = 2 * PlacementGroupID::Size();
+  RAY_CHECK(resource_name.size() > pg_suffix_len);
+  // Combine the right prefix and suffix for the gpu wildcard resource name.
+  std::string gpu_wildcard_resource_name =
+      "GPU_group_" +
+      resource_name.substr(resource_name.size() - pg_suffix_len, pg_suffix_len);
+
   const auto &node_total = nodes_.at(node_id).GetLocalView().total;
-  for (const auto &resource_id : node_total.ResourceIds()) {
-    if (resource_id.Binary().size() > pg_suffix_len) {
-      auto resource_name = resource_id.Binary();
-      // Combine the right prefix and suffix for the gpu wildcard resource name.
-      gpu_wildcard_resource_name +=
-          resource_name.substr(resource_name.size() - pg_suffix_len, pg_suffix_len);
-      break;
-    }
-  }
   return !node_total.Has(scheduling::ResourceID(gpu_wildcard_resource_name));
 }
 
