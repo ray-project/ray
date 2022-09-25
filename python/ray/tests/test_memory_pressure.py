@@ -1,6 +1,7 @@
 from math import ceil
 import sys
 import time
+import os
 
 import psutil
 import pytest
@@ -67,6 +68,17 @@ def allocate_memory(
     end = time.time()
     time.sleep(post_allocate_sleep_s)
     return end - start
+
+
+@ray.remote(max_retries=0)
+def sleeper(
+    sleep_s: float = 0,
+    crash_at_the_end: bool = False,
+):
+    time.sleep(sleep_s)
+    if crash_at_the_end:
+        os.kill(os.getpid(), 9)
+    return os.getpid()
 
 
 @ray.remote
