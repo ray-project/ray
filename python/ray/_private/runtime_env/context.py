@@ -67,7 +67,7 @@ class RuntimeEnvContext:
             executable = "exec "
 
         exec_command = " ".join([f"{executable}"] + passthrough_args)
-        command_str = " && ".join(self.command_prefix + [exec_command])
+        command_str = " ".join(self.command_prefix + [exec_command])
         # TODO(SongGuyang): We add this env to command for macOS because it doesn't
         # work for the C++ process of `os.execvp`. We should find a better way to
         # fix it.

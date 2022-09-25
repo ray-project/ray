@@ -1247,8 +1247,7 @@ def check_local_files_gced(cluster, whitelist=None):
             # Note: On Windows the top folder is not deleted as it is in use.
             # TODO(architkulkarni): these files should get cleaned up too!
             items = list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
-
-            if set(items) == whitelist:
+            if whitelist and set(items).issubset(whitelist):
                 continue
             if len(items) > 0:
                 return False
