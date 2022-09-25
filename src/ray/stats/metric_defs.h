@@ -82,10 +82,10 @@ DECLARE_stats(scheduler_tasks);
 DECLARE_stats(scheduler_unscheduleable_tasks);
 
 /// Local Object Manager
-DECLARE_stats(spill_manager_objects);
-DECLARE_stats(spill_manager_objects_bytes);
-DECLARE_stats(spill_manager_request_total);
-DECLARE_stats(spill_manager_throughput_mb);
+DECLARE_stats(local_object_manager_objects_count);
+DECLARE_stats(local_object_manager_objects_bytes);
+DECLARE_stats(local_object_manager_request_total);
+DECLARE_stats(local_object_manager_throughput_mb);
 
 /// GCS Storage
 DECLARE_stats(gcs_storage_operation_latency_ms);

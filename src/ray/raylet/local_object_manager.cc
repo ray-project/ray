@@ -588,31 +588,35 @@ void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) 
 void LocalObjectManager::RecordMetrics() const {
   /// Record Metrics.
   if (spilled_bytes_total_ != 0 && spill_time_total_s_ != 0) {
-    ray::stats::STATS_spill_manager_throughput_mb.Record(
+    ray::stats::STATS_local_object_manager_throughput_mb.Record(
         spilled_bytes_total_ / 1024 / 1024 / spill_time_total_s_, "Spilled");
   }
   if (restored_bytes_total_ != 0 && restore_time_total_s_ != 0) {
-    ray::stats::STATS_spill_manager_throughput_mb.Record(
+    ray::stats::STATS_local_object_manager_throughput_mb.Record(
         restored_bytes_total_ / 1024 / 1024 / restore_time_total_s_, "Restored");
   }
-  ray::stats::STATS_spill_manager_objects.Record(pinned_objects_.size(), "Pinned");
-  ray::stats::STATS_spill_manager_objects.Record(objects_pending_restore_.size(),
-                                                 "PendingRestore");
-  ray::stats::STATS_spill_manager_objects.Record(objects_pending_spill_.size(),
-                                                 "PendingSpill");
+  ray::stats::STATS_local_object_manager_objects_count.Record(pinned_objects_.size(),
+                                                              "PrimaryCopy");
+  ray::stats::STATS_local_object_manager_objects_count.Record(
+      objects_pending_restore_.size(), "PendingRestore");
+  ray::stats::STATS_local_object_manager_objects_count.Record(
+      objects_pending_spill_.size(), "PendingSpill");
 
-  ray::stats::STATS_spill_manager_objects_bytes.Record(pinned_objects_size_, "Pinned");
-  ray::stats::STATS_spill_manager_objects_bytes.Record(num_bytes_pending_spill_,
-                                                       "PendingSpill");
-  ray::stats::STATS_spill_manager_objects_bytes.Record(num_bytes_pending_restore_,
-                                                       "PendingRestore");
-  ray::stats::STATS_spill_manager_objects_bytes.Record(spilled_bytes_total_, "Spilled");
-  ray::stats::STATS_spill_manager_objects_bytes.Record(restored_objects_total_,
-                                                       "Restored");
+  ray::stats::STATS_local_object_manager_objects_bytes.Record(pinned_objects_size_,
+                                                              "PrimaryCopy");
+  ray::stats::STATS_local_object_manager_objects_bytes.Record(num_bytes_pending_spill_,
+                                                              "PendingSpill");
+  ray::stats::STATS_local_object_manager_objects_bytes.Record(num_bytes_pending_restore_,
+                                                              "PendingRestore");
+  ray::stats::STATS_local_object_manager_objects_bytes.Record(spilled_bytes_total_,
+                                                              "Spilled");
+  ray::stats::STATS_local_object_manager_objects_bytes.Record(restored_objects_total_,
+                                                              "Restored");
 
-  ray::stats::STATS_spill_manager_request_total.Record(spilled_objects_total_, "Spilled");
-  ray::stats::STATS_spill_manager_request_total.Record(restored_objects_total_,
-                                                       "Restored");
+  ray::stats::STATS_local_object_manager_request_total.Record(spilled_objects_total_,
+                                                              "Spilled");
+  ray::stats::STATS_local_object_manager_request_total.Record(restored_objects_total_,
+                                                              "Restored");
 }
 
 int64_t LocalObjectManager::GetPrimaryBytes() const {

@@ -162,23 +162,29 @@ DEFINE_stats(scheduler_failed_worker_startup_total,
              ray::stats::GAUGE);
 
 /// Local Object Manager
-DEFINE_stats(
-    spill_manager_objects,
-    "Number of local objects broken per state {Pinned, PendingRestore, PendingSpill}.",
-    ("State"),
-    (),
-    ray::stats::GAUGE);
-DEFINE_stats(spill_manager_objects_bytes,
-             "Byte size of local objects broken per state {Pinned, PendingSpill}.",
+
+/// Object counts by state:
+///   - PrimaryCopy: pinned objects in memory, excluding pinned objects pending spilled.
+///   - PendingRestore: objects being restored locally (excluding restoring
+///         objects to remote nodes)
+///   - PendingSpill: objects pinned and waiting for spill to complete
+DEFINE_stats(local_object_manager_objects_count,
+             "Number of local objects broken per state {PrimaryCopy, PendingRestore, "
+             "PendingSpill}.",
              ("State"),
              (),
              ray::stats::GAUGE);
-DEFINE_stats(spill_manager_request_total,
+DEFINE_stats(local_object_manager_objects_bytes,
+             "Byte size of local objects broken per state {PrimaryCopy, PendingSpill}.",
+             ("State"),
+             (),
+             ray::stats::GAUGE);
+DEFINE_stats(local_object_manager_request_total,
              "Number of {spill, restore} requests.",
              ("Type"),
              (),
              ray::stats::GAUGE);
-DEFINE_stats(spill_manager_throughput_mb,
+DEFINE_stats(local_object_manager_throughput_mb,
              "The throughput of {spill, restore} requests in MB.",
              ("Type"),
              (),
