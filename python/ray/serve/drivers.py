@@ -169,7 +169,7 @@ class DefaultgRPCDriver(gRPCIngress, serve_pb2_grpc.PredictAPIsServiceServicer):
         self.dag = dags
         # TODO(Sihan) we will add a gRPCOption class
         # once we have more options to use
-        gRPCIngress.__init__(self, port)
+        super().__init__(port)
 
     async def Predict(self, request, context):
         """

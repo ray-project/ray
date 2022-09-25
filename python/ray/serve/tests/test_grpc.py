@@ -82,7 +82,7 @@ def test_deploy_grpc_driver_to_node(ray_cluster):
     )
     assert len(replicas["DefaultgRPCDriver"]) == 1
 
-    cluster.add_node(num_cpus=2)
+    worker_node = cluster.add_node(num_cpus=2)
 
     wait_for_condition(
         lambda: len(
@@ -91,6 +91,18 @@ def test_deploy_grpc_driver_to_node(ray_cluster):
             )["DefaultgRPCDriver"]
         )
         == 2
+    )
+
+    # Kill the worker node.
+    cluster.remove_node(worker_node)
+
+    wait_for_condition(
+        lambda: len(
+            ray.get(
+                serve.context._global_client._controller._all_running_replicas.remote()
+            )["DefaultgRPCDriver"]
+        )
+        == 1
     )
 
 

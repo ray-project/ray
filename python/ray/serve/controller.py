@@ -90,6 +90,7 @@ class ServeController:
         http_config: HTTPOptions,
         head_node_id: str,
         detached: bool = False,
+        disable_http_proxy: bool = False,
     ):
         configure_component_logger(
             component_name="controller", component_id=str(os.getpid())
@@ -112,7 +113,7 @@ class ServeController:
 
         self.long_poll_host = LongPollHost()
 
-        if os.environ.get("EXPERIMENT_DISABLE_HTTP_PROXY", "0") == "1":
+        if disable_http_proxy:
             self.http_state = None
         else:
             self.http_state = HTTPState(
