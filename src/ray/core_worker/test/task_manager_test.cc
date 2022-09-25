@@ -385,6 +385,31 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
   ASSERT_EQ(stored_error, rpc::ErrorType::WORKER_DIED);
 }
 
+TEST_F(TaskManagerTest, TestTaskNotRetriableOomFailsImmediatelyEvenWithOomRetryCounter) {
+  RayConfig::instance().initialize(R"({"task_oom_retries": 1})");
+  int num_retries = 0;
+
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+  auto return_id = spec.ReturnId(0);
+
+  ASSERT_EQ(num_retries_, 0);
+  ray::rpc::ErrorType error;
+
+  error = rpc::ErrorType::OUT_OF_MEMORY;
+  manager_.FailOrRetryPendingTask(spec.TaskId(), error);
+  ASSERT_EQ(num_retries_, 0);
+
+  std::vector<std::shared_ptr<RayObject>> results;
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+  ASSERT_EQ(results.size(), 1);
+  rpc::ErrorType stored_error;
+  ASSERT_TRUE(results[0]->IsException(&stored_error));
+  ASSERT_EQ(stored_error, rpc::ErrorType::OUT_OF_MEMORY);
+}
+
 // Test to make sure that the task spec and dependencies for an object are
 // evicted when lineage pinning is disabled in the ReferenceCounter.
 TEST_F(TaskManagerTest, TestLineageEvicted) {
