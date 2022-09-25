@@ -55,8 +55,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     const TaskSpecification &spec,
     const std::string &call_site,
     int max_retries) {
-  uint64_t max_oom_retries =
-      (max_retries > 0) ? RayConfig::instance().task_oom_retries() : 0;
+  int32_t max_oom_retries =
+      (max_retries != 0) ? RayConfig::instance().task_oom_retries() : 0;
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
                  << " retries, " << max_oom_retries << " oom retries";
 
@@ -449,10 +449,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
 bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                                       bool task_failed_due_to_oom) {
-  int num_retries_left = 0;
-  int num_oom_retries_left = 0;
-  bool will_retry = false;
   TaskSpecification spec;
+  bool will_retry = false;
+  int32_t num_retries_left = 0;
+  int32_t num_oom_retries_left = 0;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -462,31 +462,35 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
         << "Tried to retry task that was not pending " << task_id;
     spec = it->second.spec;
     num_retries_left = it->second.num_retries_left;
-    int64_t num_oom_retries_left = it->second.num_oom_retries_left;
-    if (task_failed_due_to_oom && num_oom_retries_left > 0) {
-      will_retry = true;
-      it->second.num_oom_retries_left--;
-    } else if (num_retries_left > 0) {
-      will_retry = true;
-      it->second.num_retries_left--;
-    } else if (num_retries_left == -1) {
-      will_retry = true;
+    num_oom_retries_left = it->second.num_oom_retries_left;
+    if (task_failed_due_to_oom) {
+      if (num_oom_retries_left > 0) {
+        will_retry = true;
+        it->second.num_oom_retries_left--;
+      }
     } else {
-      RAY_CHECK(num_retries_left == 0);
+      if (num_retries_left > 0) {
+        will_retry = true;
+        it->second.num_retries_left--;
+      } else if (num_retries_left == -1) {
+        will_retry = true;
+      } else {
+        RAY_CHECK(num_retries_left == 0);
+      }
     }
     it->second.SetStatus(rpc::TaskStatus::SCHEDULED);
   }
 
   // We should not hold the lock during these calls because they may trigger
   // callbacks in this or other classes.
+  std::ostringstream stream;
+  std::string num_retries_left_str =
+      num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
+  RAY_LOG(INFO) << "task " << spec.TaskId() << " retries left: " << num_retries_left_str
+                << ", oom retries left: " << num_oom_retries_left
+                << ", task failed due to oom: " << task_failed_due_to_oom;
   if (will_retry) {
-    std::ostringstream stream;
-    auto num_retries_left_str =
-        num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-    RAY_LOG(INFO) << num_retries_left_str << " retries left for task " << spec.TaskId()
-                  << ", oom retries left " << num_oom_retries_left
-                  << ", task failed due to oom? " << task_failed_due_to_oom
-                  << ", attempting to resubmit.";
+    RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId();
     retry_task_callback_(spec, /*delay=*/true);
     return true;
   } else {

@@ -349,13 +349,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     const TaskSpecification spec;
     // Number of times this task may be resubmitted. If this reaches 0, then
     // the task entry may be erased.
-    int num_retries_left;
+    int32_t num_retries_left;
     // Reference to the task stats tracker.
     TaskStatusCounter &counter;
     // Number of times this task may be resubmitted if the task failed
     // due to out of memory failure. If this reaches 0, then it will consume
     // num_retries_left.
-    int num_oom_retries_left;
+    int32_t num_oom_retries_left;
     // Number of times this task successfully completed execution so far.
     int num_successful_executions = 0;
     // Objects returned by this task that are reconstructable. This is set
