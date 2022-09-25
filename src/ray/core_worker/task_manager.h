@@ -353,8 +353,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // Reference to the task stats tracker.
     TaskStatusCounter &counter;
     // Number of times this task may be resubmitted if the task failed
-    // due to out of memory failure. If this reaches 0, then it will consume
-    // num_retries_left.
+    // due to out of memory failure.
     int32_t num_oom_retries_left;
     // Number of times this task successfully completed execution so far.
     int num_successful_executions = 0;

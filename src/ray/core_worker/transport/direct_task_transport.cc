@@ -636,6 +636,7 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
       task_error_type = get_task_failure_cause_reply.failure_cause().error_type();
       error_info = std::make_unique<rpc::RayErrorInfo>(
           get_task_failure_cause_reply.failure_cause());
+      // TODO(clarng): track and append task retry history to the error message.
     }
   } else {
     RAY_LOG(DEBUG) << "Failed to fetch task result with status "
