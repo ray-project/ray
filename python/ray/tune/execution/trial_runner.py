@@ -68,14 +68,21 @@ def _find_newest_experiment_checkpoint(
 
 
 def _load_trial_from_checkpoint(
-    trial_cp: dict, stub: bool = False, local_dir: Optional[str] = None, **kwargs
+    trial_cp: dict,
+    stub: bool = False,
+    local_dir: Optional[str] = None,
+    remote_dir: Optional[str] = None,
+    **kwargs,
 ):
     new_trial = Trial(
         trial_cp["trainable_name"], stub=stub, _setup_default_resource=False, **kwargs
     )
 
     checkpoint_local_dir = trial_cp.get("local_dir", None)
+    checkpoint_remote_dir = trial_cp.get("remote_checkpoint_dir_prefix", None)
+
     local_dir_changed = local_dir and checkpoint_local_dir != local_dir
+    remote_dir_changed = remote_dir and checkpoint_remote_dir != remote_dir
 
     # NOTE: Skip initializing the logdir if local_dir has changed, since it will create
     # a directory at the old path
@@ -102,6 +109,10 @@ def _load_trial_from_checkpoint(
         # Finish setting up the logdir with the new paths (since we skipped earlier)
         new_trial.init_logdir()
 
+    if remote_dir_changed:
+        print("\n[DEBUGGING] Setting remote_checkpoint_dir_prefix = ", remote_dir)
+        new_trial.remote_checkpoint_dir_prefix = remote_dir
+
     return new_trial
 
 
@@ -109,6 +120,7 @@ def _load_trials_from_experiment_checkpoint(
     experiment_checkpoint: Mapping[str, Any],
     stub: bool = False,
     local_dir: Optional[str] = None,
+    remote_dir: Optional[str] = None,
 ) -> List[Trial]:
     """Create trial objects from experiment checkpoint.
 
@@ -122,7 +134,9 @@ def _load_trials_from_experiment_checkpoint(
     trials = []
     for trial_cp in checkpoints:
         trials.append(
-            _load_trial_from_checkpoint(trial_cp, stub=stub, local_dir=local_dir)
+            _load_trial_from_checkpoint(
+                trial_cp, stub=stub, local_dir=local_dir, remote_dir=remote_dir
+            )
         )
 
     return trials
@@ -831,7 +845,9 @@ class TrialRunner:
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
         trials = _load_trials_from_experiment_checkpoint(
-            runner_state, local_dir=self._local_checkpoint_dir
+            runner_state,
+            local_dir=self._local_checkpoint_dir,
+            remote_dir=self._remote_checkpoint_dir,
         )
         for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
             trial_to_add = trial

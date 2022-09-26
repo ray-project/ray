@@ -252,6 +252,7 @@ class Trial:
         placement_group_factory: Optional[PlacementGroupFactory] = None,
         stopping_criterion: Optional[Dict[str, float]] = None,
         remote_checkpoint_dir: Optional[str] = None,
+        # remote_dir: Optional[str] = None,
         custom_syncer: Optional[Syncer] = None,
         checkpoint_freq: int = 0,
         checkpoint_at_end: bool = False,
@@ -363,10 +364,7 @@ class Trial:
 
         # Checkpointing fields
         self.saving_to = None
-        if remote_checkpoint_dir:
-            self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
-        else:
-            self.remote_checkpoint_dir_prefix = None
+        self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
 
         if custom_syncer == "auto" or not isinstance(custom_syncer, Syncer):
             custom_syncer = None
@@ -553,7 +551,7 @@ class Trial:
             resources=None,
             placement_group_factory=placement_group_factory,
             stopping_criterion=self.stopping_criterion,
-            remote_checkpoint_dir=self.remote_checkpoint_dir,
+            remote_checkpoint_dir=self.remote_checkpoint_dir_prefix,
             checkpoint_freq=self.checkpoint_freq,
             checkpoint_at_end=self.checkpoint_at_end,
             sync_on_checkpoint=self.sync_on_checkpoint,
