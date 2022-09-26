@@ -207,7 +207,7 @@ class Policy(metaclass=ABCMeta):
             if not os.path.isfile(state_file):
                 raise ValueError(
                     "Given checkpoint does not seem to be valid! No file "
-                    f"with the name `policy_state.pkl` found in."
+                    "with the name `policy_state.pkl` found."
                 )
 
             state = pickle.load(open(state_file, "rb"))
