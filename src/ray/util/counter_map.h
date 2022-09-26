@@ -28,6 +28,8 @@
 ///
 /// For example, this can be used to track the number of running tasks broken down
 /// by their function name, or track the number of tasks by (name, state) pairs.
+///
+/// This class is *not* thread-safe.
 template <typename K>
 class CounterMap {
  public:
