@@ -494,8 +494,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
             internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
         if (status == PopWorkerStatus::JobConfigMissing) {
           cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
-        } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
-          cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_RATE_LIMITED;
         } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
           cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
         } else {
