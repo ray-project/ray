@@ -1676,7 +1676,7 @@ class Algorithm(Trainable):
                 returns False) will not be updated.
             evaluation_workers: Whether to add the new policy also
                 to the evaluation WorkerSet.
-            worker_list: A list of RolloutWorker/ActorHandles (remote
+            workers: A list of RolloutWorker/ActorHandles (remote
                 RolloutWorkers) to add this policy to. If defined, will only
                 add the given policy to these workers.
 
@@ -1815,6 +1815,12 @@ class Algorithm(Trainable):
             filename_prefix: file name prefix of checkpoint files.
             policy_id: Optional policy id to export.
 
+        Returns:
+            The Policy Checkpoint created.
+
+        Raises:
+            KeyError if `policy_id` cannot be found in this Algorithm.
+
         Example:
             >>> from ray.rllib.algorithms.ppo import PPO
             >>> # Use an Algorithm from RLlib or define your own.
@@ -1824,6 +1830,8 @@ class Algorithm(Trainable):
             >>> algo.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
         """
         policy = self.get_policy(policy_id)
+        if policy is None:
+            raise KeyError(f"Policy with ID {policy_id} not found in Algorithm!")
         return policy.export_checkpoint(export_dir, filename_prefix)
 
     @DeveloperAPI
@@ -1850,8 +1858,8 @@ class Algorithm(Trainable):
         self._sync_weights_to_workers(worker_set=self.workers)
 
     @override(Trainable)
-    def save_checkpoint(self, checkpoint_dir: str) -> Optional[Union[str, Dict]]:
-        """Returns a dict with all checkpoint information in it.
+    def save_checkpoint(self, checkpoint_dir: str) -> str:
+        """Creates an AIR Checkpoint directory and returns it as a str.
 
         Args:
             checkpoint_dir: The directory where the checkpoint
@@ -1859,8 +1867,7 @@ class Algorithm(Trainable):
                 b/c we return a dict instead.
 
         Returns:
-            A dict that will be automatically serialized by Tune and
-            passed to ``Trainable.load_checkpoint()``.
+            The path to the created AIR Checkpoint directory.
         """
         state = self.__getstate__()
 
@@ -1904,6 +1911,7 @@ class Algorithm(Trainable):
         # Restore from the checkpoint file or dir.
         if isinstance(checkpoint, str):
             checkpoint_data, _ = Algorithm._checkpoint_to_state(checkpoint)
+        # Checkpoint is a checkpoint-as-dict -> Restore state from it as-is.
         else:
             checkpoint_data = checkpoint
         self.__setstate__(checkpoint_data)

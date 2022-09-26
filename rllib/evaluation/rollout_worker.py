@@ -1541,7 +1541,7 @@ class RolloutWorker(ParallelIteratorWorker):
             state = pickle.loads(state)
 
         # TODO: Once filters are handled by connectors, get rid of the "filters"
-        #  key in `state` entirely.
+        #  key in `state` entirely (will be part of the policies then).
         self.sync_filters(state["filters"])
 
         connector_enabled = self.policy_config.get("enable_connectors", False)
