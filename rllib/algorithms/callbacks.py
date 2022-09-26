@@ -108,26 +108,39 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         pass
 
     @OverrideToImplementCustomLogic
-    def before_sub_environment_reset(
+    def on_episode_created(
         self,
         *,
         worker: "RolloutWorker",
-        sub_environment: EnvType,
+        base_env: BaseEnv,
+        policies: Dict[PolicyID, Policy],
         env_index: int,
+        episode: Union[Episode, EpisodeV2],
         **kwargs,
     ) -> None:
-        """Callback run before a sub-environment is reset.
+        """Callback run when a new episode is created (but has not started yet!).
 
-        This method gets called before every `try_reset()` is called by RLlib
-        on a sub-environment (usually a gym.Env). This includes the very first (initial)
-        reset performed on each sub-environment.
+        This method gets called after a new Episode(V2) instance is created to
+        start a new episode. This happens before the respective sub-environment's
+        (usually a gym.Env) `reset()` is called by RLlib.
+
+        1) Episode(V2) created: This callback fires.
+        2) Respective sub-environment (gym.Env) is `reset()`.
+        3) Callback `on_episode_start` is fired.
+        4) Stepping through sub-environment/episode commences.
 
         Args:
             worker: Reference to the current rollout worker.
-            sub_environment: The sub-environment instance that we are about to reset.
-                This is usually a gym.Env object.
+            base_env: BaseEnv running the episode. The underlying
+                sub environment objects can be retrieved by calling
+                `base_env.get_sub_environments()`.
+            policies: Mapping of policy id to policy objects. In single
+                agent mode there will only be a single "default" policy.
             env_index: The index of the sub-environment that is about to be reset
                 (within the vector of sub-environments of the BaseEnv).
+            episode: The newly created episode. This is the one that will be started
+                with the upcoming reset. Only after the reset call, the
+                `on_episode_start` event will be triggered.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -143,7 +156,15 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         env_index: Optional[int] = None,
         **kwargs,
     ) -> None:
-        """Callback run on the rollout worker before each episode starts.
+        """Callback run right after an Episode has started.
+
+        This method gets called after the Episode(V2)'s respective sub-environment's
+        (usually a gym.Env) `reset()` is called by RLlib.
+
+        1) Episode(V2) created: Triggers callback `on_episode_created`.
+        2) Respective sub-environment (gym.Env) is `reset()`.
+        3) Episode(V2) starts: This callback fires.
+        4) Stepping through sub-environment/episode commences.
 
         Args:
             worker: Reference to the current rollout worker.
@@ -535,19 +556,23 @@ class MultiCallbacks(DefaultCallbacks):
             )
 
     @override(DefaultCallbacks)
-    def before_sub_environment_reset(
+    def on_episode_created(
         self,
         *,
         worker: "RolloutWorker",
-        sub_environment: EnvType,
-        env_index: Optional[int] = None,
+        base_env: BaseEnv,
+        policies: Dict[PolicyID, Policy],
+        env_index: int,
+        episode: Union[Episode, EpisodeV2],
         **kwargs,
     ) -> None:
         for callback in self._callback_list:
-            callback.before_sub_environment_reset(
+            callback.on_episode_created(
                 worker=worker,
-                sub_environment=sub_environment,
+                base_env=base_env,
+                policies=policies,
                 env_index=env_index,
+                episode=episode,
                 **kwargs,
             )
 
