@@ -26,7 +26,8 @@ Code example
             return True
 
         def _process(self, data):
-            print(f"processing {data}"")
+            # Do process here...
+            pass
 
 There are 2 issues here.
 
