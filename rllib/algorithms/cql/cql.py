@@ -136,7 +136,7 @@ class CQL(SAC):
             deprecation_warning(
                 old="timesteps_per_iteration",
                 new="min_train_timesteps_per_iteration",
-                error=False,
+                error=True,
             )
             config["min_train_timesteps_per_iteration"] = config[
                 "timesteps_per_iteration"
@@ -222,7 +222,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.cql.cql::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.cql.cql::CQLConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

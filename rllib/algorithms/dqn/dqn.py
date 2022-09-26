@@ -333,7 +333,7 @@ class DQN(SimpleQ):
     @classmethod
     @override(SimpleQ)
     def get_default_config(cls) -> AlgorithmConfigDict:
-        return DEFAULT_CONFIG
+        return DQNConfig().to_dict()
 
     @override(SimpleQ)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
@@ -385,7 +385,7 @@ class DQN(SimpleQ):
             self._counters[NUM_ENV_STEPS_SAMPLED] += new_sample_batch.env_steps()
 
             # Store new samples in replay buffer.
-            self.local_replay_buffer.add_batch(new_sample_batch)
+            self.local_replay_buffer.add(new_sample_batch)
 
         global_vars = {
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
@@ -455,7 +455,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.dqn.dqn.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.dqn.dqn.DQNConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)
@@ -464,6 +464,6 @@ class _deprecated_default_config(dict):
 DEFAULT_CONFIG = _deprecated_default_config()
 
 
-@Deprecated(new="Sub-class directly from `DQN` and override its methods", error=False)
+@Deprecated(new="Sub-class directly from `DQN` and override its methods", error=True)
 class GenericOffPolicyTrainer(SimpleQ):
     pass

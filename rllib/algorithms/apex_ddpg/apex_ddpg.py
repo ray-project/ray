@@ -224,7 +224,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.ddpg.apex.APEX_DDPG_DEFAULT_CONFIG",
         new="ray.rllib.algorithms.apex_ddpg.apex_ddpg::ApexDDPGConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

@@ -1960,7 +1960,7 @@ class RolloutWorker(ParallelIteratorWorker):
     ):
         self.policy_map[policy_id].export_checkpoint(export_dir, filename_prefix)
 
-    @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=False)
+    @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=True)
     def foreach_trainable_policy(self, func, **kwargs):
         return self.foreach_policy_to_train(func, **kwargs)
 
