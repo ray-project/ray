@@ -1,47 +1,46 @@
-.. _supporting_custom_datasource:
+.. _custom_datasources:
 
-============================
-Supporting Custom Datasource
-============================
+==================
+Custom Datasources
+==================
 
-Ray Datasets supports multiple ways to :ref:`create Datasets <creating_datasets>`
-so you can easily read from those data sources and create Dataset. However, if the 
-datasource you want to read from is not in the list, don't worry, you can implement 
+Ray Datasets supports multiple ways to :ref:`create a dataset <creating_datasets>`
+allowing you to easily ingest data of common formats from popular sources. However, if the 
+datasource you want to read from is not in the built-in list, don't worry, you can implement 
 a custom one for your use case. In this guide, we will walk you through how to build 
-your own custom datasource with MongoDB as an example.
+your own custom datasource, using MongoDB as an example.
 
 A custom datasource is an implementation of :class:`~ray.data.Datasource`. In the 
-example here, let's call it ``MongoDatasource``. At high level, it will have two 
+example here, let's call it ``MongoDatasource``. At a high level, it will have two 
 core parts to build out: read support with :meth:`create_reader() <ray.data.Datasource.create_reader>` 
 and write support with :meth:`do_write() <ray.data.Datasource.do_write>`.
 
-Here are the key design choices we will make this in guide:
+Here are the key design choices we will make in this guide:
 
--  MongoDB connector: We will use `PyMongo <https://pymongo.readthedocs.io/en/stable/>`__ to connect MongDB.
--  MongoDB to Arrow conversion: We will use `PyMongoArrow <https://mongo-arrow.readthedocs.io/en/latest/>`__ to convert query results into Arrow format for Dataset.
--  Parallel execution: We will assume the user to provide a list of MongoDB queries, with each corresponding to a shard (i.e. a :class:`~ray.data.ReadTask`) that can be executed in parallel.
+-  **MongoDB connector**: We will use `PyMongo <https://pymongo.readthedocs.io/en/stable/>`__ to connect to MongDB.
+-  **MongoDB to Arrow conversion**: We will use `PyMongoArrow <https://mongo-arrow.readthedocs.io/en/latest/>`__ to convert query results into Arrow tables, which Datasets supports as a block format.
+-  **Parallel execution**: We will ask the user to provide a list of MongoDB queries, with each corresponding to a shard (i.e. a :class:`~ray.data.ReadTask`) that can be executed in parallel.
 
 ------------
 Read support
 ------------
 
-To implement :meth:`create_reader() <ray.data.Datasource.create_reader>` and support 
-read, the major work will be subclassing :class:`~ray.data.Datasource.Reader` for 
-MongoDB. What it does is creating a list of :class:`~ray.data.ReadTask` for the given 
+To support reading, we implement :meth:`create_reader() <ray.data.Datasource.create_reader>`, returning a :class:`~ray.data.Datasource.Reader` implementation for 
+MongoDB. This ``Reader`` creates a list of :class:`~ray.data.ReadTask` for the given 
 list of MongDB queries. Each :class:`~ray.data.ReadTask` will return a list of blocks when called, and 
 the :class:`~ray.data.ReadTask` are executed in remote workers to parallelize the execution.
 
-First of all, let's handle a single MongDB query, as this is the execution unit in 
+First, let's handle a single MongDB query, as this is the execution unit in 
 :class:`~ray.data.ReadTask`. We need to connect to MongDB, execute the query against it, 
-and then convert results into Arrow format. The ``PyMongo`` and  ``PyMongoArrow`` are 
-used to achieve these.
+and then convert results into Arrow format. We use ``PyMongo`` and  ``PyMongoArrow``
+to achieve this.
 
 .. literalinclude:: ./doc_code/custom_datasource.py
     :language: python
     :start-after: __read_single_query_start__
     :end-before: __read_single_query_end__
 
-Once we have this building block, we can just apply it for each provided MongoDB 
+Once we have this building block, we can just apply it for each of the provided MongoDB 
 queries and get the implementation of :class:`~ray.data.Datasource.Reader`.
 
 .. literalinclude:: ./doc_code/custom_datasource.py
@@ -84,7 +83,7 @@ into a ``MongoDatasource``.
     :end-before: __mongo_datasource_end__
 
 Now you can create a Ray Dataset from and write back to MongoDB, just like 
-any other data sources!
+any other datasource!
 
 .. code-block:: python
 
