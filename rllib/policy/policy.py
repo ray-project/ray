@@ -5,6 +5,7 @@ import logging
 import numpy as np
 import os
 import platform
+import tempfile
 import tree  # pip install dm_tree
 from typing import (
     TYPE_CHECKING,
@@ -173,6 +174,45 @@ class Policy(metaclass=ABCMeta):
     `rllib.policy.policy_template::build_policy_class` (PyTorch) or
     `rllib.policy.tf_policy_template::build_tf_policy_class` (TF).
     """
+
+    @staticmethod
+    def from_checkpoint(checkpoint: Union[str, Checkpoint]) -> "Policy":
+        """Creates a new Policy instance from a given checkpoint.
+
+        Note: This method must remain backward compatible from 2.1.0 on.
+
+        Args:
+            checkpoint: The path (str) to the policy checkpoint directory to use
+                or an AIR Checkpoint instance to restore from.
+
+        Returns:
+            The instantiated Policy.
+        """
+        # `checkpoint` is a str: Checkpoint directory.
+        if isinstance(checkpoint, str):
+            # Checkpoint is dir.
+            if os.path.isdir(checkpoint):
+                checkpoint = Checkpoint.from_directory(checkpoint)
+            else:
+                raise ValueError(
+                    f"Given checkpoint ({checkpoint}) directory not found or is a "
+                    "file! Must be a checkpoint directory."
+                )
+
+        # Open main state file of checkpoint.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            checkpoint.to_directory(tmp_dir)
+            state_file = os.path.join(tmp_dir, "policy_state.pkl")
+
+            if not os.path.isfile(state_file):
+                raise ValueError(
+                    "Given checkpoint does not seem to be valid! No file "
+                    f"with the name `policy_state.pkl` found in."
+                )
+
+            state = pickle.load(open(state_file, "rb"))
+
+        return Policy.from_state(state)
 
     @staticmethod
     def from_state(state: PolicyState) -> "Policy":

@@ -5,6 +5,7 @@ import os
 import ray
 
 from ray.rllib.algorithms.registry import get_algorithm_class
+from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
@@ -12,7 +13,7 @@ tf1, tf, tfv = try_import_tf()
 ray.init(num_cpus=10)
 
 
-def train_and_export(algo_name, num_steps, model_dir, ckpt_dir):
+def train_and_export_policy_and_model(algo_name, num_steps, model_dir, ckpt_dir):
     cls, config = get_algorithm_class(algo_name, return_config=True)
     # Set exporting native (DL-framework) model files to True.
     config["checkpoints_contain_native_model_files"] = True
@@ -43,17 +44,17 @@ def restore_saved_model(export_dir):
             print("https://www.tensorflow.org/guide/saved_model")
 
 
-def restore_checkpoint(export_dir):
+def restore_policy_from_checkpoint(export_dir):
     # Load the model from the checkpoint.
-    model = tf.saved_model.load(export_dir)
+    policy = Policy.from_checkpoint(export_dir)
     # Perform a dummy (CartPole) forward pass.
-    test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
-    results = model(tf.convert_to_tensor(test_obs, dtype=tf.float32))
+    test_obs = np.array([0.1, 0.2, 0.3, 0.4])
+    results = policy.compute_single_action(test_obs)
     # Check results for correctness.
-    assert len(results) == 2
-    assert results[0].shape == (1, 2)
-    # TODO (sven): Make non-RNN models NOT return states (empty list).
-    assert results[1].shape == (1, 1)  # dummy state-out
+    assert len(results) == 3
+    assert results[0].shape == ()  # pure single action (int)
+    assert results[1] == []  # RNN states
+    assert results[2]["action_dist_inputs"].shape == (2,)  # categorical inputs
 
 
 if __name__ == "__main__":
@@ -61,6 +62,6 @@ if __name__ == "__main__":
     model_dir = os.path.join(ray._private.utils.get_user_temp_dir(), "model_export_dir")
     ckpt_dir = os.path.join(ray._private.utils.get_user_temp_dir(), "ckpt_export_dir")
     num_steps = 1
-    train_and_export(algo, num_steps, model_dir, ckpt_dir)
+    train_and_export_policy_and_model(algo, num_steps, model_dir, ckpt_dir)
     restore_saved_model(model_dir)
-    restore_checkpoint(ckpt_dir)
+    restore_policy_from_checkpoint(ckpt_dir)

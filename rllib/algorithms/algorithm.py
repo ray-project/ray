@@ -1919,7 +1919,7 @@ class Algorithm(Trainable):
         # Checkpoint is provided as a directory name.
         # Restore from the checkpoint file or dir.
         if isinstance(checkpoint, str):
-            checkpoint_data = Algorithm._checkpoint_to_state(checkpoint)
+            checkpoint_data, _ = Algorithm._checkpoint_to_state(checkpoint)
         else:
             checkpoint_data = checkpoint
         self.__setstate__(checkpoint_data)
@@ -2726,7 +2726,7 @@ class Algorithm(Trainable):
     def _checkpoint_to_state(
         checkpoint: Union[str, Checkpoint],
         policies: Optional[Container[PolicyID]] = None,
-    ) -> Dict:
+    ) -> Tuple[Dict, str]:
         # Do we have an old ("v0") single checkpoint file?
         v0_checkpoint_file = None
 
