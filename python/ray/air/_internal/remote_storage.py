@@ -1,5 +1,6 @@
 import fnmatch
 import os
+from packaging import version
 import urllib.parse
 from typing import List, Optional, Tuple
 
@@ -112,6 +113,23 @@ def get_fs_and_path(
 
     fsspec_handler = pyarrow.fs.FSSpecHandler
     if parsed.scheme in ["gs", "gcs"]:
+
+        # TODO(amogkam): Remove after https://github.com/fsspec/gcsfs/issues/498 is
+        #  resolved.
+        try:
+            import gcsfs
+
+            if version.parse(gcsfs.__version__) > version.parse("2022.7.1"):
+                raise RuntimeError(
+                    "`gcsfs` versions greater than '2022.7.1' are not "
+                    f"compatible with pyarrow. You have gcsfs version "
+                    f"{gcsfs.__version__}. Please downgrade your gcsfs "
+                    f"version. See more details in "
+                    f"https://github.com/fsspec/gcsfs/issues/498."
+                )
+        except ImportError:
+            pass
+
         # GS doesn't support `create_parents` arg in `create_dir()`
         fsspec_handler = _CustomGCSHandler
 
