@@ -366,10 +366,7 @@ def _mosaic_train_loop_per_worker(config):
     if not is_report_call_added:
         trainer.state.callbacks.append(
             RayTrainReportCallback(
-                in_memory_logger=in_memory_logger,
-                folder="ray_tmp",
-                overwrite=True,
-                weights_only=True,
+                in_memory_logger=in_memory_logger, folder="ray_tmp", overwrite=True
             )
         )
 

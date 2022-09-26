@@ -98,7 +98,7 @@ class RayLogger(LoggerDestination):
     present in `Result.metrics_dataframe`. To allow preserving those information, the
     user can provide keys to be always included in the reported data by using `keys`
     argument in the constructor. For `MosaicTrainer`, use
-    `trainer_init_config['log_keys`]` to populate these keys.
+    `trainer_init_config['log_keys']` to populate these keys.
 
     Args:
         log_level: the granuality to log data. The default value is ``LogLevel.BATCH``
