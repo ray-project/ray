@@ -149,7 +149,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             1. if the number of `self._agents` has reached
                `CANDIDATE_AGENT_NUMBER`, randomly select one agent from
                `self._agents`.
-            2. it not, randomly select one agent from all available agents,
+            2. if not, randomly select one agent from all available agents,
                it is possible that the selected one already exists in
                `self._agents`.
         """
