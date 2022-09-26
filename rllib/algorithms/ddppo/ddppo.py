@@ -189,9 +189,9 @@ class DDPPO(PPO):
 
         # Auto-train_batch_size: Calculate from rollout len and
         # envs-per-worker.
-        self.config["train_batch_size"] = (
-            self.config["rollout_fragment_length"] * self.config["num_envs_per_worker"]
-        )
+        config["train_batch_size"] = config.get(
+            "rollout_fragment_length", DEFAULT_CONFIG["rollout_fragment_length"]
+        ) * config.get("num_envs_per_worker", DEFAULT_CONFIG["num_envs_per_worker"])
 
     @classmethod
     @override(PPO)
@@ -375,7 +375,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.ppo.ddppo::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.ddppo.ddppo::DDPPOConfig(...)",
-        error=True,
+        error=False,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)
