@@ -452,6 +452,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
       });
   worker_pool_.SetAgentManager(agent_manager_);
+
+  periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },
+                                       RayConfig::instance().task_failure_entry_ttl_ms());
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -814,6 +817,25 @@ void NodeManager::HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request
       /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
 }
 
+void NodeManager::HandleGetTaskFailureCause(
+    const rpc::GetTaskFailureCauseRequest &request,
+    rpc::GetTaskFailureCauseReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const TaskID task_id = TaskID::FromBinary(request.task_id());
+  RAY_LOG(DEBUG) << "Received a HandleGetTaskFailureCause request for task " << task_id;
+
+  auto it = task_failure_reasons_.find(task_id);
+  if (it != task_failure_reasons_.end()) {
+    RAY_LOG(DEBUG) << "task " << task_id << " has failure reason "
+                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info);
+    reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info);
+  } else {
+    RAY_LOG(INFO) << "didn't find failure cause for task " << task_id;
+  }
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::QueryAllWorkerStates(
     const std::function<void(const ray::Status &, const rpc::GetCoreWorkerStatsReply &)>
         &on_replied,
@@ -984,7 +1006,9 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
             resources.Set(scheduling::ResourceID(resource_entry.first),
                           FixedPoint(resource_entry.second->resource_capacity()));
           }
-          ResourceCreateUpdated(node_id, resources);
+          if (ResourceCreateUpdated(node_id, resources)) {
+            cluster_task_manager_->ScheduleAndDispatchTasks();
+          }
         }
       }));
 }
@@ -1083,7 +1107,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
   }
 }
 
-void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
+bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                                         const ResourceRequest &createUpdatedResources) {
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from node id " << node_id
                  << " with created or updated resources: "
@@ -1094,8 +1118,7 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
   // Updating local node could result in a inconsistence view in cluster resource
   // scheduler which could make task hang.
   if (node_id == self_node_id_) {
-    cluster_task_manager_->ScheduleAndDispatchTasks();
-    return;
+    return false;
   }
 
   for (const auto &resource_id : createUpdatedResources.ResourceIds()) {
@@ -1105,10 +1128,10 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
         createUpdatedResources.Get(resource_id).Double());
   }
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
-  cluster_task_manager_->ScheduleAndDispatchTasks();
+  return true;
 }
 
-void NodeManager::ResourceDeleted(const NodeID &node_id,
+bool NodeManager::ResourceDeleted(const NodeID &node_id,
                                   const std::vector<std::string> &resource_names) {
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::ostringstream oss;
@@ -1124,7 +1147,7 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
   // Updating local node could result in a inconsistence view in cluster resource
   // scheduler which could make task hang.
   if (node_id == self_node_id_) {
-    return;
+    return false;
   }
 
   std::vector<scheduling::ResourceID> resource_ids;
@@ -1133,7 +1156,7 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
   }
   cluster_resource_scheduler_->GetClusterResourceManager().DeleteResources(
       scheduling::NodeID(node_id.Binary()), resource_ids);
-  return;
+  return true;
 }
 
 void NodeManager::HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &request,
@@ -1155,14 +1178,14 @@ void NodeManager::HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &req
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::UpdateResourceUsage(const NodeID &node_id,
+bool NodeManager::UpdateResourceUsage(const NodeID &node_id,
                                       const rpc::ResourcesData &resource_data) {
   if (!cluster_resource_scheduler_->GetClusterResourceManager().UpdateNode(
           scheduling::NodeID(node_id.Binary()), resource_data)) {
     RAY_LOG(INFO)
         << "[UpdateResourceUsage]: received resource usage from unknown node id "
         << node_id;
-    return;
+    return false;
   }
 
   // Trigger local GC at the next heartbeat interval.
@@ -1170,22 +1193,7 @@ void NodeManager::UpdateResourceUsage(const NodeID &node_id,
     should_local_gc_ = true;
   }
 
-  // If light resource usage report enabled, we update remote resources only when related
-  // resources map in heartbeat is not empty.
-  cluster_task_manager_->ScheduleAndDispatchTasks();
-}
-
-void NodeManager::ResourceUsageBatchReceived(
-    const ResourceUsageBatchData &resource_usage_batch) {
-  // Update load information provided by each message.
-  for (const auto &resource_usage : resource_usage_batch.batch()) {
-    const NodeID &node_id = NodeID::FromBinary(resource_usage.node_id());
-    if (node_id == self_node_id_) {
-      // Skip messages from self.
-      continue;
-    }
-    UpdateResourceUsage(node_id, resource_usage);
-  }
+  return true;
 }
 
 void NodeManager::ProcessNewClient(ClientConnection &client) {
@@ -1438,8 +1446,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    const std::string &disconnect_detail,
                                    const rpc::RayException *creation_task_exception) {
   RAY_LOG(INFO) << "NodeManager::DisconnectClient, disconnect_type=" << disconnect_type
-                << ", has creation task exception = "
-                << (creation_task_exception != nullptr);
+                << ", has creation task exception = " << std::boolalpha
+                << bool(creation_task_exception == nullptr);
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1456,6 +1464,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       return;
     }
   }
+  RAY_CHECK(worker != nullptr);
   RAY_CHECK(!(is_worker && is_driver));
   // Clean up any open ray.get or ray.wait calls that the worker made.
   dependency_manager_.CancelGetRequest(worker->WorkerId());
@@ -1756,13 +1765,16 @@ void NodeManager::HandleUpdateResourceUsage(
   }
   next_resource_seq_no_ = resource_usage_batch.seq_no() + 1;
 
+  bool updated = false;
   for (const auto &resource_change_or_data : resource_usage_batch.batch()) {
     if (resource_change_or_data.has_data()) {
       const auto &resource_usage = resource_change_or_data.data();
       auto node_id = NodeID::FromBinary(resource_usage.node_id());
       // Skip messages from self.
       if (node_id != self_node_id_) {
-        UpdateResourceUsage(node_id, resource_usage);
+        if (UpdateResourceUsage(node_id, resource_usage)) {
+          updated = true;
+        }
       }
     } else if (resource_change_or_data.has_change()) {
       const auto &resource_notification = resource_change_or_data.change();
@@ -1770,14 +1782,22 @@ void NodeManager::HandleUpdateResourceUsage(
       if (resource_notification.updated_resources_size() != 0) {
         auto resources = ResourceMapToResourceRequest(
             MapFromProtobuf(resource_notification.updated_resources()), false);
-        ResourceCreateUpdated(node_id, resources);
+        if (ResourceCreateUpdated(node_id, resources)) {
+          updated = true;
+        }
       }
 
       if (resource_notification.deleted_resources_size() != 0) {
-        ResourceDeleted(node_id,
-                        VectorFromProtobuf(resource_notification.deleted_resources()));
+        if (ResourceDeleted(
+                node_id, VectorFromProtobuf(resource_notification.deleted_resources()))) {
+          updated = true;
+        }
       }
     }
+  }
+
+  if (updated) {
+    cluster_task_manager_->ScheduleAndDispatchTasks();
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -2468,7 +2488,6 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
                                      rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> object_ids;
   object_ids.reserve(request.object_ids_size());
-  const auto &owner_address = request.owner_address();
   for (const auto &object_id_binary : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
@@ -2496,8 +2515,11 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
       }
     }
     // Wait for the object to be freed by the owner, which keeps the ref count.
+    ObjectID generator_id = request.has_generator_id()
+                                ? ObjectID::FromBinary(request.generator_id())
+                                : ObjectID::Nil();
     local_object_manager_.PinObjectsAndWaitForFree(
-        object_ids, std::move(results), owner_address);
+        object_ids, std::move(results), request.owner_address(), generator_id);
   }
   RAY_CHECK_EQ(request.object_ids_size(), reply->successes_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -2831,7 +2853,9 @@ void NodeManager::ConsumeSyncMessage(
     rpc::ResourcesData data;
     data.ParseFromString(message->sync_message());
     NodeID node_id = NodeID::FromBinary(data.node_id());
-    UpdateResourceUsage(node_id, data);
+    if (UpdateResourceUsage(node_id, data)) {
+      cluster_task_manager_->ScheduleAndDispatchTasks();
+    }
   } else if (message->message_type() == syncer::MessageType::COMMANDS) {
     rpc::ResourcesData data;
     data.ParseFromString(message->sync_message());
@@ -2937,36 +2961,42 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           } else {
             id_ss << "actor ID " << latest_worker->GetActorId();
           }
+
+          /// TODO: (clarng) expose this string in the frontend python error as well.
           std::stringstream worker_exit_message_ss;
           worker_exit_message_ss
-              << "System memory low at node with IP " << latest_worker->IpAddress()
-              << ". Used memory (" << used_bytes_gb << "GB) / total capacity ("
-              << total_bytes_gb << "GB) (" << usage_fraction << ") exceeds threshold "
-              << usage_threshold << ", killing latest task with name "
-              << latest_worker->GetAssignedTask().GetTaskSpecification().GetName()
-              << " and " << id_ss.str() << " to avoid running out of memory.\n"
-              << "This may indicate a memory leak in a task or actor, or that too many "
-                 "tasks are running in parallel.\n";
-          std::string worker_exit_message = worker_exit_message_ss.str();
-
-          std::stringstream error_log_ss;
-          error_log_ss
-              << worker_exit_message
-              << "To find the highest memory consumers, use `ray logs raylet.out -ip "
-              << latest_worker->IpAddress() << "`.\n"
+              << "Task was killed due to the node running low on memory.\n\n"
+              << "Memory on the node (IP: " << latest_worker->IpAddress()
+              << ", ID: " << this->self_node_id_ << ") where the task was running was "
+              << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
+              << "), which exceeds the memory usage threshold of " << usage_threshold
+              << ". Ray killed this worker (ID: " << latest_worker->WorkerId()
+              << ") because it was the most recently scheduled task; to see more "
+                 "information about memory usage on this node, use `ray logs raylet.out "
+                 "-ip "
+              << latest_worker->IpAddress()
+              << "`. To see the logs of the worker, use `ray logs worker-"
+              << latest_worker->WorkerId() << "*out -ip " << latest_worker->IpAddress()
+              << "`.\n\n"
               << "Consider provisioning more memory on this node or reducing task "
-                 "parallelism by requesting more CPUs per task. "
-              << "To adjust the eviction threshold, set the environment variable "
-                 "`RAY_memory_usage_threshold_fraction` when starting Ray. "
-              << "To disable worker eviction, set the environment variable "
+                 "parallelism by requesting more CPUs per task. To adjust the eviction "
+                 "threshold, set the environment variable "
+                 "`RAY_memory_usage_threshold_fraction` when starting Ray. To disable "
+                 "worker eviction, set the environment variable "
                  "`RAY_memory_monitor_interval_ms` to zero.";
+          std::string worker_exit_message = worker_exit_message_ss.str();
           /// TODO: (clarng) add a link to the oom killer / memory manager documentation
-          RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << error_log_ss.str();
+          RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << worker_exit_message;
 
           const static int64_t max_to_print = 10;
           RAY_LOG(INFO) << "Latest 10 worker details:\n"
                         << this->WorkersDebugString(workers, max_to_print);
 
+          rpc::RayErrorInfo task_failure_reason;
+          task_failure_reason.set_error_message(worker_exit_message);
+          task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
+          SetTaskFailureReason(latest_worker->GetAssignedTaskId(),
+                               std::move(task_failure_reason));
           /// TODO: (clarng) right now destroy is called after the messages are created
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
@@ -2986,6 +3016,31 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
       }
     }
   };
+}
+
+void NodeManager::SetTaskFailureReason(const TaskID &task_id,
+                                       const rpc::RayErrorInfo &failure_reason) {
+  RAY_LOG(DEBUG) << "set failure reason for task " << task_id;
+  ray::TaskFailureEntry entry(failure_reason);
+  auto result = task_failure_reasons_.emplace(task_id, std::move(entry));
+  if (result.second) {
+    RAY_LOG(WARNING) << "Trying to insert failure reason more than once for the same "
+                        "task, the previous failure will be removed. Task id: "
+                     << task_id;
+  }
+}
+
+void NodeManager::GCTaskFailureReason() {
+  for (const auto &entry : task_failure_reasons_) {
+    auto duration = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - entry.second.creation_time)
+                        .count();
+    if (duration > RayConfig::instance().task_failure_entry_ttl_ms()) {
+      RAY_LOG(INFO) << "Removing task failure reason since it expired, task: "
+                    << entry.first;
+      task_failure_reasons_.erase(entry.first);
+    }
+  }
 }
 
 const std::vector<std::shared_ptr<WorkerInterface>>
