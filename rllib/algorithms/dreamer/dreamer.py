@@ -432,7 +432,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.dreamer.dreamer.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.dreamer.dreamer.DreamerConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

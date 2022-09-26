@@ -1,5 +1,3 @@
-import copy
-
 import gym
 import numpy as np
 import os
@@ -13,7 +11,6 @@ import ray.rllib.algorithms.a3c as a3c
 import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.bc import BC, BCConfig
 import ray.rllib.algorithms.pg as pg
-from ray.rllib.algorithms.algorithm import COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.parallel_evaluation_and_training import AssertEvalCallback
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
@@ -29,63 +26,55 @@ class TestAlgorithm(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_validate_config_idempotent(self):
-        """
-        Asserts that validate_config run multiple
-        times on COMMON_CONFIG will be idempotent
-        """
-        # Given:
-        standard_config = copy.deepcopy(COMMON_CONFIG)
-        algo = pg.PG(env="CartPole-v0", config=standard_config)
-
-        # When (we validate config 2 times).
-        # Try deprecated `Algorithm._validate_config()` method (static).
-        algo._validate_config(standard_config, algo)
-        config_v1 = copy.deepcopy(standard_config)
-        # Try new method: `Algorithm.validate_config()` (non-static).
-        algo.validate_config(standard_config)
-        config_v2 = copy.deepcopy(standard_config)
-
-        # Make sure nothing changed.
-        self.assertEqual(config_v1, config_v2)
-
-        algo.stop()
-
     def test_add_delete_policy(self):
-        config = pg.DEFAULT_CONFIG.copy()
-        config.update(
-            {
-                "env": MultiAgentCartPole,
-                "env_config": {
-                    "config": {
-                        "num_agents": 4,
-                    },
+        config = pg.PGConfig()
+        config.environment(
+            env=MultiAgentCartPole,
+            env_config={
+                "config": {
+                    "num_agents": 4,
                 },
-                "num_workers": 2,  # Test on remote workers as well.
+            },
+        ).rollouts(num_rollout_workers=2, rollout_fragment_length=50).resources(
+            num_cpus_per_worker=0.1
+        ).training(
+            train_batch_size=100,
+        ).multi_agent(
+            # Start with a single policy.
+            policies={"p0"},
+            policy_mapping_fn=lambda aid, eps, worker, **kwargs: "p0",
+            # And only two policies that can be stored in memory at a
+            # time.
+            policy_map_capacity=2,
+        ).evaluation(
+            evaluation_num_workers=1,
+            evaluation_config={
                 "num_cpus_per_worker": 0.1,
-                "model": {
-                    "fcnet_hiddens": [5],
-                    "fcnet_activation": "linear",
-                },
-                "train_batch_size": 100,
-                "rollout_fragment_length": 50,
-                "multiagent": {
-                    # Start with a single policy.
-                    "policies": {"p0"},
-                    "policy_mapping_fn": lambda aid, eps, worker, **kwargs: "p0",
-                    # And only two policies that can be stored in memory at a
-                    # time.
-                    "policy_map_capacity": 2,
-                },
-                "evaluation_num_workers": 1,
-                "evaluation_config": {
-                    "num_cpus_per_worker": 0.1,
-                },
+            },
+        )
+        # Don't override existing model settings.
+        config.model.update(
+            {
+                "fcnet_hiddens": [5],
+                "fcnet_activation": "linear",
             }
         )
 
-        for _ in framework_iterator(config):
-            algo = pg.PG(config=config)
+        obs_space = gym.spaces.Box(-2.0, 2.0, (4,))
+        act_space = gym.spaces.Discrete(2)
+
+        for fw in framework_iterator(config):
+            # Pre-generate a policy instance to test adding these directly to an
+            # existing algorithm.
+            if fw == "tf":
+                policy_obj = pg.PGTF1Policy(obs_space, act_space, config.to_dict())
+            elif fw == "tf2":
+                policy_obj = pg.PGTF2Policy(obs_space, act_space, config.to_dict())
+            else:
+                policy_obj = pg.PGTorchPolicy(obs_space, act_space, config.to_dict())
+
+            # Construct the Algorithm with a single policy in it.
+            algo = config.build()
             pol0 = algo.get_policy("p0")
             r = algo.train()
             self.assertTrue("p0" in r["info"][LEARNER_INFO])
@@ -94,16 +83,30 @@ class TestAlgorithm(unittest.TestCase):
                 def new_mapping_fn(agent_id, episode, worker, **kwargs):
                     return f"p{choice([i, i - 1])}"
 
-                # Add a new policy.
+                # Add a new policy either by class (and options) or by instance.
                 pid = f"p{i}"
-                new_pol = algo.add_policy(
-                    pid,
-                    algo.get_default_policy_class(config),
-                    # Test changing the mapping fn.
-                    policy_mapping_fn=new_mapping_fn,
-                    # Change the list of policies to train.
-                    policies_to_train=[f"p{i}", f"p{i-1}"],
-                )
+                print(f"Adding policy {pid} ...")
+                # By instance.
+                if i == 2:
+                    new_pol = algo.add_policy(
+                        pid,
+                        # Pass in an already existing policy instance.
+                        policy=policy_obj,
+                        # Test changing the mapping fn.
+                        policy_mapping_fn=new_mapping_fn,
+                        # Change the list of policies to train.
+                        policies_to_train=[f"p{i}", f"p{i - 1}"],
+                    )
+                # By class (and options).
+                else:
+                    new_pol = algo.add_policy(
+                        pid,
+                        algo.get_default_policy_class(config.to_dict()),
+                        # Test changing the mapping fn.
+                        policy_mapping_fn=new_mapping_fn,
+                        # Change the list of policies to train.
+                        policies_to_train=[f"p{i}", f"p{i-1}"],
+                    )
                 # Make sure new policy is part of remote workers in the
                 # worker set and the eval worker set.
                 assert pid in (

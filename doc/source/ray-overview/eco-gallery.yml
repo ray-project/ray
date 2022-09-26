@@ -36,6 +36,14 @@ projects:
     website: https://github.com/asappresearch/flambe
     repo: https://github.com/asappresearch/flambe
     image: ../images/flambe.png
+  - name: Flyte Integration
+    section_title: Flyte
+    description: Flyte is a Kubernetes-native workflow automation platform for complex,
+      mission-critical data and ML processes at scale. It has been battle-tested
+      at Lyft, Spotify, Freenome, and others and is truly open-source.
+    website: https://flyte.org/
+    repo: https://github.com/flyteorg/flyte
+    image: ../images/flyte.png
   - name: Horovod Integration
     section_title: Horovod
     description: Horovod is a distributed deep learning training framework for
