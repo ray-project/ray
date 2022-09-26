@@ -1,4 +1,5 @@
 import os
+import glob
 import shutil
 import time
 
@@ -358,11 +359,10 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir):
 
 
 @pytest.mark.parametrize(
-    "use_tuner_restore,cloud_checkpointing",
-    [(True, True), (True, False)],
+    "cloud_checkpointing", [True, False],
 )
 def test_tuner_restore_from_moved_experiment_path(
-    ray_start_2_cpus, tmp_path, use_tuner_restore, cloud_checkpointing
+    ray_start_2_cpus, tmp_path, cloud_checkpointing
 ):
     """Check that restoring Tuner() objects from a moved directory works"""
     # Create a fail_marker dummy file that causes the first Tune run to fail and
@@ -377,6 +377,7 @@ def test_tuner_restore_from_moved_experiment_path(
         cloud_uri = "memory:///original_dir/restore"
         sync_config = tune.SyncConfig(upload_dir=cloud_uri)
 
+    exp_name = "exp_dir"
     def init_tuner(local_dir, sync_config):
         return Tuner(
             _train_fn_sometimes_failing,
@@ -384,7 +385,7 @@ def test_tuner_restore_from_moved_experiment_path(
                 num_samples=1,
             ),
             run_config=RunConfig(
-                name="exp_dir",
+                name=exp_name,
                 local_dir=local_dir,
                 sync_config=sync_config,
             ),
@@ -411,25 +412,31 @@ def test_tuner_restore_from_moved_experiment_path(
         delete_at_uri(cloud_uri)
         new_cloud_uri = "memory:///new_dir/restore"
         upload_to_uri(check_path, new_cloud_uri)
+
     # Move local dir from tmp_path/ray_results -> tmp_path/moved_ray_results
     shutil.move(str(tmp_path / "ray_results"), str(tmp_path / "moved_ray_results"))
+    if cloud_checkpointing:
+        # Move all checkpoints back -- simulating "sync down from cloud"
+        # NOTE: This is a workaround for cloud checkpointing to a mock `memory://`
+        # filesys. The remote Trainable doesn't save to the same filesys, which is why
+        # we move the checkpoints back to the original folder where they would be
+        # if synced down from the cloud.
+        checkpoints_glob = tmp_path / "moved_ray_results" / exp_name / "*/checkpoint_*"
+        for ckpt_dir in glob.iglob(str(checkpoints_glob)):
+            relpath = os.path.relpath(ckpt_dir, tmp_path / "moved_ray_results")
+            shutil.move(ckpt_dir, tmp_path / "ray_results" / relpath)
 
     # Remove fail_marker so that the restored Tuner doesn't error again
     del tuner
     fail_marker.unlink()
 
     # 3. Restore from moved experiment directory location
-    if use_tuner_restore:
-        restore_path = (
-            "memory:///new_dir/restore/exp_dir"
-            if cloud_checkpointing
-            else str(tmp_path / "moved_ray_results" / "exp_dir")
-        )
-        tuner = Tuner.restore(restore_path, resume_errored=True)
-    else:
-        if cloud_checkpointing:
-            sync_config = tune.SyncConfig(upload_dir=new_cloud_uri)
-        tuner = init_tuner(str(tmp_path / "moved_ray_results"), sync_config)
+    restore_path = (
+        "memory:///new_dir/restore/exp_dir"
+        if cloud_checkpointing
+        else str(tmp_path / "moved_ray_results" / "exp_dir")
+    )
+    tuner = Tuner.restore(restore_path, resume_errored=True)
 
     # 4. Should be able to fit using the restored Tuner
     results = tuner.fit()
@@ -443,10 +450,8 @@ def test_tuner_restore_from_moved_experiment_path(
         cloud_root_path = tmp_path / "cloud_root_dir"
         download_from_uri("memory:///", str(cloud_root_path))
         remote_contents = os.listdir(cloud_root_path)
-        original_remote_contents = os.listdir(cloud_root_path / "original_dir")
-
-        assert not original_remote_contents, "Original dir should be empty"
         assert "new_dir" in remote_contents
+        assert "original_dir" not in remote_contents
 
         # We should have synced down from the cloud, which results in:
         # - tmp_path/ray_results being downloaded from cloud (newly created)
