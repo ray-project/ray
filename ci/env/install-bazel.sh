@@ -76,6 +76,10 @@ fi
 # clear bazelrc
 echo > ~/.bazelrc
 
+# Ask bazel to anounounce the config it finds in bazelrcs, which makes
+# understanding how to reproduce bazel easier.
+echo "build --announce_rc" >> ~/.bazelrc
+
 for bazel_cfg in ${BAZEL_CONFIG-}; do
   echo "build --config=${bazel_cfg}" >> ~/.bazelrc
 done
