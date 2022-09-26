@@ -12,16 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/util/counter.h"
-
 #include "gtest/gtest.h"
+#include "ray/util/counter_map.h"
 
 namespace ray {
 
-class CounterTest : public ::testing::Test {};
+class CounterMapTest : public ::testing::Test {};
 
-TEST_F(CounterTest, TestBasic) {
-  auto c = Counter<std::string>();
+TEST_F(CounterMapTest, TestBasic) {
+  auto c = CounterMap<std::string>();
   c.Increment("k1");
   c.Increment("k1");
   c.Increment("k2");
@@ -46,8 +45,8 @@ TEST_F(CounterTest, TestBasic) {
   EXPECT_EQ(c.Size(), 1);
 }
 
-TEST_F(CounterTest, TestCallback) {
-  auto c = Counter<std::string>();
+TEST_F(CounterMapTest, TestCallback) {
+  auto c = CounterMap<std::string>();
   int num_calls = 0;
   std::string last_call_key;
   int64_t last_call_value;
@@ -83,8 +82,8 @@ TEST_F(CounterTest, TestCallback) {
   EXPECT_EQ(last_call_value, 0);
 }
 
-TEST_F(CounterTest, TestIterate) {
-  auto c = Counter<std::string>();
+TEST_F(CounterMapTest, TestIterate) {
+  auto c = CounterMap<std::string>();
   int num_keys = 0;
   c.Increment("k1");
   c.Increment("k1");
