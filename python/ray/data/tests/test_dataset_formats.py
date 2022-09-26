@@ -1,9 +1,9 @@
+import json
 import os
 import shutil
 from distutils.version import LooseVersion
 from functools import partial
 from io import BytesIO
-import json
 from typing import Any, Dict, List, Union
 
 import numpy as np
@@ -12,15 +12,10 @@ import pyarrow as pa
 import pyarrow.json as pajson
 import pyarrow.parquet as pq
 import pytest
-from ray.data.datasource.file_meta_provider import _handle_read_os_error
-from ray.data.datasource.image_folder_datasource import (
-    IMAGE_EXTENSIONS,
-    _ImageFolderDatasourceReader,
-)
 import requests
 import snappy
-from fsspec.implementations.local import LocalFileSystem
 from fsspec.implementations.http import HTTPFileSystem
+from fsspec.implementations.local import LocalFileSystem
 from pytest_lazyfixture import lazy_fixture
 
 import ray
@@ -35,23 +30,28 @@ from ray.data.datasource import (
     DummyOutputDatasource,
     FastFileMetadataProvider,
     ImageFolderDatasource,
+    Partitioning,
     PartitionStyle,
     PathPartitionEncoder,
     PathPartitionFilter,
     SimpleTensorFlowDatasource,
     SimpleTorchDatasource,
     WriteResult,
-    Partitioning,
 )
 from ray.data.datasource.file_based_datasource import (
     FileExtensionFilter,
     _unwrap_protocol,
 )
+from ray.data.datasource.file_meta_provider import _handle_read_os_error
+from ray.data.datasource.image_folder_datasource import (
+    IMAGE_EXTENSIONS,
+    _ImageFolderDatasourceReader,
+)
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
+    _deserialize_pieces_with_retry,
     _ParquetDatasourceReader,
     _SerializedPiece,
-    _deserialize_pieces_with_retry,
 )
 from ray.data.extensions import TensorDtype
 from ray.data.preprocessors import BatchMapper
@@ -2408,7 +2408,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
     file_path3 = os.path.join(path2, "data2.csv")
     df3.to_csv(file_path3, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv([path1, path2], filesystem=fs)
+    ds = ray.data.read_csv([path1, path2], filesystem=fs, partitioning=None)
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
@@ -2431,7 +2431,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(data_path, "data1.csv")
     df2.to_csv(path2, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv([dir_path, path2], filesystem=fs)
+    ds = ray.data.read_csv([dir_path, path2], filesystem=fs, partitioning=None)
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
@@ -3057,11 +3057,11 @@ def test_image_folder_datasource_value_error(ray_start_regular_shared, size):
 
 
 def test_image_folder_datasource_e2e(ray_start_regular_shared):
-    from ray.train.torch import TorchCheckpoint, TorchPredictor
-    from ray.train.batch_predictor import BatchPredictor
-
     from torchvision import transforms
     from torchvision.models import resnet18
+
+    from ray.train.batch_predictor import BatchPredictor
+    from ray.train.torch import TorchCheckpoint, TorchPredictor
 
     root = "example://image-folders/simple"
     dataset = ray.data.read_datasource(
