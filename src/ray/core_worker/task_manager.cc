@@ -478,7 +478,9 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
         RAY_CHECK(num_retries_left == 0);
       }
     }
-    it->second.SetStatus(rpc::TaskStatus::SCHEDULED);
+    if (will_retry) {
+      it->second.SetStatus(rpc::TaskStatus::SCHEDULED);
+    }
   }
 
   // We should not hold the lock during these calls because they may trigger
