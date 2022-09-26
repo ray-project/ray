@@ -725,33 +725,43 @@ async def test_job_head_choose_job_agent():
         MockDataOrganizer.agents[agent_2[0]] = agent_2[1]
         MockDataOrganizer.agents[agent_3[0]] = agent_3[1]
 
-        addresses = set()
+        addresses_1 = set()
         for address in range(2):
             job_agent_client = await job_head.choose_agent()
-            addresses.add(job_agent_client._address)
-        assert addresses == {"http://1.1.1.1:1", "http://2.2.2.2:2"}
-        addresses = set()
+            addresses_1.add(job_agent_client._address)
+        assert len(addresses_1) == 2
+        addresses_2 = set()
         for address in range(2):
             job_agent_client = await job_head.choose_agent()
-            addresses.add(job_agent_client._address)
-        assert addresses == {"http://1.1.1.1:1", "http://2.2.2.2:2"}
+            addresses_2.add(job_agent_client._address)
+        assert len(addresses_2) == 2 and addresses_1 == addresses_2
 
-        del MockDataOrganizer.agents[agent_1[0]]
-        addresses = set()
-        for address in range(2):
-            job_agent_client = await job_head.choose_agent()
-            addresses.add(job_agent_client._address)
-        assert addresses == {"http://3.3.3.3:3", "http://2.2.2.2:2"}
-        addresses = set()
-        for address in range(2):
-            job_agent_client = await job_head.choose_agent()
-            addresses.add(job_agent_client._address)
-        assert addresses == {"http://3.3.3.3:3", "http://2.2.2.2:2"}
+        for agent in [agent_1, agent_2, agent_3]:
+            if f"http://{agent[1]['httpAddress']}" in addresses_2:
+                break
+        del MockDataOrganizer.agents[agent[0]]
 
-        del MockDataOrganizer.agents[agent_2[0]]
-        for _ in range(2):
+        addresses_3 = set()
+        for address in range(2):
             job_agent_client = await job_head.choose_agent()
-            assert "http://3.3.3.3:3" == job_agent_client._address
+            addresses_3.add(job_agent_client._address)
+        assert len(addresses_3) == 2
+        assert addresses_2 - addresses_3 == {f"http://{agent[1]['httpAddress']}"}
+        addresses_4 = set()
+        for address in range(2):
+            job_agent_client = await job_head.choose_agent()
+            addresses_4.add(job_agent_client._address)
+        assert addresses_4 == addresses_3
+
+        for agent in [agent_1, agent_2, agent_3]:
+            if f"http://{agent[1]['httpAddress']}" in addresses_4:
+                break
+        del MockDataOrganizer.agents[agent[0]]
+        address = None
+        for _ in range(3):
+            job_agent_client = await job_head.choose_agent()
+            assert address is None or address == job_agent_client._address
+            address = job_agent_client._address
 
 
 if __name__ == "__main__":

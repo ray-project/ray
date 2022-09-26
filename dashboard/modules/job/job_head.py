@@ -3,7 +3,7 @@ import dataclasses
 import json
 import logging
 import traceback
-from collections import OrderedDict
+from random import sample
 from typing import Iterator, Optional
 
 import aiohttp.web
@@ -133,8 +133,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         super().__init__(dashboard_head)
         self._dashboard_head = dashboard_head
         self._job_info_client = None
-        # this is a queue of JobAgentSubmissionClient
-        self._agents = OrderedDict()
+        self._agents = dict()
 
         # a cache to avoid initializing the same JobAgentSubmissionClient repeatedly.
         self._agents_pool = dict()
@@ -144,15 +143,15 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         Try to disperse as much as possible to select one of
         the `CANDIDATE_AGENT_NUMBER` agents to solve requests.
         the agents will not pop from `self._agents` unless
-        it's dead.
-        Follow the steps below to select the agent client:
-            1. delete dead agent from `self._agents`, make sure
-               the `JobAgentSubmissionClient` in `self._agents`
-               is always available.
-            2. Attempt to put new agents into `self._agents` until
-               its size is `CANDIDATE_AGENT_NUMBER`
-            3. Returns the element at the head of the `self._agents`
-               and put it into `self._agents` again.
+        it's dead. Saved in `self._agents` is the agent that was
+        used before.
+        Strategy:
+            1. if the number of `self._agents` has reached
+               `CANDIDATE_AGENT_NUMBER`, randomly select one agent from
+               `self._agents`.
+            2. it not, randomly select one agent from all available agents,
+               it is possible that the selected one already exists in
+               `self._agents`.
         """
         # the number of agents which has an available HTTP port.
         while True:
@@ -172,27 +171,25 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             client = self._agents_pool.pop(dead_node)
             await client.close()
 
-        for node_id, agent_info in agent_infos.items():
-            if len(self._agents) >= dashboard_consts.CANDIDATE_AGENT_NUMBER:
-                break
-            node_ip = agent_info["ipAddress"]
-            http_port = agent_info["httpPort"]
-
-            agent_http_address = f"http://{node_ip}:{http_port}"
+        if len(self._agents) >= dashboard_consts.CANDIDATE_AGENT_NUMBER:
+            node_id = sample(set(self._agents), 1)[0]
+            return self._agents[node_id]
+        else:
+            # Randomly select one from among all agents, it is possible that
+            # the selected one already exists in A
+            node_id = sample(set(agent_infos), 1)[0]
+            agent_info = agent_infos[node_id]
 
             if node_id not in self._agents_pool:
+                node_ip = agent_info["ipAddress"]
+                http_port = agent_info["httpPort"]
+                agent_http_address = f"http://{node_ip}:{http_port}"
                 self._agents_pool[node_id] = JobAgentSubmissionClient(
                     agent_http_address
                 )
+
             self._agents[node_id] = self._agents_pool[node_id]
-            # move agent to the front of the queue.
-            self._agents.move_to_end(node_id, last=False)
-
-        # FIFO
-        node_id, job_agent_client = self._agents.popitem(last=False)
-        self._agents[node_id] = job_agent_client
-
-        return job_agent_client
+            return self._agents[node_id]
 
     @routes.get("/api/version")
     async def get_version(self, req: Request) -> Response:
@@ -262,7 +259,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         try:
             job_agent_client = await asyncio.wait_for(
                 self.choose_agent(),
-                timeout=dashboard_consts.WAIT_RAYLET_START_TIMEOUT_SECONDS,
+                timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
             resp = await job_agent_client.submit_job_internal(submit_request)
         except asyncio.TimeoutError:
@@ -309,7 +306,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         try:
             job_agent_client = await asyncio.wait_for(
                 self.choose_agent(),
-                timeout=dashboard_consts.WAIT_RAYLET_START_TIMEOUT_SECONDS,
+                timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
             resp = await job_agent_client.stop_job_internal(job.submission_id)
         except Exception:
