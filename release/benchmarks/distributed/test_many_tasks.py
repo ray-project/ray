@@ -6,7 +6,7 @@ import ray._private.test_utils as test_utils
 import time
 import tqdm
 
-sleep_time = 300
+sleep_time = 150
 
 
 def test_max_running_tasks(num_tasks):
