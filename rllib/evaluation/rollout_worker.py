@@ -1224,9 +1224,12 @@ class RolloutWorker(ParallelIteratorWorker):
             KeyError: If the given `policy_id` already exists in this worker's
                 PolicyMap.
         """
+        merged_config = (
+            {**self.policy_config, **config} if config else self.policy_config
+        )
         if policy_id in self.policy_map:
             raise KeyError(f"Policy ID '{policy_id}' already in policy map!")
-        connectors_enabled = self.policy_config.get("enable_connectors", False)
+        connectors_enabled = merged_config.get("enable_connectors", False)
 
         policy_dict_to_add = _determine_spaces_for_multi_agent_dict(
             {
@@ -1287,7 +1290,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 or self.policy_map[policy_id].action_connectors
             )
         ):
-            create_connectors_for_policy(self.policy_map[policy_id], self.policy_config)
+            create_connectors_for_policy(
+                self.policy_map[policy_id], config=merged_config
+            )
 
         self.set_policy_mapping_fn(policy_mapping_fn)
         if policies_to_train is not None:
