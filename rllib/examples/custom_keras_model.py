@@ -5,6 +5,7 @@ import os
 
 import ray
 from ray import air, tune
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.dqn.distributional_q_tf_model import DistributionalQTFModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.misc import normc_initializer
@@ -109,11 +110,12 @@ if __name__ == "__main__":
     )
 
     # Tests https://github.com/ray-project/ray/issues/7293
-    def check_has_custom_metric(result):
-        r = result["result"]["info"][LEARNER_INFO]
-        if DEFAULT_POLICY_ID in r:
-            r = r[DEFAULT_POLICY_ID].get(LEARNER_STATS_KEY, r[DEFAULT_POLICY_ID])
-        assert r["model"]["foo"] == 42, result
+    class MyCallbacks(DefaultCallbacks):
+        def on_train_result(self, algorithm, result, **kwargs):
+            r = result["result"]["info"][LEARNER_INFO]
+            if DEFAULT_POLICY_ID in r:
+                r = r[DEFAULT_POLICY_ID].get(LEARNER_STATS_KEY, r[DEFAULT_POLICY_ID])
+            assert r["model"]["foo"] == 42, result
 
     if args.run == "DQN":
         extra_config = {"num_steps_sampled_before_learning_starts": 0}
@@ -133,9 +135,7 @@ if __name__ == "__main__":
                 else "CartPole-v0",
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
                 "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-                "callbacks": {
-                    "on_train_result": check_has_custom_metric,
-                },
+                "callbacks": MyCallbacks,
                 "model": {
                     "custom_model": "keras_q_model"
                     if args.run == "DQN"

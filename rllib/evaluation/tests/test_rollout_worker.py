@@ -1,4 +1,3 @@
-from collections import Counter
 import gym
 from gym.spaces import Box, Discrete
 import json
@@ -198,32 +197,6 @@ class TestRolloutWorker(unittest.TestCase):
                     },
                 ),
             )
-
-    def test_callbacks(self):
-        for fw in framework_iterator(frameworks=("torch", "tf")):
-            counts = Counter()
-            pg = PG(
-                env="CartPole-v0",
-                config={
-                    "num_workers": 0,
-                    "rollout_fragment_length": 50,
-                    "train_batch_size": 50,
-                    "callbacks": {
-                        "on_episode_start": lambda x: counts.update({"start": 1}),
-                        "on_episode_step": lambda x: counts.update({"step": 1}),
-                        "on_episode_end": lambda x: counts.update({"end": 1}),
-                        "on_sample_end": lambda x: counts.update({"sample": 1}),
-                    },
-                    "framework": fw,
-                },
-            )
-            pg.train()
-            pg.train()
-            self.assertGreater(counts["sample"], 0)
-            self.assertGreater(counts["start"], 0)
-            self.assertGreater(counts["end"], 0)
-            self.assertGreater(counts["step"], 0)
-            pg.stop()
 
     def test_query_evaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))

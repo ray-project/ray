@@ -48,9 +48,12 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         if legacy_callbacks_dict:
             deprecation_warning(
                 "callbacks dict interface",
-                "a class extending rllib.algorithms.callbacks.DefaultCallbacks",
+                (
+                    "a class extending rllib.algorithms.callbacks.DefaultCallbacks; see"
+                    " `rllib/examples/custom_metrics_and_callbacks.py` for an example."
+                ),
+                error=True,
             )
-        self.legacy_callbacks = legacy_callbacks_dict or {}
 
     @OverrideToImplementCustomLogic
     def on_algorithm_init(
@@ -181,15 +184,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 (within the vector of sub-environments of the BaseEnv).
             kwargs: Forward compatibility placeholder.
         """
-
-        if self.legacy_callbacks.get("on_episode_start"):
-            self.legacy_callbacks["on_episode_start"](
-                {
-                    "env": base_env,
-                    "policy": policies,
-                    "episode": episode,
-                }
-            )
+        pass
 
     @OverrideToImplementCustomLogic
     def on_episode_step(
@@ -220,11 +215,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 (within the vector of sub-environments of the BaseEnv).
             kwargs: Forward compatibility placeholder.
         """
-
-        if self.legacy_callbacks.get("on_episode_step"):
-            self.legacy_callbacks["on_episode_step"](
-                {"env": base_env, "episode": episode}
-            )
+        pass
 
     @OverrideToImplementCustomLogic
     def on_episode_end(
@@ -259,15 +250,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 (within the vector of sub-environments of the BaseEnv).
             kwargs: Forward compatibility placeholder.
         """
-
-        if self.legacy_callbacks.get("on_episode_end"):
-            self.legacy_callbacks["on_episode_end"](
-                {
-                    "env": base_env,
-                    "policy": policies,
-                    "episode": episode,
-                }
-            )
+        pass
 
     @OverrideToImplementCustomLogic
     def on_evaluate_start(
@@ -339,17 +322,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 trajectory data. You should not mutate this object.
             kwargs: Forward compatibility placeholder.
         """
-
-        if self.legacy_callbacks.get("on_postprocess_traj"):
-            self.legacy_callbacks["on_postprocess_traj"](
-                {
-                    "episode": episode,
-                    "agent_id": agent_id,
-                    "pre_batch": original_batches[agent_id],
-                    "post_batch": postprocessed_batch,
-                    "all_pre_batches": original_batches,
-                }
-            )
+        pass
 
     @OverrideToImplementCustomLogic
     def on_sample_end(
@@ -363,14 +336,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 object to modify the samples generated.
             kwargs: Forward compatibility placeholder.
         """
-
-        if self.legacy_callbacks.get("on_sample_end"):
-            self.legacy_callbacks["on_sample_end"](
-                {
-                    "worker": worker,
-                    "samples": samples,
-                }
-            )
+        pass
 
     @OverrideToImplementCustomLogic
     def on_learn_on_batch(
@@ -400,29 +366,19 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_train_result(
         self,
         *,
-        algorithm: Optional["Algorithm"] = None,
+        algorithm: "Algorithm",
         result: dict,
-        trainer=None,
         **kwargs,
     ) -> None:
-        """Called at the end of Trainable.train().
+        """Called at the end of Algorithm.train().
 
         Args:
-            algorithm: Current trainer instance.
-            result: Dict of results returned from trainer.train() call.
+            algorithm: Current Algorithm instance.
+            result: Dict of results returned from Algorithm.train() call.
                 You can mutate this object to add additional metrics.
             kwargs: Forward compatibility placeholder.
         """
-        if trainer is not None:
-            algorithm = trainer
-
-        if self.legacy_callbacks.get("on_train_result"):
-            self.legacy_callbacks["on_train_result"](
-                {
-                    "trainer": algorithm,
-                    "result": result,
-                }
-            )
+        pass
 
     @Deprecated(
         old="on_trainer_init(trainer, **kwargs)",
@@ -709,17 +665,11 @@ class MultiCallbacks(DefaultCallbacks):
             )
 
     @override(DefaultCallbacks)
-    def on_train_result(
-        self, *, algorithm=None, result: dict, trainer=None, **kwargs
-    ) -> None:
-        if trainer is not None:
-            algorithm = trainer
+    def on_train_result(self, *, algorithm=None, result: dict, **kwargs) -> None:
 
         for callback in self._callback_list:
             # TODO: Remove `trainer` arg at some point to fully deprecate the old term.
-            callback.on_train_result(
-                algorithm=algorithm, result=result, trainer=algorithm, **kwargs
-            )
+            callback.on_train_result(algorithm=algorithm, result=result, **kwargs)
 
 
 # This Callback is used by the RE3 exploration strategy.
@@ -780,15 +730,9 @@ class RE3UpdateCallbacks(DefaultCallbacks):
             )
 
     @override(DefaultCallbacks)
-    def on_train_result(
-        self, *, result: dict, algorithm=None, trainer=None, **kwargs
-    ) -> None:
-        if trainer is not None:
-            algorithm = trainer
+    def on_train_result(self, *, result: dict, algorithm=None, **kwargs) -> None:
         # TODO(gjoliver): Remove explicit _step tracking and pass
         # trainer._iteration as a parameter to on_learn_on_batch() call.
         RE3UpdateCallbacks._step = result["training_iteration"]
         # TODO: Remove `trainer` arg at some point to fully deprecate the old term.
-        super().on_train_result(
-            algorithm=algorithm, result=result, trainer=algorithm, **kwargs
-        )
+        super().on_train_result(algorithm=algorithm, result=result, **kwargs)
