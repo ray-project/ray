@@ -12,7 +12,7 @@ provider:
 auth:
     ssh_user: ubuntu
 head_node:
-    InstanceType: m5.16xlarge
+    InstanceType: m5a.16xlarge
     BlockDeviceMappings:
         -
             DeviceName: /dev/sda1

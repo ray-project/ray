@@ -7,12 +7,12 @@ max_workers: 35
 head_node_type:
     name: head_node
     # 32 cpus, x86, 128G mem, 10Gb NIC
-    instance_type: m5.8xlarge
+    instance_type: m5a.8xlarge
 
 worker_node_types:
     - name: worker_node
       # 32 cpus, x86, 128G mem, 10Gb NIC
-      instance_type: m5.8xlarge
+      instance_type: m5a.8xlarge
       # smaller min workers will make the head node cpu usage very high, and crash the head node.
       # issue: https://github.com/ray-project/ray/issues/18908
       min_workers: 5

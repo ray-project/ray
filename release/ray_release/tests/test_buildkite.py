@@ -526,10 +526,10 @@ class BuildkiteSettingsTest(unittest.TestCase):
         # AWS instances
         cpus, gpus = get_test_resources_from_cluster_compute(
             {
-                "head_node_type": {"instance_type": "m5.4xlarge"},  # 16 CPUs, 0 GPUs
+                "head_node_type": {"instance_type": "m5a.4xlarge"},  # 16 CPUs, 0 GPUs
                 "worker_node_types": [
                     {
-                        "instance_type": "m5.8xlarge",  # 32 CPUS, 0 GPUs
+                        "instance_type": "m5a.8xlarge",  # 32 CPUS, 0 GPUs
                         "max_workers": 4,
                     },
                     {

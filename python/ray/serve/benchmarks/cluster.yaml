@@ -13,14 +13,14 @@ provider:
 auth:
     ssh_user: ubuntu
 head_node:
-    InstanceType: m5.xlarge
+    InstanceType: m5a.xlarge
     BlockDeviceMappings:
         -
             DeviceName: /dev/sda1
             Ebs:
                 VolumeSize: 100
 worker_nodes:
-    InstanceType: m5.xlarge
+    InstanceType: m5a.xlarge
 initialization_commands: []
 setup_commands:
     - sudo apt-get install build-essential libssl-dev git -y

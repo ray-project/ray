@@ -196,7 +196,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         TODO (Dmitri): Split up the test logic.
         Too much is stuffed into this one test case.
 
-        Resources requested by this test are safely within the bounds of an m5.xlarge
+        Resources requested by this test are safely within the bounds of an m5[a].xlarge
         instance.
 
         The resource REQUESTS are:

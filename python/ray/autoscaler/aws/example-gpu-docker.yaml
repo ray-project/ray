@@ -90,7 +90,7 @@ available_node_types:
         # For more documentation on available fields, see:
         # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
         node_config:
-            InstanceType: m5.large
+            InstanceType: m5a.large
             ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
             # Run workers on spot by default. Comment this out to use on-demand.
             InstanceMarketOptions:

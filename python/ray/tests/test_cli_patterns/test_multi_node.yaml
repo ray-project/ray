@@ -23,16 +23,16 @@ available_node_types:
         min_workers: 2
         max_workers: 3
         node_config:
-            InstanceType: m5.large
+            InstanceType: m5a.large
     worker_node_max_unspecified:
         resources: {}
         min_workers: 2
         node_config:
-            InstanceType: m5.large
+            InstanceType: m5a.large
     head_node:
         resources: {}
         node_config:
-            InstanceType: m5.large
+            InstanceType: m5a.large
         min_workers: 0
         max_workers: 0
 

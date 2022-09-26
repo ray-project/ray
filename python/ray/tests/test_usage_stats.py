@@ -695,7 +695,7 @@ head_node_type: head_node
 available_node_types:
     head_node:
         node_config:
-            InstanceType: m5.large
+            InstanceType: m5a.large
         min_workers: 0
         max_workers: 0
     aws_worker_node:
@@ -718,7 +718,7 @@ available_node_types:
     assert cluster_config_to_report.cloud_provider == "gcp"
     assert cluster_config_to_report.min_workers == 1
     assert cluster_config_to_report.max_workers is None
-    assert cluster_config_to_report.head_node_instance_type == "m5.large"
+    assert cluster_config_to_report.head_node_instance_type == "m5a.large"
     assert cluster_config_to_report.worker_node_instance_types == list(
         {"m3.large", "Standard_D2s_v3", "n1-standard-2"}
     )
@@ -735,7 +735,7 @@ available_node_types:
         resources: {}
     worker_node_3:
         node_config:
-            InstanceType: m5.large
+            InstanceType: m5a.large
 """
     )
     cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
@@ -745,7 +745,7 @@ available_node_types:
     assert cluster_config_to_report.min_workers is None
     assert cluster_config_to_report.max_workers is None
     assert cluster_config_to_report.head_node_instance_type is None
-    assert cluster_config_to_report.worker_node_instance_types == ["m5.large"]
+    assert cluster_config_to_report.worker_node_instance_types == ["m5a.large"]
 
     cluster_config_file_path.write_text("[invalid")
     cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(

@@ -68,7 +68,7 @@ available_node_types:
 
       # Use any node and instance type with default network interface types.
       ImageId: latest_dlami
-      InstanceType: m5.large
+      InstanceType: m5a.large
 
   ray.worker.efa:
     min_workers: 0
@@ -110,6 +110,6 @@ available_node_types:
             - sg-33333333 # Replace with your actual Security Group ID.
 
       ImageId: latest_dlami
-      InstanceType: m5.large
+      InstanceType: m5a.large
 
 head_node_type: ray.head.default

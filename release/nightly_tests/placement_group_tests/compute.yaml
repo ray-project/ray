@@ -10,16 +10,16 @@ aws:
 
 head_node_type:
     name: head_node
-    instance_type: m5.4xlarge
+    instance_type: m5a.4xlarge
 
 worker_node_types:
     - name: cpu_node
-      instance_type: m5.4xlarge
+      instance_type: m5a.4xlarge
       min_workers: 0
       max_workers: 2
       use_spot: false
     - name: fake_gpu_node
-      instance_type: m5.4xlarge
+      instance_type: m5a.4xlarge
       min_workers: 0 
       max_workers: 2
       use_spot: false

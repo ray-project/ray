@@ -206,7 +206,7 @@ DEFAULT_LT = {
             }
         ],
         "ImageId": "ami-00000000000000000",
-        "InstanceType": "m5.large",
+        "InstanceType": "m5a.large",
         "TagSpecifications": [
             {
                 "ResourceType": "instance",

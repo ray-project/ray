@@ -1,7 +1,7 @@
 - label: ":airplane: ML tests (ray/air)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_ML_AFFECTED"]
   agents:
-    aws:instance-type: m5.2xlarge
+    aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
@@ -13,7 +13,7 @@
 - label: ":brain: RLlib: Learning discr. actions (I) TF2-static-graph"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -27,7 +27,7 @@
 - label: ":brain: RLlib: Learning discr. actions (II) TF2-static-graph"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -41,7 +41,7 @@
 - label: ":brain: RLlib: Learning cont. actions TF2-static-graph"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -55,7 +55,7 @@
 - label: ":brain: RLlib: Learning discr. actions (I) TF2-eager-tracing"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -69,7 +69,7 @@
 - label: ":brain: RLlib: Learning discr. actions (II) TF2-eager-tracing"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -83,7 +83,7 @@
 - label: ":brain: RLlib: Learning cont. actions TF2-eager-tracing"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -97,7 +97,7 @@
 - label: ":brain: RLlib: Learning discr. actions (I) PyTorch"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -111,7 +111,7 @@
 - label: ":brain: RLlib: Learning discr. actions (II) PyTorch"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -125,7 +125,7 @@
 - label: ":brain: RLlib: Learning cont. actions PyTorch"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -139,7 +139,7 @@
 - label: ":brain: RLlib: Learning tests w/ 2 fake GPUs TF2-static-graph"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -154,7 +154,7 @@
 - label: ":brain: RLlib: Learning tests w/ 2 fake GPUs PyTorch"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -168,7 +168,7 @@
 - label: ":brain: RLlib: Memory leak tests TF2-eager-tracing"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -182,7 +182,7 @@
 - label: ":brain: RLlib: Memory leak tests PyTorch"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -196,7 +196,7 @@
 - label: ":brain: RLlib: Quick Agent train.py runs (TODO: obsolete)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -209,7 +209,7 @@
 - label: ":brain: RLlib: Algorithm Tests (generic)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -224,7 +224,7 @@
 - label: ":brain: RLlib: Algorithm Tests (specific algos)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -239,7 +239,7 @@
 - label: ":brain: RLlib: Everything else (env-, evaluation-, ... dirs)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -255,7 +255,7 @@
 - label: ":brain: RLlib: Examples {A..B}"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -266,7 +266,7 @@
 - label: ":brain: RLlib: Examples {Ca..Ct}"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -277,7 +277,7 @@
 - label: ":brain: RLlib: Examples {Cu..Cz}"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -288,7 +288,7 @@
 - label: ":brain: RLlib: Examples {D..I}"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -300,7 +300,7 @@
 - label: ":brain: RLlib: Examples {J..P}"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -312,7 +312,7 @@
 - label: ":brain: RLlib: Examples {Q..Z}"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -324,7 +324,7 @@
 - label: ":brain: RLlib: tests/ dir (A..L)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -336,7 +336,7 @@
 - label: ":brain: RLlib: tests/ dir (M..Z (no R))"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -347,7 +347,7 @@
 - label: ":brain: RLlib: tests/ dir (R)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -359,7 +359,7 @@
 - label: ":brain: RLlib: Documentation code/examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   agents:
-      aws:instance-type: m5.2xlarge
+      aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -418,7 +418,7 @@
 - label: ":steam_locomotive: Train tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
   agents:
-    aws:instance-type: m5.2xlarge
+    aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TRAIN_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
@@ -498,7 +498,7 @@
   conditions:
     ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_ML_AFFECTED"]
   agents:
-    aws:instance-type: m5.2xlarge
+    aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
@@ -509,7 +509,7 @@
   conditions:
     ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_ML_AFFECTED"]
   agents:
-    aws:instance-type: m5.2xlarge
+    aws:instance-type: m5a.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
