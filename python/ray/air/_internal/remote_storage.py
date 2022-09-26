@@ -122,7 +122,7 @@ def get_fs_and_path(
             if version.parse(gcsfs.__version__) > "2022.7.1":
                 raise RuntimeError(
                     "`gcsfs` versions greater than '2022.7.1' are not "
-                    f"compatible with Pyarrow. You have version "
+                    f"compatible with pyarrow. You have gcsfs version "
                     f"{gcsfs.__version__}. Please downgrade your gcsfs "
                     f"version. See more details in "
                     f"https://github.com/fsspec/gcsfs/issues/498."
