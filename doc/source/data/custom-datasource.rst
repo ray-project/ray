@@ -4,7 +4,7 @@
 Custom Datasources
 ==================
 
-Ray Datasets supports multiple ways to :ref:`create a dataset <creating_datasets>`
+Ray Datasets supports multiple ways to :ref:`create a dataset <creating_datasets>`, 
 allowing you to easily ingest data of common formats from popular sources. However, if the 
 datasource you want to read from is not in the built-in list, don't worry, you can implement 
 a custom one for your use case. In this guide, we will walk you through how to build 
@@ -28,7 +28,7 @@ Read support
 To support reading, we implement :meth:`create_reader() <ray.data.Datasource.create_reader>`, returning a :class:`~ray.data.Datasource.Reader` implementation for 
 MongoDB. This ``Reader`` creates a list of :class:`~ray.data.ReadTask` for the given 
 list of MongDB queries. Each :class:`~ray.data.ReadTask` will return a list of blocks when called, and 
-the :class:`~ray.data.ReadTask` are executed in remote workers to parallelize the execution.
+the :class:`~ray.data.ReadTask`s are executed in remote workers to parallelize the execution.
 
 First, let's handle a single MongDB query, as this is the execution unit in 
 :class:`~ray.data.ReadTask`. We need to connect to MongDB, execute the query against it, 
@@ -75,7 +75,7 @@ Put together
 With ``_MongoDatasourceReader`` and ``_write_multiple_blocks`` above, we are 
 ready to implement :meth:`create_reader() <ray.data.Datasource.create_reader>` 
 and :meth:`do_write() <ray.data.Datasource.do_write>`, and put together 
-into a ``MongoDatasource``.
+a ``MongoDatasource``.
 
 .. literalinclude:: ./doc_code/custom_datasource.py
     :language: python
