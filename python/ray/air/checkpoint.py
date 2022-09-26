@@ -288,7 +288,7 @@ class Checkpoint:
         """
         state = {}
         if isinstance(data, _CheckpointDict):
-            cls = cls._get_constructor_cls(data.metadata.checkpoint_type)
+            cls = cls._get_checkpoint_type(data.metadata.checkpoint_type)
             state = data.metadata.checkpoint_state
 
         checkpoint = cls(data_dict=data)
@@ -432,7 +432,7 @@ class Checkpoint:
         if os.path.exists(checkpoint_metadata_path):
             with open(checkpoint_metadata_path, "rb") as file:
                 metadata = pickle.load(file)
-                cls = cls._get_constructor_cls(metadata.checkpoint_type)
+                cls = cls._get_checkpoint_type(metadata.checkpoint_type)
                 state = metadata.checkpoint_state
 
         checkpoint = cls(local_path=path)
@@ -647,7 +647,7 @@ class Checkpoint:
         try:
             checkpoint_metadata_uri = os.path.join(uri, _CHECKPOINT_METADATA_FILE_NAME)
             metadata = pickle.loads(read_file_from_uri(checkpoint_metadata_uri))
-            cls = cls._get_constructor_cls(metadata.checkpoint_type)
+            cls = cls._get_checkpoint_type(metadata.checkpoint_type)
             state = metadata.checkpoint_state
         except FileNotFoundError:
             pass
@@ -754,7 +754,7 @@ class Checkpoint:
         return preprocessor
 
     @classmethod
-    def _get_constructor_cls(
+    def _get_checkpoint_type(
         cls, serialized_cls: Type["Checkpoint"]
     ) -> Type["Checkpoint"]:
         """Return the class that's a subclass of the other class, if one exists.
