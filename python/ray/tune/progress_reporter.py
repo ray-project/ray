@@ -926,7 +926,7 @@ def _max_len(value: Any, max_len: int = 20, add_addr: bool = False) -> Any:
         result = f"{string[: (max_len - 5)]}_{hex(id(value))[-4:]}"
         return result
 
-    result = f"{string[: (max_len - 3)]}..."
+    result = "..." + string[(3 - max_len) :]
     return result
 
 
