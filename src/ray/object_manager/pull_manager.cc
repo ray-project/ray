@@ -740,6 +740,7 @@ void PullManager::RecordMetrics() const {
                                                         "Success");
   ray::stats::STATS_pull_manager_num_object_pins.Record(num_failed_pins_total_,
                                                         "Failure");
+  task_argument_bundles_.RecordTaskMetrics();
 }
 
 std::string PullManager::DebugString() const {
