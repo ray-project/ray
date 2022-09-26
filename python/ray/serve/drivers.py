@@ -159,14 +159,14 @@ class DefaultgRPCDriver(gRPCIngress, serve_pb2_grpc.PredictAPIsServiceServicer):
     and hold dag handle
     """
 
-    def __init__(self, dags: RayServeDAGHandle, port=DEFAULT_GRPC_PORT):
+    def __init__(self, dag: RayServeDAGHandle, port=DEFAULT_GRPC_PORT):
         """Create a grpc driver based on the PredictAPIsService schema.
 
         Args:
-            dags: a handle to a Ray Serve DAG or a dictionary of handles.
+            dags: a handle to a Ray Serve DAG.
             port: Port to use to listen to receive the request
         """
-        self.dag = dags
+        self.dag = dag
         # TODO(Sihan) we will add a gRPCOption class
         # once we have more options to use
         super().__init__(port)

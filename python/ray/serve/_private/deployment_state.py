@@ -1692,14 +1692,22 @@ class DriverDeploymentState(DeploymentState):
             self._replicas.add(ReplicaState.STOPPING, replica)
 
     def update(self) -> bool:
-        if self._target_state.deleting:
-            self._stop_all_replicas()
-        else:
-            self._deploy_driver()
-        running_replicas_changed = self._check_and_update_replicas()
-        if running_replicas_changed:
-            self._notify_running_replicas_changed()
-        return self._check_curr_status()
+        try:
+            if self._target_state.deleting:
+                self._stop_all_replicas()
+            else:
+                self._deploy_driver()
+            running_replicas_changed = self._check_and_update_replicas()
+            if running_replicas_changed:
+                self._notify_running_replicas_changed()
+            return self._check_curr_status()
+        except Exception:
+            self._curr_status_info = DeploymentStatusInfo(
+                name=self._name,
+                status=DeploymentStatus.UNHEALTHY,
+                message="Failed to update deployment:" f"\n{traceback.format_exc()}",
+            )
+            return False
 
     def should_autoscale(self) -> bool:
         return False
