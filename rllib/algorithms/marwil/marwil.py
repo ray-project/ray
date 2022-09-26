@@ -280,7 +280,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.marwil.marwil::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.marwil.marwil::MARWILConfig(...)",
-        error=True,
+        error=False,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

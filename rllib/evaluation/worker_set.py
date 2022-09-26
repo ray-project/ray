@@ -978,11 +978,11 @@ class WorkerSet:
                 )
         return False
 
-    @Deprecated(new="WorkerSet.foreach_policy_to_train", error=True)
+    @Deprecated(new="WorkerSet.foreach_policy_to_train", error=False)
     def foreach_trainable_policy(self, func):
         return self.foreach_policy_to_train(func)
 
-    @Deprecated(new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=True)
+    @Deprecated(new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=False)
     def trainable_policies(self):
         local_worker = self.local_worker()
         if local_worker is not None:

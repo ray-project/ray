@@ -1,3 +1,5 @@
+import copy
+
 import gym
 import numpy as np
 import os
@@ -11,6 +13,7 @@ import ray.rllib.algorithms.a3c as a3c
 import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.bc import BC, BCConfig
 import ray.rllib.algorithms.pg as pg
+from ray.rllib.algorithms.algorithm import COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.parallel_evaluation_and_training import AssertEvalCallback
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
@@ -25,6 +28,28 @@ class TestAlgorithm(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
+
+    def test_validate_config_idempotent(self):
+        """
+        Asserts that validate_config run multiple
+        times on COMMON_CONFIG will be idempotent
+        """
+        # Given:
+        standard_config = copy.deepcopy(COMMON_CONFIG)
+        algo = pg.PG(env="CartPole-v0", config=standard_config)
+
+        # When (we validate config 2 times).
+        # Try deprecated `Algorithm._validate_config()` method (static).
+        algo._validate_config(standard_config, algo)
+        config_v1 = copy.deepcopy(standard_config)
+        # Try new method: `Algorithm.validate_config()` (non-static).
+        algo.validate_config(standard_config)
+        config_v2 = copy.deepcopy(standard_config)
+
+        # Make sure nothing changed.
+        self.assertEqual(config_v1, config_v2)
+
+        algo.stop()
 
     def test_add_delete_policy(self):
         config = pg.PGConfig()

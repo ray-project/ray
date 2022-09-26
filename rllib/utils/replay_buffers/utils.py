@@ -257,8 +257,9 @@ def validate_buffer_config(config: dict) -> None:
         deprecation_warning(
             old="config['multiagent']['replay_mode']",
             help="config['replay_buffer_config']['replay_mode']",
-            error=True,
+            error=False,
         )
+        config["replay_buffer_config"]["replay_mode"] = replay_mode
 
     learning_starts = config.get(
         "learning_starts",
@@ -269,7 +270,7 @@ def validate_buffer_config(config: dict) -> None:
             old="config['learning_starts'] or"
             "config['replay_buffer_config']['learning_starts']",
             help="config['num_steps_sampled_before_learning_starts']",
-            error=True,
+            error=False,
         )
         config["num_steps_sampled_before_learning_starts"] = learning_starts
 
@@ -286,7 +287,7 @@ def validate_buffer_config(config: dict) -> None:
             help="Replay sequence length specified at new "
             "location config['replay_buffer_config']["
             "'replay_sequence_length'] will be overwritten.",
-            error=True,
+            error=False,
         )
 
     replay_buffer_config = config["replay_buffer_config"]
@@ -310,10 +311,7 @@ def validate_buffer_config(config: dict) -> None:
     config["replay_buffer_config"]["type"] = type(dummy_buffer)
 
     if hasattr(dummy_buffer, "update_priorities"):
-        if (
-            config["replay_buffer_config"].get("replay_mode", "independent")
-            == "lockstep"
-        ):
+        if config["multiagent"]["replay_mode"] == "lockstep":
             raise ValueError(
                 "Prioritized replay is not supported when replay_mode=lockstep."
             )

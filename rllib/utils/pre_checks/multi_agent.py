@@ -100,7 +100,15 @@ def check_multi_agent(
             "[env_steps|agent_steps], not "
             f"{multiagent_config['count_steps_by']}!"
         )
-
+    if multiagent_config.get("replay_mode", "independent") not in [
+        "independent",
+        "lockstep",
+    ]:
+        raise ValueError(
+            "`config.multiagent.replay_mode` must be "
+            "[independent|lockstep], not "
+            f"{multiagent_config['replay_mode']}!"
+        )
     # Attempt to create a `policy_mapping_fn` from config dict. Helpful
     # is users would like to specify custom callable classes in yaml files.
     if isinstance(multiagent_config.get("policy_mapping_fn"), dict):

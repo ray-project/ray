@@ -823,7 +823,7 @@ class ModelCatalog:
         return prep
 
     @staticmethod
-    @Deprecated(error=True)
+    @Deprecated(error=False)
     def register_custom_preprocessor(
         preprocessor_name: str, preprocessor_class: type
     ) -> None:
@@ -1013,7 +1013,7 @@ class ModelCatalog:
                 old="model.custom_preprocessor",
                 new="gym.ObservationWrapper around your env or handle complex "
                 "inputs inside your Model",
-                error=True,
+                error=False,
             )
 
         if config.get("use_attention") and config.get("use_lstm"):

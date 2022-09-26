@@ -151,11 +151,11 @@ class VectorEnv:
         """
         pass
 
-    @Deprecated(new="vectorize_gym_envs", error=True)
+    @Deprecated(new="vectorize_gym_envs", error=False)
     def wrap(self, *args, **kwargs) -> "_VectorizedGymEnv":
         return self.vectorize_gym_envs(*args, **kwargs)
 
-    @Deprecated(new="get_sub_environments", error=True)
+    @Deprecated(new="get_sub_environments", error=False)
     def get_unwrapped(self) -> List[EnvType]:
         return self.get_sub_environments()
 

@@ -106,7 +106,7 @@ class OffPolicyEstimator:
     @Deprecated(
         old="OffPolicyEstimator.action_log_likelihood",
         new="ray.rllib.utils.policy.compute_log_likelihoods_from_input_dict",
-        error=True,
+        error=False,
     )
     def action_log_likelihood(self, batch: SampleBatchType) -> TensorType:
         log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, batch)

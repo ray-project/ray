@@ -191,7 +191,7 @@ class QMixConfig(SimpleQConfig):
                 "This is now the same parameter as in other "
                 "algorithms. `grad_clip` will be overwritten by "
                 "`grad_norm_clipping={}`".format(grad_norm_clipping),
-                error=True,
+                error=False,
             )
             grad_clip = grad_norm_clipping
 
@@ -319,7 +319,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.qmix.qmix.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.qmix.qmix.QMixConfig(...)",
-        error=True,
+        error=False,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)
