@@ -312,7 +312,7 @@ RuntimeError: Failed to unpickle serialized exception -- original error message 
     return g(c)
   File "FILE", line ZZ, in g
     raise NoPickleError("FILE")
-test_traceback.NoPickleError"""
+test_traceback.NoPickleError"""  # noqa: E501
 
     class NoPickleError(OSError):
         def __init__(self, arg):
