@@ -747,6 +747,13 @@ def test_max_len():
     )
     assert _max_len("some_long_string/even_longer", max_len=15) == ".../even_longer"
 
+    assert (
+        _max_len(
+            "19_character_string/19_character_string/too_long", max_len=20, wrap=True
+        )
+        == "...r_string/19_chara\ncter_string/too_long"
+    )
+
 
 if __name__ == "__main__":
     import sys
