@@ -1609,6 +1609,7 @@ class Algorithm(Trainable):
         # Worker list is explicitly provided -> Use only those workers (local or remote)
         # specified.
         if workers is not None:
+            # Call static utility method.
             WorkerSet.add_policy_to_workers(
                 workers,
                 policy_id,
@@ -1636,7 +1637,7 @@ class Algorithm(Trainable):
             )
 
             # Add to evaluation workers, if necessary.
-            if evaluation_workers and self.evaluation_workers is not None:
+            if evaluation_workers is True and self.evaluation_workers is not None:
                 self.evaluation_workers.add_policy(
                     policy_id,
                     policy_cls,
