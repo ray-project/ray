@@ -59,7 +59,9 @@ namespace {
 // These states override the RUNNING state of a task.
 class ScopedTaskMetricSetter {
  public:
-  ScopedTaskMetricSetter(WorkerContext &ctx, TaskCounter &ctr, rpc::TaskStatus status)
+  ScopedTaskMetricSetter(const WorkerContext &ctx,
+                         TaskCounter &ctr,
+                         rpc::TaskStatus status)
       : status_(status), ctr_(ctr) {
     task_spec_ = ctx.GetCurrentTask();
     if (task_spec_ != nullptr) {
