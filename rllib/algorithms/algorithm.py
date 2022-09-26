@@ -1562,9 +1562,7 @@ class Algorithm(Trainable):
             ]
         ] = None,
         evaluation_workers: bool = True,
-        worker_list: Optional[List[Union[RolloutWorker, ActorHandle]]] = None,
-        # Deprecated args:
-        workers=None,
+        workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = None,
     ) -> Optional[Policy]:
         """Adds a new policy to this Algorithm.
 
@@ -1596,32 +1594,23 @@ class Algorithm(Trainable):
                 returns False) will not be updated.
             evaluation_workers: Whether to add the new policy also
                 to the evaluation WorkerSet.
-            worker_list: A list of RolloutWorker/ActorHandles (remote
+            workers: A list of RolloutWorker/ActorHandles (remote
                 RolloutWorkers) to add this policy to. If defined, will only
                 add the given policy to these workers.
 
         Returns:
             The newly added policy (the copy that got added to the local
-            worker). If `worker_list` was provided, None is returned.
+            worker). If `workers` was provided, None is returned.
 
         Raises:
             ValueError: If both `policy_cls` AND `policy` are provided.
             KeyError: If the given `policy_id` already exists in this Algorithm.
         """
-        # Deprecated args.
-        if workers is not None:
-            deprecation_warning(
-                old="Algorithm.add_policy(.., workers=...)",
-                new="Algorithm.add_policy(.., worker_list=...)",
-                error=False,
-            )
-            worker_list = workers
-
         # Worker list is explicitly provided -> Use only those workers (local or remote)
         # specified.
-        if worker_list is not None:
-            RolloutWorker.add_policy_to_workers(
-                worker_list,
+        if workers is not None:
+            WorkerSet.add_policy_to_workers(
+                workers,
                 policy_id,
                 policy_cls,
                 policy,
