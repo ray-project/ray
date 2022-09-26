@@ -261,7 +261,7 @@ class WorkerSet:
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
-        worker_list: Optional[List[Union[RolloutWorker, ActorHandle]]] = None,
+        workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = None,
     ) -> None:
         """Adds a policy to this WorkerSet's workers or a specific list of workers.
 
@@ -291,7 +291,7 @@ class WorkerSet:
                 If None, will keep the existing setup in place. Policies,
                 whose IDs are not in the list (or for which the callable
                 returns False) will not be updated.
-            worker_list: A list of RolloutWorker/ActorHandles (remote
+            workers: A list of RolloutWorker/ActorHandles (remote
                 RolloutWorkers) to add this policy to. If defined, will only
                 add the given policy to these workers.
 
@@ -299,7 +299,7 @@ class WorkerSet:
             KeyError: If the given `policy_id` already exists in this WorkerSet.
         """
         if (
-            worker_list is None
+            workers is None
             and self.local_worker()
             and policy_id in self.local_worker().policy_map
         ):
@@ -310,13 +310,15 @@ class WorkerSet:
                 f"{list(self.local_worker().policy_map.keys())}"
             )
 
-        if worker_list is None:
-            worker_list = (
+        # No `workers` arg provided: Compile list of workers automatically from
+        # all RolloutWorkers in this WorkerSet.
+        if workers is None:
+            workers = (
                 [self.local_worker()] if self.local_worker() else []
             ) + self.remote_workers()
 
         self.add_policy_to_workers(
-            worker_list=worker_list,
+            workers=workers,
             policy_id=policy_id,
             policy_cls=policy_cls,
             policy=policy,
@@ -330,7 +332,7 @@ class WorkerSet:
 
     @staticmethod
     def add_policy_to_workers(
-        worker_list: List[Union[RolloutWorker, ActorHandle]],
+        workers: List[Union[RolloutWorker, ActorHandle]],
         policy_id: PolicyID,
         policy_cls: Optional[Type[Policy]] = None,
         policy: Optional[Policy] = None,
@@ -350,7 +352,7 @@ class WorkerSet:
         """Adds a new policy to a specific list of RolloutWorkers (or remote actors).
 
         Args:
-            worker_list: A list of RolloutWorker/ActorHandles (remote
+            workers: A list of RolloutWorker/ActorHandles (remote
                 RolloutWorkers) to add this policy to.
             policy_id: ID of the policy to add.
             policy_cls: The Policy class to use for constructing the new Policy.
@@ -424,7 +426,7 @@ class WorkerSet:
             worker.add_policy(**new_policy_instance_kwargs)
 
         ray_gets = []
-        for worker in worker_list:
+        for worker in workers:
             # Existing policy AND local worker: Add Policy as-is.
             if policy is not None and not isinstance(worker, ActorHandle):
                 worker.add_policy(
