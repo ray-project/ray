@@ -171,7 +171,7 @@ class DynamicTFPolicy(TFPolicy):
                 assume a value of 1.
         """
         if obs_include_prev_action_reward != DEPRECATED_VALUE:
-            deprecation_warning(old="obs_include_prev_action_reward", error=False)
+            deprecation_warning(old="obs_include_prev_action_reward", error=True)
         self.observation_space = obs_space
         self.action_space = action_space
         self.config = config
@@ -943,7 +943,7 @@ class TFMultiGPUTowerStack:
             deprecation_warning(
                 old="TFMultiGPUTowerStack(...)",
                 new="TFMultiGPUTowerStack(policy=[Policy])",
-                error=False,
+                error=True,
             )
             self.policy = None
             self.optimizers = optimizer
