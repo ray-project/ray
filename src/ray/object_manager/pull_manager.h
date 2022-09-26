@@ -217,7 +217,8 @@ class PullManager {
 
   /// A helper structure for tracking information about each ongoing bundle pull request.
   struct BundlePullRequest {
-    BundlePullRequest(std::vector<ObjectID> requested_objects, std::string task_name)
+    BundlePullRequest(std::vector<ObjectID> requested_objects,
+                      const std::string &task_name)
         : objects(std::move(requested_objects)), task_name(task_name) {}
     // All the objects that this bundle is trying to pull.
     const std::vector<ObjectID> objects;
@@ -283,7 +284,7 @@ class PullManager {
     CounterMap<std::string> active_by_name;
     CounterMap<std::string> inactive_by_name;
 
-    void RefreshMetrics(std::string task_name) const {
+    void RefreshMetrics(const std::string &task_name) const {
       if (task_name.empty()) {
         return;  // Don't record stats for non-task requests.
       }
