@@ -55,6 +55,32 @@ JobID GetProcessJobID(const CoreWorkerOptions &options) {
 
 namespace {
 
+// Implements setting the transient RUNNING_IN_RAY_GET and RUNNING_IN_RAY_WAIT states.
+// These states override the RUNNING state of a task.
+class ScopedTaskMetricSetter {
+ public:
+  ScopedTaskMetricSetter(const WorkerContext &ctx,
+                         TaskCounter &ctr,
+                         rpc::TaskStatus status)
+      : status_(status), ctr_(ctr) {
+    task_spec_ = ctx.GetCurrentTask();
+    if (task_spec_ != nullptr) {
+      ctr_.SetMetricStatus(task_spec_->GetName(), status);
+    }
+  }
+
+  ~ScopedTaskMetricSetter() {
+    if (task_spec_ != nullptr) {
+      ctr_.UnsetMetricStatus(task_spec_->GetName(), status_);
+    }
+  }
+
+ private:
+  rpc::TaskStatus status_;
+  TaskCounter &ctr_;
+  std::shared_ptr<const TaskSpecification> task_spec_;
+};
+
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
 
 // Helper function converts GetObjectLocationsOwnerReply to ObjectLocation
@@ -1104,6 +1130,9 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
+  ScopedTaskMetricSetter state(
+      worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
+
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
@@ -1241,6 +1270,9 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
                         int64_t timeout_ms,
                         std::vector<bool> *results,
                         bool fetch_local) {
+  ScopedTaskMetricSetter state(
+      worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_WAIT);
+
   results->resize(ids.size(), false);
 
   if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
