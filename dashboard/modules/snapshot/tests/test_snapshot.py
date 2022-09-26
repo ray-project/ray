@@ -243,6 +243,26 @@ ray.get(a.ping.remote())
     assert len(data["data"]["snapshot"]["actors"]) == 2
 
 
+def test_snapshot_timeout(monkeypatch, ray_start_cluster):
+    """Verifies the timeout argument works for snapshot API."""
+    with monkeypatch.context() as m:
+        # defer for 5s for the second node.
+        # This will help the API not return until the node is killed.
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "ActorInfoGcsService.grpc_server.GetAllActorInfo=2000000:2000000",
+        )
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=2)
+        address = ray.init(address=cluster.address)
+        webui_url = address["webui_url"]
+
+        # Verifies timeout will work.
+        response = requests.get(f"http://{webui_url}/api/snapshot?timeout=1")
+        assert response.json()["result"] is False
+        assert "Deadline Exceeded" in response.json()["msg"]
+
+
 @pytest.mark.parametrize("ray_start_with_dashboard", [{"num_cpus": 4}], indirect=True)
 def test_serve_snapshot(ray_start_with_dashboard):
     """Test reconnecting to detached Serve application."""
