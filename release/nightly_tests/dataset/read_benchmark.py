@@ -65,6 +65,9 @@ def generate_images(
 
 
 def run_images_benchmark(benchmark: Benchmark):
+    # Set global random seed.
+    random.seed(42)
+
     test_input = [
         generate_images(100, [(256, 256)], ["RGB"], ["jpg"]),
         generate_images(100, [(2048, 2048)], ["RGB"], ["jpg"]),
@@ -88,20 +91,11 @@ def run_images_benchmark(benchmark: Benchmark):
     for root in test_input:
         shutil.rmtree(root)
 
+    # TODO(chengsu): run benchmark on 20G and 100G imagenet data.
     benchmark.run(
         "images-imagenet-1g",
         read_images,
         root="s3://air-example-data-2/1G-image-data-synthetic-raw",
-    )
-    benchmark.run(
-        "images-imagenet-20g",
-        read_images,
-        root="s3://air-example-data-2/20G-image-data-synthetic-raw",
-    )
-    benchmark.run(
-        "images-imagenet-100g",
-        read_images,
-        root="s3://air-example-data-2/100G-image-data-synthetic-raw",
     )
 
 
