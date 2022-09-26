@@ -4,7 +4,7 @@ ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST
 ARG BUILDKITE_COMMIT
 ARG BUILDKITE_PULL_REQUEST_BASE_BRANCH
-ARG PYTHON=3.6
+ARG PYTHON=3.7
 ARG INSTALL_DEPENDENCIES
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -50,6 +50,9 @@ RUN locale -a
 ENV LC_ALL=en_US.utf8
 ENV LANG=en_US.utf8
 RUN echo "ulimit -c 0" >> /root/.bashrc
+
+ENV BUILD=1
+ENV DL=1
 
 # Setup Bazel caches
 RUN (echo "build --remote_cache=${REMOTE_CACHE_URL}" >> /root/.bazelrc); \
