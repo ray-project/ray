@@ -168,6 +168,8 @@ def serve_start(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".',
             " New http options will not be applied.",
         )
+        if http_options:
+            _check_http_options(client, http_options)
         return client
     except RayServeException:
         pass
@@ -213,8 +215,6 @@ def serve_start(
                     f"{key} is deprecated, please use serve.start(http_options="
                     f'{{"{key}": {kwargs[key]}}}) instead.'
                 )
-        if http_options:
-            _check_http_options(client, http_options)
 
         if isinstance(http_options, dict):
             http_options = HTTPOptions.parse_obj(http_options)
