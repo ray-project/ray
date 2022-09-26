@@ -180,12 +180,12 @@ class TaskCounter {
  private:
   mutable absl::Mutex mu_;
   // Tracks all tasks submitted to this worker by state.
-  Counter<std::pair<std::string, TaskStatusType>> counter_ GUARDED_BY(&mu_);
+  CounterMap<std::pair<std::string, TaskStatusType>> counter_ GUARDED_BY(&mu_);
 
   // Additionally tracks the sub-states of RUNNING_IN_RAY_GET/WAIT. The counters here
   // overlap with those of counter_.
-  Counter<std::string> running_in_get_counter_ GUARDED_BY(&mu_);
-  Counter<std::string> running_in_wait_counter_ GUARDED_BY(&mu_);
+  CounterMap<std::string> running_in_get_counter_ GUARDED_BY(&mu_);
+  CounterMap<std::string> running_in_wait_counter_ GUARDED_BY(&mu_);
 };
 
 /// The root class that contains all the core and language-independent functionalities
