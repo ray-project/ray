@@ -1508,12 +1508,13 @@ class RolloutWorker(ParallelIteratorWorker):
             byte sequence.
         """
         filters = self.get_filters(flush_after=True)
-        state = {}
+        policy_states = {}
         for pid in self.policy_map:
-            state[pid] = self.policy_map[pid].get_state()
+            policy_states[pid] = self.policy_map[pid].get_state()
         return {
             "filters": filters,
-            "state": state,
+            # TODO: Rename this into "policy_states" for clarity.
+            "state": policy_states,
             # Also store current mapping fn and which policies to train.
             "policy_mapping_fn": self.policy_mapping_fn,
             "is_policy_to_train": self.is_policy_to_train,

@@ -1878,19 +1878,17 @@ class Algorithm(Trainable):
         """
         state = self.__getstate__()
 
-        local_worker_state = state.pop("worker")
+        # Extract policy states from worker state (Policies get their own
+        # checkpoint sub-dirs).
+        # TODO: "state" key inside "worker" should be renamed to "policy_states".
         policies = {}
-        if local_worker_state:
-            policies = local_worker_state.pop("state", {})
-
-        # TODO: Once filters have been outsourced into connectors,
-        #  we should remove this hack.
-        state["filters"] = local_worker_state.get("filters", {})
+        if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
+            policies = state["worker"].pop("state", {})
 
         # Add RLlib checkpoint version.
         state["__version__"] = "v1"
 
-        # Write state (w/o policies or filters) to disk.
+        # Write state (w/o policies) to disk.
         state_file = os.path.join(checkpoint_dir, "state.pkl")
         pickle.dump(state, open(state_file, "wb"))
         # Write checkpoint version separately. This file will NOT be used
@@ -2727,6 +2725,22 @@ class Algorithm(Trainable):
         checkpoint: Union[str, Checkpoint],
         policies: Optional[Container[PolicyID]] = None,
     ) -> Tuple[Dict, str]:
+        """Converts a checkpoint directory or object to a proper Algorithm state dict.
+
+        The returned state dict can be used inside self.__setstate__().
+
+        Args:
+            checkpoint: Either the checkpoint directory or AIR Checkpoint object to
+                translate into a proper Algorithm state dict.
+            policies: Optional list/set of PolicyIDs. If not None, only those policies
+                listed here will be included in the returned state. Note that
+                state items such as filters, the `is_policy_to_train` function, as
+                well as the multi-agent `policies` dict will be adjusted as well,
+                based on this arg.
+
+        Returns:
+             A state dict usable within the `self.__setstate__()` method.
+        """
         # Do we have an old ("v0") single checkpoint file?
         v0_checkpoint_file = None
 
@@ -2771,17 +2785,20 @@ class Algorithm(Trainable):
 
             state = pickle.load(open(state_file, "rb"))
 
-            # Old style: Create algo first, then call its `restore()` method.
-            if not v0_checkpoint_file:
+            # New checkpoint format: Policies are in separate sub-dirs.
+            # Note: Algorithms like ES/ARS don't have a WorkerSet, so we just return
+            # the plain state here.
+            if not v0_checkpoint_file and state.get("worker") is not None:
+                worker_state = state["worker"]
+
                 # TODO: Remove filters once they are part of policies (via connectors).
                 policies = set(
-                    policies if policies is not None else state["filters"].keys()
+                    policies if policies is not None else worker_state["filters"].keys()
                 )
 
-                filters = state.pop("filters")
                 # Remove policies entirely from filters that are not in `policies`.
-                filters = {
-                    pid: filter for pid, filter in filters.items() if pid in policies
+                worker_state["filters"] = {
+                    pid: filter for pid, filter in worker_state["filters"].items() if pid in policies
                 }
                 # Remove policies from multiagent dict that are not in `policies`.
                 policies_dict = state["config"]["multiagent"]["policies"]
@@ -2790,15 +2807,9 @@ class Algorithm(Trainable):
                 }
                 state["config"]["multiagent"]["policies"] = policies_dict
 
-                # Prepare local `worker` state to add policies' states into it read from
-                # separate policy checkpoint files.
-                state["worker"] = {
-                    # The policies' states will go into this dict.
-                    "state": {},
-                    # TODO: Remove filters once they are part of policies
-                    #  (via connectors).
-                    "filters": filters,
-                }
+                # Prepare local `worker` state to add policies' states into it,
+                # read from separate policy checkpoint files.
+                state["worker"]["state"] = {}
                 for pid in policies:
                     policy_state_file = os.path.join(
                         tmp_dir, "policies", pid, "policy_state.pkl"
