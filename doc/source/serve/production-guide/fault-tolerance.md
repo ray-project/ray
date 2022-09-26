@@ -282,7 +282,21 @@ spec:
 After you apply the Redis objects along with your updated `RayService`, your Ray cluster can recover from head node crashes without restarting all the workers!
 
 (serve-e2e-ft-behavior)=
-## Serve's fault tolerance behavior
+## Serve's recovery procedures
+
+This section explains how Serve recovers from system failures. It uses the following Serve application and config as a working example.
+
+::::{tabbed} Python Code
+```{literalinclude} doc_code/fault_tolerance/sleepy_pid.py
+:language: python
+```
+::::
+
+::::{tabbed} Kubernetes Config
+```YAML
+
+```
+::::
 
 [KubeRay]: https://ray-project.github.io/kuberay/
 [external storage namespace]: https://ray-project.github.io/kuberay/guidance/gcs-ft/#external-storage-namespace
