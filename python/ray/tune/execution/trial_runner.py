@@ -84,8 +84,8 @@ def _load_trial_from_checkpoint(
     local_dir_changed = local_dir and checkpoint_local_dir != local_dir
     remote_dir_changed = remote_dir and checkpoint_remote_dir != remote_dir
 
-    # NOTE: Skip initializing the logdir if local_dir has changed, since it will create
-    # a directory at the old path
+    # NOTE: If the local_dir has changed, wait to initialize the trial logdir
+    # so that a logdir doesn't get created in the old location
     new_trial.__setstate__(trial_cp, skip_init_logdir=local_dir_changed)
 
     if local_dir_changed:
@@ -106,11 +106,10 @@ def _load_trial_from_checkpoint(
 
         # Update trial local_dir
         new_trial.local_dir = local_dir
-        # Finish setting up the logdir with the new paths (since we skipped earlier)
+        # Finish setting up the logdir with the updated local_dir
         new_trial.init_logdir()
 
     if remote_dir_changed:
-        print("\n[DEBUGGING] Setting remote_checkpoint_dir_prefix = ", remote_dir)
         new_trial.remote_checkpoint_dir_prefix = remote_dir
 
     return new_trial

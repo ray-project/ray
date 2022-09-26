@@ -252,7 +252,6 @@ class Trial:
         placement_group_factory: Optional[PlacementGroupFactory] = None,
         stopping_criterion: Optional[Dict[str, float]] = None,
         remote_checkpoint_dir: Optional[str] = None,
-        # remote_dir: Optional[str] = None,
         custom_syncer: Optional[Syncer] = None,
         checkpoint_freq: int = 0,
         checkpoint_at_end: bool = False,
