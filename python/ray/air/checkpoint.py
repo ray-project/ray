@@ -212,19 +212,15 @@ class Checkpoint:
 
         Example:
 
-            .. code-block:: python
-
-                if not checkpoint.uri:
-                    uri = checkpoint.to_uri("s3://some-bucket/some-location")
-                else:
-                    uri = checkpoint.uri
-
-                print("Checkpoint is at", uri)
+            >>> from ray.air import Checkpoint
+            >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
+            >>> assert checkpoint.uri == "s3://some-bucket/some-location"
+            >>> checkpoint = Checkpoint.from_dict({"data": 1})
+            >>> assert checkpoint.uri == None
 
         Returns:
             Checkpoint URI if this URI is reachable from the current node (e.g.
             cloud storage or locally available file URI).
-
 
         """
         if self._uri:
