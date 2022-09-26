@@ -81,6 +81,7 @@ class PullManager {
   ///
   /// \param object_refs The bundle of objects that must be made local.
   /// \param prio The priority class of the bundle.
+  /// \param task_name Name of the task for the pull, or empty string.
   /// \param objects_to_locate The objects whose new locations the caller
   /// should subscribe to, and call OnLocationChange for.
   /// \return A request ID that can be used to cancel the request.
