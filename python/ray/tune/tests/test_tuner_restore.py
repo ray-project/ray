@@ -359,7 +359,8 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir):
 
 
 @pytest.mark.parametrize(
-    "cloud_checkpointing", [True, False],
+    "cloud_checkpointing",
+    [True, False],
 )
 def test_tuner_restore_from_moved_experiment_path(
     ray_start_2_cpus, tmp_path, cloud_checkpointing
@@ -378,6 +379,7 @@ def test_tuner_restore_from_moved_experiment_path(
         sync_config = tune.SyncConfig(upload_dir=cloud_uri)
 
     exp_name = "exp_dir"
+
     def init_tuner(local_dir, sync_config):
         return Tuner(
             _train_fn_sometimes_failing,
