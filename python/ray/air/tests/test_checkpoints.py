@@ -1,15 +1,16 @@
 import os
 import pickle
-import pytest
 import re
 import shutil
 import tempfile
 import unittest
 from typing import Any
 
+import pytest
+
 import ray
-from ray.air._internal.remote_storage import delete_at_uri, _ensure_directory
-from ray.air.checkpoint import Checkpoint, _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
+from ray.air._internal.remote_storage import _ensure_directory, delete_at_uri
+from ray.air.checkpoint import _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY, Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH, PREPROCESSOR_KEY
 from ray.data import Preprocessor
 
@@ -629,7 +630,6 @@ class PreprocessorCheckpointTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))

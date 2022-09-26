@@ -1,17 +1,17 @@
 import contextlib
-from dataclasses import dataclass
 import io
 import logging
 import os
+import platform
 import shutil
 import tarfile
 import tempfile
 import traceback
-from pathlib import Path
-import platform
-from typing import Any, Dict, Iterator, Optional, Tuple, Type, Union, TYPE_CHECKING
 import uuid
 import warnings
+from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Tuple, Type, Union
 
 import ray
 from ray import cloudpickle as pickle
@@ -26,7 +26,6 @@ from ray.air._internal.remote_storage import (
 )
 from ray.air.constants import PREPROCESSOR_KEY
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
-
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -43,9 +42,8 @@ _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
 @dataclass
-class CheckpointMetadata:
+class _CheckpointMetadata:
     """Metadata about a checkpoint.
 
     Attributes:
@@ -58,20 +56,19 @@ class CheckpointMetadata:
     checkpoint_state: Dict[str, Any]
 
 
-@DeveloperAPI
-class CheckpointDict(dict):
+class _CheckpointDict(dict):
     """A ``dict`` that represents a checkpoint.
 
     Args:
         metadata: Metadata about the checkpoint that this ``dict`` represents.
     """
 
-    def __init__(self, *args, metadata: CheckpointMetadata, **kwargs):
+    def __init__(self, *args, metadata: _CheckpointMetadata, **kwargs):
         self._metadata = metadata
         super().__init__(*args, **kwargs)
 
     @property
-    def metadata(self) -> CheckpointMetadata:
+    def metadata(self) -> _CheckpointMetadata:
         """Metadata about the checkpoint that this ``dict`` represents."""
         return self._metadata
 
@@ -167,6 +164,10 @@ class Checkpoint:
 
     """
 
+    # A list of object attributes to persist. For example, if
+    # `_SERIALIZED_ATTRS = ("spam",)`, then the value of `"spam"` is serialized with
+    # the checkpoint data. When a user constructs a checkpoint from the serialized data,
+    # the value of `"spam"` is restored.
     _SERIALIZED_ATTRS = ()
 
     @DeveloperAPI
@@ -238,9 +239,8 @@ class Checkpoint:
         return f"{self.__class__.__name__}({parameter}={argument})"
 
     @property
-    @DeveloperAPI
-    def metadata(self) -> CheckpointMetadata:
-        return CheckpointMetadata(
+    def _metadata(self) -> _CheckpointMetadata:
+        return _CheckpointMetadata(
             checkpoint_type=self.__class__,
             checkpoint_state={
                 attr: getattr(self, attr) for attr in self._SERIALIZED_ATTRS
@@ -287,7 +287,7 @@ class Checkpoint:
             Checkpoint: checkpoint object.
         """
         state = {}
-        if isinstance(data, CheckpointDict):
+        if isinstance(data, _CheckpointDict):
             cls = cls._get_constructor_cls(data.metadata.checkpoint_type)
             state = data.metadata.checkpoint_state
 
@@ -369,7 +369,7 @@ class Checkpoint:
         else:
             raise RuntimeError(f"Empty data for checkpoint {self}")
 
-        return CheckpointDict(checkpoint_data, metadata=self.metadata)
+        return _CheckpointDict(checkpoint_data, metadata=self._metadata)
 
     @classmethod
     @Deprecated(
@@ -532,7 +532,7 @@ class Checkpoint:
 
         checkpoint_metadata_path = os.path.join(path, _CHECKPOINT_METADATA_FILE_NAME)
         with open(checkpoint_metadata_path, "wb") as file:
-            pickle.dump(self.metadata, file)
+            pickle.dump(self._metadata, file)
 
     def to_directory(self, path: Optional[str] = None) -> str:
         """Write checkpoint data to directory.
@@ -682,7 +682,7 @@ class Checkpoint:
                 local_path, _CHECKPOINT_METADATA_FILE_NAME
             )
             with open(checkpoint_metadata_path, "wb") as file:
-                pickle.dump(self.metadata, file)
+                pickle.dump(self._metadata, file)
 
             upload_to_uri(local_path=local_path, uri=uri)
 
