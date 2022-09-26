@@ -2798,7 +2798,9 @@ class Algorithm(Trainable):
 
                 # Remove policies entirely from filters that are not in `policies`.
                 worker_state["filters"] = {
-                    pid: filter for pid, filter in worker_state["filters"].items() if pid in policies
+                    pid: filter
+                    for pid, filter in worker_state["filters"].items()
+                    if pid in policies
                 }
                 # Remove policies from multiagent dict that are not in `policies`.
                 policies_dict = state["config"]["multiagent"]["policies"]
