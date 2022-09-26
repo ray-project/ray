@@ -19,23 +19,23 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/util/logging.h"
 
-/// \class CounterMap
+/// \class Counter
 ///
-/// This container implements counter behavior on top of an absl hash table. CounterMap
-/// entries will be automatically cleaned up when they fall back to zero. CounterMap
+/// This container implements counter behavior on top of an absl hash table. Counter
+/// entries will be automatically cleaned up when they fall back to zero. Counter
 /// entries are not allowed to be negative. A callback can be set to run when any
 /// counter entry changes.
 ///
 /// For example, this can be used to track the number of running tasks broken down
 /// by their function name, or track the number of tasks by (name, state) pairs.
 template <typename K>
-class CounterMap {
+class Counter {
  public:
-  CounterMap(){};
+  Counter(){};
 
-  CounterMap(const CounterMap &other) = delete;
+  Counter(const Counter &other) = delete;
 
-  CounterMap &operator=(const CounterMap &other) = delete;
+  Counter &operator=(const Counter &other) = delete;
 
   /// Set a function `f((key, count))` to run when the count for the key changes.
   void SetOnChangeCallback(std::function<void(const K &, int64_t)> on_change) {
@@ -74,7 +74,7 @@ class CounterMap {
     if (it == counters_.end()) {
       return 0;
     } else {
-      RAY_CHECK(it->second >= 0) << "CounterMap values cannot be negative.";
+      RAY_CHECK(it->second >= 0) << "Counters values cannot be negative.";
       return it->second;
     }
   }
