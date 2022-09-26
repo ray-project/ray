@@ -21,7 +21,7 @@
 #include "ray/common/task/task.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/stats/metric_defs.h"
-#include "ray/util/counter.h"
+#include "ray/util/counter_map.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -76,7 +76,7 @@ class TaskResubmissionInterface {
   virtual ~TaskResubmissionInterface() {}
 };
 
-using TaskStatusCounter = Counter<std::pair<std::string, rpc::TaskStatus>>;
+using TaskStatusCounter = CounterMap<std::pair<std::string, rpc::TaskStatus>>;
 using PutInLocalPlasmaCallback =
     std::function<void(const RayObject &object, const ObjectID &object_id)>;
 using RetryTaskCallback = std::function<void(TaskSpecification &spec, bool delay)>;

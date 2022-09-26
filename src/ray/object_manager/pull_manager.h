@@ -31,7 +31,7 @@
 #include "ray/object_manager/ownership_based_object_directory.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
-#include "ray/util/counter.h"
+#include "ray/util/counter_map.h"
 
 namespace ray {
 
@@ -280,8 +280,8 @@ class PullManager {
     // order of pull).
     std::set<uint64_t> active_requests;
     std::set<uint64_t> inactive_requests;
-    Counter<std::string> active_by_name;
-    Counter<std::string> inactive_by_name;
+    CounterMap<std::string> active_by_name;
+    CounterMap<std::string> inactive_by_name;
 
     void RefreshMetrics(std::string task_name) const {
       if (task_name.empty()) {
