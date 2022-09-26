@@ -232,7 +232,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.dqn.r2d2::R2D2_DEFAULT_CONFIG",
         new="ray.rllib.algorithms.r2d2.r2d2::R2D2Config(...)",
-        error=True,
+        error=False,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

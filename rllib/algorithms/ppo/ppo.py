@@ -206,7 +206,7 @@ class PPOConfig(AlgorithmConfig):
             deprecation_warning(
                 old="ppo.DEFAULT_CONFIG['vf_share_layers']",
                 new="PPOConfig().training(model={'vf_share_layers': ...})",
-                error=True,
+                error=False,
             )
 
         return self
@@ -483,7 +483,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.ppo.ppo::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.ppo.ppo::PPOConfig(...)",
-        error=True,
+        error=False,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

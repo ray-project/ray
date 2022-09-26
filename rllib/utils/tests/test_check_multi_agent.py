@@ -39,6 +39,13 @@ class TestCheckMultiAgent(unittest.TestCase):
             lambda: PG(config, env="CartPole-v0"),
         )
 
+        config = {"multiagent": {"replay_mode": "invalid_value"}}
+        self.assertRaisesRegex(
+            ValueError,
+            "`config.multiagent.replay_mode` must be",
+            lambda: PG(config, env="CartPole-v0"),
+        )
+
 
 if __name__ == "__main__":
     import pytest

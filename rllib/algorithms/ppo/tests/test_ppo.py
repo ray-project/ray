@@ -261,6 +261,15 @@ class TestPPO(unittest.TestCase):
             assert post_std != 0.0, post_std
             trainer.stop()
 
+    def test_ppo_legacy_config(self):
+        """Tests, whether the old PPO config dict is still functional."""
+        ppo_config = ppo.DEFAULT_CONFIG
+        # Expect warning.
+        print(f"Accessing learning-rate from legacy config dict: {ppo_config['lr']}")
+        # Build Algorithm.
+        ppo_trainer = ppo.PPO(config=ppo_config, env="CartPole-v1")
+        print(ppo_trainer.train())
+
     def test_ppo_loss_function(self):
         """Tests the PPO loss function math."""
         config = (
