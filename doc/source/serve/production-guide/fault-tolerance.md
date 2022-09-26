@@ -224,7 +224,7 @@ spec:
                     env:
                         ...
                         - name: RAY_REDIS_ADDRESS
-                        value: redis:6379
+                          value: redis:6379
 ```
 ::::
 
@@ -288,6 +288,8 @@ This section explains how Serve recovers from system failures. It uses the follo
 
 ::::{tabbed} Python Code
 ```{literalinclude} doc_code/fault_tolerance/sleepy_pid.py
+:start-after: __start__
+:end-before: __end__
 :language: python
 ```
 ::::

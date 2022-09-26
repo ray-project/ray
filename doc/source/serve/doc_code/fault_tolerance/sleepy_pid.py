@@ -1,3 +1,6 @@
+# flake8: noqa
+
+# __start__
 # File name: sleepy_pid.py
 
 from ray import serve
@@ -17,3 +20,4 @@ class SleepyPid:
 
 
 app = SleepyPid.bind()
+# __end__
