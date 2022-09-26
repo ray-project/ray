@@ -17,6 +17,7 @@ from ray.tune.progress_reporter import (
     _time_passed_str,
     _trial_progress_str,
     TuneReporterBase,
+    _max_len,
 )
 from ray.tune.result import AUTO_RESULT_KEYS
 from ray.tune.trial import Trial
@@ -737,6 +738,21 @@ class ProgressReporterTest(unittest.TestCase):
             trials, metric_columns=["some_metric"], force_table=True
         )
         assert any(len(row) <= 90 for row in progress_str.split("\n"))
+
+
+def test_max_len():
+    assert (
+        _max_len("some_long_string/even_longer", max_len=28)
+        == "some_long_string/even_longer"
+    )
+    assert _max_len("some_long_string/even_longer", max_len=15) == ".../even_longer"
+
+    assert (
+        _max_len(
+            "19_character_string/19_character_string/too_long", max_len=20, wrap=True
+        )
+        == "...r_string/19_chara\ncter_string/too_long"
+    )
 
 
 if __name__ == "__main__":
