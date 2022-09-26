@@ -452,6 +452,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
       });
   worker_pool_.SetAgentManager(agent_manager_);
+
+  periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },
+                                       RayConfig::instance().task_failure_entry_ttl_ms());
 }
 
 ray::Status NodeManager::RegisterGcs() {
@@ -812,6 +815,25 @@ void NodeManager::HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request
       /*include_task_info*/ false,
       /*limit*/ limit,
       /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
+}
+
+void NodeManager::HandleGetTaskFailureCause(
+    const rpc::GetTaskFailureCauseRequest &request,
+    rpc::GetTaskFailureCauseReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const TaskID task_id = TaskID::FromBinary(request.task_id());
+  RAY_LOG(DEBUG) << "Received a HandleGetTaskFailureCause request for task " << task_id;
+
+  auto it = task_failure_reasons_.find(task_id);
+  if (it != task_failure_reasons_.end()) {
+    RAY_LOG(DEBUG) << "task " << task_id << " has failure reason "
+                   << ray::gcs::RayErrorInfoToString(it->second.ray_error_info);
+    reply->mutable_failure_cause()->CopyFrom(it->second.ray_error_info);
+  } else {
+    RAY_LOG(INFO) << "didn't find failure cause for task " << task_id;
+  }
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::QueryAllWorkerStates(
@@ -1424,8 +1446,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    const std::string &disconnect_detail,
                                    const rpc::RayException *creation_task_exception) {
   RAY_LOG(INFO) << "NodeManager::DisconnectClient, disconnect_type=" << disconnect_type
-                << ", has creation task exception = "
-                << (creation_task_exception != nullptr);
+                << ", has creation task exception = " << std::boolalpha
+                << bool(creation_task_exception == nullptr);
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1442,6 +1464,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       return;
     }
   }
+  RAY_CHECK(worker != nullptr);
   RAY_CHECK(!(is_worker && is_driver));
   // Clean up any open ray.get or ray.wait calls that the worker made.
   dependency_manager_.CancelGetRequest(worker->WorkerId());
@@ -2938,36 +2961,42 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           } else {
             id_ss << "actor ID " << latest_worker->GetActorId();
           }
+
+          /// TODO: (clarng) expose this string in the frontend python error as well.
           std::stringstream worker_exit_message_ss;
           worker_exit_message_ss
-              << "System memory low at node with IP " << latest_worker->IpAddress()
-              << ". Used memory (" << used_bytes_gb << "GB) / total capacity ("
-              << total_bytes_gb << "GB) (" << usage_fraction << ") exceeds threshold "
-              << usage_threshold << ", killing latest task with name "
-              << latest_worker->GetAssignedTask().GetTaskSpecification().GetName()
-              << " and " << id_ss.str() << " to avoid running out of memory.\n"
-              << "This may indicate a memory leak in a task or actor, or that too many "
-                 "tasks are running in parallel.\n";
-          std::string worker_exit_message = worker_exit_message_ss.str();
-
-          std::stringstream error_log_ss;
-          error_log_ss
-              << worker_exit_message
-              << "To find the highest memory consumers, use `ray logs raylet.out -ip "
-              << latest_worker->IpAddress() << "`.\n"
+              << "Task was killed due to the node running low on memory.\n\n"
+              << "Memory on the node (IP: " << latest_worker->IpAddress()
+              << ", ID: " << this->self_node_id_ << ") where the task was running was "
+              << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
+              << "), which exceeds the memory usage threshold of " << usage_threshold
+              << ". Ray killed this worker (ID: " << latest_worker->WorkerId()
+              << ") because it was the most recently scheduled task; to see more "
+                 "information about memory usage on this node, use `ray logs raylet.out "
+                 "-ip "
+              << latest_worker->IpAddress()
+              << "`. To see the logs of the worker, use `ray logs worker-"
+              << latest_worker->WorkerId() << "*out -ip " << latest_worker->IpAddress()
+              << "`.\n\n"
               << "Consider provisioning more memory on this node or reducing task "
-                 "parallelism by requesting more CPUs per task. "
-              << "To adjust the eviction threshold, set the environment variable "
-                 "`RAY_memory_usage_threshold_fraction` when starting Ray. "
-              << "To disable worker eviction, set the environment variable "
+                 "parallelism by requesting more CPUs per task. To adjust the eviction "
+                 "threshold, set the environment variable "
+                 "`RAY_memory_usage_threshold_fraction` when starting Ray. To disable "
+                 "worker eviction, set the environment variable "
                  "`RAY_memory_monitor_interval_ms` to zero.";
+          std::string worker_exit_message = worker_exit_message_ss.str();
           /// TODO: (clarng) add a link to the oom killer / memory manager documentation
-          RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << error_log_ss.str();
+          RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << worker_exit_message;
 
           const static int64_t max_to_print = 10;
           RAY_LOG(INFO) << "Latest 10 worker details:\n"
                         << this->WorkersDebugString(workers, max_to_print);
 
+          rpc::RayErrorInfo task_failure_reason;
+          task_failure_reason.set_error_message(worker_exit_message);
+          task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
+          SetTaskFailureReason(latest_worker->GetAssignedTaskId(),
+                               std::move(task_failure_reason));
           /// TODO: (clarng) right now destroy is called after the messages are created
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
@@ -2987,6 +3016,31 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
       }
     }
   };
+}
+
+void NodeManager::SetTaskFailureReason(const TaskID &task_id,
+                                       const rpc::RayErrorInfo &failure_reason) {
+  RAY_LOG(DEBUG) << "set failure reason for task " << task_id;
+  ray::TaskFailureEntry entry(failure_reason);
+  auto result = task_failure_reasons_.emplace(task_id, std::move(entry));
+  if (result.second) {
+    RAY_LOG(WARNING) << "Trying to insert failure reason more than once for the same "
+                        "task, the previous failure will be removed. Task id: "
+                     << task_id;
+  }
+}
+
+void NodeManager::GCTaskFailureReason() {
+  for (const auto &entry : task_failure_reasons_) {
+    auto duration = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - entry.second.creation_time)
+                        .count();
+    if (duration > RayConfig::instance().task_failure_entry_ttl_ms()) {
+      RAY_LOG(INFO) << "Removing task failure reason since it expired, task: "
+                    << entry.first;
+      task_failure_reasons_.erase(entry.first);
+    }
+  }
 }
 
 const std::vector<std::shared_ptr<WorkerInterface>>
