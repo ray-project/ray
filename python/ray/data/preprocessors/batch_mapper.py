@@ -1,4 +1,6 @@
 from typing import Dict, Callable, Optional, Union, TYPE_CHECKING
+import warnings
+
 import numpy as np
 
 from ray.data.preprocessor import Preprocessor
@@ -63,9 +65,16 @@ class BatchMapper(Preprocessor):
                 Union[np.ndarray, Dict[str, np.ndarray]],
             ],
         ],
-        batch_format: Optional[str] = None,
+        batch_format: Optional[str] = "pandas",
+        # TODO: Make batch_format required from user
+        # TODO: Introduce a "zero_copy" format
         # TODO: We should reach consistency of args between BatchMapper and map_batches.
     ):
+        if not batch_format:
+            warnings.warn(
+                "batch_format will be required for BatchMapper in future releases.",
+                DeprecationWarning,
+            )
         if batch_format and batch_format not in [
             "pandas",
             "numpy",

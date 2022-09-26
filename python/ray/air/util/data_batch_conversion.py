@@ -7,6 +7,7 @@ import pandas as pd
 from ray.air.data_batch_type import DataBatchType
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.util.annotations import DeveloperAPI
+from ray.air.util.tensor_extensions.arrow import ArrowTensorType
 
 try:
     import pyarrow
@@ -131,10 +132,10 @@ def _convert_batch_type_to_numpy(
             return data
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
         if data.column_names == [TENSOR_COLUMN_NAME] and (
-            pyarrow.types.is_floating(data.schema.types[0])
-            or pyarrow.types.is_integer(data.schema.types[0])
+            isinstance(data.schema.types[0], ArrowTensorType)
         ):
             # If representing a tensor dataset, return as a single numpy array.
+            # Example: ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
             return data[0].to_numpy()
         else:
             output_dict = {}

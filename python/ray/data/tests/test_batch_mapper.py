@@ -9,6 +9,7 @@ from pandas.testing import assert_frame_equal
 import ray
 from ray.data.preprocessors import BatchMapper
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 
 
 # ===== Pandas dataset formats =====
@@ -31,7 +32,11 @@ def ds_arrow_single_column_format():
 
 
 def ds_arrow_single_column_tensor_format():
-    ds = ray.data.from_arrow(pa.table({TENSOR_COLUMN_NAME: [1, 2, 3, 4]}))
+    ds = ray.data.from_arrow(
+        pa.table(
+            {TENSOR_COLUMN_NAME: ArrowTensorArray.from_numpy(np.array([1, 2, 3, 4]))}
+        )
+    )
     return ds
 
 
@@ -118,25 +123,25 @@ def test_batch_mapper_pandas_data_format(ds_with_expected_pandas_numpy_df):
         return data
 
     # Test map_batches
-    transformed = ds.map_batches(add_and_modify_udf_pandas, batch_format="pandas")
-    out_df_map_batches = transformed.to_pandas()
+    transformed_ds = ds.map_batches(add_and_modify_udf_pandas, batch_format="pandas")
+    out_df_map_batches = transformed_ds.to_pandas()
     assert_frame_equal(out_df_map_batches, expected_df)
 
-    transformed = ds.map_batches(add_and_modify_udf_numpy, batch_format="numpy")
-    out_df_map_batches = transformed.to_pandas()
+    transformed_ds = ds.map_batches(add_and_modify_udf_numpy, batch_format="numpy")
+    out_df_map_batches = transformed_ds.to_pandas()
     assert_frame_equal(out_df_map_batches, expected_numpy_df)
 
     # Test BatchMapper
     batch_mapper = BatchMapper(fn=add_and_modify_udf_pandas, batch_format="pandas")
     batch_mapper.fit(ds)
-    transformed = batch_mapper.transform(ds)
-    out_df = transformed.to_pandas()
+    transformed_ds = batch_mapper.transform(ds)
+    out_df = transformed_ds.to_pandas()
     assert_frame_equal(out_df, expected_df)
 
     batch_mapper = BatchMapper(fn=add_and_modify_udf_numpy, batch_format="numpy")
     batch_mapper.fit(ds)
-    transformed = batch_mapper.transform(ds)
-    out_df = transformed.to_pandas()
+    transformed_ds = batch_mapper.transform(ds)
+    out_df = transformed_ds.to_pandas()
     assert_frame_equal(out_df, expected_numpy_df)
 
 
@@ -218,25 +223,25 @@ def test_batch_mapper_arrow_data_format(ds_with_expected_pandas_numpy_df):
         return data
 
     # Test map_batches
-    transformed = ds.map_batches(add_and_modify_udf_pandas, batch_format="pandas")
-    out_df_map_batches = transformed.to_pandas()
+    transformed_ds = ds.map_batches(add_and_modify_udf_pandas, batch_format="pandas")
+    out_df_map_batches = transformed_ds.to_pandas()
     assert_frame_equal(out_df_map_batches, expected_df)
 
-    transformed = ds.map_batches(add_and_modify_udf_numpy, batch_format="numpy")
-    out_df_map_batches = transformed.to_pandas()
+    transformed_ds = ds.map_batches(add_and_modify_udf_numpy, batch_format="numpy")
+    out_df_map_batches = transformed_ds.to_pandas()
     assert_frame_equal(out_df_map_batches, expected_numpy_df)
 
     # Test BatchMapper
     batch_mapper = BatchMapper(fn=add_and_modify_udf_pandas, batch_format="pandas")
     batch_mapper.fit(ds)
-    transformed = batch_mapper.transform(ds)
-    out_df = transformed.to_pandas()
+    transformed_ds = batch_mapper.transform(ds)
+    out_df = transformed_ds.to_pandas()
     assert_frame_equal(out_df, expected_df)
 
     batch_mapper = BatchMapper(fn=add_and_modify_udf_numpy, batch_format="numpy")
     batch_mapper.fit(ds)
-    transformed = batch_mapper.transform(ds)
-    out_df = transformed.to_pandas()
+    transformed_ds = batch_mapper.transform(ds)
+    out_df = transformed_ds.to_pandas()
     assert_frame_equal(out_df, expected_numpy_df)
 
 
@@ -298,25 +303,25 @@ def test_batch_mapper_numpy_data_format(ds_with_expected_pandas_numpy_df):
         return data
 
     # Test map_batches
-    transformed = ds.map_batches(add_and_modify_udf_pandas, batch_format="pandas")
-    out_df_map_batches = transformed.to_pandas()
+    transformed_ds = ds.map_batches(add_and_modify_udf_pandas, batch_format="pandas")
+    out_df_map_batches = transformed_ds.to_pandas()
     assert_frame_equal(out_df_map_batches, expected_df)
 
-    transformed = ds.map_batches(add_and_modify_udf_numpy, batch_format="numpy")
-    out_df_map_batches = transformed.to_pandas()
+    transformed_ds = ds.map_batches(add_and_modify_udf_numpy, batch_format="numpy")
+    out_df_map_batches = transformed_ds.to_pandas()
     assert_frame_equal(out_df_map_batches, expected_numpy_df)
 
     # Test BatchMapper
     batch_mapper = BatchMapper(fn=add_and_modify_udf_pandas, batch_format="pandas")
     batch_mapper.fit(ds)
-    transformed = batch_mapper.transform(ds)
-    out_df = transformed.to_pandas()
+    transformed_ds = batch_mapper.transform(ds)
+    out_df = transformed_ds.to_pandas()
     assert_frame_equal(out_df, expected_df)
 
     batch_mapper = BatchMapper(fn=add_and_modify_udf_numpy, batch_format="numpy")
     batch_mapper.fit(ds)
-    transformed = batch_mapper.transform(ds)
-    out_df = transformed.to_pandas()
+    transformed_ds = batch_mapper.transform(ds)
+    out_df = transformed_ds.to_pandas()
     assert_frame_equal(out_df, expected_numpy_df)
 
 
