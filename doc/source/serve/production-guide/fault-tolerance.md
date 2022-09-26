@@ -183,10 +183,6 @@ The annotations are:
 * `ray.io/ft-enabled` (REQUIRED): Enables GCS fault tolerance when true
 * `ray.io/external-storage-namespace` (OPTIONAL): Sets the [external storage namespace]
 
-:::{seealso}
-Check out the KubeRay guide on [GCS fault tolerance](https://ray-project.github.io/kuberay/guidance/gcs-ft/#ray-gcs-fault-tolerancegcs-ft-experimental) for more details.
-:::
-
 Next, you need to add the `RAY_REDIS_ADDRESS` environment variable to the `headGroupSpec`:
 
 ::::{tabbed} Vanilla Config
@@ -280,6 +276,10 @@ spec:
 ::::
 
 After you apply the Redis objects along with your updated `RayService`, your Ray cluster can recover from head node crashes without restarting all the workers!
+
+:::{seealso}
+Check out the KubeRay guide on [GCS fault tolerance](https://ray-project.github.io/kuberay/guidance/gcs-ft/#ray-gcs-fault-tolerancegcs-ft-experimental) for more details.
+:::
 
 (serve-e2e-ft-behavior)=
 ## Serve's recovery procedures
