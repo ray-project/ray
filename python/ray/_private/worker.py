@@ -2266,8 +2266,7 @@ def get(
 
         if not isinstance(object_refs, list):
             raise ValueError(
-                "'object_refs' must either be an object ref "
-                "or a list of object refs."
+                "'object_refs' must either be an ObjectRef or a list of ObjectRefs."
             )
 
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
@@ -2312,11 +2311,12 @@ def put(
 
     Args:
         value: The Python object to be stored.
-        _owner: The actor that should own this object. This allows creating
-            objects with lifetimes decoupled from that of the creating process.
-            Note that the owner actor must be passed a reference to the object
-            prior to the object creator exiting, otherwise the reference will
-            still be lost.
+        _owner [Experimental]: The actor that should own this object. This
+            allows creating objects with lifetimes decoupled from that of the
+            creating process. The owner actor must be passed a reference to the
+            object prior to the object creator exiting, otherwise the reference
+            will still be lost. *Note that this argument is an experimental API
+            and should be avoided if possible.*
 
     Returns:
         The object ref assigned to this value.
@@ -2888,8 +2888,11 @@ def remote(
 
     Args:
         num_returns: This is only for *remote functions*. It specifies
-            the number of object refs returned by
-            the remote function invocation.
+            the number of object refs returned by the remote function
+            invocation. Pass "dynamic" to allow the task to decide how many
+            return values to return during execution, and the caller will
+            receive an ObjectRef[ObjectRefGenerator] (note, this setting is
+            experimental).
         num_cpus: The quantity of CPU cores to reserve
             for this task or for the lifetime of the actor.
         num_gpus: The quantity of GPUs to reserve
