@@ -6,8 +6,8 @@ Serve handles component failures _within_ a Ray cluster by default. You can conf
 This section helps you:
 
 * provide additional fault tolerance for your Serve application
-* understand Serve's failure conditions and how it recovers from them
-* inspect your Serve application to detect system errors
+* understand Serve's recovery procedures
+* simulate system errors in your Serve application
 
 :::{admonition} Relevant Guides
 :class: seealso
@@ -17,7 +17,7 @@ This section discusses concepts from:
 :::
 
 (serve-e2e-ft-guide)=
-## Guide: providing end-to-end fault tolerance for your Serve app
+## Guide: end-to-end fault tolerance for your Serve app
 
 Serve provides some [fault tolerance](serve-ft-detail) features out of the box. You can provide end-to-end fault tolerance by tuning these features and running Serve on top of [KubeRay].
 
@@ -41,36 +41,248 @@ You can also use the deployment options to customize how frequently the health-c
 
 :::{admonition} KubeRay Required
 :class: caution, dropdown
-You **must** deploy your Serve application with [KubeRay] to leverage this feature.
+You **must** deploy your Serve application with [KubeRay] to use this feature.
 
 See Serve's [Kubernetes production guide](serve-in-production-kubernetes) to learn how you can deploy your app with KubeRay.
 :::
 
 By default, Serve can recover from certain failures _within_ a Ray cluster, such as unhealthy actors. When [Serve runs on Kubernetes](serve-in-production-kubernetes) with [KubeRay], it can also recover from some _cluster-level_ failures, such as dead worker nodes.
 
-When a worker node fails, the actors running on it also fail. Serve detects that the actors have failed, and it attempts to respawn the actors on the remaining, healthy nodes. Meanwhile, KubeRay detects that the node itself has failed, so it brings up a new healthy node to replace it. Serve can then respawn any pending actors on that node as well. The deployment replicas that were running on healthy nodes are unaffected and can continue serving traffic throughout the recovery period.
+When a worker node fails, the actors running on it also fail. Serve detects that the actors have failed, and it attempts to respawn the actors on the remaining, healthy nodes. Meanwhile, KubeRay detects that the node itself has failed, so it brings up a new healthy node to replace it. Serve can then respawn any pending actors on that node as well. The deployment replicas running on healthy nodes can continue serving traffic throughout the recovery period.
 
 (serve-e2e-ft-guide-gcs)=
-### Head node recovery: Ray Global Control Store (GCS) fault tolerance
+### Head node recovery: Ray GCS fault tolerance
 
 :::{admonition} KubeRay Required
 :class: caution, dropdown
-You **must** deploy your Serve application with [KubeRay] to leverage this feature.
+You **must** deploy your Serve application with [KubeRay] to use this feature.
 
 See Serve's [Kubernetes production guide](serve-in-production-kubernetes) to learn how you can deploy your app with KubeRay.
 :::
 
-By default the Ray head node is a single point of failure: if it crashes, the entire cluster crashes and must be restarted. When running on Kubernetes, the `RayService` controller health-checks the cluster and restarts it if this occurs, but this introduces some downtime.
+In this section, you'll learn how to add fault tolerance to Ray's Global Control Store (GCS), which allows your Serve application to serve traffic even when the head node crashes.
 
-In Ray 2.0, KubeRay has added experimental support for [GCS fault tolerance](https://ray-project.github.io/kuberay/guidance/gcs-ft/#ray-gcs-fault-tolerancegcs-ft-experimental), preventing the Ray cluster from crashing if the head node goes down.
+By default the Ray head node is a single point of failure: if it crashes, the entire Ray cluster crashes and must be restarted. When running on Kubernetes, the `RayService` controller health-checks the Ray cluster and restarts it if this occurs, but this introduces some downtime.
+
+In Ray 2.0, KubeRay has added experimental support for [Global Control Store (GCS) fault tolerance](https://ray-project.github.io/kuberay/guidance/gcs-ft/#ray-gcs-fault-tolerancegcs-ft-experimental), preventing the Ray cluster from crashing if the head node goes down.
 While the head node is recovering, Serve applications can still handle traffic but cannot be updated or recover from other failures (e.g. actors or worker nodes crashing).
 Once the GCS is recovered, the cluster will return to normal behavior.
+
+You can enable GCS fault tolerance on KubeRay by adding an external Redis server and modifying your `RayService` Kubernetes object.
+
+#### Add external Redis server
+
+GCS fault tolerance requires an external Redis server. The server can share the same Kubernetes cluster with your Ray cluster. For example, you can add a simple 1-node Redis cluster by appending these three Redis objects to your Kubernetes YAML:
+
+(one-node-redis-example)=
+```YAML
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: redis-config
+  labels:
+    app: redis
+data:
+  redis.conf: |-
+    dir /data
+    port 6379
+    bind 0.0.0.0
+    appendonly yes
+    protected-mode no
+    pidfile /data/redis-6379.pid
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+  selector:
+    app: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:5.0.8
+          command:
+            - "sh"
+            - "-c"
+            - "redis-server /usr/local/etc/redis/redis.conf"
+          ports:
+            - containerPort: 6379
+          volumeMounts:
+            - name: config
+              mountPath: /usr/local/etc/redis/redis.conf
+              subPath: redis.conf
+      volumes:
+        - name: config
+          configMap:
+            name: redis-config
+---
+```
+
+**This configuration is NOT production-ready**, but it is useful for development and testing. When you move to production, it is highly recommended that you
+1. Password-protect this Redis instance by adding a `requirepass` value to the `redis-config` `ConfigMap`. See [this config](https://github.com/ray-project/kuberay/blob/3e789e376264f31ad64f58b15132cfd14a3a1f56/ray-operator/config/samples/ray-cluster.external-redis.yaml#L18) for an example.
+2. Replace the 1-node Redis cluster with a highly-available Redis cluster.
+
+#### Add Redis info to RayService
+
+After appending the Redis objects, you also need to modify the `RayService` configuration.
+
+First, you need to update your `RayService` metadata's annotations:
+
+::::{tabbed} Vanilla Config
+```yaml
+...
+apiVersion: ray.io/v1alpha1
+kind: RayService
+metadata:
+  name: rayservice-sample
+spec:
+...
+```
+::::
+
+::::{tabbed} Fault Tolerant Config
+:selected:
+```yaml
+...
+apiVersion: ray.io/v1alpha1
+kind: RayService
+metadata:
+  name: rayservice-sample
+  annotations:
+    ray.io/ft-enabled: "true"
+    ray.io/external-storage-namespace: "my-raycluster-storage-namespace"
+spec:
+...
+```
+::::
+
+The annotations are:
+* `ray.io/ft-enabled` (REQUIRED): Enables GCS fault tolerance when true
+* `ray.io/external-storage-namespace` (OPTIONAL): Sets the [external storage namespace]
 
 :::{seealso}
 Check out the KubeRay guide on [GCS fault tolerance](https://ray-project.github.io/kuberay/guidance/gcs-ft/#ray-gcs-fault-tolerancegcs-ft-experimental) for more details.
 :::
 
+Next, you need to add the `RAY_REDIS_ADDRESS` environment variable to the `headGroupSpec`:
+
+::::{tabbed} Vanilla Config
+```yaml
+apiVersion: ray.io/v1alpha1
+kind: RayService
+metadata:
+    ...
+spec:
+    ...
+    rayClusterConfig:
+        headGroupSpec:
+            ...
+            template:
+                ...
+                spec:
+                    ...
+                    env:
+                        ...
+```
+::::
+
+::::{tabbed} Fault Tolerant Config
+:selected:
+```yaml
+apiVersion: ray.io/v1alpha1
+kind: RayService
+metadata:
+    ...
+spec:
+    ...
+    rayClusterConfig:
+        headGroupSpec:
+            ...
+            template:
+                ...
+                spec:
+                    ...
+                    env:
+                        ...
+                        - name: RAY_REDIS_ADDRESS
+                        value: redis:6379
+```
+::::
+
+`RAY_REDIS_ADDRESS`'s value should include the Redis deployment name (e.g. `Redis`) and its port (e.g. `6379`). This example matches last section's [example config](one-node-redis-example).
+
+You can also expose your Redis cluster's port, so it can be accessed from outside the cluster as well:
+
+::::{tabbed} Vanilla Config
+```yaml
+apiVersion: ray.io/v1alpha1
+kind: RayService
+metadata:
+    ...
+spec:
+    ...
+    rayClusterConfig:
+        headGroupSpec:
+            ...
+            template:
+                ...
+                spec:
+                    ...
+                    ports:
+                        ...
+```
+::::
+
+::::{tabbed} Fault Tolerant Config
+:selected:
+```yaml
+apiVersion: ray.io/v1alpha1
+kind: RayService
+metadata:
+    ...
+spec:
+    ...
+    rayClusterConfig:
+        headGroupSpec:
+            ...
+            template:
+                ...
+                spec:
+                    ...
+                    ports:
+                        ...
+                        - containerPort: 6379
+                          name: redis
+```
+::::
+
+After you apply the Redis objects along with your updated `RayService`, your Ray cluster can recover from head node crashes without restarting all the workers!
+
 (serve-e2e-ft-behavior)=
 ## Serve's fault tolerance behavior
 
 [KubeRay]: https://ray-project.github.io/kuberay/
+[external storage namespace]: https://ray-project.github.io/kuberay/guidance/gcs-ft/#external-storage-namespace
