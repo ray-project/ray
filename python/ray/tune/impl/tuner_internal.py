@@ -224,6 +224,7 @@ class TunerInternal:
                 file_dir.replace(new_exp_path / file_dir.name)
             shutil.rmtree(experiment_checkpoint_path)
             self._experiment_checkpoint_dir = str(new_exp_path)
+            self._run_config.local_dir = str(new_exp_path.parent)
 
             # TODO(justinvyu): Move this out to a util function
             # s3://parents/of/exp_dir -> s3://parents/of
