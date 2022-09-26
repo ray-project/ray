@@ -35,7 +35,7 @@ There are 2 issues here.
 
 .. code-block:: python
 
-    l = long_polling_actor.remote(data_store_actor)
+    l = LongPollingActor.remote(data_store_actor)
     # Actor runs a while loop
     l.run.remote()
     # This won't be processed forever because the actor thread is occupied by the run method.
@@ -60,7 +60,7 @@ First, let's create an async actor.
                 data = await self.data_store_actor.fetch.remote()
                 self._process(data)
 
-        def _process(self):
+        def _process(self, data):
             pass
 
         async def other_task(self):
