@@ -199,6 +199,10 @@ enum ErrorType {
   // using the internal free() call. We will only recover this object if it is
   // needed for reconstruction of another downstream object.
   OBJECT_FREED = 21;
+  // We use this error for failure due to running out of memory.
+  OUT_OF_MEMORY = 22;
+  // We use this error for failure due to node died unexpectedly.
+  NODE_DIED = 23;
 }
 
 /// The information per ray error type.
@@ -208,10 +212,38 @@ message RayErrorInfo {
     RuntimeEnvFailedContext runtime_env_setup_failed_error = 3;
     string error_message = 4;
   }
+  // The type of error that caused the exception.
+  optional ErrorType error_type = 11;
 }
 
-/// The task exception encapsulates all information about task
-/// execution execeptions.
+message OutOfMemoryErrorContext {
+  // The task id of the task evicted due to node running out of memory.
+  bytes task_id = 1;
+  // The task name of the task evicted due to node running out of memory.
+  string task_name = 2;
+  // The IP address of the node that was running the task.
+  string node_ip_address = 3;
+  // The memory used by the node.
+  uint64 memory_used_bytes = 4;
+  // The memory total by the node.
+  uint64 memory_total_bytes = 5;
+  // The fraction of memory used, i.e. used / total.
+  double memory_usage_fraction = 6;
+  // The threshold when task will be evicted to free up memory.
+  double memory_threshold = 7;
+}
+
+message NodeDiedErrorContext {
+  // The id of the node that died.
+  bytes node_id = 1;
+  // The IP address of the node that died.
+  string node_ip_address = 2;
+}
+
+/// The task exception encapsulates the information about task
+/// execution execeptions. This should be used by the frontend
+/// to represent a user application error. Errors originating from the
+/// backend such as from the raylet should be propagated as RayErrorInfo.
 message RayException {
   // Language of this exception.
   Language language = 1;

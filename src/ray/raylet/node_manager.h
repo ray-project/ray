@@ -25,6 +25,7 @@
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
+#include "ray/common/task/task_util.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/object_manager/object_manager.h"
@@ -275,15 +276,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Handler for the addition or updation of a resource in the GCS
   /// \param node_id ID of the node that created or updated resources.
   /// \param createUpdatedResources Created or updated resources.
-  /// \return Void.
-  void ResourceCreateUpdated(const NodeID &node_id,
+  /// \return Whether the update is applied.
+  bool ResourceCreateUpdated(const NodeID &node_id,
                              const ResourceRequest &createUpdatedResources);
 
   /// Handler for the deletion of a resource in the GCS
   /// \param node_id ID of the node that deleted resources.
   /// \param resource_names Names of deleted resources.
-  /// \return Void.
-  void ResourceDeleted(const NodeID &node_id,
+  /// \return Whether the deletion is applied.
+  bool ResourceDeleted(const NodeID &node_id,
                        const std::vector<std::string> &resource_names);
 
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
@@ -309,13 +310,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param id The ID of the node manager that sent the resources data.
   /// \param data The resources data including load information.
-  /// \return Void.
-  void UpdateResourceUsage(const NodeID &id, const rpc::ResourcesData &data);
-
-  /// Handler for a resource usage batch notification from the GCS
-  ///
-  /// \param resource_usage_batch The batch of resource usage data.
-  void ResourceUsageBatchReceived(const ResourceUsageBatchData &resource_usage_batch);
+  /// \return Whether the node resource usage is updated.
+  bool UpdateResourceUsage(const NodeID &id, const rpc::ResourcesData &data);
 
   /// Handle a worker finishing its assigned task.
   ///
@@ -614,17 +610,22 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::GetSystemConfigReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `HandleGetTasksInfo` request.
+  /// Handle a `GetTasksInfo` request.
   void HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
                           rpc::GetTasksInfoReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `HandleGetObjectsInfo` request.
+  /// Handle a `GetTaskFailureCause` request.
+  void HandleGetTaskFailureCause(const rpc::GetTaskFailureCauseRequest &request,
+                                 rpc::GetTaskFailureCauseReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `GetObjectsInfo` request.
   void HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request,
                             rpc::GetObjectsInfoReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `HandleGCSRestart` request
+  /// Handle a `NotifyGCSRestart` request
   void HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &request,
                               rpc::NotifyGCSRestartReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
@@ -688,6 +689,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Creates the callback used in the memory monitor.
   MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
+
+  /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
+  /// function post TTL.
+  void SetTaskFailureReason(const TaskID &task_id,
+                            const rpc::RayErrorInfo &failure_reason);
+
+  /// Checks the expiry time of the task failures and garbage collect them.
+  void GCTaskFailureReason();
 
   /// ID of this node.
   NodeID self_node_id_;
@@ -764,9 +773,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Map of workers leased out to direct call clients.
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
 
-  /// Map from owner worker ID to a list of worker IDs that the owner has a
-  /// lease on.
-  absl::flat_hash_map<WorkerID, std::vector<WorkerID>> leased_workers_by_owner_;
+  /// Optional extra information about why the task failed.
+  absl::flat_hash_map<TaskID, ray::TaskFailureEntry> task_failure_reasons_;
 
   /// Whether to trigger global GC in the next resource usage report. This will broadcast
   /// a global GC message to all raylets except for this one.
