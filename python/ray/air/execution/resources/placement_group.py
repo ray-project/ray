@@ -1,6 +1,6 @@
 import time
 from collections import defaultdict
-from typing import Dict, Optional, List, Set
+from typing import Dict, Optional, List, Set, Union
 
 from dataclasses import dataclass
 
@@ -15,17 +15,37 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 class PlacementGroupReadyResource(ReadyResource):
     placement_group: PlacementGroup
 
-    def annotate_remote_objects(self, objects):
-        head_bundle = self.request.bundles[0].copy()
-        num_cpus = head_bundle.pop("CPU", 0)
-        num_gpus = head_bundle.pop("GPU", 0)
-        return objects[0].options(
-            scheduling_strategy=PlacementGroupSchedulingStrategy(
-                placement_group=self.placement_group, placement_group_bundle_index=0
-            ),
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-        )
+    def annotate_remote_objects(
+        self, objects
+    ) -> List[Union[ray.ObjectRef, ray.actor.ActorHandle]]:
+        # With an empty head, the second bundle should live in the
+        # actual PG's first bundle, so we start counting from -1
+        if self.request.head_bundle_is_empty:
+            start = -1
+        else:
+            start = 0
+
+        annotated = []
+        for i, (obj, bundle) in enumerate(
+            zip(objects, self.request.bundles), start=start
+        ):
+            bundle = bundle.copy()
+            num_cpus = bundle.pop("CPU", 0)
+            num_gpus = bundle.pop("GPU", 0)
+
+            annotated.append(
+                obj.options(
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=self.placement_group,
+                        # Max ensures that empty head bundles are correctly placed
+                        placement_group_bundle_index=max(0, i),
+                    ),
+                    num_cpus=num_cpus,
+                    num_gpus=num_gpus,
+                    resources=bundle,
+                )
+            )
+        return annotated
 
 
 class PlacementGroupResourceManager(ResourceManager):
@@ -42,9 +62,6 @@ class PlacementGroupResourceManager(ResourceManager):
 
         self._staging_future_to_pg: Dict[ray.ObjectRef, PlacementGroup] = dict()
         self._pg_to_staging_future: Dict[PlacementGroup, ray.ObjectRef] = dict()
-
-        self._staged_pgs: Set[PlacementGroup] = set()
-        self._ready_pgs: Set[PlacementGroup] = set()
         self._acquired_pgs: Set[PlacementGroup] = set()
 
         self._update_interval = update_interval
@@ -75,14 +92,13 @@ class PlacementGroupResourceManager(ResourceManager):
             self._request_to_staged_pgs[request].remove(pg)
             self._request_to_ready_pgs[request].add(pg)
 
-            self._staged_pgs.remove(pg)
-            self._ready_pgs.add(pg)
-
     def request_resources(self, resources: ResourceRequest):
-        pg = placement_group(resources.bundles)
+        if resources.head_bundle_is_empty:
+            pg = placement_group(resources.bundles[1:])
+        else:
+            pg = placement_group(resources.bundles)
         self._pg_to_request[pg] = resources
         self._request_to_staged_pgs[resources].add(pg)
-        self._staged_pgs.add(pg)
 
         future = pg.ready()
         self._staging_future_to_pg[future] = pg
@@ -93,7 +109,6 @@ class PlacementGroupResourceManager(ResourceManager):
             pg = self._request_to_staged_pgs[resources].pop()
 
             # PG was staging
-            self._staged_pgs.remove(pg)
             future = self._pg_to_staging_future.pop(pg)
             self._staging_future_to_pg.pop(future)
         else:
@@ -104,8 +119,6 @@ class PlacementGroupResourceManager(ResourceManager):
                     "Cannot cancel resource request: No placement group was "
                     f"staged or is ready. Request: {resources}"
                 )
-
-            self._ready_pgs.remove(pg)
 
         self._pg_to_request.pop(pg)
 
@@ -123,8 +136,6 @@ class PlacementGroupResourceManager(ResourceManager):
             return None
 
         pg = self._request_to_ready_pgs[resources].pop()
-
-        self._ready_pgs.remove(pg)
         self._acquired_pgs.add(pg)
 
         return self._resource_cls(placement_group=pg, request=resources)
@@ -136,7 +147,6 @@ class PlacementGroupResourceManager(ResourceManager):
         request = self._pg_to_request[pg]
 
         self._acquired_pgs.remove(pg)
-        self._ready_pgs.add(pg)
         self._request_to_ready_pgs[request].add(pg)
 
         if cancel_request:

@@ -11,9 +11,29 @@ class ResourceRequest:
     """
 
     bundles: List[Dict[str, float]]
+    strategy: str = "PACK"
 
     def __hash__(self):
-        return hash(tuple(frozenset(bundle.items()) for bundle in self.bundles))
+        return hash(
+            tuple(frozenset(bundle.items()) for bundle in self.bundles)
+            + (self.strategy,)
+        )
+
+    @property
+    def head_bundle_is_empty(self):
+        """Returns True if head bundle is empty while child bundles
+        need resources.
+
+        This is considered an internal API within Ray AIR.
+        """
+        return not bool(sum(self.bundles[0].values()))
+
+    def __post_init__(self):
+        if self.head_bundle_is_empty and not self.bundles[1:]:
+            raise ValueError(
+                "Cannot initialize a ResourceRequest with an empty head "
+                "and zero worker bundles."
+            )
 
 
 @dataclass

@@ -5,7 +5,8 @@ from ray.air.execution.resources.placement_group import PlacementGroupResourceMa
 from ray.air.execution.resources.request import ResourceRequest
 
 REQUEST_2_CPU = ResourceRequest([{"CPU": 2}])
-REQUEST_4_CPU = ResourceRequest([{"CPU": 4}])
+REQUEST_1_2_CPU = ResourceRequest([{"CPU": 1}, {"CPU": 2}])
+REQUEST_0_2_CPU = ResourceRequest([{"CPU": 0}, {"CPU": 2}])
 
 
 @pytest.fixture
@@ -95,6 +96,61 @@ def test_acquire_unavailable(ray_start_4_cpus):
     manager.request_resources(REQUEST_2_CPU)
     ray.wait(manager.get_resource_futures(), num_returns=1)
     assert manager.acquire_resources(REQUEST_2_CPU)
+
+
+def test_bind_two_bundles(ray_start_4_cpus):
+    manager = PlacementGroupResourceManager(update_interval=0)
+    manager.request_resources(REQUEST_1_2_CPU)
+    ray.wait(manager.get_resource_futures(), num_returns=1)
+
+    assert manager.has_resources_ready(REQUEST_1_2_CPU)
+
+    @ray.remote
+    def get_assigned_resources():
+        return ray.get_runtime_context().get_assigned_resources()
+
+    acq = manager.acquire_resources(REQUEST_1_2_CPU)
+    [av1] = acq.annotate_remote_objects([get_assigned_resources])
+
+    res1 = ray.get(av1.remote())
+
+    assert sum(v for k, v in res1.items() if k.startswith("CPU_group_0")) == 1
+
+    [av1, av2] = acq.annotate_remote_objects(
+        [get_assigned_resources, get_assigned_resources]
+    )
+
+    res1, res2 = ray.get([av1.remote(), av2.remote()])
+    assert sum(v for k, v in res1.items() if k.startswith("CPU_group_0")) == 1
+    assert sum(v for k, v in res2.items() if k.startswith("CPU_group_1")) == 2
+
+
+def test_bind_empty_head_bundle(ray_start_4_cpus):
+    manager = PlacementGroupResourceManager(update_interval=0)
+    assert REQUEST_0_2_CPU.head_bundle_is_empty
+    manager.request_resources(REQUEST_0_2_CPU)
+    ray.wait(manager.get_resource_futures(), num_returns=1)
+
+    assert manager.has_resources_ready(REQUEST_0_2_CPU)
+
+    @ray.remote
+    def get_assigned_resources():
+        return ray.get_runtime_context().get_assigned_resources()
+
+    acq = manager.acquire_resources(REQUEST_0_2_CPU)
+    [av1] = acq.annotate_remote_objects([get_assigned_resources])
+
+    res1 = ray.get(av1.remote())
+
+    assert sum(v for k, v in res1.items() if k.startswith("CPU_group_0")) == 0
+
+    [av1, av2] = acq.annotate_remote_objects(
+        [get_assigned_resources, get_assigned_resources]
+    )
+
+    res1, res2 = ray.get([av1.remote(), av2.remote()])
+    assert sum(v for k, v in res1.items() if k.startswith("CPU_group_0")) == 0
+    assert sum(v for k, v in res2.items() if k.startswith("CPU_group_0")) == 2
 
 
 if __name__ == "__main__":

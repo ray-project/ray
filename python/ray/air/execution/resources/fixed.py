@@ -1,4 +1,4 @@
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Union
 
 from dataclasses import dataclass
 
@@ -21,13 +21,36 @@ def _sum_bundle_resources(bundles: List[Dict[str, float]]) -> Dict[str, float]:
 class FixedReadyResource(ReadyResource):
     bundles: List[Dict[str, float]]
 
-    def annotate_remote_objects(self, objects):
-        all_resources = _sum_bundle_resources(self.bundles)
-        num_cpus = all_resources.pop("CPU", 0)
-        num_gpus = all_resources.pop("GPU", 0)
-        return objects[0].options(
-            num_cpus=num_cpus, num_gpus=num_gpus, resources=all_resources
-        )
+    def annotate_remote_objects(
+        self, objects
+    ) -> List[Union[ray.ObjectRef, ray.actor.ActorHandle]]:
+        if len(objects) == 1:
+            all_resources = _sum_bundle_resources(self.bundles)
+            num_cpus = all_resources.pop("CPU", 0)
+            num_gpus = all_resources.pop("GPU", 0)
+
+            return [
+                objects[0].options(
+                    num_cpus=num_cpus, num_gpus=num_gpus, resources=all_resources
+                )
+            ]
+
+        if len(objects) != len(self.bundles):
+            raise RuntimeError(
+                f"Cannot annotate {len(objects)} remote objects with "
+                f"{len(self.bundles)} bundles (lengths must be the same)."
+            )
+
+        annotated = []
+        for obj, bundle in zip(objects, self.bundles):
+            bundle = bundle.copy()
+            num_cpus = bundle.pop("CPU", 0)
+            num_gpus = bundle.pop("GPU", 0)
+
+            annotated.append(
+                obj.options(num_cpus=num_cpus, num_gpus=num_gpus, resources=bundle)
+            )
+        return annotated
 
 
 class FixedResourceManager(ResourceManager):

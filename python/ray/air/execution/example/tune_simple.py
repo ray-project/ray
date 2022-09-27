@@ -1,6 +1,7 @@
 from ray import tune
 from ray.air.execution.impl.tune.progress_loop import tune_run
-from ray.air.execution.resources.fixed import FixedResourceManager
+# from ray.air.execution.resources.fixed import FixedResourceManager
+from ray.air.execution.resources.placement_group import PlacementGroupResourceManager
 from ray.tune.search import BasicVariantGenerator
 
 
@@ -19,5 +20,6 @@ tune_run(
         "fail": tune.grid_search([True, False]),
     },
     search_alg=BasicVariantGenerator(max_concurrent=4),
-    resource_manager=FixedResourceManager(total_resources={"CPU": 4}),
+    # resource_manager=FixedResourceManager(total_resources={"CPU": 4}),
+    resource_manager=PlacementGroupResourceManager(),
 )

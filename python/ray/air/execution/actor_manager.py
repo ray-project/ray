@@ -334,7 +334,7 @@ class ActorManager:
                     actor_request.resources
                 )
                 remote_actor_cls = ray.remote(actor_request.cls)
-                annotated_actor_cls = ready_resource.annotate_remote_objects(
+                [annotated_actor_cls] = ready_resource.annotate_remote_objects(
                     [remote_actor_cls]
                 )
                 actor = annotated_actor_cls.remote(**actor_request.kwargs)
