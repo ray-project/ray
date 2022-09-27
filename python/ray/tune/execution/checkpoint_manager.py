@@ -72,10 +72,8 @@ class _CheckpointManager(CommonCheckpointManager):
             )
             self._process_persistent_checkpoint(checkpoint)
 
-    def on_checkpoint(self, checkpoint: _TrackedCheckpoint, force: bool = False):
+    def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
         """Ray Tune's entrypoint"""
-        if force:
-            checkpoint.set_forced_bit(True)
         # Todo (krfricke): Replace with handle_checkpoint.
         self.handle_checkpoint(checkpoint)
 
@@ -102,12 +100,10 @@ class _CheckpointManager(CommonCheckpointManager):
     @property
     def newest_checkpoint(self):
         """Returns the newest checkpoint (based on training iteration)."""
-        checkpoints = [self.newest_memory_checkpoint, self.newest_persistent_checkpoint]
-        # Always prefer forced checkpoints
-        # If multiple are forced, take the one with the highest checkpoint id
-        checkpoints.sort(key=lambda c: c.id)
-        checkpoints.sort(key=lambda c: c.forced)
-        newest_checkpoint = checkpoints[-1]
+        newest_checkpoint = max(
+            [self.newest_persistent_checkpoint, self.newest_memory_checkpoint],
+            key=lambda c: c.id,
+        )
         return newest_checkpoint
 
     @property

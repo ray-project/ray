@@ -711,10 +711,7 @@ class PopulationBasedTraining(FIFOScheduler):
             trial_runner.pause_trial(trial, should_checkpoint=False)
         trial.set_experiment_tag(new_tag)
         trial.set_config(new_config)
-        # Create a shallow copy to keep forced bit modifications isolated, while
-        # avoiding copying the underlying `dir_or_data`
-        exploit_checkpoint = copy.copy(new_state.last_checkpoint)
-        trial.on_checkpoint(exploit_checkpoint, force=True)
+        trial.on_checkpoint(new_state.last_checkpoint)
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
