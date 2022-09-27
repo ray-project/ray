@@ -366,6 +366,7 @@ ray.get(a)
     )
 
 
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on macos")
 def test_pull_manager_stats(shutdown_only):
     info = ray.init(num_cpus=2, object_store_memory=100_000_000, **METRIC_CONFIG)
 
