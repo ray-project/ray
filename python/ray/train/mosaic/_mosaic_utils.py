@@ -31,6 +31,7 @@ class _mosaic_iterator:
         next_data = next(self.batch_iter)
         return [next_data[label] for label in self.labels]
 
+
 class _ray_dataset_mosaic_iterable:
     """A wrapper that provides an iterator over Ray Dataset for training Composer models.
 
@@ -63,6 +64,7 @@ class _ray_dataset_mosaic_iterable:
     def __iter__(self):
         return _mosaic_iterator(self.dataset, self.batch_size, self.labels)
 
+
 def process_datasets(
     train_dataset: Dataset, eval_dataset: Dataset, batch_size, labels
 ) -> Tuple["Iterable", "Iterable"]:
@@ -79,6 +81,7 @@ def process_datasets(
         eval_torch_iterable = None
 
     return train_torch_iterable, eval_torch_iterable
+
 
 class RayLogger(LoggerDestination):
     """A logger to relay information logged by composer models to ray.
