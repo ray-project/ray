@@ -201,11 +201,10 @@ class ApexDDPG(DDPG, ApexDQN):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
-        if self.config["_disable_execution_plan_api"]:
-            self._sampling_actor_manager.remove_workers(
-                removed_workers, remove_in_flight_requests=True
-            )
-            self._sampling_actor_manager.add_workers(new_workers)
+        self._sampling_actor_manager.remove_workers(
+            removed_workers, remove_in_flight_requests=True
+        )
+        self._sampling_actor_manager.add_workers(new_workers)
 
     @staticmethod
     @override(DDPG)
@@ -224,7 +223,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.ddpg.apex.APEX_DDPG_DEFAULT_CONFIG",
         new="ray.rllib.algorithms.apex_ddpg.apex_ddpg::ApexDDPGConfig(...)",
-        error=True,
+        error=False,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

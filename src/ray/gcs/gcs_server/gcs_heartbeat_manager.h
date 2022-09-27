@@ -45,12 +45,12 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
       std::function<void(const NodeID &)> on_node_death_callback);
 
   /// Handle heartbeat rpc come from raylet.
-  void HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &request,
+  void HandleReportHeartbeat(rpc::ReportHeartbeatRequest request,
                              rpc::ReportHeartbeatReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle check alive request for GCS.
-  void HandleCheckAlive(const rpc::CheckAliveRequest &request,
+  void HandleCheckAlive(rpc::CheckAliveRequest request,
                         rpc::CheckAliveReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
 

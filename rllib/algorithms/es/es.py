@@ -511,7 +511,7 @@ class ES(Algorithm):
             return action[0], [], {}
         return action[0]
 
-    @Deprecated(new="compute_single_action", error=True)
+    @Deprecated(new="compute_single_action", error=False)
     def compute_action(self, observation, *args, **kwargs):
         return self.compute_single_action(observation, *args, **kwargs)
 
@@ -576,7 +576,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.es.es.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.es.es.ESConfig(...)",
-        error=True,
+        error=False,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)
