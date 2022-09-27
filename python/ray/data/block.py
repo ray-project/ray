@@ -118,7 +118,7 @@ BatchUDF = Union[
     # UDF type.
     # Callable[[DataBatch, ...], DataBatch]
     Callable[[DataBatch], DataBatch],
-    _CallableClassProtocol,
+    "_CallableClassProtocol",
 ]
 
 # A UDF on data rows.
@@ -127,7 +127,7 @@ RowUDF = Union[
     # UDF type.
     # Callable[[T, ...], U]
     Callable[[T], U],
-    _CallableClassProtocol[T, U],
+    "_CallableClassProtocol[T, U]",
 ]
 
 # A list of block references pending computation by a single task. For example,

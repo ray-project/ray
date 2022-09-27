@@ -98,15 +98,13 @@ def train_loop_per_worker(config):
             ],
         )
 
-    results = []
     for _ in range(epochs):
         tf_dataset = to_tf_dataset(dataset=train_data, batch_size=batch_size)
-        history = multi_worker_model.fit(
+        multi_worker_model.fit(
             tf_dataset,
             callbacks=[KerasCallback()],
             verbose=0,
         )
-    return results
 
 
 num_features = len(train_dataset.schema().names) - 1
