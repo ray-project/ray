@@ -1,0 +1,28 @@
+diff --git BUILD.boost BUILD.boost
+index bd52876..692a6de 100644
+--- BUILD.boost
++++ BUILD.boost
+@@ -807,6 +807,23 @@ boost_library(
+     ],
+ )
+
++boost_library(
++    name = "flyweight",
++    deps = [
++        ":core",
++        ":detail",
++        ":interprocess",
++        ":mpl",
++        ":multi_index",
++        ":parameter",
++        ":preprocessor",
++        ":serialization",
++        ":smart_ptr",
++        ":throw_exception",
++        ":type_traits",
++    ],
++)
++
+ boost_library(
+     name = "foreach",
+     deps = [
