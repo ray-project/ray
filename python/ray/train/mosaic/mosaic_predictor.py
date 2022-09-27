@@ -26,8 +26,8 @@ class MosaicPredictor(BatchPredictor):
     ):
         """
         This function creates a BatchPredictor from a saved Composer checkpoint.
-        Because Composer library is built on PyTorch, `TorchPredictor` is used
-        as the `predictor_cls`
+        Because Composer library is built on PyTorch, ``TorchPredictor`` is used
+        as the ``predictor_cls``
 
         Args:
             path: Path to the saved checkpoint object
