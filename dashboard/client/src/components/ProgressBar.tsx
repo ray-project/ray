@@ -151,6 +151,7 @@ export const ProgressBar = ({
               width,
               backgroundColor: color,
             }}
+            data-testid="progress-bar-segment"
           />
         ))}
       </div>

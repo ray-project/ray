@@ -1,4 +1,4 @@
-import { blue, blueGrey, grey, lightBlue } from "@material-ui/core/colors";
+import { blueGrey, grey, lightBlue } from "@material-ui/core/colors";
 import { createMuiTheme } from "@material-ui/core/styles";
 
 const basicTheme = {

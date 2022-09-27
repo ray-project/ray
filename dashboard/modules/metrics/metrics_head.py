@@ -1,3 +1,4 @@
+from typing import Optional
 import aiohttp
 import logging
 import os
@@ -47,9 +48,9 @@ prometheus_metric_map = {
 
 
 class MetricsHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head):
+    def __init__(self, dashboard_head, http_session: Optional[aiohttp.ClientSession] = None):
         super().__init__(dashboard_head)
-        self.http_session = aiohttp.ClientSession()
+        self.http_session = http_session or aiohttp.ClientSession()
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
@@ -60,7 +61,13 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/progress")
     async def get_progress(self, req):
-        query = "sum(ray_tasks) by (State)"
+        """
+        Fetches the progress of tasks by job id. If job_id is not provided,
+        then we will fetch the progress across all jobs.
+        """
+        job_id = req.query.get("job_id")
+        job_id_query = f'{{JobId="{job_id}"}}' if job_id else ""
+        query = f"sum(ray_tasks{job_id_query}) by (State)"
         async with self.http_session.get(
             f"{self.prometheus_host}/api/v1/query?query={quote(query)}"
         ) as resp:
@@ -87,8 +94,8 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 message = await resp.text()
                 return dashboard_optional_utils.rest_response(
                     success=False,
-                    message=f"Error fetching data from prometheus. "
-                    "status: {resp.status}, message: {message}",
+                    message="Error fetching data from prometheus. "
+                    f"status: {resp.status}, message: {message}",
                 )
 
     @staticmethod

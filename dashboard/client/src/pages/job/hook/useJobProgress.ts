@@ -2,7 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getJobProgress } from "../../../service/job";
 import { TaskProgress } from "../../../type/job";
 
-export const useJobProgress = () => {
+/**
+ * Hook for fetching a job's task progress.
+ * Refetches every 4 seconds unless refresh switch is toggled off.
+ *
+ * If jobId is not provided, will fetch the task progress across all jobs.
+ * @param jobId The id of the job whose task progress to fetch or undefined
+ *              to fetch all progress for all jobs
+ */
+export const useJobProgress = (jobId?: string) => {
   const [progress, setProgress] = useState<TaskProgress>();
   const [msg, setMsg] = useState("Loading progress...");
   const [isRefreshing, setRefresh] = useState(true);
@@ -16,7 +24,7 @@ export const useJobProgress = () => {
     if (!refreshRef.current) {
       return;
     }
-    const rsp = await getJobProgress();
+    const rsp = await getJobProgress(jobId);
 
     if (rsp) {
       setProgress(rsp.data.data.detail);
@@ -24,7 +32,7 @@ export const useJobProgress = () => {
     }
 
     tot.current = setTimeout(getProgress, 4000);
-  }, []);
+  }, [jobId]);
 
   useEffect(() => {
     getProgress();

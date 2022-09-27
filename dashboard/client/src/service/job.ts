@@ -9,6 +9,7 @@ export const getJobDetail = (id: string) => {
   return get<JobDetailRsp>(`jobs/${id}`);
 };
 
-export const getJobProgress = () => {
-  return get<JobProgressRsp>("api/progress");
+export const getJobProgress = (jobId?: string) => {
+  const jobIdQuery = jobId ? `?job_id=${jobId}` : "";
+  return get<JobProgressRsp>(`api/progress${jobIdQuery}`);
 };

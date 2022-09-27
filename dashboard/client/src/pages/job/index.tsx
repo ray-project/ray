@@ -9,15 +9,13 @@ import {
 } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import Pagination from "@material-ui/lab/Pagination";
-import dayjs from "dayjs";
 import React from "react";
-import { Link } from "react-router-dom";
 import Loading from "../../components/Loading";
-import { ProgressBar } from "../../components/ProgressBar";
 import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
 import { useJobList } from "./hook/useJobList";
 import { useJobProgress } from "./hook/useJobProgress";
+import { JobRow } from "./JobRow";
 import { TaskProgressBar } from "./TaskProgressBar";
 
 const useStyles = makeStyles((theme) => ({
@@ -31,6 +29,7 @@ const columns = [
   "Job ID",
   "Submission ID",
   "Status",
+  "Progress",
   "Logs",
   "StartTime",
   "EndTime",
@@ -47,7 +46,6 @@ const JobList = () => {
     changeFilter,
     page,
     setPage,
-    ipLogMap,
   } = useJobList();
 
   const { progress, onSwitchChange: onProgressSwitchChange } = useJobProgress();
@@ -107,64 +105,12 @@ const JobList = () => {
                   (page.pageNo - 1) * page.pageSize,
                   page.pageNo * page.pageSize,
                 )
-                .map(
-                  (
-                    {
-                      job_id,
-                      submission_id,
-                      driver_info,
-                      type,
-                      status,
-                      start_time,
-                      end_time,
-                    },
-                    index,
-                  ) => (
-                    <TableRow key={job_id ?? submission_id ?? index}>
-                      <TableCell align="center">{job_id ?? "-"}</TableCell>
-                      <TableCell align="center">
-                        {submission_id ?? "-"}
-                      </TableCell>
-                      <TableCell align="center">{status}</TableCell>
-                      <TableCell align="center">
-                        {/* TODO(aguo): Also show logs for the job id instead
-                        of just the submission's logs */}
-                        {driver_info &&
-                        ipLogMap[driver_info.node_ip_address] ? (
-                          <Link
-                            to={`/log/${encodeURIComponent(
-                              ipLogMap[driver_info.node_ip_address],
-                            )}?fileName=${
-                              type === "DRIVER"
-                                ? job_id
-                                : `driver-${submission_id}`
-                            }`}
-                            target="_blank"
-                          >
-                            Log
-                          </Link>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell align="center">
-                        {dayjs(Number(start_time)).format(
-                          "YYYY/MM/DD HH:mm:ss",
-                        )}
-                      </TableCell>
-                      <TableCell align="center">
-                        {end_time && end_time > 0
-                          ? dayjs(Number(end_time)).format(
-                              "YYYY/MM/DD HH:mm:ss",
-                            )
-                          : "-"}
-                      </TableCell>
-                      <TableCell align="center">
-                        {driver_info?.pid ?? "-"}
-                      </TableCell>
-                    </TableRow>
-                  ),
-                )}
+                .map((job, index) => {
+                  const { job_id, submission_id } = job;
+                  return (
+                    <JobRow key={job_id ?? submission_id ?? index} job={job} />
+                  );
+                })}
             </TableBody>
           </Table>
         </TableContainer>
