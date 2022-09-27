@@ -13,6 +13,7 @@ from ray._private.test_utils import (
     fetch_prometheus_metrics,
     wait_for_condition,
     run_string_as_driver,
+    run_string_as_driver_nonblocking,
 )
 
 
@@ -284,11 +285,17 @@ def test_pull_manager_stats(shutdown_only):
 def test_task_job_ids(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
-    @ray.remote(num_cpus=0)
-    def f():
-        time.sleep(999)
-
-    a = [f.remote() for _ in range(1)]  # noqa
+    driver = """
+import ray
+import time
+ray.init("auto")
+@ray.remote(num_cpus=0)
+def f():
+    time.sleep(999)
+a = [f.remote() for _ in range(1)]
+ray.get(a)
+"""
+    procs = [run_string_as_driver_nonblocking(driver) for _ in range(3)]
     expected = {
         "RUNNING": 3.0,
     }
@@ -303,6 +310,9 @@ def test_task_job_ids(shutdown_only):
         jobs_at_state[sample.labels["State"]].add(sample.labels["JobId"])
     print("Jobs at state: {}".format(jobs_at_state))
     assert len(jobs_at_state["RUNNING"]) == 3, jobs_at_state
+
+    for proc in procs:
+        proc.kill()
 
 
 if __name__ == "__main__":
