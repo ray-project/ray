@@ -304,9 +304,35 @@ to a new function that maps our five agents to only the two remaining policies:
 Model Exports
 -------------
 
-Apart from creating checkpoints for your RLlib objects, such as an RLlib
+Apart from creating checkpoints for your RLlib objects (such as an RLlib
 :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or
-an individual RLlib :py:class:`~ray.rllib.policy.policy.Policy`
+an individual RLlib :py:class:`~ray.rllib.policy.policy.Policy`), it may also be very useful
+to only export your NN models in their native (non-RLlib dependent) format, for example
+as a keras- or PyTorch model.
+You could then use the trained NN models outside
+of RLlib, e.g. for serving purposes in your production environments.
 
 How do I export my NN Model?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+There are several ways of creating Keras- or PyTorch native model "exports".
+
+Here is the example code that illustrates these:
+
+.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+    :language: python
+    :start-after: __export-models-begin__
+    :end-before: __export-models-end__
+
+And what about exporting my NN Models in ONNX format?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+RLlib also supports exporting your NN models in the ONNX format. For that, use the
+:py:class:`~ray.rllib.policy.policy.Policy` ``export_model`` method, but provide the
+extra ``onnx`` arg as follows:
+
+
+.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+    :language: python
+    :start-after: __export-models-as-onnx-begin__
+    :end-before: __export-models-as-onnx-end__

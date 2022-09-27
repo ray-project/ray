@@ -126,6 +126,9 @@ print(f"Computed action {action} from given CartPole observation.")
 
 # __restore-algorithm-from-checkpoint-with-fewer-policies-begin__
 
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+
 # Set up an Algorithm with 5 Policies.
 algo_w_5_policies = PPOConfig().\
     environment(
@@ -139,7 +142,7 @@ algo_w_5_policies = PPOConfig().\
         # Map "agent0" -> "pol0", etc...
         policy_mapping_fn=(
             lambda agent_id, episode, worker, **kwargs:
-            f"pol{agent_id[-1]}"
+            f"pol{agent_id}"
         )
     ).build()
 
@@ -174,3 +177,72 @@ algo_w_2_policies.train()
 algo_w_2_policies.stop()
 
 # __restore-algorithm-from-checkpoint-with-fewer-policies-end__
+
+
+# __export-models-begin__
+
+from ray.rllib.algorithms.ppo import PPOConfig
+
+# Create a new Algorithm (which contains a Policy, which contains a NN Model).
+# Switch on for native models to be included in the Policy checkpoints.
+ppo_config = PPOConfig().\
+    environment("Pendulum-v1").\
+    checkpointing(checkpoints_contain_native_model_files=True)
+
+# The default framework is TensorFlow, but if you would like to do this example with
+# PyTorch, uncomment the following line of code:
+# ppo_config.framework("torch")
+
+# Create the Algorithm and train one iteration.
+ppo = ppo_config.build()
+ppo.train()
+
+# Get the underlying PPOTF1Policy (or PPOTorchPolicy) object.
+ppo_policy = ppo.get_policy()
+
+# Export the Keras NN model (that our PPOTF1Policy inside the PPO Algorithm uses)
+# to disk ...
+
+# 1) .. using the Policy object:
+ppo_policy.export_model("/tmp/my_nn_model")
+# .. check /tmp/my_nn_model/ for the keras model files. You should be able to recover
+# the keras model via:
+# keras_model = tf.saved_model.load("/tmp/my_nn_model/")
+# And pass in a Pendulum-v1 observation:
+# results = keras_model(tf.convert_to_tensor(np.array([[0.0, 0.1, 0.2]]), dtype=np.float32))
+
+# For PyTorch, do:
+# pytorch_model = torch.load("/tmp/my_nn_model/model.pt")
+# results = pytorch_model(
+#     input_dict={
+#         "obs": torch.from_numpy(np.array([[0.0, 0.1, 0.2]], dtype=np.float32)),
+#     },
+#     state=[torch.tensor(0)],  # dummy value
+#     seq_lens=torch.tensor(0),  # dummy value
+# )
+
+# 2) .. via the Policy's checkpointing method:
+checkpoint_dir = ppo_policy.export_checkpoint("tmp/ppo_policy")
+# .. check /tmp/ppo_policy/model/ for the keras model files. You should be able to recover
+# # the keras model via:
+# # keras_model = tf.saved_model.load("/tmp/ppo_policy/model")
+# # And pass in a Pendulum-v1 observation:
+# # results = keras_model(tf.convert_to_tensor(np.array([[0.0, 0.1, 0.2]]), dtype=np.float32))
+
+# 3) .. via the Algorithm (Policy) checkpoint:
+checkpoint_dir = ppo.save()
+# .. check `checkpoint_dir` for the Algorithm checkpoint files.
+# You should be able to recover the keras model via:
+# keras_model = tf.saved_model.load(checkpoint_dir + "/policies/default_policy/model/")
+# And pass in a Pendulum-v1 observation
+# results = keras_model(tf.convert_to_tensor(np.array([[0.0, 0.1, 0.2]]), dtype=np.float32))
+
+# __export-models-end__
+
+
+# __export-models-as-onnx-begin__
+
+# Using the same Policy object, we can also export our NN Model in the ONNX format:
+ppo_policy.export_model("/tmp/my_nn_model", onnx=True)
+
+# __export-models-as-onnx-end__
