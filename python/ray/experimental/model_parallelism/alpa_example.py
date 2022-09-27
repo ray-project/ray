@@ -115,6 +115,62 @@ class TrainerActor:
             f"{executable.total_allocation_size() / GB:.2f} GB"
         )
 
+    def benchmark_data_parallel_train_step(self):
+        from functools import partial
+
+        from alpa.util import benchmark_func
+
+        @partial(jax.pmap, axis_name="batch")
+        def pmap_train_step(state, batch):
+            def loss_func(params):
+                out = state.apply_fn(params, batch["x"])
+                loss = jnp.mean((out - batch["y"]) ** 2)
+                return loss
+
+            grads = jax.grad(loss_func)(state.params)
+            # all-reduce gradients
+            grads = jax.lax.pmean(grads, axis_name="batch")
+            new_state = state.apply_gradients(grads=grads)
+            return new_state
+
+        def sync_func():
+            jax.local_devices()[0].synchronize_all_activity()
+
+        # We need this assignment because the original `state_copy` is
+        # "donated" and freed.
+        state = self.state
+        # Replicate model and distribute batch
+        devices = jax.local_devices()
+        state = jax.device_put_replicated(state, devices)
+
+        def shard_batch(x):
+            x = x.reshape((len(devices), -1) + x.shape[1:])
+            return jax.device_put_sharded(list(x), devices)
+
+        batch = jax.tree_map(shard_batch, {"x": self.x, "y": self.y})
+
+        # Benchmark data parallel execution
+        def data_parallel_execution():
+            nonlocal state, batch
+            state = pmap_train_step(state, batch)
+
+        costs = (
+            benchmark_func(
+                data_parallel_execution, sync_func, warmup=5, number=10, repeat=5
+            )
+            * 1e3
+        )
+        print(
+            "Data parallel execution time. Mean: "
+            f"{np.mean(costs):.2f} ms, Std: {np.std(costs):.2f} ms"
+        )
+
+        executable = pmap_train_step.lower(state, batch).compile().runtime_executable()
+        print(
+            "Data parallel execution per GPU memory usage: "
+            f"{executable.total_allocation_size() / GB:.2f} GB"
+        )
+
     def benchmark_alpa_train_step(self):
         import alpa
         from alpa.util import benchmark_func
@@ -153,8 +209,6 @@ class TrainerActor:
 
 
 trainer_actor = TrainerActor.remote()
-ray.get(trainer_actor.init_model.remote())
-
 # ===== uncomment for assert allclose =====
 # expected_state = ray.get(trainer_actor.train_one_step.remote())
 # actual_state = ray.get(trainer_actor.alpa_train_one_step.remote())
@@ -166,17 +220,25 @@ ray.get(trainer_actor.init_model.remote())
 # )
 
 # ===== uncomment for benchmarking =====
-ray.get(trainer_actor.benchmark_alpa_train_step.remote())
+# Avoid buffer donation issue by re-initializing the model.
+ray.get(trainer_actor.init_model.remote())
+ray.get(trainer_actor.benchmark_jit_train_step.remote())
 
-# Avoid buffer donation issue by re-using the same state on same actor
-del trainer_actor
-new_trainer_actor = TrainerActor.remote()
-ray.get(new_trainer_actor.init_model.remote())
-ray.get(new_trainer_actor.benchmark_jit_train_step.remote())
+# Avoid buffer donation issue by re-initializing the model.
+ray.get(trainer_actor.init_model.remote())
+ray.get(trainer_actor.benchmark_data_parallel_train_step.remote())
+
+# Avoid buffer donation issue by re-initializing the model.
+ray.get(trainer_actor.init_model.remote())
+ray.get(trainer_actor.benchmark_alpa_train_step.remote())
 
 # On single g4dn.12xlarge, the result is:
 
-# Alpa execution time.   Mean: 144.74 ms, Std: 0.37 ms
-# Alpa execution per GPU memory usage:   0.81 GB
-# Serial execution time. Mean: 437.60 ms, Std: 3.19 ms
+# Serial execution time. Mean: 429.24 ms, Std: 2.77 ms
 # Serial execution per GPU memory usage: 2.78 GB
+
+# Data parallel execution time. Mean: 317.94 ms, Std: 0.45 ms
+# Data parallel execution per GPU memory usage: 3.76 GB
+
+# Alpa execution time.   Mean: 150.69 ms, Std: 0.66 ms
+# Alpa execution per GPU memory usage:   0.81 GB
