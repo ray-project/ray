@@ -3012,6 +3012,13 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
                 1, "MemoryManager.ActorEviction.Total");
           }
+        } else {
+          const static int64_t max_to_print = 10;
+          auto all_workers = this->WorkersWithLatestSubmittedTasks(
+              /* filter_non_retriable_workers */ false);
+          RAY_LOG(INFO) << "Memory usage above threshold but there are no workers to "
+                           "kill. Worker list including non-retriable tasks: "
+                        << this->WorkersDebugString(all_workers, max_to_print);
         }
       }
     }
@@ -3044,8 +3051,11 @@ void NodeManager::GCTaskFailureReason() {
 }
 
 const std::vector<std::shared_ptr<WorkerInterface>>
-NodeManager::WorkersWithLatestSubmittedTasks() const {
-  auto workers = worker_pool_.GetAllRegisteredWorkers();
+NodeManager::WorkersWithLatestSubmittedTasks(bool filter_non_retriable_workers) const {
+  auto workers = worker_pool_.GetAllRegisteredWorkers(
+      /* filter_dead_worker */ false,
+      /* filter_io_workers */ false,
+      /* filter_non_retriable_workers */ filter_non_retriable_workers);
   std::sort(workers.begin(),
             workers.end(),
             [](std::shared_ptr<WorkerInterface> const &left,
