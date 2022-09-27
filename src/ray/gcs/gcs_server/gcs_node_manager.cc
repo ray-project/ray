@@ -35,7 +35,7 @@ GcsNodeManager::GcsNodeManager(
       gcs_table_storage_(std::move(gcs_table_storage)),
       raylet_client_pool_(std::move(raylet_client_pool)) {}
 
-void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
+void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
                                         rpc::RegisterNodeReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_info().node_id());
@@ -57,7 +57,7 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
   ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
 
-void GcsNodeManager::HandleDrainNode(const rpc::DrainNodeRequest &request,
+void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
                                      rpc::DrainNodeReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
   auto num_drain_request = request.drain_node_data_size();
@@ -134,7 +134,7 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
   RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_put_done));
 }
 
-void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
+void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
                                           rpc::GetAllNodeInfoReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   // Here the unsafe allocate is safe here, because entry.second's life cycle is longer
@@ -151,7 +151,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &requ
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 
-void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
+void GcsNodeManager::HandleGetInternalConfig(rpc::GetInternalConfigRequest request,
                                              rpc::GetInternalConfigReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
   auto get_system_config = [reply, send_reply_callback](

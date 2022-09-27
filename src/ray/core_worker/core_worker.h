@@ -806,106 +806,106 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
 
   /// Implements gRPC server handler.
-  void HandlePushTask(const rpc::PushTaskRequest &request,
+  void HandlePushTask(rpc::PushTaskRequest request,
                       rpc::PushTaskReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleDirectActorCallArgWaitComplete(
-      const rpc::DirectActorCallArgWaitCompleteRequest &request,
+      rpc::DirectActorCallArgWaitCompleteRequest request,
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleRayletNotifyGCSRestart(const rpc::RayletNotifyGCSRestartRequest &request,
+  void HandleRayletNotifyGCSRestart(rpc::RayletNotifyGCSRestartRequest request,
                                     rpc::RayletNotifyGCSRestartReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
+  void HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
                              rpc::GetObjectStatusReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleWaitForActorOutOfScope(const rpc::WaitForActorOutOfScopeRequest &request,
+  void HandleWaitForActorOutOfScope(rpc::WaitForActorOutOfScopeRequest request,
                                     rpc::WaitForActorOutOfScopeReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
   // Implements gRPC server handler.
-  void HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &request,
+  void HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
                                rpc::PubsubLongPollingReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
   // Implements gRPC server handler.
-  void HandlePubsubCommandBatch(const rpc::PubsubCommandBatchRequest &request,
+  void HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,
                                 rpc::PubsubCommandBatchReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
   // Implements gRPC server handler.
   void HandleUpdateObjectLocationBatch(
-      const rpc::UpdateObjectLocationBatchRequest &request,
+      rpc::UpdateObjectLocationBatchRequest request,
       rpc::UpdateObjectLocationBatchReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleGetObjectLocationsOwner(const rpc::GetObjectLocationsOwnerRequest &request,
+  void HandleGetObjectLocationsOwner(rpc::GetObjectLocationsOwnerRequest request,
                                      rpc::GetObjectLocationsOwnerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleKillActor(const rpc::KillActorRequest &request,
+  void HandleKillActor(rpc::KillActorRequest request,
                        rpc::KillActorReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleCancelTask(const rpc::CancelTaskRequest &request,
+  void HandleCancelTask(rpc::CancelTaskRequest request,
                         rpc::CancelTaskReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleRemoteCancelTask(const rpc::RemoteCancelTaskRequest &request,
+  void HandleRemoteCancelTask(rpc::RemoteCancelTaskRequest request,
                               rpc::RemoteCancelTaskReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
+  void HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
                                rpc::PlasmaObjectReadyReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
   /// Get statistics from core worker.
-  void HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
+  void HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request,
                                 rpc::GetCoreWorkerStatsReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
   /// Trigger local GC on this worker.
-  void HandleLocalGC(const rpc::LocalGCRequest &request,
+  void HandleLocalGC(rpc::LocalGCRequest request,
                      rpc::LocalGCReply *reply,
                      rpc::SendReplyCallback send_reply_callback) override;
 
   // Spill objects to external storage.
-  void HandleSpillObjects(const rpc::SpillObjectsRequest &request,
+  void HandleSpillObjects(rpc::SpillObjectsRequest request,
                           rpc::SpillObjectsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
   // Restore objects from external storage.
-  void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
+  void HandleRestoreSpilledObjects(rpc::RestoreSpilledObjectsRequest request,
                                    rpc::RestoreSpilledObjectsReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
   // Delete objects from external storage.
-  void HandleDeleteSpilledObjects(const rpc::DeleteSpilledObjectsRequest &request,
+  void HandleDeleteSpilledObjects(rpc::DeleteSpilledObjectsRequest request,
                                   rpc::DeleteSpilledObjectsReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
   // Make the this worker exit.
   // This request fails if the core worker owns any object.
-  void HandleExit(const rpc::ExitRequest &request,
+  void HandleExit(rpc::ExitRequest request,
                   rpc::ExitReply *reply,
                   rpc::SendReplyCallback send_reply_callback) override;
 
   // Set local worker as the owner of object.
   // Request by borrower's worker, execute by owner's worker.
-  void HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &request,
+  void HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
                                rpc::AssignObjectOwnerReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 

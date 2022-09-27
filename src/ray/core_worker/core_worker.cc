@@ -2623,7 +2623,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
   return Status::OK();
 }
 
-void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
+void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
@@ -2665,7 +2665,7 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
 }
 
 void CoreWorker::HandleDirectActorCallArgWaitComplete(
-    const rpc::DirectActorCallArgWaitCompleteRequest &request,
+    rpc::DirectActorCallArgWaitCompleteRequest request,
     rpc::DirectActorCallArgWaitCompleteReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
@@ -2686,14 +2686,14 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
 }
 
 void CoreWorker::HandleRayletNotifyGCSRestart(
-    const rpc::RayletNotifyGCSRestartRequest &request,
+    rpc::RayletNotifyGCSRestartRequest request,
     rpc::RayletNotifyGCSRestartReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   gcs_client_->AsyncResubscribe();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
+void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
                                        rpc::GetObjectStatusReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
   if (HandleWrongRecipient(WorkerID::FromBinary(request.owner_worker_id()),
@@ -2772,7 +2772,7 @@ void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
 }
 
 void CoreWorker::HandleWaitForActorOutOfScope(
-    const rpc::WaitForActorOutOfScopeRequest &request,
+    rpc::WaitForActorOutOfScopeRequest request,
     rpc::WaitForActorOutOfScopeReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   // Currently WaitForActorOutOfScope is only used when GCS actor service is enabled.
@@ -2893,7 +2893,7 @@ void CoreWorker::ProcessPubsubCommands(const Commands &commands,
   }
 }
 
-void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &request,
+void CoreWorker::HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
                                          rpc::PubsubLongPollingReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
@@ -2902,7 +2902,7 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
       request, reply, std::move(send_reply_callback));
 }
 
-void CoreWorker::HandlePubsubCommandBatch(const rpc::PubsubCommandBatchRequest &request,
+void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,
                                           rpc::PubsubCommandBatchReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
@@ -2911,7 +2911,7 @@ void CoreWorker::HandlePubsubCommandBatch(const rpc::PubsubCommandBatchRequest &
 }
 
 void CoreWorker::HandleUpdateObjectLocationBatch(
-    const rpc::UpdateObjectLocationBatchRequest &request,
+    rpc::UpdateObjectLocationBatchRequest request,
     rpc::UpdateObjectLocationBatchReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const auto &worker_id = request.intended_worker_id();
@@ -3029,7 +3029,7 @@ void CoreWorker::ProcessSubscribeObjectLocations(
 }
 
 void CoreWorker::HandleGetObjectLocationsOwner(
-    const rpc::GetObjectLocationsOwnerRequest &request,
+    rpc::GetObjectLocationsOwnerRequest request,
     rpc::GetObjectLocationsOwnerReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto &object_location_request = request.object_location_request();
@@ -3068,7 +3068,7 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
       object_id, contained_in_id, owner_address, ref_removed_callback);
 }
 
-void CoreWorker::HandleRemoteCancelTask(const rpc::RemoteCancelTaskRequest &request,
+void CoreWorker::HandleRemoteCancelTask(rpc::RemoteCancelTaskRequest request,
                                         rpc::RemoteCancelTaskReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   auto status = CancelTask(ObjectID::FromBinary(request.remote_object_id()),
@@ -3077,7 +3077,7 @@ void CoreWorker::HandleRemoteCancelTask(const rpc::RemoteCancelTaskRequest &requ
   send_reply_callback(status, nullptr, nullptr);
 }
 
-void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
+void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
                                   rpc::CancelTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
@@ -3121,7 +3121,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   }
 }
 
-void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
+void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
                                  rpc::KillActorReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
   ActorID intended_actor_id = ActorID::FromBinary(request.intended_actor_id());
@@ -3152,7 +3152,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
   }
 }
 
-void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
+void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request,
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
@@ -3208,7 +3208,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
+void CoreWorker::HandleLocalGC(rpc::LocalGCRequest request,
                                rpc::LocalGCReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
   if (options_.gc_collect != nullptr) {
@@ -3220,7 +3220,7 @@ void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
   }
 }
 
-void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
+void CoreWorker::HandleSpillObjects(rpc::SpillObjectsRequest request,
                                     rpc::SpillObjectsReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
   if (options_.spill_objects != nullptr) {
@@ -3237,10 +3237,9 @@ void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
   }
 }
 
-void CoreWorker::HandleRestoreSpilledObjects(
-    const rpc::RestoreSpilledObjectsRequest &request,
-    rpc::RestoreSpilledObjectsReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void CoreWorker::HandleRestoreSpilledObjects(rpc::RestoreSpilledObjectsRequest request,
+                                             rpc::RestoreSpilledObjectsReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
   if (options_.restore_spilled_objects != nullptr) {
     // Get a list of object ids.
     std::vector<rpc::ObjectReference> object_refs_to_restore;
@@ -3268,10 +3267,9 @@ void CoreWorker::HandleRestoreSpilledObjects(
   }
 }
 
-void CoreWorker::HandleDeleteSpilledObjects(
-    const rpc::DeleteSpilledObjectsRequest &request,
-    rpc::DeleteSpilledObjectsReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void CoreWorker::HandleDeleteSpilledObjects(rpc::DeleteSpilledObjectsRequest request,
+                                            rpc::DeleteSpilledObjectsReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback) {
   if (options_.delete_spilled_objects != nullptr) {
     std::vector<std::string> spilled_objects_url;
     spilled_objects_url.reserve(request.spilled_objects_url_size());
@@ -3288,7 +3286,7 @@ void CoreWorker::HandleDeleteSpilledObjects(
   }
 }
 
-void CoreWorker::HandleExit(const rpc::ExitRequest &request,
+void CoreWorker::HandleExit(rpc::ExitRequest request,
                             rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {
   bool own_objects = reference_counter_->OwnObjects();
@@ -3315,7 +3313,7 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request,
       });
 }
 
-void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &request,
+void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
                                          rpc::AssignObjectOwnerReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
@@ -3406,7 +3404,7 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
   local_raylet_client_->SubscribeToPlasma(object_id, GetOwnerAddress(object_id));
 }
 
-void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &request,
+void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
                                          rpc::PlasmaObjectReadyReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::function<void(void)>> callbacks;

@@ -677,7 +677,7 @@ void NodeManager::DoLocalGC(bool triggered_by_global_gc) {
 }
 
 void NodeManager::HandleRequestObjectSpillage(
-    const rpc::RequestObjectSpillageRequest &request,
+    rpc::RequestObjectSpillageRequest request,
     rpc::RequestObjectSpillageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const auto &object_id = ObjectID::FromBinary(request.object_id());
@@ -696,10 +696,9 @@ void NodeManager::HandleRequestObjectSpillage(
       });
 }
 
-void NodeManager::HandleReleaseUnusedBundles(
-    const rpc::ReleaseUnusedBundlesRequest &request,
-    rpc::ReleaseUnusedBundlesReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest request,
+                                             rpc::ReleaseUnusedBundlesReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Releasing unused bundles.";
   std::unordered_set<BundleID, pair_hash> in_use_bundles;
   for (int index = 0; index < request.bundles_in_use_size(); ++index) {
@@ -746,7 +745,7 @@ void NodeManager::HandleReleaseUnusedBundles(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
+void NodeManager::HandleGetTasksInfo(rpc::GetTasksInfoRequest request,
                                      rpc::GetTasksInfoReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Received a HandleGetTasksInfo request";
@@ -782,7 +781,7 @@ void NodeManager::HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
       /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
 }
 
-void NodeManager::HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request,
+void NodeManager::HandleGetObjectsInfo(rpc::GetObjectsInfoRequest request,
                                        rpc::GetObjectsInfoReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Received a HandleGetObjectsInfo request";
@@ -817,10 +816,9 @@ void NodeManager::HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request
       /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
 }
 
-void NodeManager::HandleGetTaskFailureCause(
-    const rpc::GetTaskFailureCauseRequest &request,
-    rpc::GetTaskFailureCauseReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest request,
+                                            rpc::GetTaskFailureCauseReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback) {
   const TaskID task_id = TaskID::FromBinary(request.task_id());
   RAY_LOG(DEBUG) << "Received a HandleGetTaskFailureCause request for task " << task_id;
 
@@ -1159,7 +1157,7 @@ bool NodeManager::ResourceDeleted(const NodeID &node_id,
   return true;
 }
 
-void NodeManager::HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &request,
+void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
                                          rpc::NotifyGCSRestartReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   // When GCS restarts, it'll notify raylet to do some initialization work
@@ -1740,10 +1738,9 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
 }
 
-void NodeManager::HandleUpdateResourceUsage(
-    const rpc::UpdateResourceUsageRequest &request,
-    rpc::UpdateResourceUsageReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest request,
+                                            rpc::UpdateResourceUsageReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback) {
   rpc::ResourceUsageBroadcastData resource_usage_batch;
   resource_usage_batch.ParseFromString(request.serialized_resource_usage_batch());
   // When next_resource_seq_no_ == 0 it means it just started.
@@ -1803,7 +1800,7 @@ void NodeManager::HandleUpdateResourceUsage(
 }
 
 void NodeManager::HandleRequestResourceReport(
-    const rpc::RequestResourceReportRequest &request,
+    rpc::RequestResourceReportRequest request,
     rpc::RequestResourceReportReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto resources_data = reply->mutable_resources();
@@ -1813,7 +1810,7 @@ void NodeManager::HandleRequestResourceReport(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::HandleGetResourceLoad(const rpc::GetResourceLoadRequest &request,
+void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
                                         rpc::GetResourceLoadReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   auto resources_data = reply->mutable_resources();
@@ -1823,10 +1820,9 @@ void NodeManager::HandleGetResourceLoad(const rpc::GetResourceLoadRequest &reque
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::HandleReportWorkerBacklog(
-    const rpc::ReportWorkerBacklogRequest &request,
-    rpc::ReportWorkerBacklogReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest request,
+                                            rpc::ReportWorkerBacklogReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback) {
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
   local_task_manager_->ClearWorkerBacklog(worker_id);
   std::unordered_set<SchedulingClass> seen;
@@ -1840,7 +1836,7 @@ void NodeManager::HandleReportWorkerBacklog(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
+void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   rpc::Task task_message;
@@ -1904,7 +1900,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 }
 
 void NodeManager::HandlePrepareBundleResources(
-    const rpc::PrepareBundleResourcesRequest &request,
+    rpc::PrepareBundleResourcesRequest request,
     rpc::PrepareBundleResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
@@ -1920,7 +1916,7 @@ void NodeManager::HandlePrepareBundleResources(
 }
 
 void NodeManager::HandleCommitBundleResources(
-    const rpc::CommitBundleResourcesRequest &request,
+    rpc::CommitBundleResourcesRequest request,
     rpc::CommitBundleResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
@@ -1941,7 +1937,7 @@ void NodeManager::HandleCommitBundleResources(
 }
 
 void NodeManager::HandleCancelResourceReserve(
-    const rpc::CancelResourceReserveRequest &request,
+    rpc::CancelResourceReserveRequest request,
     rpc::CancelResourceReserveReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto bundle_spec = BundleSpecification(request.bundle_spec());
@@ -1983,7 +1979,7 @@ void NodeManager::HandleCancelResourceReserve(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
+void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
                                      rpc::ReturnWorkerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
@@ -2019,7 +2015,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
   send_reply_callback(status, nullptr, nullptr);
 }
 
-void NodeManager::HandleShutdownRaylet(const rpc::ShutdownRayletRequest &request,
+void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
                                        rpc::ShutdownRayletReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO)
@@ -2053,10 +2049,9 @@ void NodeManager::HandleShutdownRaylet(const rpc::ShutdownRayletRequest &request
   send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);
 }
 
-void NodeManager::HandleReleaseUnusedWorkers(
-    const rpc::ReleaseUnusedWorkersRequest &request,
-    rpc::ReleaseUnusedWorkersReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleReleaseUnusedWorkers(rpc::ReleaseUnusedWorkersRequest request,
+                                             rpc::ReleaseUnusedWorkersReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
   std::unordered_set<WorkerID> in_use_worker_ids;
   for (int index = 0; index < request.worker_ids_in_use_size(); ++index) {
     auto worker_id = WorkerID::FromBinary(request.worker_ids_in_use(index));
@@ -2079,7 +2074,7 @@ void NodeManager::HandleReleaseUnusedWorkers(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
+void NodeManager::HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                           rpc::CancelWorkerLeaseReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   const TaskID task_id = TaskID::FromBinary(request.task_id());
@@ -2483,7 +2478,7 @@ bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
   return true;
 }
 
-void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
+void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
                                      rpc::PinObjectIDsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> object_ids;
@@ -2525,14 +2520,14 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::HandleGetSystemConfig(const rpc::GetSystemConfigRequest &request,
+void NodeManager::HandleGetSystemConfig(rpc::GetSystemConfigRequest request,
                                         rpc::GetSystemConfigReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   reply->set_system_config(initial_config_.raylet_config);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
+void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
   cluster_task_manager_->FillPendingActorInfo(reply);
@@ -2734,7 +2729,7 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
 }
 
 void NodeManager::HandleFormatGlobalMemoryInfo(
-    const rpc::FormatGlobalMemoryInfoRequest &request,
+    rpc::FormatGlobalMemoryInfoRequest request,
     rpc::FormatGlobalMemoryInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto replies = std::make_shared<std::vector<rpc::GetNodeStatsReply>>();
@@ -2785,7 +2780,7 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
                      });
 }
 
-void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
+void NodeManager::HandleGlobalGC(rpc::GlobalGCRequest request,
                                  rpc::GlobalGCReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
   TriggerGlobalGC();

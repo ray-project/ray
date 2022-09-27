@@ -20,7 +20,7 @@ namespace ray {
 namespace gcs {
 
 void GcsWorkerManager::HandleReportWorkerFailure(
-    const rpc::ReportWorkerFailureRequest &request,
+    rpc::ReportWorkerFailureRequest request,
     rpc::ReportWorkerFailureReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const rpc::Address worker_address = request.worker_failure().worker_address();
@@ -89,7 +89,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   }
 }
 
-void GcsWorkerManager::HandleGetWorkerInfo(const rpc::GetWorkerInfoRequest &request,
+void GcsWorkerManager::HandleGetWorkerInfo(rpc::GetWorkerInfoRequest request,
                                            rpc::GetWorkerInfoReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
@@ -112,7 +112,7 @@ void GcsWorkerManager::HandleGetWorkerInfo(const rpc::GetWorkerInfoRequest &requ
 }
 
 void GcsWorkerManager::HandleGetAllWorkerInfo(
-    const rpc::GetAllWorkerInfoRequest &request,
+    rpc::GetAllWorkerInfoRequest request,
     rpc::GetAllWorkerInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto limit = request.has_limit() ? request.limit() : -1;
@@ -141,7 +141,7 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
   }
 }
 
-void GcsWorkerManager::HandleAddWorkerInfo(const rpc::AddWorkerInfoRequest &request,
+void GcsWorkerManager::HandleAddWorkerInfo(rpc::AddWorkerInfoRequest request,
                                            rpc::AddWorkerInfoReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   auto worker_data = std::make_shared<WorkerTableData>();

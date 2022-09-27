@@ -32,7 +32,7 @@ class RuntimeEnvHandler : public rpc::RuntimeEnvHandler {
       : runtime_env_manager_(runtime_env_manager),
         delay_executor_(std::move(delay_executor)) {}
 
-  void HandlePinRuntimeEnvURI(const rpc::PinRuntimeEnvURIRequest &request,
+  void HandlePinRuntimeEnvURI(rpc::PinRuntimeEnvURIRequest request,
                               rpc::PinRuntimeEnvURIReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
