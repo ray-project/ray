@@ -335,12 +335,13 @@ def _mosaic_train_loop_per_worker(config):
         config["load_path"] = str(checkpoint.to_dict()["last_checkpoint"][-1])
 
     # add RayLogger to Composer trainer loggers
+    ray_logger = RayLogger(keys=config.pop("log_keys", []))
     if "loggers" in config:
         if not isinstance(config["loggers"], List):
             config["loggers"] = [config["loggers"]]
-        config["loggers"].append(RayLogger(keys=config.pop("log_keys", [])))
+        config["loggers"].append(ray_logger)
     else:
-        config["loggers"] = [RayLogger(keys=config.pop("log_keys", []))]
+        config["loggers"] = [ray_logger]
 
     in_memory_logger = []
     for logger in config["loggers"]:
@@ -360,14 +361,19 @@ def _mosaic_train_loop_per_worker(config):
             trainer.state.callbacks.remove(callback)
             trainer.state.callbacks.append(
                 RayTrainReportCallback(
-                    in_memory_logger=in_memory_logger, checkpoint_saver=callback
+                    in_memory_logger=in_memory_logger,
+                    ray_logger=ray_logger,
+                    checkpoint_saver=callback,
                 )
             )
             is_report_call_added = True
     if not is_report_call_added:
         trainer.state.callbacks.append(
             RayTrainReportCallback(
-                in_memory_logger=in_memory_logger, folder="ray_tmp", overwrite=True
+                in_memory_logger=in_memory_logger,
+                ray_logger=ray_logger,
+                folder="ray_tmp",
+                overwrite=True,
             )
         )
 

@@ -169,9 +169,14 @@ class RayTrainReportCallback(CheckpointSaver):
     """
 
     def __init__(
-        self, in_memory_logger, checkpoint_saver: CheckpointSaver = None, **args
+        self,
+        in_memory_logger,
+        ray_logger,
+        checkpoint_saver: CheckpointSaver = None,
+        **args
     ):
         self.in_memory_logger = in_memory_logger
+        self.ray_logger = ray_logger
         self.last_checkpoint = None
         self.checkpoint_count = 0
 
@@ -200,7 +205,7 @@ class RayTrainReportCallback(CheckpointSaver):
                 "all_checkpoints": self.saved_checkpoints,
             }
         )
-        session.report(metrics={}, checkpoint=checkpoint)
+        session.report(metrics=self.ray_logger.data, checkpoint=checkpoint)
 
     def epoch_checkpoint(self, state: State, logger: Logger) -> None:
         super().epoch_checkpoint(state, logger)
@@ -218,7 +223,7 @@ class RayTrainReportCallback(CheckpointSaver):
             ]
             self.checkpoint_count = len(self.saved_checkpoints)
             session.report(
-                metrics={},
+                metrics=self.ray_logger.data,
                 checkpoint=Checkpoint.from_dict(
                     {"last_checkpoint": self.last_checkpoint}
                 ),
