@@ -1893,8 +1893,6 @@ class Algorithm(Trainable):
         """Exports AIR Checkpoint to a local directory and returns its directory path.
 
         The structure of an Algorithm checkpoint dir will be as follows:
-        .
-        ..
         policies/
           pol_1/
             policy_state.pkl
