@@ -2241,7 +2241,9 @@ Status CoreWorker::ExecuteTask(
 
   // Modify the worker's per function counters.
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
-  task_counter_.MovePendingToRunning(func_name);
+  if (!options_.is_local_mode) {
+    task_counter_.MovePendingToRunning(func_name);
+  }
 
   if (!options_.is_local_mode) {
     worker_context_.SetCurrentTask(task_spec);
@@ -2379,7 +2381,9 @@ Status CoreWorker::ExecuteTask(
     }
   }
 
-  task_counter_.MoveRunningToFinished(func_name);
+  if (!options_.is_local_mode) {
+    task_counter_.MoveRunningToFinished(func_name);
+  }
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
                  << ", status=" << status;
 
