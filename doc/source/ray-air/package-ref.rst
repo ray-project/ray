@@ -122,6 +122,8 @@ Training Result
 .. automodule:: ray.air.result
     :members:
 
+.. _air-session-ref:
+
 Training Session
 ################
 
@@ -333,5 +335,3 @@ Weights and Biases
 ##################
 
 .. autoclass:: ray.air.callbacks.wandb.WandbLoggerCallback
-
-.. _air-session-ref:
