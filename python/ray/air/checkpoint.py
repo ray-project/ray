@@ -680,10 +680,11 @@ class Checkpoint:
         try:
             checkpoint_metadata_uri = os.path.join(uri, _CHECKPOINT_METADATA_FILE_NAME)
             metadata = pickle.loads(read_file_from_uri(checkpoint_metadata_uri))
-            cls = cls._get_checkpoint_type(metadata.checkpoint_type)
-            state = metadata.checkpoint_state
         except Exception:
             pass
+        else:
+            cls = cls._get_checkpoint_type(metadata.checkpoint_type)
+            state = metadata.checkpoint_state
 
         checkpoint = cls(uri=uri)
         checkpoint.__dict__.update(state)
