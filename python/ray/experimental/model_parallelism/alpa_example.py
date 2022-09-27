@@ -1,16 +1,17 @@
-
-from flax.training.train_state import TrainState
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import random
 import optax
 from flax import linen as nn
+from flax.training.train_state import TrainState
+from jax import random
+
+import ray
 
 GB = 1024 ** 3
 
-import ray
 ray.init(log_to_driver=True)
+
 
 @ray.remote(num_gpus=4)
 class TrainerActor:
@@ -18,7 +19,7 @@ class TrainerActor:
         def train_step(state, batch):
             def loss_func(params):
                 out = state.apply_fn(params, batch["x"])
-                loss = jnp.mean((out - batch["y"])**2)
+                loss = jnp.mean((out - batch["y"]) ** 2)
                 return loss
 
             grads = jax.grad(loss_func)(state.params)
@@ -57,7 +58,8 @@ class TrainerActor:
         self.x = random.normal(ksample, (batch_size, dim))
         self.y = (self.x @ W + b) + 0.1 * random.normal(knoise, (batch_size, dim))
 
-        # Initialize a train state, which includes the model paramter and optimizer state.
+        # Initialize a train state, which includes the model
+        # paramter and optimizer state.
         model = MLPModel(hidden_dim=dim, num_layers=num_layers)
         params = model.init(rngkey, self.x)
         tx = optax.adam(learning_rate=1e-3)
@@ -77,6 +79,7 @@ class TrainerActor:
 
     def assert_allclose(self, a, b):
         from alpa.testing import assert_allclose
+
         assert_allclose(a, b, atol=5e-3)
 
     def benchmark_jit_train_step(self):
@@ -85,6 +88,7 @@ class TrainerActor:
         # We need this assignment because the original `state` is "donated" and freed.
         state = self.state
         jit_train_step = jax.jit(self.jax_train_step, donate_argnums=(0,))
+
         def sync_func():
             jax.local_devices()[0].synchronize_all_activity()
 
@@ -92,22 +96,38 @@ class TrainerActor:
             nonlocal state
             state = jit_train_step(state, {"x": self.x, "y": self.y})
 
-        costs = benchmark_func(serial_execution, sync_func, warmup=5, number=10, repeat=5) * 1e3
-        print(f"Serial execution time. Mean: {np.mean(costs):.2f} ms, Std: {np.std(costs):.2f} ms")
+        costs = (
+            benchmark_func(serial_execution, sync_func, warmup=5, number=10, repeat=5)
+            * 1e3
+        )
+        print(
+            "Serial execution time. Mean: "
+            f"{np.mean(costs):.2f} ms, Std: {np.std(costs):.2f} ms"
+        )
 
-        executable = jit_train_step.lower(state, {"x": self.x, "y": self.y}).compile().runtime_executable()
-        print(f"Serial execution per GPU memory usage: {executable.total_allocation_size() / GB:.2f} GB")
+        executable = (
+            jit_train_step.lower(state, {"x": self.x, "y": self.y})
+            .compile()
+            .runtime_executable()
+        )
+        print(
+            "Serial execution per GPU memory usage: "
+            f"{executable.total_allocation_size() / GB:.2f} GB"
+        )
 
     def benchmark_alpa_train_step(self):
         import alpa
         from alpa.util import benchmark_func
 
-        # We need this assignment because the original `state_copy` is "donated" and freed.
+        # We need this assignment because the original `state_copy` is
+        # "donated" and freed.
         state = self.state
         alpa_train_step = alpa.parallelize(self.jax_train_step)
 
         # We distribute arguments in advance for the benchmarking purpose.
-        state, batch = alpa_train_step.preshard_dynamic_args(state, {"x": self.x, "y": self.y})
+        state, batch = alpa_train_step.preshard_dynamic_args(
+            state, {"x": self.x, "y": self.y}
+        )
 
         def sync_func():
             jax.local_devices()[0].synchronize_all_activity()
@@ -116,11 +136,21 @@ class TrainerActor:
             nonlocal state, batch
             state = alpa_train_step(state, batch)
 
-        alpa_costs = benchmark_func(alpa_execution, sync_func, warmup=5, number=10, repeat=5) * 1e3
-        print(f"Alpa execution time.   Mean: {np.mean(alpa_costs):.2f} ms, Std: {np.std(alpa_costs):.2f} ms")
+        alpa_costs = (
+            benchmark_func(alpa_execution, sync_func, warmup=5, number=10, repeat=5)
+            * 1e3
+        )
+        print(
+            "Alpa execution time.   Mean: "
+            f"{np.mean(alpa_costs):.2f} ms, Std: {np.std(alpa_costs):.2f} ms"
+        )
 
         alpa_executable = alpa_train_step.get_executable(state, batch)
-        print(f"Alpa execution per GPU memory usage:   {alpa_executable.get_total_allocation_size() / GB:.2f} GB")
+        print(
+            "Alpa execution per GPU memory usage:   "
+            f"{alpa_executable.get_total_allocation_size() / GB:.2f} GB"
+        )
+
 
 trainer_actor = TrainerActor.remote()
 ray.get(trainer_actor.init_model.remote())
@@ -129,7 +159,11 @@ ray.get(trainer_actor.init_model.remote())
 # expected_state = ray.get(trainer_actor.train_one_step.remote())
 # actual_state = ray.get(trainer_actor.alpa_train_one_step.remote())
 
-# print(ray.get(trainer_actor.assert_allclose.remote(expected_state.params, actual_state.params)))
+# print(ray.get(
+#     trainer_actor.assert_allclose.remote(
+#         expected_state.params, actual_state.params
+#     ))
+# )
 
 # ===== uncomment for benchmarking =====
 ray.get(trainer_actor.benchmark_alpa_train_step.remote())
