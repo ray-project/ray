@@ -100,6 +100,7 @@ def ray_deps_setup():
         build_file = "@com_github_ray_project_ray//bazel:BUILD.redis",
         url = "https://github.com/redis/redis/archive/refs/tags/7.0.4.tar.gz",
         sha256 = "1eeacd656e6b6e45aee3c4037dd098932979d3853220bbeb84cb35ca7ef6d2ca",
+        patch_args = ["-p1"],
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:redis-quiet.patch",
         ],
@@ -242,6 +243,13 @@ def ray_deps_setup():
             "@com_github_ray_project_ray//thirdparty/patches:grpc-cython-copts.patch",
             "@com_github_ray_project_ray//thirdparty/patches:grpc-python.patch",
         ],
+    )
+
+    http_archive(
+        name = "rules_foreign_cc",
+        sha256 = "2a4d07cd64b0719b39a7c12218a3e507672b82a97b98c6a89d38565894cf7c51",
+        strip_prefix = "rules_foreign_cc-0.9.0",
+        url = "https://github.com/bazelbuild/rules_foreign_cc/archive/refs/tags/0.9.0.tar.gz",
     )
 
     http_archive(
