@@ -86,6 +86,17 @@ class TorchCategorical(TorchDistributionWrapper):
 
 
 @DeveloperAPI
+def get_torch_categorical_class_with_temperature(t: float):
+    """TorchCategorical distribution class that has customized default temperature."""
+
+    class TorchCategoricalWithTemperature(TorchCategorical):
+        def __init__(self, inputs, model=None, temperature=t):
+            super().__init__(inputs, model, temperature)
+
+    return TorchCategoricalWithTemperature
+
+
+@DeveloperAPI
 class TorchMultiCategorical(TorchDistributionWrapper):
     """MultiCategorical distribution for MultiDiscrete action spaces."""
 

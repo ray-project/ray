@@ -11,7 +11,7 @@ from ray.rllib.algorithms.simple_q.utils import Q_SCOPE, Q_TARGET_SCOPE
 from ray.rllib.evaluation.postprocessing import adjust_nstep
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.tf_action_dist import Categorical
+from ray.rllib.models.tf.tf_action_dist import get_categorical_class_with_temperature
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import LearningRateSchedule, TargetNetworkMixin
@@ -33,16 +33,6 @@ tf1, tf, tfv = try_import_tf()
 
 # Importance sampling weights for prioritized replay
 PRIO_WEIGHTS = "weights"
-
-
-def get_dist_class_with_temperature(t: float):
-    """Categorical distribution class that has customized default temperature."""
-
-    class CategoricalWithTemperature(Categorical):
-        def __init__(self, inputs, model=None, temperature=t):
-            super().__init__(inputs, model, temperature)
-
-    return CategoricalWithTemperature
 
 
 class QLoss:
@@ -248,7 +238,7 @@ def get_distribution_inputs_and_class(
 
     return (
         policy.q_values,
-        get_dist_class_with_temperature(temperature),
+        get_categorical_class_with_temperature(temperature),
         [],
     )  # state-out
 
