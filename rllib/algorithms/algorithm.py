@@ -387,7 +387,7 @@ class Algorithm(Trainable):
                 '["off_policy_estimation_methods"]={}'.format(
                     ope_dict,
                 ),
-                error=True,
+                error=False,
                 help="Running OPE during training is not recommended.",
             )
             self.config["off_policy_estimation_methods"] = ope_dict
@@ -578,7 +578,7 @@ class Algorithm(Trainable):
                 deprecation_warning(
                     old=method_type,
                     new=str(ope_types[method_type]),
-                    error=True,
+                    error=False,
                 )
                 method_type = ope_types[method_type]
             elif isinstance(method_type, str):
@@ -1284,14 +1284,14 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="Trainer.compute_single_action(`clip_actions`=...)",
                 new="Trainer.compute_single_action(`clip_action`=...)",
-                error=True,
+                error=False,
             )
             clip_action = clip_actions
         if unsquash_actions != DEPRECATED_VALUE:
             deprecation_warning(
                 old="Trainer.compute_single_action(`unsquash_actions`=...)",
                 new="Trainer.compute_single_action(`unsquash_action`=...)",
-                error=True,
+                error=False,
             )
             unsquash_action = unsquash_actions
 
@@ -1435,7 +1435,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="Trainer.compute_actions(`normalize_actions`=...)",
                 new="Trainer.compute_actions(`unsquash_actions`=...)",
-                error=True,
+                error=False,
             )
             unsquash_actions = normalize_actions
 
@@ -2218,7 +2218,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 "model.lstm_use_prev_action_reward",
                 "model.lstm_use_prev_action and model.lstm_use_prev_reward",
-                error=True,
+                error=False,
             )
             model_config["lstm_use_prev_action"] = prev_a_r
             model_config["lstm_use_prev_reward"] = prev_a_r
@@ -2243,7 +2243,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="metrics_smoothing_episodes",
                 new="metrics_num_episodes_for_smoothing",
-                error=True,
+                error=False,
             )
             config["metrics_num_episodes_for_smoothing"] = config[
                 "metrics_smoothing_episodes"
@@ -2252,7 +2252,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="min_iter_time_s",
                 new="min_time_s_per_iteration",
-                error=True,
+                error=False,
             )
             config["min_time_s_per_iteration"] = config["min_iter_time_s"] or 0
 
@@ -2260,7 +2260,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="min_time_s_per_reporting",
                 new="min_time_s_per_iteration",
-                error=True,
+                error=False,
             )
             config["min_time_s_per_iteration"] = config["min_time_s_per_reporting"] or 0
 
@@ -2271,7 +2271,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="min_sample_timesteps_per_reporting",
                 new="min_sample_timesteps_per_iteration",
-                error=True,
+                error=False,
             )
             config["min_sample_timesteps_per_iteration"] = (
                 config["min_sample_timesteps_per_reporting"] or 0
@@ -2284,7 +2284,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="min_train_timesteps_per_reporting",
                 new="min_train_timesteps_per_iteration",
-                error=True,
+                error=False,
             )
             config["min_train_timesteps_per_iteration"] = (
                 config["min_train_timesteps_per_reporting"] or 0
@@ -2306,7 +2306,7 @@ class Algorithm(Trainable):
                 old="timesteps_per_iteration",
                 new="`min_sample_timesteps_per_iteration` OR "
                 "`min_train_timesteps_per_iteration`",
-                error=True,
+                error=False,
             )
             config["min_sample_timesteps_per_iteration"] = (
                 config["timesteps_per_iteration"] or 0
@@ -2320,7 +2320,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="evaluation_num_episodes",
                 new="`evaluation_duration` and `evaluation_duration_unit=episodes`",
-                error=True,
+                error=False,
             )
             config["evaluation_duration"] = config["evaluation_num_episodes"]
             config["evaluation_duration_unit"] = "episodes"
@@ -2866,9 +2866,13 @@ class Algorithm(Trainable):
             alg = "USER_DEFINED"
         record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
 
-    @Deprecated(new="Algorithm.compute_single_action()", error=True)
+    @Deprecated(new="Algorithm.compute_single_action()", error=False)
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
+
+    @Deprecated(new="logic moved into `self.step()`", error=True)
+    def step_attempt(self):
+        pass
 
     @Deprecated(new="construct WorkerSet(...) instance directly", error=False)
     def _make_workers(
@@ -2892,7 +2896,7 @@ class Algorithm(Trainable):
         )
 
     @staticmethod
-    @Deprecated(new="Algorithm.validate_config()", error=True)
+    @Deprecated(new="Algorithm.validate_config()", error=False)
     def _validate_config(config, trainer_or_none):
         assert trainer_or_none is not None
         return trainer_or_none.validate_config(config)

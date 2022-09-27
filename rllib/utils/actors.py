@@ -252,9 +252,15 @@ def split_colocated(
         return co_located, non_co_located
 
 
-@Deprecated(new="create_colocated_actors", error=True)
+@Deprecated(new="create_colocated_actors", error=False)
 def create_colocated(cls, arg, count):
-    pass
+    kwargs = {}
+    args = arg
+
+    return create_colocated_actors(
+        actor_specs=[(cls, args, kwargs, count)],
+        node=platform.node(),  # force on localhost
+    )[cls]
 
 
 @Deprecated(error=False)

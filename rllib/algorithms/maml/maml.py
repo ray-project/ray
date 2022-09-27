@@ -379,7 +379,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.maml.maml.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.maml.maml.MAMLConfig(...)",
-        error=True,
+        error=False,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)
