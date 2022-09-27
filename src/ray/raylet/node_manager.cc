@@ -816,10 +816,9 @@ void NodeManager::HandleGetObjectsInfo(rpc::GetObjectsInfoRequest request,
       /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
 }
 
-void NodeManager::HandleGetTaskFailureCause(
-    rpc::GetTaskFailureCauseRequest request,
-    rpc::GetTaskFailureCauseReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest request,
+                                            rpc::GetTaskFailureCauseReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback) {
   const TaskID task_id = TaskID::FromBinary(request.task_id());
   RAY_LOG(DEBUG) << "Received a HandleGetTaskFailureCause request for task " << task_id;
 
