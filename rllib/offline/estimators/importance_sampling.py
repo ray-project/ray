@@ -1,10 +1,9 @@
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
-from typing import Dict, Any
+from typing import Dict
 import numpy as np
 
 

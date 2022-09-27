@@ -7,7 +7,6 @@ from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.numpy import convert_to_numpy
-import warnings
 
 
 @DeveloperAPI
