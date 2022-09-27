@@ -70,6 +70,8 @@ Once the GCS is recovered, the cluster will return to normal behavior.
 
 You can enable GCS fault tolerance on KubeRay by adding an external Redis server and modifying your `RayService` Kubernetes object.
 
+Below, we explain how to do each of these.
+
 #### Add external Redis server
 
 GCS fault tolerance requires an external Redis server. The server can share the same Kubernetes cluster with your Ray cluster. For example, you can add a simple 1-node Redis cluster by appending these three Redis objects to your Kubernetes YAML:
@@ -278,7 +280,7 @@ spec:
 After you apply the Redis objects along with your updated `RayService`, your Ray cluster can recover from head node crashes without restarting all the workers!
 
 :::{seealso}
-Check out the KubeRay guide on [GCS fault tolerance](https://ray-project.github.io/kuberay/guidance/gcs-ft/#ray-gcs-fault-tolerancegcs-ft-experimental) for more details.
+Check out the KubeRay guide on [GCS fault tolerance](https://ray-project.github.io/kuberay/guidance/gcs-ft/#ray-gcs-fault-tolerancegcs-ft-experimental) to learn more about how Serve leverages the external Redis cluster to provide head node fault tolerance.
 :::
 
 (serve-e2e-ft-behavior)=
