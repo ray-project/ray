@@ -682,7 +682,7 @@ class Checkpoint:
             metadata = pickle.loads(read_file_from_uri(checkpoint_metadata_uri))
             cls = cls._get_checkpoint_type(metadata.checkpoint_type)
             state = metadata.checkpoint_state
-        except FileNotFoundError:
+        except Exception:
             pass
 
         checkpoint = cls(uri=uri)
