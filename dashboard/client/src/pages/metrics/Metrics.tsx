@@ -3,9 +3,10 @@ import {
   createStyles,
   makeStyles,
   MenuItem,
+  Paper,
   TextField,
-  Typography,
 } from "@material-ui/core";
+import { Alert } from "@material-ui/lab";
 import React, { useContext, useEffect, useState } from "react";
 
 import { GlobalContext } from "../../App";
@@ -15,10 +16,27 @@ const useStyles = makeStyles((theme) =>
     root: {
       height: "90vh",
     },
-    grafanaEmbed: {
+    grafanaEmbedsContainer: {
+      marginTop: theme.spacing(1),
+      marginLeft: theme.spacing(1),
       display: "flex",
+      flexDirection: "row",
+      flexWrap: "wrap",
+    },
+    grafanaEmbed: {
+      margin: theme.spacing(1),
+    },
+    topBar: {
+      position: "sticky",
       width: "100%",
-      height: "100%",
+      display: "flex",
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      padding: theme.spacing(1),
+    },
+    timeRangeButton: {
+      marginLeft: theme.spacing(2),
     },
   }),
 );
@@ -47,6 +65,41 @@ const TIME_RANGE_DURATIONS_MS: Record<TimeRangeOptions, number> = {
   [TimeRangeOptions.SEVEN_DAYS]: 1000 * 60 * 60 * 24 * 7,
 };
 
+const METRICS_CONFIG = [
+  {
+    title: "Instance count",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=24",
+  },
+  {
+    title: "Utilization percentage",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=10",
+  },
+  {
+    title: "CPU usage",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=2",
+  },
+  {
+    title: "Memory usage",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=4",
+  },
+  {
+    title: "Disk usage",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=6",
+  },
+  {
+    title: "Network speed",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=20",
+  },
+  {
+    title: "Node GPU",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=8",
+  },
+  {
+    title: "Node GPU memory",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=18",
+  },
+];
+
 export const Metrics = () => {
   const classes = useStyles();
   const { grafanaHost } = useContext(GlobalContext);
@@ -72,86 +125,63 @@ export const Metrics = () => {
   return (
     <div className={classes.root}>
       {grafanaHost === undefined ? (
-        <Typography color="error">
-          Grafana healtcheck failed. Please make sure the grafana server is
-          running and refresh the page.
-        </Typography>
+        <Alert style={{ marginTop: 30 }} severity="warning">
+          Grafana server not detected. Please make sure the grafana server is
+          running and refresh this page. See:{" "}
+          <a
+            href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html"
+            target="_blank"
+            rel="noreferrer"
+          >
+            https://docs.ray.io/en/latest/ray-observability/ray-metrics.html
+          </a>
+          .
+          <br />
+          If you are hosting grafana on a separate machine or using a
+          non-default port, please set the RAY_GRAFANA_HOST env var to point to
+          your grafana server when launching ray.
+        </Alert>
       ) : (
         <div>
-          <Button href={grafanaHost} target="_blank" rel="noopener noreferrer">
-            Go to Grafana
-          </Button>
-          <TextField
-            select
-            style={{ width: 120 }}
-            value={timeRangeOption}
-            onChange={({ target: { value } }) => {
-              setTimeRangeOption(value as TimeRangeOptions);
-            }}
-          >
-            {Object.entries(TimeRangeOptions).map(([key, value]) => (
-              <MenuItem key={key} value={value}>
-                {value}
-              </MenuItem>
+          <Paper className={classes.topBar}>
+            <Button
+              href={grafanaHost}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View in Grafana
+            </Button>
+            <TextField
+              className={classes.timeRangeButton}
+              select
+              size="small"
+              variant="outlined"
+              style={{ width: 120 }}
+              value={timeRangeOption}
+              onChange={({ target: { value } }) => {
+                setTimeRangeOption(value as TimeRangeOptions);
+              }}
+            >
+              {Object.entries(TimeRangeOptions).map(([key, value]) => (
+                <MenuItem key={key} value={value}>
+                  {value}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Paper>
+          <div className={classes.grafanaEmbedsContainer}>
+            {METRICS_CONFIG.map(({ title, path }) => (
+              <iframe
+                key={title}
+                className={classes.grafanaEmbed}
+                title={title}
+                src={`${grafanaHost}${path}${timeRangeParams}`}
+                width="450"
+                height="400"
+                frameBorder="0"
+              />
             ))}
-          </TextField>
-          <br />
-          <iframe
-            title="Instance count"
-            src={`${grafanaHost}/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=24${timeRangeParams}`}
-            width="450"
-            height="200"
-            frameBorder="0"
-          />
-          <iframe
-            title="Utilization percentage"
-            src={`${grafanaHost}/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=10`}
-            width="450"
-            height="200"
-            frameBorder="0"
-          />
-          <iframe
-            title="CPU usage"
-            src={`${grafanaHost}/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=2${timeRangeParams}`}
-            width="450"
-            height="200"
-            frameBorder="0"
-          />
-          <iframe
-            title="Memory usage"
-            src={`${grafanaHost}/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=4${timeRangeParams}`}
-            width="450"
-            height="200"
-            frameBorder="0"
-          />
-          <iframe
-            title="Disk usage"
-            src={`${grafanaHost}/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=6${timeRangeParams}`}
-            width="450"
-            height="200"
-            frameBorder="0"
-          />
-          <iframe
-            title="Network speed"
-            src={`${grafanaHost}/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=20${timeRangeParams}`}
-            width="450"
-            height="200"
-            frameBorder="0"
-          />
-          <iframe
-            title="Node GPU"
-            src={`${grafanaHost}/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=8${timeRangeParams}`}
-            width="450"
-            height="200"
-            frameBorder="0"
-          />
-          <iframe
-            title="Node GPU memory"
-            src={`${grafanaHost}/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=18${timeRangeParams}`}
-            width="450"
-            height="200"
-            frameBorder="0"
-          />
+          </div>
         </div>
       )}
     </div>
