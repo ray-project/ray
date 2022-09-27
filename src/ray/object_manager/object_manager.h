@@ -125,7 +125,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param request Push request including the object chunk data
   /// \param reply Reply to the sender
   /// \param send_reply_callback Callback of the request
-  void HandlePush(const rpc::PushRequest &request,
+  void HandlePush(rpc::PushRequest request,
                   rpc::PushReply *reply,
                   rpc::SendReplyCallback send_reply_callback) override;
 
@@ -134,7 +134,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param request Pull request
   /// \param reply Reply
   /// \param send_reply_callback Callback of request
-  void HandlePull(const rpc::PullRequest &request,
+  void HandlePull(rpc::PullRequest request,
                   rpc::PullReply *reply,
                   rpc::SendReplyCallback send_reply_callback) override;
 
@@ -143,7 +143,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param request Free objects request
   /// \param reply Reply
   /// \param send_reply_callback
-  void HandleFreeObjects(const rpc::FreeObjectsRequest &request,
+  void HandleFreeObjects(rpc::FreeObjectsRequest request,
                          rpc::FreeObjectsReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
 

@@ -42,9 +42,9 @@ class Filter:
     def as_serializable(self) -> "Filter":
         raise NotImplementedError
 
-    @Deprecated(new="Filter.reset_buffer()", error=True)
+    @Deprecated(new="Filter.reset_buffer()", error=False)
     def clear_buffer(self):
-        pass
+        return self.reset_buffer()
 
 
 @DeveloperAPI

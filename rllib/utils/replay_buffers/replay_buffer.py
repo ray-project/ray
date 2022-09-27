@@ -413,14 +413,14 @@ class ReplayBuffer(ParallelIteratorWorker):
         """
         return func(self, *args, **kwargs)
 
-    @Deprecated(new="ReplayBuffer.add()", error=True)
+    @Deprecated(old="ReplayBuffer.add_batch()", new="ReplayBuffer.add()", error=False)
     def add_batch(self, *args, **kwargs):
-        pass
+        return self.add(*args, **kwargs)
 
     @Deprecated(
         old="ReplayBuffer.replay(num_items)",
         new="ReplayBuffer.sample(num_items)",
-        error=True,
+        error=False,
     )
     def replay(self, num_items):
         return self.sample(num_items)

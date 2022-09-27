@@ -345,6 +345,7 @@ class SimpleQ(Algorithm):
             self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
             # Store new samples in the replay buffer
+            # Use deprecated add_batch() to support old replay buffers for now
             self.local_replay_buffer.add(batch)
 
         global_vars = {
@@ -404,7 +405,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.dqn.simple_q::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.simple_q.simple_q::SimpleQConfig(...)",
-        error=True,
+        error=False,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)
