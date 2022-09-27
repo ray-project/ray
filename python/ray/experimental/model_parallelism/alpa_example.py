@@ -7,6 +7,8 @@ from jax import random
 import optax
 from flax import linen as nn
 
+GB = 1024 ** 3
+
 import ray
 ray.init(log_to_driver=True)
 
@@ -93,6 +95,9 @@ class TrainerActor:
         costs = benchmark_func(serial_execution, sync_func, warmup=5, number=10, repeat=5) * 1e3
         print(f"Serial execution time. Mean: {np.mean(costs):.2f} ms, Std: {np.std(costs):.2f} ms")
 
+        executable = jit_train_step.lower(state, {"x": self.x, "y": self.y}).compile().runtime_executable()
+        print(f"Serial execution per GPU memory usage: {executable.total_allocation_size() / GB:.2f} GB")
+
     def benchmark_alpa_train_step(self):
         import alpa
         from alpa.util import benchmark_func
@@ -114,6 +119,9 @@ class TrainerActor:
         alpa_costs = benchmark_func(alpa_execution, sync_func, warmup=5, number=10, repeat=5) * 1e3
         print(f"Alpa execution time.   Mean: {np.mean(alpa_costs):.2f} ms, Std: {np.std(alpa_costs):.2f} ms")
 
+        alpa_executable = alpa_train_step.get_executable(state, batch)
+        print(f"Alpa execution per GPU memory usage:   {alpa_executable.get_total_allocation_size() / GB:.2f} GB")
+
 trainer_actor = TrainerActor.remote()
 ray.get(trainer_actor.init_model.remote())
 
@@ -132,6 +140,9 @@ new_trainer_actor = TrainerActor.remote()
 ray.get(new_trainer_actor.init_model.remote())
 ray.get(new_trainer_actor.benchmark_jit_train_step.remote())
 
-# On g4dn.12xlarge, the result is:
-# Alpa execution time.   Mean: 148.94 ms, Std: 0.31 ms
-# Serial execution time. Mean: 437.68 ms, Std: 1.71 ms
+# On single g4dn.12xlarge, the result is:
+
+# Alpa execution time.   Mean: 144.74 ms, Std: 0.37 ms
+# Alpa execution per GPU memory usage:   0.81 GB
+# Serial execution time. Mean: 437.60 ms, Std: 3.19 ms
+# Serial execution per GPU memory usage: 2.78 GB
