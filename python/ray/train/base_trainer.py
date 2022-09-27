@@ -364,6 +364,7 @@ class BaseTrainer(abc.ABC):
 
     def as_trainable(self) -> Type["Trainable"]:
         """Convert self to a ``tune.Trainable`` class."""
+        from ray import tune
         from ray.tune.execution.placement_groups import PlacementGroupFactory
         from ray.tune.trainable import wrap_function
 
@@ -414,9 +415,8 @@ class BaseTrainer(abc.ABC):
                 """Returns the unchanged scaling config provided through the Trainer."""
                 return scaling_config
 
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-
+            def setup(self, config, **kwargs):
+                base_config = dict(kwargs)
                 # Create a new config by merging the dicts.
                 # run_config is not a tunable hyperparameter so it does not need to be
                 # merged.
@@ -431,6 +431,7 @@ class BaseTrainer(abc.ABC):
                 ] = self._reconcile_scaling_config_with_trial_resources(
                     merged_scaling_config
                 )
+                super(TrainTrainable, self).setup(config)
 
             def _reconcile_scaling_config_with_trial_resources(
                 self, scaling_config: ScalingConfig
@@ -486,4 +487,5 @@ class BaseTrainer(abc.ABC):
                 )
                 return validated_scaling_config.as_placement_group_factory()
 
-        return TrainTrainable
+        # Wrap with `tune.with_parameters` to handle very large values in base_config
+        return tune.with_parameters(TrainTrainable, **base_config)
