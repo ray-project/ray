@@ -317,7 +317,7 @@ def _mosaic_train_loop_per_worker(config):
 
     # Arbitrary values set for these as they are needed for some composer functions
     os.environ["LOCAL_WORLD_SIZE"] = os.environ["WORLD_SIZE"]
-    os.environ["NODE_RANK"] = str(0)
+    os.environ["NODE_RANK"] = "0"
 
     # get dataset shard
     train_dataset = session.get_dataset_shard(TRAIN_DATASET_KEY)
