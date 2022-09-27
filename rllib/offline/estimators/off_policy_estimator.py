@@ -19,6 +19,7 @@ from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
+
 @DeveloperAPI
 class OffPolicyEstimator(OfflineEvaluator):
     """Interface for an off policy estimator for counterfactual evaluation."""
@@ -36,11 +37,11 @@ class OffPolicyEstimator(OfflineEvaluator):
 
     @DeveloperAPI
     def estimate_multi_step(self, episode: SampleBatch, **kwargs) -> Dict[str, Any]:
-        """Returns off-policy estimates for the given one episode. 
+        """Returns off-policy estimates for the given one episode.
 
         Args:
             batch: The episode to calculate the off-policy estimates (OPE) on. The
-            episode must be a sample batch type that contains the fields "obs", 
+            episode must be a sample batch type that contains the fields "obs",
             "actions", and "action_prob".
 
         Returns:
@@ -52,11 +53,11 @@ class OffPolicyEstimator(OfflineEvaluator):
     @DeveloperAPI
     def estimate_single_step(self, batch: SampleBatch, **kwargs) -> Dict[str, Any]:
         """Returns off-policy estimates for the batch of single timesteps. This is
-        highly optimized for bandits assuming each episode is a single timestep. 
+        highly optimized for bandits assuming each episode is a single timestep.
 
         Args:
             batch: The episode to calculate the off-policy estimates (OPE) on. The
-            episode must be a sample batch type that contains the fields "obs", 
+            episode must be a sample batch type that contains the fields "obs",
             "actions", and "action_prob".
 
         Returns:
@@ -66,9 +67,8 @@ class OffPolicyEstimator(OfflineEvaluator):
         raise NotImplementedError
 
     @DeveloperAPI
-    def estimate(self, 
-        batch: SampleBatchType, 
-        split_by_episode: bool = True
+    def estimate(
+        self, batch: SampleBatchType, split_by_episode: bool = True
     ) -> Dict[str, Any]:
         """Compute off-policy estimates.
 
@@ -92,7 +92,7 @@ class OffPolicyEstimator(OfflineEvaluator):
         batch = self.convert_ma_batch_to_sample_batch(batch)
         self.check_action_prob_in_batch(batch)
         estimates_per_epsiode = []
-        if split_by_episode: 
+        if split_by_episode:
             for episode in batch.split_by_episode():
                 assert len(set(episode[SampleBatch.EPS_ID])) == 1, (
                     "The episode must contain only one episode id. For some reason "

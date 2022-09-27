@@ -6,6 +6,7 @@ from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
+
 @DeveloperAPI
 class OfflineEvaluator:
     """Interface for an offline evaluator of a policy"""
@@ -20,14 +21,13 @@ class OfflineEvaluator:
         """
         self.policy = policy
 
-
     @DeveloperAPI
     def estimate(self, batch: SampleBatchType, **kwargs) -> Dict[str, Any]:
         """Returns the evaluation results for the given batch of episodes.
 
         Args:
             batch: The batch to evaluate.
-            kwargs: forward compatibility placeholder. 
+            kwargs: forward compatibility placeholder.
 
         Returns:
             The evaluation done on the given batch. The returned
@@ -35,10 +35,9 @@ class OfflineEvaluator:
         """
         raise NotImplementedError
 
-
     @DeveloperAPI
     def train(self, batch: SampleBatchType, **kwargs) -> Dict[str, Any]:
-        """Sometimes you need to train a model inside an evaluator. This method 
+        """Sometimes you need to train a model inside an evaluator. This method
         abstracts the training process.
 
         Args:

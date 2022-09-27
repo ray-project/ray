@@ -911,7 +911,7 @@ class Algorithm(Trainable):
                             _agent_steps if self._by_agent_steps else _env_steps
                         )
                     if self.reward_estimators:
-                        # TODO: (kourosh) This approach will cause an OOM issue when 
+                        # TODO: (kourosh) This approach will cause an OOM issue when
                         # the dataset gets huge
                         all_batches.extend(batches)
 
@@ -944,8 +944,7 @@ class Algorithm(Trainable):
                 for batch in all_batches:
                     for name, estimator in self.reward_estimators.items():
                         estimate_result = estimator.estimate(
-                            batch, 
-                            split_by_episode=self.config['ope_split_by_episode']
+                            batch, split_by_episode=self.config["ope_split_by_episode"]
                         )
                         estimates[name].append(estimate_result)
                 # collate estimates from all batches

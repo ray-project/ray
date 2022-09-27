@@ -13,9 +13,9 @@ def perturb_fn(batch: np.ndarray, index: int):
     random_inds = np.random.permutation(batch.shape[0])
     batch[:, index] = batch[random_inds, index]
 
+
 @DeveloperAPI
 class FeatureImportance(OfflineEvaluator):
-
     @override(OfflineEvaluator)
     def __init__(
         self,

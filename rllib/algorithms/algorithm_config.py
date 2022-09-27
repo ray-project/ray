@@ -881,10 +881,10 @@ class AlgorithmConfig:
                 You can also add additional config arguments to be passed to the
                 OffPolicyEstimator in the dict, e.g.
                 {"qreg_dr": {"type": DoublyRobust, "q_model_type": "qreg", "k": 5}}
-            ope_split_by_episode: Whether to use SampleBatch.split_by_episode() to 
-                split the input batch to episodes before estimating the ope metrics. In 
-                case of bandits you should make this False to see improvements in ope 
-                evaluation speed. In case of bandits, it is ok to not split by episode, 
+            ope_split_by_episode: Whether to use SampleBatch.split_by_episode() to
+                split the input batch to episodes before estimating the ope metrics. In
+                case of bandits you should make this False to see improvements in ope
+                evaluation speed. In case of bandits, it is ok to not split by episode,
                 since each record is one timestep already. The default is True.
             evaluation_num_workers: Number of parallel workers to use for evaluation.
                 Note that this is set to zero by default, which means evaluation will

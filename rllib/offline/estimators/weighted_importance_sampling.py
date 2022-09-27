@@ -1,4 +1,3 @@
-
 from typing import Dict
 import numpy as np
 
@@ -9,6 +8,8 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.numpy import convert_to_numpy
 import warnings
+
+
 @DeveloperAPI
 class WeightedImportanceSampling(OffPolicyEstimator):
     """The step-wise WIS estimator.
@@ -38,9 +39,7 @@ class WeightedImportanceSampling(OffPolicyEstimator):
     def estimate_multi_step(self, episode: SampleBatch) -> Dict[str, float]:
         estimates_per_epsiode = {"v_behavior": None, "v_target": None}
         rewards, old_prob = episode["rewards"], episode["action_prob"]
-        log_likelihoods = compute_log_likelihoods_from_input_dict(
-            self.policy, episode
-        )
+        log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, episode)
         new_prob = np.exp(convert_to_numpy(log_likelihoods))
 
         # calculate importance ratios
@@ -77,9 +76,7 @@ class WeightedImportanceSampling(OffPolicyEstimator):
     def estimate_single_step(self, batch: SampleBatch) -> Dict[str, float]:
         estimates_per_epsiode = {"v_behavior": None, "v_target": None}
         rewards, old_prob = batch["rewards"], batch["action_prob"]
-        log_likelihoods = compute_log_likelihoods_from_input_dict(
-            self.policy, batch
-        )
+        log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, batch)
         new_prob = np.exp(convert_to_numpy(log_likelihoods))
 
         weights = new_prob / old_prob
