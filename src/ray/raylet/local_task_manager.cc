@@ -153,6 +153,17 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           int64_t target_time = get_time_ms_() + wait_time;
           sched_cls_info.next_update_time =
               std::min(target_time, sched_cls_info.next_update_time);
+          bool did_spill = TrySpillback(work, is_infeasible);
+          if (did_spill) {
+            num_unschedulable_task_spilled_++;
+            if (!spec.GetDependencies().empty()) {
+              task_dependency_manager_.RemoveTaskDependencies(
+                  task.GetTaskSpecification().TaskId());
+            }
+            work_it = dispatch_queue.erase(work_it);
+            continue;
+          }
+
           break;
         }
       }
@@ -370,7 +381,7 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
                                     bool &is_infeasible) {
   auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
       work->task.GetTaskSpecification(),
-      work->PrioritizeLocalNode(),
+      /*prioritize_local_node*/ true,
       /*exclude_local_node*/ false,
       /*requires_object_store_memory*/ false,
       &is_infeasible);
