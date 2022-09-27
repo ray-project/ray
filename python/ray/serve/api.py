@@ -318,8 +318,10 @@ def deployment(
             to '/a/b', '/a/b/', and '/a/b/c' go to B. Routes must not end with
             a '/' unless they're the root (just '/'), which acts as a
             catch-all.
-        ray_actor_options (Default[Dict]): Options to be passed to each
-            replica Ray actor's constructor, such as resource requirements.
+        ray_actor_options (Default[Dict]): Options to be passed to the Ray
+            actor constructor such as resource requirements. Valid options are
+            `accelerator_type`, `memory`, `num_cpus`, `num_gpus`,
+            `object_store_memory`, `resources`, and `runtime_env`.
         user_config (Default[Optional[Any]]): Config to pass to the
             reconfigure method of the deployment. This can be updated
             dynamically without changing the version of the deployment and

@@ -118,7 +118,7 @@ BatchUDF = Union[
     # UDF type.
     # Callable[[DataBatch, ...], DataBatch]
     Callable[[DataBatch], DataBatch],
-    _CallableClassProtocol,
+    "_CallableClassProtocol",
 ]
 
 # A UDF on data rows.
@@ -127,7 +127,7 @@ RowUDF = Union[
     # UDF type.
     # Callable[[T, ...], U]
     Callable[[T], U],
-    _CallableClassProtocol[T, U],
+    "_CallableClassProtocol[T, U]",
 ]
 
 # A list of block references pending computation by a single task. For example,
@@ -274,6 +274,10 @@ class BlockAccessor(Generic[T]):
         Returns:
             A new block containing the provided row indices.
         """
+        raise NotImplementedError
+
+    def select(self, columns: List[KeyFn]) -> Block:
+        """Return a new block containing the provided columns."""
         raise NotImplementedError
 
     def random_shuffle(self, random_seed: Optional[int]) -> Block:

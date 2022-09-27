@@ -46,6 +46,8 @@ class RayError(Exception):
                 return pickle.loads(ray_exception.serialized_exception)
             except Exception as e:
                 msg = "Failed to unpickle serialized exception"
+                msg += " -- original error message is: "
+                msg += ray_exception.formatted_exception_string
                 raise RuntimeError(msg) from e
         else:
             return CrossLanguageError(ray_exception)
@@ -365,6 +367,34 @@ class OutOfDiskError(RayError):
             "Tip: Use `df` on this node to check disk usage and "
             "`ray memory` to check object store memory usage."
         )
+
+
+@PublicAPI
+class OutOfMemoryError(RayError):
+    """Indicates that the node is running out of memory and is close to full.
+
+    This is raised if the node is low on memory and tasks or actors are being
+    evicted to free up memory.
+    """
+
+    # TODO: (clarng) expose the error message string here and format it with proto
+    def __init__(self, message):
+        self.message = message
+
+    def __str__(self):
+        return self.message
+
+
+@PublicAPI
+class NodeDiedError(RayError):
+    """Indicates that the node is either dead or unreachable."""
+
+    # TODO: (clarng) expose the error message string here and format it with proto
+    def __init__(self, message):
+        self.message = message
+
+    def __str__(self):
+        return self.message
 
 
 @PublicAPI

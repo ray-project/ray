@@ -57,7 +57,10 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
               GetTaskSpec,
               (const TaskID &task_id),
               (const, override));
-  MOCK_METHOD(bool, RetryTaskIfPossible, (const TaskID &task_id), (override));
+  MOCK_METHOD(bool,
+              RetryTaskIfPossible,
+              (const TaskID &task_id, bool task_failed_due_to_oom),
+              (override));
   MOCK_METHOD(void, MarkDependenciesResolved, (const TaskID &task_id), (override));
   MOCK_METHOD(void, MarkTaskWaitingForExecution, (const TaskID &task_id), (override));
 };

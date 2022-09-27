@@ -12,7 +12,6 @@ train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
 
 # Create a test dataset by dropping the target column.
 test_dataset = valid_dataset.drop_columns(cols=["target"])
-
 # __air_generic_preprocess_end__
 
 # __air_xgb_preprocess_start__
