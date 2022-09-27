@@ -31,7 +31,7 @@ This method should take no arguments and return no result, and it should raise a
 The Serve controller logs the raised exception if the health-check fails.
 You can also use the deployment options to customize how frequently the health-check is run and the timeout after which a replica is marked unhealthy.
 
-```{literalinclude} doc_code/fault_tolerance/replica_health_check.py
+```{literalinclude} ../doc_code/fault_tolerance/replica_health_check.py
 :start-after: __health_check_start__
 :end-before: __health_check_end__
 :language: python
@@ -289,7 +289,7 @@ Check out the KubeRay guide on [GCS fault tolerance](https://ray-project.github.
 This section explains how Serve recovers from system failures. It uses the following Serve application and config as a working example.
 
 ::::{tabbed} Python Code
-```{literalinclude} doc_code/fault_tolerance/sleepy_pid.py
+```{literalinclude} ../doc_code/fault_tolerance/sleepy_pid.py
 :start-after: __start__
 :end-before: __end__
 :language: python
