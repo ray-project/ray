@@ -96,6 +96,11 @@ if [ "${GITHUB_ACTIONS-}" = true ]; then
   echo "build --jobs="$(($(nproc)+2)) >> ~/.bazelrc
 fi
 if [ "${CI-}" = true ]; then
+
+  # Ask bazel to anounounce the config it finds in bazelrcs, which makes
+  # understanding how to reproduce bazel easier.
+  echo "build --announce_rc" >> ~/.bazelrc
+
   echo "build --config=ci" >> ~/.bazelrc
 
   # In Windows CI we want to use this to avoid long path issue
