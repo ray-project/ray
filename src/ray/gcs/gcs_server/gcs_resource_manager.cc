@@ -49,7 +49,7 @@ void GcsResourceManager::ConsumeSyncMessage(
       "GcsResourceManager::Update");
 }
 
-void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
+void GcsResourceManager::HandleGetResources(rpc::GetResourcesRequest request,
                                             rpc::GetResourcesReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
   scheduling::NodeID node_id(request.node_id());
@@ -71,7 +71,7 @@ void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &requ
 }
 
 void GcsResourceManager::HandleGetAllAvailableResources(
-    const rpc::GetAllAvailableResourcesRequest &request,
+    rpc::GetAllAvailableResourcesRequest request,
     rpc::GetAllAvailableResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto local_scheduling_node_id = scheduling::NodeID(local_node_id_.Binary());
@@ -139,7 +139,7 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
 }
 
 void GcsResourceManager::HandleReportResourceUsage(
-    const rpc::ReportResourceUsageRequest &request,
+    rpc::ReportResourceUsageRequest request,
     rpc::ReportResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   UpdateFromResourceReport(request.resources());
@@ -167,7 +167,7 @@ void GcsResourceManager::FillAggregateLoad(
 }
 
 void GcsResourceManager::HandleGetAllResourceUsage(
-    const rpc::GetAllResourceUsageRequest &request,
+    rpc::GetAllResourceUsageRequest request,
     rpc::GetAllResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   if (!node_resource_usages_.empty()) {
@@ -218,7 +218,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
 }
 
 void GcsResourceManager::HandleGetGcsSchedulingStats(
-    const rpc::GetGcsSchedulingStatsRequest &request,
+    rpc::GetGcsSchedulingStatsRequest request,
     rpc::GetGcsSchedulingStatsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   if (cluster_task_manager_) {

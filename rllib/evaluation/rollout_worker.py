@@ -1508,12 +1508,13 @@ class RolloutWorker(ParallelIteratorWorker):
             byte sequence.
         """
         filters = self.get_filters(flush_after=True)
-        state = {}
+        policy_states = {}
         for pid in self.policy_map:
-            state[pid] = self.policy_map[pid].get_state()
+            policy_states[pid] = self.policy_map[pid].get_state()
         return {
             "filters": filters,
-            "state": state,
+            # TODO: Rename this into "policy_states" for clarity.
+            "state": policy_states,
             # Also store current mapping fn and which policies to train.
             "policy_mapping_fn": self.policy_mapping_fn,
             "is_policy_to_train": self.is_policy_to_train,
@@ -1540,7 +1541,7 @@ class RolloutWorker(ParallelIteratorWorker):
             state = pickle.loads(state)
 
         # TODO: Once filters are handled by connectors, get rid of the "filters"
-        #  key in `state` entirely.
+        #  key in `state` entirely (will be part of the policies then).
         self.sync_filters(state["filters"])
 
         connector_enabled = self.policy_config.get("enable_connectors", False)
@@ -1569,8 +1570,10 @@ class RolloutWorker(ParallelIteratorWorker):
                 self.policy_map[pid].set_state(policy_state)
 
         # Also restore mapping fn and which policies to train.
-        self.set_policy_mapping_fn(state["policy_mapping_fn"])
-        self.set_is_policy_to_train(state["is_policy_to_train"])
+        if "policy_mapping_fn" in state:
+            self.set_policy_mapping_fn(state["policy_mapping_fn"])
+        if "is_policy_to_train" in state:
+            self.set_is_policy_to_train(state["is_policy_to_train"])
 
     @DeveloperAPI
     def get_weights(

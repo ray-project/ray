@@ -216,6 +216,13 @@ class Algorithm(Trainable):
     def from_checkpoint(
         checkpoint: Union[str, Checkpoint],
         policies: Optional[Container[PolicyID]] = None,
+        policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
+        policies_to_train: Optional[
+            Union[
+                Container[PolicyID],
+                Callable[[PolicyID, Optional[SampleBatchType]], bool],
+            ]
+        ] = None,
     ) -> "Algorithm":
         """Creates a new algorithm instance from a given checkpoint.
 
@@ -227,11 +234,24 @@ class Algorithm(Trainable):
             policies: Optional list of PolicyIDs to recover. This allows users to
                 restore an Algorithm with only a subset of the originally present
                 Policies.
+            policy_mapping_fn: An optional (updated) policy mapping function
+                to use from here on.
+            policies_to_train: An optional list of policy IDs to be trained
+                or a callable taking PolicyID and SampleBatchType and
+                returning a bool (trainable or not?).
+                If None, will keep the existing setup in place. Policies,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
 
         Returns:
             The instantiated Algorithm.
         """
-        state, v0_checkpoint_file = Algorithm._checkpoint_to_state(checkpoint, policies)
+        state, v0_checkpoint_file = Algorithm._checkpoint_to_state(
+            checkpoint=checkpoint,
+            policies=policies,
+            policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=policies_to_train,
+        )
 
         # Old checkpoint version: Create algo first, then call its `restore()` method.
         if v0_checkpoint_file:
@@ -540,6 +560,7 @@ class Algorithm(Trainable):
             # By default, collect metrics for all remote workers.
             self._remote_workers_for_metrics = self.workers.remote_workers()
 
+            # TODO (avnishn): Remove the execution plan API by q1 2023
             # Function defining one single training iteration's behavior.
             if self.config["_disable_execution_plan_api"]:
                 # Ensure remote workers are initially in sync with the local worker.
@@ -776,6 +797,7 @@ class Algorithm(Trainable):
                     "sync_filters_on_rollout_workers_timeout_s"
                 ],
             )
+            # TODO (avnishn): Remove the execution plan API by q1 2023
             # Collect worker metrics and add combine them with `results`.
             if self.config["_disable_execution_plan_api"]:
                 episodes_this_iter, self._episodes_to_be_collected = collect_episodes(
@@ -1644,9 +1666,7 @@ class Algorithm(Trainable):
             ]
         ] = None,
         evaluation_workers: bool = True,
-        worker_list: Optional[List[Union[RolloutWorker, ActorHandle]]] = None,
-        # Deprecated args:
-        workers=None,
+        workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = None,
     ) -> Optional[Policy]:
         """Adds a new policy to this Algorithm.
 
@@ -1678,32 +1698,20 @@ class Algorithm(Trainable):
                 returns False) will not be updated.
             evaluation_workers: Whether to add the new policy also
                 to the evaluation WorkerSet.
-            worker_list: A list of RolloutWorker/ActorHandles (remote
+            workers: A list of RolloutWorker/ActorHandles (remote
                 RolloutWorkers) to add this policy to. If defined, will only
                 add the given policy to these workers.
 
         Returns:
             The newly added policy (the copy that got added to the local
-            worker). If `worker_list` was provided, None is returned.
-
-        Raises:
-            ValueError: If both `policy_cls` AND `policy` are provided.
-            KeyError: If the given `policy_id` already exists in this Algorithm.
+            worker). If `workers` was provided, None is returned.
         """
-        # Deprecated args.
-        if workers is not None:
-            deprecation_warning(
-                old="Algorithm.add_policy(.., workers=...)",
-                new="Algorithm.add_policy(.., worker_list=...)",
-                error=False,
-            )
-            worker_list = workers
-
         # Worker list is explicitly provided -> Use only those workers (local or remote)
         # specified.
-        if worker_list is not None:
-            RolloutWorker.add_policy_to_workers(
-                worker_list,
+        if workers is not None:
+            # Call static utility method.
+            WorkerSet.add_policy_to_workers(
+                workers,
                 policy_id,
                 policy_cls,
                 policy,
@@ -1729,7 +1737,7 @@ class Algorithm(Trainable):
             )
 
             # Add to evaluation workers, if necessary.
-            if evaluation_workers and self.evaluation_workers is not None:
+            if evaluation_workers is True and self.evaluation_workers is not None:
                 self.evaluation_workers.add_policy(
                     policy_id,
                     policy_cls,
@@ -1829,6 +1837,12 @@ class Algorithm(Trainable):
             filename_prefix: file name prefix of checkpoint files.
             policy_id: Optional policy id to export.
 
+        Returns:
+            The Policy Checkpoint created.
+
+        Raises:
+            KeyError if `policy_id` cannot be found in this Algorithm.
+
         Example:
             >>> from ray.rllib.algorithms.ppo import PPO
             >>> # Use an Algorithm from RLlib or define your own.
@@ -1838,6 +1852,8 @@ class Algorithm(Trainable):
             >>> algo.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
         """
         policy = self.get_policy(policy_id)
+        if policy is None:
+            raise KeyError(f"Policy with ID {policy_id} not found in Algorithm!")
         return policy.export_checkpoint(export_dir, filename_prefix)
 
     @DeveloperAPI
@@ -1864,8 +1880,8 @@ class Algorithm(Trainable):
         self._sync_weights_to_workers(worker_set=self.workers)
 
     @override(Trainable)
-    def save_checkpoint(self, checkpoint_dir: str) -> Optional[Union[str, Dict]]:
-        """Returns a dict with all checkpoint information in it.
+    def save_checkpoint(self, checkpoint_dir: str) -> str:
+        """Creates an AIR Checkpoint directory and returns it as a str.
 
         Args:
             checkpoint_dir: The directory where the checkpoint
@@ -1873,24 +1889,21 @@ class Algorithm(Trainable):
                 b/c we return a dict instead.
 
         Returns:
-            A dict that will be automatically serialized by Tune and
-            passed to ``Trainable.load_checkpoint()``.
+            The path to the created AIR Checkpoint directory.
         """
         state = self.__getstate__()
 
-        local_worker_state = state.pop("worker")
+        # Extract policy states from worker state (Policies get their own
+        # checkpoint sub-dirs).
+        # TODO: "state" key inside "worker" should be renamed to "policy_states".
         policies = {}
-        if local_worker_state:
-            policies = local_worker_state.pop("state", {})
-
-        # TODO: Once filters have been outsourced into connectors,
-        #  we should remove this hack.
-        state["filters"] = local_worker_state.get("filters", {})
+        if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
+            policies = state["worker"].pop("state", {})
 
         # Add RLlib checkpoint version.
         state["__version__"] = "v1"
 
-        # Write state (w/o policies or filters) to disk.
+        # Write state (w/o policies) to disk.
         state_file = os.path.join(checkpoint_dir, "state.pkl")
         pickle.dump(state, open(state_file, "wb"))
         # Write checkpoint version separately. This file will NOT be used
@@ -1919,7 +1932,8 @@ class Algorithm(Trainable):
         # Checkpoint is provided as a directory name.
         # Restore from the checkpoint file or dir.
         if isinstance(checkpoint, str):
-            checkpoint_data = Algorithm._checkpoint_to_state(checkpoint)
+            checkpoint_data, _ = Algorithm._checkpoint_to_state(checkpoint)
+        # Checkpoint is a checkpoint-as-dict -> Restore state from it as-is.
         else:
             checkpoint_data = checkpoint
         self.__setstate__(checkpoint_data)
@@ -2726,7 +2740,35 @@ class Algorithm(Trainable):
     def _checkpoint_to_state(
         checkpoint: Union[str, Checkpoint],
         policies: Optional[Container[PolicyID]] = None,
-    ) -> Dict:
+        policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
+        policies_to_train: Optional[
+            Union[
+                Container[PolicyID],
+                Callable[[PolicyID, Optional[SampleBatchType]], bool],
+            ]
+        ] = None,
+    ) -> Tuple[Dict, str]:
+        """Converts a checkpoint directory or object to a proper Algorithm state dict.
+
+        The returned state dict can be used inside self.__setstate__().
+
+        Args:
+            checkpoint: Either the checkpoint directory or AIR Checkpoint object to
+                translate into a proper Algorithm state dict.
+            policies: Optional list/set of PolicyIDs. If not None, only those policies
+                listed here will be included in the returned state. Note that
+                state items such as filters, the `is_policy_to_train` function, as
+                well as the multi-agent `policies` dict will be adjusted as well,
+                based on this arg.
+            policy_mapping_fn: An optional (updated) policy mapping function
+                to include in the returned state.
+            policies_to_train: An optional list of policy IDs to be trained
+                or a callable taking PolicyID and SampleBatchType and
+                returning a bool (trainable or not?).
+
+        Returns:
+             A state dict usable within the `self.__setstate__()` method.
+        """
         # Do we have an old ("v0") single checkpoint file?
         v0_checkpoint_file = None
 
@@ -2771,17 +2813,22 @@ class Algorithm(Trainable):
 
             state = pickle.load(open(state_file, "rb"))
 
-            # Old style: Create algo first, then call its `restore()` method.
-            if not v0_checkpoint_file:
+            # New checkpoint format: Policies are in separate sub-dirs.
+            # Note: Algorithms like ES/ARS don't have a WorkerSet, so we just return
+            # the plain state here.
+            if not v0_checkpoint_file and state.get("worker") is not None:
+                worker_state = state["worker"]
+
                 # TODO: Remove filters once they are part of policies (via connectors).
                 policies = set(
-                    policies if policies is not None else state["filters"].keys()
+                    policies if policies is not None else worker_state["filters"].keys()
                 )
 
-                filters = state.pop("filters")
                 # Remove policies entirely from filters that are not in `policies`.
-                filters = {
-                    pid: filter for pid, filter in filters.items() if pid in policies
+                worker_state["filters"] = {
+                    pid: filter
+                    for pid, filter in worker_state["filters"].items()
+                    if pid in policies
                 }
                 # Remove policies from multiagent dict that are not in `policies`.
                 policies_dict = state["config"]["multiagent"]["policies"]
@@ -2790,15 +2837,9 @@ class Algorithm(Trainable):
                 }
                 state["config"]["multiagent"]["policies"] = policies_dict
 
-                # Prepare local `worker` state to add policies' states into it read from
-                # separate policy checkpoint files.
-                state["worker"] = {
-                    # The policies' states will go into this dict.
-                    "state": {},
-                    # TODO: Remove filters once they are part of policies
-                    #  (via connectors).
-                    "filters": filters,
-                }
+                # Prepare local `worker` state to add policies' states into it,
+                # read from separate policy checkpoint files.
+                state["worker"]["state"] = {}
                 for pid in policies:
                     policy_state_file = os.path.join(
                         tmp_dir, "policies", pid, "policy_state.pkl"
@@ -2813,6 +2854,11 @@ class Algorithm(Trainable):
                     state["worker"]["state"][pid] = pickle.load(
                         open(policy_state_file, "rb")
                     )
+
+                if policy_mapping_fn is not None:
+                    worker_state["policy_mapping_fn"] = policy_mapping_fn
+                if policies_to_train is not None:
+                    worker_state["is_policy_to_train"] = policies_to_train
 
             return state, v0_checkpoint_file
 
@@ -2871,6 +2917,7 @@ class Algorithm(Trainable):
             while not train_iter_ctx.should_stop(results):
                 # Try to train one step.
                 try:
+                    # TODO (avnishn): Remove the execution plan API by q1 2023
                     with self._timers[TRAINING_ITERATION_TIMER]:
                         if self.config["_disable_execution_plan_api"]:
                             results = self.training_step()

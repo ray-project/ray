@@ -186,7 +186,16 @@ class TestAlgorithm(unittest.TestCase):
                 # but only with 1 of the originally added policies (plus the initial
                 # p0).
                 if i == 2:
-                    test2 = pg.PG.from_checkpoint(checkpoint, policies=["p0", "p2"])
+
+                    def new_mapping_fn(agent_id, episode, worker, **kwargs):
+                        return f"p{choice([0, 2])}"
+
+                    test2 = pg.PG.from_checkpoint(
+                        checkpoint=checkpoint,
+                        policies=["p0", "p2"],
+                        policy_mapping_fn=new_mapping_fn,
+                        policies_to_train=["p0"],
+                    )
 
                     # Make sure evaluation workers have the same policies.
                     def _has_policies(w):
