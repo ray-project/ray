@@ -1,0 +1,45 @@
+diff --git opencensus/stats/internal/delta_producer.cc opencensus/stats/internal/delta_producer.cc
+--- opencensus/stats/internal/delta_producer.cc
++++ opencensus/stats/internal/delta_producer.cc
+@@ -128,10 +128,8 @@ void DeltaProducer::Flush() {
+   ConsumeLastDelta();
+ }
+ 
+-DeltaProducer::DeltaProducer()
+-    : harvester_thread_(&DeltaProducer::RunHarvesterLoop, this) {
+-  absl::MutexLock l(&mu_);
+-  thread_started_ = true;
++DeltaProducer::DeltaProducer() {
++  StartHarvestLoopIfNeeded();
+ }
+ 
+ void DeltaProducer::SwapDeltas() {
+@@ -173,5 +171,14 @@ void DeltaProducer::SetHarvestInterval(const absl::Duration interval) {
+   harvest_interval_ = interval;
+ }
+ 
++void DeltaProducer::StartHarvestLoopIfNeeded() {
++  absl::MutexLock l(&mu_);
++  if (thread_started_) {
++    return;
++  }
++  harvester_thread_ = std::thread(&DeltaProducer::RunHarvesterLoop, this);
++  thread_started_ = true;
++}
++
+ }  // namespace stats
+ }  // namespace opencensus
+diff --git opencensus/stats/internal/delta_producer.h opencensus/stats/internal/delta_producer.h
+--- opencensus/stats/internal/delta_producer.h
++++ opencensus/stats/internal/delta_producer.h
+@@ -73,6 +73,9 @@ class DeltaProducer final {
+ 
+   void Shutdown();
+ 
++  // Start the harvest loop if it is not running. It is no-op if Shutdown API wasn't called.
++  void StartHarvestLoopIfNeeded();
++
+   // Adds a new Measure.
+   void AddMeasure();
+
+

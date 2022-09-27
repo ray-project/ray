@@ -78,6 +78,7 @@ static inline void Init(const TagsType &global_tags,
   metrics_io_service_pool->Run();
   instrumented_io_context *metrics_io_service = metrics_io_service_pool->Get();
   RAY_CHECK(metrics_io_service != nullptr);
+  opencensus::stats::DeltaProducer::Get()->StartHarvestLoopIfNeeded();
 
   // Default exporter is a metrics agent exporter.
   if (exporter_to_use == nullptr) {
@@ -117,6 +118,7 @@ static inline void Shutdown() {
     return;
   }
   metrics_io_service_pool->Stop();
+  opencensus::stats::DeltaProducer::Get()->Shutdown();
   opencensus::stats::StatsExporter::Shutdown();
   metrics_io_service_pool = nullptr;
   exporter = nullptr;

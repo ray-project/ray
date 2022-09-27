@@ -209,6 +209,7 @@ def ray_deps_setup():
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:opencensus-cpp-shutdown-api.patch",
             "@com_github_ray_project_ray//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:opencensus-cpp-start-harvest-thread.patch"
         ],
     )
 
