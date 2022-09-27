@@ -32,6 +32,7 @@ from ray.rllib.utils.torch_utils import (
     concat_multi_gpu_td_errors,
     FLOAT_MIN,
     huber_loss,
+    l2_loss,
     reduce_mean_ignore_inf,
     softmax_cross_entropy_with_logits,
 )
@@ -41,6 +42,16 @@ torch, nn = try_import_torch()
 F = None
 if nn:
     F = nn.functional
+
+
+def get_dist_class_with_temperature(t: float):
+    """TorchCategorical distribution class that has customized default temperature."""
+
+    class TorchCategoricalWithTemperature(TorchCategorical):
+        def __init__(self, inputs, model=None, temperature=t):
+            super().__init__(inputs, model, temperature)
+
+    return TorchCategoricalWithTemperature
 
 
 class QLoss:
@@ -58,6 +69,7 @@ class QLoss:
         num_atoms=1,
         v_min=-10.0,
         v_max=10.0,
+        loss_fn=huber_loss,
     ):
 
         if num_atoms > 1:
@@ -106,9 +118,7 @@ class QLoss:
 
             # compute the error (potentially clipped)
             self.td_error = q_t_selected - q_t_selected_target.detach()
-            self.loss = torch.mean(
-                importance_weights.float() * huber_loss(self.td_error)
-            )
+            self.loss = torch.mean(importance_weights.float() * loss_fn(self.td_error))
             self.stats = {
                 "mean_q": torch.mean(q_t_selected),
                 "min_q": torch.min(q_t_selected),
@@ -219,7 +229,11 @@ def build_q_model_and_distribution(
         add_layer_norm=add_layer_norm,
     )
 
-    return model, TorchCategorical
+    # Return a Torch TorchCategorical distribution where the temperature
+    # parameter is partially binded to the configured value.
+    temperature = config["categorical_distribution_temperature"]
+
+    return model, get_dist_class_with_temperature(temperature)
 
 
 def get_distribution_inputs_and_class(
@@ -238,7 +252,11 @@ def get_distribution_inputs_and_class(
 
     model.tower_stats["q_values"] = q_vals
 
-    return q_vals, TorchCategorical, []  # state-out
+    # Return a Torch TorchCategorical distribution where the temperature
+    # parameter is partially binded to the configured value.
+    temperature = policy.config["categorical_distribution_temperature"]
+
+    return q_vals, get_dist_class_with_temperature(temperature), []  # state-out
 
 
 def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
@@ -328,6 +346,8 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
             q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1
         )
 
+    loss_fn = huber_loss if policy.config["td_error_loss_fn"] == "huber" else l2_loss
+
     q_loss = QLoss(
         q_t_selected,
         q_logits_t_selected,
@@ -341,6 +361,7 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
         config["num_atoms"],
         config["v_min"],
         config["v_max"],
+        loss_fn,
     )
 
     # Store values for stats function in model (tower), such that for

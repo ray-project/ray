@@ -37,5 +37,7 @@ const TagKeyType ResourceNameKey = TagKeyType::Register("ResourceName");
 const TagKeyType ActorIdKey = TagKeyType::Register("ActorId");
 
 const TagKeyType WorkerIdKey = TagKeyType::Register("WorkerId");
+
+const TagKeyType JobIdKey = TagKeyType::Register("JobId");
 }  // namespace stats
 }  // namespace ray

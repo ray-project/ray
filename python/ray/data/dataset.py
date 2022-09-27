@@ -14,6 +14,7 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Type,
     Optional,
     Tuple,
     Union,
@@ -39,6 +40,7 @@ from ray.data._internal.equalize import _equalize
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _estimate_available_parallelism
+from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import (
     ExecutionPlan,
     OneToOneStage,
@@ -2508,7 +2510,7 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> for batch in ray.data.range( # doctest: +SKIP
             ...     12,
-            ... ).iter_torch_batches(batch_size=4):
+            ... ).iter_tf_batches(batch_size=4):
             ...     print(batch.shape) # doctest: +SKIP
             (4, 1)
             (4, 1)
@@ -3571,6 +3573,82 @@ class Dataset(Generic[T]):
             self._lazy,
         )
         return l_ds, r_ds
+
+    def default_batch_format(self) -> Type:
+        """Return this dataset's default batch format.
+
+        The default batch format describes what batches of data look like. To learn more
+        about batch formats, read
+        :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
+
+        Example:
+
+            If your dataset represents a list of Python objects, then the default batch
+            format is ``list``.
+
+            >>> ds = ray.data.range(100)
+            >>> ds  # doctest: +SKIP
+            Dataset(num_blocks=20, num_rows=100, schema=<class 'int'>)
+            >>> ds.default_batch_format()
+            <class 'list'>
+            >>> next(ds.iter_batches(batch_size=4))
+            [0, 1, 2, 3]
+
+            If your dataset contains a single ``TensorDtype`` or ``ArrowTensorType``
+            column named ``__value__`` (as created by :func:`ray.data.from_numpy`), then
+            the default batch format is ``np.ndarray``. For more information on tensor
+            datasets, read the :ref:`tensor support guide <datasets_tensor_support>`.
+
+            >>> ds = ray.data.range_tensor(100)
+            >>> ds  # doctest: +SKIP
+            Dataset(num_blocks=20, num_rows=100, schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})
+            >>> ds.default_batch_format()
+            <class 'numpy.ndarray'>
+            >>> next(ds.iter_batches(batch_size=4))
+            array([[0],
+                   [1],
+                   [2],
+                   [3]])
+
+            If your dataset represents tabular data and doesn't only consist of a
+            ``__value__`` tensor column (such as is created by
+            :meth:`ray.data.from_numpy`), then the default batch format is
+            ``pd.DataFrame``.
+
+            >>> import pandas as pd
+            >>> df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
+            >>> ds = ray.data.from_pandas(df)
+            >>> ds  # doctest: +SKIP
+            Dataset(num_blocks=1, num_rows=2, schema={foo: object, bar: int64})
+            >>> ds.default_batch_format()
+            <class 'pandas.core.frame.DataFrame'>
+            >>> next(ds.iter_batches(batch_size=4))
+              foo  bar
+            0   a    0
+            1   b    1
+
+        .. seealso::
+
+            :meth:`~Dataset.map_batches`
+                Call this function to transform batches of data.
+
+            :meth:`~Dataset.iter_batches`
+                Call this function to iterate over batches of data.
+
+        """  # noqa: E501
+        import pandas as pd
+        import pyarrow as pa
+
+        schema = self.schema()
+        assert isinstance(schema, (type, PandasBlockSchema, pa.Schema))
+
+        if isinstance(schema, type):
+            return list
+
+        if isinstance(schema, (PandasBlockSchema, pa.Schema)):
+            if schema.names == [VALUE_COL_NAME]:
+                return np.ndarray
+            return pd.DataFrame
 
     def _dataset_format(self) -> str:
         """Determine the format of the dataset. Possible values are: "arrow",
