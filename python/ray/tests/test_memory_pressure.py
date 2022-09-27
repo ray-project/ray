@@ -373,7 +373,7 @@ def test_memory_monitor_doesnt_kill_non_retriable_task(ray_with_memory_monitor):
     reason="memory monitor only on linux currently",
 )
 def test_memory_monitor_doesnt_kill_non_retriable_actor(ray_with_memory_monitor):
-    leaker = Leaker.remote()
+    leaker = Leaker.options(max_restarts=0).remote()
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
     with pytest.raises(ray.exceptions.RayActorError) as _:
