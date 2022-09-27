@@ -461,7 +461,7 @@ def test_pin_runtime_env_uri(start_cluster, source, expiration_s, monkeypatch):
     time_until_first_check = time.time() - start
     print("Starting Internal KV checks at time ", time_until_first_check)
     assert (
-        time_until_first_check > TEMP_URI_EXPIRATION_S
+        time_until_first_check < TEMP_URI_EXPIRATION_S
     ), "URI expired before we could check it. Try bumping the expiration time."
     if expiration_s > 0:
         assert not check_internal_kv_gced()
