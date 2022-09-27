@@ -954,18 +954,26 @@ class Policy(metaclass=ABCMeta):
         """Exports Policy checkpoint to a local directory and returns an AIR Checkpoint.
 
         Args:
-            export_dir: Local writable directory.
-            filename_prefix: String to use as filename for the saved model.
-                Note that this argument is deprecated and should no longer be used as
-                some policies produce more than one file.
+            export_dir: Local writable directory to store the AIR Checkpoint
+                information into.
 
         Returns:
             The AIR Checkpoint instance created (in addition to writing the given
             directory).
+
+        Raises:
+            KeyError if `policy_id` cannot be found in this Algorithm.
+
+        Example:
+            >>> from ray.rllib.algorithms.ppo import PPOTorchPolicy
+            >>> policy = PPOTorchPolicy(...) # doctest: +SKIP
+            >>> air_ckpt = policy.export_checkpoint("/tmp/export_dir") # doctest: +SKIP
         """
+        # `filename_prefix` should not longer be used as new Policy checkpoints
+        # contain more than one file with a fixed filename structure.
         assert filename_prefix == "model", (
             "The arg `filename_prefix` for `Policy.export_checkpoint()` is "
-            "deprecated and should not be set!"
+            "deprecated and must not be set anymore! Simply leave this arg empty."
         )
         state = self.get_state()
         os.makedirs(export_dir, exist_ok=True)

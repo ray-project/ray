@@ -1827,18 +1827,20 @@ class Algorithm(Trainable):
     def export_policy_checkpoint(
         self,
         export_dir: str,
-        filename_prefix: str = "model",
+        filename_prefix: str = "model",  # deprecated arg, do not use anymore
         policy_id: PolicyID = DEFAULT_POLICY_ID,
     ) -> Checkpoint:
-        """Exports policy model checkpoint to a local directory.
+        """Exports Policy checkpoint to a local directory and returns an AIR Checkpoint.
 
         Args:
-            export_dir: Writable local directory.
-            filename_prefix: file name prefix of checkpoint files.
-            policy_id: Optional policy id to export.
+            export_dir: Writable local directory to store the AIR Checkpoint
+                information into.
+            policy_id: Optional policy ID to export. If not provided, will export
+                "default_policy". If `policy_id` does not exist in this Algorithm,
+                will raise a KeyError.
 
         Returns:
-            The Policy Checkpoint created.
+            The Policy AIR Checkpoint object created.
 
         Raises:
             KeyError if `policy_id` cannot be found in this Algorithm.
@@ -1851,6 +1853,13 @@ class Algorithm(Trainable):
             >>>     algo.train() # doctest: +SKIP
             >>> algo.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
         """
+        # `filename_prefix` should not longer be used as new Policy checkpoints
+        # contain more than one file with a fixed filename structure.
+        assert filename_prefix == "model", (
+            "The arg `filename_prefix` for `Algorithm.export_policy_checkpoint()` is "
+            "deprecated and must not be set anymore! Simply leave this arg empty."
+        )
+
         policy = self.get_policy(policy_id)
         if policy is None:
             raise KeyError(f"Policy with ID {policy_id} not found in Algorithm!")
@@ -1881,12 +1890,25 @@ class Algorithm(Trainable):
 
     @override(Trainable)
     def save_checkpoint(self, checkpoint_dir: str) -> str:
-        """Creates an AIR Checkpoint directory and returns it as a str.
+        """Exports AIR Checkpoint to a local directory and returns its directory path.
+
+        The structure of an Algorithm checkpoint dir will be as follows:
+        .
+        ..
+        policies/
+          pol_1/
+            policy_state.pkl
+          pol_2/
+            policy_state.pkl
+        checkpoint_version.txt
+        state.pkl
+
+        Note: `checkpoint_version.txt` contains a version string (e.g. "v0") helping
+        RLlib to remain backward compatible wrt restoring from checkpoints from
+        Ray 2.0 onwards.
 
         Args:
-            checkpoint_dir: The directory where the checkpoint
-                file must be stored. This is handled entirely by Tune and not used here
-                b/c we return a dict instead.
+            checkpoint_dir: The directory where the checkpoint files will be stored.
 
         Returns:
             The path to the created AIR Checkpoint directory.
@@ -2670,7 +2692,7 @@ class Algorithm(Trainable):
             The current state dict of this Algorithm, which can be used to sufficiently
             restore the algorithm from scratch without any other information.
         """
-        # Add config to state so complete Algorithm can be reproduced w/o.
+        # Add config to state so complete Algorithm can be reproduced w/o it.
         state = {
             "algorithm_class": type(self),
             "config": self.config,
@@ -2697,11 +2719,12 @@ class Algorithm(Trainable):
 
         Args:
             state: The state dict to restore this Algorithm instance to. `state` may
-                have been returned by a call to an Algorithm's `get_state()` method.
+                have been returned by a call to an Algorithm's `__getstate__()` method.
         """
-
         # TODO (sven): Validate that our config and the config in state are compatible.
         #  For example, the model architectures may differ.
+        #  Also, what should the behavior be if e.g. some training parameter
+        #  (e.g. lr) changed?
 
         if hasattr(self, "workers") and "worker" in state:
             self.workers.local_worker().set_state(state["worker"])
@@ -2767,9 +2790,11 @@ class Algorithm(Trainable):
                 returning a bool (trainable or not?).
 
         Returns:
-             A state dict usable within the `self.__setstate__()` method.
+             Tuple consisting of a state dict usable within the `self.__setstate__()`
+             method and - if applicable - the "v0" checkpoint file.
         """
-        # Do we have an old ("v0") single checkpoint file?
+        # Do we have an old ("v0") single checkpoint file
+        # (`checkpoint_00001/checkpoint-00001`)?
         v0_checkpoint_file = None
 
         # `checkpoint` is a str: Could be checkpoint file (older checkpoint versions)
