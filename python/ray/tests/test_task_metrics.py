@@ -105,7 +105,7 @@ def test_task_nested_wait(shutdown_only):
 
         ray.wait([f.remote() for _ in range(10)])
 
-    w = wrapper.remote()
+    w = wrapper.remote()  # noqa
 
     expected = {
         "RUNNING": 2.0,
@@ -128,7 +128,7 @@ def test_task_nested(shutdown_only):
 
         ray.get([f.remote() for _ in range(10)])
 
-    w = wrapper.remote()
+    w = wrapper.remote()  # noqa
 
     expected = {
         "RUNNING": 2.0,
@@ -288,7 +288,7 @@ def test_task_job_ids(shutdown_only):
     def f():
         time.sleep(999)
 
-    a = [f.remote() for _ in range(1)]
+    a = [f.remote() for _ in range(1)]  # noqa
     expected = {
         "RUNNING": 3.0,
     }
