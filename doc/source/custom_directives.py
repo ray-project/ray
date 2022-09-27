@@ -295,7 +295,7 @@ def build_gallery(app):
                         gh_stars = (
                             f".. image:: https://img.shields.io/github/"
                             f"stars/{org}/{repo}?style=social)]\n"
-                            f"\t\t:target: {item['repo']})"
+                            f"            :target: {item['repo']}"
                         )
                 except Exception:
                     pass
@@ -318,7 +318,7 @@ def build_gallery(app):
 
         panel_header = ".. panels::\n"
         for k, v in meta.items():
-            panel_header += f"\t:{k}: {v}\n"
+            panel_header += f"    :{k}: {v}\n"
 
         if is_titled:
             panels = ""
