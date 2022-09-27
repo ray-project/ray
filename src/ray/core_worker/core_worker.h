@@ -71,7 +71,7 @@ class TaskCounter {
     // Track the number of running tasks per name.
     counter_.SetOnChangeCallback(
         [this](const std::pair<std::string, TaskStatusType> &key, int64_t value)
-            EXCLUSIVE_LOCKS_REQUIRED(mu_) mutable {
+            EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
               if (key.second == kRunning) {
                 RefreshRunningMetric(key.first, value);
               }
@@ -79,7 +79,7 @@ class TaskCounter {
     // Track the sub-state of tasks running but blocked in ray.get().
     running_in_get_counter_.SetOnChangeCallback(
         [this](const std::string &func_name, int64_t value)
-            EXCLUSIVE_LOCKS_REQUIRED(mu_) mutable {
+            EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
               ray::stats::STATS_tasks.Record(
                   value,
                   {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
@@ -90,7 +90,7 @@ class TaskCounter {
     // Track the sub-state of tasks running but blocked in ray.wait().
     running_in_wait_counter_.SetOnChangeCallback(
         [this](const std::string &func_name, int64_t value)
-            EXCLUSIVE_LOCKS_REQUIRED(mu_) mutable {
+            EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
               ray::stats::STATS_tasks.Record(
                   value,
                   {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
@@ -101,7 +101,7 @@ class TaskCounter {
   }
 
   void RefreshRunningMetric(const std::string func_name, int64_t running_total)
-      EXCLUSIVE_LOCKS_REQUIRED(&task_counter_mutex) {
+      EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
     // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract them
     // out to avoid double-counting.
     ray::stats::STATS_tasks.Record(
