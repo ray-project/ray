@@ -26,17 +26,25 @@ def test_pandas_pandas():
 
 
 def test_numpy_to_numpy():
-    input_data = {"x": np.array([1, 2, 3])}
+    input_data = {"x": np.arange(12).reshape(3, 4)}
     expected_output = input_data
     actual_output = _convert_batch_type_to_numpy(input_data)
     assert expected_output == actual_output
 
-    input_data = {TENSOR_COLUMN_NAME: np.array([1, 2, 3])}
-    expected_output = np.array([1, 2, 3])
+    input_data = {
+        "column_1": np.arange(12).reshape(3, 4),
+        "column_2": np.arange(12).reshape(3, 4),
+    }
+    expected_output = {
+        "column_1": np.arange(12).reshape(3, 4),
+        "column_2": np.arange(12).reshape(3, 4),
+    }
     actual_output = _convert_batch_type_to_numpy(input_data)
-    np.testing.assert_array_equal(expected_output, actual_output)
+    assert input_data.keys() == expected_output.keys()
+    np.testing.assert_array_equal(input_data["column_1"], expected_output["column_1"])
+    np.testing.assert_array_equal(input_data["column_2"], expected_output["column_2"])
 
-    input_data = np.array([1, 2, 3])
+    input_data = np.arange(12).reshape(3, 4)
     expected_output = input_data
     actual_output = _convert_batch_type_to_numpy(input_data)
     np.testing.assert_array_equal(expected_output, actual_output)

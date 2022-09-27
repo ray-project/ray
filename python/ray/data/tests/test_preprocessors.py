@@ -33,7 +33,6 @@ from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
 from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
-from ray.data._internal.table_block import VALUE_COL_NAME
 from ray.air.constants import MAX_REPR_LENGTH
 
 

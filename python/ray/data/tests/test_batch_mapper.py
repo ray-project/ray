@@ -331,8 +331,6 @@ def test_batch_mapper_numpy_data_format(ds_with_expected_pandas_numpy_df):
 
     transformed_ds = ds.map_batches(add_and_modify_udf_numpy, batch_format="numpy")
     out_df_map_batches = transformed_ds.to_pandas()
-    print(f"out_df_map_batches: {out_df_map_batches}")
-    print(f"expected_numpy_df: {expected_numpy_df}")
     assert_frame_equal(out_df_map_batches, expected_numpy_df)
 
     # Test BatchMapper
