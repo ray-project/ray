@@ -1,0 +1,311 @@
+From 6c81c2ffcd0e0e8b77533873e3cf484b6402f165 Mon Sep 17 00:00:00 2001
+From: Clarence Ng <clarence.wyng@gmail.com>
+Date: Mon, 26 Sep 2022 19:13:36 -0700
+Subject: [PATCH] [core] dont oom kill non-retriable tasks or actors
+
+Signed-off-by: Clarence Ng <clarence.wyng@gmail.com>
+---
+ python/ray/tests/test_memory_pressure.py | 72 +++++++++++++++++++-----
+ src/ray/common/task/task_spec.cc         |  4 +-
+ src/ray/common/task/task_spec.h          |  2 +
+ src/ray/raylet/node_manager.cc           | 14 ++++-
+ src/ray/raylet/node_manager.h            |  7 ++-
+ src/ray/raylet/worker_pool.cc            | 16 +++++-
+ src/ray/raylet/worker_pool.h             |  8 ++-
+ 7 files changed, 100 insertions(+), 23 deletions(-)
+
+diff --git a/python/ray/tests/test_memory_pressure.py b/python/ray/tests/test_memory_pressure.py
+index 32da02bed..3f44c74db 100644
+--- a/python/ray/tests/test_memory_pressure.py
++++ b/python/ray/tests/test_memory_pressure.py
+@@ -11,7 +11,7 @@ from ray._private import test_utils
+ from ray._private.test_utils import get_node_stats, wait_for_condition
+ 
+ 
+-memory_usage_threshold_fraction = 0.7
++memory_usage_threshold_fraction = 0.5
+ task_oom_retries = 1
+ memory_monitor_interval_ms = 100
+ expected_worker_eviction_message = (
+@@ -128,12 +128,11 @@ def has_metric_tagged_with_value(tag, value) -> bool:
+     reason="memory monitor only on linux currently",
+ )
+ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
+-    leaker = Leaker.remote()
++    leaker = Leaker.options(max_restarts=1, max_task_retries=1).remote()
+ 
+-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.6)
+-    ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
+-
+-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.90)
++    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
++        memory_usage_threshold_fraction + 0.1
++    )
+     with pytest.raises(ray.exceptions.RayActorError) as _:
+         ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
+ 
+@@ -142,7 +141,7 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
+         timeout=10,
+         retry_interval_ms=100,
+         tag="MemoryManager.ActorEviction.Total",
+-        value=1.0,
++        value=1.0,  # TODO(clarng): This should be 2. Look at why restart doesn't work
+     )
+ 
+ 
+@@ -153,14 +152,14 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
+ def test_memory_pressure_kill_task(ray_with_memory_monitor):
+     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.95)
+     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+-        ray.get(allocate_memory.options(max_retries=0).remote(bytes_to_alloc))
++        ray.get(allocate_memory.options(max_retries=1).remote(bytes_to_alloc))
+ 
+     wait_for_condition(
+         has_metric_tagged_with_value,
+         timeout=10,
+         retry_interval_ms=100,
+         tag="MemoryManager.TaskEviction.Total",
+-        value=1.0,
++        value=2.0,
+     )
+ 
+ 
+@@ -178,7 +177,7 @@ def test_memory_pressure_kill_newest_worker(ray_with_memory_monitor):
+ 
+     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+         ray.get(
+-            allocate_memory.options(max_retries=0).remote(allocate_bytes=bytes_to_alloc)
++            allocate_memory.options(max_retries=1).remote(allocate_bytes=bytes_to_alloc)
+         )
+ 
+     actors = ray.util.list_named_actors()
+@@ -199,7 +198,7 @@ def test_memory_pressure_kill_task_if_actor_submitted_task_first(
+     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
+         memory_usage_threshold_fraction - 0.1
+     )
+-    task_ref = allocate_memory.options(max_retries=0).remote(
++    task_ref = allocate_memory.options(max_retries=1).remote(
+         allocate_bytes=bytes_to_alloc, allocate_interval_s=0, post_allocate_sleep_s=1000
+     )
+ 
+@@ -218,10 +217,10 @@ def test_memory_pressure_kill_task_if_actor_submitted_task_first(
+     reason="memory monitor only on linux currently",
+ )
+ async def test_actor_oom_logs_error(ray_with_memory_monitor):
+-    first_actor = Leaker.options(name="first_random_actor").remote()
++    first_actor = Leaker.options(name="first_random_actor", max_restarts=1).remote()
+     ray.get(first_actor.get_worker_id.remote())
+ 
+-    oom_actor = Leaker.options(name="the_real_oom_actor").remote()
++    oom_actor = Leaker.options(name="the_real_oom_actor", max_restarts=1).remote()
+     worker_id = ray.get(oom_actor.get_worker_id.remote())
+     actor_id = ray.get(oom_actor.get_actor_id.remote())
+ 
+@@ -265,7 +264,7 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
+     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
+     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+         ray.get(
+-            allocate_memory.options(max_retries=0).remote(
++            allocate_memory.options(max_retries=1).remote(
+                 allocate_bytes=bytes_to_alloc,
+                 allocate_interval_s=0,
+                 post_allocate_sleep_s=1000,
+@@ -336,5 +335,50 @@ def test_task_oom_only_uses_oom_retry(
+     )
+ 
+ 
++@pytest.mark.skipif(
++    sys.platform != "linux" and sys.platform != "linux2",
++    reason="memory monitor only on linux currently",
++)
++def test_memory_pressure_newer_task_not_retriable_kill_older_retriable_task(
++    ray_with_memory_monitor,
++):
++    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
++        memory_usage_threshold_fraction - 0.1
++    )
++
++    retriable_task_ref = allocate_memory.options(max_retries=1).remote(
++        allocate_bytes=bytes_to_alloc, post_allocate_sleep_s=5
++    )
++
++    actor_ref = Leaker.options(name="actor", max_restarts=0).remote()
++    non_retriable_actor_ref = actor_ref.allocate.remote(bytes_to_alloc)
++
++    ray.get(non_retriable_actor_ref)
++    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
++        ray.get(retriable_task_ref)
++
++
++@pytest.mark.skipif(
++    sys.platform != "linux" and sys.platform != "linux2",
++    reason="memory monitor only on linux currently",
++)
++def test_memory_monitor_doesnt_kill_non_retriable_task(ray_with_memory_monitor):
++    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
++
++    with pytest.raises(ray.exceptions.WorkerCrashedError) as _:
++        ray.get(
++            allocate_memory.options(max_retries=0).remote(
++                allocate_bytes=bytes_to_alloc, post_allocate_sleep_s=5
++            )
++        )
++
++    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
++        ray.get(
++            allocate_memory.options(max_retries=1).remote(
++                allocate_bytes=bytes_to_alloc, post_allocate_sleep_s=5
++            )
++        )
++
++
+ if __name__ == "__main__":
+     sys.exit(pytest.main(["-sv", __file__]))
+diff --git a/src/ray/common/task/task_spec.cc b/src/ray/common/task/task_spec.cc
+index 43191d6ce..203d7a458 100644
+--- a/src/ray/common/task/task_spec.cc
++++ b/src/ray/common/task/task_spec.cc
+@@ -180,6 +180,8 @@ bool TaskSpecification::HasRuntimeEnv() const {
+ 
+ uint64_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
+ 
++int32_t TaskSpecification::MaxRetries() const { return message_->max_retries(); }
++
+ int TaskSpecification::GetRuntimeEnvHash() const {
+   absl::flat_hash_map<std::string, double> required_resource;
+   if (RayConfig::instance().worker_resource_limits_enabled()) {
+@@ -459,7 +461,7 @@ std::string TaskSpecification::DebugString() const {
+   if (IsActorCreationTask()) {
+     // Print actor creation task spec.
+     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
+-           << ", max_restarts=" << MaxActorRestarts()
++           << ", max_restarts=" << MaxActorRestarts() << ", max_retries=" << MaxRetries()
+            << ", max_concurrency=" << MaxActorConcurrency()
+            << ", is_asyncio_actor=" << IsAsyncioActor()
+            << ", is_detached=" << IsDetachedActor() << "}";
+diff --git a/src/ray/common/task/task_spec.h b/src/ray/common/task/task_spec.h
+index eda8319a8..279dbb307 100644
+--- a/src/ray/common/task/task_spec.h
++++ b/src/ray/common/task/task_spec.h
+@@ -213,6 +213,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
+ 
+   uint64_t AttemptNumber() const;
+ 
++  int32_t MaxRetries() const;
++
+   size_t NumArgs() const;
+ 
+   size_t NumReturns() const;
+diff --git a/src/ray/raylet/node_manager.cc b/src/ray/raylet/node_manager.cc
+index f04d27f35..660617892 100644
+--- a/src/ray/raylet/node_manager.cc
++++ b/src/ray/raylet/node_manager.cc
+@@ -3012,6 +3012,13 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
+             ray::stats::STATS_memory_manager_worker_eviction_total.Record(
+                 1, "MemoryManager.ActorEviction.Total");
+           }
++        } else {
++          const static int64_t max_to_print = 10;
++          auto all_workers = this->WorkersWithLatestSubmittedTasks(
++              /* filter_non_retriable_workers */ false);
++          RAY_LOG(INFO) << "Memory usage above threshold but there are no workers to "
++                           "kill. Worker list including non-retriable tasks: "
++                        << this->WorkersDebugString(all_workers, max_to_print);
+         }
+       }
+     }
+@@ -3044,8 +3051,11 @@ void NodeManager::GCTaskFailureReason() {
+ }
+ 
+ const std::vector<std::shared_ptr<WorkerInterface>>
+-NodeManager::WorkersWithLatestSubmittedTasks() const {
+-  auto workers = worker_pool_.GetAllRegisteredWorkers();
++NodeManager::WorkersWithLatestSubmittedTasks(bool filter_non_retriable_workers) const {
++  auto workers = worker_pool_.GetAllRegisteredWorkers(
++      /* filter_dead_worker */ false,
++      /* filter_io_workers */ false,
++      /* filter_non_retriable_workers */ filter_non_retriable_workers);
+   std::sort(workers.begin(),
+             workers.end(),
+             [](std::shared_ptr<WorkerInterface> const &left,
+diff --git a/src/ray/raylet/node_manager.h b/src/ray/raylet/node_manager.h
+index 2128ad7cb..498ab7815 100644
+--- a/src/ray/raylet/node_manager.h
++++ b/src/ray/raylet/node_manager.h
+@@ -189,9 +189,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
+ 
+   /// Returns workers sorted by the time of the last submitted task, in descending order.
+   ///
+-  /// \return the list of sorted workers
+-  const std::vector<std::shared_ptr<WorkerInterface>> WorkersWithLatestSubmittedTasks()
+-      const;
++  /// \param filter_non_retriable_workers whether to exclude workers that are not
++  /// retriable. \return the list of sorted workers
++  const std::vector<std::shared_ptr<WorkerInterface>> WorkersWithLatestSubmittedTasks(
++      bool filter_non_retriable_workers = true) const;
+ 
+   /// Returns debug string of the workers.
+   ///
+diff --git a/src/ray/raylet/worker_pool.cc b/src/ray/raylet/worker_pool.cc
+index dee6decd8..b2c3baccb 100644
+--- a/src/ray/raylet/worker_pool.cc
++++ b/src/ray/raylet/worker_pool.cc
+@@ -1443,7 +1443,9 @@ inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) const
+ }
+ 
+ const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers(
+-    bool filter_dead_workers, bool filter_io_workers) const {
++    bool filter_dead_workers,
++    bool filter_io_workers,
++    bool filter_non_retriable_workers) const {
+   std::vector<std::shared_ptr<WorkerInterface>> workers;
+ 
+   for (const auto &entry : states_by_lang_) {
+@@ -1459,6 +1461,18 @@ const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegistered
+       if (filter_dead_workers && worker->IsDead()) {
+         continue;
+       }
++
++      if (filter_non_retriable_workers) {
++        if (worker->GetActorId().IsNil() &&
++            worker->GetAssignedTask().GetTaskSpecification().MaxRetries() == 0) {
++          continue;
++        }
++        if (!worker->GetActorId().IsNil() &&
++            worker->GetAssignedTask().GetTaskSpecification().MaxActorRestarts() == 0) {
++          continue;
++        }
++      }
++
+       workers.push_back(worker);
+     }
+   }
+diff --git a/src/ray/raylet/worker_pool.h b/src/ray/raylet/worker_pool.h
+index 919f7496b..9a8768bf4 100644
+--- a/src/ray/raylet/worker_pool.h
++++ b/src/ray/raylet/worker_pool.h
+@@ -115,7 +115,9 @@ class WorkerPoolInterface {
+   /// \param filter_dead_workers whether or not if this method will filter dead workers
+   /// that are still registered. \return A list containing all the workers.
+   virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+-      bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
++      bool filter_dead_workers = false,
++      bool filter_io_workers = false,
++      bool filter_non_retriable_workers = false) const = 0;
+ 
+   virtual ~WorkerPoolInterface(){};
+ };
+@@ -362,7 +364,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
+   /// \param filter_dead_workers whether or not if this method will filter dead workers
+   /// that are still registered. \return A list containing all the workers.
+   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+-      bool filter_dead_workers = false, bool filter_io_workers = false) const;
++      bool filter_dead_workers = false,
++      bool filter_io_workers = false,
++      bool filter_non_retriable_workers = false) const;
+ 
+   /// Get all the registered drivers.
+   ///
+-- 
+2.25.1
+
