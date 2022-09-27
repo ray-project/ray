@@ -55,7 +55,7 @@ class SklearnPredictor(Predictor):
                 ``SklearnTrainer`` run.
         """
         checkpoint = SklearnCheckpoint.from_checkpoint(checkpoint)
-        estimator = checkpoint.get_estimator()
+        estimator = checkpoint.get_model()
         preprocessor = checkpoint.get_preprocessor()
         return cls(estimator=estimator, preprocessor=preprocessor)
 

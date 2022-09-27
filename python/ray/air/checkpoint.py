@@ -13,6 +13,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Tuple, Type, Union
 
+import abc
+from abc import abstractmethod
+
 import ray
 from ray import cloudpickle as pickle
 from ray.air._internal.checkpointing import load_preprocessor_from_dir
@@ -753,6 +756,16 @@ class Checkpoint:
             "You cannot use `air.Checkpoint` objects directly as paths. "
             "Use `Checkpoint.to_directory()` or `Checkpoint.as_directory()` instead."
         )
+
+    @abstractmethod
+    def get_model(self, model):
+        """
+        Retrieve the framework-specific model stored in this checkpoint.
+
+        Returns:
+            A framework-specific model.
+        """
+        raise NotImplementedError
 
     def get_preprocessor(self) -> Optional["Preprocessor"]:
         """Return the saved preprocessor, if one exists."""
