@@ -141,13 +141,49 @@ def get_spark_session():
     return SparkSession.builder.getOrCreate()
 
 
-def get_spark_driver_hostname(spark_session):
-    spark_master_url = spark_session.conf.get("spark.master")
-    if spark_master_url.lower().startswith("local"):
-        return "127.0.0.1"
+def get_spark_driver_hostname(spark):
+    return spark.sparkContext._jsc.sc().env().blockManager().master().driverEndpoint().address().host()
+
+
+def get_max_num_concurrent_tasks(spark_context):
+    """Gets the current max number of concurrent tasks."""
+    # pylint: disable=protected-access
+    # spark 3.1 and above has a different API for fetching max concurrent tasks
+    if spark_context._jsc.sc().version() >= "3.1":
+        return spark_context._jsc.sc().maxNumConcurrentTasks(
+            spark_context._jsc.sc().resourceProfileManager().resourceProfileFromId(0)
+        )
+    return spark_context._jsc.sc().maxNumConcurrentTasks()
+
+
+def get_per_spark_task_memory(spark):
+    """
+    Return the memory size in bytes allocated to each spark task evenly.
+    """
+    sc = spark.sparkContext
+    spark_mem_fraction = float(sc.getConf().get("spark.memory.fraction", "0.6"))
+    executor_mem_status = sc._jvm.scala.collection.JavaConversions.mapAsJavaMap(
+      sc._jsc.sc().env().blockManager().master().getMemoryStatus()
+    )
+    total_executor_mem = sum(
+        v._1() for k, v in executor_mem_status.items() if k.executorId_() != "driver"
+    )
+    max_num_concurrent_spark_tasks = get_max_num_concurrent_tasks(sc)
+    return int(total_executor_mem / spark_mem_fraction / max_num_concurrent_spark_tasks)
+
+
+def get_spark_task_assigned_physical_gpus(task_context):
+    resources = task_context.resources()
+    if "gpu" not in resources:
+        raise RuntimeError(
+            "Couldn't get the gpu id, Please check the GPU resource configuration"
+        )
+    gpu_addr_list = [int(addr.strip()) for addr in resources["gpu"].addresses]
+
+    if is_in_databricks_runtime():
+        visible_cuda_dev_list = [
+            int(dev.strip()) for dev in os.environ['CUDA_VISIBLE_DEVICES'].split(",")
+        ]
+        return [visible_cuda_dev_list[addr] for addr in gpu_addr_list]
     else:
-        parsed_spark_master_url = urlparse(spark_master_url)
-        if parsed_spark_master_url.scheme.lower() != "spark" or \
-                not parsed_spark_master_url.hostname:
-            raise ValueError(f"Unsupported spark.master URL: {spark_master_url}")
-        return parsed_spark_master_url.hostname
+        return gpu_addr_list

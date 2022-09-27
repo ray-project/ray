@@ -11,7 +11,9 @@ from .utils import (
     get_safe_port,
     get_spark_session,
     get_spark_driver_hostname,
-    is_in_databricks_runtime
+    is_in_databricks_runtime,
+    get_spark_task_assigned_physical_gpus,
+    get_per_spark_task_memory,
 )
 
 
@@ -31,22 +33,6 @@ def wait_ray_node_available(hostname, port, timeout, error_on_failure):
     if not check_port_open(hostname, port):
         raise RuntimeError(error_on_failure)
 
-
-def _get_spark_task_assigned_physical_gpus(task_context):
-    resources = task_context.resources()
-    if "gpu" not in resources:
-        raise RuntimeError(
-            "Couldn't get the gpu id, Please check the GPU resource configuration"
-        )
-    gpu_addr_list = [int(addr.strip()) for addr in resources["gpu"].addresses]
-
-    if is_in_databricks_runtime():
-        visible_cuda_dev_list = [
-            int(dev.strip()) for dev in os.environ['CUDA_VISIBLE_DEVICES'].split(",")
-        ]
-        return [visible_cuda_dev_list[addr] for addr in gpu_addr_list]
-    else:
-        return gpu_addr_list
 
 
 class RayClusterOnSpark:
@@ -107,6 +93,7 @@ def init_cluster(num_spark_tasks):
     num_spark_task_cpus = int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
     num_spark_task_gpus = int(spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0"))
 
+    ray_worker_memory_in_bytes = get_per_spark_task_memory()
     def ray_cluster_job_mapper(_):
         from pyspark.taskcontext import BarrierTaskContext
 
@@ -125,12 +112,13 @@ def init_cluster(num_spark_tasks):
             f"--num-cpus={num_spark_task_cpus}",
             "--block",
             f"--address={ray_head_hostname}:{ray_head_port}",
+            f"--memory={ray_worker_memory_in_bytes}",
         ]
 
         ray_worker_extra_envs = {}
 
         if num_spark_task_gpus > 0:
-            available_physical_gpus = _get_spark_task_assigned_physical_gpus(context)
+            available_physical_gpus = get_spark_task_assigned_physical_gpus(context)
             ray_worker_cmd.append(
                 f"--num-gpus={len(available_physical_gpus)}",
             )
@@ -175,7 +163,6 @@ def init_cluster(num_spark_tasks):
         #  and collect tail logs and raise error if subprocess failed.
         logging.info(f"Start Ray worker, command: {' '.join(ray_worker_cmd)}")
 
-        # TODO: Add memory control
         # Q: When Ray head node killed, will ray worker node exit as well ?
         exec_cmd(
             ray_worker_cmd,
