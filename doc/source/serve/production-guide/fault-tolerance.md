@@ -70,9 +70,11 @@ You can enable GCS fault tolerance on KubeRay by adding an external Redis server
 
 Below, we explain how to do each of these.
 
-#### Add external Redis server
+#### Step 1: Add external Redis server
 
-GCS fault tolerance requires an external Redis server. The server can share the same Kubernetes cluster with your Ray cluster. For example, you can add a simple 1-node Redis cluster by appending these three Redis objects to your Kubernetes YAML:
+GCS fault tolerance requires an external Redis database. You can choose to host your own Redis database, or you can use one through a third-party vendor. We recommend using a highly-available Redis database for resiliency.
+
+**For development puposes**, you can also host a Redis database on the same Kubernetes cluster as your Ray cluster. For example, you can add a 1-node Redis cluster by appending these three Redis objects to your Kubernetes YAML:
 
 (one-node-redis-example)=
 ```YAML
@@ -141,11 +143,9 @@ spec:
 ---
 ```
 
-**This configuration is NOT production-ready**, but it is useful for development and testing. When you move to production, it is highly recommended that you
-1. Password-protect this Redis instance by adding a `requirepass` value to the `redis-config` `ConfigMap`. See [this config](https://github.com/ray-project/kuberay/blob/3e789e376264f31ad64f58b15132cfd14a3a1f56/ray-operator/config/samples/ray-cluster.external-redis.yaml#L18) for an example.
-2. Replace the 1-node Redis cluster with a highly-available Redis cluster.
+**This configuration is NOT production-ready**, but it is useful for development and testing. When you move to production, it's highly recommended that you replace this 1-node Redis cluster with a highly-available Redis cluster.
 
-#### Add Redis info to RayService
+#### Step 2: Add Redis info to RayService
 
 After appending the Redis objects, you also need to modify the `RayService` configuration.
 
@@ -228,52 +228,9 @@ spec:
 ```
 ::::
 
-`RAY_REDIS_ADDRESS`'s value should include the Redis deployment name (e.g. `Redis`) and its port (e.g. `6379`). This example matches last section's [example config](one-node-redis-example).
+`RAY_REDIS_ADDRESS`'s value should be your Redis database's `redis://` address. It should contain your Redis database's host and port. An [example Redis address](redis://user:secret@localhost:6379/0?foo=bar&qux=baz) is `redis://user:secret@localhost:6379/0?foo=bar&qux=baz`.
 
-You can also expose your Redis cluster's port, so it can be accessed from outside the cluster as well:
-
-::::{tabbed} Vanilla Config
-```yaml
-apiVersion: ray.io/v1alpha1
-kind: RayService
-metadata:
-    ...
-spec:
-    ...
-    rayClusterConfig:
-        headGroupSpec:
-            ...
-            template:
-                ...
-                spec:
-                    ...
-                    ports:
-                        ...
-```
-::::
-
-::::{tabbed} Fault Tolerant Config
-:selected:
-```yaml
-apiVersion: ray.io/v1alpha1
-kind: RayService
-metadata:
-    ...
-spec:
-    ...
-    rayClusterConfig:
-        headGroupSpec:
-            ...
-            template:
-                ...
-                spec:
-                    ...
-                    ports:
-                        ...
-                        - containerPort: 6379
-                          name: redis
-```
-::::
+In the example above, the Redis deployment name (`redis`) is its host within the Kubernetes cluster, and the Redis port is `6379`. The example is compatible with last section's [example config](one-node-redis-example).
 
 After you apply the Redis objects along with your updated `RayService`, your Ray cluster can recover from head node crashes without restarting all the workers!
 
