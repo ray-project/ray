@@ -208,7 +208,8 @@ class Checkpoint:
         is persisted on local disk and available on the current node.
 
         In all other cases, this will return None. Users can then choose to
-        persist to cloud.
+        persist to cloud with
+        :meth:`Checkpoint.to_uri() <ray.air.Checkpoint.to_uri>`.
 
         Example:
 
