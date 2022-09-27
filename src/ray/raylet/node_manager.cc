@@ -1171,7 +1171,7 @@ void NodeManager::HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &req
   for (auto worker : workers) {
     worker->AsyncNotifyGCSRestart();
   }
-  auto drivers = worker_pool_.GetAllRegisteredDrivers(/* filter_dead_worker */ true);
+  auto drivers = worker_pool_.GetAllRegisteredDrivers(/* filter_dead_drivers */ true);
   for (auto driver : drivers) {
     driver->AsyncNotifyGCSRestart();
   }

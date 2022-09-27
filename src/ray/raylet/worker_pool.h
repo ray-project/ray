@@ -114,8 +114,9 @@ class WorkerPoolInterface {
   ///
   /// \param filter_dead_workers whether or not if this method will filter dead workers
   /// \param filter_io_workers whether or not if this method will filter io workers
-  /// \param filter_non_retriable_workers whether or not if this method will filter non-retriable workers
-  /// that are still registered. \return A list containing all the workers.
+  /// \param filter_non_retriable_workers whether or not if this method will filter
+  /// non-retriable workers that are still registered. \return A list containing all the
+  /// workers.
   virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false,
       bool filter_io_workers = false,
@@ -365,8 +366,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param filter_dead_workers whether or not if this method will filter dead workers
   /// \param filter_io_workers whether or not if this method will filter io workers
-  /// \param filter_non_retriable_workers whether or not if this method will filter non-retriable workers
-  /// that are still registered. \return A list containing all the workers.
+  /// \param filter_non_retriable_workers whether or not if this method will filter
+  /// non-retriable workers that are still registered. \return A list containing all the
+  /// workers.
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false,
       bool filter_io_workers = false,

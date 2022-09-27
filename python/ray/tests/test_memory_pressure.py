@@ -380,5 +380,17 @@ def test_memory_monitor_doesnt_kill_non_retriable_task(ray_with_memory_monitor):
         )
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_memory_monitor_doesnt_kill_non_retriable_actor(ray_with_memory_monitor):
+    leaker = Leaker.remote()
+
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
+    with pytest.raises(ray.exceptions.RayActorError) as _:
+        ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

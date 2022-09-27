@@ -461,8 +461,7 @@ std::string TaskSpecification::DebugString() const {
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
-           << ", max_restarts=" << MaxActorRestarts()
-           << ", max_retries=" << MaxRetries()
+           << ", max_restarts=" << MaxActorRestarts() << ", max_retries=" << MaxRetries()
            << ", max_concurrency=" << MaxActorConcurrency()
            << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
