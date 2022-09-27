@@ -25,7 +25,7 @@ def test_multiple_pip_installs(start_cluster, monkeypatch):
 
     if sys.platform == "win32" and "ray" not in address:
         pytest.skip(
-            "Failing on windows, due to python.exe being in use during deletion attempt."
+            "Failing on windows, as python.exe is in use during deletion attempt."
         )
 
     ray.init(

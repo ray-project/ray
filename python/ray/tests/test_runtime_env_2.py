@@ -1,5 +1,6 @@
 import pytest
 import time
+import sys
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
