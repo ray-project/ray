@@ -124,12 +124,14 @@ def _convert_batch_type_to_numpy(
     if isinstance(data, np.ndarray):
         return data
     elif isinstance(data, dict):
-        if data.keys() == {TENSOR_COLUMN_NAME} and isinstance(
-            data[TENSOR_COLUMN_NAME], np.ndarray
-        ):
-            return data[TENSOR_COLUMN_NAME]
-        else:
-            return data
+        for col_name, col in data.items():
+            if not isinstance(col, np.ndarray):
+                raise ValueError(
+                    "All values in the provided dict must be of type "
+                    f"np.ndarray. Found type {type(col)} for key {col_name} "
+                    f"instead."
+                )
+        return data
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
         if data.column_names == [TENSOR_COLUMN_NAME] and (
             isinstance(data.schema.types[0], ArrowTensorType)

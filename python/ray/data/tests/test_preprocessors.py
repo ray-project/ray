@@ -1729,26 +1729,27 @@ def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors)
         with_numpy,
         with_pandas_and_numpy,
     ) = create_dummy_preprocessors
-    np_data = np.ones(5)
-    np_dict = {"A": np.ones(5)}
-    np_single_column = {VALUE_COL_NAME: np.ones(5)}
+    np_data = np.arange(12).reshape(3, 2, 2)
+    np_single_column = {"A": np.arange(12).reshape(3, 2, 2)}
+    np_multi_column = {
+        "A": np.arange(12).reshape(3, 2, 2),
+        "B": np.arange(12, 24).reshape(3, 2, 2),
+    }
 
     with pytest.raises(NotImplementedError):
         with_nothing.transform_batch(np_data)
     with pytest.raises(NotImplementedError):
-        with_nothing.transform_batch(np_dict)
-    with pytest.raises(NotImplementedError):
         with_nothing.transform_batch(np_single_column)
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(np_multi_column)
 
     assert isinstance(with_numpy.transform_batch(np_data), np.ndarray)
-    assert isinstance(with_numpy.transform_batch(np_dict), dict)
-    assert isinstance(with_numpy.transform_batch(np_single_column), np.ndarray)
+    assert isinstance(with_numpy.transform_batch(np_single_column), dict)
+    assert isinstance(with_numpy.transform_batch(np_multi_column), dict)
 
     assert isinstance(with_pandas_and_numpy.transform_batch(np_data), np.ndarray)
-    assert isinstance(with_pandas_and_numpy.transform_batch(np_dict), dict)
-    assert isinstance(
-        with_pandas_and_numpy.transform_batch(np_single_column), np.ndarray
-    )
+    assert isinstance(with_pandas_and_numpy.transform_batch(np_single_column), dict)
+    assert isinstance(with_pandas_and_numpy.transform_batch(np_multi_column), dict)
 
 
 if __name__ == "__main__":

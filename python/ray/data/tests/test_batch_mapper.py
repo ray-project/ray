@@ -8,6 +8,7 @@ from pandas.testing import assert_frame_equal
 
 import ray
 from ray.data.preprocessors import BatchMapper
+from ray.data.extensions import TensorArray
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 
@@ -34,7 +35,11 @@ def ds_arrow_single_column_format():
 def ds_arrow_single_column_tensor_format():
     ds = ray.data.from_arrow(
         pa.table(
-            {TENSOR_COLUMN_NAME: ArrowTensorArray.from_numpy(np.arange(12).reshape((3, 2, 2)))}
+            {
+                TENSOR_COLUMN_NAME: ArrowTensorArray.from_numpy(
+                    np.arange(12).reshape((3, 2, 2))
+                )
+            }
         )
     )
     return ds
@@ -59,7 +64,9 @@ def ds_numpy_single_column_tensor_format():
 
 
 def ds_numpy_list_of_ndarray_tensor_format():
-    ds = ray.data.from_numpy([np.arange(12).reshape((3, 2, 2)), np.arange(12, 24).reshape((3, 2 2))])
+    ds = ray.data.from_numpy(
+        [np.arange(12).reshape((3, 2, 2)), np.arange(12, 24).reshape((3, 2, 2))]
+    )
     return ds
 
 
@@ -167,14 +174,18 @@ def test_batch_mapper_pandas_data_format(ds_with_expected_pandas_numpy_df):
             ds_arrow_single_column_tensor_format(),
             pd.DataFrame(
                 {
-                    TENSOR_COLUMN_NAME: [2, 3, 4, 5],
+                    TENSOR_COLUMN_NAME: [
+                        [[1, 2], [3, 4]],
+                        [[5, 6], [7, 8]],
+                        [[9, 10], [11, 12]],
+                    ]
                 }
             ),
             pd.DataFrame(
                 {
                     # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
                     # In UDFs
-                    TENSOR_COLUMN_NAME: [2, 3, 4, 5],
+                    TENSOR_COLUMN_NAME: TensorArray(np.arange(1, 13).reshape((3, 2, 2)))
                 }
             ),
         ),
@@ -254,14 +265,18 @@ def test_batch_mapper_arrow_data_format(ds_with_expected_pandas_numpy_df):
                 {
                     # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
                     # In UDFs
-                    TENSOR_COLUMN_NAME: [2, 3, 4, 5]
+                    TENSOR_COLUMN_NAME: [
+                        [[1, 2], [3, 4]],
+                        [[5, 6], [7, 8]],
+                        [[9, 10], [11, 12]],
+                    ]
                 }
             ),
             pd.DataFrame(
                 {
                     # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
                     # In UDFs
-                    TENSOR_COLUMN_NAME: [2, 3, 4, 5]
+                    TENSOR_COLUMN_NAME: TensorArray(np.arange(1, 13).reshape((3, 2, 2)))
                 }
             ),
         ),
@@ -271,14 +286,21 @@ def test_batch_mapper_arrow_data_format(ds_with_expected_pandas_numpy_df):
                 {
                     # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
                     # In UDFs
-                    TENSOR_COLUMN_NAME: [2, 3, 4, 5, 2, 0, 2, 0]
+                    TENSOR_COLUMN_NAME: [
+                        [[1, 2], [3, 4]],
+                        [[5, 6], [7, 8]],
+                        [[9, 10], [11, 12]],
+                        [[13, 14], [15, 16]],
+                        [[17, 18], [19, 20]],
+                        [[21, 22], [23, 24]],
+                    ]
                 }
             ),
             pd.DataFrame(
                 {
                     # Single column pandas automatically converts `TENSOR_COLUMN_NAME`
                     # In UDFs
-                    TENSOR_COLUMN_NAME: [2, 3, 4, 5, 2, 0, 2, 0]
+                    TENSOR_COLUMN_NAME: TensorArray(np.arange(1, 25).reshape((6, 2, 2)))
                 }
             ),
         ),
@@ -309,6 +331,8 @@ def test_batch_mapper_numpy_data_format(ds_with_expected_pandas_numpy_df):
 
     transformed_ds = ds.map_batches(add_and_modify_udf_numpy, batch_format="numpy")
     out_df_map_batches = transformed_ds.to_pandas()
+    print(f"out_df_map_batches: {out_df_map_batches}")
+    print(f"expected_numpy_df: {expected_numpy_df}")
     assert_frame_equal(out_df_map_batches, expected_numpy_df)
 
     # Test BatchMapper
