@@ -51,7 +51,8 @@ class TaskFinisherInterface {
                                    const rpc::PushTaskReply &reply,
                                    const rpc::Address &actor_addr) = 0;
 
-  virtual bool RetryTaskIfPossible(const TaskID &task_id) = 0;
+  virtual bool RetryTaskIfPossible(const TaskID &task_id,
+                                   bool task_failed_due_to_oom) = 0;
 
   virtual void FailPendingTask(const TaskID &task_id,
                                rpc::ErrorType error_type,
@@ -167,7 +168,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                            const rpc::PushTaskReply &reply,
                            const rpc::Address &worker_addr) override;
 
-  bool RetryTaskIfPossible(const TaskID &task_id) override;
+  /// Returns true if task can be retried.
+  ///
+  /// \param[in] task_id ID of the task to be retried.
+  /// \param[in] task_failed_due_to_oom last task attempt failed due to node running out
+  /// of memory.
+  /// \return true if task is scheduled to be retried.
+  bool RetryTaskIfPossible(const TaskID &task_id, bool task_failed_due_to_oom) override;
 
   /// A pending task failed. This will either retry the task or mark the task
   /// as failed if there are no retries left.
@@ -290,17 +297,29 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
   void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
 
+  /// Update nested ref count info and store the in-memory value for a task's
+  /// return object. Returns true if the task's return object was returned
+  /// directly by value.
+  bool HandleTaskReturn(const ObjectID &object_id,
+                        const rpc::ReturnObject &return_object,
+                        const NodeID &worker_raylet_id,
+                        bool store_in_plasma);
+
  private:
   struct TaskEntry {
     TaskEntry(const TaskSpecification &spec_arg,
               int num_retries_left_arg,
               size_t num_returns,
-              TaskStatusCounter &counter)
-        : spec(spec_arg), num_retries_left(num_retries_left_arg), counter(counter) {
+              TaskStatusCounter &counter,
+              int64_t num_oom_retries_left)
+        : spec(spec_arg),
+          num_retries_left(num_retries_left_arg),
+          counter(counter),
+          num_oom_retries_left(num_oom_retries_left) {
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
-      counter.Increment(rpc::TaskStatus::WAITING_FOR_DEPENDENCIES);
+      counter.Increment(rpc::TaskStatus::PENDING_ARGS_AVAIL);
     }
 
     void SetStatus(rpc::TaskStatus new_status) {
@@ -313,7 +332,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     bool IsPending() const { return status != rpc::TaskStatus::FINISHED; }
 
     bool IsWaitingForExecution() const {
-      return status == rpc::TaskStatus::WAITING_FOR_EXECUTION;
+      return status == rpc::TaskStatus::SUBMITTED_TO_WORKER;
     }
 
     /// The task spec. This is pinned as long as the following are true:
@@ -330,9 +349,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     const TaskSpecification spec;
     // Number of times this task may be resubmitted. If this reaches 0, then
     // the task entry may be erased.
-    int num_retries_left;
+    int32_t num_retries_left;
     // Reference to the task stats tracker.
     TaskStatusCounter &counter;
+    // Number of times this task may be resubmitted if the task failed
+    // due to out of memory failure.
+    int32_t num_oom_retries_left;
     // Number of times this task successfully completed execution so far.
     int num_successful_executions = 0;
     // Objects returned by this task that are reconstructable. This is set
@@ -355,7 +377,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
    private:
     // The task's current execution status.
-    rpc::TaskStatus status = rpc::TaskStatus::WAITING_FOR_DEPENDENCIES;
+    rpc::TaskStatus status = rpc::TaskStatus::PENDING_ARGS_AVAIL;
   };
 
   /// Remove a lineage reference to this object ID. This should be called
