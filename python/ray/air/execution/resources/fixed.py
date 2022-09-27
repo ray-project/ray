@@ -74,6 +74,8 @@ class FixedResourceManager(ResourceManager):
         self._used_resources.append(resources)
         return self._resource_cls(bundles=resources.bundles, request=resources)
 
-    def return_resources(self, ready_resources: ReadyResource):
+    def return_resources(
+        self, ready_resources: ReadyResource, cancel_request: bool = True
+    ):
         resources = ready_resources.request
         self._used_resources.remove(resources)

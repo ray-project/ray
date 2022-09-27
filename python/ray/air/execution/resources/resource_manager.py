@@ -27,6 +27,8 @@ class ResourceManager(abc.ABC):
         """Acquire resources. Returns None if resources are not available."""
         raise NotImplementedError
 
-    def return_resources(self, ready_resources: ReadyResource):
+    def return_resources(
+        self, ready_resources: ReadyResource, cancel_request: bool = True
+    ):
         """Return resources to resource pool."""
         raise NotImplementedError

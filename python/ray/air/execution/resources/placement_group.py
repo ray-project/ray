@@ -1,3 +1,4 @@
+import time
 from collections import defaultdict
 from typing import Dict, Optional, List, Set
 
@@ -6,36 +7,31 @@ from dataclasses import dataclass
 import ray
 from ray.air.execution.resources.request import ResourceRequest, ReadyResource
 from ray.air.execution.resources.resource_manager import ResourceManager
-from ray.util.placement_group import PlacementGroup
-
-
-def _sum_bundle_resources(bundles: List[Dict[str, float]]) -> Dict[str, float]:
-    all_resources = {}
-    for resources in bundles:
-        for k, v in resources.items():
-            all_resources[k] = all_resources.get(k, 0) + v
-
-    return all_resources
+from ray.util.placement_group import placement_group, PlacementGroup
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 @dataclass
 class PlacementGroupReadyResource(ReadyResource):
-    bundles: List[Dict[str, float]]
-    pg: PlacementGroup
+    placement_group: PlacementGroup
 
     def annotate_remote_objects(self, objects):
-        all_resources = _sum_bundle_resources(self.bundles)
-        num_cpus = all_resources.pop("CPU", 0)
-        num_gpus = all_resources.pop("GPU", 0)
+        head_bundle = self.request.bundles[0].copy()
+        num_cpus = head_bundle.pop("CPU", 0)
+        num_gpus = head_bundle.pop("GPU", 0)
         return objects[0].options(
-            num_cpus=num_cpus, num_gpus=num_gpus, resources=all_resources
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=self.placement_group, placement_group_bundle_index=0
+            ),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
         )
 
 
 class PlacementGroupResourceManager(ResourceManager):
     _resource_cls: ReadyResource = PlacementGroupReadyResource
 
-    def __init__(self):
+    def __init__(self, update_interval: float = 0.1):
         self._pg_to_request: Dict[PlacementGroup, ResourceRequest] = {}
         self._request_to_staged_pgs: Dict[
             ResourceRequest, Set[PlacementGroup]
@@ -51,22 +47,39 @@ class PlacementGroupResourceManager(ResourceManager):
         self._ready_pgs: Set[PlacementGroup] = set()
         self._acquired_pgs: Set[PlacementGroup] = set()
 
+        self._update_interval = update_interval
+        self._last_update = time.monotonic() - self._update_interval - 1
+
+    def get_resource_futures(self) -> List[ray.ObjectRef]:
+        return list(self._staging_future_to_pg.keys())
+
+    def _maybe_update_state(self):
+        now = time.monotonic()
+        if now > self._last_update + self._update_interval:
+            self._update_state()
+            self._last_update = now
+
     def _update_state(self):
         ready, not_ready = ray.wait(
-            self._staging_future_to_pg, num_returns=len(self._staging_future_to_pg)
+            list(self._staging_future_to_pg.keys()),
+            num_returns=len(self._staging_future_to_pg),
+            timeout=1e-6,
         )
         for future in ready:
             # Remove staging future
             pg = self._staging_future_to_pg.pop(future)
             self._pg_to_staging_future.pop(pg)
-            # Fetch resource requst
+            # Fetch resource request
             request = self._pg_to_request[pg]
             # Remove from staging, add to ready
             self._request_to_staged_pgs[request].remove(pg)
             self._request_to_ready_pgs[request].add(pg)
 
+            self._staged_pgs.remove(pg)
+            self._ready_pgs.add(pg)
+
     def request_resources(self, resources: ResourceRequest):
-        pg = PlacementGroup(resources.bundles)
+        pg = placement_group(resources.bundles)
         self._pg_to_request[pg] = resources
         self._request_to_staged_pgs[resources].add(pg)
         self._staged_pgs.add(pg)
@@ -76,8 +89,9 @@ class PlacementGroupResourceManager(ResourceManager):
         self._pg_to_staging_future[pg] = future
 
     def cancel_resource_request(self, resources: ResourceRequest):
-        pg = self._request_to_staged_pgs[resources].pop()
-        if pg:
+        if self._request_to_staged_pgs[resources]:
+            pg = self._request_to_staged_pgs[resources].pop()
+
             # PG was staging
             self._staged_pgs.remove(pg)
             future = self._pg_to_staging_future.pop(pg)
@@ -96,9 +110,15 @@ class PlacementGroupResourceManager(ResourceManager):
         self._pg_to_request.pop(pg)
 
     def has_resources_ready(self, resources: ResourceRequest) -> bool:
+        if not bool(len(self._request_to_ready_pgs[resources])):
+            # Only update state if needed
+            self._maybe_update_state()
+
         return bool(len(self._request_to_ready_pgs[resources]))
 
-    def acquire_resources(self, resources: ResourceRequest) -> Optional[ReadyResource]:
+    def acquire_resources(
+        self, resources: ResourceRequest
+    ) -> Optional[PlacementGroupReadyResource]:
         if not self.has_resources_ready(resources):
             return None
 
@@ -107,15 +127,17 @@ class PlacementGroupResourceManager(ResourceManager):
         self._ready_pgs.remove(pg)
         self._acquired_pgs.add(pg)
 
-        return self._resource_cls(pg=pg, request=resources)
+        return self._resource_cls(placement_group=pg, request=resources)
 
-    def return_resources(self, ready_resources: PlacementGroupReadyResource):
-        pg = ready_resources.pg
+    def return_resources(
+        self, ready_resources: PlacementGroupReadyResource, cancel_request: bool = True
+    ):
+        pg = ready_resources.placement_group
         request = self._pg_to_request[pg]
 
         self._acquired_pgs.remove(pg)
         self._ready_pgs.add(pg)
         self._request_to_ready_pgs[request].add(pg)
 
-        # We always cancel the resource request
-        self.cancel_resource_request(resources=request)
+        if cancel_request:
+            self.cancel_resource_request(resources=ready_resources.request)
