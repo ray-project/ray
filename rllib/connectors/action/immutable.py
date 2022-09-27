@@ -25,14 +25,15 @@ class ImmutableActionsConnector(ActionConnector):
         return ActionConnectorDataType(
             ac_data.env_id,
             ac_data.agent_id,
+            ac_data.input_dict,
             (actions, states, fetches),
         )
 
-    def to_config(self):
+    def to_state(self):
         return ImmutableActionsConnector.__name__, None
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: List[Any]):
         return ImmutableActionsConnector(ctx)
 
 

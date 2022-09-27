@@ -17,6 +17,12 @@ from ray.experimental.internal_kv import (
 # they're exposed in the snapshot API.
 JOB_ID_METADATA_KEY = "job_submission_id"
 JOB_NAME_METADATA_KEY = "job_name"
+JOB_ACTOR_NAME_TEMPLATE = (
+    f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_id}"
+)
+# In order to get information about SupervisorActors launched by different jobs,
+# they must be set to the same namespace.
+SUPERVISOR_ACTOR_RAY_NAMESPACE = "SUPERVISOR_ACTOR_RAY_NAMESPACE"
 
 
 class JobStatus(str, Enum):
@@ -108,10 +114,11 @@ class JobInfoStorageClient:
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
 
-    async def get_info(self, job_id: str) -> Optional[JobInfo]:
+    async def get_info(self, job_id: str, timeout: int = 30) -> Optional[JobInfo]:
         pickled_info = await self._gcs_aio_client.internal_kv_get(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=timeout,
         )
         if pickled_info is None:
             return None
@@ -146,9 +153,11 @@ class JobInfoStorageClient:
         else:
             return job_info.status
 
-    async def get_all_jobs(self) -> Dict[str, JobInfo]:
+    async def get_all_jobs(self, timeout: int = 30) -> Dict[str, JobInfo]:
         raw_job_ids_with_prefixes = await self._gcs_aio_client.internal_kv_keys(
-            self.JOB_DATA_KEY_PREFIX.encode(), namespace=ray_constants.KV_NAMESPACE_JOB
+            self.JOB_DATA_KEY_PREFIX.encode(),
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=timeout,
         )
         job_ids_with_prefixes = [
             job_id.decode() for job_id in raw_job_ids_with_prefixes
@@ -161,7 +170,7 @@ class JobInfoStorageClient:
             job_ids.append(job_id_with_prefix[len(self.JOB_DATA_KEY_PREFIX) :])
 
         async def get_job_info(job_id: str):
-            job_info = await self.get_info(job_id)
+            job_info = await self.get_info(job_id, timeout)
             return job_id, job_info
 
         return {

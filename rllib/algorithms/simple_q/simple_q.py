@@ -60,15 +60,16 @@ class SimpleQConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = SimpleQConfig()
         >>> config.training(adam_epsilon=tune.grid_search([1e-8, 5e-8, 1e-7])
         >>> config.environment(env="CartPole-v1")
-        >>> tune.run(
+        >>> tune.Tuner(
         >>>     "SimpleQ",
-        >>>     stop={"episode_reward_mean": 200},
-        >>>     config=config.to_dict()
-        >>> )
+        >>>     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        >>>     param_space=config.to_dict()
+        >>> ).fit()
 
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig

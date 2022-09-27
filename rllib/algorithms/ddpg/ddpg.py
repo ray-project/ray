@@ -25,6 +25,7 @@ class DDPGConfig(SimpleQConfig):
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = DDPGConfig()
         >>> # Print out some default values.
@@ -36,11 +37,11 @@ class DDPGConfig(SimpleQConfig):
         >>> config.environment(env="Pendulum-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "DDPG",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):

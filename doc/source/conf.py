@@ -80,6 +80,10 @@ external_toc_path = "_toc.yml"
 
 html_extra_path = ["robots.txt"]
 
+# Omit prompt when using copy button
+copybutton_prompt_text = r"\$ "
+copybutton_prompt_is_regexp = True
+
 
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
 # of imports.
@@ -322,3 +326,6 @@ def setup(app):
     linkcheck_summarizer = LinkcheckSummarizer()
     app.connect("builder-inited", linkcheck_summarizer.add_handler_to_linkcheck)
     app.connect("build-finished", linkcheck_summarizer.summarize)
+
+    # Create galleries on the fly
+    app.connect("builder-inited", build_gallery)

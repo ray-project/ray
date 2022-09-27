@@ -390,7 +390,8 @@ class ReplicaConfig:
                 f'Got invalid type "{type(self.ray_actor_options)}" for '
                 "ray_actor_options. Expected a dictionary."
             )
-
+        # Please keep this in sync with the docstring for the ray_actor_options
+        # kwarg in api.py.
         allowed_ray_actor_options = {
             # Resource options
             "accelerator_type",

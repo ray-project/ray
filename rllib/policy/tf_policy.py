@@ -1,4 +1,3 @@
-import errno
 import logging
 import math
 import os
@@ -11,7 +10,7 @@ import tree  # pip install dm_tree
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
@@ -493,7 +492,7 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_state(self) -> PolicyState:
         # For tf Policies, return Policy weights and optimizer var values.
         state = super().get_state()
         if len(self._optimizer_variables.variables) > 0:
@@ -506,7 +505,7 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def set_state(self, state: dict) -> None:
+    def set_state(self, state: PolicyState) -> None:
         # Set optimizer vars first.
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars is not None:
@@ -529,12 +528,7 @@ class TFPolicy(Policy):
         self, export_dir: str, filename_prefix: str = "model"
     ) -> None:
         """Export tensorflow checkpoint to export_dir."""
-        try:
-            os.makedirs(export_dir)
-        except OSError as e:
-            # ignore error if export dir already exists
-            if e.errno != errno.EEXIST:
-                raise
+        os.makedirs(export_dir, exist_ok=True)
         save_path = os.path.join(export_dir, filename_prefix)
         with self.get_session().graph.as_default():
             saver = tf1.train.Saver()
@@ -566,7 +560,7 @@ class TFPolicy(Policy):
                 from tf2onnx import tf_loader
 
                 frozen_graph_def = tf_loader.freeze_session(
-                    self._sess, input_names=inputs, output_names=outputs
+                    self.get_session(), input_names=inputs, output_names=outputs
                 )
 
             with tf1.Session(graph=tf.Graph()) as session:

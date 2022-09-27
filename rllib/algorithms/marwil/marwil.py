@@ -59,10 +59,10 @@ class MARWILConfig(AlgorithmConfig):
         >>> config.environment(env="CartPole-v0")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "MARWIL",
-        ...     config=config.to_dict(),
-        ... )
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):

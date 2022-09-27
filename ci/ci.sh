@@ -174,6 +174,8 @@ test_python() {
       -python/ray/serve:test_gcs_failure # Fork not supported in windows
       -python/ray/serve:test_standalone2 # Multinode not supported on Windows
       -python/ray/serve:test_gradio
+      -python/ray/serve:test_gradio_visualization
+      -python/ray/serve:test_air_integrations_gpu
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -304,7 +306,8 @@ build_sphinx_docs() {
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
       make html
-      make doctest
+      pip install datasets==2.0.0
+      RAY_MOCK_MODULES=0 make doctest
     fi
   )
 }
@@ -752,10 +755,7 @@ build() {
   fi
 }
 
-test_minimal() {
-  ./ci/env/install-minimal.sh "$1"
-  ./ci/env/env_info.sh
-  python ./ci/env/check_minimal_install.py
+run_minimal_test() {
   BAZEL_EXPORT_OPTIONS="$(./ci/run/bazel_export_options)"
   # Ignoring shellcheck is necessary because if ${BAZEL_EXPORT_OPTIONS} is wrapped by the double quotation,
   # bazel test cannot recognize the option.
@@ -787,8 +787,13 @@ test_minimal() {
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_2
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_complicated
+
+  # Todo: Make compatible with python 3.9/3.10
+  if [ "$1" != "3.9" ] && [ "$1" != "3.10" ]; then
+    # shellcheck disable=SC2086
+    bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_complicated
+  fi
+
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_validation
   # shellcheck disable=SC2086
@@ -799,6 +804,21 @@ test_minimal() {
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_usage_stats
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_usage_stats
+}
+
+test_minimal() {
+  ./ci/env/install-minimal.sh "$1"
+  ./ci/env/env_info.sh
+  python ./ci/env/check_minimal_install.py
+  run_minimal_test "$1"
+}
+
+
+test_latest_core_dependencies() {
+  ./ci/env/install-minimal.sh "$1"
+  ./ci/env/env_info.sh
+  ./ci/env/install-core-prerelease-dependencies.sh
+  run_minimal_test "$1"
 }
 
 _main() {

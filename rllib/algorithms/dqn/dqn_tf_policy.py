@@ -22,6 +22,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.tf_utils import (
     huber_loss,
+    l2_loss,
     make_tf_callable,
     minimize_and_clip,
     reduce_mean_ignore_inf,
@@ -32,6 +33,16 @@ tf1, tf, tfv = try_import_tf()
 
 # Importance sampling weights for prioritized replay
 PRIO_WEIGHTS = "weights"
+
+
+def get_dist_class_with_temperature(t: float):
+    """Categorical distribution class that has customized default temperature."""
+
+    class CategoricalWithTemperature(Categorical):
+        def __init__(self, inputs, model=None, temperature=t):
+            super().__init__(inputs, model, temperature)
+
+    return CategoricalWithTemperature
 
 
 class QLoss:
@@ -49,6 +60,7 @@ class QLoss:
         num_atoms: int = 1,
         v_min: float = -10.0,
         v_max: float = 10.0,
+        loss_fn=huber_loss,
     ):
 
         if num_atoms > 1:
@@ -103,7 +115,7 @@ class QLoss:
             # compute the error (potentially clipped)
             self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
             self.loss = tf.reduce_mean(
-                tf.cast(importance_weights, tf.float32) * huber_loss(self.td_error)
+                tf.cast(importance_weights, tf.float32) * loss_fn(self.td_error)
             )
             self.stats = {
                 "mean_q": tf.reduce_mean(q_t_selected),
@@ -230,7 +242,15 @@ def get_distribution_inputs_and_class(
 
     policy.q_values = q_vals
 
-    return policy.q_values, Categorical, []  # state-out
+    # Return a Torch TorchCategorical distribution where the temperature
+    # parameter is partially binded to the configured value.
+    temperature = policy.config["categorical_distribution_temperature"]
+
+    return (
+        policy.q_values,
+        get_dist_class_with_temperature(temperature),
+        [],
+    )  # state-out
 
 
 def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
@@ -305,19 +325,22 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
             q_dist_tp1 * tf.expand_dims(q_tp1_best_one_hot_selection, -1), 1
         )
 
+    loss_fn = huber_loss if policy.config["td_error_loss_fn"] == "huber" else l2_loss
+
     policy.q_loss = QLoss(
         q_t_selected,
         q_logits_t_selected,
         q_tp1_best,
         q_dist_tp1_best,
         train_batch[PRIO_WEIGHTS],
-        train_batch[SampleBatch.REWARDS],
+        tf.cast(train_batch[SampleBatch.REWARDS], tf.float32),
         tf.cast(train_batch[SampleBatch.DONES], tf.float32),
         config["gamma"],
         config["n_step"],
         config["num_atoms"],
         config["v_min"],
         config["v_max"],
+        loss_fn,
     )
 
     return policy.q_loss.loss

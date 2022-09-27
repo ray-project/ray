@@ -486,7 +486,7 @@ def check_learning_achieved(
     "episode_reward_mean" value and compares it to `min_reward`.
 
     Args:
-        tune_results: The tune.run returned results object.
+        tune_results: The tune.Tuner().fit() returned results object.
         min_reward: The min reward that must be reached.
 
     Raises:
@@ -987,7 +987,7 @@ def check_reproducibilty(
             )
             print("/// config")
             pprint.pprint(algo_config.to_dict())
-            # test tune.run() reproducibility
+            # test tune.Tuner().fit() reproducibility
             results1 = tune.Tuner(
                 algo_class,
                 param_space=algo_config.to_dict(),

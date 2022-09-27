@@ -354,6 +354,14 @@ py_test(
 )
 
 py_test(
+    name = "test_air_integrations_gpu",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve", "gpu"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_http_adapters",
     size = "small",
     srcs = serve_tests_srcs,
@@ -505,6 +513,14 @@ py_test(
 
 py_test(
     name = "test_gradio",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve", "py37"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_gradio_visualization",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve", "py37"],
