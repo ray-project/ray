@@ -27,7 +27,7 @@ def create_model(input_features):
     )
 
 
-def keras_train_loop(config):
+def torch_train_loop(config):
     lr = config["lr"]
     epochs = config["epochs"]
     batch_size = config["batch_size"]
@@ -76,7 +76,7 @@ def tune_horovod_torch(num_workers, num_samples, use_gpu):
     )
 
     horovod_trainer = HorovodTrainer(
-        train_loop_per_worker=keras_train_loop,
+        train_loop_per_worker=torch_train_loop,
         train_loop_config={"epochs": 10, "num_features": num_features},
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         datasets={"train": dataset},
