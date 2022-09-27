@@ -34,7 +34,7 @@ def ds_arrow_single_column_format():
 def ds_arrow_single_column_tensor_format():
     ds = ray.data.from_arrow(
         pa.table(
-            {TENSOR_COLUMN_NAME: ArrowTensorArray.from_numpy(np.array([1, 2, 3, 4]))}
+            {TENSOR_COLUMN_NAME: ArrowTensorArray.from_numpy(np.arange(12).reshape((3, 2, 2)))}
         )
     )
     return ds
@@ -54,12 +54,12 @@ def ds_arrow_multi_column_format():
 
 # ===== Numpy dataset formats =====
 def ds_numpy_single_column_tensor_format():
-    ds = ray.data.from_numpy(np.array([1, 2, 3, 4]))
+    ds = ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
     return ds
 
 
 def ds_numpy_list_of_ndarray_tensor_format():
-    ds = ray.data.from_numpy([np.array([1, 2, 3, 4]), np.array([1, -1, 1, -1])])
+    ds = ray.data.from_numpy([np.arange(12).reshape((3, 2, 2)), np.arange(12, 24).reshape((3, 2 2))])
     return ds
 
 
