@@ -295,7 +295,7 @@ def build_gallery(app):
                         gh_stars = (
                             f".. image:: https://img.shields.io/github/"
                             f"stars/{org}/{repo}?style=social)]\n"
-                            f"\t\t:target: {item['repo']})"
+                            f"\t\t:target: {item['repo']}"
                         )
                 except Exception:
                     pass

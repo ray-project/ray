@@ -126,8 +126,8 @@ projects:
       SQL, Spark DataFrame, or Pandas (via Koalas) API, extract and transform features
       using Spark MLLib, and use RayDP Estimator API for distributed training
       on the preprocessed dataset.
-    website: https://github.com/Intel-bigdata/oap-raydp <https://github.com/Intel-bigdata/oap-raydp
-    repo: https://github.com/Intel-bigdata/oap-raydp <https://github.com/Intel-bigdata/oap-raydp
+    website: https://github.com/Intel-bigdata/oap-raydp
+    repo: https://github.com/Intel-bigdata/oap-raydp
     image: ../images/intel.png
   - name: Scikit Learn Integration
     section_title: Scikit Learn
