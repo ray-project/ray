@@ -155,10 +155,11 @@ class _HorovodBackend(Backend):
         encoded data dict from the worker.
         """
         # See encode_data
-        if "torch" in sys.modules and isinstance(encoded_data, bytes):
-            from ray.train.torch.config import _TorchBackend
+        if "torch" in sys.modules:
+            from ray.train.torch.config import _TorchBackend, ENCODED_DATA_KEY
 
-            return _TorchBackend.decode_data(encoded_data)
+            if isinstance(encoded_data.get(ENCODED_DATA_KEY, None), bytes):
+                return _TorchBackend.decode_data(encoded_data)
 
         return encoded_data
 

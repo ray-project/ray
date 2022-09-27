@@ -23,6 +23,8 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+ENCODED_DATA_KEY = "torch_encoded_data"
+
 
 @PublicAPI(stability="beta")
 @dataclass
@@ -194,12 +196,12 @@ class _TorchBackend(Backend):
         # driver side, even if the driver does not have access to a GPU device.
         _buffer = io.BytesIO()
         torch.save(data_dict, _buffer)
-        return {"data": _buffer.getvalue()}
+        return {ENCODED_DATA_KEY: _buffer.getvalue()}
 
     @staticmethod
     def decode_data(encoded_data: EncodedData) -> Dict:
         # When decoding the bytes on the driver side, always map to CPU.
-        encoded_data = encoded_data["data"]
+        encoded_data = encoded_data[ENCODED_DATA_KEY]
         _buffer = io.BytesIO(encoded_data)
         checkpoint_dict = torch.load(_buffer, map_location="cpu")
         return checkpoint_dict
