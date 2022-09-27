@@ -3,7 +3,7 @@
 # Create a PPO algorithm object using a config object ..
 from ray.rllib.algorithms.ppo import PPOConfig
 
-my_ppo_config = PPOConfig().environment(env="CartPole-v0")
+my_ppo_config = PPOConfig().environment("CartPole-v0")
 my_ppo = my_ppo_config.build()
 
 # .. train one iteration ..
@@ -77,7 +77,7 @@ my_ma_config = PPOConfig().multi_agent(
 )
 
 # Add the MultiAgentCartPole env to our config and build our Algorithm.
-my_ma_config.environment(env=MultiAgentCartPole, env_config={
+my_ma_config.environment(MultiAgentCartPole, env_config={
     "num_agents": 2,
 })
 
@@ -122,3 +122,55 @@ action = my_restored_policy.compute_single_action(obs)
 print(f"Computed action {action} from given CartPole observation.")
 
 # __restore-policy-end__
+
+
+# __restore-algorithm-from-checkpoint-with-fewer-policies-begin__
+
+# Set up an Algorithm with 5 Policies.
+algo_w_5_policies = PPOConfig().\
+    environment(
+        env=MultiAgentCartPole,
+        env_config={
+            "num_agents": 5,
+        }
+    ).\
+    multi_agent(
+        policies={"pol0", "pol1", "pol2", "pol3", "pol4"},
+        # Map "agent0" -> "pol0", etc...
+        policy_mapping_fn=(
+            lambda agent_id, episode, worker, **kwargs:
+            f"pol{agent_id[-1]}"
+        )
+    ).build()
+
+# .. train one iteration ..
+algo_w_5_policies.train()
+# .. and call `save()` to create a checkpoint.
+path_to_checkpoint = algo_w_5_policies.save()
+print(
+    "An Algorithm checkpoint has been created inside directory: "
+    f"'{path_to_checkpoint}'. It should contain 5 policies in the 'policies/' sub dir."
+)
+# Let's terminate the algo for demonstration purposes.
+algo_w_5_policies.stop()
+
+# We will now recreate a new algo from this checkpoint, but only with 2 of the
+# original policies ("pol0" and "pol1"). Note that this will require us to change the
+# `policy_mapping_fn` (instead of mapping 5 agents to 5 policies, we now have
+# to map 5 agents to only 2 policies).
+
+def new_policy_mapping_fn(agent_id, episode, worker, **kwargs):
+    return "pol0" if agent_id in ["agent0", "agent1"] else "pol1"
+
+algo_w_2_policies = Algorithm.from_checkpoint(
+    checkpoint=path_to_checkpoint,
+    policies={"pol0", "pol1"},  # <- restore only those policy IDs here.
+    policy_mapping_fn=new_policy_mapping_fn,  # <- use this new mapping fn.
+)
+
+# Test, whether we can train with this new setup.
+algo_w_2_policies.train()
+# Terminate the new algo.
+algo_w_2_policies.stop()
+
+# __restore-algorithm-from-checkpoint-with-fewer-policies-end__

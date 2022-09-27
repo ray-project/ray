@@ -9,7 +9,8 @@ What's a checkpoint?
 ====================
 
 A checkpoint is a set of information, located inside a directory (which may contain
-further subdirectories) and used to restore either an Algorithm- or a single Policy instance.
+further subdirectories) and used to restore either an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+or a single :py:class:`~ray.rllib.policy.policy.Policy` instance.
 The Algorithm- or Policy instances that were used to create the checkpoint in the first place
 may or may not have been trained prior to this.
 
@@ -115,9 +116,9 @@ Lastly, let's quickly take a look at our ``default_policy`` sub-directory:
 
 Similar to the algorithm's state (saved within ``state.pkl``),
 a Policy's state is stored under the ``policy_state.pkl`` file. We'll cover more
-details on the contents of this file when talking about Policy checkpoints below.
-Note that Policy checkpoint also have a version information
-(in ``checkpoint_version.txt``), which is always identical to the enclosing
+details on the contents of this file when talking about :py:class:`~ray.rllib.policy.policy.Policy` checkpoints below.
+Note that :py:class:`~ray.rllib.policy.policy.Policy` checkpoint also have a
+version information (in ``checkpoint_version.txt``), which is always identical to the enclosing
 algorithm checkpoint version.
 
 
@@ -152,7 +153,8 @@ Which Algorithm checkpoint versions can I use?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 RLlib uses simple checkpoint versions (for example "v0" or "v1") to figure
-out how to restore an Algorithm (or a Policy; see below) from a given
+out how to restore an Algorithm (or a :py:class:`~ray.rllib.policy.policy.Policy`;
+see below) from a given
 checkpoint directory.
 
 From Ray 2.1 on, you can find the checkpoint version written in the
@@ -169,8 +171,11 @@ Multi-agent Algorithm checkpoints
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In case you are working with a multi-agent setup and have more than one
-Policy to train inside your Algorithm, you can create an Algorithm checkpoint in the
-exact same way as described above and will find your individual Policy checkpoints
+:py:class:`~ray.rllib.policy.policy.Policy` to train inside your
+:py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, you
+can create an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` checkpoint in the
+exact same way as described above and will find your individual
+:py:class:`~ray.rllib.policy.policy.Policy` checkpoints
 inside the sub-directory ``policies/``.
 
 For example:
@@ -182,14 +187,17 @@ For example:
 
 
 Assuming
-TODO: Restoring a multi-agent Algorithm, but only with some subset of the original policies
+TODO: Restoring a multi-agent :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`,
+but only with some subset of the original policies
 
 
 Policy checkpoints
 ------------------
 
-We have already looked at the ``policies/`` sub-directory inside an Algorithm checkpoint dir
-and learned that individual policies inside the Algorithm store all their state
+We have already looked at the ``policies/`` sub-directory inside an
+:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` checkpoint dir
+and learned that individual policies inside the
+:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` store all their state
 information under their policy ID inside that sub-directory.
 Thus, we now have the entire picture of a checkpoint:
 
@@ -217,7 +225,8 @@ Thus, we now have the entire picture of a checkpoint:
 How do I create a Policy checkpoint?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can create a Policy checkpoint by either calling ``save()`` on your Algorithm, which
+You can create a :py:class:`~ray.rllib.policy.policy.Policy` checkpoint by
+either calling ``save()`` on your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, which
 will save each individual Policy's checkpoint under the ``policies/`` sub-directory as
 described above or - if you need more fine-grained control - by doing the following:
 
@@ -243,12 +252,15 @@ How do I restore from a Policy checkpoint?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Assume you would like to serve your trained policy(ies) in production and would therefore
-like to use only the RLlib Policy instance, without all the other functionality that
-normally comes with the Algorithm object, like different ``RolloutWorkers`` for collecting
+like to use only the RLlib :py:class:`~ray.rllib.policy.policy.Policy` instance,
+without all the other functionality that
+normally comes with the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` object, like different ``RolloutWorkers`` for collecting
 training samples or for evaluation (both of which include RL environment copies), etc..
 
-In this case, it would be quite useful if you had a way to restore just the Policy
-from either a Policy checkpoint or an Algorithm checkpoint, which - as we learned above -
+In this case, it would be quite useful if you had a way to restore just the
+:py:class:`~ray.rllib.policy.policy.Policy`
+from either a :py:class:`~ray.rllib.policy.policy.Policy` checkpoint or an
+:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` checkpoint, which - as we learned above -
 contains all its Policies' checkpoints.
 
 Here is how you can do this:
@@ -262,20 +274,39 @@ Here is how you can do this:
 How do I restore a multi-agent Algorithm with a subset of the original policies?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Imagine you have trained a multi-agent Algorithm with e.g. 100 different Policies and created
-a checkpoint from this algorithm. The checkpoint now includes 100 sub-directories in the
-``policies/`` dir, named after the different policies' IDs.
+Imagine you have trained a multi-agent :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` with e.g. 100 different Policies and created
+a checkpoint from this :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
+The checkpoint now includes 100 sub-directories in the
+``policies/`` dir, named after the different policy IDs.
 
-After careful evaluation of the different policies, you would like to restore the Algorithm
-and continue training, but only with a subset of the original 100 policies, for example only with
-the policies "polA" and "polB".
+After careful evaluation of the different policies, you would like to restore the
+:py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+and continue training it, but only with a subset of the original 100 policies,
+for example only with the policies, whose IDs are "polA" and "polB".
 
+You can use the original checkpoint (with the 100 policies in it) and the
+``Algorithm.from_checkpoint()`` utility to achieve this in an efficient way.
 
+This example here shows this for five original policies that you would like reduce to
+two policies:
 
+.. literalinclude:: ../../../rllib/examples/documentation/checkpoints_and_exports.py
+    :language: python
+    :start-after: __restore-algorithm-from-checkpoint-with-fewer-policies-begin__
+    :end-before: __restore-algorithm-from-checkpoint-with-fewer-policies-end__
+
+Note that we had to change our original ``policy_mapping_fn`` from one that maps
+"agent0" to "pol0", "agent1" to "pol1", etc..
+to a new function that maps our five agents to only the two remaining policies:
+"agent0" and "agent1" to "pol0", all other agents to "pol1".
 
 
 Model Exports
 -------------
+
+Apart from creating checkpoints for your RLlib objects, such as an RLlib
+:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or
+an individual RLlib :py:class:`~ray.rllib.policy.policy.Policy`
 
 How do I export my NN Model?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
