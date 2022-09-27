@@ -101,6 +101,9 @@ class RayLogger(LoggerDestination):
     argument in the constructor. For `MosaicTrainer`, use
     `trainer_init_config['log_keys']` to populate these keys.
 
+    Note that in the Event callback functions, we remove unused variables, as this is
+    practiced in Mosaic's composer library.
+
     Args:
         log_level: the granuality to log data. The default value is ``LogLevel.BATCH``
     """
