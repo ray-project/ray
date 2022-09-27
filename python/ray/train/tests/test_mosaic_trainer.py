@@ -10,9 +10,6 @@ import torch.utils.data
 import torchvision
 from torchvision import transforms
 
-# Mosaic libraries
-from composer.loggers import InMemoryLogger
-
 # Import Ray libraries
 import ray
 from ray.data.datasource import SimpleTorchDatasource
@@ -26,7 +23,7 @@ from torchmetrics.classification.accuracy import Accuracy
 from composer.core.evaluator import Evaluator
 from composer.models.tasks import ComposerClassifier
 import composer.optim
-
+from composer.loggers import InMemoryLogger
 
 BATCH_SIZE = 1024
 

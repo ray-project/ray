@@ -58,3 +58,14 @@ class MosaicPredictor(BatchPredictor):
             model=model,
             **predictor_kwargs
         )
+
+    @classmethod
+    def from_checkpoint(
+        cls,
+        checkpoint: Checkpoint,
+        model: torch.nn.Module,
+        strict: bool = False,
+        **predictor_kwargs
+    ):
+        save_path = checkpoint.to_dict()["last_checkpoint"][-1]
+        return cls.from_save_path(save_path, model, strict, **predictor_kwargs)
