@@ -628,6 +628,22 @@ class PreprocessorCheckpointTest(unittest.TestCase):
             with self.assertRaises(TypeError):
                 os.path.exists(checkpoint)
 
+    def testCheckpointUri(self):
+        orig_checkpoint = Checkpoint.from_dict({"data": 2})
+
+        self.assertEqual(orig_checkpoint.uri, None)
+
+        # file:// URI
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = Checkpoint.from_directory(orig_checkpoint.to_directory(tmpdir))
+            self.assertEqual(checkpoint.uri, "file://" + tmpdir)
+
+        # cloud URI
+        checkpoint = Checkpoint.from_uri(
+            orig_checkpoint.to_uri("memory://some/location")
+        )
+        self.assertEqual(checkpoint.uri, "memory://some/location")
+
 
 if __name__ == "__main__":
     import sys
