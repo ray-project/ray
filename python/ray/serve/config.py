@@ -123,8 +123,8 @@ class DeploymentConfig(BaseModel):
         health_check_timeout_s (Optional[float]):
             Timeout that the controller will wait for a response from the
             replica's health check before marking it unhealthy.
-        user_configured_options (Set[str]):
-            The options manually configured by the user.
+        user_configured_option_names (Set[str]):
+            The names of options manually configured by the user.
     """
 
     num_replicas: NonNegativeInt = 1
@@ -153,8 +153,8 @@ class DeploymentConfig(BaseModel):
 
     version: Optional[str] = None
 
-    # Contains the deployment options manually set by the user
-    user_configured_options: Set[str] = set()
+    # Contains the names of deployment options manually set by the user
+    user_configured_option_names: Set[str] = set()
 
     class Config:
         validate_assignment = True
@@ -195,7 +195,9 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
-        data["user_configured_options"] = list(data["user_configured_options"])
+        data["user_configured_option_names"] = list(
+            data["user_configured_option_names"]
+        )
         return DeploymentConfigProto(**data)
 
     def to_proto_bytes(self):
@@ -232,8 +234,10 @@ class DeploymentConfig(BaseModel):
         if "version" in data:
             if data["version"] == "":
                 data["version"] = None
-        if "user_configured_options" in data:
-            data["user_configured_options"] = set(data["user_configured_options"])
+        if "user_configured_option_names" in data:
+            data["user_configured_option_names"] = set(
+                data["user_configured_option_names"]
+            )
         return cls(**data)
 
     @classmethod

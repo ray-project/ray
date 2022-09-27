@@ -222,10 +222,10 @@ class DeploymentSchema(
 
         return v
 
-    def get_user_configured_options(self) -> Set[str]:
-        """Get set of all user-configured options.
+    def get_user_configured_option_names(self) -> Set[str]:
+        """Get set of names for all user-configured options.
 
-        Any field not set to DEFAULT.VALUE is considered user-configured options.
+        Any field not set to DEFAULT.VALUE is considered a user-configured option.
         """
 
         return {

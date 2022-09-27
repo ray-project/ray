@@ -324,12 +324,12 @@ class Deployment:
 
             _internal: If True, this function won't log deprecation warnings
                 and won't update this deployment's config's
-                user_configured_options. It should only be True when used
+                user_configured_option_names. It should only be True when used
                 internally by Serve. It should be False when called by users.
         """
 
         # Create list of all user-configured options from keyword args
-        user_configured_options = [
+        user_configured_option_names = [
             option
             for option, value in locals().items()
             if option not in {"self", "_func_or_class", "_internal"}
@@ -338,7 +338,7 @@ class Deployment:
 
         new_config = deepcopy(self._config)
         if not _internal:
-            new_config.user_configured_options.update(user_configured_options)
+            new_config.user_configured_option_names.update(user_configured_option_names)
 
         if num_replicas not in [DEFAULT.VALUE, None] and autoscaling_config not in [
             DEFAULT.VALUE,
@@ -523,7 +523,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
     # which options were set by the user. Name is a required field in the
     # schema, so it should be passed in explicitly.
     for option in list(deployment_options.keys()):
-        if option != "name" and option not in d._config.user_configured_options:
+        if option != "name" and option not in d._config.user_configured_option_names:
             del deployment_options[option]
 
     # TODO(Sihan) DeploymentConfig num_replicas and auto_config can be set together
@@ -557,7 +557,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
     )
-    config.user_configured_options = s.get_user_configured_options()
+    config.user_configured_option_names = s.get_user_configured_option_names()
 
     return Deployment(
         func_or_class="",

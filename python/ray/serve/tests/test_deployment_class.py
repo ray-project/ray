@@ -97,8 +97,8 @@ class TestDeploymentOptions:
     deployment_option_combos = get_random_dict_combos(deployment_options, 1000)
 
     @pytest.mark.parametrize("options", deployment_option_combos)
-    def test_user_configured_options(self, options: Dict):
-        """Check that user_configured_options tracks the correct options.
+    def test_user_configured_option_names(self, options: Dict):
+        """Check that user_configured_option_names tracks the correct options.
 
         Args:
             options: Maps deployment option strings (e.g. "name",
@@ -110,11 +110,11 @@ class TestDeploymentOptions:
         def f():
             pass
 
-        assert f._config.user_configured_options == set(options.keys())
+        assert f._config.user_configured_option_names == set(options.keys())
 
     @pytest.mark.parametrize("options", deployment_option_combos)
-    def test_user_configured_options_schematized(self, options: Dict):
-        """Check user_configured_options after schematization.
+    def test_user_configured_option_names_schematized(self, options: Dict):
+        """Check user_configured_option_names after schematization.
 
         Args:
             options: Maps deployment option strings (e.g. "name",
@@ -140,16 +140,16 @@ class TestDeploymentOptions:
         # Don't track name in the deschematized deployment since it's optional
         # in deployment decorator but required in schema, leading to
         # inconsistent behavior.
-        if "name" in deschematized_deployment._config.user_configured_options:
-            deschematized_deployment._config.user_configured_options.remove("name")
+        if "name" in deschematized_deployment._config.user_configured_option_names:
+            deschematized_deployment._config.user_configured_option_names.remove("name")
 
-        assert deschematized_deployment._config.user_configured_options == set(
+        assert deschematized_deployment._config.user_configured_option_names == set(
             options.keys()
         )
 
     @pytest.mark.parametrize("options", deployment_option_combos)
-    def test_user_configured_options_serialized(self, options: Dict):
-        """Check user_configured_options after serialization.
+    def test_user_configured_option_names_serialized(self, options: Dict):
+        """Check user_configured_option_names after serialization.
 
         Args:
             options: Maps deployment option strings (e.g. "name",
@@ -168,7 +168,7 @@ class TestDeploymentOptions:
         serialized_config = f._config.to_proto_bytes()
         deserialized_config = DeploymentConfig.from_proto_bytes(serialized_config)
 
-        assert deserialized_config.user_configured_options == set(options.keys())
+        assert deserialized_config.user_configured_option_names == set(options.keys())
 
     @pytest.mark.parametrize(
         "option",

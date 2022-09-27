@@ -347,7 +347,7 @@ def deployment(
     """
 
     # Create list of all user-configured options from keyword args
-    user_configured_options = [
+    user_configured_option_names = [
         option
         for option, value in locals().items()
         if option != "_func_or_class" and value is not DEFAULT.VALUE
@@ -383,7 +383,7 @@ def deployment(
         health_check_period_s=health_check_period_s,
         health_check_timeout_s=health_check_timeout_s,
     )
-    config.user_configured_options = set(user_configured_options)
+    config.user_configured_option_names = set(user_configured_option_names)
 
     def decorator(_func_or_class):
         return Deployment(
