@@ -319,7 +319,7 @@ def read_datasource(
     )
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 def read_mongo(
     uri, database, collection, pipelines, schema, **kwargs
 ) -> Dataset[ArrowRow]:

@@ -54,7 +54,7 @@ class _MongoDatasourceReader(Reader):
         return read_tasks
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 class MongoDatasource(Datasource):
     def create_reader(
         self, uri, database, collection, pipelines, schema, kwargs
