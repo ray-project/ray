@@ -360,13 +360,6 @@ def test_memory_monitor_doesnt_kill_non_retriable_task(ray_with_memory_monitor):
             )
         )
 
-    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
-        ray.get(
-            allocate_memory.options(max_retries=1).remote(
-                allocate_bytes=bytes_to_alloc, post_allocate_sleep_s=5
-            )
-        )
-
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",

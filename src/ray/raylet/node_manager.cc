@@ -3011,9 +3011,12 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           const static int64_t max_to_print = 10;
           auto all_workers = this->WorkersWithLatestSubmittedTasks(
               /* filter_non_retriable_workers */ false);
-          RAY_LOG(INFO) << "Memory usage above threshold but there are no workers to "
-                           "kill. Worker list including non-retriable tasks: "
-                        << this->WorkersDebugString(all_workers, max_to_print);
+          RAY_LOG(INFO)
+              << "Memory usage above threshold but there are no workers to "
+                 "kill. Most like the workers are using the memory are non-retriable and "
+                 "we don't kill them with the memory monitor. The worker list if we "
+                 "include the non-retriable tasks: "
+              << this->WorkersDebugString(all_workers, max_to_print);
         }
       }
     }
