@@ -1,4 +1,5 @@
 from collections import defaultdict
+import sys
 import os
 import time
 import asyncio
@@ -19,15 +20,28 @@ METRIC_CONFIG = {
     }
 }
 
+SLOW_METRIC_CONFIG = {
+    "_system_config": {
+        "metrics_report_interval_ms": 3000,
+    }
+}
 
-def tasks_by_state(info) -> dict:
+
+def raw_metrics(info):
     metrics_page = "localhost:{}".format(info["metrics_export_port"])
     print("Fetch metrics from", metrics_page)
     res = fetch_prometheus_metrics([metrics_page])
+    return res
+
+
+def tasks_by_state(info) -> dict:
+    res = raw_metrics(info)
     if "ray_tasks" in res:
         states = defaultdict(int)
         for sample in res["ray_tasks"]:
             states[sample.labels["State"]] += sample.value
+            if states[sample.labels["State"]] == 0:
+                del states[sample.labels["State"]]
         print("Tasks by state: {}".format(states))
         return states
     else:
@@ -47,11 +61,8 @@ def test_task_basic(shutdown_only):
 
     expected = {
         "RUNNING": 2.0,
-        "WAITING_FOR_EXECUTION": 0.0,
-        "SCHEDULED": 8.0,
-        "WAITING_FOR_DEPENDENCIES": 0.0,
+        "PENDING_NODE_ASSIGNMENT": 8.0,
     }
-    # TODO(ekl) optimize the reporting interval to be faster for testing
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
@@ -83,7 +94,7 @@ def test_task_wait_on_deps(shutdown_only):
     )
 
 
-def test_task_nested(shutdown_only):
+def test_task_nested_wait(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
     @ray.remote(num_cpus=0)
@@ -92,17 +103,38 @@ def test_task_nested(shutdown_only):
         def f():
             time.sleep(999)
 
-        ray.get([f.remote() for _ in range(10)])
+        ray.wait([f.remote() for _ in range(10)])
 
     w = wrapper.remote()
+    ray.get(w)
 
     expected = {
-        "RUNNING": 3.0,
-        "WAITING_FOR_EXECUTION": 0.0,
-        "SCHEDULED": 8.0,
-        "WAITING_FOR_DEPENDENCIES": 0.0,
+        "RUNNING": 2.0,
+        "RUNNING_IN_RAY_WAIT": 1.0,
+        "PENDING_NODE_ASSIGNMENT": 8.0,
     }
-    # TODO(ekl) optimize the reporting interval to be faster for testing
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+    )
+
+
+def test_task_nested(shutdown_only):
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+
+    @ray.remote(num_cpus=0)
+    def wrapper():
+        @ray.remote
+        def f():
+            time.sleep(999)
+        ray.get([f.remote() for _ in range(10)])
+    w = wrapper.remote()
+    ray.get(w)
+
+    expected = {
+        "RUNNING": 2.0,
+        "RUNNING_IN_RAY_GET": 1.0,
+        "PENDING_NODE_ASSIGNMENT": 8.0,
+    }
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
     )
@@ -126,9 +158,7 @@ def test_actor_tasks_queued(shutdown_only):
 
     expected = {
         "RUNNING": 1.0,
-        "WAITING_FOR_EXECUTION": 9.0,
-        "SCHEDULED": 0.0,
-        "WAITING_FOR_DEPENDENCIES": 0.0,
+        "SUBMITTED_TO_WORKER": 9.0,
         "FINISHED": 11.0,
     }
     wait_for_condition(
@@ -151,10 +181,6 @@ def test_task_finish(shutdown_only):
     g.remote()
 
     expected = {
-        "RUNNING": 0.0,
-        "WAITING_FOR_EXECUTION": 0.0,
-        "SCHEDULED": 0.0,
-        "WAITING_FOR_DEPENDENCIES": 0.0,
         "FINISHED": 2.0,
     }
     wait_for_condition(
@@ -172,10 +198,6 @@ def test_task_retry(shutdown_only):
     f.remote()
 
     expected = {
-        "RUNNING": 0.0,
-        "WAITING_FOR_EXECUTION": 0.0,
-        "SCHEDULED": 0.0,
-        "WAITING_FOR_DEPENDENCIES": 0.0,
         "FINISHED": 1.0,  # Only recorded as finished once.
     }
     wait_for_condition(
@@ -196,14 +218,85 @@ def test_concurrent_actor_tasks(shutdown_only):
 
     expected = {
         "RUNNING": 30.0,
-        "WAITING_FOR_EXECUTION": 10.0,
-        "SCHEDULED": 0.0,
-        "WAITING_FOR_DEPENDENCIES": 0.0,
+        "SUBMITTED_TO_WORKER": 10.0,
         "FINISHED": 1.0,
     }
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+def test_metrics_export_now(shutdown_only):
+    info = ray.init(num_cpus=2, **SLOW_METRIC_CONFIG)
+
+    @ray.remote
+    def f():
+        pass
+    a = [f.remote() for _ in range(10)]
+    ray.get(a)
+
+    # If force export at process death is broken, we won't see the recently completed
+    # tasks from the drivers.
+    for i in range(10):
+        print("Run job", i)
+        tasks_by_state(info)
+
+    expected = {
+        "FINISHED": 100.0,
+    }
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+    )
+
+
+def test_pull_manager_stats(shutdown_only):
+    info = ray.init(num_cpus=2, object_store_memory=100_000_000, **METRIC_CONFIG)
+
+    # Spill a lot of 10MiB objects. The object store is 100MiB, so pull manager will
+    # only be able to pull ~9 total into memory at once, including running tasks.
+    buf = []
+    for _ in range(100):
+        buf.append(ray.put(np.ones(10 * 1024 * 1024, dtype=np.uint8)))
+
+    @ray.remote
+    def f(x):
+        time.sleep(999)
+
+    ray.get([f.remote(x) for x in buf])
+
+    expected = {
+        "RUNNING": 2.0,
+        "PENDING_ARGS_FETCH": 7.0,
+        "PENDING_OBJ_STORE_MEM_AVAIL": 91.0,
+    }
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+    )
+
+
+def test_task_job_ids(shutdown_only):
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+
+    @ray.remote(num_cpus=0)
+    def f():
+        time.sleep(999)
+    a = [f.remote() for _ in range(1)]
+    ray.get(a)
+    expected = {
+        "RUNNING": 3.0,
+    }
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+    )
+
+    # Check we have three jobs reporting "RUNNING".
+    metrics = raw_metrics(info)
+    jobs_at_state = defaultdict(set)
+    for sample in metrics["ray_tasks"]:
+        jobs_at_state[sample.labels["State"]].add(sample.labels["JobId"])
+    print("Jobs at state: {}".format(jobs_at_state))
+    assert len(jobs_at_state["RUNNING"]) == 3, jobs_at_state
 
 
 if __name__ == "__main__":

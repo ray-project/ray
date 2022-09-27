@@ -290,6 +290,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
   void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
 
+  /// Update nested ref count info and store the in-memory value for a task's
+  /// return object. Returns true if the task's return object was returned
+  /// directly by value.
+  bool HandleTaskReturn(const ObjectID &object_id,
+                        const rpc::ReturnObject &return_object,
+                        const NodeID &worker_raylet_id,
+                        bool store_in_plasma);
+
  private:
   struct TaskEntry {
     TaskEntry(const TaskSpecification &spec_arg,
@@ -300,7 +308,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
-      counter.Increment(rpc::TaskStatus::WAITING_FOR_DEPENDENCIES);
+      counter.Increment(rpc::TaskStatus::PENDING_ARGS_AVAIL);
     }
 
     void SetStatus(rpc::TaskStatus new_status) {
@@ -313,7 +321,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     bool IsPending() const { return status != rpc::TaskStatus::FINISHED; }
 
     bool IsWaitingForExecution() const {
-      return status == rpc::TaskStatus::WAITING_FOR_EXECUTION;
+      return status == rpc::TaskStatus::SUBMITTED_TO_WORKER;
     }
 
     /// The task spec. This is pinned as long as the following are true:
@@ -355,7 +363,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
    private:
     // The task's current execution status.
-    rpc::TaskStatus status = rpc::TaskStatus::WAITING_FOR_DEPENDENCIES;
+    rpc::TaskStatus status = rpc::TaskStatus::PENDING_ARGS_AVAIL;
   };
 
   /// Remove a lineage reference to this object ID. This should be called

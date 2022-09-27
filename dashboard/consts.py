@@ -52,3 +52,6 @@ BAD_RUNTIME_ENV_CACHE_TTL_SECONDS = env_integer(
 # ray.dashboard.modules.snapshot.snapshot_head.RayActivityResponse.
 # Example: "your.module.ray_cluster_activity_hook".
 RAY_CLUSTER_ACTIVITY_HOOK = "RAY_CLUSTER_ACTIVITY_HOOK"
+
+# Port that dashboard prometheus metrics will be exported to
+DASHBOARD_METRIC_PORT = env_integer("DASHBOARD_METRIC_PORT", 44227)
