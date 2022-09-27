@@ -1,8 +1,6 @@
 (serve-e2e-ft)=
 # Adding End-to-End Fault Tolerance
 
-Serve handles component failures _within_ a Ray cluster by default. You can configure your Ray cluster and Serve application to guard them against cluster-level failures as well.
-
 This section helps you:
 
 * provide additional fault tolerance for your Serve application
@@ -46,7 +44,7 @@ You **must** deploy your Serve application with [KubeRay] to use this feature.
 See Serve's [Kubernetes production guide](serve-in-production-kubernetes) to learn how you can deploy your app with KubeRay.
 :::
 
-By default, Serve can recover from certain failures _within_ a Ray cluster, such as unhealthy actors. When [Serve runs on Kubernetes](serve-in-production-kubernetes) with [KubeRay], it can also recover from some _cluster-level_ failures, such as dead worker nodes.
+By default, Serve can recover from certain failures, such as unhealthy actors. When [Serve runs on Kubernetes](serve-in-production-kubernetes) with [KubeRay], it can also recover from some cluster-level failures, such as dead worker or head nodes.
 
 When a worker node fails, the actors running on it also fail. Serve detects that the actors have failed, and it attempts to respawn the actors on the remaining, healthy nodes. Meanwhile, KubeRay detects that the node itself has failed, so it brings up a new healthy node to replace it. Serve can then respawn any pending actors on that node as well. The deployment replicas running on healthy nodes can continue serving traffic throughout the recovery period.
 
