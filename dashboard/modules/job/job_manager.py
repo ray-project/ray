@@ -316,10 +316,13 @@ class JobSupervisor:
         )
         driver_node_id = ray.worker.global_worker.current_node_id.hex()
 
-        await self._job_info_client.put_running_job_info(
+        await self._job_info_client.put_status(
             self._job_id,
-            driver_agent_http_address,
-            driver_node_id,
+            JobStatus.RUNNING,
+            jobinfo_replace_kwargs={
+                "driver_agent_http_address": driver_agent_http_address,
+                "driver_node_id": driver_node_id,
+            },
         )
 
         try:

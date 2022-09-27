@@ -725,13 +725,14 @@ async def test_job_head_choose_job_agent():
         MockDataOrganizer.agents[agent_2[0]] = agent_2[1]
         MockDataOrganizer.agents[agent_3[0]] = agent_3[1]
 
+        # Theoretically, the probability of failure is 1/3^100
         addresses_1 = set()
-        for address in range(2):
+        for address in range(100):
             job_agent_client = await job_head.choose_agent()
             addresses_1.add(job_agent_client._address)
         assert len(addresses_1) == 2
         addresses_2 = set()
-        for address in range(2):
+        for address in range(100):
             job_agent_client = await job_head.choose_agent()
             addresses_2.add(job_agent_client._address)
         assert len(addresses_2) == 2 and addresses_1 == addresses_2
@@ -741,14 +742,15 @@ async def test_job_head_choose_job_agent():
                 break
         del MockDataOrganizer.agents[agent[0]]
 
+        # Theoretically, the probability of failure is 1/2^100
         addresses_3 = set()
-        for address in range(2):
+        for address in range(100):
             job_agent_client = await job_head.choose_agent()
             addresses_3.add(job_agent_client._address)
         assert len(addresses_3) == 2
         assert addresses_2 - addresses_3 == {f"http://{agent[1]['httpAddress']}"}
         addresses_4 = set()
-        for address in range(2):
+        for address in range(100):
             job_agent_client = await job_head.choose_agent()
             addresses_4.add(job_agent_client._address)
         assert addresses_4 == addresses_3

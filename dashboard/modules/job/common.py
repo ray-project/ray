@@ -130,51 +130,26 @@ class JobInfoStorageClient:
             return pickle.loads(pickled_info)
 
     async def put_status(
-        self, job_id: str, status: JobStatus, message: Optional[str] = None
+        self,
+        job_id: str,
+        status: JobStatus,
+        message: Optional[str] = None,
+        jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """Puts or updates job status.  Sets end_time if status is terminal."""
 
         old_info = await self.get_info(job_id)
 
+        if jobinfo_replace_kwargs is None:
+            jobinfo_replace_kwargs = dict()
+        jobinfo_replace_kwargs.update(status=status, message=message)
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():
                 assert False, "Attempted to change job status from a terminal state."
-            new_info = replace(old_info, status=status, message=message)
+            new_info = replace(old_info, **jobinfo_replace_kwargs)
         else:
             new_info = JobInfo(
-                entrypoint="Entrypoint not found.", status=status, message=message
-            )
-
-        if status.is_terminal():
-            new_info.end_time = int(time.time() * 1000)
-
-        await self.put_info(job_id, new_info)
-
-    async def put_running_job_info(
-        self,
-        job_id: str,
-        driver_agent_http_address: str,
-        driver_node_id: str,
-        message: Optional[str] = None,
-    ):
-        """Modify job info when job status turn to running."""
-        status = JobStatus.RUNNING
-
-        old_info = await self.get_info(job_id)
-
-        if old_info is not None:
-            if status != old_info.status and old_info.status.is_terminal():
-                assert False, "Attempted to change job status from a terminal state."
-            new_info = replace(
-                old_info,
-                status=status,
-                message=message,
-                driver_agent_http_address=driver_agent_http_address,
-                driver_node_id=driver_node_id,
-            )
-        else:
-            new_info = JobInfo(
-                entrypoint="Entrypoint not found.", status=status, message=message
+                entrypoint="Entrypoint not found.", **jobinfo_replace_kwargs
             )
 
         if status.is_terminal():

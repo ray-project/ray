@@ -133,10 +133,12 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         super().__init__(dashboard_head)
         self._dashboard_head = dashboard_head
         self._job_info_client = None
-        self._agents = dict()
 
-        # a cache to avoid initializing the same JobAgentSubmissionClient repeatedly.
-        self._agents_pool = dict()
+        # It contains all `JobAgentSubmissionClient` that
+        # `JobHead` has ever used, and will not be deleted
+        # from it unless `JobAgentSubmissionClient` is no
+        # longer available (the corresponding agent process is dead)
+        self._agents = dict()
 
     async def choose_agent(self) -> Optional[JobAgentSubmissionClient]:
         """
@@ -167,8 +169,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         # delete dead agents.
         for dead_node in set(self._agents) - set(agent_infos):
             client = self._agents.pop(dead_node)
-        for dead_node in set(self._agents_pool) - set(agent_infos):
-            client = self._agents_pool.pop(dead_node)
             await client.close()
 
         if len(self._agents) >= dashboard_consts.CANDIDATE_AGENT_NUMBER:
@@ -176,19 +176,16 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             return self._agents[node_id]
         else:
             # Randomly select one from among all agents, it is possible that
-            # the selected one already exists in A
+            # the selected one already exists in `self._agents`
             node_id = sample(set(agent_infos), 1)[0]
             agent_info = agent_infos[node_id]
 
-            if node_id not in self._agents_pool:
+            if node_id not in self._agents:
                 node_ip = agent_info["ipAddress"]
                 http_port = agent_info["httpPort"]
                 agent_http_address = f"http://{node_ip}:{http_port}"
-                self._agents_pool[node_id] = JobAgentSubmissionClient(
-                    agent_http_address
-                )
+                self._agents[node_id] = JobAgentSubmissionClient(agent_http_address)
 
-            self._agents[node_id] = self._agents_pool[node_id]
             return self._agents[node_id]
 
     @routes.get("/api/version")
@@ -396,9 +393,11 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                     "please try it later",
                     status=aiohttp.web.HTTPBadRequest.status_code,
                 )
-            if driver_node_id not in self._agents_pool:
-                self._agents_pool = JobAgentSubmissionClient(driver_agent_http_address)
-            job_agent_client = self._agents_pool[driver_node_id]
+            if driver_node_id not in self._agents:
+                self._agents[driver_node_id] = JobAgentSubmissionClient(
+                    driver_agent_http_address
+                )
+            job_agent_client = self._agents[driver_node_id]
             resp = await job_agent_client.get_job_logs_internal(job.submission_id)
         except Exception:
             return Response(
@@ -438,9 +437,11 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 "please try it later",
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
-        if driver_node_id not in self._agents_pool:
-            self._agents_pool = JobAgentSubmissionClient(driver_agent_http_address)
-        job_agent_client = self._agents_pool[driver_node_id]
+        if driver_node_id not in self._agents:
+            self._agents[driver_node_id] = JobAgentSubmissionClient(
+                driver_agent_http_address
+            )
+        job_agent_client = self._agents[driver_node_id]
 
         ws = aiohttp.web.WebSocketResponse()
         await ws.prepare(req)
