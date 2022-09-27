@@ -97,6 +97,7 @@ class Categorical(TFActionDistribution):
         return action_space.n
 
 
+@DeveloperAPI
 def get_categorical_class_with_temperature(t: float):
     """Categorical distribution class that has customized default temperature."""
 
