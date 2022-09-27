@@ -49,8 +49,9 @@ def _explore(
     config: Dict,
     mutations: Dict,
     resample_probability: float,
+    perturbation_factors: Tuple[float],
     custom_explore_fn: Optional[Callable],
-) -> Dict:
+) -> Tuple[Dict, Dict]:
     """Return a config perturbed as specified.
 
     Args:
@@ -59,15 +60,25 @@ def _explore(
             in the PopulationBasedTraining scheduler.
         resample_probability: Probability of allowing resampling of a
             particular variable.
+        perturbation_factors: Scaling factors to choose between when mutating
+            a continuous hyperparameter.
         custom_explore_fn: Custom explore fn applied after built-in
             config perturbations are.
+
+    Returns:
+        new_config: New hyperparameter configuration (after random mutations).
+        operations: Map of hyperparam -> string describing mutation operation performed
     """
     operations = {}
     new_config = copy.deepcopy(config)
     for key, distribution in mutations.items():
         if isinstance(distribution, dict):
             nested_new_config, nested_ops = _explore(
-                config[key], mutations[key], resample_probability, None
+                config[key],
+                mutations[key],
+                resample_probability,
+                perturbation_factors,
+                None,
             )
             new_config.update({key: nested_new_config})
             operations.update({key: nested_ops})
@@ -93,7 +104,6 @@ def _explore(
                 )
                 operations[key] = "resample"
             else:
-                perturbation_factors = [1.2, 0.8]
                 perturbation_factor = random.choice(perturbation_factors)
                 new_config[key] = config[key] * perturbation_factor
                 operations[key] = f"* {perturbation_factor}"
@@ -193,8 +203,11 @@ class PopulationBasedTraining(FIFOScheduler):
             Setting it to 0 essentially implies doing no exploitation at all.
         resample_probability: The probability of resampling from the
             original distribution when applying `hyperparam_mutations`. If not
-            resampled, the value will be perturbed by a factor of 1.2 or 0.8
-            if continuous, or changed to an adjacent value if discrete.
+            resampled, the value will be perturbed by a factor chosen from
+            `perturbation_factors` if continuous, or changed to an adjacent value
+            if discrete.
+        perturbation_factors: Scaling factors to choose between when mutating
+            a continuous hyperparameter.
         custom_explore_fn: You can also specify a custom exploration
             function. This function is invoked as `f(config)` after built-in
             perturbations from `hyperparam_mutations` are applied, and should
@@ -261,6 +274,7 @@ class PopulationBasedTraining(FIFOScheduler):
         hyperparam_mutations: Dict = None,
         quantile_fraction: float = 0.25,
         resample_probability: float = 0.25,
+        perturbation_factors: Tuple[float, float] = (1.2, 0.8),
         custom_explore_fn: Optional[Callable] = None,
         log_config: bool = True,
         require_attrs: bool = True,
@@ -317,6 +331,7 @@ class PopulationBasedTraining(FIFOScheduler):
         self._hyperparam_mutations = hyperparam_mutations
         self._quantile_fraction = quantile_fraction
         self._resample_probability = resample_probability
+        self._perturbation_factors = perturbation_factors
         self._trial_state = {}
         self._custom_explore_fn = custom_explore_fn
         self._log_config = log_config
@@ -598,12 +613,13 @@ class PopulationBasedTraining(FIFOScheduler):
         with open(trial_path, "a+") as f:
             f.write(json.dumps(policy, cls=SafeFallbackEncoder) + "\n")
 
-    def _get_new_config(self, trial, trial_to_clone):
+    def _get_new_config(self, trial, trial_to_clone) -> Tuple[Dict, Dict]:
         """Gets new config for trial by exploring trial_to_clone's config."""
         return _explore(
             trial_to_clone.config,
             self._hyperparam_mutations,
             self._resample_probability,
+            self._perturbation_factors,
             self._custom_explore_fn,
         )
 
@@ -611,6 +627,8 @@ class PopulationBasedTraining(FIFOScheduler):
         self, old_params, new_params, operations, prefix=""
     ):
         summary_str = ""
+        if not old_params:
+            return summary_str
         longest_name = max([len(param_name) for param_name in old_params.keys()])
         longest_op = max([len(op) for op in operations.values() if isinstance(op, str)])
         for param_name in old_params:
@@ -665,8 +683,9 @@ class PopulationBasedTraining(FIFOScheduler):
             "\n\n[PBT] [Explore] Perturbed the hyperparameter config of trial"
             f"{trial.trial_id}:\n"
         )
-        explore_info_str += self._summarize_hyperparam_changes(
-            old_params, new_params, operations
+        explore_info_str += (
+            self._summarize_hyperparam_changes(old_params, new_params, operations)
+            or "No hyperparameters mutated."
         )
         logger.info(explore_info_str)
 
