@@ -77,61 +77,60 @@ class DoublyRobust(OffPolicyEstimator):
         ), "self.model must implement `estimate_q`!"
 
     @override(OffPolicyEstimator)
-    def estimate(self, batch: SampleBatchType) -> Dict[str, Any]:
-        """Compute off-policy estimates.
+    def estimate_multi_step(self, episode: SampleBatchType) -> Dict[str, float]:
+        estimates_per_epsiode = {"v_behavior": None, "v_target": None}
+               
+        rewards, old_prob = episode["rewards"], episode["action_prob"]
+        log_likelihoods = compute_log_likelihoods_from_input_dict(
+            self.policy, episode
+        )
+        new_prob = np.exp(convert_to_numpy(log_likelihoods))
 
-        Args:
-            batch: The SampleBatch to run off-policy estimation on
+        v_behavior = 0.0
+        v_target = 0.0
+        q_values = self.model.estimate_q(episode)
+        q_values = convert_to_numpy(q_values)
+        v_values = self.model.estimate_v(episode)
+        v_values = convert_to_numpy(v_values)
+        assert q_values.shape == v_values.shape == (episode.count,)
 
-        Returns:
-            A dict consists of the following metrics:
-            - v_behavior: The discounted return averaged over episodes in the batch
-            - v_behavior_std: The standard deviation corresponding to v_behavior
-            - v_target: The estimated discounted return for `self.policy`,
-            averaged over episodes in the batch
-            - v_target_std: The standard deviation corresponding to v_target
-            - v_gain: v_target / max(v_behavior, 1e-8)'
-            - v_delta: The difference between v_target and v_behavior.
-        """
-        batch = self.convert_ma_batch_to_sample_batch(batch)
-        self.check_action_prob_in_batch(batch)
-        estimates_per_epsiode = {"v_behavior": [], "v_target": []}
-        # Calculate doubly robust OPE estimates
-        for episode in batch.split_by_episode():
-            rewards, old_prob = episode["rewards"], episode["action_prob"]
-            log_likelihoods = compute_log_likelihoods_from_input_dict(
-                self.policy, episode
+        for t in reversed(range(episode.count)):
+            v_behavior = rewards[t] + self.gamma * v_behavior
+            v_target = v_values[t] + (new_prob[t] / old_prob[t]) * (
+                rewards[t] + self.gamma * v_target - q_values[t]
             )
-            new_prob = np.exp(convert_to_numpy(log_likelihoods))
+        v_target = v_target.item()
 
-            v_behavior = 0.0
-            v_target = 0.0
-            q_values = self.model.estimate_q(episode)
-            q_values = convert_to_numpy(q_values)
-            v_values = self.model.estimate_v(episode)
-            v_values = convert_to_numpy(v_values)
-            assert q_values.shape == v_values.shape == (episode.count,)
+        estimates_per_epsiode["v_behavior"] = v_behavior
+        estimates_per_epsiode["v_target"] = v_target
 
-            for t in reversed(range(episode.count)):
-                v_behavior = rewards[t] + self.gamma * v_behavior
-                v_target = v_values[t] + (new_prob[t] / old_prob[t]) * (
-                    rewards[t] + self.gamma * v_target - q_values[t]
-                )
-            v_target = v_target.item()
+        return estimates_per_epsiode
 
-            estimates_per_epsiode["v_behavior"].append(v_behavior)
-            estimates_per_epsiode["v_target"].append(v_target)
 
-        estimates = {
-            "v_behavior": np.mean(estimates_per_epsiode["v_behavior"]),
-            "v_behavior_std": np.std(estimates_per_epsiode["v_behavior"]),
-            "v_target": np.mean(estimates_per_epsiode["v_target"]),
-            "v_target_std": np.std(estimates_per_epsiode["v_target"]),
-        }
-        estimates["v_gain"] = estimates["v_target"] / max(estimates["v_behavior"], 1e-8)
-        estimates["v_delta"] = estimates["v_target"] - estimates["v_behavior"]
+    @override(OffPolicyEstimator)
+    def estimate_single_step(self, batch: SampleBatchType) -> Dict[str, float]:
+        estimates_per_epsiode = {"v_behavior": None, "v_target": None}
+               
+        rewards, old_prob = batch["rewards"], batch["action_prob"]
+        log_likelihoods = compute_log_likelihoods_from_input_dict(
+            self.policy, batch
+        )
+        new_prob = np.exp(convert_to_numpy(log_likelihoods))
 
-        return estimates
+        q_values = self.model.estimate_q(batch)
+        q_values = convert_to_numpy(q_values)
+        v_values = self.model.estimate_v(batch)
+        v_values = convert_to_numpy(v_values)
+
+        v_behavior = np.mean(rewards)
+
+        weight = new_prob / old_prob
+        v_target = np.mean(v_values + weight * (rewards - q_values))
+
+        estimates_per_epsiode["v_behavior"] = v_behavior
+        estimates_per_epsiode["v_target"] = v_target
+
+        return estimates_per_epsiode
 
     @override(OffPolicyEstimator)
     def train(self, batch: SampleBatchType) -> Dict[str, Any]:
