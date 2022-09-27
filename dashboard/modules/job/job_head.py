@@ -389,8 +389,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             driver_node_id = job.driver_node_id
             if driver_agent_http_address is None:
                 return Response(
-                    text="The driver process has not started running yet, "
-                    "please try it later",
+                    text="The entrypoint script has not started running yet, "
+                    "please try again later",
                     status=aiohttp.web.HTTPBadRequest.status_code,
                 )
             if driver_node_id not in self._agents:
