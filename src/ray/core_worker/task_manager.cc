@@ -31,6 +31,9 @@ const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 TaskStatusCounter::TaskStatusCounter() {}
 
 void TaskStatusCounter::Swap(rpc::TaskStatus old_status, rpc::TaskStatus new_status) {
+  if (old_status == new_status) {
+    return;
+  }
   counters_[old_status] -= 1;
   counters_[new_status] += 1;
   RAY_CHECK(counters_[old_status] >= 0);
@@ -146,7 +149,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
 
     if (!it->second.IsPending()) {
       resubmit = true;
-      it->second.SetStatus(rpc::TaskStatus::WAITING_FOR_DEPENDENCIES);
+      it->second.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
       num_pending_tasks_++;
 
       // The task is pending again, so it's no longer counted as lineage. If
@@ -479,7 +482,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
       }
     }
     if (will_retry) {
-      it->second.SetStatus(rpc::TaskStatus::SCHEDULED);
+      it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
     }
   }
 
@@ -761,8 +764,8 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   if (it == submissible_tasks_.end()) {
     return;
   }
-  if (it->second.GetStatus() == rpc::TaskStatus::WAITING_FOR_DEPENDENCIES) {
-    it->second.SetStatus(rpc::TaskStatus::SCHEDULED);
+  if (it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
+    it->second.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
   }
 }
 
@@ -772,8 +775,8 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id) {
   if (it == submissible_tasks_.end()) {
     return;
   }
-  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::SCHEDULED);
-  it->second.SetStatus(rpc::TaskStatus::WAITING_FOR_EXECUTION);
+  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+  it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
