@@ -163,9 +163,10 @@ class ScalingConfig:
             if self.num_workers:
                 # For Google Colab, don't allocate resources to the base Trainer.
                 # Colab only has 2 CPUs, and because of this resource scarcity,
-                # we have to be careful on where we allocate th about the many
-                # parallel Ray Tune trials leading to all Trainers being
-                # scheduled on the head node if we set `trainer_resources` to 0.
+                # we have to be careful on where we allocate resources. Since Colab
+                # is not distributed, the concern about many parallel Ray Tune trials
+                # leading to all Trainers being scheduled on the head node if we set
+                # `trainer_resources` to 0 is no longer applicable.
                 try:
                     import google.colab  # noqa: F401
 
@@ -174,7 +175,7 @@ class ScalingConfig:
                     trainer_resources = 1
             else:
                 # If there are no additional workers, then always reserve 1 CPU for
-                # the trainer.
+                # the Trainer.
                 trainer_resources = 1
 
             return {"CPU": trainer_resources}
