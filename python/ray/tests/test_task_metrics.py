@@ -5,12 +5,14 @@ import time
 import asyncio
 
 import pytest
+import numpy as np
 
 import ray
 
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
     wait_for_condition,
+    run_string_as_driver
 )
 
 
@@ -84,9 +86,7 @@ def test_task_wait_on_deps(shutdown_only):
 
     expected = {
         "RUNNING": 1.0,
-        "WAITING_FOR_EXECUTION": 0.0,
-        "SCHEDULED": 0.0,
-        "WAITING_FOR_DEPENDENCIES": 5.0,
+        "PENDING_ARGS_AVAIL": 5.0,
     }
 
     wait_for_condition(
@@ -106,7 +106,6 @@ def test_task_nested_wait(shutdown_only):
         ray.wait([f.remote() for _ in range(10)])
 
     w = wrapper.remote()
-    ray.get(w)
 
     expected = {
         "RUNNING": 2.0,
@@ -126,9 +125,10 @@ def test_task_nested(shutdown_only):
         @ray.remote
         def f():
             time.sleep(999)
+
         ray.get([f.remote() for _ in range(10)])
+
     w = wrapper.remote()
-    ray.get(w)
 
     expected = {
         "RUNNING": 2.0,
@@ -230,16 +230,22 @@ def test_concurrent_actor_tasks(shutdown_only):
 def test_metrics_export_now(shutdown_only):
     info = ray.init(num_cpus=2, **SLOW_METRIC_CONFIG)
 
-    @ray.remote
-    def f():
-        pass
-    a = [f.remote() for _ in range(10)]
-    ray.get(a)
+    driver = """
+import ray
+import time
+ray.init("auto")
+@ray.remote
+def f():
+    pass
+a = [f.remote() for _ in range(10)]
+ray.get(a)
+"""
 
     # If force export at process death is broken, we won't see the recently completed
     # tasks from the drivers.
     for i in range(10):
         print("Run job", i)
+        run_string_as_driver(driver)
         tasks_by_state(info)
 
     expected = {
@@ -263,7 +269,7 @@ def test_pull_manager_stats(shutdown_only):
     def f(x):
         time.sleep(999)
 
-    ray.get([f.remote(x) for x in buf])
+    [f.remote(x) for x in buf]
 
     expected = {
         "RUNNING": 2.0,
@@ -281,8 +287,8 @@ def test_task_job_ids(shutdown_only):
     @ray.remote(num_cpus=0)
     def f():
         time.sleep(999)
+
     a = [f.remote() for _ in range(1)]
-    ray.get(a)
     expected = {
         "RUNNING": 3.0,
     }
