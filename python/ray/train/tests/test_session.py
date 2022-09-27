@@ -4,6 +4,7 @@ import pytest
 
 import ray
 from ray.air._internal.util import StartTraceback
+from ray.air.checkpoint import Checkpoint
 from ray.train._internal.accelerator import Accelerator
 from ray.train.constants import SESSION_MISUSE_LOG_ONCE_KEY
 from ray.train._internal.session import (
@@ -136,7 +137,7 @@ def test_checkpoint():
         next = session.get_next()
         assert next is not None
         assert next.type == TrainingResultType.CHECKPOINT
-        assert next.data["epoch"] == expected
+        assert next.data.to_dict()["epoch"] == expected
 
     init_session(training_func=train_func, world_rank=0, local_rank=0, world_size=1)
     session = get_session()
@@ -150,7 +151,7 @@ def test_checkpoint():
         next = session.get_next()
         assert next is not None
         assert next.type == TrainingResultType.CHECKPOINT
-        assert next.data == {}
+        assert not next.data
 
     init_session(training_func=train_func, world_rank=1, local_rank=1, world_size=1)
     session = get_session()
@@ -173,7 +174,10 @@ def test_encode_data():
     def validate_encoded(result_type: TrainingResultType):
         next = session.get_next()
         assert next.type is result_type
-        assert next.data["encoded"] is True
+        data = next.data
+        if isinstance(data, Checkpoint):
+            data = data.to_dict()
+        assert data["encoded"] is True
 
     init_session(
         training_func=train_func,
