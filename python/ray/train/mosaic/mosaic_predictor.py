@@ -8,7 +8,7 @@ import torch
 class MosaicPredictor(BatchPredictor):
     """A BatchPredictor wrapper for Mosaic's Composer models.
 
-    The state dicts saved by composer `CheckpointSaver`s have extra
+    The state dicts saved by composer ``CheckpointSaver``s have extra
     wrapping around normal PyTorch models' state dict. As such, it is
     necessary to unwrap those to properly load models from saved checkpoints.
     Additionally, existing class methods of BatchPredictor does not allow
