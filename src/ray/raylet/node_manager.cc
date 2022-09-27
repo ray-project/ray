@@ -1167,11 +1167,11 @@ void NodeManager::HandleNotifyGCSRestart(const rpc::NotifyGCSRestartRequest &req
   // registered to raylet first (blocking call) and then connect to GCS, so there is no
   // race condition here.
   gcs_client_->AsyncResubscribe();
-  auto workers = worker_pool_.GetAllRegisteredWorkers(true);
+  auto workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
   for (auto worker : workers) {
     worker->AsyncNotifyGCSRestart();
   }
-  auto drivers = worker_pool_.GetAllRegisteredDrivers(true);
+  auto drivers = worker_pool_.GetAllRegisteredDrivers(/* filter_dead_worker */ true);
   for (auto driver : drivers) {
     driver->AsyncNotifyGCSRestart();
   }
