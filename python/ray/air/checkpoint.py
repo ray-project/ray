@@ -247,6 +247,39 @@ class Checkpoint:
             },
         )
 
+    @property
+    def uri(self) -> Optional[str]:
+        """Return checkpoint URI, if available.
+
+        This will return a URI to cloud storage if this checkpoint is
+        persisted on cloud, or a local ``file://`` URI if this checkpoint
+        is persisted on local disk and available on the current node.
+
+        In all other cases, this will return None. Users can then choose to
+        persist to cloud with
+        :meth:`Checkpoint.to_uri() <ray.air.Checkpoint.to_uri>`.
+
+        Example:
+
+            >>> from ray.air import Checkpoint
+            >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
+            >>> assert checkpoint.uri == "s3://some-bucket/some-location"
+            >>> checkpoint = Checkpoint.from_dict({"data": 1})
+            >>> assert checkpoint.uri == None
+
+        Returns:
+            Checkpoint URI if this URI is reachable from the current node (e.g.
+            cloud storage or locally available file URI).
+
+        """
+        if self._uri:
+            return self._uri
+
+        if self._local_path and Path(self._local_path).exists():
+            return "file://" + self._local_path
+
+        return None
+
     @classmethod
     def from_bytes(cls, data: bytes) -> "Checkpoint":
         """Create a checkpoint from the given byte string.
@@ -647,10 +680,11 @@ class Checkpoint:
         try:
             checkpoint_metadata_uri = os.path.join(uri, _CHECKPOINT_METADATA_FILE_NAME)
             metadata = pickle.loads(read_file_from_uri(checkpoint_metadata_uri))
+        except Exception:
+            pass
+        else:
             cls = cls._get_checkpoint_type(metadata.checkpoint_type)
             state = metadata.checkpoint_state
-        except FileNotFoundError:
-            pass
 
         checkpoint = cls(uri=uri)
         checkpoint.__dict__.update(state)
