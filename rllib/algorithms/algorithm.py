@@ -25,6 +25,7 @@ from typing import (
     Type,
     Union,
 )
+import tree
 
 import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -910,6 +911,8 @@ class Algorithm(Trainable):
                             _agent_steps if self._by_agent_steps else _env_steps
                         )
                     if self.reward_estimators:
+                        # TODO: (kourosh) This approach will cause an OOM issue when 
+                        # the dataset gets huge
                         all_batches.extend(batches)
 
                     agent_steps_this_iter += _agent_steps
@@ -936,10 +939,21 @@ class Algorithm(Trainable):
             if self.reward_estimators:
                 # Compute off-policy estimates
                 metrics["off_policy_estimator"] = {}
-                total_batch = concat_samples(all_batches)
-                for name, estimator in self.reward_estimators.items():
-                    estimates = estimator.estimate(total_batch)
-                    metrics["off_policy_estimator"][name] = estimates
+                estimates = defaultdict(list)
+                # for each batch run the estimator's fwd pass
+                for batch in all_batches:
+                    for name, estimator in self.reward_estimators.items():
+                        estimate_result = estimator.estimate(
+                            batch, 
+                            split_by_episode=self.config['ope_split_by_episode']
+                        )
+                        estimates[name].append(estimate_result)
+                # collate estimates from all batches
+                for name, estimate_list in estimates.items():
+                    avg_estimate = tree.map_structure(
+                        lambda *x: np.mean(x, axis=0), *estimate_list
+                    )
+                    metrics["off_policy_estimator"][name] = avg_estimate
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on trainer, so it can be attached to
