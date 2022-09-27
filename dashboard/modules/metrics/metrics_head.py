@@ -30,6 +30,7 @@ PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
     METRICS_INPUT_ROOT, "prometheus", "prometheus.yml"
 )
 
+
 class TaskProgress(BaseModel):
     num_finished: int = 0
     num_running: int = 0
@@ -48,7 +49,9 @@ prometheus_metric_map = {
 
 
 class MetricsHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head, http_session: Optional[aiohttp.ClientSession] = None):
+    def __init__(
+        self, dashboard_head, http_session: Optional[aiohttp.ClientSession] = None
+    ):
         super().__init__(dashboard_head)
         self.http_session = http_session or aiohttp.ClientSession()
         self.prometheus_host = os.environ.get(
