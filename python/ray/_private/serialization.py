@@ -295,7 +295,6 @@ class SerializationContext:
                 )
             elif error_type == ErrorType.Value("OUT_OF_MEMORY"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
-                # return WorkerCrashedError()
                 return OutOfMemoryError(error_info.error_message)
             elif error_type == ErrorType.Value("NODE_DIED"):
                 error_info = self._deserialize_error_info(data, metadata_fields)

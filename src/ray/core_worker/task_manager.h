@@ -51,7 +51,8 @@ class TaskFinisherInterface {
                                    const rpc::PushTaskReply &reply,
                                    const rpc::Address &actor_addr) = 0;
 
-  virtual bool RetryTaskIfPossible(const TaskID &task_id) = 0;
+  virtual bool RetryTaskIfPossible(const TaskID &task_id,
+                                   bool task_failed_due_to_oom) = 0;
 
   virtual void FailPendingTask(const TaskID &task_id,
                                rpc::ErrorType error_type,
@@ -167,7 +168,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                            const rpc::PushTaskReply &reply,
                            const rpc::Address &worker_addr) override;
 
-  bool RetryTaskIfPossible(const TaskID &task_id) override;
+  /// Returns true if task can be retried.
+  ///
+  /// \param[in] task_id ID of the task to be retried.
+  /// \param[in] task_failed_due_to_oom last task attempt failed due to node running out
+  /// of memory.
+  /// \return true if task is scheduled to be retried.
+  bool RetryTaskIfPossible(const TaskID &task_id, bool task_failed_due_to_oom) override;
 
   /// A pending task failed. This will either retry the task or mark the task
   /// as failed if there are no retries left.
@@ -303,8 +310,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     TaskEntry(const TaskSpecification &spec_arg,
               int num_retries_left_arg,
               size_t num_returns,
-              TaskStatusCounter &counter)
-        : spec(spec_arg), num_retries_left(num_retries_left_arg), counter(counter) {
+              TaskStatusCounter &counter,
+              int64_t num_oom_retries_left)
+        : spec(spec_arg),
+          num_retries_left(num_retries_left_arg),
+          counter(counter),
+          num_oom_retries_left(num_oom_retries_left) {
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
@@ -338,9 +349,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     const TaskSpecification spec;
     // Number of times this task may be resubmitted. If this reaches 0, then
     // the task entry may be erased.
-    int num_retries_left;
+    int32_t num_retries_left;
     // Reference to the task stats tracker.
     TaskStatusCounter &counter;
+    // Number of times this task may be resubmitted if the task failed
+    // due to out of memory failure.
+    int32_t num_oom_retries_left;
     // Number of times this task successfully completed execution so far.
     int num_successful_executions = 0;
     // Objects returned by this task that are reconstructable. This is set

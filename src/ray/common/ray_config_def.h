@@ -88,6 +88,16 @@ RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 0)
 /// eligble for garbage colletion.
 RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 
+/// The number of retries for the task or actor when
+/// it fails due to the process being killed when the memory is running low on the node.
+/// The process killing is done by memory monitor, which is enabled via
+/// memory_monitor_interval_ms. If the task or actor is not retriable then this value is
+/// ignored. This retry counter is only used when the process is killed due to memory, and
+/// the retry counter of the task or actor is only used when it fails in other ways
+/// that is not related to running out of memory. Note infinite retry (-1) is not
+/// supported.
+RAY_CONFIG(uint64_t, task_oom_retries, 3)
+
 /// If the raylet fails to get agent info, we will retry after this interval.
 RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
 
