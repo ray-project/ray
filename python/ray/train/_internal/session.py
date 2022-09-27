@@ -51,7 +51,8 @@ class TrialInfo:
 @dataclass
 class TrainingResult:
     type: TrainingResultType
-    data: Dict
+    data: Union[Dict, Checkpoint]
+    metadata: Optional[Dict] = None
 
 
 # TODO(xwjiang): This needs a better name.
@@ -269,22 +270,28 @@ class _TrainSession:
         except queue.Empty:
             pass
 
-    def checkpoint(self, **kwargs):
+    def checkpoint(self, checkpoint: Checkpoint):
         """Adds kwargs to the queue to be consumed by main thread.
 
         Also stores the checkpoint in ``self.loaded_checkpoint``.
         """
 
         # Update session checkpoint to latest checkpoint.
-        self.loaded_checkpoint = kwargs
+        self.loaded_checkpoint = checkpoint
 
         # Only store checkpoints on worker with rank 0.
         if self.world_rank != 0:
-            kwargs = {}
-        else:
-            kwargs = self._encode_data_fn(self._auto_fill_checkpoint_metrics(kwargs))
+            checkpoint = None
+        elif checkpoint and checkpoint.get_internal_representation()[0] == "data_dict":
+            checkpoint = checkpoint.from_dict(
+                self._encode_data_fn(checkpoint.to_dict())
+            )
 
-        result = TrainingResult(TrainingResultType.CHECKPOINT, kwargs)
+        result = TrainingResult(
+            TrainingResultType.CHECKPOINT,
+            checkpoint,
+            self._auto_fill_checkpoint_metrics({}),
+        )
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
 
@@ -295,8 +302,7 @@ class _TrainSession:
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.
         if checkpoint:
-            checkpoint_dict = checkpoint.to_dict()
-            self.checkpoint(**checkpoint_dict)
+            self.checkpoint(checkpoint)
         self._report_legacy(**metrics)
 
 

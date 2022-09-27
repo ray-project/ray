@@ -1,5 +1,6 @@
 import warnings
 from typing import TYPE_CHECKING, Dict, Optional, Union
+from ray.air.checkpoint import Checkpoint
 
 from ray.train._internal.session import get_session
 from ray.train.constants import SESSION_MISUSE_LOG_ONCE_KEY
@@ -203,7 +204,10 @@ def load_checkpoint() -> Optional[Dict]:
     if session is None:
         _warn_session_misuse(load_checkpoint.__name__)
         return
-    return session.loaded_checkpoint
+    checkpoint = session.loaded_checkpoint
+    if isinstance(checkpoint, Checkpoint):
+        checkpoint = checkpoint.to_dict()
+    return checkpoint
 
 
 @PublicAPI(stability="beta")
@@ -232,7 +236,8 @@ def save_checkpoint(**kwargs) -> None:
     if session is None:
         _warn_session_misuse(save_checkpoint.__name__)
         return
-    session.checkpoint(**kwargs)
+    checkpoint = Checkpoint.from_dict(kwargs)
+    session.checkpoint(checkpoint)
 
 
 @PublicAPI(stability="beta")
