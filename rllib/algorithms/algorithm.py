@@ -2668,8 +2668,6 @@ class Algorithm(Trainable):
             else self.evaluate
         )
 
-        num_recreated = 0
-
         try:
             if self.config["evaluation_duration"] == "auto":
                 assert (
@@ -2700,6 +2698,7 @@ class Algorithm(Trainable):
                     "recreate_failed_workers"
                 ),
             )
+            eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         # Add number of healthy evaluation workers after this iteration.
         eval_results["evaluation"]["num_healthy_workers"] = (
@@ -2707,11 +2706,6 @@ class Algorithm(Trainable):
             if self.evaluation_workers is not None
             else 0
         )
-        # Worker failures might have already been handled within `self._evaluate_async`
-        # and thus the `num_recreated_workers` stats might already be in `eval_results`.
-        # In this case, don't override this count here with 0.
-        if "num_recreated_workers" not in eval_results["evaluation"]:
-            eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         return eval_results
 
