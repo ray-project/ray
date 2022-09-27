@@ -85,7 +85,7 @@ class TorchCategorical(TorchDistributionWrapper):
         return action_space.n
 
 
-def get_torch_categorical_with_temperature(t: float):
+def get_torch_categorical_class_with_temperature(t: float):
     """TorchCategorical distribution class that has customized default temperature."""
 
     class TorchCategoricalWithTemperature(TorchCategorical):

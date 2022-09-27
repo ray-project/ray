@@ -14,7 +14,7 @@ from ray.rllib.algorithms.dqn.dqn_torch_model import DQNTorchModel
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
-    get_torch_categorical_with_temperature,
+    get_torch_categorical_class_with_temperature,
     TorchDistributionWrapper,
 )
 from ray.rllib.policy.policy import Policy
@@ -223,7 +223,7 @@ def build_q_model_and_distribution(
     # parameter is partially binded to the configured value.
     temperature = config["categorical_distribution_temperature"]
 
-    return model, get_torch_categorical_with_temperature(temperature)
+    return model, get_torch_categorical_class_with_temperature(temperature)
 
 
 def get_distribution_inputs_and_class(
@@ -246,7 +246,11 @@ def get_distribution_inputs_and_class(
     # parameter is partially binded to the configured value.
     temperature = policy.config["categorical_distribution_temperature"]
 
-    return q_vals, get_torch_categorical_with_temperature(temperature), []  # state-out
+    return (
+        q_vals,
+        get_torch_categorical_class_with_temperature(temperature),
+        [],  # state-out
+    )
 
 
 def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
