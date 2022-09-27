@@ -117,7 +117,7 @@ static inline void Shutdown() {
     return;
   }
   metrics_io_service_pool->Stop();
-  opencensus::stats::DeltaProducer::Get()->Shutdown();
+  // opencensus::stats::DeltaProducer::Get()->Shutdown();
   opencensus::stats::StatsExporter::Shutdown();
   metrics_io_service_pool = nullptr;
   exporter = nullptr;
