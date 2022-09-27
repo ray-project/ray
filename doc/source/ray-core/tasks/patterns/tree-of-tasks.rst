@@ -10,7 +10,7 @@ You have a large list of items that you need to process recursively (i.e., sorti
 
 We call ``ray.get`` after both ray function invocations take place. This allows you to maximize parallelism in the workload.
 Notice in the execution times below that with smaller and finer tasks, the non-distributed version is faster; however, as the task execution
-time increases, that is the task with larger list takes longer, the distributed version is faster. Takeaway here is that fine trained tasks are an
+time increases, that is the task with larger list takes longer, the distributed version is faster. Takeaway here is that fine grained tasks are an
 anti Ray pattern.
 
 .. code-block:: python
