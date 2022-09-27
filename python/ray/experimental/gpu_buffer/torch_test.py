@@ -36,16 +36,16 @@ def parse_args():
     )
     parser.add_argument(
         '--model',
-        help='Which model to train. Small is simple CNN, large is VGG11.',
-        choices=['small', 'large'],
-        default='large',
+        help='Which model to train on.',
+        choices=['simplecnn', 'vgg11'],
+        default='vgg11',
         required=False,
     )
     parser.add_argument(
         '--size',
-        help='Width/height to scale the images to. Only applies to CIFAR10 dataset. Prefer a power of 2.',
+        help='Width/height to scale the images to. Prefer a power of 2. Default for CIFAR10: 32. Default for ImageNet: 256.',
         type=int,
-        default=32,
+        default=None,
         required=False,
     )
     parser.add_argument(
@@ -99,20 +99,23 @@ if __name__ == '__main__':
     print('Using device:', device)
 
     args = parse_args()
+    size = args.size
+    if not size:
+        size = 256 if args.dataset == "imagenet" else 32
+
     testloader = None
     if args.dataset == 'imagenet':
-        trainset = prepare_imagenet(args.imagenetpath)
+        trainset = prepare_imagenet(args.imagenetpath, size)
     else:
-        trainset, testset = download_dataset(args.size)
+        trainset, testset = download_dataset(size)
         testloader = torch.utils.data.DataLoader(testset, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=args.pin)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=args.pin)
     print('Dataset Loaded!')
 
     start_time = time.time()
 
-    size = 256 if args.dataset == "imagenet" else args.size
     print(f'Model: {args.model}, Dataset: {args.dataset}, Pinned: {args.pin}, Size: {size}')
-    net = torchvision.models.vgg11() if args.model == 'large' else SimpleCNN(size)
+    net = torchvision.models.vgg11() if args.model == 'vgg11' else SimpleCNN(size)
     net.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
