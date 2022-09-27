@@ -1892,14 +1892,15 @@ class Algorithm(Trainable):
     def save_checkpoint(self, checkpoint_dir: str) -> str:
         """Exports AIR Checkpoint to a local directory and returns its directory path.
 
-        The structure of an Algorithm checkpoint dir will be as follows:
-        policies/
-          pol_1/
-            policy_state.pkl
-          pol_2/
-            policy_state.pkl
-        checkpoint_version.txt
-        state.pkl
+        The structure of an Algorithm checkpoint dir will be as follows::
+
+            policies/
+                pol_1/
+                    policy_state.pkl
+                pol_2/
+                    policy_state.pkl
+            checkpoint_version.txt
+            state.pkl
 
         Note: `checkpoint_version.txt` contains a version string (e.g. "v0") helping
         RLlib to remain backward compatible wrt restoring from checkpoints from
