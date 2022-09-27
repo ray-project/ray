@@ -10,6 +10,7 @@ from composer.loggers.logger import LogLevel
 from composer.loggers.logger_destination import LoggerDestination
 from composer.core.state import State
 from composer.callbacks.checkpoint_saver import CheckpointSaver
+import torch
 
 
 class _mosaic_iterator:
@@ -29,7 +30,6 @@ class _mosaic_iterator:
     def __next__(self):
         next_data = next(self.batch_iter)
         return [next_data[label] for label in self.labels]
-
 
 class _ray_dataset_mosaic_iterable:
     """A wrapper that provides an iterator over Ray Dataset for training Composer models.
@@ -63,7 +63,6 @@ class _ray_dataset_mosaic_iterable:
     def __iter__(self):
         return _mosaic_iterator(self.dataset, self.batch_size, self.labels)
 
-
 def process_datasets(
     train_dataset: Dataset, eval_dataset: Dataset, batch_size, labels
 ) -> Tuple["Iterable", "Iterable"]:
@@ -80,7 +79,6 @@ def process_datasets(
         eval_torch_iterable = None
 
     return train_torch_iterable, eval_torch_iterable
-
 
 class RayLogger(LoggerDestination):
     """A logger to relay information logged by composer models to ray.
@@ -117,6 +115,9 @@ class RayLogger(LoggerDestination):
             # the logged metric is more verbose than what we want to record.
             return
         self.data.update(data.items())
+        for key, val in self.data.items():
+            if isinstance(val, torch.Tensor):
+                self.data[key] = val.item()
 
     def batch_checkpoint(self, state: State, logger: Logger) -> None:
         del logger  # unused
@@ -165,7 +166,7 @@ class RayTrainReportCallback(CheckpointSaver):
     """
 
     def __init__(
-        self, in_memory_logger=None, checkpoint_saver: CheckpointSaver = None, **args
+        self, in_memory_logger, checkpoint_saver: CheckpointSaver = None, **args
     ):
         self.in_memory_logger = in_memory_logger
         self.last_checkpoint = None

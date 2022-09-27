@@ -309,6 +309,7 @@ class MosaicTrainer(TorchTrainer):
 def _mosaic_train_loop_per_worker(config):
     """Per-worker training loop for Mosaic Composers."""
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
+    fit_config = config.pop("fit_config", {})
 
     os.environ["RANK"] = str(session.get_world_rank())
     os.environ["WORLD_SIZE"] = str(session.get_world_size())
@@ -371,4 +372,4 @@ def _mosaic_train_loop_per_worker(config):
         )
 
     # call the trainer
-    trainer.fit()
+    trainer.fit(**fit_config)
