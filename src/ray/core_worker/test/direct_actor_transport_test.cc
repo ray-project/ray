@@ -744,7 +744,8 @@ class DirectActorReceiverTest : public ::testing::Test {
                                   std::placeholders::_1,
                                   std::placeholders::_2,
                                   std::placeholders::_3,
-                                  std::placeholders::_4);
+                                  std::placeholders::_4,
+                                  std::placeholders::_5);
     receiver_ = std::make_unique<MockCoreWorkerDirectTaskReceiver>(
         worker_context_, main_io_service_, execute_task, [] { return Status::OK(); });
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
@@ -753,10 +754,13 @@ class DirectActorReceiverTest : public ::testing::Test {
                     dependency_waiter_);
   }
 
-  Status MockExecuteTask(const TaskSpecification &task_spec,
-                         const std::shared_ptr<ResourceMappingType> &resource_ids,
-                         std::vector<std::shared_ptr<RayObject>> *return_objects,
-                         ReferenceCounter::ReferenceTableProto *borrowed_refs) {
+  Status MockExecuteTask(
+      const TaskSpecification &task_spec,
+      const std::shared_ptr<ResourceMappingType> &resource_ids,
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
+      std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
+          *dynamic_return_objects,
+      ReferenceCounter::ReferenceTableProto *borrowed_refs) {
     return Status::OK();
   }
 

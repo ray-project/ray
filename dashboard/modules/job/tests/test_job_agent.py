@@ -7,12 +7,13 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-
+from functools import partial
 import pytest
 import yaml
 
 from ray._private.gcs_utils import GcsAioClient
-from ray._private.runtime_env.packaging import Protocol, parse_uri
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.test_utils import (
     chdir,
@@ -28,7 +29,7 @@ from ray.dashboard.modules.job.utils import (
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.experimental.state.api import list_nodes
-from ray.job_submission import JobStatus
+from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.tests.conftest import _ray_start
 from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
 
@@ -45,26 +46,22 @@ EVENT_LOOP = asyncio.get_event_loop()
 @pytest.fixture
 def job_sdk_client():
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
-        ip, port = ctx.address_info["webui_url"].split(":")
+        ip, _ = ctx.address_info["webui_url"].split(":")
         agent_address = f"{ip}:{DEFAULT_DASHBOARD_AGENT_LISTEN_PORT}"
         assert wait_until_server_available(agent_address)
-        yield JobAgentSubmissionClient(format_web_url(agent_address))
+        head_address = ctx.address_info["webui_url"]
+        assert wait_until_server_available(head_address)
+        yield (
+            JobAgentSubmissionClient(format_web_url(agent_address)),
+            JobSubmissionClient(format_web_url(head_address)),
+        )
 
 
-async def _check_job(
-    client: JobAgentSubmissionClient, job_id: str, status: JobStatus, timeout: int = 10
+def _check_job(
+    client: JobSubmissionClient, job_id: str, status: JobStatus, timeout: int = 10
 ) -> bool:
-    async def _check():
-        result = await client.get_job_info(job_id)
-        return result.status == status
-
-    st = time.time()
-    while time.time() <= timeout + st:
-        res = await _check()
-        if res:
-            return True
-        await asyncio.sleep(0.1)
-    return False
+    res_status = client.get_job_status(job_id)
+    return res_status == status
 
 
 @pytest.fixture(
@@ -216,58 +213,35 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     # wheel into the conda spec, it links to the current Python site.
     monkeypatch.setenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", "1")
 
-    client = job_sdk_client
+    agent_client, head_client = job_sdk_client
 
-    need_upload = False
-    working_dir = runtime_env_option["runtime_env"].get("working_dir", None)
-    py_modules = runtime_env_option["runtime_env"].get("py_modules", [])
-
-    def _need_upload(path):
-        try:
-            protocol, _ = parse_uri(path)
-            if protocol == Protocol.GCS:
-                return True
-        except ValueError:
-            # local file, need upload
-            return True
-        return False
-
-    if working_dir:
-        need_upload = need_upload or _need_upload(working_dir)
-    if py_modules:
-        need_upload = need_upload or any(
-            [_need_upload(str(py_module)) for py_module in py_modules]
-        )
-
-    # TODO(Catch-Bull): delete this after we implemented
-    # `upload package` and `get package`
-    if need_upload:
-        # not implemented `upload package` yet.
-        print("Skip test, because of need upload")
-        return
-
+    runtime_env = runtime_env_option["runtime_env"]
+    runtime_env = upload_working_dir_if_needed(runtime_env, logger=logger)
+    runtime_env = upload_py_modules_if_needed(runtime_env, logger=logger)
     runtime_env = RuntimeEnv(**runtime_env_option["runtime_env"]).to_dict()
     request = validate_request_type(
         {"runtime_env": runtime_env, "entrypoint": runtime_env_option["entrypoint"]},
         JobSubmitRequest,
     )
 
-    submit_result = await client.submit_job_internal(request)
+    submit_result = await agent_client.submit_job_internal(request)
     job_id = submit_result.submission_id
 
-    check_result = await _check_job(
-        client=client, job_id=job_id, status=JobStatus.SUCCEEDED, timeout=120
+    wait_for_condition(
+        partial(
+            _check_job, client=head_client, job_id=job_id, status=JobStatus.SUCCEEDED
+        ),
+        timeout=120,
     )
-    assert check_result
 
     # There is only one node, so there is no need to replace the client of the JobAgent
-    logs = await client.get_job_logs(job_id)
-    assert runtime_env_option["expected_logs"] in logs
+    resp = await agent_client.get_job_logs_internal(job_id)
+    assert runtime_env_option["expected_logs"] in resp.logs
 
 
 @pytest.mark.asyncio
 async def test_timeout(job_sdk_client):
-    client = job_sdk_client
+    agent_client, head_client = job_sdk_client
 
     runtime_env = RuntimeEnv(
         pip={
@@ -282,15 +256,15 @@ async def test_timeout(job_sdk_client):
         JobSubmitRequest,
     )
 
-    submit_result = await client.submit_job_internal(request)
+    submit_result = await agent_client.submit_job_internal(request)
     job_id = submit_result.submission_id
 
-    check_result = await _check_job(
-        client=client, job_id=job_id, status=JobStatus.FAILED, timeout=10
+    wait_for_condition(
+        partial(_check_job, client=head_client, job_id=job_id, status=JobStatus.FAILED),
+        timeout=10,
     )
-    assert check_result
 
-    data = await client.get_job_info(job_id)
+    data = head_client.get_job_info(job_id)
     assert "Failed to set up runtime environment" in data.message
     assert "Timeout" in data.message
     assert "consider increasing `setup_timeout_seconds`" in data.message
@@ -298,7 +272,7 @@ async def test_timeout(job_sdk_client):
 
 @pytest.mark.asyncio
 async def test_runtime_env_setup_failure(job_sdk_client):
-    client = job_sdk_client
+    agent_client, head_client = job_sdk_client
 
     runtime_env = RuntimeEnv(working_dir="s3://does_not_exist.zip").to_dict()
     request = validate_request_type(
@@ -306,21 +280,62 @@ async def test_runtime_env_setup_failure(job_sdk_client):
         JobSubmitRequest,
     )
 
-    submit_result = await client.submit_job_internal(request)
+    submit_result = await agent_client.submit_job_internal(request)
     job_id = submit_result.submission_id
 
-    check_result = await _check_job(
-        client=client, job_id=job_id, status=JobStatus.FAILED, timeout=10
+    wait_for_condition(
+        partial(_check_job, client=head_client, job_id=job_id, status=JobStatus.FAILED),
+        timeout=10,
     )
-    assert check_result
 
-    data = await client.get_job_info(job_id)
+    data = head_client.get_job_info(job_id)
     assert "Failed to set up runtime environment" in data.message
 
 
 @pytest.mark.asyncio
+async def test_stop_long_running_job(job_sdk_client):
+    """
+    Submit a job that runs for a while and stop it in the middle.
+    """
+    agent_client, head_client = job_sdk_client
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        driver_script = """
+print('Hello !')
+import time
+time.sleep(300) # This should never finish
+raise RuntimeError('Intentionally failed.')
+        """
+        test_script_file = path / "test_script.py"
+        with open(test_script_file, "w+") as file:
+            file.write(driver_script)
+
+        runtime_env = {"working_dir": tmp_dir}
+        runtime_env = upload_working_dir_if_needed(runtime_env, tmp_dir, logger=logger)
+        runtime_env = RuntimeEnv(**runtime_env).to_dict()
+
+        request = validate_request_type(
+            {"runtime_env": runtime_env, "entrypoint": "python test_script.py"},
+            JobSubmitRequest,
+        )
+        submit_result = await agent_client.submit_job_internal(request)
+        job_id = submit_result.submission_id
+
+        resp = await agent_client.stop_job_internal(job_id)
+        assert resp.stopped is True
+
+        wait_for_condition(
+            partial(
+                _check_job, client=head_client, job_id=job_id, status=JobStatus.STOPPED
+            ),
+            timeout=10,
+        )
+
+
+@pytest.mark.asyncio
 async def test_tail_job_logs_with_echo(job_sdk_client):
-    client = job_sdk_client
+    agent_client, head_client = job_sdk_client
 
     runtime_env = RuntimeEnv().to_dict()
     entrypoint = "python -c \"import time; [(print('Hello', i), time.sleep(0.1)) for i in range(100)]\""  # noqa: E501
@@ -332,20 +347,22 @@ async def test_tail_job_logs_with_echo(job_sdk_client):
         JobSubmitRequest,
     )
 
-    submit_result = await client.submit_job_internal(request)
+    submit_result = await agent_client.submit_job_internal(request)
     job_id = submit_result.submission_id
 
     i = 0
-    async for lines in client.tail_job_logs(job_id):
+    async for lines in agent_client.tail_job_logs(job_id):
         print(lines, end="")
         for line in lines.strip().split("\n"):
             assert line.split(" ") == ["Hello", str(i)]
             i += 1
 
-    check_result = await _check_job(
-        client=client, job_id=job_id, status=JobStatus.SUCCEEDED, timeout=120
+    wait_for_condition(
+        partial(
+            _check_job, client=head_client, job_id=job_id, status=JobStatus.SUCCEEDED
+        ),
+        timeout=10,
     )
-    assert check_result
 
 
 @pytest.mark.asyncio
@@ -449,8 +466,8 @@ async def test_job_log_in_multiple_node(
             agent_address = f"{ip}:{agent_port}"
             assert wait_until_server_available(agent_address)
             client = JobAgentSubmissionClient(format_web_url(agent_address))
-            logs = await client.get_job_logs(job_id)
-            assert result_log in logs, logs
+            resp = await client.get_job_logs_internal(job_id)
+            assert result_log in resp.logs, resp.logs
 
             job_check_status[index] = True
         return True
