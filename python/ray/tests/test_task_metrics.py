@@ -12,7 +12,7 @@ import ray
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
     wait_for_condition,
-    run_string_as_driver
+    run_string_as_driver,
 )
 
 

@@ -1,7 +1,26 @@
 diff --git opencensus/stats/internal/delta_producer.cc opencensus/stats/internal/delta_producer.cc
 --- opencensus/stats/internal/delta_producer.cc
 +++ opencensus/stats/internal/delta_producer.cc
-@@ -139,5 +139,10 @@ void DeltaProducer::RunHarvesterLoop() {
+@@ -145,14 +145,18 @@ void DeltaProducer::ConsumeLastDelta() {
+ }
+ 
+ void DeltaProducer::RunHarvesterLoop() {
++  harvest_interval_mu_.Lock();
+   absl::Time next_harvest_time = absl::Now() + harvest_interval_;
++  harvest_interval_mu_.Unlock();
+   while (true) {
+     const absl::Time now = absl::Now();
+     absl::SleepFor(absl::Seconds(0.1));
+     // Account for the possibility that the last harvest took longer than
+     // harvest_interval_ and we are already past next_harvest_time.
+     if (absl::Now() > next_harvest_time) {
++      harvest_interval_mu_.Lock();
+       next_harvest_time = std::max(next_harvest_time, now) + harvest_interval_;
++      harvest_interval_mu_.Unlock();
+       Flush();
+     }
+     {
+@@ -164,5 +168,10 @@ void DeltaProducer::RunHarvesterLoop() {
    }
  }
  
@@ -15,7 +34,7 @@ diff --git opencensus/stats/internal/delta_producer.cc opencensus/stats/internal
 diff --git opencensus/stats/internal/delta_producer.h opencensus/stats/internal/delta_producer.h
 --- opencensus/stats/internal/delta_producer.h
 +++ opencensus/stats/internal/delta_producer.h
-@@ -84,6 +84,8 @@ class DeltaProducer final {
+@@ -86,6 +86,8 @@ class DeltaProducer final {
    // Flushes the active delta and blocks until it is harvested.
    void Flush() LOCKS_EXCLUDED(delta_mu_, harvester_mu_);
  
@@ -24,7 +43,7 @@ diff --git opencensus/stats/internal/delta_producer.h opencensus/stats/internal/
   private:
    DeltaProducer();
  
-@@ -100,7 +102,8 @@ class DeltaProducer final {
+@@ -102,7 +104,8 @@ class DeltaProducer final {
    // every harvest_interval_.
    void RunHarvesterLoop();
  
@@ -34,5 +53,4 @@ diff --git opencensus/stats/internal/delta_producer.h opencensus/stats/internal/
  
    // Guards the active delta and its configuration. Anything that changes the
    // delta configuration (e.g. adding a measure or BucketBoundaries) must
-
 
