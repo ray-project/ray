@@ -59,6 +59,7 @@ class TrainerActor:
         model = MLPModel(hidden_dim=dim, num_layers=num_layers)
         params = model.init(rngkey, self.x)
         tx = optax.adam(learning_rate=1e-3)
+
         self.state = TrainState.create(apply_fn=model.apply, params=params, tx=tx)
 
     # Define the training function and execute one step
@@ -80,13 +81,13 @@ class TrainerActor:
         from alpa.util import benchmark_func
 
         # We need this assignment because the original `state` is "donated" and freed.
-        # state = self.state
+        state = self.state
         jit_train_step = jax.jit(self.jax_train_step, donate_argnums=(0,))
         def sync_func():
             jax.local_devices()[0].synchronize_all_activity()
 
         def serial_execution():
-            state = self.state
+            nonlocal state
             state = jit_train_step(state, {"x": self.x, "y": self.y})
 
         costs = benchmark_func(serial_execution, sync_func, warmup=5, number=10, repeat=5) * 1e3
@@ -96,17 +97,18 @@ class TrainerActor:
         import alpa
         from alpa.util import benchmark_func
 
-        # We need this assignment because the original `state` is "donated" and freed.
-        # state = self.state
+        # We need this assignment because the original `state_copy` is "donated" and freed.
+        state = self.state
         alpa_train_step = alpa.parallelize(self.jax_train_step)
+
         # We distribute arguments in advance for the benchmarking purpose.
-        self.state, batch = alpa_train_step.preshard_dynamic_args(self.state, batch)
+        state, batch = alpa_train_step.preshard_dynamic_args(state, {"x": self.x, "y": self.y})
 
         def sync_func():
             jax.local_devices()[0].synchronize_all_activity()
 
         def alpa_execution():
-            state = self.state
+            nonlocal state, batch
             state = alpa_train_step(state, batch)
 
         alpa_costs = benchmark_func(alpa_execution, sync_func, warmup=5, number=10, repeat=5) * 1e3
@@ -122,5 +124,14 @@ ray.get(trainer_actor.init_model.remote())
 # print(ray.get(trainer_actor.assert_allclose.remote(expected_state.params, actual_state.params)))
 
 # ===== uncomment for benchmarking =====
-ray.get(trainer_actor.benchmark_jit_train_step.remote())
 ray.get(trainer_actor.benchmark_alpa_train_step.remote())
+
+# Avoid buffer donation issue by re-using the same state on same actor
+del trainer_actor
+new_trainer_actor = TrainerActor.remote()
+ray.get(new_trainer_actor.init_model.remote())
+ray.get(new_trainer_actor.benchmark_jit_train_step.remote())
+
+# On g4dn.12xlarge, the result is:
+# Alpa execution time.   Mean: 148.94 ms, Std: 0.31 ms
+# Serial execution time. Mean: 437.68 ms, Std: 1.71 ms
