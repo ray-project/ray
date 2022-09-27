@@ -486,8 +486,8 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
         config, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
     )
 
-    # Remove extraneous newline
-    config_str = config_str[:-1]
+    # Ensure file ends with only one newline
+    config_str = config_str.rstrip("\n") + "\n"
 
     with open(output_path, "w") if output_path else sys.stdout as f:
         f.write(config_str)

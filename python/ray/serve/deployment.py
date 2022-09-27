@@ -322,12 +322,10 @@ class Deployment:
             Refer to @serve.deployment decorator docstring for all non-private
             arguments.
 
-            _internal: If True, this function:
-                    1. Won't log deprecation warnings
-                    2. Won't update this deployment's config's
-                        user_configured_options.
-                Should only be True when used internally by Serve.
-                Should be False when called by users.
+            _internal: If True, this function won't log deprecation warnings
+                and won't update this deployment's config's
+                user_configured_options. It should only be True when used
+                internally by Serve. It should be False when called by users.
         """
 
         # Create list of all user-configured options from keyword args

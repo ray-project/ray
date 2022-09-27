@@ -89,8 +89,8 @@ class DAGNodeEncoder(json.JSONEncoder):
             return {
                 DAGNODE_TYPE_KEY: "DeploymentSchema",
                 # The schema's default values are Python enums that aren't
-                # JSON-serializable. exclude_defaults omits these, so the
-                # return value can be JSON-serialized.
+                # JSON-serializable by design. exclude_defaults omits these,
+                # so the return value can be JSON-serialized.
                 "schema": obj.dict(exclude_defaults=True),
             }
         elif isinstance(obj, RayServeHandle):
