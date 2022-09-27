@@ -4,6 +4,6 @@ from ray.rllib.utils.metrics.window_stat import WindowStat
 deprecation_warning(
     old="ray.rllib.utils.window_stat.WindowStat",
     new="ray.rllib.utils.metrics.window_stat.WindowStat",
-    error=True,
+    error=False,
 )
 WindowStat = WindowStat

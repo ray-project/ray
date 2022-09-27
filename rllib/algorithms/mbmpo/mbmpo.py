@@ -461,7 +461,7 @@ class MBMPO(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfigDict:
-        return MBMPOConfig().to_dict()
+        return DEFAULT_CONFIG
 
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
@@ -604,7 +604,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.mbmpo.mbmpo.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.mbmpo.mbmpo.MBMPOConfig(...)",
-        error=True,
+        error=False,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

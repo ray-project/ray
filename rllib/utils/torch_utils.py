@@ -12,6 +12,7 @@ import ray
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     SpaceStruct,
@@ -74,9 +75,14 @@ def apply_grad_clipping(
         return {}
 
 
-@Deprecated(old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True)
+@Deprecated(
+    old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=False
+)
 def atanh(x: TensorType) -> TensorType:
-    pass
+    """Atanh function for PyTorch."""
+    return 0.5 * torch.log(
+        (1 + x).clamp(min=SMALL_NUMBER) / (1 - x).clamp(min=SMALL_NUMBER)
+    )
 
 
 @PublicAPI
@@ -108,9 +114,32 @@ def concat_multi_gpu_td_errors(
     }
 
 
-@Deprecated(new="ray/rllib/utils/numpy.py::convert_to_numpy", error=True)
+@Deprecated(new="ray/rllib/utils/numpy.py::convert_to_numpy", error=False)
 def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
-    pass
+    """Converts values in `stats` to non-Tensor numpy or python types.
+
+    Args:
+        stats: Any (possibly nested) struct, the values in which will be
+            converted and returned as a new struct with all torch tensors
+            being converted to numpy types.
+
+    Returns:
+        Any: A new struct with the same structure as `stats`, but with all
+            values converted to non-torch Tensor types.
+    """
+
+    # The mapping function used to numpyize torch Tensors.
+    def mapping(item):
+        if isinstance(item, torch.Tensor):
+            return (
+                item.cpu().item()
+                if len(item.size()) == 0
+                else item.detach().cpu().numpy()
+            )
+        else:
+            return item
+
+    return tree.map_structure(mapping, stats)
 
 
 @PublicAPI
