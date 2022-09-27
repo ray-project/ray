@@ -201,6 +201,11 @@ See {ref}`this guide <docker-images>` to learn more about the official Ray image
 For dynamic dependency management geared towards iteration and developement,
 you can also use {ref}`Runtime Environments <runtime-environments>`.
 
+#### metadata.name and metadata.generateName
+The KubeRay operator will ignore the values of `metadata.name` and `metadata.generateName` set by users.
+The KubeRay operator will generate a `generateName` automatically to avoid name conflicts.
+See [KubeRay issue #587](https://github.com/ray-project/kuberay/pull/587) for more details.
+
 (rayStartParams)=
 ## Ray Start Parameters
 The ``rayStartParams`` field of each group spec is a string-string map of arguments to the Ray
