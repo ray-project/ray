@@ -432,8 +432,8 @@ class WorkerSet:
                 worker.add_policy(
                     policy_id=policy_id,
                     policy=policy,
-                    policies_to_train=policies_to_train,
                     policy_mapping_fn=policy_mapping_fn,
+                    policies_to_train=policies_to_train,
                 )
             # A remote worker (ray actor).
             elif isinstance(worker, ActorHandle):

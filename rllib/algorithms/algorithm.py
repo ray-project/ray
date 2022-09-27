@@ -216,6 +216,13 @@ class Algorithm(Trainable):
     def from_checkpoint(
         checkpoint: Union[str, Checkpoint],
         policies: Optional[Container[PolicyID]] = None,
+        policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
+        policies_to_train: Optional[
+            Union[
+                Container[PolicyID],
+                Callable[[PolicyID, Optional[SampleBatchType]], bool],
+            ]
+        ] = None,
     ) -> "Algorithm":
         """Creates a new algorithm instance from a given checkpoint.
 
@@ -227,11 +234,24 @@ class Algorithm(Trainable):
             policies: Optional list of PolicyIDs to recover. This allows users to
                 restore an Algorithm with only a subset of the originally present
                 Policies.
+            policy_mapping_fn: An optional (updated) policy mapping function
+                to use from here on.
+            policies_to_train: An optional list of policy IDs to be trained
+                or a callable taking PolicyID and SampleBatchType and
+                returning a bool (trainable or not?).
+                If None, will keep the existing setup in place. Policies,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
 
         Returns:
             The instantiated Algorithm.
         """
-        state, v0_checkpoint_file = Algorithm._checkpoint_to_state(checkpoint, policies)
+        state, v0_checkpoint_file = Algorithm._checkpoint_to_state(
+            checkpoint=checkpoint,
+            policies=policies,
+            policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=policies_to_train,
+        )
 
         # Old checkpoint version: Create algo first, then call its `restore()` method.
         if v0_checkpoint_file:
@@ -2720,6 +2740,13 @@ class Algorithm(Trainable):
     def _checkpoint_to_state(
         checkpoint: Union[str, Checkpoint],
         policies: Optional[Container[PolicyID]] = None,
+        policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
+        policies_to_train: Optional[
+            Union[
+                Container[PolicyID],
+                Callable[[PolicyID, Optional[SampleBatchType]], bool],
+            ]
+        ] = None,
     ) -> Tuple[Dict, str]:
         """Converts a checkpoint directory or object to a proper Algorithm state dict.
 
@@ -2733,6 +2760,11 @@ class Algorithm(Trainable):
                 state items such as filters, the `is_policy_to_train` function, as
                 well as the multi-agent `policies` dict will be adjusted as well,
                 based on this arg.
+            policy_mapping_fn: An optional (updated) policy mapping function
+                to include in the returned state.
+            policies_to_train: An optional list of policy IDs to be trained
+                or a callable taking PolicyID and SampleBatchType and
+                returning a bool (trainable or not?).
 
         Returns:
              A state dict usable within the `self.__setstate__()` method.
@@ -2822,6 +2854,11 @@ class Algorithm(Trainable):
                     state["worker"]["state"][pid] = pickle.load(
                         open(policy_state_file, "rb")
                     )
+
+                if policy_mapping_fn is not None:
+                    worker_state["policy_mapping_fn"] = policy_mapping_fn
+                if policies_to_train is not None:
+                    worker_state["is_policy_to_train"] = policies_to_train
 
             return state, v0_checkpoint_file
 

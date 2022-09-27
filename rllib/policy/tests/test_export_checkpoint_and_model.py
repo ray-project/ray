@@ -189,7 +189,7 @@ def export_test(
     algo.stop()
 
 
-class TestExportModel(unittest.TestCase):
+class TestExportCheckpointAndModel(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init(num_cpus=4)
