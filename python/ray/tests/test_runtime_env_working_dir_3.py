@@ -23,7 +23,8 @@ from ray._private.utils import get_directory_size_bytes
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 
 # Time to set for temporary URI before deletion.
-TEMP_URI_EXPIRATION_S = 40
+# Set to 40s on windows and 20s on other platforms to avoid flakiness.
+URI_EXPIRATION_TIME = 40 if sys.platform == "win32" else 20
 
 
 # Set scope to "class" to force this to run before start_cluster, whose scope
