@@ -104,9 +104,8 @@ class CheckpointManager(CommonCheckpointManager):
         checkpoint_data = checkpoint_results[0].data
         checkpoint_metadata = checkpoint_results[0].metadata or {}
 
-        # Decode checkpoint.
-        representation = checkpoint_data.get_internal_representation()[0]
-        if representation == "local_path":
+        # Decode checkpoint if it's not persisted
+        if checkpoint.uri:
             checkpoint_data = checkpoint_data.to_directory()
             checkpoint_data_dict = {}
         else:
