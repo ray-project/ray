@@ -54,9 +54,13 @@ class ClusterManager(abc.ABC):
         self.cluster_env["env_vars"][
             "RAY_USAGE_STATS_EXTRA_TAGS"
         ] = f"test_name={self.test_name};smoke_test={self.smoke_test}"
-        self.override_env_var_if_not_already_set("RAY_memory_monitor_interval_ms", "250") 
-        self.override_env_var_if_not_already_set("RAY_memory_monitor_interval_ms", "0.95") 
-        
+        self.override_env_var_if_not_already_set(
+            "RAY_memory_monitor_interval_ms", "250"
+        )
+        self.override_env_var_if_not_already_set(
+            "RAY_memory_monitor_interval_ms", "0.95"
+        )
+
         self.cluster_env_name = (
             f"{self.project_name}_{self.project_id[4:8]}"
             f"__env__{self.test_name}__"

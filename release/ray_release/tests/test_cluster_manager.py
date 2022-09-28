@@ -144,11 +144,9 @@ class MinimalSessionManagerTest(unittest.TestCase):
             "250",
         )
 
-        cluster_manager.set_cluster_env({
-          "env_vars": {
-            "RAY_memory_monitor_interval_ms" : "0"
-          }
-        })
+        cluster_manager.set_cluster_env(
+            {"env_vars": {"RAY_memory_monitor_interval_ms": "0"}}
+        )
         self.assertEqual(
             cluster_manager.cluster_env["env_vars"]["RAY_memory_monitor_interval_ms"],
             "0",
