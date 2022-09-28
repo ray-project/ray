@@ -9,17 +9,19 @@ export type TaskProgressBarProps = TaskProgress;
 export const TaskProgressBar = ({
   numFinished = 0,
   numRunning = 0,
-  numScheduled = 0,
-  numWaitingForDependencies = 0,
-  numWaitingForExecution = 0,
+  numPendingArgsAvail = 0,
+  numPendingNodeAssignment = 0,
+  numSubmittedToWorker = 0,
+  numUnknown = 0,
 }: TaskProgressBarProps) => {
   const theme = useTheme<Theme>();
   const total =
     numFinished +
     numRunning +
-    numScheduled +
-    numWaitingForDependencies +
-    numWaitingForExecution;
+    numPendingArgsAvail +
+    numPendingNodeAssignment +
+    numSubmittedToWorker +
+    numUnknown;
   const progress: ProgressBarSegment[] = [
     {
       label: "Finished",
@@ -32,13 +34,18 @@ export const TaskProgressBar = ({
       color: theme.palette.primary.main,
     },
     {
-      label: "Waiting for execution",
-      value: numWaitingForExecution,
+      label: "Submitted to worker",
+      value: numSubmittedToWorker,
+      color: "#f79e02",
+    },
+    {
+      label: "Waiting for node",
+      value: numPendingNodeAssignment,
       color: "#cfcf08",
     },
     {
-      label: "Waiting for dependencies",
-      value: numWaitingForDependencies,
+      label: "Waiting for args",
+      value: numPendingArgsAvail,
       color: "#f79e02",
     },
   ];

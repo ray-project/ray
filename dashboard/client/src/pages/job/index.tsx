@@ -6,6 +6,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Typography,
 } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import Pagination from "@material-ui/lab/Pagination";
@@ -22,6 +23,9 @@ const useStyles = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(2),
     width: "100%",
+  },
+  progressError: {
+    marginTop: theme.spacing(1),
   },
 }));
 
@@ -48,7 +52,12 @@ const JobList = () => {
     setPage,
   } = useJobList();
 
-  const { progress, onSwitchChange: onProgressSwitchChange } = useJobProgress();
+  const {
+    progress,
+    error: progressError,
+    msg: progressMsg,
+    onSwitchChange: onProgressSwitchChange,
+  } = useJobProgress();
 
   return (
     <div className={classes.root}>
@@ -69,6 +78,11 @@ const JobList = () => {
       </TitleCard>
       <TitleCard title="Progress">
         <TaskProgressBar {...progress} />
+        {progressError && (
+          <Typography className={classes.progressError} color="error">
+            {progressMsg}
+          </Typography>
+        )}
       </TitleCard>
       <TitleCard title="Job List">
         <TableContainer>

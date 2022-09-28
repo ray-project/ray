@@ -9,16 +9,18 @@ import { useJobProgress } from "./hook/useJobProgress";
 const formatProgress = ({
   numFinished = 0,
   numRunning = 0,
-  numScheduled = 0,
-  numWaitingForDependencies = 0,
-  numWaitingForExecution = 0,
+  numPendingArgsAvail = 0,
+  numPendingNodeAssignment = 0,
+  numSubmittedToWorker = 0,
+  numUnknown = 0,
 }: TaskProgress) => {
   const total =
     numFinished +
     numRunning +
-    numScheduled +
-    numWaitingForDependencies +
-    numWaitingForExecution;
+    numPendingArgsAvail +
+    numPendingNodeAssignment +
+    numSubmittedToWorker +
+    numUnknown;
   return `${numFinished} / ${total}`;
 };
 

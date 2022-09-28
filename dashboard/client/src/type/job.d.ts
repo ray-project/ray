@@ -89,10 +89,11 @@ export type DriverInfo = {
 
 export type TaskProgress = {
   numFinished?: number;
+  numPendingArgsAvail?: number;
+  numSubmittedToWorker?: number;
   numRunning?: number;
-  numScheduled?: number;
-  numWaitingForDependencies?: number;
-  numWaitingForExecution?: number;
+  numPendingNodeAssignment?: number;
+  numUnknown?: number;
 };
 
 export type JobProgressRsp = {

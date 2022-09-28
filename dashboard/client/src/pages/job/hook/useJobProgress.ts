@@ -13,6 +13,7 @@ import { TaskProgress } from "../../../type/job";
 export const useJobProgress = (jobId?: string) => {
   const [progress, setProgress] = useState<TaskProgress>();
   const [msg, setMsg] = useState("Loading progress...");
+  const [error, setError] = useState(false);
   const [isRefreshing, setRefresh] = useState(true);
   const refreshRef = useRef(isRefreshing);
   const tot = useRef<NodeJS.Timeout>();
@@ -27,8 +28,12 @@ export const useJobProgress = (jobId?: string) => {
     const rsp = await getJobProgress(jobId);
 
     if (rsp) {
-      setProgress(rsp.data.data.detail);
-      setMsg("Fetched jobs");
+      if (rsp.data.result) {
+        setProgress(rsp.data.data.detail);
+      } else {
+        setError(true);
+      }
+      setMsg(rsp.data.msg);
     }
 
     tot.current = setTimeout(getProgress, 4000);
@@ -45,6 +50,7 @@ export const useJobProgress = (jobId?: string) => {
   return {
     progress,
     msg,
+    error,
     isRefreshing,
     onSwitchChange,
   };
