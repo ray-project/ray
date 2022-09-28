@@ -3,26 +3,9 @@ import dayjs from "dayjs";
 import React, { useContext } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../../App";
-import { TaskProgress, UnifiedJob } from "../../type/job";
+import { UnifiedJob } from "../../type/job";
 import { useJobProgress } from "./hook/useJobProgress";
-
-const formatProgress = ({
-  numFinished = 0,
-  numRunning = 0,
-  numPendingArgsAvail = 0,
-  numPendingNodeAssignment = 0,
-  numSubmittedToWorker = 0,
-  numUnknown = 0,
-}: TaskProgress) => {
-  const total =
-    numFinished +
-    numRunning +
-    numPendingArgsAvail +
-    numPendingNodeAssignment +
-    numSubmittedToWorker +
-    numUnknown;
-  return `${numFinished} / ${total}`;
-};
+import { MiniTaskProgressBar } from "./TaskProgressBar";
 
 type JobRowProps = {
   job: UnifiedJob;
@@ -42,14 +25,14 @@ export const JobRow = ({
   const { ipLogMap } = useContext(GlobalContext);
   const { progress } = useJobProgress(job_id ?? undefined);
 
-  const progressString = progress ? formatProgress(progress) : "-";
-
   return (
     <TableRow>
       <TableCell align="center">{job_id ?? "-"}</TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">{status}</TableCell>
-      <TableCell align="center">{progressString}</TableCell>
+      <TableCell align="center">
+        {progress ? <MiniTaskProgressBar {...progress} /> : "-"}
+      </TableCell>
       <TableCell align="center">
         {/* TODO(aguo): Also show logs for the job id instead
       of just the submission's logs */}

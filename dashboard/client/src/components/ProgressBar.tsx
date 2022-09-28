@@ -84,12 +84,17 @@ export type ProgressBarProps = {
    * Label for unaccounted for items i.e. items that are not part of a `progress` segment.
    */
   unaccountedLabel?: string;
+  /**
+   * Whether a legend is shown. Default to true.
+   */
+  showLegend?: boolean;
 };
 
 export const ProgressBar = ({
   progress,
   total,
   unaccountedLabel,
+  showLegend = true,
 }: ProgressBarProps) => {
   const classes = useStyles();
   const segmentTotal = progress.reduce((acc, { value }) => acc + value, 0);
@@ -112,11 +117,13 @@ export const ProgressBar = ({
   let runningTotal = 0;
   segments.forEach((segment) => {
     const { value } = segment;
-    segmentsWithWidth.push({
-      ...segment,
-      width: `${((value + runningTotal) / finalTotal) * 100}%`,
-    });
-    runningTotal += value;
+    if (value !== 0) {
+      segmentsWithWidth.push({
+        ...segment,
+        width: `${((value + runningTotal) / finalTotal) * 100}%`,
+      });
+      runningTotal += value;
+    }
   });
   // Reverse because default z-indexing is elements on the DOM will overlap elements before them
   // and we want to show earlier items above later items.
@@ -124,24 +131,26 @@ export const ProgressBar = ({
 
   return (
     <div className={classes.root}>
-      <div className={classes.legendRoot}>
-        <div className={classes.legendItemContainer}>
-          <div
-            className={classes.colorLegend}
-            style={{ backgroundColor: "black" }}
-          />
-          Total: {finalTotal}
-        </div>
-        {segments.map(({ value, label, color }) => (
-          <div key={label} className={classes.legendItemContainer}>
+      {showLegend && (
+        <div className={classes.legendRoot}>
+          <div className={classes.legendItemContainer}>
             <div
               className={classes.colorLegend}
-              style={{ backgroundColor: color }}
+              style={{ backgroundColor: "black" }}
             />
-            {label}: {value}
+            Total: {finalTotal}
           </div>
-        ))}
-      </div>
+          {segments.map(({ value, label, color }) => (
+            <div key={label} className={classes.legendItemContainer}>
+              <div
+                className={classes.colorLegend}
+                style={{ backgroundColor: color }}
+              />
+              {label}: {value}
+            </div>
+          ))}
+        </div>
+      )}
       <div className={classes.progressBarRoot}>
         {segmentsWithWidth.map(({ width, color, label }) => (
           <span
