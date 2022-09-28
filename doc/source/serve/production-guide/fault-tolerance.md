@@ -230,7 +230,7 @@ spec:
 
 `RAY_REDIS_ADDRESS`'s value should be your Redis database's `redis://` address. It should contain your Redis database's host and port. An [example Redis address](redis://user:secret@localhost:6379/0?foo=bar&qux=baz) is `redis://user:secret@localhost:6379/0?foo=bar&qux=baz`.
 
-In the example above, the Redis deployment name (`redis`) is its host within the Kubernetes cluster, and the Redis port is `6379`. The example is compatible with last section's [example config](one-node-redis-example).
+In the example above, the Redis deployment name (`redis`) is the host within the Kubernetes cluster, and the Redis port is `6379`. The example is compatible with last section's [example config](one-node-redis-example).
 
 After you apply the Redis objects along with your updated `RayService`, your Ray cluster can recover from head node crashes without restarting all the workers!
 
