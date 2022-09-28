@@ -343,7 +343,7 @@ class ModelV2:
         """
         return self.time_major is True
 
-    @Deprecated(new="ModelV2.__call__()", error=False)
+    @Deprecated(new="ModelV2.__call__()", error=True)
     def from_batch(
         self, train_batch: SampleBatch, is_training: bool = True
     ) -> (TensorType, List[TensorType]):

@@ -1634,7 +1634,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> worker.set_weights(weights, {"timestep": 42}) # doctest: +SKIP
         """
         # Only update our weights, if no seq no given OR given seq no is different
-        # from ours
+        # from ours.
         if weights_seq_no is None or weights_seq_no != self.weights_seq_no:
             # If per-policy weights are object refs, `ray.get()` them first.
             if weights and isinstance(next(iter(weights.values())), ObjectRef):
@@ -1960,7 +1960,7 @@ class RolloutWorker(ParallelIteratorWorker):
     ):
         self.policy_map[policy_id].export_checkpoint(export_dir, filename_prefix)
 
-    @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=False)
+    @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=True)
     def foreach_trainable_policy(self, func, **kwargs):
         return self.foreach_policy_to_train(func, **kwargs)
 
