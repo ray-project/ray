@@ -209,7 +209,7 @@ class APPO(Impala):
         # Before init: Add the update target and kl hook.
         # This hook is called explicitly after each learner step in the
         # execution setup for IMPALA.
-        if config.get("_disable_execution_plan_api", False) is False:
+        if config.get("_disable_execution_plan_api", True) is False:
             config["after_train_step"] = UpdateTargetAndKL
 
         super().setup(config)

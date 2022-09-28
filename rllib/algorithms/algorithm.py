@@ -452,6 +452,7 @@ class Algorithm(Trainable):
             # By default, collect metrics for all remote workers.
             self._remote_workers_for_metrics = self.workers.remote_workers()
 
+            # TODO (avnishn): Remove the execution plan API by q1 2023
             # Function defining one single training iteration's behavior.
             if self.config["_disable_execution_plan_api"]:
                 # Ensure remote workers are initially in sync with the local worker.
@@ -694,6 +695,7 @@ class Algorithm(Trainable):
                     "sync_filters_on_rollout_workers_timeout_s"
                 ],
             )
+            # TODO (avnishn): Remove the execution plan API by q1 2023
             # Collect worker metrics and add combine them with `results`.
             if self.config["_disable_execution_plan_api"]:
                 episodes_this_iter, self._episodes_to_be_collected = collect_episodes(
@@ -944,6 +946,7 @@ class Algorithm(Trainable):
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
 
+        # Trigger `on_evaluate_end` callback.
         self.callbacks.on_evaluate_end(
             algorithm=self, evaluation_metrics=self.evaluation_metrics
         )
@@ -1144,6 +1147,11 @@ class Algorithm(Trainable):
         # Save evaluation metrics on trainer, so it can be attached to
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
+
+        # Trigger `on_evaluate_end` callback.
+        self.callbacks.on_evaluate_end(
+            algorithm=self, evaluation_metrics=self.evaluation_metrics
+        )
 
         # Return evaluation results.
         return self.evaluation_metrics
@@ -2613,6 +2621,7 @@ class Algorithm(Trainable):
             while not train_iter_ctx.should_stop(results):
                 # Try to train one step.
                 try:
+                    # TODO (avnishn): Remove the execution plan API by q1 2023
                     with self._timers[TRAINING_ITERATION_TIMER]:
                         if self.config["_disable_execution_plan_api"]:
                             results = self.training_step()
@@ -2651,7 +2660,6 @@ class Algorithm(Trainable):
                 "episode_reward_mean": np.nan,
             }
         }
-        eval_results["evaluation"]["num_recreated_workers"] = 0
 
         eval_func_to_use = (
             self._evaluate_async
@@ -2691,6 +2699,10 @@ class Algorithm(Trainable):
                     "recreate_failed_workers"
                 ),
             )
+        # `self._evaluate_async` handles its own worker failures and already adds
+        # this metric, but `self.evaluate` doesn't.
+        if "num_recreated_workers" not in eval_results["evaluation"]:
+            eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         # Add number of healthy evaluation workers after this iteration.
         eval_results["evaluation"]["num_healthy_workers"] = (
@@ -2698,7 +2710,6 @@ class Algorithm(Trainable):
             if self.evaluation_workers is not None
             else 0
         )
-        eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         return eval_results
 
