@@ -19,7 +19,6 @@ aws:
         - DeviceName: /dev/sda1
           Ebs:
             DeleteOnTermination: true
-            VolumeSize: 800
             Iops: 5000
             Throughput: 1000
             VolumeSize: 1000

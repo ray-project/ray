@@ -451,17 +451,17 @@ class Episode:
         deprecation_warning(
             old="Episode._policy_mapping_fn",
             new="Episode.policy_mapping_fn",
-            error=False,
+            error=True,
         )
         return self.policy_mapping_fn
 
-    @Deprecated(new="Episode.last_extra_action_outs_for", error=False)
+    @Deprecated(new="Episode.last_extra_action_outs_for", error=True)
     def last_pi_info_for(self, *args, **kwargs):
         return self.last_extra_action_outs_for(*args, **kwargs)
 
 
 # Backward compatibility. The name Episode implies that there is
 # also a (single agent?) Episode.
-@Deprecated(new="ray.rllib.evaluation.episode.Episode", error=False)
+@Deprecated(new="ray.rllib.evaluation.episode.Episode", error=True)
 class MultiAgentEpisode(Episode):
     pass
