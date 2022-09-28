@@ -2746,156 +2746,51 @@ class Dataset(Generic[T]):
 
     def to_tf(
         self,
+        feature_columns: Union[str, List[str]],
+        label_columns: Union[str, List[str]],
         *,
-        output_signature: Union[
-            TensorflowFeatureTypeSpec, Tuple[TensorflowFeatureTypeSpec, "tf.TypeSpec"]
-        ],
-        label_column: Optional[str] = None,
-        feature_columns: Optional[
-            Union[List[str], List[List[str]], Dict[str, List[str]]]
-        ] = None,
         prefetch_blocks: int = 0,
         batch_size: int = 1,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
     ) -> "tf.data.Dataset":
-        """Return a TF Dataset over this dataset.
+        from ray.air._internal.tensorflow_utils import get_type_spec
+        from ray.train.tensorflow import prepare_dataset_shard
 
-        The TF Dataset will be created from the generator returned by the
-        ``iter_batches`` method. ``prefetch_blocks`` and ``batch_size``
-        arguments will be passed to that method.
+        if self._dataset_format() == "simple":
+            raise NotImplementedError
 
-        For the features tensor (N is the ``batch_size`` and n1, ..., nk
-        are the number of features per tensor):
+        def get_columns_from_batch(
+            batch: Dict[str, tf.Tensor], *, columns: Union[str, List[str]]
+        ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
+            assert isinstance(columns, (str, list))
+            if isinstance(columns, str):
+                return batch[columns]
+            return {batch[column] for column in columns}
 
-        * If ``feature_columns`` is a ``List[str]``, the features will be
-          a tensor of shape (N, n), with columns corresponding to
-          ``feature_columns``
-
-        * If ``feature_columns`` is a ``List[List[str]]``, the features will be
-          a list of tensors of shape [(N, n1),...,(N, nk)], with columns of each
-          tensor corresponding to the elements of ``feature_columns``
-
-        * If ``feature_columns`` is a ``Dict[str, List[str]]``, the features
-          will be a dict of key-tensor pairs of shape
-          {key1: (N, n1),..., keyN: (N, nk)}, with columns of each
-          tensor corresponding to the value of ``feature_columns`` under the
-          key.
-
-        This is only supported for datasets convertible to Arrow records.
-
-        Requires all datasets to have the same columns.
-
-        It is recommended to call ``.split()`` on this dataset if
-        there are to be multiple TensorFlow workers consuming the data.
-
-        The elements generated must be compatible with the given
-        ``output_signature`` argument (same as in
-        ``tf.data.Dataset.from_generator``).
-
-        Time complexity: O(1)
-
-        Args:
-            output_signature: If ``label_column`` is specified,
-                a two-element tuple containing a ``FeatureTypeSpec`` and
-                ``tf.TypeSpec`` object corresponding to (features, label). Otherwise, a
-                single ``TensorflowFeatureTypeSpec`` corresponding to features tensor.
-                A ``TensorflowFeatureTypeSpec`` is a ``tf.TypeSpec``,
-                ``List["tf.TypeSpec"]``, or ``Dict[str, "tf.TypeSpec"]``.
-            label_column: The name of the column used as the label
-                (second element of the output tuple). If not specified, output
-                will be just one tensor instead of a tuple.
-            feature_columns: The names of the columns to use as the features. Can be a
-                list of lists or a dict of string-list pairs for multi-tensor output.
-                If None, then use all columns except the label columns as the features.
-            prefetch_blocks: The number of blocks to prefetch ahead of the
-                current block during the scan.
-            batch_size: Record batch size. Defaults to 1.
-            drop_last: Set to True to drop the last incomplete batch,
-                if the dataset size is not divisible by the batch size. If
-                False and the size of dataset is not divisible by the batch
-                size, then the last batch will be smaller. Defaults to False.
-            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
-                using a local in-memory shuffle buffer, and this value will serve as the
-                minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer will be drained. This
-                buffer size must be greater than or equal to ``batch_size``, and
-                therefore ``batch_size`` must also be specified when using local
-                shuffling.
-            local_shuffle_seed: The seed to use for the local random shuffle.
-
-        Returns:
-            A tf.data.Dataset.
-        """
-
-        # argument exception checking is done in from_generator
-
-        try:
-            import tensorflow as tf
-        except ImportError:
-            raise ValueError("tensorflow must be installed!")
-
-        from ray.air._internal.tensorflow_utils import convert_pandas_to_tf_tensor
-
-        # `output_signature` can be a tuple but not a list. See
-        # https://stackoverflow.com/questions/59092423/what-is-a-nested-structure-in-tensorflow.
-        if isinstance(output_signature, list):
-            output_signature = tuple(output_signature)
-
-        def make_generator():
-            for batch in self.iter_batches(
+        def generator():
+            for batch in self.iter_tf_batches(
                 prefetch_blocks=prefetch_blocks,
                 batch_size=batch_size,
-                batch_format="pandas",
                 drop_last=drop_last,
                 local_shuffle_buffer_size=local_shuffle_buffer_size,
                 local_shuffle_seed=local_shuffle_seed,
             ):
-                if label_column:
-                    targets = convert_pandas_to_tf_tensor(batch[[label_column]])
-                    if targets.ndim == 2 and targets.shape[1] == 1:
-                        targets = tf.squeeze(targets, axis=1)
-                    batch.pop(label_column)
+                assert isinstance(batch, dict)
+                features = get_columns_from_batch(batch, columns=feature_columns)
+                labels = get_columns_from_batch(batch, columns=label_columns)
+                yield features, labels
 
-                features = None
-                if feature_columns is None:
-                    features = convert_pandas_to_tf_tensor(batch)
-                elif isinstance(feature_columns, list):
-                    if all(isinstance(column, str) for column in feature_columns):
-                        features = convert_pandas_to_tf_tensor(batch[feature_columns])
-                    elif all(isinstance(columns, list) for columns in feature_columns):
-                        features = tuple(
-                            convert_pandas_to_tf_tensor(batch[columns])
-                            for columns in feature_columns
-                        )
-                    else:
-                        raise ValueError(
-                            "Expected `feature_columns` to be a list of strings or a "
-                            "list of lists."
-                        )
-                elif isinstance(feature_columns, dict):
-                    features = {
-                        key: convert_pandas_to_tf_tensor(batch[columns])
-                        for key, columns in feature_columns.items()
-                    }
-                else:
-                    raise ValueError(
-                        "Expected `feature_columns` to be a list or a dictionary, "
-                        f"but got a `{type(feature_columns).__name__}` instead."
-                    )
-
-                if label_column:
-                    yield features, targets
-                else:
-                    yield features
+        feature_type_spec = get_type_spec(self.schema(), columns=feature_columns)
+        label_type_spec = get_type_spec(self.schema(), columns=label_columns)
+        output_signature = (feature_type_spec, label_type_spec)
 
         dataset = tf.data.Dataset.from_generator(
-            make_generator, output_signature=output_signature
+            generator, output_signature=output_signature
         )
 
-        return dataset
+        return prepare_dataset_shard(dataset)
 
     def to_dask(
         self,

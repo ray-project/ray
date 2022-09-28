@@ -302,6 +302,16 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         """
         return f"{type(self).__name__}(shape={self._shape}, dtype={self._dtype})"
 
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        """TODO"""
+        return self._shape
+
+    @property
+    def dtype(self) -> np.dtype:
+        """TODO"""
+        return self._dtype
+
     @classmethod
     def construct_from_string(cls, string: str):
         """

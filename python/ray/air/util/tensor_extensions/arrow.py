@@ -27,6 +27,7 @@ class ArrowTensorType(pa.PyExtensionType):
             dtype: pyarrow dtype of tensor elements.
         """
         self._shape = shape
+        self._dtype = dtype
         super().__init__(pa.list_(dtype))
 
     @property
@@ -35,6 +36,11 @@ class ArrowTensorType(pa.PyExtensionType):
         Shape of contained tensors.
         """
         return self._shape
+
+    @property
+    def dtype(self) -> pa.DataType:
+        """TODO"""
+        return self._dtype
 
     def to_pandas_dtype(self):
         """
