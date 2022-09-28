@@ -56,6 +56,33 @@ class _MongoDatasourceReader(Reader):
 
 @PublicAPI(stability="alpha")
 class MongoDatasource(Datasource):
+    """Datasource for reading from and writing to MongoDB.
+
+    A MongoDB is described by three elements: URI, Database and Collection. A
+    collection is similar to a table concept in SQL databases. The MongoDatasource
+    is for reading and writing collections.
+
+    To read the MongoDB in parallel, users are supposed to provide a list of MongoDB
+    queries, with each corresponding to a block to be created for Dataset. Those
+    queries are usually formulated as disjoint range queries over a specific field (
+    i.e. partition key).
+
+    Implementation wise, we will use pymongo to connect to MongoDB, and use pymongoarrow
+    to convert MongoDB documents to/from Arrow format, which is a supported block format
+    in Dataset.
+
+    Examples:
+        >>> import ray
+        >>> from ray.data.datasource import MongoDatasource
+        >>> ds = ray.data.read_datasource( # doctest: +SKIP
+        ...     MongoDatasource(),
+        ...     uri=MY_MONGO_URI,
+        ...     database=MY_MONGO_DB,
+        ...     collection=MY_MONGO_COLLECTION,
+        ...     schema=MY_MONGO_SCHEMA,
+        ... )
+    """
+
     def create_reader(
         self, uri, database, collection, pipelines, schema, kwargs
     ) -> Reader:
