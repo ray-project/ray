@@ -75,19 +75,20 @@ def test_proxy_manager_lifecycle(shutdown_only):
 @pytest.mark.skipif(
     sys.platform == "win32", reason="PSUtil does not work the same on windows."
 )
+@patch("ray.util.client.server.proxier.CHECK_PROCESS_INTERVAL_S", 1)
+@patch("ray.util.client.server.proxier.CHECK_CHANNEL_TIMEOUT_S", 1)
 def test_proxy_manager_bad_startup(shutdown_only):
     """
     Test that when a SpecificServer fails to start (because of a bad JobConfig)
     that it is properly GC'd.
     """
-    proxier.CHECK_PROCESS_INTERVAL_S = 1
-    proxier.CHECK_CHANNEL_TIMEOUT_S = 1
     pm, free_ports = start_ray_and_proxy_manager(n_ports=2)
     client = "client1"
 
     pm.create_specific_server(client)
     assert not pm.start_specific_server(
-        client, JobConfig(runtime_env={"conda": "conda-env-that-sadly-does-not-exist"})
+        client,
+        JobConfig(runtime_env={"conda": "conda-env-that-sadly-does-not-exist"}),
     )
     # Wait for reconcile loop
     time.sleep(2)
@@ -160,13 +161,13 @@ assert ray.util.client.ray.worker.log_client.log_thread.is_alive()
     sys.platform != "linux",
     reason="PSUtil does not work the same on windows & MacOS if flaky.",
 )
+@patch("ray.util.client.server.proxier.LOGSTREAM_RETRIES", 3)
+@patch("ray.util.client.server.proxier.LOGSTREAM_RETRY_INTERVAL_SEC", 1)
 def test_delay_in_rewriting_environment(shutdown_only):
     """
     Check that a delay in `ray_client_server_env_prep` does not break
     a Client connecting.
     """
-    proxier.LOGSTREAM_RETRIES = 3
-    proxier.LOGSTREAM_RETRY_INTERVAL_SEC = 1
     ray_instance = ray.init()
     server = proxier.serve_proxier(
         "localhost:25010",
@@ -323,18 +324,15 @@ def test_match_running_client_server(test_case):
 @pytest.mark.skipif(
     sys.platform == "win32", reason="PSUtil does not work the same on windows."
 )
-def test_proxy_manager_internal_kv(shutdown_only, with_specific_server):
+@patch("ray.util.client.server.proxier.CHECK_PROCESS_INTERVAL_S", 1)
+@patch("ray.util.client.server.proxier.CHECK_CHANNEL_TIMEOUT_S", 5)
+def test_proxy_manager_internal_kv(shutdown_only, with_specific_server, monkeypatch):
     """
     Test that proxy manager can use internal kv with and without a
     SpecificServer and that once a SpecificServer is started up, it
     goes through it.
     """
-
-    proxier.CHECK_PROCESS_INTERVAL_S = 1
-    # The timeout has likely been set to 1 in an earlier test. Increase timeout
-    # to wait for the channel to become ready.
-    proxier.CHECK_CHANNEL_TIMEOUT_S = 5
-    os.environ["TIMEOUT_FOR_SPECIFIC_SERVER_S"] = "5"
+    monkeypatch.setenv("TIMEOUT_FOR_SPECIFIC_SERVER_S", "5")
     pm, free_ports = start_ray_and_proxy_manager(n_ports=2)
     client = "client1"
 
