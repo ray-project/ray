@@ -1058,7 +1058,7 @@
     test_name: horovod_user_test_latest
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1082,7 +1082,7 @@
     test_name: horovod_user_test_master
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1106,7 +1106,7 @@
     test_name: train_tensorflow_mnist_test
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1130,7 +1130,7 @@
     test_name: train_torch_linear_test
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1154,7 +1154,7 @@
     test_name: xgboost_gpu_connect_latest
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1177,7 +1177,7 @@
     test_name: xgboost_gpu_connect_master
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1200,7 +1200,7 @@
     test_name: ray_lightning_user_test_latest
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1224,7 +1224,7 @@
     test_name: ray_lightning_user_test_master
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1248,7 +1248,7 @@
     test_name: tune_rllib_connect_test
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1644,7 +1644,7 @@
     test_name: result_throughput_cluster
     test_suite: tune_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -3259,7 +3259,7 @@
     test_name: shuffle_1tb_5000_partitions
     test_suite: nightly_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: core
   env: staging
   cluster:
@@ -3749,7 +3749,7 @@
     test_name: many_nodes_actor_test
     test_suite: nightly_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: core
   cluster:
     cluster_env: many_nodes_tests/app_config.yaml
@@ -3984,7 +3984,7 @@
     test_name: many_nodes
     test_suite: benchmark_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: core
   cluster:
     cluster_env: app_config.yaml
