@@ -362,13 +362,16 @@ class BaseTrainer(abc.ABC):
             raise TrainingFailedError from e
         return result
 
-    def as_trainable(self) -> Type["Trainable"]:
-        """Convert self to a ``tune.Trainable`` class."""
-        from ray import tune
+    def _generate_trainable_cls(self) -> Type["Trainable"]:
+        """Generate the base Trainable class.
+
+        Returns:
+            A Trainable class to use for training.
+        """
+
         from ray.tune.execution.placement_groups import PlacementGroupFactory
         from ray.tune.trainable import wrap_function
 
-        base_config = self._param_dict
         trainer_cls = self.__class__
         scaling_config = self.scaling_config
 
@@ -487,5 +490,14 @@ class BaseTrainer(abc.ABC):
                 )
                 return validated_scaling_config.as_placement_group_factory()
 
+        return TrainTrainable
+
+    def as_trainable(self) -> Type["Trainable"]:
+        """Convert self to a ``tune.Trainable`` class."""
+        from ray import tune
+
+        base_config = self._param_dict
+        trainable_cls = self._generate_trainable_cls()
+
         # Wrap with `tune.with_parameters` to handle very large values in base_config
-        return tune.with_parameters(TrainTrainable, **base_config)
+        return tune.with_parameters(trainable_cls, **base_config)
