@@ -103,13 +103,18 @@ class CheckpointManager(CommonCheckpointManager):
         # Get checkpoint from first worker.
         checkpoint_data = checkpoint_results[0].data
         checkpoint_metadata = checkpoint_results[0].metadata or {}
+        encoded = checkpoint_results[0].encoded
 
         # Decode checkpoint if it's not persisted
-        if checkpoint_data.uri:
+        if encoded:
+            checkpoint_data = decode_checkpoint_fn(checkpoint_data.to_dict())
+            checkpoint_data_dict = checkpoint_data
+        elif checkpoint_data.uri:
+            # TODO: ensure that the dir is created in the proper place
             checkpoint_data = checkpoint_data.to_directory()
             checkpoint_data_dict = {}
         else:
-            checkpoint_data = decode_checkpoint_fn(checkpoint_data.to_dict())
+            checkpoint_data = checkpoint_data.to_dict()
             checkpoint_data_dict = checkpoint_data
 
         score_attr = self._checkpoint_strategy.checkpoint_score_attribute

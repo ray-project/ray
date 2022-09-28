@@ -53,6 +53,7 @@ class TrainingResult:
     type: TrainingResultType
     data: Union[Dict, Checkpoint]
     metadata: Optional[Dict] = None
+    encoded: bool = True
 
 
 # TODO(xwjiang): This needs a better name.
@@ -243,7 +244,11 @@ class _TrainSession:
 
         kwargs = self._encode_data_fn(self._auto_fill_metrics(kwargs))
 
-        result = TrainingResult(TrainingResultType.REPORT, kwargs)
+        result = TrainingResult(
+            TrainingResultType.REPORT,
+            kwargs,
+            encoded=True,
+        )
 
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
@@ -279,6 +284,7 @@ class _TrainSession:
         # Update session checkpoint to latest checkpoint.
         self.loaded_checkpoint = checkpoint
 
+        encoded = False
         # Only store checkpoints on worker with rank 0.
         if self.world_rank != 0:
             checkpoint = None
@@ -286,11 +292,13 @@ class _TrainSession:
             checkpoint = checkpoint.from_dict(
                 self._encode_data_fn(checkpoint.to_dict())
             )
+            encoded = True
 
         result = TrainingResult(
             TrainingResultType.CHECKPOINT,
             checkpoint,
-            self._auto_fill_checkpoint_metrics({}),
+            metadata=self._auto_fill_checkpoint_metrics({}),
+            encoded=encoded,
         )
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
