@@ -117,10 +117,10 @@ class DoublyRobust(OffPolicyEstimator):
         v_values = self.model.estimate_v(batch)
         v_values = convert_to_numpy(v_values)
 
-        v_behavior = np.mean(rewards)
+        v_behavior = rewards
 
         weight = new_prob / old_prob
-        v_target = np.mean(v_values + weight * (rewards - q_values))
+        v_target = v_values + weight * (rewards - q_values)
 
         estimates_per_epsiode["v_behavior"] = v_behavior
         estimates_per_epsiode["v_target"] = v_target

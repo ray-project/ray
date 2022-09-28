@@ -64,7 +64,7 @@ class DirectMethod(OffPolicyEstimator):
 
     @override(OffPolicyEstimator)
     def estimate_on_episode(self, episode: SampleBatch) -> Dict[str, float]:
-        estimates_per_epsiode = {"v_behavior": None, "v_target": None}
+        estimates_per_epsiode = {}
         rewards = episode["rewards"]
 
         v_behavior = 0.0
@@ -80,10 +80,10 @@ class DirectMethod(OffPolicyEstimator):
 
     @override(OffPolicyEstimator)
     def estimate_single_step(self, batch: SampleBatch) -> Dict[str, float]:
-        estimates_per_epsiode = {"v_behavior": None, "v_target": None}
+        estimates_per_epsiode = {}
         rewards = batch["rewards"]
 
-        v_behavior = np.mean(rewards)
+        v_behavior = rewards
         v_target = self._compute_v_target(batch)
 
         estimates_per_epsiode["v_behavior"] = v_behavior
@@ -93,7 +93,7 @@ class DirectMethod(OffPolicyEstimator):
 
     def _compute_v_target(self, init_step):
         v_target = self.model.estimate_v(init_step)
-        v_target = convert_to_numpy(v_target).mean()
+        v_target = convert_to_numpy(v_target)
         return v_target
 
     @override(OffPolicyEstimator)
