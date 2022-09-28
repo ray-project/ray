@@ -24,7 +24,6 @@ from gym.spaces import Discrete, MultiDiscrete, Space
 import ray
 from ray import ObjectRef
 from ray import cloudpickle as pickle
-from ray._private.dict import merge_dicts
 from ray.rllib.connectors.util import create_connectors_for_policy
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
