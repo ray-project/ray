@@ -79,8 +79,8 @@ class WeightedImportanceSampling(OffPolicyEstimator):
         new_prob = np.exp(convert_to_numpy(log_likelihoods))
 
         weights = new_prob / old_prob
-        v_behavior = np.mean(rewards)
-        v_target = np.mean(weights * rewards) / np.mean(weights)
+        v_behavior = rewards
+        v_target = weights * rewards / np.mean(weights)
 
         estimates_per_epsiode["v_behavior"] = v_behavior
         estimates_per_epsiode["v_target"] = v_target

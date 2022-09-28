@@ -18,7 +18,7 @@ from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType, SampleBatchType
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
-from typing import Dict, Any
+from typing import Dict, Any, Sequence
 
 
 logger = logging.getLogger(__name__)
@@ -58,7 +58,10 @@ class OffPolicyEstimator(OfflineEvaluator):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    def estimate_single_step(self, batch: SampleBatch, **kwargs) -> Dict[str, Any]:
+    def estimate_single_step(self, 
+        batch: SampleBatch, 
+        **kwargs
+    ) -> Dict[str, Sequence[float]]:
         """Returns off-policy estimates for the batch of single timesteps. This is
         highly optimized for bandits assuming each episode is a single timestep.
 
@@ -69,20 +72,21 @@ class OffPolicyEstimator(OfflineEvaluator):
 
         Returns:
             The off-policy estimates (OPE) calculated on the given episode. The returned
-            dict can be any arbitrary mapping of strings to metrics.
+            dict can be any arbitrary mapping of strings to a list of floats capturing 
+            the values per each record.
         """
         raise NotImplementedError
 
     @DeveloperAPI
     def estimate(
-        self, batch: SampleBatchType, split_by_episode: bool = True
+        self, batch: SampleBatchType, split_batch_by_episode: bool = True
     ) -> Dict[str, Any]:
         """Compute off-policy estimates.
 
         Args:
             batch: The batch to calculate the off-policy estimates (OPE) on. The
             batch must contain the fields "obs", "actions", and "action_prob".
-            split_by_episode: Whether to split the batch by episode.
+            split_batch_by_episode: Whether to split the batch by episode.
 
         Returns:
             The off-policy estimates (OPE) calculated on the given batch. The returned
@@ -99,7 +103,7 @@ class OffPolicyEstimator(OfflineEvaluator):
         batch = self.convert_ma_batch_to_sample_batch(batch)
         self.check_action_prob_in_batch(batch)
         estimates_per_epsiode = []
-        if split_by_episode:
+        if split_batch_by_episode:
             for episode in batch.split_by_episode():
                 assert len(set(episode[SampleBatch.EPS_ID])) == 1, (
                     "The episode must contain only one episode id. For some reason "
@@ -109,20 +113,21 @@ class OffPolicyEstimator(OfflineEvaluator):
                 )
                 estimate_step_results = self.estimate_multi_step(episode)
                 estimates_per_epsiode.append(estimate_step_results)
+
+            # turn a list of identical dicts into a dict of lists
+            estimates_per_epsiode = tree.map_structure(
+                lambda *x: list(x), *estimates_per_epsiode
+            )
         else:
             if is_overridden(self.estimate_single_step):
-                estimates_per_epsiode.append(self.estimate_single_step(batch))
+                # the returned dict is a mapping of strings to a list of floats
+                estimates_per_epsiode = self.estimate_single_step(batch)
             else:
                 raise NotImplementedError(
                     "The method estimate_single_step is not implemented. "
                     "Please override the method estimate_single_step or set "
                     "split_by_episode to True."
                 )
-
-        # turn a list of identical dicts into a dict of lists
-        estimates_per_epsiode = tree.map_structure(
-            lambda *x: list(x), *estimates_per_epsiode
-        )
 
         estimates = {
             "v_behavior": np.mean(estimates_per_epsiode["v_behavior"]),

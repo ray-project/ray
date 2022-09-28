@@ -2,6 +2,7 @@ import copy
 import os
 import unittest
 from pathlib import Path
+import time
 
 import numpy as np
 from ray.data import read_json
@@ -33,6 +34,98 @@ ESTIMATOR_OUTPUTS = {
     "v_gain",
     "v_delta",
 }
+
+
+class FakePolicy:
+    """A fake policy used in test ope math to emulate a target policy that is better and worse than the random behavioral policy. 
+
+    In case of an improved policy, we assign 50 percent higher probs to those actions that attained a higher reward and 50 percent lower probs to those actions that attained a lower reward. We do the reverse in case of a worse policy.
+    """
+
+    def __init__(self, sample_batch, improved=True):
+        self.sample_batch = sample_batch
+        self.improved = improved
+        self.config = {}
+
+    def compute_log_likelihoods(
+        self,
+        actions,
+        obs_batch,
+        state_batches,
+        prev_action_batch,
+        prev_reward_batch,
+        actions_normalized,
+    ):  
+        inds = obs_batch[:, 0]
+        old_probs = self.sample_batch[SampleBatch.ACTION_PROB][inds]
+        old_rewards = self.sample_batch[SampleBatch.REWARDS][inds]
+
+        if self.improved:
+            # assign 50 percent higher prob to those that gave a good reward and 50 percent lower prob to those that gave a bad reward
+            # rewards are 1 or 2 in this case
+            new_probs = (
+                (old_rewards == 2) * 1.5 * old_probs + 
+                (old_rewards == 1) * 0.5 * old_probs
+            )
+        else:
+            new_probs = (
+                (old_rewards == 2) * 0.5 * old_probs + 
+                (old_rewards == 1) * 1.5 * old_probs
+            )
+
+        return np.log(new_probs)
+
+class TestOPEMath(unittest.TestCase):
+    """Tests some sanity checks that should pass based on the math of ope methods."""
+
+    @classmethod
+    def setUpClass(cls):
+        ray.init()
+
+        bsize = 1024
+        action_dim = 2
+        cls.sample_batch = SampleBatch({
+            SampleBatch.OBS: np.arange(bsize).reshape(-1, 1),
+            SampleBatch.ACTIONS: np.random.randint(0, action_dim, size=bsize),
+            SampleBatch.REWARDS: np.random.randint(1, 3, size=bsize), # rewards are 1 or 2
+            SampleBatch.DONES: np.ones(bsize),
+            SampleBatch.EPS_ID: np.arange(bsize),
+            SampleBatch.ACTION_PROB: np.ones(bsize)/action_dim,
+        })
+
+        cls.good_target_policy = FakePolicy(cls.sample_batch, improved=True)
+        cls.bad_target_policy = FakePolicy(cls.sample_batch, improved=False)
+
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
+
+    def test_is_math(self):
+        estimator_good = ImportanceSampling(self.good_target_policy, gamma=0)
+        s = time.time()
+        estimate_1 = estimator_good.estimate(
+            self.sample_batch, split_batch_by_episode=True,
+        )
+        dt1 = time.time() - s
+        s = time.time()
+        estimate_2 = estimator_good.estimate(
+            self.sample_batch, split_batch_by_episode=False
+        )
+        dt2 = time.time() - s
+
+        breakpoint()
+        # check if the v_gain is larger than 1
+        self.assertGreater(estimate_2["v_gain"], 1)
+
+        # check that the estimates are the same
+        check(estimate_1, estimate_2)
+
+        self.assertGreater(dt1, dt2, 
+            f"in bandits split_by_episode = False should improve "
+            f"performance, dt2={dt2}, dt1={dt1}"
+        )
 
 
 class TestOPE(unittest.TestCase):

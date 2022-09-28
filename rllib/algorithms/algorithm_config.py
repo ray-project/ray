@@ -180,7 +180,7 @@ class AlgorithmConfig:
         self.evaluation_parallel_to_training = False
         self.evaluation_config = {}
         self.off_policy_estimation_methods = {}
-        self.ope_split_by_episode = True
+        self.ope_split_batch_by_episode = True
         self.evaluation_num_workers = 0
         self.custom_evaluation_function = None
         self.always_attach_evaluation_results = False
@@ -828,7 +828,7 @@ class AlgorithmConfig:
             Union["AlgorithmConfig", PartialAlgorithmConfigDict]
         ] = None,
         off_policy_estimation_methods: Optional[Dict] = None,
-        ope_split_by_episode: Optional[bool] = None,
+        ope_split_batch_by_episode: Optional[bool] = None,
         evaluation_num_workers: Optional[int] = None,
         custom_evaluation_function: Optional[Callable] = None,
         always_attach_evaluation_results: Optional[bool] = None,
@@ -882,7 +882,7 @@ class AlgorithmConfig:
                 You can also add additional config arguments to be passed to the
                 OffPolicyEstimator in the dict, e.g.
                 {"qreg_dr": {"type": DoublyRobust, "q_model_type": "qreg", "k": 5}}
-            ope_split_by_episode: Whether to use SampleBatch.split_by_episode() to
+            ope_split_batch_by_episode: Whether to use SampleBatch.split_by_episode() to
                 split the input batch to episodes before estimating the ope metrics. In
                 case of bandits you should make this False to see improvements in ope
                 evaluation speed. In case of bandits, it is ok to not split by episode,
@@ -936,8 +936,8 @@ class AlgorithmConfig:
             self.always_attach_evaluation_results = always_attach_evaluation_results
         if enable_async_evaluation is not None:
             self.enable_async_evaluation = enable_async_evaluation
-        if ope_split_by_episode is not None:
-            self.ope_split_by_episode = ope_split_by_episode
+        if ope_split_batch_by_episode is not None:
+            self.ope_split_batch_by_episode = ope_split_batch_by_episode
 
         return self
 
