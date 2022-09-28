@@ -95,7 +95,7 @@ class TestReadHivePartitionedFiles:
             ["year=1970/country=fr/data.csv", "year=1971/data.csv"],
         ],
     )
-    @pytest.mark.skip
+    @pytest.mark.skip  # TODO: Unskip this test once #28869 is fixed.
     def test_read_files_with_mismatched_fields(
         self, relative_paths, tmp_path, block_type, ray_start_regular_shared
     ):
@@ -159,7 +159,7 @@ class TestReadUnpartitionedFiles:
             ["1970/fr/data.csv", "1971/data.csv"],
         ],
     )
-    @pytest.mark.skip
+    @pytest.mark.skip  # TODO: Unskip this test once #28869 is fixed.
     def test_read_files_with_mismatched_fields(
         self, relative_paths, tmp_path, block_type, ray_start_regular_shared
     ):
