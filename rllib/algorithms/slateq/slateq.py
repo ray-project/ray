@@ -248,7 +248,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.slateq.slateq::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.slateq.slateq::SlateQConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)
