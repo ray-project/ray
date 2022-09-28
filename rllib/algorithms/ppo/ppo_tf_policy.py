@@ -65,7 +65,7 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     ):
         def __init__(
             self,
-            obs_space,
+            observation_space,
             action_space,
             config,
             existing_model=None,
@@ -82,7 +82,7 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             # Initialize base class.
             base.__init__(
                 self,
-                obs_space,
+                observation_space,
                 action_space,
                 config,
                 existing_inputs=existing_inputs,

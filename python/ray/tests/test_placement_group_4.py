@@ -12,6 +12,7 @@ from ray._private.test_utils import (
 )
 from ray._raylet import PlacementGroupID
 from ray.util.placement_group import PlacementGroup
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
@@ -89,8 +90,16 @@ def test_remove_placement_group(ray_start_cluster, connect_to_client):
             time.sleep(50)
 
         # Schedule a long running task and actor.
-        task_ref = long_running_task.options(placement_group=placement_group).remote()
-        a = A.options(placement_group=placement_group).remote()
+        task_ref = long_running_task.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=placement_group
+            )
+        ).remote()
+        a = A.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=placement_group
+            )
+        ).remote()
         assert ray.get(a.f.remote()) == 3
 
         ray.util.remove_placement_group(placement_group)
@@ -146,10 +155,16 @@ def test_remove_placement_group_worker_startup_slowly(
     # Schedule a long-running task that uses
     # runtime env to mock worker start up slowly.
     task_ref = long_running_task.options(
-        placement_group=placement_group,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=placement_group
+        ),
         runtime_env={MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_NAME: {}},
     ).remote()
-    a = A.options(placement_group=placement_group).remote()
+    a = A.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=placement_group
+        )
+    ).remote()
     assert ray.get(a.f.remote()) == 3
 
     ray.util.remove_placement_group(placement_group)
@@ -227,7 +242,9 @@ def test_placement_group_table(ray_start_cluster, connect_to_client):
         cluster.wait_for_nodes()
 
         actor_1 = Actor.options(
-            placement_group=placement_group, placement_group_bundle_index=0
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=placement_group, placement_group_bundle_index=0
+            )
         ).remote()
         ray.get(actor_1.value.remote())
 
@@ -344,7 +361,9 @@ def test_cuda_visible_devices(ray_start_cluster, connect_to_client):
 
     with connect_to_client_or_not(connect_to_client):
         g1 = ray.util.placement_group([{"CPU": 1, "GPU": 1}])
-        o1 = f.options(placement_group=g1).remote()
+        o1 = f.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=g1)
+        ).remote()
 
         devices = ray.get(o1)
         assert devices == "0", devices
@@ -380,18 +399,21 @@ def test_placement_group_reschedule_when_node_dead(
             name="name", strategy="SPREAD", bundles=[{"CPU": 2}, {"CPU": 2}, {"CPU": 2}]
         )
         actor_1 = Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=0,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=placement_group, placement_group_bundle_index=0
+            ),
             lifetime="detached",
         ).remote()
         actor_2 = Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=1,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=placement_group, placement_group_bundle_index=1
+            ),
             lifetime="detached",
         ).remote()
         actor_3 = Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=2,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=placement_group, placement_group_bundle_index=2
+            ),
             lifetime="detached",
         ).remote()
         ray.get(actor_1.value.remote())
@@ -402,18 +424,21 @@ def test_placement_group_reschedule_when_node_dead(
         cluster.wait_for_nodes()
 
         actor_4 = Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=0,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=placement_group, placement_group_bundle_index=0
+            ),
             lifetime="detached",
         ).remote()
         actor_5 = Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=1,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=placement_group, placement_group_bundle_index=1
+            ),
             lifetime="detached",
         ).remote()
         actor_6 = Actor.options(
-            placement_group=placement_group,
-            placement_group_bundle_index=2,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=placement_group, placement_group_bundle_index=2
+            ),
             lifetime="detached",
         ).remote()
         ray.get(actor_4.value.remote())

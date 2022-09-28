@@ -3,6 +3,7 @@ import time
 import pytest
 
 import ray
+from ray.air._internal.util import StartTraceback
 from ray.train._internal.accelerator import Accelerator
 from ray.train.constants import SESSION_MISUSE_LOG_ONCE_KEY
 from ray.train._internal.session import (
@@ -107,9 +108,8 @@ def test_report_fail():
     init_session(training_func=train_func, world_rank=0, local_rank=0, world_size=1)
     session = get_session()
     session.start()
-    assert session.get_next() is None
-    with pytest.raises(TypeError):
-        session.finish()
+    with pytest.raises(StartTraceback):
+        session.get_next()
     shutdown_session()
 
 
@@ -308,6 +308,18 @@ def test_set_accelerator_raises_error_outside_session():
     accelerator = FakeAccelerator()
     with pytest.raises(SessionMisuseError):
         set_accelerator(accelerator)
+
+
+def test_application_error_raised():
+    def f():
+        raise ValueError
+
+    init_session(training_func=f, world_rank=0, local_rank=0, world_size=1)
+    session = get_session()
+    session.start()
+    with pytest.raises(StartTraceback):
+        session.get_next()
+    shutdown_session()
 
 
 if __name__ == "__main__":

@@ -3,7 +3,6 @@ from typing import Dict, List, Optional, Union
 
 import ray
 from ray._private.client_mode_hook import client_mode_should_convert, client_mode_wrap
-from ray._private.ray_constants import to_memory_units
 from ray._private.utils import hex_to_binary, get_ray_doc_version
 from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -174,6 +173,11 @@ def placement_group(
     if not isinstance(bundles, list):
         raise ValueError("The type of bundles must be list, got {}".format(bundles))
 
+    if not bundles:
+        raise ValueError(
+            "The placement group `bundles` argument cannot contain an empty list"
+        )
+
     assert _max_cpu_fraction_per_node is not None
 
     if _max_cpu_fraction_per_node <= 0 or _max_cpu_fraction_per_node > 1:
@@ -192,11 +196,6 @@ def placement_group(
                 "Bundles cannot be an empty dictionary or "
                 f"resources with only 0 values. Bundles: {bundles}"
             )
-
-        if "memory" in bundle.keys() and bundle["memory"] > 0:
-            # Make sure the memory resource can be
-            # transformed to memory unit.
-            to_memory_units(bundle["memory"], True)
 
         if "object_store_memory" in bundle.keys():
             warnings.warn(

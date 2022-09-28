@@ -56,9 +56,10 @@ See the :ref:`Creating Datasets <creating_datasets>` and :ref:`Saving Datasets
 Transforming Datasets
 ---------------------
 
-Once you have a ``Dataset``, you can transform it by applying a user-defined function,
-which produces another ``Dataset``.
-Under the hood, the transformation is executed in parallel for performance at scale.
+Once you have a :class:`~ray.data.Dataset`, you can transform it by applying a
+:ref:`user-defined function <transform_datasets_writing_udfs>`, which produces another
+:class:`~ray.data.Dataset`. Under the hood, the transformation is executed in parallel
+for performance at scale.
 
 .. literalinclude:: ./doc_code/quick_start.py
    :language: python
