@@ -69,8 +69,8 @@ We can also pass the ``ObjectRef`` returned by a task with ``num_returns="dynami
     :start-after: __dynamic_generator_pass_start__
     :end-before: __dynamic_generator_pass_end__
 
-Limitations
------------
+Exception handling and limitations
+----------------------------------
 
 Although a generator function creates ``ObjectRefs`` one at a time, currently Ray will not schedule dependent tasks until the entire task is complete and all values have been created. This is similar to the semantics used by tasks that return multiple values as a list.
 
@@ -80,14 +80,17 @@ If a generator function raises an exception before yielding all its values, the 
 The remaining ``ObjectRefs`` will contain the thrown exception.
 If the task was called with ``num_returns="dynamic"``, the exception will be stored as an additional final ``ObjectRef`` in the ``ObjectRefGenerator``.
 
-Note that there is currently a known bug where exceptions will not be propagated for generators that yield more values than expected. This can occur in two cases:
-1. When ``num_returns`` is set by the caller, but the generator task returns more than this value.
-2. When a generator task with ``num_returns="dynamic"`` is :ref:`re-executed <task-retries>`, and the re-executed task yields more values than the original execution. Note that in general, Ray does not guarantee correctness for task re-execution if a generator task is nondeterministic, and it is recommended to set ``@ray.remote(num_retries=0)`` for such tasks.
-
-Here is an example showing exception handling using generator tasks:
-
 .. literalinclude:: ../doc_code/generator.py
     :language: python
     :start-after: __generator_errors_start__
     :end-before: __generator_errors_end__
 
+Note that there is currently a known bug where exceptions will not be propagated for generators that yield more values than expected. This can occur in two cases:
+
+1. When ``num_returns`` is set by the caller, but the generator task returns more than this value.
+2. When a generator task with ``num_returns="dynamic"`` is :ref:`re-executed <task-retries>`, and the re-executed task yields more values than the original execution. Note that in general, Ray does not guarantee correctness for task re-execution if the task is nondeterministic, and it is recommended to set ``@ray.remote(num_retries=0)`` for such tasks.
+
+.. literalinclude:: ../doc_code/generator.py
+    :language: python
+    :start-after: __generator_errors_unsupported_start__
+    :end-before: __generator_errors_unsupported_end__

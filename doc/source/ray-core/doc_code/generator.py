@@ -88,18 +88,6 @@ try:
 except Exception as error:
     print(error)
 
-# Generators that yield more values than expected currently do not throw an
-# exception (the error is only logged).
-# See https://github.com/ray-project/ray/issues/28689.
-ref1, ref2 = generator.options(num_returns=2).remote()
-assert ray.get([ref1, ref2]) == [0, 1]
-"""
-(generator pid=2375938) 2022-09-28 11:08:51,386 ERROR worker.py:755 --
-    Unhandled error: Task threw exception, but all return values already
-    created.  This should only occur when using generator tasks.
-...
-"""
-
 dynamic_ref = generator.options(num_returns="dynamic").remote()
 ref_generator = ray.get(dynamic_ref)
 ref1, ref2, ref3 = ref_generator
@@ -111,4 +99,20 @@ try:
 except Exception as error:
     print(error)
 # __generator_errors_end__
+# fmt: on
+
+# fmt: off
+# __generator_errors_unsupported_start__
+# Generators that yield more values than expected currently do not throw an
+# exception (the error is only logged).
+# See https://github.com/ray-project/ray/issues/28689.
+ref1, ref2 = generator.options(num_returns=2).remote()
+assert ray.get([ref1, ref2]) == [0, 1]
+"""
+(generator pid=2375938) 2022-09-28 11:08:51,386 ERROR worker.py:755 --
+    Unhandled error: Task threw exception, but all return values already
+    created.  This should only occur when using generator tasks.
+...
+"""
+# __generator_errors_unsupported_end__
 # fmt: on
