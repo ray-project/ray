@@ -231,7 +231,7 @@ class Algorithm(Trainable):
         """
 
         # User provided (partial) config (this may be w/o the default
-        # Trainer's Config object). Will get merged with AlgorithmConfig()
+        # Algorithm's Config object). Will get merged with AlgorithmConfig()
         # in self.setup().
         config = config or {}
         # Resolve AlgorithmConfig into a plain dict.
@@ -343,7 +343,7 @@ class Algorithm(Trainable):
         # Validate the framework settings in config.
         self.validate_framework(self.config)
 
-        # Set Trainer's seed after we have - if necessary - enabled
+        # Set Algorithm's seed after we have - if necessary - enabled
         # tf eager-execution.
         update_global_seed_if_necessary(self.config["framework"], self.config["seed"])
 
@@ -368,7 +368,7 @@ class Algorithm(Trainable):
 
         # Create a dict, mapping ActorHandles to sets of open remote
         # requests (object refs). This way, we keep track, of which actors
-        # inside this Trainer (e.g. a remote RolloutWorker) have
+        # inside this Algorithm (e.g. a remote RolloutWorker) have
         # already been sent how many (e.g. `sample()`) requests.
         self.remote_requests_in_flight: DefaultDict[
             ActorHandle, Set[ray.ObjectRef]
@@ -387,7 +387,7 @@ class Algorithm(Trainable):
                 '["off_policy_estimation_methods"]={}'.format(
                     ope_dict,
                 ),
-                error=False,
+                error=True,
                 help="Running OPE during training is not recommended.",
             )
             self.config["off_policy_estimation_methods"] = ope_dict
@@ -452,6 +452,7 @@ class Algorithm(Trainable):
             # By default, collect metrics for all remote workers.
             self._remote_workers_for_metrics = self.workers.remote_workers()
 
+            # TODO (avnishn): Remove the execution plan API by q1 2023
             # Function defining one single training iteration's behavior.
             if self.config["_disable_execution_plan_api"]:
                 # Ensure remote workers are initially in sync with the local worker.
@@ -577,7 +578,7 @@ class Algorithm(Trainable):
                 deprecation_warning(
                     old=method_type,
                     new=str(ope_types[method_type]),
-                    error=False,
+                    error=True,
                 )
                 method_type = ope_types[method_type]
             elif isinstance(method_type, str):
@@ -694,6 +695,7 @@ class Algorithm(Trainable):
                     "sync_filters_on_rollout_workers_timeout_s"
                 ],
             )
+            # TODO (avnishn): Remove the execution plan API by q1 2023
             # Collect worker metrics and add combine them with `results`.
             if self.config["_disable_execution_plan_api"]:
                 episodes_this_iter, self._episodes_to_be_collected = collect_episodes(
@@ -944,6 +946,7 @@ class Algorithm(Trainable):
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
 
+        # Trigger `on_evaluate_end` callback.
         self.callbacks.on_evaluate_end(
             algorithm=self, evaluation_metrics=self.evaluation_metrics
         )
@@ -1145,6 +1148,11 @@ class Algorithm(Trainable):
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
 
+        # Trigger `on_evaluate_end` callback.
+        self.callbacks.on_evaluate_end(
+            algorithm=self, evaluation_metrics=self.evaluation_metrics
+        )
+
         # Return evaluation results.
         return self.evaluation_metrics
 
@@ -1282,14 +1290,14 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="Trainer.compute_single_action(`clip_actions`=...)",
                 new="Trainer.compute_single_action(`clip_action`=...)",
-                error=False,
+                error=True,
             )
             clip_action = clip_actions
         if unsquash_actions != DEPRECATED_VALUE:
             deprecation_warning(
                 old="Trainer.compute_single_action(`unsquash_actions`=...)",
                 new="Trainer.compute_single_action(`unsquash_action`=...)",
-                error=False,
+                error=True,
             )
             unsquash_action = unsquash_actions
 
@@ -1433,7 +1441,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="Trainer.compute_actions(`normalize_actions`=...)",
                 new="Trainer.compute_actions(`unsquash_actions`=...)",
-                error=False,
+                error=True,
             )
             unsquash_actions = normalize_actions
 
@@ -1547,7 +1555,8 @@ class Algorithm(Trainable):
     def add_policy(
         self,
         policy_id: PolicyID,
-        policy_cls: Type[Policy],
+        policy_cls: Optional[Type[Policy]] = None,
+        policy: Optional[Policy] = None,
         *,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
@@ -1562,13 +1571,18 @@ class Algorithm(Trainable):
         ] = None,
         evaluation_workers: bool = True,
         workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = None,
-    ) -> Policy:
-        """Adds a new policy to this Trainer.
+    ) -> Optional[Policy]:
+        """Adds a new policy to this Algorithm.
 
         Args:
             policy_id: ID of the policy to add.
-            policy_cls: The Policy class to use for
-                constructing the new Policy.
+            policy_cls: The Policy class to use for constructing the new Policy.
+                Note: Only one of `policy_cls` or `policy` must be provided.
+            policy: The Policy instance to add to this algorithm. If not None, the
+                given Policy object will be directly inserted into the Algorithm's
+                local worker and clones of that Policy will be created on all remote
+                workers as well as all evaluation workers.
+                Note: Only one of `policy_cls` or `policy` must be provided.
             observation_space: The observation space of the policy to add.
                 If None, try to infer this space from the environment.
             action_space: The action space of the policy to add.
@@ -1594,40 +1608,55 @@ class Algorithm(Trainable):
 
         Returns:
             The newly added policy (the copy that got added to the local
-            worker).
+            worker). If `workers` was provided, None is returned.
+
+        Raises:
+            ValueError: If both `policy_cls` AND `policy` are provided.
+            KeyError: If the given `policy_id` already exists in this Algorithm.
         """
-
-        kwargs = dict(
-            policy_id=policy_id,
-            policy_cls=policy_cls,
-            observation_space=observation_space,
-            action_space=action_space,
-            config=config,
-            policy_state=policy_state,
-            policy_mapping_fn=policy_mapping_fn,
-            policies_to_train=list(policies_to_train) if policies_to_train else None,
-        )
-
-        def fn(worker: RolloutWorker):
-            # `foreach_worker` function: Adds the policy the the worker (and
-            # maybe changes its policy_mapping_fn - if provided here).
-            worker.add_policy(**kwargs)
-
+        # Worker list is explicitly provided -> Use only those workers (local or remote)
+        # specified.
         if workers is not None:
-            ray_gets = []
-            for worker in workers:
-                if isinstance(worker, ActorHandle):
-                    ray_gets.append(worker.add_policy.remote(**kwargs))
-                else:
-                    fn(worker)
-            ray.get(ray_gets)
+            # Call static utility method.
+            WorkerSet.add_policy_to_workers(
+                workers,
+                policy_id,
+                policy_cls,
+                policy,
+                observation_space=observation_space,
+                action_space=action_space,
+                config=config,
+                policy_state=policy_state,
+                policy_mapping_fn=policy_mapping_fn,
+                policies_to_train=policies_to_train,
+            )
+        # Add to all our regular RolloutWorkers and maybe also all evaluation workers.
         else:
-            # Run foreach_worker fn on all workers.
-            self.workers.foreach_worker(fn)
+            self.workers.add_policy(
+                policy_id,
+                policy_cls,
+                policy,
+                observation_space=observation_space,
+                action_space=action_space,
+                config=config,
+                policy_state=policy_state,
+                policy_mapping_fn=policy_mapping_fn,
+                policies_to_train=policies_to_train,
+            )
 
-        # Update evaluation workers, if necessary.
-        if evaluation_workers and self.evaluation_workers is not None:
-            self.evaluation_workers.foreach_worker(fn)
+            # Add to evaluation workers, if necessary.
+            if evaluation_workers is True and self.evaluation_workers is not None:
+                self.evaluation_workers.add_policy(
+                    policy_id,
+                    policy_cls,
+                    policy,
+                    observation_space=observation_space,
+                    action_space=action_space,
+                    config=config,
+                    policy_state=policy_state,
+                    policy_mapping_fn=policy_mapping_fn,
+                    policies_to_train=policies_to_train,
+                )
 
         # Return newly added policy (from the local rollout worker).
         return self.get_policy(policy_id)
@@ -1646,7 +1675,7 @@ class Algorithm(Trainable):
         ] = None,
         evaluation_workers: bool = True,
     ) -> None:
-        """Removes a new policy from this Trainer.
+        """Removes a new policy from this Algorithm.
 
         Args:
             policy_id: ID of the policy to be removed.
@@ -1693,12 +1722,12 @@ class Algorithm(Trainable):
 
         Example:
             >>> from ray.rllib.algorithms.ppo import PPO
-            >>> # Use a Trainer from RLlib or define your own.
-            >>> trainer = PPO(...) # doctest: +SKIP
+            >>> # Use an Algorithm from RLlib or define your own.
+            >>> algo = PPO(...) # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
-            >>>     trainer.train() # doctest: +SKIP
-            >>> trainer.export_policy_model("/tmp/dir") # doctest: +SKIP
-            >>> trainer.export_policy_model("/tmp/dir/onnx", onnx=1) # doctest: +SKIP
+            >>>     algo.train() # doctest: +SKIP
+            >>> algo.export_policy_model("/tmp/dir") # doctest: +SKIP
+            >>> algo.export_policy_model("/tmp/dir/onnx", onnx=1) # doctest: +SKIP
         """
         self.get_policy(policy_id).export_model(export_dir, onnx)
 
@@ -1718,11 +1747,11 @@ class Algorithm(Trainable):
 
         Example:
             >>> from ray.rllib.algorithms.ppo import PPO
-            >>> # Use a Trainer from RLlib or define your own.
-            >>> trainer = PPO(...) # doctest: +SKIP
+            >>> # Use an Algorithm from RLlib or define your own.
+            >>> algo = PPO(...) # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
-            >>>     trainer.train() # doctest: +SKIP
-            >>> trainer.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
+            >>>     algo.train() # doctest: +SKIP
+            >>> algo.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
         """
         self.get_policy(policy_id).export_checkpoint(export_dir, filename_prefix)
 
@@ -1740,10 +1769,10 @@ class Algorithm(Trainable):
 
         Example:
             >>> from ray.rllib.algorithms.ppo import PPO
-            >>> trainer = PPO(...) # doctest: +SKIP
-            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
+            >>> algo = PPO(...) # doctest: +SKIP
+            >>> algo.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
-            >>>     trainer.train() # doctest: +SKIP
+            >>>     algo.train() # doctest: +SKIP
         """
         self.get_policy(policy_id).import_model_from_h5(import_file)
         # Sync new weights to remote workers.
@@ -1768,7 +1797,7 @@ class Algorithm(Trainable):
         # Log after the callback is invoked, so that the user has a chance
         # to mutate the result.
         # TODO: Remove `trainer` arg at some point to fully deprecate the old signature.
-        self.callbacks.on_train_result(algorithm=self, result=result, trainer=self)
+        self.callbacks.on_train_result(algorithm=self, result=result)
         # Then log according to Trainable's logging logic.
         Trainable.log_result(self, result)
 
@@ -1787,7 +1816,7 @@ class Algorithm(Trainable):
         cls, config: PartialAlgorithmConfigDict
     ) -> Union[Resources, PlacementGroupFactory]:
 
-        # Default logic for RLlib algorithms (Trainers):
+        # Default logic for RLlib Algorithms:
         # Create one bundle per individual worker (local or remote).
         # Use `num_cpus_for_driver` and `num_gpus` for the local worker and
         # `num_cpus_per_worker` and `num_gpus_per_worker` for the remote
@@ -1854,7 +1883,7 @@ class Algorithm(Trainable):
         Args:
             env_specifier: An env class, an already tune registered env ID, a known
                 gym env name, or None (if no env is used).
-            config: The Trainer's (maybe partial) config dict.
+            config: The Algorithm's (maybe partial) config dict.
 
         Returns:
             Tuple consisting of a) env ID string and b) env creator callable.
@@ -1976,13 +2005,13 @@ class Algorithm(Trainable):
         config2: PartialAlgorithmConfigDict,
         _allow_unknown_configs: Optional[bool] = None,
     ) -> AlgorithmConfigDict:
-        """Merges a complete Trainer config with a partial override dict.
+        """Merges a complete Algorithm config dict with a partial override dict.
 
         Respects nested structures within the config dicts. The values in the
         partial override dict take priority.
 
         Args:
-            config1: The complete Trainer's dict to be merged (overridden)
+            config1: The complete Algorithm's dict to be merged (overridden)
                 with `config2`.
             config2: The partial override config dict to merge on top of
                 `config1`.
@@ -1990,17 +2019,17 @@ class Algorithm(Trainable):
                 in `config1` are allowed and will be added to the final config.
 
         Returns:
-            The merged full trainer config dict.
+            The merged full algorithm config dict.
         """
         config1 = copy.deepcopy(config1)
         if "callbacks" in config2 and type(config2["callbacks"]) is dict:
-            legacy_callbacks_dict = config2["callbacks"]
+            deprecation_warning(
+                "callbacks dict interface",
+                "a class extending rllib.algorithms.callbacks.DefaultCallbacks; "
+                "see `rllib/examples/custom_metrics_and_callbacks.py` for an example.",
+                error=True,
+            )
 
-            def make_callbacks():
-                # Deprecation warning will be logged by DefaultCallbacks.
-                return DefaultCallbacks(legacy_callbacks_dict=legacy_callbacks_dict)
-
-            config2["callbacks"] = make_callbacks
         if _allow_unknown_configs is None:
             _allow_unknown_configs = cls._allow_unknown_configs
         return deep_update(
@@ -2092,7 +2121,7 @@ class Algorithm(Trainable):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @DeveloperAPI
     def validate_config(self, config: AlgorithmConfigDict) -> None:
-        """Validates a given config dict for this Trainer.
+        """Validates a given config dict for this Algorithm.
 
         Users should override this method to implement custom validation
         behavior. It is recommended to call `super().validate_config()` in
@@ -2195,7 +2224,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 "model.lstm_use_prev_action_reward",
                 "model.lstm_use_prev_action and model.lstm_use_prev_reward",
-                error=False,
+                error=True,
             )
             model_config["lstm_use_prev_action"] = prev_a_r
             model_config["lstm_use_prev_reward"] = prev_a_r
@@ -2220,7 +2249,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="metrics_smoothing_episodes",
                 new="metrics_num_episodes_for_smoothing",
-                error=False,
+                error=True,
             )
             config["metrics_num_episodes_for_smoothing"] = config[
                 "metrics_smoothing_episodes"
@@ -2229,7 +2258,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="min_iter_time_s",
                 new="min_time_s_per_iteration",
-                error=False,
+                error=True,
             )
             config["min_time_s_per_iteration"] = config["min_iter_time_s"] or 0
 
@@ -2237,7 +2266,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="min_time_s_per_reporting",
                 new="min_time_s_per_iteration",
-                error=False,
+                error=True,
             )
             config["min_time_s_per_iteration"] = config["min_time_s_per_reporting"] or 0
 
@@ -2248,7 +2277,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="min_sample_timesteps_per_reporting",
                 new="min_sample_timesteps_per_iteration",
-                error=False,
+                error=True,
             )
             config["min_sample_timesteps_per_iteration"] = (
                 config["min_sample_timesteps_per_reporting"] or 0
@@ -2261,7 +2290,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="min_train_timesteps_per_reporting",
                 new="min_train_timesteps_per_iteration",
-                error=False,
+                error=True,
             )
             config["min_train_timesteps_per_iteration"] = (
                 config["min_train_timesteps_per_reporting"] or 0
@@ -2283,7 +2312,7 @@ class Algorithm(Trainable):
                 old="timesteps_per_iteration",
                 new="`min_sample_timesteps_per_iteration` OR "
                 "`min_train_timesteps_per_iteration`",
-                error=False,
+                error=True,
             )
             config["min_sample_timesteps_per_iteration"] = (
                 config["timesteps_per_iteration"] or 0
@@ -2297,7 +2326,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="evaluation_num_episodes",
                 new="`evaluation_duration` and `evaluation_duration_unit=episodes`",
-                error=False,
+                error=True,
             )
             config["evaluation_duration"] = config["evaluation_num_episodes"]
             config["evaluation_duration_unit"] = "episodes"
@@ -2310,8 +2339,8 @@ class Algorithm(Trainable):
                 f"You have specified {config['evaluation_num_workers']} "
                 "evaluation workers, but your `evaluation_interval` is None! "
                 "Therefore, evaluation will not occur automatically with each"
-                " call to `Trainer.train()`. Instead, you will have to call "
-                "`Trainer.evaluate()` manually in order to trigger an "
+                " call to `Algorithm.train()`. Instead, you will have to call "
+                "`Algorithm.evaluate()` manually in order to trigger an "
                 "evaluation run."
             )
         # If `evaluation_num_workers=0` and
@@ -2349,7 +2378,7 @@ class Algorithm(Trainable):
     @staticmethod
     @ExperimentalAPI
     def validate_env(env: EnvType, env_context: EnvContext) -> None:
-        """Env validator function for this Trainer class.
+        """Env validator function for this Algorithm class.
 
         Override this in child classes to define custom validation
         behavior.
@@ -2547,7 +2576,7 @@ class Algorithm(Trainable):
             config: Algorithm-specific configuration data.
 
         Returns:
-            MultiAgentReplayBuffer instance based on trainer config.
+            MultiAgentReplayBuffer instance based on algorithm config.
             None, if local replay buffer is not needed.
         """
         if not config.get("replay_buffer_config") or config["replay_buffer_config"].get(
@@ -2592,6 +2621,7 @@ class Algorithm(Trainable):
             while not train_iter_ctx.should_stop(results):
                 # Try to train one step.
                 try:
+                    # TODO (avnishn): Remove the execution plan API by q1 2023
                     with self._timers[TRAINING_ITERATION_TIMER]:
                         if self.config["_disable_execution_plan_api"]:
                             results = self.training_step()
@@ -2630,7 +2660,6 @@ class Algorithm(Trainable):
                 "episode_reward_mean": np.nan,
             }
         }
-        eval_results["evaluation"]["num_recreated_workers"] = 0
 
         eval_func_to_use = (
             self._evaluate_async
@@ -2670,6 +2699,10 @@ class Algorithm(Trainable):
                     "recreate_failed_workers"
                 ),
             )
+        # `self._evaluate_async` handles its own worker failures and already adds
+        # this metric, but `self.evaluate` doesn't.
+        if "num_recreated_workers" not in eval_results["evaluation"]:
+            eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         # Add number of healthy evaluation workers after this iteration.
         eval_results["evaluation"]["num_healthy_workers"] = (
@@ -2677,7 +2710,6 @@ class Algorithm(Trainable):
             if self.evaluation_workers is not None
             else 0
         )
-        eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         return eval_results
 
@@ -2842,13 +2874,9 @@ class Algorithm(Trainable):
             alg = "USER_DEFINED"
         record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
 
-    @Deprecated(new="Trainer.compute_single_action()", error=False)
+    @Deprecated(new="Algorithm.compute_single_action()", error=True)
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
-
-    @Deprecated(new="logic moved into `self.step()`", error=True)
-    def step_attempt(self):
-        pass
 
     @Deprecated(new="construct WorkerSet(...) instance directly", error=False)
     def _make_workers(
@@ -2872,7 +2900,7 @@ class Algorithm(Trainable):
         )
 
     @staticmethod
-    @Deprecated(new="Trainer.validate_config()", error=False)
+    @Deprecated(new="Algorithm.validate_config()", error=True)
     def _validate_config(config, trainer_or_none):
         assert trainer_or_none is not None
         return trainer_or_none.validate_config(config)

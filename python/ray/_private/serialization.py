@@ -21,6 +21,7 @@ from ray.exceptions import (
     ActorPlacementGroupRemoved,
     ActorUnschedulableError,
     LocalRayletDiedError,
+    NodeDiedError,
     ObjectFetchTimedOutError,
     ObjectLostError,
     ObjectReconstructionFailedError,
@@ -40,6 +41,7 @@ from ray.exceptions import (
     TaskPlacementGroupRemoved,
     TaskUnschedulableError,
     WorkerCrashedError,
+    OutOfMemoryError,
 )
 from ray.util import serialization_addons
 
@@ -291,6 +293,12 @@ class SerializationContext:
                 return OutOfDiskError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
+            elif error_type == ErrorType.Value("OUT_OF_MEMORY"):
+                error_info = self._deserialize_error_info(data, metadata_fields)
+                return OutOfMemoryError(error_info.error_message)
+            elif error_type == ErrorType.Value("NODE_DIED"):
+                error_info = self._deserialize_error_info(data, metadata_fields)
+                return NodeDiedError(error_info.error_message)
             elif error_type == ErrorType.Value("OBJECT_DELETED"):
                 return ReferenceCountingAssertionError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
