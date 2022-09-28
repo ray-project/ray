@@ -332,7 +332,7 @@ class Deployment:
         user_configured_option_names = [
             option
             for option, value in locals().items()
-            if option not in {"self", "_func_or_class", "_internal"}
+            if option not in {"self", "func_or_class", "_internal"}
             and value is not DEFAULT.VALUE
         ]
 

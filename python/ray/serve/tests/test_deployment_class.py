@@ -199,6 +199,24 @@ class TestDeploymentOptions:
         def f():
             pass
 
+    @pytest.mark.parametrize("options", deployment_option_combos)
+    def test_options(self, options):
+        """Check that updating options also updates user_configured_options_names."""
+
+        @serve.deployment
+        def f():
+            pass
+
+        f = f.options(**options)
+        assert f._config.user_configured_option_names == set(options.keys())
+
+        @serve.deployment
+        def g():
+            pass
+
+        g.set_options(**options)
+        assert g._config.user_configured_option_names == set(options.keys())
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
