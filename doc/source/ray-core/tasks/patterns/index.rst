@@ -18,4 +18,3 @@ You may also be interested in visiting the design patterns section for :ref:`act
     closure-capture
     global-variables
     too-many-results
-    redefine-task-actor-loop

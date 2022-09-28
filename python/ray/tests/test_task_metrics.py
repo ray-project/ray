@@ -1,4 +1,5 @@
 from collections import defaultdict
+import sys
 import os
 
 import pytest
@@ -7,6 +8,7 @@ import ray
 
 from ray._private.test_utils import (
     fetch_prometheus_metrics,
+    run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
@@ -15,6 +17,12 @@ from ray._private.test_utils import (
 METRIC_CONFIG = {
     "_system_config": {
         "metrics_report_interval_ms": 100,
+    }
+}
+
+SLOW_METRIC_CONFIG = {
+    "_system_config": {
+        "metrics_report_interval_ms": 3000,
     }
 }
 
@@ -63,7 +71,6 @@ ray.get(a)
         "RUNNING": 2.0,
         "PENDING_NODE_ASSIGNMENT": 8.0,
     }
-    # TODO(ekl) optimize the reporting interval to be faster for testing
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
