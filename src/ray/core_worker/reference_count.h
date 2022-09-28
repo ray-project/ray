@@ -34,19 +34,20 @@
 namespace ray {
 namespace core {
 
-/// Extract a key to identify a Address so that the flyweight can look 
+/// Extract a key to identify a Address so that the flyweight can look
 /// up the Address from the pool.
 struct AddressWorkeridExtractor {
-  const std::string& operator()(const rpc::Address& addr)const
-  {
+  const std::string &operator()(const rpc::Address &addr) const {
     return addr.worker_id();
   }
 };
 
-/// Since the owner address has high redundency across objects, 
+/// Since the owner address has high redundency across objects,
 /// we use boost::flyweight to maintain an intern table to reduce
-/// memory footprint per object. 
-typedef boost::flyweight<boost::flyweights::key_value<std::string,rpc::Address,AddressWorkeridExtractor>> InternAddress;
+/// memory footprint per object.
+typedef boost::flyweight<
+    boost::flyweights::key_value<std::string, rpc::Address, AddressWorkeridExtractor>>
+    InternAddress;
 
 // Interface for mocking.
 class ReferenceCounterInterface {
@@ -584,7 +585,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
         : call_site(call_site),
           object_size(object_size),
           owner_address(owner_address),
-          pinned_at_raylet_id(boost::flyweight<NodeID>(pinned_at_raylet_id.value_or(NodeID::Nil()))),
+          pinned_at_raylet_id(
+              boost::flyweight<NodeID>(pinned_at_raylet_id.value_or(NodeID::Nil()))),
           owned_by_us(true),
           is_reconstructable(is_reconstructable),
           foreign_owner_already_monitoring(false),
