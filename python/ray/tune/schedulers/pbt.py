@@ -78,7 +78,7 @@ def _explore(
                 mutations[key],
                 resample_probability,
                 perturbation_factors,
-                None,
+                custom_explore_fn=None,
             )
             new_config.update({key: nested_new_config})
             operations.update({key: nested_ops})
@@ -630,21 +630,19 @@ class PopulationBasedTraining(FIFOScheduler):
         summary_str = ""
         if not old_params:
             return summary_str
-        longest_name = max([len(param_name) for param_name in old_params.keys()])
-        longest_op = max([len(op) for op in operations.values() if isinstance(op, str)])
         for param_name in old_params:
             old_val = old_params[param_name]
             new_val = new_params[param_name]
-            summary_str += f"{prefix}{param_name.ljust(longest_name)} : "
+            summary_str += f"{prefix}{param_name} : "
             if isinstance(old_val, Dict):
                 summary_str += "\n"
                 summary_str += self._summarize_hyperparam_changes(
-                    old_val, new_val, operations[param_name], prefix=prefix + "\t"
+                    old_val, new_val, operations[param_name], prefix=prefix + " " * 4
                 )
             else:
                 op = operations[param_name]
-                arrow = "---- " + f"({op})".center(longest_op + 2) + " --->"
-                summary_str += f"{old_val:.4f} {arrow} {new_val:.4f}\n"
+                arrow = f"--- ({op}) -->"
+                summary_str += f"{old_val} {arrow} {new_val}\n"
         return summary_str
 
     def _exploit(
