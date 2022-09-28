@@ -40,8 +40,8 @@ class OffPolicyEstimator(OfflineEvaluator):
         Args:
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
-            epsilon_greedy: The probability by which we act acording to a fully random 
-            policy during deployment. With 1-epsilon_greedy we act according the target 
+            epsilon_greedy: The probability by which we act acording to a fully random
+            policy during deployment. With 1-epsilon_greedy we act according the target
             policy.
             # TODO (kourosh): convert the input parameters to a config dict.
         """

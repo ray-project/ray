@@ -51,8 +51,9 @@ class DoublyRobust(OffPolicyEstimator):
         Args:
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
-            epsilon_greedy: The probability by which we act acording to a fully random 
-                policy during deployment. With 1-epsilon_greedy we act according the target policy.
+            epsilon_greedy: The probability by which we act acording to a fully random
+                policy during deployment. With 1-epsilon_greedy we act
+                according the target policy.
             q_model_config: Arguments to specify the Q-model. Must specify
                 a `type` key pointing to the Q-model class.
                 This Q-model is trained in the train() method and is used
