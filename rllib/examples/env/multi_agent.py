@@ -11,7 +11,7 @@ from ray.rllib.utils.deprecation import Deprecated
 @Deprecated(
     old="ray.rllib.examples.env.multi_agent.make_multiagent",
     new="ray.rllib.env.multi_agent_env.make_multi_agent",
-    error=False,
+    error=True,
 )
 def make_multiagent(env_name_or_creator):
     return make_multi_agent(env_name_or_creator)

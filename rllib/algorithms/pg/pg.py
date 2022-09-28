@@ -130,7 +130,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.pg.default_config::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.pg.pg::PGConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

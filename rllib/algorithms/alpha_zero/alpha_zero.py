@@ -350,7 +350,6 @@ class AlphaZero(Algorithm):
             self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
             # Store new samples in the replay buffer
-            # Use deprecated add_batch() to support old replay buffers for now
             if self.local_replay_buffer is not None:
                 self.local_replay_buffer.add(batch)
 
@@ -449,7 +448,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.alpha_zero.alpha_zero.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.alpha_zero.alpha_zero.AlphaZeroConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

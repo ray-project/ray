@@ -310,7 +310,7 @@ class SAC(DQN):
             deprecation_warning(
                 old="config['policy_model']",
                 new="config['policy_model_config']",
-                error=False,
+                error=True,
             )
             config["policy_model_config"] = config["policy_model"]
 
@@ -318,7 +318,7 @@ class SAC(DQN):
             deprecation_warning(
                 old="config['Q_model']",
                 new="config['q_model_config']",
-                error=False,
+                error=True,
             )
             config["q_model_config"] = config["Q_model"]
 
@@ -352,7 +352,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.sac.sac::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.sac.sac::SACConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

@@ -258,7 +258,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.a3c.a2c.A2C_DEFAULT_CONFIG",
         new="ray.rllib.algorithms.a2c.a2c.A2CConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

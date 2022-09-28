@@ -754,7 +754,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.dqn.apex.APEX_DEFAULT_CONFIG",
         new="ray.rllib.algorithms.apex_dqn.apex_dqn.ApexDQNConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

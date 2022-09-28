@@ -37,8 +37,8 @@ class TestErrors(unittest.TestCase):
 
     def test_bad_envs(self):
         """Tests different "bad env" errors."""
-        config = pg.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0
+        config = pg.PGConfig()
+        config.rollouts(num_rollout_workers=0)
 
         # Non existing/non-registered gym env string.
         env = "Alien-Attack-v42"
@@ -46,7 +46,7 @@ class TestErrors(unittest.TestCase):
             self.assertRaisesRegex(
                 EnvError,
                 f"The env string you provided \\('{env}'\\) is",
-                lambda: pg.PG(config=config, env=env),
+                lambda: config.build(env=env),
             )
 
         # Malformed gym env string (must have v\d at end).
