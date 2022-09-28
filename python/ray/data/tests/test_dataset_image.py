@@ -190,6 +190,23 @@ def test_image_folder_reader_estimate_data_size(
     ), "estimated data size is out of expected bound"
 
 
+def test_image_folder_dynamic_block_split(ray_start_regular_shared):
+    ctx = ray.data.context.DatasetContext.get_current()
+    target_max_block_size = ctx.target_max_block_size
+    # Reduce target max block size to trigger block splitting on small input.
+    # Otherwise we have to generate big input files, which is unnecessary.
+    ctx.target_max_block_size = 1
+    try:
+        root = "example://image-folders/simple"
+        ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, parallelism=1)
+        assert ds.num_blocks() == 1
+        ds.fully_executed()
+        # Verify dynamic block splitting taking effect to generate more blocks.
+        assert ds.num_blocks() == 3
+    finally:
+        ctx.target_max_block_size = target_max_block_size
+
+
 if __name__ == "__main__":
     import sys
 
