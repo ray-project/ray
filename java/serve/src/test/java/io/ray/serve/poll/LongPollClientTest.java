@@ -38,7 +38,7 @@ public class LongPollClientTest {
   @SuppressWarnings({"unchecked", "unused"})
   @Test
   public void normalTest() throws Throwable {
-  	BaseServeTest.initRay();
+    BaseServeTest.initRay();
     try {
       String prefix = "LongPollClientTest_normalTest";
       // Init controller.

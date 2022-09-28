@@ -11,7 +11,7 @@ import org.testng.annotations.Test;
 
 public class HttpStrategyCalcOnRayServeTest {
 
-	@Test(groups = {"cluster"})
+  @Test(groups = {"cluster"})
   public void test() {
     try {
       String prefix = "HttpStrategyCalcOnRayServeTest";
