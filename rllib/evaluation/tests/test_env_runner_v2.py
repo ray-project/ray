@@ -6,6 +6,8 @@ from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.connectors.connector import ActionConnector, ConnectorContext
 from ray.rllib.examples.env.debug_counter_env import DebugCounterEnv
 from ray.rllib.examples.env.multi_agent import BasicMultiAgent
+from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env
 
 
@@ -73,6 +75,74 @@ class TestEnvRunnerV2(unittest.TestCase):
         self.assertEqual(sample_batch.env_steps(), 200)
         self.assertEqual(sample_batch.agent_steps(), 400)
 
+    def test_inference_batches_are_grouped_by_policy(self):
+        # Create 2 policies that have different inference batch shapes.
+        class RandomPolicyOne(RandomPolicy):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.view_requirements["rewards"].used_for_compute_actions = True
+                self.view_requirements["dones"].used_for_compute_actions = True
+
+        # Create 2 policies that have different inference batch shapes.
+        class RandomPolicyTwo(RandomPolicy):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.view_requirements["rewards"].used_for_compute_actions = False
+                self.view_requirements["dones"].used_for_compute_actions = False
+
+        # Simply alternate between the 2 policies to make sure we have
+        # data for inference for both policies for each step.
+        class AlternatePolicyMapper:
+            def __init__(self):
+                self.policies = ["one", "two"]
+                self.next = 0
+            
+            def map(self):
+                p = self.policies[self.next]
+                self.next = 1 - self.next
+                return p
+
+        mapper = AlternatePolicyMapper()
+
+        config = (
+            PPOConfig()
+            .framework("torch")
+            .training(
+                # Specifically ask for a batch of 200 samples.
+                train_batch_size=200,
+            )
+            .rollouts(
+                num_envs_per_worker=1,
+                horizon=4,
+                num_rollout_workers=0,
+                # Enable EnvRunnerV2.
+                enable_connectors=True,
+            )
+            .multi_agent(
+                policies={
+                    "one": PolicySpec(
+                        policy_class=RandomPolicyOne,
+                    ),
+                    "two": PolicySpec(
+                        policy_class=RandomPolicyTwo,
+                    ),
+                },
+                policy_mapping_fn=lambda *args, **kwargs: mapper.map(),
+                policies_to_train=["one"],
+                count_steps_by="agent_steps",
+            )
+        )
+
+        algo = PPO(config, env="basic_multiagent")
+
+        rollout_worker = algo.workers.local_worker()
+
+        # The fact that we can successfully finish this sample() call means
+        # that data for the 2 policies are grouped separately and correctly.
+        # Otherwise, SampleBatch will throw the error "Cannot concat data ...",
+        # since the 2 policies have different view requirements.
+        self.assertIsNotNone(rollout_worker.sample())
+
     def test_action_connector_gets_raw_input_dict(self):
         class CheckInputDictActionConnector(ActionConnector):
             def __call__(self, ac_data):
@@ -109,6 +179,9 @@ class TestEnvRunnerV2(unittest.TestCase):
         rollout_worker = algo.workers.local_worker()
         # As long as we can successfully sample(), things should be good.
         _ = rollout_worker.sample()
+
+
+
 
 
 if __name__ == "__main__":
