@@ -427,7 +427,6 @@ def compute_q_values(
     config = policy.config
     model_out, state = model(input_dict, state_batches or [], seq_lens)
 
-    # ADDED
     if hasattr(model, "mask"):
         mask = model.mask
     else:
@@ -472,7 +471,6 @@ def compute_q_values(
     else:
         value = action_scores
 
-    # ADDED
     value += mask
 
     return value, logits, probs_or_logits, state
