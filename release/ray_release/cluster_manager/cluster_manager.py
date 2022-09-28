@@ -52,22 +52,20 @@ class ClusterManager(abc.ABC):
         self.cluster_env["env_vars"]["RAY_USAGE_STATS_ENABLED"] = "1"
         self.cluster_env["env_vars"]["RAY_USAGE_STATS_SOURCE"] = "nightly-tests"
         self.cluster_env["env_vars"][
-            "RAY_memory_monitor_interval_ms"
-        ] = self.cluster_env["env_vars"].get("RAY_memory_monitor_interval_ms", "250")
-        self.cluster_env["env_vars"][
-            "RAY_memory_usage_threshold_fraction"
-        ] = self.cluster_env["env_vars"].get(
-            "RAY_memory_usage_threshold_fraction", "0.95"
-        )
-        self.cluster_env["env_vars"][
             "RAY_USAGE_STATS_EXTRA_TAGS"
         ] = f"test_name={self.test_name};smoke_test={self.smoke_test}"
-
+        self.override_env_var_if_not_already_set("RAY_memory_monitor_interval_ms", "250") 
+        self.override_env_var_if_not_already_set("RAY_memory_monitor_interval_ms", "0.95") 
+        
         self.cluster_env_name = (
             f"{self.project_name}_{self.project_id[4:8]}"
             f"__env__{self.test_name}__"
             f"{dict_hash(self.cluster_env)}"
         )
+
+    def override_env_var_if_not_already_set(self, key, value):
+        if key not in self.cluster_env["env_vars"]:
+            self.cluster_env["env_vars"][key] = value
 
     def set_cluster_compute(self, cluster_compute: Dict[str, Any]):
         self.cluster_compute = cluster_compute

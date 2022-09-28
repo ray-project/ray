@@ -132,6 +132,28 @@ class MinimalSessionManagerTest(unittest.TestCase):
             "test_name=Test;smoke_test=True",
         )
 
+    def testSetClusterManagerOptionallyOverrideClusterConfig(self):
+        sdk = MockSDK()
+        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        cluster_manager = self.cls(
+            test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=False, sdk=sdk
+        )
+        cluster_manager.set_cluster_env({})
+        self.assertEqual(
+            cluster_manager.cluster_env["env_vars"]["RAY_memory_monitor_interval_ms"],
+            "250",
+        )
+
+        cluster_manager.set_cluster_env({
+          "env_vars": {
+            "RAY_memory_monitor_interval_ms" : "0"
+          }
+        })
+        self.assertEqual(
+            cluster_manager.cluster_env["env_vars"]["RAY_memory_monitor_interval_ms"],
+            "0",
+        )
+
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeExisting(self):
         # Find existing compute and succeed
