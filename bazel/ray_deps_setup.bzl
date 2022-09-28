@@ -168,6 +168,7 @@ def ray_deps_setup():
         sha256 = "c1b8b2adc3b4201683cf94dda7eef3fc0f4f4c0ea5caa3ed3feffe07e1fb5b15",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:rules_boost-windows-linkopts.patch",
+            "@com_github_ray_project_ray//thirdparty/patches:rules_boost-flyweight.patch",
         ],
     )
 
