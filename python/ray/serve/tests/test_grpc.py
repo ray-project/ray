@@ -8,16 +8,16 @@ import grpc
 from ray.cluster_utils import Cluster
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray._private.test_utils import wait_for_condition
-from ray.serve._private.constants import SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY
 from ray.serve.exceptions import RayServeException
+
+from unittest.mock import patch
 
 
 pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture
-def serve_start_shutdown(monkeypatch):
-    monkeypatch.setenv(SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY, "1")
+def serve_start_shutdown():
     ray.init()
     yield
     serve.shutdown()
@@ -25,8 +25,7 @@ def serve_start_shutdown(monkeypatch):
 
 
 @pytest.fixture
-def ray_cluster(monkeypatch):
-    monkeypatch.setenv(SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY, "1")
+def ray_cluster():
     cluster = Cluster()
     yield Cluster()
     serve.shutdown()
@@ -34,6 +33,7 @@ def ray_cluster(monkeypatch):
     cluster.shutdown()
 
 
+@patch("ray.serve._private.api.FLAG_DISABLE_HTTP_PROXY", True)
 async def test_deploy_basic(serve_start_shutdown):
     @serve.deployment
     class D1:
@@ -55,6 +55,7 @@ async def test_deploy_basic(serve_start_shutdown):
     assert resp.prediction == b"123"
 
 
+@patch("ray.serve._private.api.FLAG_DISABLE_HTTP_PROXY", True)
 def test_controller_without_http(serve_start_shutdown):
     @serve.deployment
     class D1:
@@ -68,6 +69,7 @@ def test_controller_without_http(serve_start_shutdown):
     )
 
 
+@patch("ray.serve._private.api.FLAG_DISABLE_HTTP_PROXY", True)
 def test_deploy_grpc_driver_to_node(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=2)

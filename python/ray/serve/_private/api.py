@@ -31,6 +31,10 @@ from ray.serve.context import (
 
 logger = logging.getLogger(__file__)
 
+FLAG_DISABLE_HTTP_PROXY = (
+    os.environ.get(SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY, "0") == "1"
+)
+
 
 def get_deployment(name: str):
     """Dynamically fetch a handle to a Deployment object.
@@ -199,7 +203,8 @@ def serve_start(
         "max_concurrency": CONTROLLER_MAX_CONCURRENCY,
     }
 
-    if os.environ.get(SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY, "0") == "1":
+    print("FLAG_DISABLE_HTTP_PROXY: ", FLAG_DISABLE_HTTP_PROXY)
+    if FLAG_DISABLE_HTTP_PROXY:
         controller = ServeController.options(**controller_actor_options).remote(
             controller_name,
             http_config=http_options,
