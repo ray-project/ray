@@ -153,7 +153,7 @@ def is_recreated(w):
     )
 
 
-class TestWorkerFailure(unittest.TestCase):
+class TestWorkerFailures(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()

@@ -1634,7 +1634,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> worker.set_weights(weights, {"timestep": 42}) # doctest: +SKIP
         """
         # Only update our weights, if no seq no given OR given seq no is different
-        # from ours
+        # from ours.
         if weights_seq_no is None or weights_seq_no != self.weights_seq_no:
             # If per-policy weights are object refs, `ray.get()` them first.
             if weights and isinstance(next(iter(weights.values())), ObjectRef):
