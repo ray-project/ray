@@ -85,24 +85,26 @@ parts:
           - file: tune/key-concepts
           - file: tune/tutorials/overview
             sections:
-              - file: tune/tutorials/tune-lifecycle
-                title: "How Tune Works"
-              - file: tune/tutorials/tune-stopping
-                title: "How to Stop and Resume"
-              - file: tune/tutorials/tune-metrics
-                title: "Using Callbacks and Metrics"
-              - file: tune/tutorials/tune-distributed
-                title: "Distributed Tuning"
+              - file: tune/tutorials/tune-run
+                title: "Running Basic Experiments"
               - file: tune/tutorials/tune-output
                 title: "Logging Tune Runs"
               - file: tune/tutorials/tune-resources
-                title: "Managing Resources"
-              - file: tune/tutorials/tune-checkpoints
-                title: "Working with Checkpoints"
+                title: "Setting Trial Resources"
               - file: tune/tutorials/tune-search-spaces
                 title: "Using Search Spaces"
+              - file: tune/tutorials/tune-stopping
+                title: "How to Stop and Resume"
+              - file: tune/tutorials/tune-checkpoints
+                title: "Working with Checkpoints"
+              - file: tune/tutorials/tune-metrics
+                title: "Using Callbacks and Metrics"
               - file: tune/tutorials/tune-advanced-tutorial
-                title: "Understanding PBT"
+                title: "Using Population-Based Training"
+              - file: tune/tutorials/tune-distributed
+                title: "Deploying Tune in the Cloud"
+              - file: tune/tutorials/tune-lifecycle
+                title: "Tune Architecture"
               - file: tune/tutorials/tune-scalability
                 title: "Scalability Benchmarks"
           - file: tune/examples/index
