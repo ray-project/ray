@@ -121,6 +121,11 @@ def _convert_batch_type_to_numpy(
     Returns:
         A numpy representation of the input data.
     """
+    from ray.data._internal.arrow_ops.transform_pyarrow import (
+        _is_column_extension_type,
+        _concatenate_extension_column,
+    )
+
     if isinstance(data, np.ndarray):
         return data
     elif isinstance(data, dict):
@@ -138,11 +143,24 @@ def _convert_batch_type_to_numpy(
         ):
             # If representing a tensor dataset, return as a single numpy array.
             # Example: ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
-            return data[0].to_numpy()
+            # Arrow’s incorrect concatenation of extension arrays:
+            # https://issues.apache.org/jira/browse/ARROW-16503
+            return _concatenate_extension_column(data[TENSOR_COLUMN_NAME]).to_numpy(
+                zero_copy_only=False
+            )
         else:
             output_dict = {}
             for col_name in data.column_names:
-                output_dict[col_name] = data[col_name].to_numpy()
+                col = data[col_name]
+                if col.num_chunks == 0:
+                    col = pyarrow.array([], type=col.type)
+                elif _is_column_extension_type(col):
+                    # Arrow’s incorrect concatenation of extension arrays:
+                    # https://issues.apache.org/jira/browse/ARROW-16503
+                    col = _concatenate_extension_column(col)
+                else:
+                    col = col.combine_chunks()
+                output_dict[col_name] = col.to_numpy(zero_copy_only=False)
             return output_dict
     elif isinstance(data, pd.DataFrame):
         return convert_pandas_to_batch_type(data, DataType.NUMPY)

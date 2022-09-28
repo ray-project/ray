@@ -60,9 +60,13 @@ def test_arrow_to_numpy():
     )
 
     input_data = pa.table(
-        {TENSOR_COLUMN_NAME: ArrowTensorArray.from_numpy(np.array([1, 2, 3, 4]))}
+        {
+            TENSOR_COLUMN_NAME: ArrowTensorArray.from_numpy(
+                np.arange(12).reshape(3, 2, 2)
+            )
+        }
     )
-    expected_output = np.array([1, 2, 3, 4])
+    expected_output = np.arange(12).reshape(3, 2, 2)
     actual_output = _convert_batch_type_to_numpy(input_data)
     np.testing.assert_array_equal(expected_output, actual_output)
 
@@ -93,8 +97,10 @@ def test_pd_dataframe_to_numpy():
     actual_output = _convert_batch_type_to_numpy(input_data)
     np.testing.assert_array_equal(expected_output, actual_output)
 
-    input_data = pd.DataFrame({TENSOR_COLUMN_NAME: TensorArray(np.array([1, 2, 3, 4]))})
-    expected_output = np.array([1, 2, 3, 4])
+    input_data = pd.DataFrame(
+        {TENSOR_COLUMN_NAME: TensorArray(np.arange(12).reshape(3, 4))}
+    )
+    expected_output = np.arange(12).reshape(3, 4)
     actual_output = _convert_batch_type_to_numpy(input_data)
     np.testing.assert_array_equal(expected_output, actual_output)
 
