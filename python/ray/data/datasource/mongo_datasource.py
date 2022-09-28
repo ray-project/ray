@@ -58,9 +58,11 @@ class _MongoDatasourceReader(Reader):
 class MongoDatasource(Datasource):
     """Datasource for reading from and writing to MongoDB.
 
-    A MongoDB is described by three elements: URI, Database and Collection. A
-    collection is similar to a table concept in SQL databases. The MongoDatasource
-    is for reading and writing collections.
+    A MongoDB is described by three elements: URI, Database and Collection.
+    The URI points to an MongoDB instance. For the format of URI, see
+    https://www.mongodb.com/docs/manual/reference/connection-string/.
+    A collection is similar to the table concept in SQL databases. The
+    MongoDatasource is for reading and writing collections.
 
     To read the MongoDB in parallel, users are supposed to provide a list of MongoDB
     queries, with each corresponding to a block to be created for Dataset. Those
