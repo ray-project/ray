@@ -24,6 +24,7 @@ from gym.spaces import Discrete, MultiDiscrete, Space
 import ray
 from ray import ObjectRef
 from ray import cloudpickle as pickle
+from ray._private.dict import merge_dicts
 from ray.rllib.connectors.util import create_connectors_for_policy
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
@@ -1224,9 +1225,8 @@ class RolloutWorker(ParallelIteratorWorker):
             KeyError: If the given `policy_id` already exists in this worker's
                 PolicyMap.
         """
-        merged_config = (
-            {**self.policy_config, **config} if config else self.policy_config
-        )
+        merged_config = merge_dicts(self.policy_config, config or {})
+
         if policy_id in self.policy_map:
             raise KeyError(
                 f"Policy ID '{policy_id}' already exists in policy map! "
