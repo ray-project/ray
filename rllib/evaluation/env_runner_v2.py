@@ -636,7 +636,9 @@ class EnvRunnerV2:
                             d.data.raw_dict[SampleBatch.NEXT_OBS],
                         )
                     else:
-                        episode.add_action_reward_done_next_obs(d.agent_id, d.data.raw_dict)
+                        episode.add_action_reward_done_next_obs(
+                            d.agent_id, d.data.raw_dict
+                        )
 
                     if not all_agents_done and not agent_dones[d.agent_id]:
                         # Add to eval set if env is not done and this particular agent

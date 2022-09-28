@@ -96,7 +96,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             def __init__(self):
                 self.policies = ["one", "two"]
                 self.next = 0
-            
+
             def map(self):
                 p = self.policies[self.next]
                 self.next = 1 - self.next
@@ -179,9 +179,6 @@ class TestEnvRunnerV2(unittest.TestCase):
         rollout_worker = algo.workers.local_worker()
         # As long as we can successfully sample(), things should be good.
         _ = rollout_worker.sample()
-
-
-
 
 
 if __name__ == "__main__":
