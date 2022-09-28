@@ -13,6 +13,7 @@ import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.RequestMetadata;
+import io.ray.serve.util.CommonUtil;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -27,9 +28,10 @@ public class RayServeReplicaTest {
     try {
       BaseServeTest.initRay();
 
-      String controllerName = "RayServeReplicaTest";
-      String deploymentName = "b_tag";
-      String replicaTag = "r_tag";
+      String prefix = "RayServeReplicaTest";
+      String controllerName = CommonUtil.formatActorName(Constants.SERVE_CONTROLLER_NAME, prefix);
+      String deploymentName = prefix + "_deployment";
+      String replicaTag = prefix + "_replica";
       String version = "v1";
       Map<String, String> config = new HashMap<>();
       config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");

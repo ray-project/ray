@@ -12,7 +12,6 @@ import io.ray.serve.poll.LongPollClientFactory;
 import io.ray.serve.util.CommonUtil;
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -25,10 +24,8 @@ public class ServeControllerClientTest {
     Ray.init();
 
     try {
-      String prefix = "ClientTest";
-      String controllerName =
-          CommonUtil.formatActorName(
-              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
+      String prefix = "ServeControllerClientTest";
+      String controllerName = CommonUtil.formatActorName(Constants.SERVE_CONTROLLER_NAME, prefix);
       String endpointName = prefix + "_endpoint";
       Map<String, String> config = new HashMap<>();
       config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");

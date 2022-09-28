@@ -48,7 +48,7 @@ public class ServeTest {
     Assert.assertThrows(RayServeException.class, () -> Serve.getReplicaContext());
   }
 
-  @Test
+  @Test(groups = {"cluster"})
   public void startTest() {
     try {
       // The default port 8000 is occupied by other processes on the ci platform.
@@ -67,12 +67,12 @@ public class ServeTest {
     }
   }
 
-  @Test
+  @Test(groups = {"cluster"})
   public void getGlobalClientNormalTest() {
     try {
       BaseServeTest.startServe();
 
-      ServeControllerClient client = Serve.getGlobalClient();
+      ServeControllerClient client = Serve.getGlobalClient(true);
       Assert.assertNotNull(client);
     } finally {
       BaseServeTest.shutdownServe();
@@ -92,7 +92,7 @@ public class ServeTest {
       // Mock controller.
       String controllerName =
           CommonUtil.formatActorName(
-              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
+              Constants.SERVE_CONTROLLER_NAME, "getGlobalClientInReplicaTest");
       Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       // Mock replica context.
@@ -107,7 +107,7 @@ public class ServeTest {
     }
   }
 
-  @Test
+  @Test(groups = {"cluster"})
   public void connectTest() {
     try {
       BaseServeTest.startServe();

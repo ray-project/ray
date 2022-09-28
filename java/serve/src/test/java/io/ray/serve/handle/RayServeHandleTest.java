@@ -79,6 +79,7 @@ public class RayServeHandleTest {
       // remote
       ObjectRef<Object> resultRef = rayServeHandle.remote();
       Assert.assertEquals((String) resultRef.get(), deploymentName);
+      Assert.assertTrue(rayServeHandle.isPolling());
     } finally {
       BaseServeTest.clearAndShutdownRay();
     }
