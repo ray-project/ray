@@ -151,8 +151,6 @@ def train(
     ),
     upload_dir: str = typer.Option("", help=train_help.get("upload_dir")),
     trace: bool = typer.Option(False, help=train_help.get("trace")),
-    torch: bool = typer.Option(False, help=train_help.get("torch")),
-    eager: bool = typer.Option(False, help=train_help.get("eager")),
 ):
     """Train a reinforcement learning agent.
 
@@ -206,15 +204,9 @@ def train(
         ray_object_store_memory=ray_object_store_memory,
         upload_dir=upload_dir,
         trace=trace,
-        torch=torch,
-        eager=eager,
     )
 
-    # framework = framework.value  # get validated enum value
 
-
-# TODO: make it possible for "checkpoint" to be an ID or so, while
-#  remaining backward compatible.
 @app.command()
 def evaluate(
     checkpoint: str = typer.Argument(None, help=eval_help.get("checkpoint")),
@@ -303,28 +295,28 @@ def rollout(
 @app.callback()
 def main_helper():
     """Welcome to the\n
-.                                                 ╔▄▓▓▓▓▄\n
-.                                                ╔██▀╙╙╙▀██▄\n
-. ╫█████████████▓   ╫████▓             ╫████▓    ██▌     ▐██   ╫████▒\n
-. ╫███████████████▓ ╫█████▓            ╫█████▓   ╫██     ╫██   ╫██████▒\n
-. ╫█████▓     ████▓ ╫█████▓            ╫█████▓    ╙▓██████▀    ╫██████████████▒\n
-. ╫███████████████▓ ╫█████▓            ╫█████▓       ╫█▒       ╫████████████████▒\n
-. ╫█████████████▓   ╫█████▓            ╫█████▓       ╫█▒       ╫██████▒    ╫█████▒\n
-. ╫█████▓███████▓   ╫█████▓            ╫█████▓       ╫█▒       ╫██████▒    ╫█████▒\n
-. ╫█████▓   ██████▓ ╫████████████████▄ ╫█████▓       ╫█▒       ╫████████████████▒\n
-. ╫█████▓     ████▓ ╫█████████████████ ╫█████▓       ╫█▒       ╫██████████████▒\n
-.                                        ╣▓▓▓▓▓▓▓▓▓▓▓▓██▓▓▓▓▓▓▓▓▓▓▓▓▄\n
-.                                        ╫██╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╫█▒\n
-.                                        ╫█  Command Line Interface █▒\n
-.                                        ╫██▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄╣█▒\n
-.                                         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n
-.\n
-    Example usage for training:\n
-        rllib train --run DQN --env CartPole-v1\n\n
+    .                                                 ╔▄▓▓▓▓▄\n
+    .                                                ╔██▀╙╙╙▀██▄\n
+    . ╫█████████████▓   ╫████▓             ╫████▓    ██▌     ▐██   ╫████▒\n
+    . ╫███████████████▓ ╫█████▓            ╫█████▓   ╫██     ╫██   ╫██████▒\n
+    . ╫█████▓     ████▓ ╫█████▓            ╫█████▓    ╙▓██████▀    ╫██████████████▒\n
+    . ╫███████████████▓ ╫█████▓            ╫█████▓       ╫█▒       ╫████████████████▒\n
+    . ╫█████████████▓   ╫█████▓            ╫█████▓       ╫█▒       ╫██████▒    ╫█████▒\n
+    . ╫█████▓███████▓   ╫█████▓            ╫█████▓       ╫█▒       ╫██████▒    ╫█████▒\n
+    . ╫█████▓   ██████▓ ╫████████████████▄ ╫█████▓       ╫█▒       ╫████████████████▒\n
+    . ╫█████▓     ████▓ ╫█████████████████ ╫█████▓       ╫█▒       ╫██████████████▒\n
+    .                                        ╣▓▓▓▓▓▓▓▓▓▓▓▓██▓▓▓▓▓▓▓▓▓▓▓▓▄\n
+    .                                        ╫██╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╫█▒\n
+    .                                        ╫█  Command Line Interface █▒\n
+    .                                        ╫██▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄╣█▒\n
+    .                                         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n
+    .\n
+        Example usage for training:\n
+            rllib train --run DQN --env CartPole-v1\n\n
 
-    Example usage for evaluation:\n
-        rllib evaluate /trial_dir/checkpoint_000001/checkpoint-1 --run DQN
---env CartPole-v1
+        Example usage for evaluation:\n
+            rllib evaluate /trial_dir/checkpoint_000001/checkpoint-1 --run DQN
+    --env CartPole-v1
     """
 
 

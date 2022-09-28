@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import shelve
+import typer
 
 import ray
 import ray.cloudpickle as cloudpickle
@@ -19,7 +20,6 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.tune.utils import merge_dicts
 from ray.tune.registry import get_trainable_cls, _global_registry, ENV_CREATOR
-import typer
 
 
 class RolloutSaver:
@@ -176,7 +176,6 @@ def run(
             "If you set --track-progress, you must provide an output file via "
             "--out as well!"
         )
-    # FIXME: video_dir is not used
     # Load configuration from checkpoint file.
     config_args = json.loads(config)
     config_path = ""
@@ -234,6 +233,7 @@ def run(
     config["evaluation_interval"] = 1
 
     # Rendering and video recording settings.
+    # FIXME: video_dir is not used
     config["render_env"] = render
 
     ray.init(local_mode=local_mode)

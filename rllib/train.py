@@ -11,7 +11,6 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json, json_to_resources
 from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 # Try to import both backends for flag checking/warnings.
@@ -52,8 +51,6 @@ def run(
     ray_object_store_memory: int = typer.Option(None),
     upload_dir: str = typer.Option(""),
     trace: bool = typer.Option(False),
-    torch: bool = typer.Option(False),  # deprecated
-    eager: bool = typer.Option(False),  # deprecated
 ):
     # FIXME: sync_on_checkpoint, export_formats, max_failures not used anywhere.
     stop = json.loads(stop)
@@ -118,12 +115,6 @@ def run(
                 "an `env` key with a valid environment to your `config`"
                 "argument."
             )
-        if torch:
-            deprecation_warning("--torch", "--framework=torch")
-            exp["config"]["framework"] = "torch"
-        elif eager:
-            deprecation_warning("--eager", "--framework=[tf2|tfe]")
-            exp["config"]["framework"] = "tfe"
         elif framework is not None:
             exp["config"]["framework"] = framework
 
