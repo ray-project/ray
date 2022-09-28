@@ -1299,7 +1299,7 @@ def test_numpy_read_partitioning(ray_start_regular_shared, tmp_path):
 
     ds = ray.data.read_numpy(path, partitioning=Partitioning("hive"))
 
-    assert ds.schema().names == ["__value__", "country"]
+    assert ds.schema().names == ["data", "country"]
     assert [r["country"] for r in ds.take()] == ["us", "us"]
 
 

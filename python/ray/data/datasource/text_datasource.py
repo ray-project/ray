@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional, Union, Tuple
+from typing import TYPE_CHECKING, List, Optional
 
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.util.annotations import PublicAPI
