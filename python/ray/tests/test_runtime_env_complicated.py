@@ -975,18 +975,17 @@ def test_runtime_env_override(call_ray_start):
         ray.shutdown()
 
 
-@pytest.mark.skipif(_WIN32, reason="RecursionError on windows")
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.",
 )
-def test_pip_with_env_vars(start_cluster):
+def test_pip_with_env_vars(start_cluster, tmp_path):
 
-    with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
+    with chdir(tmp_path):
         TEST_ENV_NAME = "TEST_ENV_VARS"
         TEST_ENV_VALUE = "TEST"
         package_name = "test_package"
-        package_dir = os.path.join(tmpdir, package_name)
+        package_dir = os.path.join(tmp_path, package_name)
         try_to_create_directory(package_dir)
 
         setup_filename = os.path.join(package_dir, "setup.py")
@@ -1018,7 +1017,7 @@ setup(
         with open(python_filename, "wt") as f:
             f.writelines(python_code)
 
-        gz_filename = os.path.join(tmpdir, package_name + ".tar.gz")
+        gz_filename = os.path.join(tmp_path, package_name + ".tar.gz")
         subprocess.check_call(["tar", "-zcvf", gz_filename, package_name])
 
         with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
