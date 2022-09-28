@@ -463,8 +463,7 @@ class NodeResourceInstances {
   TaskResourceInstances available;
   TaskResourceInstances total;
   /// Extract available resource instances.
-  const TaskResourceInstances &GetAvailableResourceInstances() const;
-  const TaskResourceInstances &GetTotalResourceInstances() const;
+  TaskResourceInstances GetAvailableResourceInstances();
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.

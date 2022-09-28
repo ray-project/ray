@@ -143,13 +143,8 @@ std::string NodeResourceInstances::DebugString() const {
   return buffer.str();
 };
 
-const TaskResourceInstances &NodeResourceInstances::GetAvailableResourceInstances()
-    const {
+TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
   return this->available;
-};
-
-const TaskResourceInstances &NodeResourceInstances::GetTotalResourceInstances() const {
-  return this->total;
 };
 
 bool NodeResourceInstances::Contains(scheduling::ResourceID id) const {
