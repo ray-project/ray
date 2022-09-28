@@ -114,31 +114,39 @@ class CustomCommandSyncer(Syncer):
 
         super().__init__(sync_period=sync_period)
 
-    def sync_up(
-        self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
-    ) -> bool:
+    def sync_up(self, local_dir: str, remote_dir: str, exclude: list = None) -> bool:
         cmd_str = self.sync_up_template.format(
             source=local_dir,
             target=remote_dir,
         )
-        subprocess.check_call(cmd_str, shell=True)
+        try:
+            subprocess.check_call(cmd_str, shell=True)
+        except Exception as e:
+            print(f"Exception when syncing up {local_dir} to {remote_dir}: {e}")
+            return False
         return True
 
-    def sync_down(
-        self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
-    ) -> bool:
+    def sync_down(self, remote_dir: str, local_dir: str, exclude: list = None) -> bool:
         cmd_str = self.sync_down_template.format(
             source=remote_dir,
             target=local_dir,
         )
-        subprocess.check_call(cmd_str, shell=True)
+        try:
+            subprocess.check_call(cmd_str, shell=True)
+        except Exception as e:
+            print(f"Exception when syncing down {remote_dir} to {local_dir}: {e}")
+            return False
         return True
 
     def delete(self, remote_dir: str) -> bool:
         cmd_str = self.delete_template.format(
             target=remote_dir,
         )
-        subprocess.check_call(cmd_str, shell=True)
+        try:
+            subprocess.check_call(cmd_str, shell=True)
+        except Exception as e:
+            print(f"Exception when deleting {remote_dir}: {e}")
+            return False
         return True
 
     def retry(self):
