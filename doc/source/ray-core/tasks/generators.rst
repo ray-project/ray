@@ -69,15 +69,12 @@ We can also pass the ``ObjectRef`` returned by a task with ``num_returns="dynami
     :start-after: __dynamic_generator_pass_start__
     :end-before: __dynamic_generator_pass_end__
 
-Exception handling and limitations
-----------------------------------
-
-Although a generator function creates ``ObjectRefs`` one at a time, currently Ray will not schedule dependent tasks until the entire task is complete and all values have been created. This is similar to the semantics used by tasks that return multiple values as a list.
-
-``num_returns="dynamic"`` is not yet supported for actor tasks.
+Exception handling
+------------------
 
 If a generator function raises an exception before yielding all its values, the values that it already stored will still be accessible through their ``ObjectRefs``.
 The remaining ``ObjectRefs`` will contain the thrown exception.
+This is true for both static and dynamic ``num_returns``.
 If the task was called with ``num_returns="dynamic"``, the exception will be stored as an additional final ``ObjectRef`` in the ``ObjectRefGenerator``.
 
 .. literalinclude:: ../doc_code/generator.py
@@ -94,3 +91,10 @@ Note that there is currently a known bug where exceptions will not be propagated
     :language: python
     :start-after: __generator_errors_unsupported_start__
     :end-before: __generator_errors_unsupported_end__
+
+Limitations
+-----------
+
+Although a generator function creates ``ObjectRefs`` one at a time, currently Ray will not schedule dependent tasks until the entire task is complete and all values have been created. This is similar to the semantics used by tasks that return multiple values as a list.
+
+``num_returns="dynamic"`` is not yet supported for actor tasks.
