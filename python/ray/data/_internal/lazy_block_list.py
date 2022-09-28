@@ -305,15 +305,24 @@ class LazyBlockList(BlockList):
         if context.block_splitting_enabled:
             # If block splitting is enabled, fetch the partitions through generator.
             read_progress_bar = ProgressBar("Read progress", total=len(block_refs))
-            generators = read_progress_bar.fetch_until_complete(list(block_refs))
-            block_refs, metadata = [], []
-            for generator in generators:
-                refs = list(generator)
-                meta = ray.get(refs.pop(-1))
-                block_refs += refs
-                metadata += meta
+            # Handle duplicates (e.g. due to unioning the same dataset).
+            unique_refs = list(set(block_refs))
+            generators = read_progress_bar.fetch_until_complete(unique_refs)
+
+            ref_to_blocks = {}
+            ref_to_metadata = {}
+            for ref, generator in zip(unique_refs, generators):
+                refs_list = list(generator)
+                meta = ray.get(refs_list.pop(-1))
+                ref_to_blocks[ref] = refs_list
+                ref_to_metadata[ref] = meta
+
+            output_block_refs, metadata = [], []
+            for ref in block_refs:
+                output_block_refs += ref_to_blocks[ref]
+                metadata += ref_to_metadata[ref]
             self._cached_metadata = metadata
-            return block_refs, metadata
+            return output_block_refs, metadata
         if all(meta is not None for meta in self._cached_metadata):
             # Short-circuit on cached metadata.
             return block_refs, self._cached_metadata
@@ -379,7 +388,6 @@ class LazyBlockList(BlockList):
                 blocks_ref = list(generator)
                 metadata = ray.get(blocks_ref[-1])
                 self._cached_metadata[0] = metadata[0]
-                pass
             else:
                 metadata = ray.get(metadata_ref)
                 self._cached_metadata[0] = metadata
@@ -623,8 +631,11 @@ def _execute_read_task_nosplit(
     DatasetContext._set_current(context)
     stats = BlockExecStats.builder()
 
-    # Execute the task.
-    block = next(task())
+    # Execute the task. Expect only one block returned, when dynamic block splitting is
+    # not enabled.
+    blocks = list(task())
+    assert len(blocks) == 1
+    block = blocks[0]
 
     metadata = task.get_metadata()
     metadata = BlockAccessor.for_block(block).get_metadata(

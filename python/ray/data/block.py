@@ -166,7 +166,7 @@ class BlockExecStats:
 
     def add(self, other: "BlockExecStats"):
         """Add the other BlockExecStats into this BlockExecStats, by combining
-        each statistics.
+        each statistic.
         """
         if other.wall_time_s:
             self.wall_time_s = float(self.wall_time_s or 0) + other.wall_time_s
