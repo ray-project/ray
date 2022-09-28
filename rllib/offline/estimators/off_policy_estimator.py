@@ -1,5 +1,6 @@
 import numpy as np
 import tree
+from typing import Dict, Any, List
 
 import logging
 from ray.rllib.policy.sample_batch import (
@@ -11,15 +12,12 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
-    is_overridden,
     OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType, SampleBatchType
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
-from typing import Dict, Any, Sequence
-
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +38,7 @@ class OffPolicyEstimator(OfflineEvaluator):
         self.gamma = gamma
 
     @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def estimate_on_episode(self, episode: SampleBatch, **kwargs) -> Dict[str, Any]:
+    def estimate_on_single_episode(self, episode: SampleBatch) -> Dict[str, Any]:
         """Returns off-policy estimates for the given one episode.
 
         Args:
@@ -57,10 +54,10 @@ class OffPolicyEstimator(OfflineEvaluator):
         raise NotImplementedError
 
     @DeveloperAPI
-    @OverrideToImplementCustomLogic
-    def estimate_single_step(
-        self, batch: SampleBatch, **kwargs
-    ) -> Dict[str, Sequence[float]]:
+    def estimate_on_single_step_samples(
+        self,
+        batch: SampleBatch,
+    ) -> Dict[str, List[float]]:
         """Returns off-policy estimates for the batch of single timesteps. This is
         highly optimized for bandits assuming each episode is a single timestep.
 
@@ -70,11 +67,57 @@ class OffPolicyEstimator(OfflineEvaluator):
             "actions", and "action_prob".
 
         Returns:
-            The off-policy estimates (OPE) calculated on the given episode. The returned
-            dict can be any arbitrary mapping of strings to a list of floats capturing
-            the values per each record.
+            The off-policy estimates (OPE) calculated on the given batch of single time
+            step samples. The returned dict can be any arbitrary mapping of strings to
+            a list of floats capturing the values per each record.
         """
         raise NotImplementedError
+
+    def on_before_split_batch_by_episode(
+        self, sample_batch: SampleBatch
+    ) -> SampleBatch:
+        """Called before the batch is split by episode. You can perform any
+        preprocessing on the batch that you want here.
+        e.g. adding done flags to the batch, or reseting some stats that you want to
+        track per episode later during estimation, .etc.
+
+        Args:
+            sample_batch: The batch to split by episode. This contains multiple
+            episodes.
+
+        Returns:
+            The modified batch before calling split_by_episode().
+        """
+        return sample_batch
+
+    @OverrideToImplementCustomLogic
+    def on_after_split_batch_by_episode(
+        self, all_episodes: List[SampleBatch]
+    ) -> List[SampleBatch]:
+        """Called after the batch is split by episode. You can perform any
+        postprocessing on each episode that you want here.
+        e.g. computing advantage per episode, .etc.
+
+        Args:
+            all_episodes: The list of episodes in the original batch. Each element is a
+            sample batch type that is a single episode.
+        """
+
+        return all_episodes
+
+    @OverrideToImplementCustomLogic
+    def peak_on_single_episode(self, episode: SampleBatch) -> None:
+        """This is called on each episode before it is passed to
+        estimate_on_single_episode(). Using this method, you can get a peak at the
+        entire validation dataset before runnining the estimation. For examlpe if you
+        need to perform any normalizations of any sorts on the dataset, you can compute
+        the normalization parameters here.
+
+        Args:
+            episode: The episode that is split from the original batch. This is a
+            sample batch type that is a single episode.
+        """
+        pass
 
     @DeveloperAPI
     def estimate(
@@ -103,14 +146,20 @@ class OffPolicyEstimator(OfflineEvaluator):
         self.check_action_prob_in_batch(batch)
         estimates_per_epsiode = []
         if split_batch_by_episode:
-            for episode in batch.split_by_episode():
+            batch = self.on_before_split_batch_by_episode(batch)
+            all_episodes = batch.split_by_episode()
+            all_episodes = self.on_after_split_batch_by_episode(all_episodes)
+            for episode in all_episodes:
                 assert len(set(episode[SampleBatch.EPS_ID])) == 1, (
                     "The episode must contain only one episode id. For some reason "
                     "the split_by_episode() method could not successfully split "
                     "the batch by episodes. Each row in the dataset should be "
                     "one episode. Check your evaluation dataset for errors."
                 )
-                estimate_step_results = self.estimate_on_episode(episode)
+                self.peak_on_single_episode(episode)
+
+            for episode in all_episodes:
+                estimate_step_results = self.estimate_on_single_episode(episode)
                 estimates_per_epsiode.append(estimate_step_results)
 
             # turn a list of identical dicts into a dict of lists
@@ -118,15 +167,8 @@ class OffPolicyEstimator(OfflineEvaluator):
                 lambda *x: list(x), *estimates_per_epsiode
             )
         else:
-            if is_overridden(self.estimate_single_step):
-                # the returned dict is a mapping of strings to a list of floats
-                estimates_per_epsiode = self.estimate_single_step(batch)
-            else:
-                raise NotImplementedError(
-                    "The method estimate_single_step is not implemented. "
-                    "Please override the method estimate_single_step or set "
-                    "split_by_episode to True."
-                )
+            # the returned dict is a mapping of strings to a list of floats
+            estimates_per_epsiode = self.estimate_on_single_step_samples(batch)
 
         estimates = {
             "v_behavior": np.mean(estimates_per_epsiode["v_behavior"]),

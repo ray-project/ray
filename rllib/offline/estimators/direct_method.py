@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.policy import Policy
@@ -63,7 +63,7 @@ class DirectMethod(OffPolicyEstimator):
         ), "self.model must implement `estimate_v`!"
 
     @override(OffPolicyEstimator)
-    def estimate_on_episode(self, episode: SampleBatch) -> Dict[str, float]:
+    def estimate_on_single_episode(self, episode: SampleBatch) -> Dict[str, Any]:
         estimates_per_epsiode = {}
         rewards = episode["rewards"]
 
@@ -79,7 +79,9 @@ class DirectMethod(OffPolicyEstimator):
         return estimates_per_epsiode
 
     @override(OffPolicyEstimator)
-    def estimate_single_step(self, batch: SampleBatch) -> Dict[str, float]:
+    def estimate_on_single_step_samples(
+        self, batch: SampleBatch
+    ) -> Dict[str, List[float]]:
         estimates_per_epsiode = {}
         rewards = batch["rewards"]
 

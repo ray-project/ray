@@ -1,9 +1,11 @@
 import logging
-from typing import Dict, Any, Optional
+import numpy as np
+
+from typing import Dict, Any, Optional, List
 from ray.rllib.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.typing import SampleBatchType
-import numpy as np
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
 
@@ -77,8 +79,8 @@ class DoublyRobust(OffPolicyEstimator):
         ), "self.model must implement `estimate_q`!"
 
     @override(OffPolicyEstimator)
-    def estimate_on_episode(self, episode: SampleBatchType) -> Dict[str, float]:
-        estimates_per_epsiode = {"v_behavior": None, "v_target": None}
+    def estimate_on_single_episode(self, episode: SampleBatch) -> Dict[str, Any]:
+        estimates_per_epsiode = {}
 
         rewards, old_prob = episode["rewards"], episode["action_prob"]
         log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, episode)
@@ -105,8 +107,10 @@ class DoublyRobust(OffPolicyEstimator):
         return estimates_per_epsiode
 
     @override(OffPolicyEstimator)
-    def estimate_single_step(self, batch: SampleBatchType) -> Dict[str, float]:
-        estimates_per_epsiode = {"v_behavior": None, "v_target": None}
+    def estimate_on_single_step_samples(
+        self, batch: SampleBatch
+    ) -> Dict[str, List[float]]:
+        estimates_per_epsiode = {}
 
         rewards, old_prob = batch["rewards"], batch["action_prob"]
         log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, batch)
@@ -135,7 +139,7 @@ class DoublyRobust(OffPolicyEstimator):
         batch: A SampleBatch or MultiAgentbatch to train on
 
         Returns:
-        A dict with key "loss" and value as the mean training loss.
+            A dict with key "loss" and value as the mean training loss.
         """
         batch = self.convert_ma_batch_to_sample_batch(batch)
         losses = self.model.train(batch)

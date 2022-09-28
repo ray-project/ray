@@ -3,7 +3,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
-from typing import Dict
+from typing import Dict, List
 import numpy as np
 
 
@@ -24,8 +24,8 @@ class ImportanceSampling(OffPolicyEstimator):
     For more information refer to https://arxiv.org/pdf/1911.06854.pdf"""
 
     @override(OffPolicyEstimator)
-    def estimate_on_episode(self, episode: SampleBatch) -> Dict[str, float]:
-        estimates_per_epsiode = {"v_behavior": None, "v_target": None}
+    def estimate_on_single_episode(self, episode: SampleBatch) -> Dict[str, float]:
+        estimates_per_epsiode = {}
 
         rewards, old_prob = episode["rewards"], episode["action_prob"]
         log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, episode)
@@ -53,8 +53,10 @@ class ImportanceSampling(OffPolicyEstimator):
         return estimates_per_epsiode
 
     @override(OffPolicyEstimator)
-    def estimate_single_step(self, batch: SampleBatch) -> Dict[str, float]:
-        estimates_per_epsiode = {"v_behavior": None, "v_target": None}
+    def estimate_on_single_step_samples(
+        self, batch: SampleBatch
+    ) -> Dict[str, List[float]]:
+        estimates_per_epsiode = {}
 
         rewards, old_prob = batch["rewards"], batch["action_prob"]
         log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, batch)
