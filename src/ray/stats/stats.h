@@ -117,9 +117,13 @@ static inline void Shutdown() {
     // Return if stats had never been initialized.
     return;
   }
-  metrics_io_service_pool->Stop();
+  // Export the remaining metrics. The RPC for export is called in
+  // this stack, so RPC will be guaranteed to be sent to the agent.
+  // However, we cannot handle the reply.
+  opencensus::stats::StatsExporter::ExportNow();
   opencensus::stats::DeltaProducer::Get()->Shutdown();
   opencensus::stats::StatsExporter::Shutdown();
+  metrics_io_service_pool->Stop();
   metrics_io_service_pool = nullptr;
   exporter = nullptr;
   StatsConfig::instance().SetIsInitialized(false);

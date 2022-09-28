@@ -51,8 +51,69 @@ def tasks_by_state(info) -> dict:
         return {}
 
 
-# TODO(ekl) in all these tests, we use run_string_as_driver_nonblocking to work around
-# stats reporting issues if Ray is repeatedly restarted in unit tests.
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+def test_metrics_export_now(shutdown_only):
+    info = ray.init(num_cpus=2, **SLOW_METRIC_CONFIG)
+
+    driver = """
+import ray
+import time
+ray.init("auto")
+@ray.remote
+def f():
+    pass
+a = [f.remote() for _ in range(10)]
+ray.get(a)
+"""
+
+    # If force export at process death is broken, we won't see the recently completed
+    # tasks from the drivers.
+    for i in range(10):
+        print("Run job", i)
+        run_string_as_driver(driver)
+        tasks_by_state(info)
+
+    expected = {
+        "FINISHED": 100.0,
+    }
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+    )
+
+
+def test_task_job_ids(shutdown_only):
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+
+    driver = """
+import ray
+import time
+ray.init("auto")
+@ray.remote(num_cpus=0)
+def f():
+    time.sleep(999)
+a = [f.remote() for _ in range(1)]
+ray.get(a)
+"""
+    procs = [run_string_as_driver_nonblocking(driver) for _ in range(3)]
+    expected = {
+        "RUNNING": 3.0,
+    }
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+    )
+
+    # Check we have three jobs reporting "RUNNING".
+    metrics = raw_metrics(info)
+    jobs_at_state = defaultdict(set)
+    for sample in metrics["ray_tasks"]:
+        jobs_at_state[sample.labels["State"]].add(sample.labels["JobId"])
+    print("Jobs at state: {}".format(jobs_at_state))
+    assert len(jobs_at_state["RUNNING"]) == 3, jobs_at_state
+
+    for proc in procs:
+        proc.kill()
+
+
 def test_task_basic(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
@@ -206,57 +267,6 @@ def test_task_retry(shutdown_only):
     )
 
 
-def test_concurrent_actor_tasks(shutdown_only):
-    info = ray.init(num_cpus=2, **METRIC_CONFIG)
-
-    @ray.remote(max_concurrency=30)
-    class A:
-        async def f(self):
-            await asyncio.sleep(300)
-
-    a = A.remote()
-    [a.f.remote() for _ in range(40)]
-
-    expected = {
-        "RUNNING": 30.0,
-        "SUBMITTED_TO_WORKER": 10.0,
-        "FINISHED": 1.0,
-    }
-    wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
-    )
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
-def test_metrics_export_now(shutdown_only):
-    info = ray.init(num_cpus=2, **SLOW_METRIC_CONFIG)
-
-    driver = """
-import ray
-import time
-ray.init("auto")
-@ray.remote
-def f():
-    pass
-a = [f.remote() for _ in range(10)]
-ray.get(a)
-"""
-
-    # If force export at process death is broken, we won't see the recently completed
-    # tasks from the drivers.
-    for i in range(10):
-        print("Run job", i)
-        run_string_as_driver(driver)
-        tasks_by_state(info)
-
-    expected = {
-        "FINISHED": 100.0,
-    }
-    wait_for_condition(
-        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
-    )
-
-
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on macos")
 def test_pull_manager_stats(shutdown_only):
     info = ray.init(num_cpus=2, object_store_memory=100_000_000, **METRIC_CONFIG)
@@ -283,37 +293,25 @@ def test_pull_manager_stats(shutdown_only):
     )
 
 
-def test_task_job_ids(shutdown_only):
+def test_concurrent_actor_tasks(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
-    driver = """
-import ray
-import time
-ray.init("auto")
-@ray.remote(num_cpus=0)
-def f():
-    time.sleep(999)
-a = [f.remote() for _ in range(1)]
-ray.get(a)
-"""
-    procs = [run_string_as_driver_nonblocking(driver) for _ in range(3)]
+    @ray.remote(max_concurrency=30)
+    class A:
+        async def f(self):
+            await asyncio.sleep(300)
+
+    a = A.remote()
+    [a.f.remote() for _ in range(40)]
+
     expected = {
-        "RUNNING": 3.0,
+        "RUNNING": 30.0,
+        "SUBMITTED_TO_WORKER": 10.0,
+        "FINISHED": 1.0,
     }
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
-
-    # Check we have three jobs reporting "RUNNING".
-    metrics = raw_metrics(info)
-    jobs_at_state = defaultdict(set)
-    for sample in metrics["ray_tasks"]:
-        jobs_at_state[sample.labels["State"]].add(sample.labels["JobId"])
-    print("Jobs at state: {}".format(jobs_at_state))
-    assert len(jobs_at_state["RUNNING"]) == 3, jobs_at_state
-
-    for proc in procs:
-        proc.kill()
 
 
 if __name__ == "__main__":

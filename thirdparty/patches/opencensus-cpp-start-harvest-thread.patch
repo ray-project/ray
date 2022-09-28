@@ -23,8 +23,8 @@ diff --git opencensus/stats/internal/delta_producer.cc opencensus/stats/internal
 +  if (thread_started_) {
 +    return;
 +  }
-+  harvester_thread_ = std::thread(&DeltaProducer::RunHarvesterLoop, this);
 +  thread_started_ = true;
++  harvester_thread_ = std::thread(&DeltaProducer::RunHarvesterLoop, this);
 +}
 +
  }  // namespace stats
