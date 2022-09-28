@@ -46,7 +46,7 @@ class ClipRewardAgentConnector(AgentConnector):
         }
 
     @staticmethod
-    def from_state(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: Any):
         return ClipRewardAgentConnector(ctx, **params)
 
 

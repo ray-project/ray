@@ -37,7 +37,7 @@ class NormalizeActionsConnector(ActionConnector):
         return NormalizeActionsConnector.__name__, None
 
     @staticmethod
-    def from_state(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: Any):
         return NormalizeActionsConnector(ctx)
 
 

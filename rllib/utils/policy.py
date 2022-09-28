@@ -146,7 +146,7 @@ def load_policies_from_checkpoint(
         policy_class = get_tf_eager_cls_if_necessary(
             policy_spec.policy_class, merged_config
         )
-
+        print(merged_config["_disable_execution_plan_api"])
         policy = create_policy_for_framework(
             id,
             policy_class,
@@ -155,6 +155,7 @@ def load_policies_from_checkpoint(
             policy_spec.action_space,
         )
         if id in policy_states:
+            #print(policy_states[id])
             policy.set_state(policy_states[id])
         policies[id] = policy
 

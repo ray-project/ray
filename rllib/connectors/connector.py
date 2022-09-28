@@ -106,7 +106,7 @@ class Connector(abc.ABC):
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
 
-    def to_state(self) -> Tuple[str, List[Any]]:
+    def to_state(self) -> Tuple[str, Any]:
         """Serialize a connector into a JSON serializable Tuple.
 
         to_state is required, so that all Connectors are serializable.
@@ -118,7 +118,7 @@ class Connector(abc.ABC):
         return NotImplementedError
 
     @staticmethod
-    def from_state(self, ctx: ConnectorContext, params: List[Any]) -> "Connector":
+    def from_state(self, ctx: ConnectorContext, params: Any) -> "Connector":
         """De-serialize a JSON params back into a Connector.
 
         from_state is required, so that all Connectors are serializable.

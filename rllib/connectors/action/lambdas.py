@@ -52,7 +52,7 @@ def register_lambda_action_connector(
             return name, None
 
         @staticmethod
-        def from_state(ctx: ConnectorContext, params: List[Any]):
+        def from_state(ctx: ConnectorContext, params: Any):
             return LambdaActionConnector(ctx)
 
     LambdaActionConnector.__name__ = name

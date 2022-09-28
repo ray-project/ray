@@ -34,7 +34,7 @@ class ClipActionsConnector(ActionConnector):
         return ClipActionsConnector.__name__, None
 
     @staticmethod
-    def from_state(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: Any):
         return ClipActionsConnector(ctx)
 
 

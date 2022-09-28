@@ -34,14 +34,29 @@ class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
         return ret
 
     def to_state(self):
-        return AgentConnectorPipeline.__name__, [c.to_state() for c in self.connectors]
+        children = []
+        for c in self.connectors:
+            state = c.to_state()
+            assert isinstance(state, tuple) and len(state) == 2, (
+                "Serialized connector state must be in the format of "
+                f"Tuple[name: str, params: Any]. Instead we got {state}"
+                f"for connector {c.__name__}."
+            )
+            children.append(state)
+        return AgentConnectorPipeline.__name__, children
 
     @staticmethod
     def from_state(ctx: ConnectorContext, params: List[Any]):
         assert (
             type(params) == list
         ), "AgentConnectorPipeline takes a list of connector params."
-        connectors = [get_connector(ctx, name, subparams) for name, subparams in params]
+        connectors = []
+        for state in params:
+            try:
+                name, subparams = state
+                connectors.append(get_connector(ctx, name, subparams))
+            except:
+                raise TypeError(f"Failed to de-serialize connector state: {state}")
         return AgentConnectorPipeline(ctx, connectors)
 
 
