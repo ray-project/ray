@@ -11,6 +11,7 @@ from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     HTTP_PROXY_TIMEOUT,
     SERVE_CONTROLLER_NAME,
+    SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY,
     SERVE_NAMESPACE,
     RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
 )
@@ -182,7 +183,7 @@ def serve_start(
     # Used for scheduling things to the head node explicitly.
     # Assumes that `serve.start` runs on the head node.
     head_node_id = ray.get_runtime_context().node_id.hex()
-    controller_start_options = {
+    controller_actor_options = {
         "num_cpus": 1 if dedicated_cpu else 0,
         "name": controller_name,
         "lifetime": "detached" if detached else None,
@@ -198,13 +199,13 @@ def serve_start(
         "max_concurrency": CONTROLLER_MAX_CONCURRENCY,
     }
 
-    if os.environ.get("EXPERIMENT_DISABLE_HTTP_PROXY", "0") == "1":
-        controller = ServeController.options(**controller_start_options).remote(
+    if os.environ.get(SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY, "0") == "1":
+        controller = ServeController.options(**controller_actor_options).remote(
             controller_name,
             http_config=http_options,
             head_node_id=head_node_id,
             detached=detached,
-            disable_http_proxy=True,
+            _disable_http_proxy=True,
         )
     else:
         # Legacy http proxy actor check
@@ -221,7 +222,7 @@ def serve_start(
         if http_options is None:
             http_options = HTTPOptions()
 
-        controller = ServeController.options(**controller_start_options).remote(
+        controller = ServeController.options(**controller_actor_options).remote(
             controller_name,
             http_config=http_options,
             head_node_id=head_node_id,

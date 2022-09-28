@@ -1160,7 +1160,63 @@ class DeploymentState:
     def delete(self) -> None:
         self._set_target_state_deleting()
 
-    def _stop_wrong_version_replicas(self) -> bool:
+    def _stop_wrong_version_replicas(self, max_to_stop=math.inf) -> int:
+        """Stop the replicas with outdated versions
+
+        Args:
+            max_to_stop: max number of replicas to stop, by default,
+            it will stop all replicas with wrong version.
+        """
+        replicas_to_update = self._replicas.pop(
+            exclude_version=self._target_state.version,
+            states=[ReplicaState.STARTING, ReplicaState.RUNNING],
+            max_replicas=max_to_stop,
+            ranking_function=rank_replicas_for_stopping,
+        )
+        replicas_stopped = False
+        code_version_changes = 0
+        user_config_changes = 0
+        for replica in replicas_to_update:
+            # If the code version is a mismatch, we stop the replica. A new one
+            # with the correct version will be started later as part of the
+            # normal scale-up process.
+            if replica.version.code_version != self._target_state.version.code_version:
+                code_version_changes += 1
+                replica.stop()
+                self._replicas.add(ReplicaState.STOPPING, replica)
+                replicas_stopped = True
+            # If only the user_config is a mismatch, we update it dynamically
+            # without restarting the replica.
+            elif (
+                replica.version.user_config_hash
+                != self._target_state.version.user_config_hash
+            ):
+                user_config_changes += 1
+                replica.update_user_config(self._target_state.version.user_config)
+                self._replicas.add(ReplicaState.UPDATING, replica)
+                logger.debug(
+                    "Adding UPDATING to replica_tag: "
+                    f"{replica.replica_tag}, deployment_name: {self._name}"
+                )
+            else:
+                assert False, "Update must be code version or user config."
+
+        if code_version_changes > 0:
+            logger.info(
+                f"Stopping {code_version_changes} replicas of "
+                f"deployment '{self._name}' with outdated versions."
+            )
+
+        if user_config_changes > 0:
+            logger.info(
+                f"Updating {user_config_changes} replicas of "
+                f"deployment '{self._name}' with outdated "
+                f"user_configs."
+            )
+
+        return replicas_stopped
+
+    def _check_and_stop_wrong_version_replicas(self) -> bool:
         """Stops replicas with outdated versions to implement rolling updates.
 
         This includes both explicit code version updates and changes to the
@@ -1211,55 +1267,7 @@ class DeploymentState:
         rollout_size = max(int(0.2 * self._target_state.num_replicas), 1)
         max_to_stop = max(rollout_size - pending_replicas, 0)
 
-        replicas_to_update = self._replicas.pop(
-            exclude_version=self._target_state.version,
-            states=[ReplicaState.STARTING, ReplicaState.RUNNING],
-            max_replicas=max_to_stop,
-            ranking_function=rank_replicas_for_stopping,
-        )
-
-        replicas_stopped = False
-        code_version_changes = 0
-        user_config_changes = 0
-        for replica in replicas_to_update:
-            # If the code version is a mismatch, we stop the replica. A new one
-            # with the correct version will be started later as part of the
-            # normal scale-up process.
-            if replica.version.code_version != self._target_state.version.code_version:
-                code_version_changes += 1
-                replica.stop()
-                self._replicas.add(ReplicaState.STOPPING, replica)
-                replicas_stopped = True
-            # If only the user_config is a mismatch, we update it dynamically
-            # without restarting the replica.
-            elif (
-                replica.version.user_config_hash
-                != self._target_state.version.user_config_hash
-            ):
-                user_config_changes += 1
-                replica.update_user_config(self._target_state.version.user_config)
-                self._replicas.add(ReplicaState.UPDATING, replica)
-                logger.debug(
-                    "Adding UPDATING to replica_tag: "
-                    f"{replica.replica_tag}, deployment_name: {self._name}"
-                )
-            else:
-                assert False, "Update must be code version or user config."
-
-        if code_version_changes > 0:
-            logger.info(
-                f"Stopping {code_version_changes} replicas of "
-                f"deployment '{self._name}' with outdated versions."
-            )
-
-        if user_config_changes > 0:
-            logger.info(
-                f"Updating {user_config_changes} replicas of "
-                f"deployment '{self._name}' with outdated "
-                f"user_configs."
-            )
-
-        return replicas_stopped
+        return self._stop_wrong_version_replicas(max_to_stop)
 
     def _scale_deployment_replicas(self) -> bool:
         """Scale the given deployment to the number of replicas."""
@@ -1268,7 +1276,7 @@ class DeploymentState:
             self._target_state.num_replicas >= 0
         ), "Number of replicas must be greater than or equal to 0."
 
-        replicas_stopped = self._stop_wrong_version_replicas()
+        replicas_stopped = self._check_and_stop_wrong_version_replicas()
 
         current_replicas = self._replicas.count(
             states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING]
@@ -1642,10 +1650,10 @@ class DriverDeploymentState(DeploymentState):
         self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
     def _get_all_node_ids(self):
-        # Test to mock purpose
+        # Test mock purpose
         return get_all_node_ids(self._gcs_client)
 
-    def _deploy_driver(self):
+    def _deploy_driver(self) -> bool:
         """
         Deploy the driver deployment to each node
         """
@@ -1658,10 +1666,12 @@ class DriverDeploymentState(DeploymentState):
                 ReplicaState.RUNNING,
                 ReplicaState.RECOVERING,
                 ReplicaState.UPDATING,
+                ReplicaState.STOPPING,
             ]
         ):
             if replica.actor_node_id:
                 deployed_nodes.add(replica.actor_node_id)
+        replica_changed = False
         for node_id, _ in all_nodes:
             if node_id in deployed_nodes:
                 continue
@@ -1679,8 +1689,11 @@ class DriverDeploymentState(DeploymentState):
             )
 
             self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
+            replica_changed = True
+        return replica_changed
 
-    def _stop_all_replicas(self):
+    def _stop_all_replicas(self) -> bool:
+        replica_changed = False
         for replica in self._replicas.pop(
             states=[
                 ReplicaState.STARTING,
@@ -1690,14 +1703,33 @@ class DriverDeploymentState(DeploymentState):
         ):
             replica.stop()
             self._replicas.add(ReplicaState.STOPPING, replica)
+            replica_changed = True
+        return replica_changed
+
+    def _calculate_max_replicas_to_stop(self) -> int:
+        nums_nodes = len(self._get_all_node_ids())
+        rollout_size = max(int(0.2 * nums_nodes), 1)
+        old_running_replicas = self._replicas.count(
+            exclude_version=self._target_state.version,
+            states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING],
+        )
+        new_running_replicas = self._replicas.count(
+            version=self._target_state.version, states=[ReplicaState.RUNNING]
+        )
+        pending_replicas = nums_nodes - new_running_replicas - old_running_replicas
+        return max(rollout_size - pending_replicas, 0)
 
     def update(self) -> bool:
         try:
             if self._target_state.deleting:
-                self._stop_all_replicas()
+                running_replicas_changed = self._stop_all_replicas()
             else:
-                self._deploy_driver()
-            running_replicas_changed = self._check_and_update_replicas()
+                max_to_stop = self._calculate_max_replicas_to_stop()
+                running_replicas_changed = self._stop_wrong_version_replicas(
+                    max_to_stop
+                )
+                running_replicas_changed |= self._deploy_driver()
+            running_replicas_changed |= self._check_and_update_replicas()
             if running_replicas_changed:
                 self._notify_running_replicas_changed()
             return self._check_curr_status()

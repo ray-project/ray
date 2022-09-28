@@ -179,7 +179,7 @@ class DeploymentSchema(
 
     is_driver_deployment: bool = Field(
         default=False,
-        description="Driver mode for the deployment, (e.g. 'gRPC', 'HTTP')",
+        description="Indicate Whether the deployment is driver deployment",
     )
 
     @root_validator

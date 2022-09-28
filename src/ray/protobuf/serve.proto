@@ -213,7 +213,6 @@ message StatusOverview {
 
 // RPC Schema
 message PredictRequest {
-  string model_name = 1;
   map<string, bytes> input = 2;
 }
 

@@ -121,7 +121,13 @@ class gRPCIngress:
     gRPC Ingress that starts gRPC server based on the port
     """
 
-    def __init__(self, port=DEFAULT_GRPC_PORT):
+    def __init__(self, port: str = DEFAULT_GRPC_PORT):
+        """Create a gRPC Ingress.
+
+        Args:
+            port: Set the port that the gRPC server will listen to.
+        """
+
         self.server = grpc.aio.server()
         self.port = port
 

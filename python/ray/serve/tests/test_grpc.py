@@ -8,6 +8,7 @@ import grpc
 from ray.cluster_utils import Cluster
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray._private.test_utils import wait_for_condition
+from ray.serve._private.constants import SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY
 
 
 pytestmark = pytest.mark.asyncio
@@ -15,7 +16,7 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def serve_start_shutdown(monkeypatch):
-    monkeypatch.setenv("EXPERIMENT_DISABLE_HTTP_PROXY", "1")
+    monkeypatch.setenv(SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY, "1")
     ray.init()
     yield
     serve.shutdown()
@@ -24,7 +25,7 @@ def serve_start_shutdown(monkeypatch):
 
 @pytest.fixture
 def ray_cluster(monkeypatch):
-    monkeypatch.setenv("EXPERIMENT_DISABLE_HTTP_PROXY", "1")
+    monkeypatch.setenv(SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY, "1")
     cluster = Cluster()
     yield Cluster()
     serve.shutdown()

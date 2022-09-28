@@ -121,3 +121,7 @@ class ServeHandleType(str, Enum):
 MIGRATION_MESSAGE = (
     "See https://docs.ray.io/en/latest/serve/index.html for more information."
 )
+
+
+# [EXPERIMENTAL] Disable the http actor
+SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY = "SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY"
