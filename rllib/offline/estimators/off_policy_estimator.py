@@ -29,15 +29,24 @@ class OffPolicyEstimator(OfflineEvaluator):
     """Interface for an off policy estimator for counterfactual evaluation."""
 
     @DeveloperAPI
-    def __init__(self, policy: Policy, gamma: float = 0.0):
+    def __init__(
+        self,
+        policy: Policy,
+        gamma: float = 0.0,
+        epsilon_greedy: float = 1.0,
+    ):
         """Initializes an OffPolicyEstimator instance.
 
         Args:
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
+            epsilon_greedy: The probability by which we act acording to the policy
+            during deployment. With 1-epsilon_greedy we act according to a fully random
+            policy to inject some exploration.
         """
         self.policy = policy
         self.gamma = gamma
+        self.epsilon_greedy = epsilon_greedy
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -181,6 +190,21 @@ class OffPolicyEstimator(OfflineEvaluator):
                 "`exploration_config: {type: 'SoftQ'}`. You can also set "
                 "`off_policy_estimation_methods: {}` to disable estimation."
             )
+
+    def _compute_action_probs(self, batch: SampleBatch):
+        log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, batch)
+        new_prob = np.exp(convert_to_numpy(log_likelihoods))
+
+        if self.config["epsilon_greedy"] < 1.0:
+            if not hasattr(self.policy.action_space, "n"):
+                raise ValueError(
+                    "Evaluation with epsilon-greedy exploration is only supported "
+                    "with discrete action spaces."
+                )
+            eps = self.config["epsilon_greedy"]
+            new_prob = new_prob * eps + (1 - eps) / self.policy.action_space.n
+
+        return new_prob
 
     @DeveloperAPI
     def train(self, batch: SampleBatchType) -> Dict[str, Any]:

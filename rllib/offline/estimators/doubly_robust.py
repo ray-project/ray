@@ -5,7 +5,6 @@ from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.typing import SampleBatchType
 import numpy as np
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
 
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
@@ -81,8 +80,7 @@ class DoublyRobust(OffPolicyEstimator):
         estimates_per_epsiode = {"v_behavior": None, "v_target": None}
 
         rewards, old_prob = episode["rewards"], episode["action_prob"]
-        log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, episode)
-        new_prob = np.exp(convert_to_numpy(log_likelihoods))
+        new_prob = self._compute_action_probs(episode)
 
         v_behavior = 0.0
         v_target = 0.0
@@ -109,8 +107,7 @@ class DoublyRobust(OffPolicyEstimator):
         estimates_per_epsiode = {"v_behavior": None, "v_target": None}
 
         rewards, old_prob = batch["rewards"], batch["action_prob"]
-        log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, batch)
-        new_prob = np.exp(convert_to_numpy(log_likelihoods))
+        new_prob = self._compute_action_probs(batch)
 
         q_values = self.model.estimate_q(batch)
         q_values = convert_to_numpy(q_values)
