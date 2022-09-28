@@ -126,7 +126,8 @@ std::string GetOriginalResourceNameFromWildcardResource(const std::string &resou
 /// \param resource name of the resource.
 /// \return nullopt if it is not a pg resource. Otherwise, it returns the
 /// struct with pg information parsed from the resource.
-std::optional<PgFormattedResourceData> ParsePgFormattedResource(const std::string &resource);
+std::optional<PgFormattedResourceData> ParsePgFormattedResource(
+    const std::string &resource);
 
 /// Generate debug information of given bundles.
 std::string GetDebugStringForBundles(

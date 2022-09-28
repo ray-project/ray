@@ -143,7 +143,8 @@ std::string NodeResourceInstances::DebugString() const {
   return buffer.str();
 };
 
-const TaskResourceInstances &NodeResourceInstances::GetAvailableResourceInstances() const {
+const TaskResourceInstances &NodeResourceInstances::GetAvailableResourceInstances()
+    const {
   return this->available;
 };
 

@@ -449,9 +449,11 @@ bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) co
 
 void LocalResourceManager::RecordMetrics() const {
   const auto &local_resources = GetLocalResources();
-  const auto &avail_map = local_resources.GetAvailableResourceInstances().ToResourceRequest().ToResourceMap();
-  const auto &total_map = local_resources.GetTotalResourceInstances().ToResourceRequest().ToResourceMap();
-  
+  const auto &avail_map =
+      local_resources.GetAvailableResourceInstances().ToResourceRequest().ToResourceMap();
+  const auto &total_map =
+      local_resources.GetTotalResourceInstances().ToResourceRequest().ToResourceMap();
+
   // id -> {used, avail, pg_used, pg_avail}
 
   for (const auto &it : total_map) {
@@ -479,15 +481,11 @@ void LocalResourceManager::RecordMetrics() const {
     if (data) {
       continue;
     }
-    
-    ray::stats::STATS_resources.Record(
-        avail,
-        {{"State", "AVAILABLE"},
-         {"Name", resource}});
-    ray::stats::STATS_resources.Record(
-        total - avail,
-        {{"State", "USED"},
-         {"Name", resource}});
+
+    ray::stats::STATS_resources.Record(avail,
+                                       {{"State", "AVAILABLE"}, {"Name", resource}});
+    ray::stats::STATS_resources.Record(total - avail,
+                                       {{"State", "USED"}, {"Name", resource}});
   }
 }
 

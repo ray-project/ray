@@ -435,11 +435,12 @@ pg = ray.util.placement_group(bundles=[{"CPU": 1}])
 ray.get([f.remote() for _ in range(2)])"""
 
     proc = run_string_as_driver_nonblocking(driver)
+
     def verify():
         state = resources_by_state(info)
         assert ("object_store_memory", "AVAILABLE") in state
         assert ("memory", "AVAILABLE") in state
-        
+
         # Make sure node ip address & pg resources are not in state.
         node_ip_resource = None
         pg_resources = []
@@ -462,7 +463,7 @@ ray.get([f.remote() for _ in range(2)])"""
         assert state[("CPU", "AVAILABLE")] == 1.0
         # 2 tasks + 1 pg
         assert state[("CPU", "USED")] == 3.0
-        assert ("GPU", "AVAILABLE") not in state # since it is 0
+        assert ("GPU", "AVAILABLE") not in state  # since it is 0
         assert state[("GPU", "USED")] == 2.0
 
         # Verify custom resources
@@ -470,9 +471,7 @@ ray.get([f.remote() for _ in range(2)])"""
         assert state[("a", "USED")] == 2.0
         return True
 
-    wait_for_condition(
-        verify, timeout=20, retry_interval_ms=500
-    )
+    wait_for_condition(verify, timeout=20, retry_interval_ms=500)
     proc.kill()
 
 

@@ -144,13 +144,15 @@ std::string GetOriginalResourceNameFromWildcardResource(const std::string &resou
   return match_groups[1].str();
 }
 
-std::optional<PgFormattedResourceData> ParsePgFormattedResource(const std::string &resource) {
+std::optional<PgFormattedResourceData> ParsePgFormattedResource(
+    const std::string &resource) {
   // Check if it is a wildcard pg resource.
   PgFormattedResourceData data;
   static const std::regex wild_card_resource_pattern("^(.*)_group_([0-9a-f]+)$");
   std::smatch match_groups;
 
-  if (std::regex_match(resource, match_groups, wild_card_resource_pattern) && match_groups.size() == 3) {
+  if (std::regex_match(resource, match_groups, wild_card_resource_pattern) &&
+      match_groups.size() == 3) {
     data.original_resource = match_groups[1].str();
     data.bundle_index = -1;
     return data;
@@ -168,7 +170,6 @@ std::optional<PgFormattedResourceData> ParsePgFormattedResource(const std::strin
   // If it is not a wildcard or pg formatted resource, return nullopt.
   return {};
 }
-
 
 std::string GetDebugStringForBundles(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles) {
