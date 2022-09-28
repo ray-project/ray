@@ -9,7 +9,11 @@ from ray.rllib.policy.sample_batch import (
 )
 from ray.rllib.policy import Policy
 from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
-from ray.rllib.utils.annotations import DeveloperAPI, is_overridden
+from ray.rllib.utils.annotations import (
+    DeveloperAPI,
+    is_overridden,
+    OverrideToImplementCustomLogic,
+)
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import TensorType, SampleBatchType
@@ -36,13 +40,15 @@ class OffPolicyEstimator(OfflineEvaluator):
         self.gamma = gamma
 
     @DeveloperAPI
+    @OverrideToImplementCustomLogic
     def estimate_multi_step(self, episode: SampleBatch, **kwargs) -> Dict[str, Any]:
         """Returns off-policy estimates for the given one episode.
 
         Args:
             batch: The episode to calculate the off-policy estimates (OPE) on. The
             episode must be a sample batch type that contains the fields "obs",
-            "actions", and "action_prob".
+            "actions", and "action_prob" and it needs to represent a
+            complete trajectory.
 
         Returns:
             The off-policy estimates (OPE) calculated on the given episode. The returned
@@ -51,13 +57,14 @@ class OffPolicyEstimator(OfflineEvaluator):
         raise NotImplementedError
 
     @DeveloperAPI
+    @OverrideToImplementCustomLogic
     def estimate_single_step(self, batch: SampleBatch, **kwargs) -> Dict[str, Any]:
         """Returns off-policy estimates for the batch of single timesteps. This is
         highly optimized for bandits assuming each episode is a single timestep.
 
         Args:
-            batch: The episode to calculate the off-policy estimates (OPE) on. The
-            episode must be a sample batch type that contains the fields "obs",
+            batch: The batch to calculate the off-policy estimates (OPE) on. The
+            batch must be a sample batch type that contains the fields "obs",
             "actions", and "action_prob".
 
         Returns:

@@ -1814,7 +1814,7 @@ py_test(
     name = "test_feature_importance",
     tags = ["team:rllib", "offline", "torch_only"],
     size = "medium",
-    srcs = ["offline/estimators/tests/test_feature_importance.py"]
+    srcs = ["offline/tests/test_feature_importance.py"]
 )
 
 py_test(

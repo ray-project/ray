@@ -912,7 +912,7 @@ class Algorithm(Trainable):
                         )
                     if self.reward_estimators:
                         # TODO: (kourosh) This approach will cause an OOM issue when
-                        # the dataset gets huge
+                        # the dataset gets huge (should be ok for now).
                         all_batches.extend(batches)
 
                     agent_steps_this_iter += _agent_steps
