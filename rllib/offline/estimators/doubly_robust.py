@@ -77,7 +77,7 @@ class DoublyRobust(OffPolicyEstimator):
         ), "self.model must implement `estimate_q`!"
 
     @override(OffPolicyEstimator)
-    def estimate_multi_step(self, episode: SampleBatchType) -> Dict[str, float]:
+    def estimate_on_episode(self, episode: SampleBatchType) -> Dict[str, float]:
         estimates_per_epsiode = {"v_behavior": None, "v_target": None}
 
         rewards, old_prob = episode["rewards"], episode["action_prob"]

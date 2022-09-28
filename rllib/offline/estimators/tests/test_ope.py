@@ -96,36 +96,44 @@ class TestOPEMath(unittest.TestCase):
         cls.good_target_policy = FakePolicy(cls.sample_batch, improved=True)
         cls.bad_target_policy = FakePolicy(cls.sample_batch, improved=False)
 
-
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
 
+    def test_is_and_wis_math(self):
+        """Tests that the importance sampling and weighted importance sampling 
+        methods are correct based on the math."""
 
-    def test_is_math(self):
-        estimator_good = ImportanceSampling(self.good_target_policy, gamma=0)
-        s = time.time()
-        estimate_1 = estimator_good.estimate(
-            self.sample_batch, split_batch_by_episode=True,
-        )
-        dt1 = time.time() - s
-        s = time.time()
-        estimate_2 = estimator_good.estimate(
-            self.sample_batch, split_batch_by_episode=False
-        )
-        dt2 = time.time() - s
+        ope_classes = [
+            ImportanceSampling,
+            WeightedImportanceSampling,
+        ]
 
-        breakpoint()
-        # check if the v_gain is larger than 1
-        self.assertGreater(estimate_2["v_gain"], 1)
+        for class_module in ope_classes:
+            estimator_good = class_module(self.good_target_policy, gamma=0)
 
-        # check that the estimates are the same
-        check(estimate_1, estimate_2)
+            s = time.time()
+            estimate_1 = estimator_good.estimate(
+                self.sample_batch, split_batch_by_episode=True,
+            )
+            dt1 = time.time() - s
 
-        self.assertGreater(dt1, dt2, 
-            f"in bandits split_by_episode = False should improve "
-            f"performance, dt2={dt2}, dt1={dt1}"
-        )
+            s = time.time()
+            estimate_2 = estimator_good.estimate(
+                self.sample_batch, split_batch_by_episode=False
+            )
+            dt2 = time.time() - s
+            
+            # check if the v_gain is larger than 1
+            self.assertGreater(estimate_2["v_gain"], 1)
+
+            # check that the estimates are the same
+            check(estimate_1, estimate_2)
+
+            self.assertGreater(dt1, dt2, 
+                f"in bandits split_by_episode = False should improve "
+                f"performance, dt2={dt2}, dt1={dt1}"
+            )
 
 
 class TestOPE(unittest.TestCase):

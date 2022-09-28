@@ -41,7 +41,7 @@ class OffPolicyEstimator(OfflineEvaluator):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    def estimate_multi_step(self, episode: SampleBatch, **kwargs) -> Dict[str, Any]:
+    def estimate_on_episode(self, episode: SampleBatch, **kwargs) -> Dict[str, Any]:
         """Returns off-policy estimates for the given one episode.
 
         Args:
@@ -111,7 +111,7 @@ class OffPolicyEstimator(OfflineEvaluator):
                     "the batch by episodes. Each row in the dataset should be "
                     "one episode. Check your evaluation dataset for errors."
                 )
-                estimate_step_results = self.estimate_multi_step(episode)
+                estimate_step_results = self.estimate_on_episode(episode)
                 estimates_per_epsiode.append(estimate_step_results)
 
             # turn a list of identical dicts into a dict of lists

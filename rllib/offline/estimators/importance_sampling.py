@@ -24,7 +24,7 @@ class ImportanceSampling(OffPolicyEstimator):
     For more information refer to https://arxiv.org/pdf/1911.06854.pdf"""
 
     @override(OffPolicyEstimator)
-    def estimate_multi_step(self, episode: SampleBatch) -> Dict[str, float]:
+    def estimate_on_episode(self, episode: SampleBatch) -> Dict[str, float]:
         estimates_per_epsiode = {"v_behavior": None, "v_target": None}
 
         rewards, old_prob = episode["rewards"], episode["action_prob"]
