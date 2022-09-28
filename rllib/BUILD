@@ -782,13 +782,6 @@ py_test(
 )
 
 py_test(
-    name = "test_worker_failures",
-    tags = ["team:rllib", "tests_dir", "tests_dir_W"],
-    size = "large",
-    srcs = ["tests/test_worker_failures.py"]
-)
-
-py_test(
     name = "test_node_failure",
     tags = ["team:rllib", "tests_dir", "tests_dir_N", "exclusive"],
     size = "large",
@@ -800,6 +793,13 @@ py_test(
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "small",
     srcs = ["algorithms/tests/test_registry.py"],
+)
+
+py_test(
+    name = "test_worker_failures",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "large",
+    srcs = ["algorithms/tests/test_worker_failures.py"]
 )
 
 # Specific Algorithms
@@ -1340,7 +1340,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"num_steps_sampled_before_learning_starts\": 0, \"off_policy_estimation_methods\": {\"wis\": {\"type\": \"wis\"}, \"is\": {\"type\": \"is\"}}, \"exploration_config\": {\"type\": \"SoftQ\"}}'"
+        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"num_steps_sampled_before_learning_starts\": 0, \"off_policy_estimation_methods\": {\"wis\": {\"type\": \"ray.rllib.offline.estimators.weighted_importance_sampling.WeightedImportanceSampling\"}, \"is\": {\"type\": \"ray.rllib.offline.estimators.importance_sampling.ImportanceSampling\"}}, \"exploration_config\": {\"type\": \"SoftQ\"}}'"
         ]
 )
 
