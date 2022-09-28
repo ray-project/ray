@@ -423,10 +423,17 @@ def compute_q_values(
     explore=None,
     is_training: bool = False,
 ):
-    config = policy.config
 
+    config = policy.config
     model_out, state = model(input_dict, state_batches or [], seq_lens)
 
+    # ADDED
+    if hasattr(model, "mask"):
+        mask = model.mask
+    else:
+        mask = 0
+    print("mask")
+    print(mask)
     if config["num_atoms"] > 1:
         (
             action_scores,
@@ -459,12 +466,16 @@ def compute_q_values(
             value = torch.sum(z * support_prob_per_action, dim=-1)
             logits = support_logits_per_action
             probs_or_logits = support_prob_per_action
+
         else:
             advantages_mean = reduce_mean_ignore_inf(action_scores, 1)
             advantages_centered = action_scores - torch.unsqueeze(advantages_mean, 1)
             value = state_score + advantages_centered
     else:
         value = action_scores
+
+    # ADDED
+    value += mask
 
     return value, logits, probs_or_logits, state
 
