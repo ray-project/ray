@@ -1,19 +1,19 @@
-from ray.train.torch import TorchPredictor
-from ray.train.batch_predictor import BatchPredictor
-from ray.air.checkpoint import Checkpoint
 from pathlib import Path
 import torch
 
+from ray.train.mosaic.mosaic_checkpoint import MosaicCheckpoint
+from ray.train.torch import TorchPredictor
+from ray.train.mosaic.mosaic_checkpoint import load_model_from_path
 
-class MosaicPredictor(BatchPredictor):
-    """A BatchPredictor wrapper for Mosaic's Composer models.
+class MosaicPredictor(TorchPredictor):
+    """A TorchPredictor wrapper for Mosaic's Composer models.
 
     The state dicts saved by composer ``CheckpointSaver``s have extra
     wrapping around normal PyTorch models' state dict. As such, it is
     necessary to unwrap those to properly load models from saved checkpoints.
-    Additionally, existing class methods of BatchPredictor does not allow
+    Additionally, existing class methods of TorchPredictor does not allow
     directly using checkpoint path, but rather takes a ray checkpoint object,
-    this wrapper provides creating a BatchPredictor from a checkpoint path.
+    this wrapper provides creating a TorchPredictor from a checkpoint path.
     """
 
     @classmethod
@@ -21,51 +21,44 @@ class MosaicPredictor(BatchPredictor):
         cls,
         path: Path,
         model: torch.nn.Module,
+        use_gpu: bool = False,
         strict: bool = False,
-        **predictor_kwargs
     ):
         """
-        This function creates a BatchPredictor from a saved Composer checkpoint.
-        Because Composer library is built on PyTorch, ``TorchPredictor`` is used
-        as the ``predictor_cls``
+        This function creates a TorchPredictor from a saved Composer checkpoint.
 
         Args:
             path: Path to the saved checkpoint object
             model: the model to which the saved checkpoint will be loaded. This
                 model should be a bare torch model, without any composer wrapping.
+            use_gpu: If set, the model will be moved to GPU on instantiation and
+                prediction happens on GPU.
             strict: the boolean variable for strict state_dict loading onto the model
         """
-        model_state_dict = torch.load(path)["state"]["model"]
-
-        # remove module prefixes when loading the model weights
-        while True:
-            prefix_removed = False
-            prefix = "module."
-            keys = sorted(model_state_dict.keys())
-            for key in keys:
-                if key.startswith(prefix):
-                    newkey = key[len(prefix) :]
-                    model_state_dict[newkey] = model_state_dict.pop(key)
-                    prefix_removed = True
-
-            if not prefix_removed:
-                break
-        model.load_state_dict(model_state_dict, strict=strict)
-        checkpoint = Checkpoint.from_dict({"model": model.state_dict()})
+        model = load_model_from_path(path, model, strict)
         return cls(
-            checkpoint=checkpoint,
-            predictor_cls=TorchPredictor,
             model=model,
-            **predictor_kwargs
+            use_gpu=use_gpu
         )
 
     @classmethod
     def from_checkpoint(
         cls,
-        checkpoint: Checkpoint,
+        checkpoint: MosaicCheckpoint,
         model: torch.nn.Module,
+        use_gpu: bool = False,
         strict: bool = False,
-        **predictor_kwargs
+
     ):
+        """This function creates a MosaicPredictor from a MosaicCheckpoint.
+
+        Args:
+            checkpoint: MosaicCheckpoint from which the save path will be loaded.
+            model: the model to which the saved checkpoint will be loaded. This
+                model should be a bare torch model, without any composer wrapping.
+            use_gpu: If set, the model will be moved to GPU on instantiation and
+                prediction happens on GPU.
+            strict: the boolean variable for strict state_dict loading onto the model
+        """
         save_path = checkpoint.to_dict()["last_checkpoint"][-1]
-        return cls.from_save_path(save_path, model, strict, **predictor_kwargs)
+        return cls.from_save_path(save_path, model, use_gpu, strict)

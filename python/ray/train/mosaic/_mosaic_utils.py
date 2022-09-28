@@ -1,16 +1,18 @@
 import math
 from typing import Any, Dict, Tuple, Union, Iterable
+from pathlib import Path
+import torch
 
 from ray.air.checkpoint import Checkpoint
 from ray.air import session
 from ray.data.dataset import Dataset
+from ray.train.mosaic.mosaic_checkpoint import MosaicCheckpoint
 
 from composer.loggers import Logger
 from composer.loggers.logger import LogLevel
 from composer.loggers.logger_destination import LoggerDestination
 from composer.core.state import State
 from composer.callbacks.checkpoint_saver import CheckpointSaver
-import torch
 
 
 class _mosaic_iterator:
@@ -201,7 +203,7 @@ class RayTrainReportCallback(CheckpointSaver):
 
     def close(self, state: State, logger: Logger) -> None:
         del logger  # unused
-        checkpoint = Checkpoint.from_dict(
+        checkpoint = MosaicCheckpoint.from_dict(
             {
                 "last_checkpoint": self.last_checkpoint,
                 "in_memory_logger": self.in_memory_logger,
@@ -227,7 +229,8 @@ class RayTrainReportCallback(CheckpointSaver):
             self.checkpoint_count = len(self.saved_checkpoints)
             session.report(
                 metrics=self.ray_logger.data,
-                checkpoint=Checkpoint.from_dict(
+                checkpoint=MosaicCheckpoint.from_dict(
                     {"last_checkpoint": self.last_checkpoint}
                 ),
             )
+
