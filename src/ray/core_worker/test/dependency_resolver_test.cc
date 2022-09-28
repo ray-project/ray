@@ -93,11 +93,6 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_contained_ids += contained_ids.size();
   }
 
-  void MarkTaskReturnObjectsFailed(
-      const TaskSpecification &spec,
-      rpc::ErrorType error_type,
-      const rpc::RayErrorInfo *ray_error_info = nullptr) override {}
-
   bool MarkTaskCanceled(const TaskID &task_id) override { return true; }
 
   absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
