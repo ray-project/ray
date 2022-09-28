@@ -69,10 +69,6 @@ class ClusterManager(abc.ABC):
             f"{dict_hash(self.cluster_env)}"
         )
 
-    def override_env_var_if_not_already_set(self, key, value):
-        if key not in self.cluster_env["env_vars"]:
-            self.cluster_env["env_vars"][key] = value
-
     def set_cluster_compute(self, cluster_compute: Dict[str, Any]):
         self.cluster_compute = cluster_compute
         self.cluster_compute_name = (
