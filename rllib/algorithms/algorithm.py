@@ -942,7 +942,10 @@ class Algorithm(Trainable):
             for name, estimator in self.reward_estimators.items():
                 for batch in all_batches:
                     estimate_result = estimator.estimate(
-                        batch, split_batch_by_episode=self.config["ope_split_batch_by_episode"]
+                        batch,
+                        split_batch_by_episode=self.config[
+                            "ope_split_batch_by_episode"
+                        ],
                     )
                     estimates[name].append(estimate_result)
 

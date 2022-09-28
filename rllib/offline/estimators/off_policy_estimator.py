@@ -58,9 +58,8 @@ class OffPolicyEstimator(OfflineEvaluator):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    def estimate_single_step(self, 
-        batch: SampleBatch, 
-        **kwargs
+    def estimate_single_step(
+        self, batch: SampleBatch, **kwargs
     ) -> Dict[str, Sequence[float]]:
         """Returns off-policy estimates for the batch of single timesteps. This is
         highly optimized for bandits assuming each episode is a single timestep.
@@ -72,7 +71,7 @@ class OffPolicyEstimator(OfflineEvaluator):
 
         Returns:
             The off-policy estimates (OPE) calculated on the given episode. The returned
-            dict can be any arbitrary mapping of strings to a list of floats capturing 
+            dict can be any arbitrary mapping of strings to a list of floats capturing
             the values per each record.
         """
         raise NotImplementedError

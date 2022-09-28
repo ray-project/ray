@@ -32,41 +32,20 @@ class WeightedImportanceSampling(OffPolicyEstimator):
     @override(OffPolicyEstimator)
     def __init__(self, policy: Policy, gamma: float):
         super().__init__(policy, gamma)
-        self.filter_values = [] # map from time to cummulative propensity values
+        self.filter_values = []  # map from time to cummulative propensity values
         # map from time to number of episodes that reached this time
         self.filter_counts = []
-        self.p = {} # map from eps id to mapping from time to propensity values
+        self.p = {}  # map from eps id to mapping from time to propensity values
 
     @override(OffPolicyEstimator)
     def estimate_on_episode(self, episode: SampleBatch) -> Dict[str, float]:
         estimates_per_epsiode = {"v_behavior": None, "v_target": None}
-        rewards, old_prob = episode["rewards"], episode["action_prob"]
-        # log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, episode)
-        # new_prob = np.exp(convert_to_numpy(log_likelihoods))
-
-        # # calculate importance ratios
-        # p = []
-        # for t in range(episode.count):
-        #     if t == 0:
-        #         pt_prev = 1.0
-        #     else:
-        #         pt_prev = p[t - 1]
-        #     p.append(pt_prev * new_prob[t] / old_prob[t])
-
-        # for t, v in enumerate(p):
-        #     if t >= len(self.filter_values):
-        #         self.filter_values.append(v)
-        #         self.filter_counts.append(1.0)
-        #     else:
-        #         self.filter_values[t] += v
-        #         self.filter_counts[t] += 1.0
-
-
+        rewards = episode["rewards"]
 
         eps_id = episode[SampleBatch.EPS_ID][0]
         if eps_id not in self.p:
             raise ValueError(f"Episode {eps_id} not passed through the fit function")
-        
+
         # calculate stepwise weighted IS estimate
         v_behavior = 0.0
         v_target = 0.0
