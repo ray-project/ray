@@ -243,7 +243,9 @@ class SyncSampler(SamplerInput):
         self.render = render
 
         if worker.policy_config.get("enable_connectors", False):
-            self._env_runner = EnvRunnerV2(
+            # Keep a reference to the underlying EnvRunnerV2 instance for
+            # unit testing purpose.
+            self._env_runner_obj = EnvRunnerV2(
                 worker=worker,
                 base_env=self.base_env,
                 horizon=self.horizon,
@@ -255,7 +257,8 @@ class SyncSampler(SamplerInput):
                 rollout_fragment_length=rollout_fragment_length,
                 count_steps_by=count_steps_by,
                 render=self.render,
-            ).run()
+            )
+            self._env_runner = self._env_runner_obj.run()
         else:
             # Create the rollout generator to use for calls to `get_data()`.
             self._env_runner = _env_runner(
