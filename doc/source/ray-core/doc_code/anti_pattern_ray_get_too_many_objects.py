@@ -4,6 +4,7 @@ import numpy as np
 
 ray.init()
 
+
 def process_results(results):
     # custom process logic
     pass
@@ -11,7 +12,7 @@ def process_results(results):
 
 @ray.remote
 def return_big_object():
-    return np.zeros(1024*10)
+    return np.zeros(1024 * 10)
 
 
 NUM_TASKS = 1000
@@ -28,7 +29,8 @@ BATCH_SIZE = 100
 while object_refs:
     # Process results in the finish order instead of the submission order.
     ready_object_refs, object_refs = ray.wait(object_refs, num_returns=BATCH_SIZE)
-    # The node only needs enough space to store a batch of objects instead of all objects.
+    # The node only needs enough space to store
+    # a batch of objects instead of all objects.
     results = ray.get(ready_object_refs)
     process_results(results)
 # __better_approach_end__
