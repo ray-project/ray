@@ -105,7 +105,7 @@ class CheckpointManager(CommonCheckpointManager):
         checkpoint_metadata = checkpoint_results[0].metadata or {}
 
         # Decode checkpoint if it's not persisted
-        if checkpoint.uri:
+        if checkpoint_data.uri:
             checkpoint_data = checkpoint_data.to_directory()
             checkpoint_data_dict = {}
         else:
