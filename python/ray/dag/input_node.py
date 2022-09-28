@@ -19,7 +19,7 @@ class InputNode(DAGNode):
 
     >>> Example:
     >>>            m1.forward
-    >>>            /       \\
+    >>>            /       \
     >>>    dag_input     ensemble -> dag_output
     >>>            \       /
     >>>            m2.forward
