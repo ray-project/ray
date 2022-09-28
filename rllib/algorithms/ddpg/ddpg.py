@@ -311,7 +311,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.ddpg.ddpg::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.ddpg.ddpg.DDPGConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

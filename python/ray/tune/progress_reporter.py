@@ -6,6 +6,7 @@ import numbers
 
 import os
 import sys
+import textwrap
 import time
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -902,7 +903,9 @@ def _trial_progress_str(
     return delim.join(messages)
 
 
-def _max_len(value: Any, max_len: int = 20, add_addr: bool = False) -> Any:
+def _max_len(
+    value: Any, max_len: int = 20, add_addr: bool = False, wrap: bool = False
+) -> Any:
     """Abbreviate a string representation of an object to `max_len` characters.
 
     For numbers, booleans and None, the original value will be returned for
@@ -922,11 +925,20 @@ def _max_len(value: Any, max_len: int = 20, add_addr: bool = False) -> Any:
     if len(string) <= max_len:
         return string
 
+    if wrap:
+        # Maximum two rows.
+        # Todo: Make this configurable in the refactor
+        if len(value) > max_len * 2:
+            value = "..." + string[(3 - (max_len * 2)) :]
+
+        wrapped = textwrap.wrap(value, width=max_len)
+        return "\n".join(wrapped)
+
     if add_addr and not isinstance(value, (int, float, bool)):
         result = f"{string[: (max_len - 5)]}_{hex(id(value))[-4:]}"
         return result
 
-    result = f"{string[: (max_len - 3)]}..."
+    result = "..." + string[(3 - max_len) :]
     return result
 
 
@@ -1039,19 +1051,29 @@ def _get_progress_table_data(
     # Format column headings
     if isinstance(metric_columns, Mapping):
         formatted_metric_columns = [
-            _max_len(metric_columns[k], max_len=max_column_length, add_addr=False)
+            _max_len(
+                metric_columns[k], max_len=max_column_length, add_addr=False, wrap=True
+            )
             for k in metric_keys
         ]
     else:
-        formatted_metric_columns = metric_keys
+        formatted_metric_columns = [
+            _max_len(k, max_len=max_column_length, add_addr=False, wrap=True)
+            for k in metric_keys
+        ]
     if isinstance(parameter_columns, Mapping):
         formatted_parameter_columns = [
-            _max_len(parameter_columns[k], max_len=max_column_length, add_addr=False)
+            _max_len(
+                parameter_columns[k],
+                max_len=max_column_length,
+                add_addr=False,
+                wrap=True,
+            )
             for k in parameter_keys
         ]
     else:
         formatted_parameter_columns = [
-            _max_len(k, max_len=max_column_length, add_addr=False)
+            _max_len(k, max_len=max_column_length, add_addr=False, wrap=True)
             for k in parameter_keys
         ]
     columns = (
