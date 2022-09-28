@@ -109,6 +109,7 @@ def test_read_text_partitioned_with_filter(
         ray.get(kept_file_counter.reset.remote())
         ray.get(skipped_file_counter.reset.remote())
 
+
 def test_read_text_remote_args(ray_start_cluster, tmp_path):
     cluster = ray_start_cluster
     cluster.add_node(
