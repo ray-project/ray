@@ -450,10 +450,30 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def test_space_in_preferred_format(self):
         env = NestedMultiAgentEnv()
+        action_spaces_in_preferred_format = (
+            env._check_if_action_space_maps_agent_id_to_sub_space()
+        )
+        obs_space_in_preferred_format = (
+            env._check_if_obs_space_maps_agent_id_to_sub_space()
+        )
         spaces_in_preferred_format = env._check_if_space_maps_agent_id_to_sub_space()
-        assert spaces_in_preferred_format, "Space is not in preferred format"
+        assert action_spaces_in_preferred_format, "Space is not in preferred format."
+        assert obs_space_in_preferred_format, "Space is not in preferred format."
+        assert spaces_in_preferred_format, "Space is not in preferred format."
         env2 = make_multi_agent("CartPole-v1")()
         spaces_in_preferred_format = env2._check_if_space_maps_agent_id_to_sub_space()
+        action_spaces_in_preferred_format = (
+            env2._check_if_action_space_maps_agent_id_to_sub_space()
+        )
+        obs_space_in_preferred_format = (
+            env2._check_if_obs_space_maps_agent_id_to_sub_space()
+        )
+        assert (
+            not action_spaces_in_preferred_format
+        ), "Space should not be in preferred format but is."
+        assert (
+            not obs_space_in_preferred_format
+        ), "Space should not be in preferred format but is."
         assert (
             not spaces_in_preferred_format
         ), "Space should not be in preferred format but is."
