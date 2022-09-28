@@ -796,7 +796,8 @@ class TrainingIterator:
             result_type = first_result.type
             if result_type is TrainingResultType.REPORT:
                 result_data = [
-                    self._backend.decode_data(r.data) if r.encoded else r.data for r in results
+                    self._backend.decode_data(r.data) if r.encoded else r.data
+                    for r in results
                 ]
                 return result_data
             elif result_type is TrainingResultType.CHECKPOINT:
