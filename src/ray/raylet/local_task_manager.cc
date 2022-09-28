@@ -153,13 +153,11 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           int64_t target_time = get_time_ms_() + wait_time;
           sched_cls_info.next_update_time =
               std::min(target_time, sched_cls_info.next_update_time);
+
+          // While we're over capacity and cannot run the task,
+          // try to spill to a node that can run it.
           bool did_spill = TrySpillback(work, is_infeasible);
           if (did_spill) {
-            num_unschedulable_task_spilled_++;
-            if (!spec.GetDependencies().empty()) {
-              task_dependency_manager_.RemoveTaskDependencies(
-                  task.GetTaskSpecification().TaskId());
-            }
             work_it = dispatch_queue.erase(work_it);
             continue;
           }
@@ -238,11 +236,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           work->SetStateWaiting(
               internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE);
           break;
-        }
-        num_unschedulable_task_spilled_++;
-        if (!spec.GetDependencies().empty()) {
-          task_dependency_manager_.RemoveTaskDependencies(
-              task.GetTaskSpecification().TaskId());
         }
         work_it = dispatch_queue.erase(work_it);
       } else {
@@ -393,6 +386,10 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
 
   NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
   Spillback(node_id, work);
+  num_unschedulable_task_spilled_++;
+  if (!spec.GetDependencies().empty()) {
+    task_dependency_manager_.RemoveTaskDependencies(task.GetTaskSpecification().TaskId());
+  }
   return true;
 }
 
