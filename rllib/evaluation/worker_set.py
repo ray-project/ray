@@ -781,9 +781,6 @@ class WorkerSet:
             Dict[PolicyID, Tuple[gym.spaces.Space, gym.spaces.Space]]
         ] = None,
     ) -> Union[RolloutWorker, ActorHandle]:
-        def session_creator():
-            logger.debug("Creating TF session {}".format(config["tf_session_args"]))
-            return tf1.Session(config=tf1.ConfigProto(**config["tf_session_args"]))
 
         def valid_module(class_path):
             if (
@@ -892,7 +889,7 @@ class WorkerSet:
             policy_spec=policy_specs,
             policy_mapping_fn=config["multiagent"]["policy_mapping_fn"],
             policies_to_train=config["multiagent"]["policies_to_train"],
-            tf_session_creator=(session_creator if config["tf_session_args"] else None),
+            tf_session_creator=None,
             rollout_fragment_length=config["rollout_fragment_length"],
             count_steps_by=config["multiagent"]["count_steps_by"],
             batch_mode=config["batch_mode"],

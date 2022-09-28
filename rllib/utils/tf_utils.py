@@ -246,6 +246,8 @@ def get_tf_eager_cls_if_necessary(
         raise ImportError("Could not import tensorflow!")
 
     if framework in ["tf2", "tfe"]:
+        if not tf1.executing_eagerly():
+            tf1.enable_eager_execution()
         assert tf1.executing_eagerly()
 
         from ray.rllib.policy.tf_policy import TFPolicy

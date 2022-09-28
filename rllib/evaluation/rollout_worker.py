@@ -47,9 +47,13 @@ from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import Filter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.policy import create_policy_for_framework
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
-from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
+from ray.rllib.utils.tf_utils import (
+    get_gpu_devices as get_tf_gpu_devices,
+    get_tf_eager_cls_if_necessary,
+)
 from ray.rllib.utils.typing import (
     AgentID,
     EnvConfigDict,
@@ -214,7 +218,7 @@ class RolloutWorker(ParallelIteratorWorker):
         policies_to_train: Union[
             Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]
         ] = None,
-        tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
+        tf_session_creator=None,
         rollout_fragment_length: int = 100,
         count_steps_by: str = "env_steps",
         batch_mode: str = "truncate_episodes",
@@ -274,8 +278,6 @@ class RolloutWorker(ParallelIteratorWorker):
             policies_to_train: Optional container of policies to train (None
                 for all policies), or a callable taking PolicyID and
                 SampleBatchType and returning a bool (trainable or not?).
-            tf_session_creator: A function that returns a TF session.
-                This is optional and only useful with TFPolicy.
             rollout_fragment_length: The target number of steps
                 (measured in `count_steps_by`) to include in each sample
                 batch returned from this worker.
@@ -613,7 +615,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self._build_policy_map(
             self.policy_dict,
             policy_config,
-            session_creator=tf_session_creator,
+            #session_creator=tf_session_creator,
             seed=seed,
         )
 
@@ -1778,7 +1780,6 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_dict: MultiAgentPolicyConfigDict,
         policy_config: PartialAlgorithmConfigDict,
         policy: Optional[Policy] = None,
-        session_creator: Optional[Callable[[], "tf1.Session"]] = None,
         seed: Optional[int] = None,
     ) -> None:
         """Adds the given policy_dict to `self.policy_map`.
@@ -1790,8 +1791,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 by individual policy config overrides in the given
                 multi-agent `policy_dict`.
             policy: If the policy to add already exists, user can provide it here.
-            session_creator: A callable that creates a tf session
-                (if applicable).
             seed: An optional random seed to pass to PolicyMap's
                 constructor.
         """
@@ -1799,13 +1798,13 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # If our policy_map does not exist yet, create it here.
         self.policy_map = self.policy_map or PolicyMap(
-            worker_index=self.worker_index,
-            num_workers=self.num_workers,
+            #worker_index=self.worker_index,
+            #num_workers=self.num_workers,
             capacity=ma_config.get("policy_map_capacity"),
-            path=ma_config.get("policy_map_cache"),
-            policy_config=policy_config,
-            session_creator=session_creator,
-            seed=seed,
+            #path=ma_config.get("policy_map_cache"),
+            #policy_config=policy_config,
+            #session_creator=session_creator,
+            #seed=seed,
         )
         # If our preprocessors dict does not exist yet, create it here.
         self.preprocessors = self.preprocessors or {}
@@ -1843,18 +1842,22 @@ class RolloutWorker(ParallelIteratorWorker):
                     # the running of these preprocessors.
                     self.preprocessors[name] = preprocessor
 
-            if policy is not None:
-                self.policy_map.insert_policy(name, policy)
-            else:
-                # Create the actual policy object.
-                self.policy_map.create_policy(
+            # Create the actual policy object.
+            if policy is None:
+                policy = create_policy_for_framework(
                     name,
-                    policy_spec.policy_class,
+                    get_tf_eager_cls_if_necessary(
+                        policy_spec.policy_class, merged_conf
+                    ),
+                    merged_conf,
                     obs_space,
                     policy_spec.action_space,
-                    policy_spec.config,  # overrides.
-                    merged_conf,
+                    self.worker_index,
+                    self.session_creator,
+                    self.seed,
                 )
+
+            self.policy_map[name] = policy
 
             if connectors_enabled and name in self.policy_map:
                 create_connectors_for_policy(self.policy_map[name], policy_config)

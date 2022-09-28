@@ -28,7 +28,7 @@ tf1, tf, tfv = try_import_tf()
 @PublicAPI
 def create_policy_for_framework(
     policy_id: str,
-    policy_class: "Policy",
+    policy_class: Type["Policy"],
     merged_config: PartialAlgorithmConfigDict,
     observation_space: gym.Space,
     action_space: gym.Space,

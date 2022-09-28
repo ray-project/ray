@@ -1,27 +1,19 @@
 from collections import deque
-import gym
-import os
 import threading
-from typing import Callable, Dict, Optional, Set, Type
+from typing import Dict, Optional, Set
 
-import ray.cloudpickle as pickle
-from ray.rllib.policy.policy import Policy, PolicySpec
-from ray.rllib.utils.annotations import PublicAPI, override
+import ray
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.policy import create_policy_for_framework
-from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.typing import (
-    AlgorithmConfigDict,
-    PartialAlgorithmConfigDict,
-    PolicyID,
-)
-from ray.tune.utils.util import merge_dicts
+from ray.util.annotations import PublicAPI
 
 tf1, tf, tfv = try_import_tf()
 
 
-@PublicAPI
+@PublicAPI(stability="beta")
 class PolicyMap(dict):
     """Maps policy IDs to Policy objects.
 
@@ -32,76 +24,56 @@ class PolicyMap(dict):
 
     def __init__(
         self,
-        worker_index: int,
-        num_workers: int,
+        *,
         capacity: Optional[int] = None,
-        path: Optional[str] = None,
-        policy_config: Optional[AlgorithmConfigDict] = None,
-        session_creator: Optional[Callable[[], "tf1.Session"]] = None,
-        seed: Optional[int] = None,
+        policies_swappable: bool = False,
+
+        # Deprecated args.
+        worker_index=None,
+        num_workers=None,
+        policy_config=None,
+        session_creator=None,
+        seed=None,
     ):
         """Initializes a PolicyMap instance.
 
         Args:
-            worker_index: The worker index of the RolloutWorker this map
-                resides in.
-            num_workers: The total number of remote workers in the
-                WorkerSet to which this map's RolloutWorker belongs to.
             capacity: The maximum number of policies to hold in memory.
                 The least used ones are written to disk/S3 and retrieved
                 when needed.
-            path: The path to store the policy pickle files to. Files
-                will have the name: [policy_id].[worker idx].policy.pkl.
-            policy_config: The Algorithm's base config dict.
-            session_creator: An optional
-                tf1.Session creation callable.
-            seed: An optional seed (used to seed tf policies).
+            policies_swappable: Whether all Policy objects in this map can be
+                "swapped out" by a simple `s = A.get_state(); B.set_state(s)`,
+                where `A` and `B` are policy instances in this map.
         """
         super().__init__()
 
-        self.worker_index = worker_index
-        self.num_workers = num_workers
-        self.session_creator = session_creator
-        self.seed = seed
+        if any(
+            i is not None for i in [
+                policy_config, worker_index, num_workers, session_creator, seed
+            ]
+        ):
+            deprecation_warning(
+                old="PolicyMap([deprecated_args]...)",
+                new="PolicyMap(capacity=..., policies_swappable=...)",
+                error=False,
+            )
 
-        # The file extension for stashed policies (that are no longer available
-        # in-memory but can be reinstated any time from storage).
-        self.extension = f".{self.worker_index}.policy.pkl"
+        self.policies_swappable = policies_swappable
 
         # Dictionary of keys that may be looked up (cached or not).
         self.valid_keys: Set[str] = set()
         # The actual cache with the in-memory policy objects.
         self.cache: Dict[str, Policy] = {}
         # The doubly-linked list holding the currently in-memory objects.
-        self.deque = deque(maxlen=capacity or 10)
-        # The file path where to store overflowing policies.
-        self.path = path or "."
-        # The core config to use. Each single policy's config override is
-        # added on top of this.
-        self.policy_config: AlgorithmConfigDict = policy_config or {}
-        # The orig classes/obs+act spaces, and config overrides of the
-        # Policies.
-        self.policy_specs: Dict[PolicyID, PolicySpec] = {}
+        self.deque = deque(maxlen=capacity or 100)
 
         # Lock used for locking some methods on the object-level.
         # This prevents possible race conditions when accessing the map
         # and the underlying structures, like self.deque and others.
         self._lock = threading.RLock()
 
-    def insert_policy(
-        self, policy_id: PolicyID, policy: Policy, config_override=None
-    ) -> None:
-        self[policy_id] = policy
-
-        # Store spec (class, obs-space, act-space, and config overrides) such
-        # that the map will be able to reproduce on-the-fly added policies
-        # from disk.
-        self.policy_specs[policy_id] = PolicySpec(
-            policy_class=type(policy),
-            observation_space=policy.observation_space,
-            action_space=policy.action_space,
-            config=config_override if config_override is not None else policy.config,
-        )
+        # Ray object store references to the stashed Policy states.
+        self._policy_state_refs = {}
 
     def create_policy(
         self,
@@ -131,6 +103,10 @@ class PolicyMap(dict):
         """
         _class = get_tf_eager_cls_if_necessary(policy_cls, merged_config)
 
+        def session_creator():
+            logger.debug("Creating TF session {}".format(config["tf_session_args"]))
+            return tf1.Session(config=tf1.ConfigProto(**config["tf_session_args"]))
+
         policy = create_policy_for_framework(
             policy_id,
             _class,
@@ -148,37 +124,80 @@ class PolicyMap(dict):
     def __getitem__(self, item):
         # Never seen this key -> Error.
         if item not in self.valid_keys:
-            raise KeyError(f"PolicyID '{item}' not found in this PolicyMap!")
+            raise KeyError(
+                f"PolicyID '{item}' not found in this PolicyMap! "
+                f"IDs stored in this map: {self.valid_keys}."
+            )
 
-        # Item already in cache -> Rearrange deque (least recently used) and
-        # return.
+        # Item already in cache -> Rearrange deque (promote `item` to
+        # "most recently used") and return it.
         if item in self.cache:
             self.deque.remove(item)
             self.deque.append(item)
+            return self.cache[item]
+
         # Item not currently in cache -> Get from disk and - if at capacity -
         # remove leftmost one.
         else:
-            self._read_from_disk(policy_id=item)
+            policy_state = ray.get(self._policy_state_refs[item])
 
-        return self.cache[item]
+            # All our policies have same NN-architecture (are "swappable").
+            # -> Get least recently used one, stash its state to disk and load
+            # new policy's state into that one. This way, we save the costly
+            # re-creation step.
+            if self.policies_swappable and len(self.deque) == self.deque.maxlen:
+                old_policy_id = self.deque.popleft()
+                assert old_policy_id in self.cache
+                policy = self.cache[old_policy_id]
+                self._stash_state_to_disk(old_policy_id)
+                self.cache[item] = policy
+                self.deque.append(item)
+            # Policies are different or we are not at capacity:
+            # Have to (re-)create new policy here.
+            else:
+                # Create policy object (from its spec: cls, obs-space, act-space,
+                # config).
+                policy = self.create_policy(
+                    item,
+                    self.policy_specs[item].policy_class,
+                    self.policy_specs[item].observation_space,
+                    self.policy_specs[item].action_space,
+                    self.policy_specs[item].config,
+                )
+            # Restore policy's state and return it.
+            policy.set_state(policy_state)
+            return policy
 
     @with_lock
     @override(dict)
     def __setitem__(self, key, value):
-        # Item already in cache -> Rearrange deque (least recently used).
+        # Item already in cache -> Rearrange deque.
         if key in self.cache:
             self.deque.remove(key)
-            self.deque.append(key)
-            self.cache[key] = value
+
         # Item not currently in cache -> store new value and - if at capacity -
         # remove leftmost one.
         else:
             # Cache at capacity -> Drop leftmost item.
             if len(self.deque) == self.deque.maxlen:
-                self._stash_to_disk()
-            self.deque.append(key)
-            self.cache[key] = value
+                policy_id = self.deque.popleft()
+                self._stash_state_to_disk(policy_id)
+
+        # Promote `key` to "most recently used".
+        self.deque.append(key)
+
+        # Update our cache.
+        self.cache[key] = value
         self.valid_keys.add(key)
+
+        # Store spec (class, observation space, action space, config) such
+        # that the map will be able to reproduce policies from disk.
+        #self.policy_specs[key] = PolicySpec(
+        #    policy_class=type(value),
+        #    observation_space=value.observation_space,
+        #    action_space=value.action_space,
+        #    config=value.config,
+        #)
 
     @with_lock
     @override(dict)
@@ -190,10 +209,8 @@ class PolicyMap(dict):
             policy = self.cache[key]
             self._close_session(policy)
             del self.cache[key]
-        # Remove file associated with the policy, if it exists.
-        filename = self.path + "/" + key + self.extension
-        if os.path.isfile(filename):
-            os.remove(filename)
+        # Remove Ray object store reference so the item gets garbage collected.
+        del self._policy_state_refs[key]
 
     @override(dict)
     def __iter__(self):
@@ -259,50 +276,24 @@ class PolicyMap(dict):
     def __contains__(self, item):
         return item in self.valid_keys
 
-    def _stash_to_disk(self):
+    def _stash_state_to_disk(self, policy_id):
         """Writes the least-recently used policy to disk and rearranges cache.
 
         Also closes the session - if applicable - of the stashed policy.
         """
-        # Get least recently used policy (all the way on the left in deque).
-        delkey = self.deque.popleft()
-        policy = self.cache[delkey]
-        # Get its state for writing to disk.
+        # Get policy's state for writing to disk.
+        policy = self.cache[policy_id]
         policy_state = policy.get_state()
         # Closes policy's tf session, if any.
         self._close_session(policy)
         # Remove from memory. This will clear the tf Graph as well.
-        del self.cache[delkey]
+        del self.cache[policy_id]
+
         # Write state to disk.
-        with open(self.path + "/" + delkey + self.extension, "wb") as f:
-            pickle.dump(policy_state, file=f)
-
-    def _read_from_disk(self, policy_id):
-        """Reads a policy ID from disk and re-adds it to the cache."""
-        # Make sure this policy ID is not in the cache right now.
-        assert policy_id not in self.cache
-        # Read policy state from disk.
-        with open(self.path + "/" + policy_id + self.extension, "rb") as f:
-            policy_state = pickle.load(f)
-
-        # Get class and config override.
-        merged_conf = merge_dicts(
-            self.policy_config, self.policy_specs[policy_id].config
-        )
-
-        # Create policy object (from its spec: cls, obs-space, act-space,
-        # config).
-        self.create_policy(
-            policy_id,
-            self.policy_specs[policy_id].policy_class,
-            self.policy_specs[policy_id].observation_space,
-            self.policy_specs[policy_id].action_space,
-            self.policy_specs[policy_id].config,
-            merged_conf,
-        )
-        # Restore policy's state.
-        policy = self[policy_id]
-        policy.set_state(policy_state)
+        #with open(self.path + "/" + policy_id + self.extension, "wb") as f:
+        #    pickle.dump(policy_state, file=f)
+        #self._secret_stash[policy_id] = policy_state
+        self._secret_stash[policy_id] = ray.put(policy_state)
 
     def _close_session(self, policy):
         sess = policy.get_session()
