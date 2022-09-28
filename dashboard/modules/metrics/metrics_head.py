@@ -163,7 +163,8 @@ def _format_prometheus_output(prom_data: Dict[str, Any]) -> Optional[TaskProgres
                 if metric_name in prometheus_metric_map
                 else "num_unknown"
             )
-            # metric["value"] is a tuple where first item is a timestamp and second item is the value.
+            # metric["value"] is a tuple where first item is a timestamp
+            # and second item is the value.
             metric_value = int(metric["value"][1])
             kwargs[kwarg_name] = kwargs.get(kwarg_name, 0) + metric_value
 
