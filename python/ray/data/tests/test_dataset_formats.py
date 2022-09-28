@@ -1300,7 +1300,7 @@ def test_numpy_read_partitioning(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path, partitioning=Partitioning("hive"))
 
     assert ds.schema().names == ["__value__", "country"]
-    assert list(ds.to_pandas()["country"]) == ["us", "us"]
+    assert [r["country"] for r in ds.take()] == ["us", "us"]
 
 
 def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
