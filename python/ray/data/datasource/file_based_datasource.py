@@ -241,7 +241,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         )
 
     def _convert_block_to_tabular_block(
-        self, block: Block
+        self, block: Block, column_name: Optional[str] = None
     ) -> Union["pyarrow.Table", "pd.DataFrame"]:
         """Convert block returned by `_read_file` or `_read_stream` to a tabular block.
 
@@ -408,6 +408,7 @@ class _FileBasedDatasourceReader(Reader):
         paths, file_sizes = self._paths, self._file_sizes
         read_stream = self._delegate._read_stream
         convert_block_to_tabular_block = self._delegate._convert_block_to_tabular_block
+        column_name = reader_args.get("column_name", None)
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
         read_options = reader_args.get("read_options")
         parse_options = reader_args.get("parse_options")
@@ -473,7 +474,7 @@ class _FileBasedDatasourceReader(Reader):
                 with open_input_source(fs, read_path, **open_stream_args) as f:
                     for data in read_stream(f, read_path, **reader_args):
                         if partitions:
-                            data = convert_block_to_tabular_block(data)
+                            data = convert_block_to_tabular_block(data, column_name)
                             data = _add_partitions(data, partitions)
 
                         output_buffer.add_block(data)
