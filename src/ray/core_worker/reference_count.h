@@ -34,19 +34,20 @@
 namespace ray {
 namespace core {
 
-/// Extract a key to identify a Address so that the flyweight can look 
+/// Extract a key to identify a Address so that the flyweight can look
 /// up the Address from the pool.
 struct AddressWorkeridExtractor {
-  const std::string& operator()(const rpc::Address& addr)const
-  {
+  const std::string &operator()(const rpc::Address &addr) const {
     return addr.worker_id();
   }
 };
 
-/// Since the owner address has high redundency across objects, 
+/// Since the owner address has high redundency across objects,
 /// we use boost::flyweight to maintain an intern table to reduce
-/// memory footprint per object. 
-typedef boost::flyweight<boost::flyweights::key_value<std::string,rpc::Address,AddressWorkeridExtractor>> InternAddress;
+/// memory footprint per object.
+typedef boost::flyweight<
+    boost::flyweights::key_value<std::string, rpc::Address, AddressWorkeridExtractor>>
+    InternAddress;
 
 // Interface for mocking.
 class ReferenceCounterInterface {
@@ -570,7 +571,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   struct OptBorrowInfo {
     std::unique_ptr<std::pair<ObjectID, rpc::WorkerAddress>> first_stored_in_objects;
-    std::unique_ptr<absl::flat_hash_map<ObjectID, rpc::WorkerAddress>> extra_stored_in_objects;
+    std::unique_ptr<absl::flat_hash_map<ObjectID, rpc::WorkerAddress>>
+        extra_stored_in_objects;
     std::unique_ptr<rpc::WorkerAddress> first_borrower;
     std::unique_ptr<absl::flat_hash_set<rpc::WorkerAddress>> extra_borrowers;
   };
@@ -589,7 +591,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
         : call_site(call_site),
           object_size(object_size),
           owner_address(owner_address),
-          pinned_at_raylet_id(boost::flyweight<NodeID>(pinned_at_raylet_id.value_or(NodeID::Nil()))),
+          pinned_at_raylet_id(
+              boost::flyweight<NodeID>(pinned_at_raylet_id.value_or(NodeID::Nil()))),
           owned_by_us(true),
           is_reconstructable(is_reconstructable),
           foreign_owner_already_monitoring(false),
@@ -609,8 +612,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// - ObjectIDs containing this ObjectID that we own and that are still in
     /// scope.
     size_t RefCount() const {
-      return local_ref_count + submitted_task_ref_count + 
-             GetContainedInOwned().size();
+      return local_ref_count + submitted_task_ref_count + GetContainedInOwned().size();
     }
 
     /// Whether this reference is no longer in scope. A reference is in scope
@@ -685,48 +687,52 @@ class ReferenceCounter : public ReferenceCounterInterface,
       return opt_nested_reference_count.get();
     }
 
-    int EraseContains(const ObjectID& id){
-      return EraseNestedRefCount(id, mutable_nested()->first_contains, mutable_nested()->extra_contains);
+    int EraseContains(const ObjectID &id) {
+      return EraseNestedRefCount(
+          id, mutable_nested()->first_contains, mutable_nested()->extra_contains);
     }
-    bool InsertContains(const ObjectID& id){
-      return InsertNestedRefCount(id, mutable_nested()->first_contains, mutable_nested()->extra_contains);
+    bool InsertContains(const ObjectID &id) {
+      return InsertNestedRefCount(
+          id, mutable_nested()->first_contains, mutable_nested()->extra_contains);
     }
-    const absl::flat_hash_set<ObjectID> GetContains() const{
+    const absl::flat_hash_set<ObjectID> GetContains() const {
       return GetNestedRefCount(nested().first_contains, nested().extra_contains);
     }
-    int EraseContainedInOwned(const ObjectID& id){
-      return EraseNestedRefCount(id, mutable_nested()->first_contained_in_owned, mutable_nested()->extra_contained_in_owned);
+    int EraseContainedInOwned(const ObjectID &id) {
+      return EraseNestedRefCount(id,
+                                 mutable_nested()->first_contained_in_owned,
+                                 mutable_nested()->extra_contained_in_owned);
     }
-    bool InsertContainedInOwned(const ObjectID& id){
-      return InsertNestedRefCount(id, mutable_nested()->first_contained_in_owned, mutable_nested()->extra_contained_in_owned);
+    bool InsertContainedInOwned(const ObjectID &id) {
+      return InsertNestedRefCount(id,
+                                  mutable_nested()->first_contained_in_owned,
+                                  mutable_nested()->extra_contained_in_owned);
     }
-    const absl::flat_hash_set<ObjectID> GetContainedInOwned() const{
-      return GetNestedRefCount(nested().first_contained_in_owned, nested().extra_contained_in_owned);
+    const absl::flat_hash_set<ObjectID> GetContainedInOwned() const {
+      return GetNestedRefCount(nested().first_contained_in_owned,
+                               nested().extra_contained_in_owned);
     }
-    int EraseContainedInBorrowedIds(const ObjectID& id){
-      return EraseNestedRefCount(
-        id, 
-        mutable_nested()->first_contained_in_borrowed_ids, 
-        mutable_nested()->extra_contained_in_borrowed_ids);
+    int EraseContainedInBorrowedIds(const ObjectID &id) {
+      return EraseNestedRefCount(id,
+                                 mutable_nested()->first_contained_in_borrowed_ids,
+                                 mutable_nested()->extra_contained_in_borrowed_ids);
     }
-    bool InsertContainedInBorrowedIds(const ObjectID& id){
-      return InsertNestedRefCount(
-        id, 
-        mutable_nested()->first_contained_in_borrowed_ids, 
-        mutable_nested()->extra_contained_in_borrowed_ids);
+    bool InsertContainedInBorrowedIds(const ObjectID &id) {
+      return InsertNestedRefCount(id,
+                                  mutable_nested()->first_contained_in_borrowed_ids,
+                                  mutable_nested()->extra_contained_in_borrowed_ids);
     }
-    const absl::flat_hash_set<ObjectID> GetContainedInBorrowedIds() const{
-      return GetNestedRefCount(
-        nested().first_contained_in_borrowed_ids, 
-        nested().extra_contained_in_borrowed_ids);
+    const absl::flat_hash_set<ObjectID> GetContainedInBorrowedIds() const {
+      return GetNestedRefCount(nested().first_contained_in_borrowed_ids,
+                               nested().extra_contained_in_borrowed_ids);
     }
 
     static int EraseNestedRefCount(
-        const ObjectID& id, 
-        std::unique_ptr<ObjectID>& first, 
+        const ObjectID &id,
+        std::unique_ptr<ObjectID> &first,
         std::unique_ptr<absl::flat_hash_set<ObjectID>> &extra) {
       if (first == nullptr) {
-          return 0;
+        return 0;
       }
       if (*first == id) {
         first.reset();
@@ -741,16 +747,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
     }
 
     static bool InsertNestedRefCount(
-        const ObjectID& id, 
-        std::unique_ptr<ObjectID>& first, 
-        std::unique_ptr<absl::flat_hash_set<ObjectID>>& extra) {
+        const ObjectID &id,
+        std::unique_ptr<ObjectID> &first,
+        std::unique_ptr<absl::flat_hash_set<ObjectID>> &extra) {
       // init and set the first
-      if(first == nullptr) {
+      if (first == nullptr) {
         first = std::make_unique<ObjectID>(id);
         return true;
       }
 
-      if(*first == id) {
+      if (*first == id) {
         // duplicate insert
         return false;
       }
@@ -762,9 +768,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
       return extra->insert(id).second;
     }
 
-    static const absl::flat_hash_set<ObjectID> 
-    GetNestedRefCount(const std::unique_ptr<ObjectID>& first, const std::unique_ptr<absl::flat_hash_set<ObjectID>>& extra) {
-      absl::flat_hash_set<ObjectID>* copied_extra;
+    static const absl::flat_hash_set<ObjectID> GetNestedRefCount(
+        const std::unique_ptr<ObjectID> &first,
+        const std::unique_ptr<absl::flat_hash_set<ObjectID>> &extra) {
+      absl::flat_hash_set<ObjectID> *copied_extra;
       if (extra == nullptr) {
         copied_extra = new absl::flat_hash_set<ObjectID>();
       } else {

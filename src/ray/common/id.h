@@ -88,8 +88,8 @@ class BaseID {
   mutable size_t hash_ = 0;
 };
 
-template<typename T>
-size_t hash_value(const BaseID<T>& id) {
+template <typename T>
+size_t hash_value(const BaseID<T> &id) {
   return id.Hash();
 }
 

@@ -14,17 +14,16 @@
 
 #include "ray/core_worker/reference_count.h"
 
-#define PRINT_REF_COUNT(it)                                                        \
-  RAY_LOG(DEBUG) << "REF " << it->first                                            \
-                 << " borrowers: " << it->second.borrow().borrowers.size()         \
-                 << " local_ref_count: " << it->second.local_ref_count             \
-                 << " submitted_count: " << it->second.submitted_task_ref_count    \
-                 << " contained_in_owned: "                                        \
-                 << it->second.GetContainedInOwned().size()                        \
-                 << " contained_in_borrowed: "                                     \
-                 << it->second.GetContainedInBorrowedIds().size()                    \
-                 << " contains: " << it->second.GetContains().size()               \
-                 << " stored_in: " << it->second.borrow().stored_in_objects.size() \
+#define PRINT_REF_COUNT(it)                                                            \
+  RAY_LOG(DEBUG) << "REF " << it->first                                                \
+                 << " borrowers: " << it->second.borrow().borrowers.size()             \
+                 << " local_ref_count: " << it->second.local_ref_count                 \
+                 << " submitted_count: " << it->second.submitted_task_ref_count        \
+                 << " contained_in_owned: " << it->second.GetContainedInOwned().size() \
+                 << " contained_in_borrowed: "                                         \
+                 << it->second.GetContainedInBorrowedIds().size()                      \
+                 << " contains: " << it->second.GetContains().size()                   \
+                 << " stored_in: " << it->second.borrow().stored_in_objects.size()     \
                  << " lineage_ref_count: " << it->second.lineage_ref_count;
 
 namespace {}  // namespace
@@ -274,7 +273,7 @@ void ReferenceCounter::SetNestedRefInUseRecursive(ReferenceTable::iterator inner
   // for (const auto &contained_in_borrowed_id :
   //      inner_ref_it->second.nested().contained_in_borrowed_ids) {
   for (const auto &contained_in_borrowed_id :
-      inner_ref_it->second.GetContainedInBorrowedIds()) {
+       inner_ref_it->second.GetContainedInBorrowedIds()) {
     auto contained_in_it = object_id_refs_.find(contained_in_borrowed_id);
     RAY_CHECK(contained_in_it != object_id_refs_.end());
     if (!contained_in_it->second.has_nested_refs_to_report) {
@@ -579,8 +578,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
         } else {
           // RAY_CHECK(
           //     inner_it->second.mutable_nested()->contained_in_borrowed_ids.erase(id));
-          RAY_CHECK(
-              inner_it->second.EraseContainedInBorrowedIds(id));
+          RAY_CHECK(inner_it->second.EraseContainedInBorrowedIds(id));
         }
         // NOTE: a NestedReferenceCount struct is created after the first
         // mutable_nested() call, but the struct will not be deleted until the
@@ -691,7 +689,8 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &raylet_id) {
   absl::MutexLock lock(&mutex_);
   for (auto it = object_id_refs_.begin(); it != object_id_refs_.end(); it++) {
     const auto &object_id = it->first;
-    if (it->second.pinned_at_raylet_id.value_or(boost::flyweight<NodeID>(NodeID::Nil())) == raylet_id ||
+    if (it->second.pinned_at_raylet_id.value_or(
+            boost::flyweight<NodeID>(NodeID::Nil())) == raylet_id ||
         it->second.spilled_node_id == raylet_id) {
       ReleasePlasmaObject(it);
       if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
@@ -750,7 +749,9 @@ bool ReferenceCounter::IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id,
     if (it->second.owned_by_us) {
       *owned_by_us = true;
       *spilled = it->second.spilled;
-      *pinned_at = it->second.pinned_at_raylet_id.value_or(boost::flyweight<NodeID>(NodeID::Nil())).get();
+      *pinned_at =
+          it->second.pinned_at_raylet_id.value_or(boost::flyweight<NodeID>(NodeID::Nil()))
+              .get();
     }
     return true;
   }
@@ -891,8 +892,7 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
                  << borrower_ref.borrow().borrowers.size() << " borrowers"
                  << ", local: " << borrower_ref.local_ref_count
                  << ", submitted: " << borrower_ref.submitted_task_ref_count
-                 << ", contained_in_owned: "
-                 << borrower_ref.GetContainedInOwned().size()
+                 << ", contained_in_owned: " << borrower_ref.GetContainedInOwned().size()
                  << ", stored_in_objects: "
                  << borrower_ref.borrow().stored_in_objects.size();
 
@@ -1405,7 +1405,8 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto &spilled_url = it->second.spilled_url;
   const auto &spilled_node_id = it->second.spilled_node_id;
   const auto &optional_primary_node_id = it->second.pinned_at_raylet_id;
-  const auto &primary_node_id = optional_primary_node_id.value_or(boost::flyweight<NodeID>(NodeID::Nil()));
+  const auto &primary_node_id =
+      optional_primary_node_id.value_or(boost::flyweight<NodeID>(NodeID::Nil()));
   RAY_LOG(DEBUG) << "Published message for " << object_id << ", " << locations.size()
                  << " locations, spilled url: [" << spilled_url
                  << "], spilled node ID: " << spilled_node_id
@@ -1445,7 +1446,8 @@ void ReferenceCounter::FillObjectInformationInternal(
   object_info->set_object_size(it->second.object_size);
   object_info->set_spilled_url(it->second.spilled_url);
   object_info->set_spilled_node_id(it->second.spilled_node_id.get().Binary());
-  auto primary_node_id = it->second.pinned_at_raylet_id.value_or(boost::flyweight<NodeID>(NodeID::Nil()));
+  auto primary_node_id =
+      it->second.pinned_at_raylet_id.value_or(boost::flyweight<NodeID>(NodeID::Nil()));
   object_info->set_primary_node_id(primary_node_id.get().Binary());
   object_info->set_pending_creation(it->second.pending_creation);
 }
@@ -1497,7 +1499,7 @@ ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(
       IdVectorFromProtobuf<ObjectID>(ref_count.contained_in_borrowed_ids());
   // ref.mutable_nested()->contained_in_borrowed_ids.insert(
   //     contained_in_borrowed_ids.begin(), contained_in_borrowed_ids.end());
-  for(auto id : contained_in_borrowed_ids) {
+  for (auto id : contained_in_borrowed_ids) {
     ref.InsertContainedInBorrowedIds(id);
   }
   return ref;
