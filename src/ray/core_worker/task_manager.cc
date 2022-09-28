@@ -320,24 +320,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::Address &worker_addr) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
 
-  // Objects that were stored in plasma upon the first successful execution of
-  // this task. These objects will get stored in plasma again, even if they
-  // were returned directly in the worker's reply. This ensures that any
-  // reference holders that are already scheduled at the raylet can retrieve
-  // these objects through plasma.
-  absl::flat_hash_set<ObjectID> store_in_plasma_ids = {};
   bool first_execution = false;
-  {
-    absl::MutexLock lock(&mu_);
-    auto it = submissible_tasks_.find(task_id);
-    RAY_CHECK(it != submissible_tasks_.end())
-        << "Tried to complete task that was not pending " << task_id;
-    first_execution = it->second.num_successful_executions == 0;
-    if (!first_execution) {
-      store_in_plasma_ids = it->second.reconstructable_return_ids;
-    }
-  }
-
+  const auto store_in_plasma_ids =
+      GetTaskReturnObjectsToStoreInPlasma(task_id, &first_execution);
   std::vector<ObjectID> dynamic_return_ids;
   std::vector<ObjectID> dynamic_returns_in_plasma;
   std::vector<ObjectID> direct_return_ids;
@@ -492,6 +477,12 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
                  << rpc::ErrorType_Name(error_type);
 
   TaskSpecification spec;
+  absl::flat_hash_set<ObjectID> store_in_plasma_ids;
+  if (mark_task_object_failed) {
+    // If we need to mark the task return objects as failed, we have to check
+    // whether they should be stored in plasma or not.
+    store_in_plasma_ids = GetTaskReturnObjectsToStoreInPlasma(task_id);
+  }
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -502,22 +493,22 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     spec = it->second.spec;
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
+  }
 
-    // Throttled logging of task failure errors.
-    auto debug_str = spec.DebugString();
-    if (debug_str.find("__ray_terminate__") == std::string::npos &&
-        (num_failure_logs_ < kTaskFailureThrottlingThreshold ||
-         (current_time_ms() - last_log_time_ms_) > kTaskFailureLoggingFrequencyMillis)) {
-      if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
-        RAY_LOG(WARNING) << "Too many failure logs, throttling to once every "
-                         << kTaskFailureLoggingFrequencyMillis << " millis.";
-      }
-      last_log_time_ms_ = current_time_ms();
-      if (status != nullptr) {
-        RAY_LOG(INFO) << "Task failed: " << *status << ": " << spec.DebugString();
-      } else {
-        RAY_LOG(INFO) << "Task failed: " << spec.DebugString();
-      }
+  // Throttled logging of task failure errors.
+  auto debug_str = spec.DebugString();
+  if (debug_str.find("__ray_terminate__") == std::string::npos &&
+      (num_failure_logs_ < kTaskFailureThrottlingThreshold ||
+       (current_time_ms() - last_log_time_ms_) > kTaskFailureLoggingFrequencyMillis)) {
+    if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
+      RAY_LOG(WARNING) << "Too many failure logs, throttling to once every "
+                       << kTaskFailureLoggingFrequencyMillis << " millis.";
+    }
+    last_log_time_ms_ = current_time_ms();
+    if (status != nullptr) {
+      RAY_LOG(INFO) << "Task failed: " << *status << ": " << spec.DebugString();
+    } else {
+      RAY_LOG(INFO) << "Task failed: " << spec.DebugString();
     }
   }
 
@@ -527,8 +518,9 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
                                /*release_lineage=*/true,
                                rpc::Address(),
                                ReferenceCounter::ReferenceTableProto());
+
   if (mark_task_object_failed) {
-    MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info);
+    MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info, store_in_plasma_ids);
   }
 
   ShutdownIfNeeded();
@@ -679,19 +671,49 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
   return it != submissible_tasks_.end();
 }
 
-void TaskManager::MarkTaskReturnObjectsFailed(const TaskSpecification &spec,
-                                              rpc::ErrorType error_type,
-                                              const rpc::RayErrorInfo *ray_error_info) {
+absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
+    const TaskID &task_id, bool *first_execution_out) const {
+  bool first_execution;
+  absl::flat_hash_set<ObjectID> store_in_plasma_ids = {};
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  RAY_CHECK(it != submissible_tasks_.end())
+      << "Tried to complete task that was not pending " << task_id;
+  first_execution = it->second.num_successful_executions == 0;
+  if (!first_execution) {
+    store_in_plasma_ids = it->second.reconstructable_return_ids;
+  }
+  if (first_execution_out != nullptr) {
+    *first_execution_out = first_execution;
+  }
+  return store_in_plasma_ids;
+}
+
+void TaskManager::MarkTaskReturnObjectsFailed(
+    const TaskSpecification &spec,
+    rpc::ErrorType error_type,
+    const rpc::RayErrorInfo *ray_error_info,
+    const absl::flat_hash_set<ObjectID> &store_in_plasma_ids) {
   const TaskID task_id = spec.TaskId();
+  RayObject error(error_type, ray_error_info);
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
-    if (ray_error_info == nullptr) {
-      RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
+    if (store_in_plasma_ids.count(object_id)) {
+      put_in_local_plasma_callback_(error, object_id);
     } else {
-      RAY_UNUSED(in_memory_store_->Put(RayObject(error_type, ray_error_info), object_id));
+      in_memory_store_->Put(error, object_id);
+    }
+  }
+  if (spec.ReturnsDynamic()) {
+    for (const auto &dynamic_return_id : spec.DynamicReturnIds()) {
+      if (store_in_plasma_ids.count(dynamic_return_id)) {
+        put_in_local_plasma_callback_(error, dynamic_return_id);
+      } else {
+        in_memory_store_->Put(error, dynamic_return_id);
+      }
     }
   }
 }
