@@ -206,3 +206,10 @@ class TestOPEMath(unittest.TestCase):
                 f"in bandits split_by_episode = False should improve "
                 f"performance, dt_wo_split={dt2}, dt_with_split={dt1}",
             )
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
