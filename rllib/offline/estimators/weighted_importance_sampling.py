@@ -27,8 +27,8 @@ class WeightedImportanceSampling(OffPolicyEstimator):
     For more information refer to https://arxiv.org/pdf/1911.06854.pdf"""
 
     @override(OffPolicyEstimator)
-    def __init__(self, policy: Policy, gamma: float):
-        super().__init__(policy, gamma)
+    def __init__(self, policy: Policy, gamma: float, epsilon_greedy: float = 0.0):
+        super().__init__(policy, gamma, epsilon_greedy)
         self.filter_values = []
         self.filter_counts = []
 

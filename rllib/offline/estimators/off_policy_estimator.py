@@ -33,16 +33,17 @@ class OffPolicyEstimator(OfflineEvaluator):
         self,
         policy: Policy,
         gamma: float = 0.0,
-        epsilon_greedy: float = 1.0,
+        epsilon_greedy: float = 0.0,
     ):
         """Initializes an OffPolicyEstimator instance.
 
         Args:
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
-            epsilon_greedy: The probability by which we act acording to the policy
-            during deployment. With 1-epsilon_greedy we act according to a fully random
-            policy to inject some exploration.
+            epsilon_greedy: The probability by which we act acording to a fully random 
+            policy during deployment. With 1-epsilon_greedy we act according the target 
+            policy.
+            # TODO (kourosh): convert the input parameters to a config dict.
         """
         self.policy = policy
         self.gamma = gamma
@@ -195,14 +196,14 @@ class OffPolicyEstimator(OfflineEvaluator):
         log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, batch)
         new_prob = np.exp(convert_to_numpy(log_likelihoods))
 
-        if self.config["epsilon_greedy"] < 1.0:
+        if self.epsilon_greedy > 0.0:
             if not hasattr(self.policy.action_space, "n"):
                 raise ValueError(
                     "Evaluation with epsilon-greedy exploration is only supported "
                     "with discrete action spaces."
                 )
-            eps = self.config["epsilon_greedy"]
-            new_prob = new_prob * eps + (1 - eps) / self.policy.action_space.n
+            eps = self.epsilon_greedy
+            new_prob = new_prob * (1 - eps) + eps / self.policy.action_space.n
 
         return new_prob
 
