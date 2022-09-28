@@ -3749,7 +3749,7 @@
     test_name: many_nodes_actor_test
     test_suite: nightly_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: core
   cluster:
     cluster_env: many_nodes_tests/app_config.yaml
