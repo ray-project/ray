@@ -782,13 +782,6 @@ py_test(
 )
 
 py_test(
-    name = "test_worker_failures",
-    tags = ["team:rllib", "tests_dir", "tests_dir_W"],
-    size = "large",
-    srcs = ["tests/test_worker_failures.py"]
-)
-
-py_test(
     name = "test_node_failure",
     tags = ["team:rllib", "tests_dir", "tests_dir_N", "exclusive"],
     size = "large",
@@ -800,6 +793,13 @@ py_test(
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "small",
     srcs = ["algorithms/tests/test_registry.py"],
+)
+
+py_test(
+    name = "test_worker_failures",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "large",
+    srcs = ["algorithms/tests/test_worker_failures.py"]
 )
 
 # Specific Algorithms
