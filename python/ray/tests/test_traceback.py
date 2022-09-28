@@ -63,7 +63,7 @@ def clean_noqa(ex):
 )
 def test_actor_creation_stacktrace(ray_start_regular):
     """Test the actor creation task stacktrace."""
-    expected_output = """The actor died because of an error raised in its creation task, ray::A.__init__ (pid=XXX, ip=YYY, repr=ZZZ) # noqa
+    expected_output = """The actor died because of an error raised in its creation task, ray::A.__init__() (pid=XXX, ip=YYY, repr=ZZZ) # noqa
   File "FILE", line ZZ, in __init__
     g(3)
   File "FILE", line ZZ, in g
@@ -94,7 +94,7 @@ ValueError: 3"""
 )
 def test_task_stacktrace(ray_start_regular):
     """Test the normal task stacktrace."""
-    expected_output = """ray::f (pid=XXX, ip=YYY)
+    expected_output = """ray::f() (pid=XXX, ip=YYY)
   File "FILE", line ZZ, in f
     return g(c)
   File "FILE", line ZZ, in g
@@ -124,7 +124,7 @@ ValueError: 7"""
 )
 def test_actor_task_stacktrace(ray_start_regular):
     """Test the actor task stacktrace."""
-    expected_output = """ray::A.f (pid=XXX, ip=YYY, repr=ZZZ) # noqa
+    expected_output = """ray::A.f() (pid=XXX, ip=YYY, repr=ZZZ) # noqa
   File "FILE", line ZZ, in f
     return g(c)
   File "FILE", line ZZ, in g
@@ -155,10 +155,10 @@ ValueError: 7"""
 )
 def test_exception_chain(ray_start_regular):
     """Test the chained stacktrace."""
-    expected_output = """ray::foo (pid=XXX, ip=YYY) # noqa
+    expected_output = """ray::foo() (pid=XXX, ip=YYY) # noqa
   File "FILE", line ZZ, in foo
     return ray.get(bar.remote())
-ray.exceptions.RayTaskError(ZeroDivisionError): ray::bar (pid=XXX, ip=YYY)
+ray.exceptions.RayTaskError(ZeroDivisionError): ray::bar() (pid=XXX, ip=YYY)
   File "FILE", line ZZ, in bar
     return 1 / 0
 ZeroDivisionError: division by zero"""
@@ -185,11 +185,11 @@ ZeroDivisionError: division by zero"""
 )
 def test_dep_failure(ray_start_regular):
     """Test the stacktrace genereated due to dependency failures."""
-    expected_output = """ray::f (pid=XXX, ip=YYY) # noqa
+    expected_output = """ray::f() (pid=XXX, ip=YYY) # noqa
   At least one of the input arguments for this task could not be computed:
-ray.exceptions.RayTaskError: ray::a (pid=XXX, ip=YYY)
+ray.exceptions.RayTaskError: ray::a() (pid=XXX, ip=YYY)
   At least one of the input arguments for this task could not be computed:
-ray.exceptions.RayTaskError: ray::b (pid=XXX, ip=YYY)
+ray.exceptions.RayTaskError: ray::b() (pid=XXX, ip=YYY)
   File "FILE", line ZZ, in b
     raise ValueError("FILE")
 ValueError: b failed"""
@@ -225,7 +225,7 @@ def test_actor_repr_in_traceback(ray_start_regular):
         error_msg = str(ex)
         error_lines = error_msg.split("\n")
         traceback_line = error_lines[0]
-        unformatted_labels = traceback_line.split("(")[1].split(", ")
+        unformatted_labels = traceback_line.split("(")[2].split(", ")
         label_dict = {}
         for label in unformatted_labels:
             # Remove parenthesis if included.
@@ -284,13 +284,7 @@ def test_actor_repr_in_traceback(ray_start_regular):
 
 
 def test_unpickleable_stacktrace(shutdown_only):
-    expected_output = """System error: Failed to unpickle serialized exception -- original error message is: ray.exceptions.RayTaskError: ray::f (pid=XXX, ip=YYY)
-  File "FILE", line ZZ, in f
-    return g(c)
-  File "FILE", line ZZ, in g
-    raise NoPickleError("FILE")
-test_traceback.NoPickleError
-
+    expected_output = """System error: Failed to unpickle serialized exception
 traceback: Traceback (most recent call last):
   File "FILE", line ZZ, in from_ray_exception
     return pickle.loads(ray_exception.serialized_exception)
@@ -307,12 +301,7 @@ Traceback (most recent call last):
     return RayError.from_ray_exception(ray_exception)
   File "FILE", line ZZ, in from_ray_exception
     raise RuntimeError(msg) from e
-RuntimeError: Failed to unpickle serialized exception -- original error message is: ray.exceptions.RayTaskError: ray::f (pid=XXX, ip=YYY)
-  File "FILE", line ZZ, in f
-    return g(c)
-  File "FILE", line ZZ, in g
-    raise NoPickleError("FILE")
-test_traceback.NoPickleError"""  # noqa: E501
+RuntimeError: Failed to unpickle serialized exception"""
 
     class NoPickleError(OSError):
         def __init__(self, arg):
