@@ -153,19 +153,20 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
 
 def _format_prometheus_output(prom_data: Dict[str, Any]) -> Optional[TaskProgress]:
-    if (
-        prom_data["status"] == "success"
-        and prom_data["data"]["resultType"] == "vector"
-    ):
+    if prom_data["status"] == "success" and prom_data["data"]["resultType"] == "vector":
         metrics = prom_data["data"]["result"]
         kwargs = {}
         for metric in metrics:
             metric_name = metric["metric"]["State"]
-            kwarg_name = prometheus_metric_map[metric_name] if metric_name in prometheus_metric_map else "num_unknown"
+            kwarg_name = (
+                prometheus_metric_map[metric_name]
+                if metric_name in prometheus_metric_map
+                else "num_unknown"
+            )
             # metric["value"] is a tuple where first item is a timestamp and second item is the value.
             metric_value = int(metric["value"][1])
             kwargs[kwarg_name] = kwargs.get(kwarg_name, 0) + metric_value
 
         return TaskProgress(**kwargs)
-        
+
     return None
