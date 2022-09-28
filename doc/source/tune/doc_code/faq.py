@@ -301,6 +301,7 @@ if not MOCK:
                 subprocess.check_call(cmd_str, shell=True)
             except Exception as e:
                 print(f"Exception when syncing up {local_dir} to {remote_dir}: {e}")
+                return False
             return True
 
         def sync_down(
@@ -314,6 +315,7 @@ if not MOCK:
                 subprocess.check_call(cmd_str, shell=True)
             except Exception as e:
                 print(f"Exception when syncing down {remote_dir} to {local_dir}: {e}")
+                return False
             return True
 
         def delete(self, remote_dir: str) -> bool:
@@ -324,6 +326,7 @@ if not MOCK:
                 subprocess.check_call(cmd_str, shell=True)
             except Exception as e:
                 print(f"Exception when deleting {remote_dir}: {e}")
+                return False
             return True
 
         def retry(self):
