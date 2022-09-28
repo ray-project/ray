@@ -249,10 +249,6 @@ class JobSupervisor:
 
     def _get_driver_env_vars(self) -> Dict[str, str]:
         """Returns environment variables that should be set in the driver."""
-        ray_addr = ray._private.services.canonicalize_bootstrap_address_or_die(
-            "auto", ray.worker._global_node._ray_params.temp_dir
-        )
-        assert ray_addr is not None
         return {
             # Set JobConfig for the child process (runtime_env, metadata).
             RAY_JOB_CONFIG_JSON_ENV_VAR: json.dumps(
@@ -261,12 +257,12 @@ class JobSupervisor:
                     "metadata": self._metadata,
                 }
             ),
-            # Always set RAY_ADDRESS as find_bootstrap_address address for
-            # job submission. In case of local development, prevent user from
-            # re-using http://{address}:{dashboard_port} to interact with
-            # jobs SDK.
-            # TODO:(mwtian) Check why "auto" does not work in entrypoint script
-            ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE: ray_addr,
+            # When using jobs RAY_ADDRESS may be set to the dashboard url, but
+            # ray.init() also uses RAY_ADDRESS, and the dashboard url is not a
+            # valid cluster address for ray.init().
+            # As a workaround, we override RAY_ADDRESS for the driver script's
+            # ray.init() until #22221 is fixed.
+            ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE: "auto",
             # Set PYTHONUNBUFFERED=1 to stream logs during the job instead of
             # only streaming them upon completion of the job.
             "PYTHONUNBUFFERED": "1",
