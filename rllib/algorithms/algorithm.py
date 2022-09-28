@@ -2660,13 +2660,14 @@ class Algorithm(Trainable):
                 "episode_reward_mean": np.nan,
             }
         }
-        eval_results["evaluation"]["num_recreated_workers"] = 0
 
         eval_func_to_use = (
             self._evaluate_async
             if self.config["enable_async_evaluation"]
             else self.evaluate
         )
+
+        num_recreated = 0
 
         try:
             if self.config["evaluation_duration"] == "auto":
@@ -2698,6 +2699,9 @@ class Algorithm(Trainable):
                     "recreate_failed_workers"
                 ),
             )
+        # `self._evaluate_async` handles its own worker failures and already adds
+        # this metric, but `self.evaluate` doesn't.
+        if "num_recreated_workers" not in eval_results["evaluation"]:
             eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         # Add number of healthy evaluation workers after this iteration.
