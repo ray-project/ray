@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
-import json
 import collections
 import copy
 import gym
+import json
 import os
 from pathlib import Path
 import shelve
@@ -235,7 +235,6 @@ def run(
 
     # Rendering and video recording settings.
     config["render_env"] = render
-    # TODO video_dir unused, does this have to go into "config"?
 
     ray.init(local_mode=local_mode)
 
@@ -282,7 +281,7 @@ def keep_going(steps: int, num_steps: int, episodes: int, num_episodes: int) -> 
 
 def rollout(
     agent,
-    env_name,
+    env_name,  # unused
     num_steps,
     num_episodes=0,
     saver=None,

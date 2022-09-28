@@ -107,7 +107,7 @@ app = typer.Typer()
 
 @app.command()
 def train(
-    run: str = typer.Option(None, "--run", "-r", help=get_help("run")),
+    run: str = typer.Option(None, "--algo", "--run", "-a", "-r", help=get_help("run")),
     env: str = typer.Option(None, "--env", "-e", help=train_help.get("env")),
     config: str = typer.Option("{}", "--config", "-c", help=get_help("config")),
     config_file: str = typer.Option(
@@ -302,22 +302,29 @@ def rollout(
 
 @app.callback()
 def main_helper():
-    """
-    Welcome to the\n\n
-
-    ██████╗ ██╗     ██╗     ██╗██████╗\n
-    ██╔══██╗██║     ██║     ██║██╔══██╗\n
-    ██████╔╝██║     ██║     ██║██████╔╝\n
-    ██╔══██╗██║     ██║     ██║██╔══██╗  command\n
-    ██║  ██║███████╗███████╗██║██████╔╝  line\n
-    ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝╚═════╝   interface\n\n
-
+    """Welcome to the\n
+.                                                 ╔▄▓▓▓▓▄\n
+.                                                ╔██▀╙╙╙▀██▄\n
+. ╫█████████████▓   ╫████▓             ╫████▓    ██▌     ▐██   ╫████▒\n
+. ╫███████████████▓ ╫█████▓            ╫█████▓   ╫██     ╫██   ╫██████▒\n
+. ╫█████▓     ████▓ ╫█████▓            ╫█████▓    ╙▓██████▀    ╫██████████████▒\n
+. ╫███████████████▓ ╫█████▓            ╫█████▓       ╫█▒       ╫████████████████▒\n
+. ╫█████████████▓   ╫█████▓            ╫█████▓       ╫█▒       ╫██████▒    ╫█████▒\n
+. ╫█████▓███████▓   ╫█████▓            ╫█████▓       ╫█▒       ╫██████▒    ╫█████▒\n
+. ╫█████▓   ██████▓ ╫████████████████▄ ╫█████▓       ╫█▒       ╫████████████████▒\n
+. ╫█████▓     ████▓ ╫█████████████████ ╫█████▓       ╫█▒       ╫██████████████▒\n
+.                                        ╣▓▓▓▓▓▓▓▓▓▓▓▓██▓▓▓▓▓▓▓▓▓▓▓▓▄\n
+.                                        ╫██╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╙╫█▒\n
+.                                        ╫█  Command Line Interface █▒\n
+.                                        ╫██▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄╣█▒\n
+.                                         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n
+.\n
     Example usage for training:\n
         rllib train --run DQN --env CartPole-v1\n\n
 
-    Example usage for evaluate (aka: "rollout"):\n
+    Example usage for evaluation:\n
         rllib evaluate /trial_dir/checkpoint_000001/checkpoint-1 --run DQN
-    --env CartPole-v1
+--env CartPole-v1
     """
 
 
