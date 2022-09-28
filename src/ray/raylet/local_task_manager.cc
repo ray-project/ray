@@ -387,8 +387,9 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
   NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
   Spillback(node_id, work);
   num_unschedulable_task_spilled_++;
-  if (!spec.GetDependencies().empty()) {
-    task_dependency_manager_.RemoveTaskDependencies(task.GetTaskSpecification().TaskId());
+  if (!work->task.GetTaskSpecification().GetDependencies().empty()) {
+    task_dependency_manager_.RemoveTaskDependencies(
+        work->task.GetTaskSpecification().TaskId());
   }
   return true;
 }
