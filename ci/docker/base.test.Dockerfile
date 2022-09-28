@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04
+FROM ubuntu:focal
 
 ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST
@@ -14,7 +14,7 @@ ENV CI=true
 ENV PYTHON=$PYTHON
 ENV RAY_USE_RANDOM_PORTS=1
 ENV RAY_DEFAULT_BUILD=1
-ENV RAY_INSTALL_JAVA=1
+ENV RAY_INSTALL_JAVA=0
 ENV BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST}
 ENV BUILDKITE_COMMIT=${BUILDKITE_COMMIT}
 ENV BUILDKITE_PULL_REQUEST_BASE_BRANCH=${BUILDKITE_PULL_REQUEST_BASE_BRANCH}
@@ -27,16 +27,13 @@ ENV DOCKER_CERT_PATH=/certs/client
 ENV TRAVIS_COMMIT=${BUILDKITE_COMMIT}
 ENV BUILDKITE_BAZEL_CACHE_URL=${REMOTE_CACHE_URL}
 
-RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
-RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
-
 RUN apt-get update -qq && apt-get upgrade -qq
 RUN apt-get install -y -qq \
     curl python-is-python3 git build-essential \
     sudo unzip unrar apt-utils dialog tzdata wget rsync \
     language-pack-en tmux cmake gdb vim htop \
-    libgtk2.0-dev zlib1g-dev libgl1-mesa-dev maven \
-    openjdk-8-jre openjdk-8-jdk clang-format-12 jq \
+    libgtk2.0-dev zlib1g-dev libgl1-mesa-dev \
+    clang-format-12 jq \
     clang-tidy-12 clang-12
 # Make using GCC 9 explicit.
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
@@ -58,16 +55,11 @@ RUN (echo "build --remote_cache=${REMOTE_CACHE_URL}" >> /root/.bazelrc); \
     (if [ "${BUILDKITE_PULL_REQUEST}" != "false" ]; then (echo "build --remote_upload_local_results=false" >> /root/.bazelrc); fi); \
     cat /root/.bazelrc
 
+# Install some dependencies (miniconda, pip dependencies, etc)
 RUN mkdir /ray
 WORKDIR /ray
 
 # Below should be re-run each time
 COPY . .
-RUN ./ci/ci.sh init
-RUN bash --login -i ./ci/ci.sh build
 
-RUN bash --login -i ./ci/env/install-dependencies.sh
-
-# Run determine test to run
-RUN bash --login -i -c "python ./ci/pipeline/determine_tests_to_run.py --output=json > affected_set.json"
-RUN cat affected_set.json
+RUN ./ci/env/install-dependencies.sh init
