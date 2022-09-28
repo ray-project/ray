@@ -134,14 +134,27 @@ class TestEnvRunnerV2(unittest.TestCase):
         )
 
         algo = PPO(config, env="basic_multiagent")
+        local_worker = algo.workers.local_worker()
+        env = local_worker.env
 
-        rollout_worker = algo.workers.local_worker()
+        obs, rewards, dones, infos = local_worker.env.step({
+            0: env.action_space.sample(),
+            1: env.action_space.sample()
+        })
 
-        # The fact that we can successfully finish this sample() call means
-        # that data for the 2 policies are grouped separately and correctly.
-        # Otherwise, SampleBatch will throw the error "Cannot concat data ...",
-        # since the 2 policies have different view requirements.
-        self.assertIsNotNone(rollout_worker.sample())
+        env_id = 0
+        env_runner = local_worker.sampler._env_runner_obj
+        env_runner.create_episode(env_id)
+        to_eval, _ = env_runner._process_observations(
+            {0: obs}, {0: rewards}, {0: dones}, {0: infos}
+        )
+
+        # We should have 2 separate batches for both policies.
+        # Each batch has 1 samples.
+        self.assertTrue("one" in to_eval)
+        self.assertEqual(len(to_eval["one"]), 1)
+        self.assertTrue("two" in to_eval)
+        self.assertEqual(len(to_eval["two"]), 1)
 
     def test_action_connector_gets_raw_input_dict(self):
         class CheckInputDictActionConnector(ActionConnector):
