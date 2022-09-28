@@ -27,7 +27,7 @@ class TextDatasource(BinaryDatasource):
         return lines
 
     def _convert_block_to_tabular_block(
-        self, block: List[Union[bytes, Tuple[bytes, str]]]
+        self, block: List[str]
     ) -> "pyarrow.Table":
         import pyarrow as pa
 
