@@ -467,7 +467,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
                 MeanStdObservationFilterAgentConnector.from_state(ctx, state)
             )
 
-            another_filter_connector.in_eval(False)
+            another_filter_connector.in_eval()
 
             # Collector transformed observations
             transformed_observations = []
