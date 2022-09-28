@@ -768,15 +768,14 @@ class ReferenceCounter : public ReferenceCounterInterface,
       return extra->insert(id).second;
     }
 
-    static const absl::flat_hash_set<ObjectID> 
-    GetNestedRefCount(
-        const std::unique_ptr<ObjectID>& first, 
-        const std::unique_ptr<absl::flat_hash_set<ObjectID>>& extra) {
+    static const absl::flat_hash_set<ObjectID> GetNestedRefCount(
+        const std::unique_ptr<ObjectID> &first,
+        const std::unique_ptr<absl::flat_hash_set<ObjectID>> &extra) {
       std::unique_ptr<absl::flat_hash_set<ObjectID>> copied_extra;
 
       if (extra == nullptr) {
         copied_extra.reset(new absl::flat_hash_set<ObjectID>());
-      }else {
+      } else {
         copied_extra.reset(new absl::flat_hash_set<ObjectID>(*extra));
       }
 
