@@ -4217,7 +4217,7 @@
     type: sdk_command
     file_manager: sdk
 
-- name: read_benchmark
+- name: read_benchmark_single_node
   group: core-dataset-tests
   working_dir: nightly_tests/dataset
 
