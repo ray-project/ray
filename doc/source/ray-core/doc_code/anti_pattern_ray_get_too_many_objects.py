@@ -18,7 +18,8 @@ def return_big_object():
 NUM_TASKS = 1000
 
 object_refs = [return_big_object.remote() for _ in range(NUM_TASKS)]
-# This will crash with out-of-memory or out-of-disk if NUM_TASKS is large enough.
+# This will fail with heap out-of-memory
+# or object store out-of-space if NUM_TASKS is large enough.
 results = ray.get(object_refs)
 process_results(results)
 # __anti_pattern_end__
