@@ -1506,14 +1506,14 @@ py_test(
 )
 
 py_test(
-    name = "test_action",
+    name = "test_action_connector",
     tags = ["team:rllib", "connector"],
     size = "small",
     srcs = ["connectors/tests/test_action.py"]
 )
 
 py_test(
-    name = "test_agent",
+    name = "test_agent_connector",
     tags = ["team:rllib", "connector"],
     size = "small",
     srcs = ["connectors/tests/test_agent.py"]
