@@ -117,7 +117,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.ddpg.td3::TD3_DEFAULT_CONFIG",
         new="ray.rllib.algorithms.td3.td3::TD3Config(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)
