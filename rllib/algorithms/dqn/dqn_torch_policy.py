@@ -432,8 +432,6 @@ def compute_q_values(
         mask = model.mask
     else:
         mask = 0
-    print("mask")
-    print(mask)
     if config["num_atoms"] > 1:
         (
             action_scores,
