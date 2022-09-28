@@ -24,6 +24,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
@@ -261,7 +262,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
   // Version of this resource. It will incr by one whenever the state changed.
   int64_t version_ = 0;
 
-  friend class LocalResourceManagerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstancesTest);
@@ -271,6 +271,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
 
+  friend class LocalResourceManagerTest;
   FRIEND_TEST(LocalResourceManagerTest, BasicMetricsTest);
 };
 

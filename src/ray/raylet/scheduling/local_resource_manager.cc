@@ -448,7 +448,47 @@ bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) co
 }
 
 void LocalResourceManager::RecordMetrics() const {
-  // SANG-TODO
+  const auto &local_resources = GetLocalResources();
+  const auto &avail_map = local_resources.GetAvailableResourceInstances().ToResourceRequest().ToResourceMap();
+  const auto &total_map = local_resources.GetTotalResourceInstances().ToResourceRequest().ToResourceMap();
+  
+  // id -> {used, avail, pg_used, pg_avail}
+
+  for (const auto &it : total_map) {
+    const auto &resource = it.first;
+    auto total = it.second;
+    auto avail_it = avail_map.find(resource);
+    double avail;
+    // If avail is 0, it doesn't exist in the map.
+    if (avail_it == avail_map.end()) {
+      avail = 0;
+    } else {
+      avail = avail_it->second;
+    }
+
+    // Ignore the node IP resource. It is useless to track because it is
+    // for the affinity purpose.
+    std::string prefix("node:");
+    if (resource.compare(0, prefix.size(), prefix) == 0) {
+      continue;
+    }
+
+    // TODO(sang): Right now, we just skip pg resource.
+    // Process pg resources properly.
+    const auto &data = ParsePgFormattedResource(resource);
+    if (data) {
+      continue;
+    }
+    
+    ray::stats::STATS_resources.Record(
+        avail,
+        {{"State", "AVAILABLE"},
+         {"Name", resource}});
+    ray::stats::STATS_resources.Record(
+        total - avail,
+        {{"State", "USED"},
+         {"Name", resource}});
+  }
 }
 
 }  // namespace ray

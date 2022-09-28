@@ -93,6 +93,12 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   absl::flat_hash_map<std::string, double> bundle_resource_labels_;
 };
 
+struct PgFormattedResourceData {
+  std::string original_resource;
+  /// -1 if it is a wildcard resource.
+  int64_t bundle_index;
+};
+
 /// Format a placement group resource, e.g., CPU -> CPU_group_i
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const PlacementGroupID &group_id,
@@ -114,6 +120,13 @@ std::string GetOriginalResourceName(const std::string &resource);
 // if the resource is the wildcard resource (resource without a bundle id).
 // Returns "" if the resource is not a wildcard resource.
 std::string GetOriginalResourceNameFromWildcardResource(const std::string &resource);
+
+/// Parse the given resource and get the pg related information.
+///
+/// \param resource name of the resource.
+/// \return nullopt if it is not a pg resource. Otherwise, it returns the
+/// struct with pg information parsed from the resource.
+std::optional<PgFormattedResourceData> ParsePgFormattedResource(const std::string &resource);
 
 /// Generate debug information of given bundles.
 std::string GetDebugStringForBundles(
