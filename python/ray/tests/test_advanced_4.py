@@ -185,13 +185,18 @@ def test_local_mode_deadlock(shutdown_only_with_initialization_check):
 def get_gcs_memory_used():
     import psutil
 
-    m = sum(
-        [
-            process.memory_info().rss
-            for process in psutil.process_iter()
-            if process.name() in ("gcs_server", "redis-server")
-        ]
-    )
+    m = 0
+    for process in psutil.process_iter():
+        try:
+            if process.name() in ("gcs_server", "redis-server"):
+                m += process.memory_info().rss
+        except psutil.NoSuchProcess:
+            # NOTE(rickyx):
+            # From https://psutil.readthedocs.io/en/latest/#psutil.process_iter
+            # If you’re not interested in retrieving zombies just
+            # catch NoSuchProcess.
+            continue
+
     return m
 
 
