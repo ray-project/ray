@@ -240,8 +240,6 @@ Running the above program on a 2018 MacBook Pro notebook shows:
 
 In other words, it takes almost half a millisecond to execute an empty task. This suggests that we will need to make sure a task takes at least a few milliseconds to amortize the invocation overhead. One caveat is that the per-task overhead will vary from machine to machine, and between tasks that run on the same machine versus remotely. This being said, making sure that tasks take at least a few milliseconds is a good rule of thumb when developing Ray programs.
 
-.. _tip-avoid-same-object-in-remote:
-
 Tip 3: Avoid passing same object repeatedly to remote tasks
 -----------------------------------------------------------
 
