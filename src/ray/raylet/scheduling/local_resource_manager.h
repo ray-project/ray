@@ -149,6 +149,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
 
+  /// Record the metrics.
+  void RecordMetrics() const;
+
  private:
   /// Notify the subscriber that the local resouces has changed.
   void OnResourceChanged();
@@ -258,6 +261,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   // Version of this resource. It will incr by one whenever the state changed.
   int64_t version_ = 0;
 
+  friend class LocalResourceManagerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstancesTest);
@@ -266,6 +270,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
+
+  FRIEND_TEST(LocalResourceManagerTest, BasicMetricsTest);
 };
 
 }  // end namespace ray

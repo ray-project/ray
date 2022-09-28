@@ -119,10 +119,10 @@ static Histogram GcsLatency("gcs_latency",
 ///
 
 /// Raylet Resource Manager
-static Gauge LocalAvailableResource("local_available_resource",
-                                    "The available resources on this node.",
-                                    "",
-                                    {ResourceNameKey});
+static Gauge TestMetrics("local_available_resource",
+                         "The available resources on this node.",
+                         "",
+                         {ResourceNameKey});
 
 static Gauge LocalTotalResource("local_total_resource",
                                 "The total resources on this node.",

@@ -447,4 +447,8 @@ bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) co
   return local_resources_.total.Has(resource_id);
 }
 
+void LocalResourceManager::RecordMetrics() const {
+  // SANG-TODO
+}
+
 }  // namespace ray
