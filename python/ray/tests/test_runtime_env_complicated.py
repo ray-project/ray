@@ -94,7 +94,7 @@ def conda_envs(tmp_path_factory):
             command = [" && ".join(commands)]
         proc = subprocess.run(
             command,
-            shell=True,
+            shell=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )

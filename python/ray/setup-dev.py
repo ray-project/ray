@@ -46,11 +46,11 @@ def do_link(package, force=False, skip_list=None, local_path=None):
         # create symlink for directory or file
         if os.path.isdir(local_home):
             subprocess.check_call(
-                ["mklink", "/J", package_home, local_home], shell=True
+                ["mklink", "/J", package_home, local_home], shell=False
             )
         elif os.path.isfile(local_home):
             subprocess.check_call(
-                ["mklink", "/H", package_home, local_home], shell=True
+                ["mklink", "/H", package_home, local_home], shell=False
             )
         else:
             print(f"{local_home} is neither directory nor file. Link failed.")

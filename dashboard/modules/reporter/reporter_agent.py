@@ -259,7 +259,7 @@ class ReporterAgent(
             f"-o {profiling_file_path} -p {pid} -d {duration} -f speedscope",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            shell=True,
+            shell=False,
         )
         stdout, stderr = await process.communicate()
         if process.returncode != 0:

@@ -34,7 +34,7 @@ def install_cluster_env_packages(cluster_env: Dict[Any, Any]):
     for package in packages:
         subprocess.check_output(
             f"pip install -U {shlex.quote(package)}",
-            shell=True,
+            shell=False,
             env=os.environ,
             text=True,
         )
@@ -161,7 +161,7 @@ class ClientRunner(CommandRunner):
             env=full_env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            shell=True,
+            shell=False,
             text=True,
         )
 

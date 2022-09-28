@@ -33,7 +33,7 @@ def run(access_token, prev_release_commit, curr_release_commit):
             f"git log {prev_release_commit}..{curr_release_commit} "
             f"--pretty=format:'%s' > commits.txt"
         ),
-        shell=True,
+        shell=False,
     )
     # Generate command
     cmd = []

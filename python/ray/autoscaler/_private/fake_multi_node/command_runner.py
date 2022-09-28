@@ -28,7 +28,7 @@ class FakeDockerCommandRunner(CommandRunnerInterface):
 
     def _run_shell(self, cmd: str, timeout: int = 120) -> str:
         return subprocess.check_output(
-            cmd, shell=True, timeout=timeout, encoding="utf-8"
+            cmd, shell=False, timeout=timeout, encoding="utf-8"
         )
 
     def run(

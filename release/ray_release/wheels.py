@@ -385,11 +385,11 @@ def install_matching_ray_locally(ray_wheels: Optional[str]):
     ray_wheels = ray_wheels.replace("manylinux2014_x86_64", platform)
     logger.info(f"Installing matching Ray wheels locally: {ray_wheels}")
     subprocess.check_output(
-        "pip uninstall -y ray", shell=True, env=os.environ, text=True
+        "pip uninstall -y ray", shell=False, env=os.environ, text=True
     )
     subprocess.check_output(
         f"pip install -U {shlex.quote(ray_wheels)}",
-        shell=True,
+        shell=False,
         env=os.environ,
         text=True,
     )

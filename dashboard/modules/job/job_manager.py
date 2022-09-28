@@ -198,7 +198,7 @@ class JobSupervisor:
         with open(logs_path, "w") as logs_file:
             child_process = subprocess.Popen(
                 self._entrypoint,
-                shell=True,
+                shell=False,
                 start_new_session=True,
                 stdout=logs_file,
                 stderr=subprocess.STDOUT,
@@ -215,7 +215,7 @@ class JobSupervisor:
                 # alive. If it fails, SIGKILL the child process group and exit
                 subprocess.Popen(
                     f"while kill -s 0 {parent_pid}; do sleep 1; done; kill -9 -{child_pgid}",  # noqa: E501
-                    shell=True,
+                    shell=False,
                     # Suppress output
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,

@@ -42,7 +42,7 @@ class RunScriptTest(unittest.TestCase):
                 f"{self.test_script} "
                 f"{self.state_file} "
                 f"{' '.join(str(e.value) for e in exits)}",
-                shell=True,
+                shell=False,
             )
         except subprocess.CalledProcessError as e:
             return e.returncode
@@ -94,7 +94,7 @@ class RunScriptTest(unittest.TestCase):
 
         subprocess.check_call(
             f"{self.test_script} " f"{argv_file} " f"--smoke-test",
-            shell=True,
+            shell=False,
         )
 
         with open(argv_file, "rt") as fp:

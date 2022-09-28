@@ -64,7 +64,7 @@ def test_ray_init_existing_instance(call_ray_start, address):
 
     # Start a second local Ray instance.
     try:
-        subprocess.check_output("ray start --head", shell=True)
+        subprocess.check_output("ray start --head", shell=False)
         # If there are multiple local instances, connect to the latest.
         res = ray.init(address=address)
         assert res.address_info["gcs_address"] != ray_address
@@ -77,7 +77,7 @@ def test_ray_init_existing_instance(call_ray_start, address):
             assert res.address_info["gcs_address"] == ray_address
     finally:
         ray.shutdown()
-        subprocess.check_output("ray stop --force", shell=True)
+        subprocess.check_output("ray stop --force", shell=False)
 
 
 @pytest.mark.skipif(

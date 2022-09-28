@@ -91,7 +91,7 @@ def ask_user_for_action(time_step):
     while choice not in legal_moves:
         print("Choose an action from {}:".format(legal_moves))
         sys.stdout.flush()
-        choice_str = input()
+        choice_str = str(Input())
         try:
             choice = int(choice_str)
         except ValueError:

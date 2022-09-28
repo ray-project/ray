@@ -21,7 +21,7 @@ def conda_env(env_name):
         # Clean up created conda env upon test exit to prevent leaking
         del os.environ["JOB_COMPATIBILITY_TEST_TEMP_ENV"]
         subprocess.run(
-            f"conda env remove -y --name {env_name}", shell=True, stdout=subprocess.PIPE
+            f"conda env remove -y --name {env_name}", shell=False, stdout=subprocess.PIPE
         )
 
 
@@ -49,7 +49,7 @@ class TestBackwardsCompatibility:
             shell_cmd = f"{_compatibility_script_path('test_backwards_compatibility.sh')}"  # noqa: E501
 
             try:
-                subprocess.check_output(shell_cmd, shell=True, stderr=subprocess.STDOUT)
+                subprocess.check_output(shell_cmd, shell=False, stderr=subprocess.STDOUT)
             except subprocess.CalledProcessError as e:
                 logger.error(str(e))
                 logger.error(e.stdout.decode())

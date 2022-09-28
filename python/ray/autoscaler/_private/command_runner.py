@@ -178,9 +178,9 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             logger.info(self.log_prefix + "Running {}".format(final_cmd))
             try:
                 if with_output:
-                    return self.process_runner.check_output(final_cmd, shell=True)
+                    return self.process_runner.check_output(final_cmd, shell=False)
                 else:
-                    self.process_runner.check_call(final_cmd, shell=True)
+                    self.process_runner.check_call(final_cmd, shell=False)
             except subprocess.CalledProcessError:
                 if exit_on_fail:
                     quoted_cmd = cmd_prefix + quote(" ".join(cmd))
@@ -294,7 +294,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
         # without making an extra kubectl exec call.
         cmd = self.kubectl + ["exec", "-it", self.node_id, "--", "printenv", "HOME"]
         joined_cmd = " ".join(cmd)
-        raw_out = self.process_runner.check_output(joined_cmd, shell=True)
+        raw_out = self.process_runner.check_output(joined_cmd, shell=False)
         home = raw_out.decode().strip("\n\r")
         return home
 

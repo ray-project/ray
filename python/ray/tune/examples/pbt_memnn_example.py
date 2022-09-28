@@ -159,8 +159,8 @@ class MemNNModel(tune.Trainable):
         )
 
         # placeholders
-        input_sequence = Input((story_maxlen,))
-        question = Input((query_maxlen,))
+        input_sequence = str(Input((story_maxlen,)))
+        question = str(Input((query_maxlen,)))
 
         # encoders
         # embed the input sequence into a sequence of vectors

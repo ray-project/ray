@@ -88,7 +88,7 @@ def wait_for_logs(operator_pod):
         f"kubectl -n {NAMESPACE} logs {operator_pod}"
         f"| grep ^example-cluster,{NAMESPACE}: | tail -n 100"
     )
-    log_tail = subprocess.check_output(cmd, shell=True).decode()
+    log_tail = subprocess.check_output(cmd, shell=False).decode()
     return ("head-node" in log_tail) and ("worker-node" in log_tail)
 
 
@@ -98,7 +98,7 @@ def wait_for_job(job_pod):
     cmd = f"kubectl -n {NAMESPACE} logs {job_pod}"
     try:
         out = subprocess.check_output(
-            cmd, shell=True, stderr=subprocess.STDOUT
+            cmd, shell=False, stderr=subprocess.STDOUT
         ).decode()
     except subprocess.CalledProcessError as e:
         print(">>>Failed to check job logs.")
@@ -116,7 +116,7 @@ def wait_for_job(job_pod):
 @retry_until_true
 def wait_for_command_to_succeed(cmd):
     try:
-        subprocess.check_call(cmd, shell=True)
+        subprocess.check_call(cmd, shell=False)
         return True
     except subprocess.CalledProcessError:
         return False
@@ -128,7 +128,7 @@ def wait_for_command_to_succeed_on_head(cmd_template, head_filter, namespace):
         head_pod = [pod for pod in pods() if head_filter in pod].pop()
         wait_for_pod_status(head_pod, "Running")
         cmd = cmd_template.format(namespace=namespace, head_pod=head_pod)
-        subprocess.check_call(cmd, shell=True)
+        subprocess.check_call(cmd, shell=False)
         return True
     except subprocess.CalledProcessError:
         return False
@@ -193,7 +193,7 @@ def num_services():
         f"kubectl -n {NAMESPACE} get services --no-headers -o"
         ' custom-columns=":metadata.name"'
     )
-    service_list = subprocess.check_output(cmd, shell=True).decode().split()
+    service_list = subprocess.check_output(cmd, shell=False).decode().split()
     return len(service_list)
 
 
@@ -276,7 +276,7 @@ class KubernetesOperatorTest(unittest.TestCase):
             print("\n>>>Starting operator and two clusters.")
             for file in files:
                 cmd = f"kubectl -n {NAMESPACE} apply -f {file.name}"
-                subprocess.check_call(cmd, shell=True)
+                subprocess.check_call(cmd, shell=False)
 
             # Check that autoscaling respects minWorkers by waiting for
             # six pods in the namespace.
@@ -305,7 +305,7 @@ class KubernetesOperatorTest(unittest.TestCase):
                 actor = Test.remote()
                 print(">>>Restarting operator pod.")
                 cmd = f"kubectl -n {NAMESPACE} delete pod {operator_pod}"
-                subprocess.check_call(cmd, shell=True)
+                subprocess.check_call(cmd, shell=False)
                 wait_for_pods(6)
                 operator_pod = [pod for pod in pods() if "operator" in pod].pop()
                 wait_for_pod_status(operator_pod, "Running")
@@ -318,7 +318,7 @@ class KubernetesOperatorTest(unittest.TestCase):
             print(">>>Deleting cluster's head to test recovery.")
             head_pod = [pod for pod in pods() if "r-ray-head" in pod].pop()
             cd = f"kubectl -n {NAMESPACE} delete pod {head_pod}"
-            subprocess.check_call(cd, shell=True)
+            subprocess.check_call(cd, shell=False)
             print(">>>Confirming recovery.")
             # Status marked "Running".
             wait_for_status("example-cluster", "Running")
@@ -337,7 +337,7 @@ class KubernetesOperatorTest(unittest.TestCase):
             )
             # ray status should fail when called immediately after ray stop
             with pytest.raises(subprocess.CalledProcessError):
-                subprocess.check_call(stat_cmd, shell=True)
+                subprocess.check_call(stat_cmd, shell=False)
             print(">>>Waiting for success of `ray status` on recovered head.")
             wait_for_command_to_succeed_on_head(
                 stat_cmd, head_filter="r-ray-head", namespace=NAMESPACE
@@ -346,7 +346,7 @@ class KubernetesOperatorTest(unittest.TestCase):
             # Delete the second cluster
             print(">>>Deleting example-cluster2.")
             cmd = f"kubectl -n {NAMESPACE} delete -f" f"{example_cluster2_file.name}"
-            subprocess.check_call(cmd, shell=True)
+            subprocess.check_call(cmd, shell=False)
 
             # Four pods remain
             print(">>>Checking that example-cluster2 pods are gone.")
@@ -358,13 +358,13 @@ class KubernetesOperatorTest(unittest.TestCase):
             # Check job submission
             print(">>>Submitting a job to test Ray client connection.")
             cmd = f"kubectl -n {NAMESPACE} create -f {job_file.name}"
-            subprocess.check_call(cmd, shell=True)
+            subprocess.check_call(cmd, shell=False)
             wait_for_pods(1, name_filter="job")
             job_pod = [pod for pod in pods() if "job" in pod].pop()
             time.sleep(10)
             wait_for_job(job_pod)
             cmd = f"kubectl -n {NAMESPACE} delete jobs --all"
-            subprocess.check_call(cmd, shell=True)
+            subprocess.check_call(cmd, shell=False)
 
             # Check that cluster updates work: increase minWorkers to 3
             # and check that one worker is created.
@@ -374,14 +374,14 @@ class KubernetesOperatorTest(unittest.TestCase):
             yaml.dump(example_cluster_edit, example_cluster_file)
             example_cluster_file.flush()
             cm = f"kubectl -n {NAMESPACE} apply -f {example_cluster_file.name}"
-            subprocess.check_call(cm, shell=True)
+            subprocess.check_call(cm, shell=False)
             print(">>>Checking that new cluster size is respected.")
             wait_for_pods(5)
 
             # Delete the first cluster
             print(">>>Deleting second cluster.")
             cmd = f"kubectl -n {NAMESPACE} delete -f" f"{example_cluster_file.name}"
-            subprocess.check_call(cmd, shell=True)
+            subprocess.check_call(cmd, shell=False)
 
             # Only operator pod remains.
             print(">>>Checking that all Ray cluster pods are gone.")
@@ -396,12 +396,12 @@ class KubernetesOperatorTest(unittest.TestCase):
             print(">>>Checking cluster creation again.")
             for file in [example_cluster_file, example_cluster2_file]:
                 cmd = f"kubectl -n {NAMESPACE} apply -f {file.name}"
-                subprocess.check_call(cmd, shell=True)
+                subprocess.check_call(cmd, shell=False)
             wait_for_pods(7)
             print(">>>Checking cluster deletion again.")
             for file in [example_cluster_file, example_cluster2_file]:
                 cmd = f"kubectl -n {NAMESPACE} delete -f {file.name}"
-                subprocess.check_call(cmd, shell=True)
+                subprocess.check_call(cmd, shell=False)
             wait_for_pods(1)
 
 
