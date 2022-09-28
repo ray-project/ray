@@ -19,6 +19,7 @@ from typing import (
 import numpy as np
 
 import ray
+from ray import ObjectRefGenerator
 from ray.data._internal.util import _check_pyarrow_version
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
@@ -138,9 +139,9 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 # same type as the metadata that describes each block in the partition.
 BlockPartitionMetadata = "BlockMetadata"
 
-# TODO(ekl) replace this with just `BlockPartition` once block splitting is on
-# by default. When block splitting is off, the type is a plain block.
-MaybeBlockPartition = Union[Block, BlockPartition]
+# TODO(ekl/chengsu): replace this with just `ObjectRefGenerator` once block splitting
+# is on by default. When block splitting is off, the type is a plain block.
+MaybeBlockPartition = Union[Block, ObjectRefGenerator]
 
 VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy"]
 
@@ -162,6 +163,16 @@ class BlockExecStats:
         # Max memory usage. May be an overestimate since we do not
         # differentiate from previous tasks on the same worker.
         self.max_rss_bytes: int = 0
+
+    def add(self, other: "BlockExecStats"):
+        """Add the other BlockExecStats into this BlockExecStats, by combining
+        each statistics.
+        """
+        if other.wall_time_s:
+            self.wall_time_s = float(self.wall_time_s or 0) + other.wall_time_s
+        if other.cpu_time_s:
+            self.cpu_time_s = float(self.cpu_time_s or 0) + other.cpu_time_s
+        self.max_rss_bytes = max(self.max_rss_bytes, other.max_rss_bytes)
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
