@@ -252,7 +252,7 @@ This section explains how Serve recovers from system failures. It uses the follo
 ::::
 
 ::::{tabbed} Kubernetes Config
-```{literalinclude} ../doc_code/fault_tolerance/k8s_config.py
+```{literalinclude} ../doc_code/fault_tolerance/k8s_config.yaml
 :start-after: __start__
 :end-before: __end__
 :language: yaml
