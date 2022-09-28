@@ -1,6 +1,6 @@
 import pytest
 
-from ray.serve.drivers import DefaultgRPCDriver
+from ray.serve.drivers import DefaultgRPCDriver, gRPCIngress
 import ray
 from ray import serve
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
@@ -9,6 +9,7 @@ from ray.cluster_utils import Cluster
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY
+from ray.serve.exceptions import RayServeException
 
 
 pytestmark = pytest.mark.asyncio
@@ -105,6 +106,21 @@ def test_deploy_grpc_driver_to_node(ray_cluster):
         )
         == 1
     )
+
+
+def test_schemas_attach_grpc_server():
+
+    # Failed with initiate solely
+    with pytest.raises(RayServeException):
+        ingress = gRPCIngress()
+
+    class MyDriver(gRPCIngress):
+        def __init__(self):
+            super().__init__()
+
+    # Failed with no schema gRPC binding function
+    with pytest.raises(RayServeException):
+        my_driver = MyDriver()
 
 
 if __name__ == "__main__":

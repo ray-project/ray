@@ -179,7 +179,8 @@ class DeploymentSchema(
 
     is_driver_deployment: bool = Field(
         default=False,
-        description="Indicate Whether the deployment is driver deployment",
+        description="Indicate Whether the deployment is driver deployment "
+        "Driver deployments are spawned one per node.",
     )
 
     @root_validator

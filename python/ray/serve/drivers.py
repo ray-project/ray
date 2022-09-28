@@ -121,7 +121,7 @@ class gRPCIngress:
     gRPC Ingress that starts gRPC server based on the port
     """
 
-    def __init__(self, port: str = DEFAULT_GRPC_PORT):
+    def __init__(self, port: int = DEFAULT_GRPC_PORT):
         """Create a gRPC Ingress.
 
         Args:
@@ -131,15 +131,7 @@ class gRPCIngress:
         self.server = grpc.aio.server()
         self.port = port
 
-        # protobuf Schema gRPC should generate bind function
-        # (e.g. add_PredictAPIsServiceServicer_to_server) to bind gRPC server
-        # and schema interface
-        bind_function_name = "add_{}_to_server"
-        module_name = self.__class__.__bases__[1].__module__
-        servicer_name = self.__class__.__bases__[1].__name__
-        getattr(sys.modules[module_name], bind_function_name.format(servicer_name))(
-            self, self.server
-        )
+        self._attach_grpc_server_with_schema()
 
         self.setup_complete = asyncio.Event()
         self.running_task = asyncio.get_event_loop().create_task(self.run())
@@ -157,9 +149,34 @@ class gRPCIngress:
         await self.server.start()
         await self.server.wait_for_termination()
 
+    def _attach_grpc_server_with_schema(self):
+        """Attach the gRPC server with schema implementation
+
+        Protobuf Schema gRPC should generate bind function
+        (e.g. add_PredictAPIsServiceServicer_to_server) to bind gRPC server
+        and schema interface
+        """
+        # protobuf Schema gRPC should generate bind function
+        # (e.g. add_PredictAPIsServiceServicer_to_server) to bind gRPC server
+        # and schema interface
+        bind_function_name = "add_{}_to_server"
+        for index in range(len(self.__class__.__bases__)):
+            module_name = self.__class__.__bases__[index].__module__
+            servicer_name = self.__class__.__bases__[index].__name__
+            try:
+                getattr(
+                    sys.modules[module_name], bind_function_name.format(servicer_name)
+                )(self, self.server)
+                return
+            except AttributeError:
+                pass
+        raise RayServeException(
+            "Fail to attach the gRPC server with schema implementation"
+        )
+
 
 @serve.deployment(is_driver_deployment=True, ray_actor_options={"num_cpus": 0})
-class DefaultgRPCDriver(gRPCIngress, serve_pb2_grpc.PredictAPIsServiceServicer):
+class DefaultgRPCDriver(serve_pb2_grpc.PredictAPIsServiceServicer, gRPCIngress):
     """
     gRPC Driver that responsible for redirecting the gRPC requests
     and hold dag handle
