@@ -1499,21 +1499,21 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_connector",
+    name = "connectors/tests/test_connector",
     tags = ["team:rllib", "connector"],
     size = "small",
     srcs = ["connectors/tests/test_connector.py"]
 )
 
 py_test(
-    name = "test_action",
+    name = "connectors/tests/test_action",
     tags = ["team:rllib", "connector"],
     size = "small",
     srcs = ["connectors/tests/test_action.py"]
 )
 
 py_test(
-    name = "test_agent",
+    name = "connectors/tests/test_agent",
     tags = ["team:rllib", "connector"],
     size = "small",
     srcs = ["connectors/tests/test_agent.py"]
