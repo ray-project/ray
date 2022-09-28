@@ -172,7 +172,7 @@ class TestOPEMath(unittest.TestCase):
 
     def test_dm_dr_math(self):
         """Tests that the Direct Method and Doubly Robust methods are correct in terms
-        of RL vs. bandits. This does not check if v_gain > 1.0 because it needs a real 
+        of RL vs. bandits. This does not check if v_gain > 1.0 because it needs a real
         target policy to train on."""
 
         ope_classes = [
