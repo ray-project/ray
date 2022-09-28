@@ -259,5 +259,15 @@ This section explains how Serve recovers from system failures. It uses the follo
 ```
 ::::
 
+### Worker node failure
+
+### Head node failure
+
+### Serve controller failure
+
+### Deployment replica failure
+
+### HTTPProxy failure
+
 [KubeRay]: https://ray-project.github.io/kuberay/
 [external storage namespace]: https://ray-project.github.io/kuberay/guidance/gcs-ft/#external-storage-namespace

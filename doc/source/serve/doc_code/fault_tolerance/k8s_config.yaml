@@ -12,7 +12,6 @@ data:
     bind 0.0.0.0
     appendonly yes
     protected-mode no
-    requirepass 5241590000000000
     pidfile /data/redis-6379.pid
 ---
 apiVersion: v1
@@ -76,6 +75,11 @@ spec:
       working_dir: >-
         https://github.com/ray-project/serve_config_examples/archive/
         42d10bab77741b40d11304ad66d39a4ec2345247.zip
+    deployments:
+      - name: SleepyPid
+        numReplicas: 6
+        rayActorOptions:
+          numCpus: 0
   rayClusterConfig:
     rayVersion: '2.0.0'
     headGroupSpec:
@@ -116,7 +120,7 @@ spec:
                 - containerPort: 8000
                   name: serve
     workerGroupSpecs:
-      - replicas: 1
+      - replicas: 2
         minReplicas: 1
         maxReplicas: 5
         groupName: small-group
