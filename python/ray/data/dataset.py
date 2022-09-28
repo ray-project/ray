@@ -2242,9 +2242,44 @@ class Dataset(Generic[T]):
             block_path_provider=block_path_provider,
         )
 
-    def write_mongo(self, uri, database, collection) -> None:
+    def write_mongo(
+        self,
+        uri: str,
+        database: str,
+        collection: str,
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> None:
+        """Write the dataset to a MongoDB datasource.
+
+        This is only supported for datasets convertible to Arrow records.
+        To control the number of parallel write tasks, use ``.repartition()``
+        before calling this method.
+
+        Examples:
+            >>> import ray
+            >>> import pandas as pd
+            >>> docs = [{"title": "MongoDB Datasource test"} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> ds.write_mongo( # doctest: +SKIP
+            >>>     MongoDatasource(), # doctest: +SKIP
+            >>>     uri=MY_URI, # doctest: +SKIP
+            >>>     database=MY_DATABASE, # doctest: +SKIP
+            >>>     collection=MY_COLLECTION, # doctest: +SKIP
+            >>> ) # doctest: +SKIP
+
+        Args:
+            uri: The URI to the destination MongoDB where the dataset will be
+                written to.
+            database: The name of the database.
+            collection: The name of the collection in the database.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+        """
         self.write_datasource(
-            MongoDatasource(), uri=uri, database=database, collection=collection
+            MongoDatasource(),
+            ray_remote_args=ray_remote_args,
+            uri=uri,
+            database=database,
+            collection=collection,
         )
 
     def write_datasource(

@@ -3053,6 +3053,12 @@ def test_mongo_datasource(ray_start_regular_shared):
     )
     ds3.to_pandas().equals(ds2.to_pandas)
 
+    # list is not supported (yet) in pymongoarrow.
+    with pytest.raises(ValueError):
+        ray.data.range(10).write_mongo(
+            uri=mongo_url, database=foo_db, collection=foo_collection
+        )
+
 
 @pytest.mark.parametrize("size", [(-32, 32), (32, -32), (-32, -32)])
 def test_image_folder_datasource_value_error(ray_start_regular_shared, size):
