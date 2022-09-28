@@ -326,7 +326,6 @@ def test_dynamic_generator_reconstruction_fails(ray_start_cluster):
         "fetch_warn_timeout_milliseconds": 1000,
     }
     cluster = ray_start_cluster
-    # Head node with no resources.
     cluster.add_node(
         num_cpus=1,
         _system_config=config,
