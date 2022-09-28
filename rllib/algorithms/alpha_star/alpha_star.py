@@ -143,11 +143,6 @@ class AlphaStarConfig(appo.APPOConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-        # TODO: IMPALA and APPO - for now - are back on the exec plan API
-        #  due to some buffer issues (fix in progress). AlphaStar is
-        #  not affected by this (never had an execution_plan implementation).
-        self._disable_execution_plan_api = True
-
     @override(appo.APPOConfig)
     def training(
         self,
@@ -559,7 +554,7 @@ class AlphaStar(appo.APPO):
             )
             if replay_actor is not None:
                 ma_batch = MultiAgentBatch({pid: batch}, batch.count)
-                replay_actor.add_batch.remote(ma_batch)
+                replay_actor.add.remote(ma_batch)
         # Return counts (env-steps, agent-steps).
         return sample.count, sample.agent_steps()
 
@@ -632,7 +627,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.alpha_star.alpha_star.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.alpha_star.alpha_star.AlphaStarConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)
