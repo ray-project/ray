@@ -46,6 +46,7 @@ from ray.rllib.utils.typing import (
 )
 
 if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.evaluation import Episode  # noqa
 
 torch, nn = try_import_torch()
@@ -62,7 +63,7 @@ class TorchPolicyV2(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: AlgorithmConfigDict,
+        config: Union["AlgorithmConfig", AlgorithmConfigDict],
         *,
         max_seq_len: int = 20,
     ):
@@ -71,10 +72,14 @@ class TorchPolicyV2(Policy):
         Args:
             observation_space: Observation space of the policy.
             action_space: Action space of the policy.
-            config: The Policy's config dict.
+            config: The Policy's config object.
             max_seq_len: Max sequence length for LSTM training.
         """
-        self.framework = config["framework"] = "torch"
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+        if isinstance(config, dict):
+            config = AlgorithmConfig().from_dict(config)
+
+        self.framework = "torch"
 
         self._loss_initialized = False
         super().__init__(observation_space, action_space, config)
@@ -103,7 +108,7 @@ class TorchPolicyV2(Policy):
         # - Fake GPU mode.
         # - num_gpus=0 (either set by user or we are in local_mode=True).
         # - No GPUs available.
-        if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
+        if config._fake_gpus or num_gpus == 0 or not gpu_ids:
             self.device = torch.device("cpu")
             self.devices = [self.device for _ in range(int(math.ceil(num_gpus)) or 1)]
             self.model_gpu_towers = [

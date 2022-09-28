@@ -10,6 +10,7 @@ import ray
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
+from ray.rllib.algorithms.pg.pg import PGConfig
 from ray.rllib.algorithms.pg.utils import post_process_advantages
 from ray.rllib.utils.typing import AgentID
 from ray.rllib.utils.annotations import override
@@ -49,14 +50,12 @@ def get_pg_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             self,
             observation_space,
             action_space,
-            config,
+            config: PGConfig,
             existing_model=None,
             existing_inputs=None,
         ):
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
-
-            config = dict(ray.rllib.algorithms.pg.PGConfig().to_dict(), **config)
 
             # Initialize base class.
             base.__init__(
@@ -68,7 +67,7 @@ def get_pg_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                 existing_model=existing_model,
             )
 
-            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+            LearningRateSchedule.__init__(self, config.lr, config.lr_schedule)
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.

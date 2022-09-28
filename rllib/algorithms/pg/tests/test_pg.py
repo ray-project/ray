@@ -85,7 +85,9 @@ class TestPG(unittest.TestCase):
                 "FrozenLake-v1",
             ]:
                 print(f"env={env}")
-                trainer = config.build(env=env)
+                config.environment(env)
+
+                trainer = config.build()
                 for i in range(num_iterations):
                     results = trainer.train()
                     check_train_results(results)

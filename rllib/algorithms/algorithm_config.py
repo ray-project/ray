@@ -1,8 +1,9 @@
 import copy
+import gym
+import logging
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
 
-import gym
-
+from ray.util import log_once
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -21,6 +22,8 @@ from ray.tune.logger import Logger
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
+
+logger = logging.getLogger(__name__)
 
 
 class AlgorithmConfig:
@@ -54,6 +57,7 @@ class AlgorithmConfig:
         # Define the default RLlib Trainer class that this AlgorithmConfig will be
         # applied to.
         self.algo_class = algo_class
+        self._algo_requires_config_obj = False
 
         # `self.python_environment()`
         self.extra_python_environs_for_driver = {}
@@ -210,6 +214,9 @@ class AlgorithmConfig:
         self._disable_action_flattening = False
         self._disable_execution_plan_api = True
 
+        # Has this config object been frozen (cannot alter its attributes anymore).
+        self._is_frozen = False
+
         # TODO: Remove, once all deprecation_warning calls upon using these keys
         #  have been removed.
         # === Deprecated keys ===
@@ -278,6 +285,58 @@ class AlgorithmConfig:
 
         return config
 
+    @classmethod
+    def from_dict(cls, config_dict: dict) -> "AlgorithmConfig":
+        """Creates an AlgorithmConfig from a legacy python config dict.
+
+        Examples:
+            >>> from ray.rllib.algorithms.ppo.ppo import DEFAULT_CONFIG, PPOConfig
+            >>> ppo_config = PPOConfig.from_dict(DEFAULT_CONFIG)
+            >>> ppo = ppo_config.build(env="Pendulum-v1")
+
+        Args:
+            config_dict: The legacy formatted python config dict for some algorithm.
+
+        Returns:
+             A new TrainerConfig object that matches the given python config dict.
+        """
+        # Create a default config object of this class.
+        config_obj = cls()
+        return config_obj.update_from_dict(config_dict)
+
+    def update_from_dict(self, config_dict: dict) -> "AlgorithmConfig":
+        # Modify our properties one by one.
+        for key, value in config_dict.items():
+            key = self._translate_special_keys(key)
+
+            # Set our multi-agent settings.
+            if key == "multiagent":
+                for k in [
+                    "policies",
+                    "policy_map_capacity",
+                    "policy_map_cache",
+                    "policy_mapping_fn",
+                    "policies_to_train",
+                    "observation_fn",
+                    "replay_mode",
+                    "count_steps_by",
+                ]:
+                    setattr(self, k, value[k])
+            # If config key matches a property, just set it.
+            elif hasattr(self, key):
+                setattr(self, key, value)
+            # Unsupported key -> Error.
+            else:
+                raise ValueError(
+                    f"Cannot create {type(self).__name__} from given `config_dict`! "
+                    f"Property {key} not supported."
+                )
+        return self
+
+    def freeze(self):
+        """Freezes this config object, such that no attributes can be set anymore."""
+        self._is_frozen = True
+
     def build(
         self,
         env: Optional[Union[str, EnvType]] = None,
@@ -305,8 +364,8 @@ class AlgorithmConfig:
             self.logger_creator = logger_creator
 
         return self.algo_class(
-            config=self.to_dict(),
-            env=self.env,
+            config=self if self._algo_requires_config_obj else self.to_dict(),
+            env=None if self._algo_requires_config_obj else self.env,
             logger_creator=self.logger_creator,
         )
 
@@ -1269,3 +1328,45 @@ class AlgorithmConfig:
             self._disable_execution_plan_api = _disable_execution_plan_api
 
         return self
+
+    def __setattr__(self, key, value):
+        if hasattr(self, "_is_frozen") and self._is_frozen:
+            raise AttributeError(
+                "Cannot set attribute of an already frozen AlgorithmConfig!"
+            )
+        super().__setattr__(key, value)
+
+    def __getitem__(self, item):
+        if log_once("algo_config_getitem"):
+            logger.warning(
+                "AlgorithmConfig objects should NOT be used as dict! "
+                f"Try accessing `{item}` directly as a property."
+            )
+        item = self._translate_special_keys(item)
+        return self.__getattribute__(item)
+
+    def __setitem__(self, key, value):
+        raise AttributeError(
+            "AlgorithmConfig objects should not have their values set like dicts"
+            f"(`config['{key}'] = {value}`), "
+            f"but via setting their properties directly (config.{key} = {value})."
+        )
+
+    def _translate_special_keys(self, key):
+        # Handle special edge-cases.
+        if key == "callbacks":
+            key = "callbacks_class"
+        elif key == "create_env_on_driver":
+            key = "create_env_on_local_worker"
+        elif key == "custom_eval_function":
+            key = "custom_evaluation_function"
+        elif key == "framework":
+            key = "framework_str"
+        elif key == "input":
+            key = "input_"
+        elif key == "lambda":
+            key = "lambda_"
+        elif key == "num_cpus_for_driver":
+            key = "num_cpus_for_local_worker"
+
+        return key

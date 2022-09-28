@@ -210,40 +210,42 @@ class Algorithm(Trainable):
     @PublicAPI
     def __init__(
         self,
-        config: Optional[Union[PartialAlgorithmConfigDict, AlgorithmConfig]] = None,
-        env: Optional[Union[str, EnvType]] = None,
+        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
+        env=None,  # deprecated
         logger_creator: Optional[Callable[[], Logger]] = None,
         **kwargs,
     ):
         """Initializes an Algorithm instance.
 
         Args:
-            config: Algorithm-specific configuration dict.
-            env: Name of the environment to use (e.g. a gym-registered str),
-                a full class path (e.g.
-                "ray.rllib.examples.env.random_env.RandomEnv"), or an Env
-                class directly. Note that this arg can also be specified via
-                the "env" key in `config`.
+            config: Algorithm-specific configuration object.
             logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
             **kwargs: Arguments passed to the Trainable base class.
 
         """
 
-        # User provided (partial) config (this may be w/o the default
-        # Algorithm's Config object). Will get merged with AlgorithmConfig()
-        # in self.setup().
-        config = config or {}
-        # Resolve AlgorithmConfig into a plain dict.
+        # Resolve possible dict into an AlgorithmConfig object.
         # TODO: In the future, only support AlgorithmConfig objects here.
-        if isinstance(config, AlgorithmConfig):
-            config = config.to_dict()
+        if isinstance(config, dict):
+            config = AlgorithmConfig.from_dict(config)
+
+        if env is not None:
+            deprecation_warning(
+                old="algo = Algorithm(env='CartPole-v0', ...)",
+                new="algo = AlgorithmConfig().environment('CartPole-v0').build()",
+                error=False,
+            )
+            config.environment(env)
+
+        # Freeze our AlgorithmConfig object (no more changes possible).
+        config.freeze()
 
         # Convert `env` provided in config into a concrete env creator callable, which
         # takes an EnvContext (config dict) as arg and returning an RLlib supported Env
         # type (e.g. a gym.Env).
         self._env_id, self.env_creator = self._get_env_id_and_creator(
-            env or config.get("env"), config
+            config.env, config
         )
         env_descr = (
             self._env_id.__name__ if isinstance(self._env_id, type) else self._env_id
@@ -266,7 +268,7 @@ class Algorithm(Trainable):
 
             # Allow users to more precisely configure the created logger
             # via "logger_config.type".
-            if config.get("logger_config") and "type" in config["logger_config"]:
+            if config.logger_config and "type" in config.logger_config:
 
                 def default_logger_creator(config):
                     """Creates a custom logger with the default prefix."""
@@ -310,7 +312,11 @@ class Algorithm(Trainable):
             }
         }
 
-        super().__init__(config=config, logger_creator=logger_creator, **kwargs)
+        super().__init__(
+            config=config,
+            logger_creator=logger_creator,
+            **kwargs,
+        )
 
         # Check, whether `training_iteration` is still a tune.Trainable property
         # and has not been overridden by the user in the attempt to implement the
@@ -613,7 +619,10 @@ class Algorithm(Trainable):
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
-    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
+    def get_default_policy_class(
+        self,
+        config: Union[AlgorithmConfig, AlgorithmConfigDict],
+    ) -> Type[Policy]:
         """Returns a default Policy class to use, given a config.
 
         This class will be used inside RolloutWorkers' PolicyMaps in case
@@ -1876,14 +1885,14 @@ class Algorithm(Trainable):
 
     @staticmethod
     def _get_env_id_and_creator(
-        env_specifier: Union[str, EnvType, None], config: PartialAlgorithmConfigDict
+        env_specifier: Union[str, EnvType, None], config: AlgorithmConfig
     ) -> Tuple[Optional[str], EnvCreator]:
         """Returns env_id and creator callable given original env id from config.
 
         Args:
             env_specifier: An env class, an already tune registered env ID, a known
                 gym env name, or None (if no env is used).
-            config: The Algorithm's (maybe partial) config dict.
+            config: The AlgorithmConfig object.
 
         Returns:
             Tuple consisting of a) env ID string and b) env creator callable.
@@ -1916,7 +1925,7 @@ class Algorithm(Trainable):
         elif isinstance(env_specifier, type):
             env_id = env_specifier  # .__name__
 
-            if config.get("remote_worker_envs"):
+            if config.remote_worker_envs:
                 # Check gym version (0.22 or higher?).
                 # If > 0.21, can't perform auto-wrapping of the given class as this
                 # would lead to a pickle error.

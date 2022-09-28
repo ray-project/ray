@@ -54,6 +54,9 @@ class PGConfig(AlgorithmConfig):
         # __sphinx_doc_end__
         # fmt: on
 
+        # The PG algo fully works with AlgorithmConfig objects under the hood.
+        self._algo_requires_config_obj = True
+
     @override(AlgorithmConfig)
     def training(
         self,
@@ -108,11 +111,13 @@ class PG(Algorithm):
 
     @override(Algorithm)
     def get_default_policy_class(self, config) -> Type[Policy]:
-        if config["framework"] == "torch":
+        assert isinstance(config, AlgorithmConfig)
+
+        if config.framework_str == "torch":
             from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 
             return PGTorchPolicy
-        elif config["framework"] == "tf":
+        elif config.framework_str == "tf":
             from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
 
             return PGTF1Policy

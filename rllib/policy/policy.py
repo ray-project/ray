@@ -59,6 +59,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.evaluation import Episode
 
 logger = logging.getLogger(__name__)
@@ -176,7 +177,7 @@ class Policy(metaclass=ABCMeta):
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
-        config: AlgorithmConfigDict,
+        config: Union["AlgorithmConfig", AlgorithmConfigDict],
     ):
         """Initializes a Policy instance.
 
@@ -194,11 +195,15 @@ class Policy(metaclass=ABCMeta):
         self.observation_space_struct = get_base_struct_from_space(observation_space)
         self.action_space_struct = get_base_struct_from_space(action_space)
 
-        self.config: AlgorithmConfigDict = config
-        self.framework = self.config.get("framework")
+        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+        if isinstance(config, dict):
+            config = AlgorithmConfig().from_dict(config)
+        self.config = config
+
+        self.framework = self.config.framework_str
         # Create the callbacks object to use for handling custom callbacks.
-        if self.config.get("callbacks"):
-            self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
+        if self.config.callbacks_class:
+            self.callbacks: "DefaultCallbacks" = self.config.callbacks_class()
         else:
             from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
@@ -284,7 +289,7 @@ class Policy(metaclass=ABCMeta):
                 which may be useful for model-based or multi-agent algorithms.
             explore: Whether to pick an exploitation or
                 exploration action
-                (default: None -> use self.config["explore"]).
+                (default: None -> use self.config.explore).
             timestep: The current (sampling) time step.
 
         Keyword Args:
@@ -374,7 +379,7 @@ class Policy(metaclass=ABCMeta):
                 Policy's as well as the Model's view requirements and can
                 thus be passed to the Model as-is.
             explore: Whether to pick an exploitation or exploration
-                action (default: None -> use self.config["explore"]).
+                action (default: None -> use self.config.explore).
             timestep: The current (sampling) time step.
             episodes: This provides access to all of the internal episodes'
                 state, which may be useful for model-based or multi-agent
@@ -434,7 +439,7 @@ class Policy(metaclass=ABCMeta):
                 multi-agent algorithms.
             explore: Whether to pick an exploitation or exploration action.
                 Set to None (default) for using the value of
-                `self.config["explore"]`.
+                `self.config.explore`.
             timestep: The current (sampling) time step.
 
         Keyword Args:
@@ -764,7 +769,7 @@ class Policy(metaclass=ABCMeta):
             # The current global timestep.
             "global_timestep": self.global_timestep,
         }
-        if self.config.get("enable_connectors", False):
+        if self.config.enable_connectors:
             # Checkpoint connectors state as well if enabled.
             connector_configs = {}
             if self.agent_connectors:
@@ -786,7 +791,7 @@ class Policy(metaclass=ABCMeta):
         from ray.rllib.connectors.util import restore_connectors_for_policy
 
         # No-op if connector is not enabled.
-        if not self.config.get("enable_connectors", False):
+        if not self.config.enable_connectors:
             return
 
         connector_configs = state.get("connector_configs", {})
@@ -918,8 +923,8 @@ class Policy(metaclass=ABCMeta):
             0 if policy should run on CPU. >0 if policy should run on 1 or
             more GPUs.
         """
-        worker_idx = self.config.get("worker_index", 0)
-        fake_gpus = self.config.get("_fake_gpus", False)
+        worker_idx = self.config.worker_index
+        fake_gpus = self.config._fake_gpus
         if (
             ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
             and not fake_gpus
@@ -928,10 +933,10 @@ class Policy(metaclass=ABCMeta):
             num_gpus = 0
         elif worker_idx == 0:
             # If head node, take num_gpus.
-            num_gpus = self.config["num_gpus"]
+            num_gpus = self.config.num_gpus
         else:
             # If worker node, take num_gpus_per_worker
-            num_gpus = self.config["num_gpus_per_worker"]
+            num_gpus = self.config.num_gpus_per_worker
 
         if num_gpus == 0:
             dev = "CPU"
@@ -962,13 +967,13 @@ class Policy(metaclass=ABCMeta):
 
         exploration = from_config(
             Exploration,
-            self.config.get("exploration_config", {"type": "StochasticSampling"}),
+            self.config.exploration_config,
             action_space=self.action_space,
             policy_config=self.config,
             model=getattr(self, "model", None),
-            num_workers=self.config.get("num_workers", 0),
-            worker_index=self.config.get("worker_index", 0),
-            framework=getattr(self, "framework", self.config.get("framework", "tf")),
+            num_workers=self.config.num_workers,
+            worker_index=self.config.worker_index,
+            framework=getattr(self, "framework", self.config.framework_str),
         )
         return exploration
 
@@ -1107,14 +1112,14 @@ class Policy(metaclass=ABCMeta):
         # We should simply do self.loss(...) here.
         if self._loss is not None:
             self._loss(self, self.model, self.dist_class, train_batch)
-        elif is_overridden(self.loss) and not self.config["in_evaluation"]:
+        elif is_overridden(self.loss) and not self.config.in_evaluation:
             self.loss(self.model, self.dist_class, train_batch)
         # Call the stats fn, if given.
         # TODO(jungong) : clean up after all agents get migrated.
         # We should simply do self.stats_fn(train_batch) here.
         if stats_fn is not None:
             stats_fn(self, train_batch)
-        if hasattr(self, "stats_fn") and not self.config["in_evaluation"]:
+        if hasattr(self, "stats_fn") and not self.config.in_evaluation:
             self.stats_fn(train_batch)
 
         # Re-enable tracing.
@@ -1184,7 +1189,7 @@ class Policy(metaclass=ABCMeta):
                             )
                         # If we are not writing output to disk, save to erase
                         # this key to save space in the sample batch.
-                        elif self.config["output"] is None:
+                        elif self.config.output is None:
                             del self.view_requirements[key]
 
         if type(self.global_timestep) is int:
@@ -1216,15 +1221,15 @@ class Policy(metaclass=ABCMeta):
             if (isinstance(view_req.space, (gym.spaces.Tuple, gym.spaces.Dict))) and (
                 (
                     data_col == SampleBatch.OBS
-                    and not self.config["_disable_preprocessor_api"]
+                    and not self.config._disable_preprocessor_api
                 )
                 or (
                     data_col == SampleBatch.ACTIONS
-                    and not self.config.get("_disable_action_flattening")
+                    and not self.config._disable_action_flattening
                 )
             ):
                 _, shape = ModelCatalog.get_action_shape(
-                    view_req.space, framework=self.config["framework"]
+                    view_req.space, framework=self.config.framework_str
                 )
                 ret[view_col] = np.zeros((batch_size,) + shape[1:], np.float32)
             # Non-flattened dummy batch.
@@ -1311,7 +1316,7 @@ class Policy(metaclass=ABCMeta):
                         "state_out_{}".format(i),
                         shift=-1,
                         used_for_compute_actions=True,
-                        batch_repeat_value=self.config.get("model", {}).get(
+                        batch_repeat_value=self.config.model.get(
                             "max_seq_len", 1
                         ),
                         space=space,
