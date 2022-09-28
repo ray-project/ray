@@ -59,7 +59,7 @@ def test_read_text_meta_provider(
 
 
 def test_read_text_partitioned_with_filter(
-    ray_start_regular_shared,
+    shutdown_only,
     tmp_path,
     write_base_partitioned_df,
     assert_base_partitioned_ds,
@@ -108,3 +108,41 @@ def test_read_text_partitioned_with_filter(
         assert ray.get(skipped_file_counter.get.remote()) == 1
         ray.get(kept_file_counter.reset.remote())
         ray.get(skipped_file_counter.reset.remote())
+
+def test_read_text_remote_args(ray_start_cluster, tmp_path):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"foo": 100},
+        num_cpus=1,
+        _system_config={"max_direct_call_object_size": 0},
+    )
+    cluster.add_node(resources={"bar": 100}, num_cpus=1)
+
+    ray.init(cluster.address)
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().node_id.hex()
+
+    bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
+
+    path = os.path.join(tmp_path, "test_text")
+    os.mkdir(path)
+    with open(os.path.join(path, "file1.txt"), "w") as f:
+        f.write("hello\n")
+        f.write("world")
+    with open(os.path.join(path, "file2.txt"), "w") as f:
+        f.write("goodbye")
+
+    ds = ray.data.read_text(
+        path, parallelism=2, ray_remote_args={"resources": {"bar": 1}}
+    )
+
+    blocks = ds.get_internal_block_refs()
+    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(blocks)
+    locations = []
+    for block in blocks:
+        locations.extend(location_data[block]["node_ids"])
+    assert set(locations) == {bar_node_id}, locations
+    assert sorted(ds.take()) == ["goodbye", "hello", "world"]
