@@ -1314,13 +1314,8 @@ class RolloutWorker(ParallelIteratorWorker):
         # Create connectors for the new policy, if necessary.
         # Only if connectors are enables and we created the new policy from scratch
         # (it was not provided to us via the `policy` arg.
-        if (
-            policy is None
-            and connectors_enabled
-        ):
-            create_connectors_for_policy(
-                new_policy, config=merged_config
-            )
+        if policy is None and connectors_enabled:
+            create_connectors_for_policy(new_policy, config=merged_config)
 
         self.set_policy_mapping_fn(policy_mapping_fn)
         if policies_to_train is not None:
