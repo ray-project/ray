@@ -137,10 +137,9 @@ class TestEnvRunnerV2(unittest.TestCase):
         local_worker = algo.workers.local_worker()
         env = local_worker.env
 
-        obs, rewards, dones, infos = local_worker.env.step({
-            0: env.action_space.sample(),
-            1: env.action_space.sample()
-        })
+        obs, rewards, dones, infos = local_worker.env.step(
+            {0: env.action_space.sample(), 1: env.action_space.sample()}
+        )
 
         env_id = 0
         env_runner = local_worker.sampler._env_runner_obj
