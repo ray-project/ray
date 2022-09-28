@@ -5,6 +5,7 @@ from ray.train.mosaic.mosaic_checkpoint import MosaicCheckpoint
 from ray.train.torch import TorchPredictor
 from ray.train.mosaic.mosaic_checkpoint import load_model_from_path
 
+
 class MosaicPredictor(TorchPredictor):
     """A TorchPredictor wrapper for Mosaic's Composer models.
 
@@ -36,10 +37,7 @@ class MosaicPredictor(TorchPredictor):
             strict: the boolean variable for strict state_dict loading onto the model
         """
         model = load_model_from_path(path, model, strict)
-        return cls(
-            model=model,
-            use_gpu=use_gpu
-        )
+        return cls(model=model, use_gpu=use_gpu)
 
     @classmethod
     def from_checkpoint(
@@ -48,7 +46,6 @@ class MosaicPredictor(TorchPredictor):
         model: torch.nn.Module,
         use_gpu: bool = False,
         strict: bool = False,
-
     ):
         """This function creates a MosaicPredictor from a MosaicCheckpoint.
 

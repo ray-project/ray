@@ -1,9 +1,7 @@
 import math
 from typing import Any, Dict, Tuple, Union, Iterable
-from pathlib import Path
 import torch
 
-from ray.air.checkpoint import Checkpoint
 from ray.air import session
 from ray.data.dataset import Dataset
 from ray.train.mosaic.mosaic_checkpoint import MosaicCheckpoint
@@ -233,4 +231,3 @@ class RayTrainReportCallback(CheckpointSaver):
                     {"last_checkpoint": self.last_checkpoint}
                 ),
             )
-
