@@ -4,7 +4,7 @@ import torch
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
-from ray.train.data_parallel_trainer import _load_checkpoint_from_dict_form
+from ray.train.data_parallel_trainer import _load_checkpoint_dict
 from ray.air._internal.torch_utils import load_torch_model
 from ray.util.annotations import PublicAPI
 
@@ -105,6 +105,6 @@ class TorchCheckpoint(Checkpoint):
                 the model itself, then the state dict will be loaded to this
                 ``model``.
         """
-        saved_model, _ = _load_checkpoint_from_dict_form(self, "TorchTrainer")
+        saved_model, _ = _load_checkpoint_dict(self, "TorchTrainer")
         model = load_torch_model(saved_model=saved_model, model_definition=model)
         return model
