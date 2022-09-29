@@ -139,17 +139,17 @@ class TestOPEMath(unittest.TestCase):
         for class_module in ope_classes:
             for policy_tag in ["good", "bad"]:
                 target_policy = self.policies[policy_tag]
-                estimator_good = class_module(target_policy, gamma=0)
+                estimator = class_module(target_policy, gamma=0)
 
                 s = time.time()
-                estimate_1 = estimator_good.estimate(
+                estimate_1 = estimator.estimate(
                     self.sample_batch,
                     split_batch_by_episode=True,
                 )
                 dt1 = time.time() - s
 
                 s = time.time()
-                estimate_2 = estimator_good.estimate(
+                estimate_2 = estimator.estimate(
                     self.sample_batch, split_batch_by_episode=False
                 )
                 dt2 = time.time() - s
@@ -182,17 +182,17 @@ class TestOPEMath(unittest.TestCase):
 
         for class_module in ope_classes:
             target_policy = self.policies["good"]
-            estimator_good = class_module(target_policy, gamma=0)
+            estimator = class_module(target_policy, gamma=0)
 
             s = time.time()
-            estimate_1 = estimator_good.estimate(
+            estimate_1 = estimator.estimate(
                 self.sample_batch,
                 split_batch_by_episode=True,
             )
             dt1 = time.time() - s
 
             s = time.time()
-            estimate_2 = estimator_good.estimate(
+            estimate_2 = estimator.estimate(
                 self.sample_batch, split_batch_by_episode=False
             )
             dt2 = time.time() - s
