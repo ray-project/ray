@@ -469,20 +469,15 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
 void TaskManager::FailPendingTask(const TaskID &task_id,
                                   rpc::ErrorType error_type,
                                   const Status *status,
-                                  const rpc::RayErrorInfo *ray_error_info,
-                                  bool mark_task_object_failed) {
+                                  const rpc::RayErrorInfo *ray_error_info) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type);
 
   TaskSpecification spec;
-  absl::flat_hash_set<ObjectID> store_in_plasma_ids;
-  if (mark_task_object_failed) {
-    // If we need to mark the task return objects as failed, we have to check
-    // whether they should be stored in plasma or not.
-    store_in_plasma_ids = GetTaskReturnObjectsToStoreInPlasma(task_id);
-  }
+  // Check whether the error should be stored in plasma or not.
+  const auto store_in_plasma_ids = GetTaskReturnObjectsToStoreInPlasma(task_id);
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -519,9 +514,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
                                rpc::Address(),
                                ReferenceCounter::ReferenceTableProto());
 
-  if (mark_task_object_failed) {
-    MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info, store_in_plasma_ids);
-  }
+  MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info, store_in_plasma_ids);
 
   ShutdownIfNeeded();
 }
@@ -536,8 +529,8 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
   RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type);
   const bool will_retry = RetryTaskIfPossible(task_id);
-  if (!will_retry) {
-    FailPendingTask(task_id, error_type, status, ray_error_info, mark_task_object_failed);
+  if (!will_retry && mark_task_object_failed) {
+    FailPendingTask(task_id, error_type, status, ray_error_info);
   }
 
   ShutdownIfNeeded();
@@ -678,7 +671,7 @@ absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
   RAY_CHECK(it != submissible_tasks_.end())
-      << "Tried to complete task that was not pending " << task_id;
+      << "Tried to store return values for task that was not pending " << task_id;
   first_execution = it->second.num_successful_executions == 0;
   if (!first_execution) {
     store_in_plasma_ids = it->second.reconstructable_return_ids;

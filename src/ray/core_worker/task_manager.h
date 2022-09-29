@@ -56,8 +56,7 @@ class TaskFinisherInterface {
   virtual void FailPendingTask(const TaskID &task_id,
                                rpc::ErrorType error_type,
                                const Status *status = nullptr,
-                               const rpc::RayErrorInfo *ray_error_info = nullptr,
-                               bool mark_task_object_failed = true) = 0;
+                               const rpc::RayErrorInfo *ray_error_info = nullptr) = 0;
 
   virtual bool FailOrRetryPendingTask(const TaskID &task_id,
                                       rpc::ErrorType error_type,
@@ -174,7 +173,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Nullptr means that there's no error information.
   /// TODO(sang): Remove nullptr case. Every error message should have metadata.
   /// \param[in] mark_task_object_failed whether or not it marks the task
-  /// return object as failed.
+  /// return object as failed. If this is set to false, then the caller is
+  /// responsible for later failing or completing the task.
   /// \return Whether the task will be retried or not.
   bool FailOrRetryPendingTask(const TaskID &task_id,
                               rpc::ErrorType error_type,
@@ -195,8 +195,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   void FailPendingTask(const TaskID &task_id,
                        rpc::ErrorType error_type,
                        const Status *status = nullptr,
-                       const rpc::RayErrorInfo *ray_error_info = nullptr,
-                       bool mark_task_object_failed = true) override;
+                       const rpc::RayErrorInfo *ray_error_info = nullptr) override;
 
   /// Treat a pending task's returned Ray object as failed. The lock should not be held
   /// when calling this method because it may trigger callbacks in this or other classes.
