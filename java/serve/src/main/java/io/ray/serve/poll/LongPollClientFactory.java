@@ -233,12 +233,10 @@ public class LongPollClientFactory {
         LOGGER.error("awaitTermination error, the exception is ", e);
       }
     }
-    inited = false;
-
     KEY_LISTENERS.clear();
     OBJECT_SNAPSHOTS.clear();
     SNAPSHOT_IDS.clear();
-
+    inited = false;
     LOGGER.info("LongPollClient was stopped.");
   }
 

@@ -143,8 +143,8 @@ public class Serve {
       return;
     }
 
-    client.shutdown();
     LongPollClientFactory.stop();
+    client.shutdown();
     clearContext();
   }
 
