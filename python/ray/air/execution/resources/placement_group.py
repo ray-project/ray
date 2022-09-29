@@ -121,6 +121,7 @@ class PlacementGroupResourceManager(ResourceManager):
                 )
 
         self._pg_to_request.pop(pg)
+        ray.util.remove_placement_group(pg)
 
     def has_resources_ready(self, resources: ResourceRequest) -> bool:
         if not bool(len(self._request_to_ready_pgs[resources])):
