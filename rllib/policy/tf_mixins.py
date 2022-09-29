@@ -1,6 +1,5 @@
-import gym
 import logging
-from typing import Dict, List, Union
+from typing import Dict, List
 
 import numpy as np
 
@@ -225,7 +224,11 @@ class TargetNetworkMixin:
 
         # Hard initial update.
         self._do_update = update_target_fn
-        self.update_target(tau=self.config.get("tau", 1.0))
+        # TODO (kourosh): The previous SAC implementation does an update(1.0) here.
+        # If this is changed to tau ~= 1.0 the sac_loss_function test fails. Why?
+        # Also the test is not very maintainable, we need to change that unittest
+        # anyway.
+        self.update_target(tau=1.0)  # self.config.get("tau", 1.0))
 
     @property
     def q_func_vars(self):
