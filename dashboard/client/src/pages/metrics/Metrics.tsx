@@ -13,9 +13,7 @@ import { GlobalContext } from "../../App";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
-    root: {
-      height: "90vh",
-    },
+    root: {},
     grafanaEmbedsContainer: {
       marginTop: theme.spacing(1),
       marginLeft: theme.spacing(1),
