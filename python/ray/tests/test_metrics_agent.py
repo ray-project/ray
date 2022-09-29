@@ -73,6 +73,10 @@ _METRICS = [
     "ray_gcs_placement_group_scheduling_latency_ms_sum",
     "ray_gcs_placement_group_count",
     "ray_gcs_actors_count",
+    "ray_plasma_objects_by_state_count",
+    "ray_plasma_objects_by_state_bytes",
+    "ray_plasma_objects_by_source_count",
+    "ray_plasma_objects_by_source_bytes",
 ]
 
 if not ray._raylet.Config.use_ray_syncer():

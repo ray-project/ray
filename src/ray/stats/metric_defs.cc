@@ -196,6 +196,39 @@ DEFINE_stats(gcs_storage_operation_count,
              (),
              ray::stats::COUNT);
 
+/// Plasma store
+/// Objects in plasma by state:
+///     - Spillable: spillable objects with ref count = 1 and created by workers
+///     - Unsealed: created by not yet sealed
+///     - InUse: objects with ref count > 0
+///     - Evictable: objects with ref count == 0
+DEFINE_stats(plasma_objects_by_state_count,
+             "Current number of objects in plasma store of a particular state.",
+             ("State"),
+             (),
+             ray::stats::GAUGE);
+DEFINE_stats(plasma_objects_by_state_bytes,
+             "Size of objects in bytes in plasma store of a particular state.",
+             ("State"),
+             (),
+             ray::stats::GAUGE);
+
+/// Objects in plasma from different sources:
+///     - Worker: objects created by core worker, e.g. through ray.put
+///     - Restored: objects restored from storage
+///     - Received: objects received from remote raylets
+///     - Error: objects added by local raylet to indicate errors
+DEFINE_stats(plasma_objects_by_source_count,
+             "Current number of objects in plasma store created from a source.",
+             ("Source"),
+             (),
+             ray::stats::GAUGE);
+DEFINE_stats(plasma_objects_by_source_bytes,
+             "Size of objects in bytes in plasma store created from a source.",
+             ("Source"),
+             (),
+             ray::stats::GAUGE);
+
 /// Placement Group
 // The end to end placement group creation latency.
 // The time from placement group creation request has received
