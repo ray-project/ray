@@ -2295,11 +2295,16 @@ class Dataset(Generic[T]):
         """Write the dataset to a MongoDB datasource.
 
         This is only supported for datasets convertible to Arrow records.
-        Currently, pymongoarrow supports only a subset of the pyarrow's types. Writing
-        unsupported types will fail on type checking. See all the supported types at:
-        https://mongo-arrow.readthedocs.io/en/latest/supported_types.html
         To control the number of parallel write tasks, use ``.repartition()``
         before calling this method.
+
+        Notes:
+        - Currently, pymongoarrow supports only a subset of the pyarrow's types.
+          Writing unsupported types will fail on type checking. See all the supported
+          types at: https://mongo-arrow.readthedocs.io/en/latest/supported_types.html.
+        - The records will be inserted into MongoDB as new documents. If a record has
+          the _id field, this _id must be non-existent in MongoDB. It's fine to not
+          have _id field in record (MongoDB will auto generate one at insertion).
 
         Examples:
             >>> import ray
