@@ -113,6 +113,10 @@ class Connector(abc.ABC):
 
         Returns:
             A tuple of connector's name and its serialized states.
+            String should match the name used to register the connector,
+            while state can be any single data structure that contains the
+            serialized state of the connector. If a connector is stateless,
+            state can simply be None.
         """
         # Must implement by each connector.
         return NotImplementedError
