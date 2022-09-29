@@ -87,16 +87,16 @@ ds.default_batch_format()
 # -> pandas.core.frame.DataFrame
 
 # UDF as a function on Pandas DataFrame batches.
-def pandas_transform(df: pd.DataFrame) -> pd.DataFrame:
+def pandas_transform(df_batch: pd.DataFrame) -> pd.DataFrame:
     # Filter rows.
-    df = df[df["variety"] == "Versicolor"]
+    df_batch = df_batch[df_batch["variety"] == "Versicolor"]
     # Add derived column.
     # Notice here that `df["sepal.length"].max()` is only the max value of the column
     # within a given batch (instead of globally)!!
-    df["normalized.sepal.length"] = df["sepal.length"] / df["sepal.length"].max()
+    df_batch["normalized.sepal.length"] = df_batch["sepal.length"] / df_batch["sepal.length"].max()
     # Drop column.
-    df = df.drop(columns=["sepal.length"])
-    return df
+    df_batch = df_batch.drop(columns=["sepal.length"])
+    return df_batch
 
 ds.map_batches(pandas_transform).show(2)
 # -> {'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,
