@@ -56,12 +56,16 @@ class RayClusterOnSpark:
         self.head_proc.kill()
 
 
-def init_cluster(num_spark_tasks):
-    # TODO:
-    #  support more ray head / worker arguments.
-    #  support more ray.init arguments.
+def _convert_ray_node_options(options):
+    return [f"--{k.replace('_', '-')}={str(v)}" for k, v in options.items()]
+
+
+def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
     import ray
     from pyspark.util import inheritable_thread_target
+
+    head_options = head_options or {}
+    worker_options = worker_options or {}
 
     spark = get_spark_session()
     ray_head_hostname = get_spark_driver_hostname(spark)
@@ -81,6 +85,7 @@ def init_cluster(num_spark_tasks):
         "--head",
         f"--port={ray_head_port}",
         "--include-dashboard=false",
+        *_convert_ray_node_options(head_options)
     ]
 
     logging.info(f"Start Ray head, command: {' '.join(ray_head_node_cmd)}")
@@ -123,6 +128,7 @@ def init_cluster(num_spark_tasks):
             "--block",
             f"--address={ray_head_hostname}:{ray_head_port}",
             f"--memory={ray_worker_memory_in_bytes}",
+            *_convert_ray_node_options(worker_options)
         ]
 
         ray_worker_extra_envs = {}
@@ -210,6 +216,7 @@ def init_cluster(num_spark_tasks):
     time.sleep(10)
 
     # discover the ray cluster.
+    # Q: We connect to an existing ray cluster, shall we set other arguments in `ray.init` ?
     ray.init(address=f"{ray_head_hostname}:{ray_head_port}")
 
     if is_in_databricks_runtime():
