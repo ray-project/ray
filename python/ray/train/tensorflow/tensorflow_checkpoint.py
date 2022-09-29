@@ -102,7 +102,7 @@ class TensorflowCheckpoint(Checkpoint):
             ...     TensorflowCheckpoint, TensorflowTrainer, TensorflowPredictor
             ... )
             >>> from ray.air import session
-            >>> from ray.air.config import RunConfig, ScalingConfig
+            >>> from ray.air.config import ScalingConfig
 
             >>> def train_func():
             ...     model = tf.keras.Sequential(
@@ -162,7 +162,7 @@ class TensorflowCheckpoint(Checkpoint):
             >>> from ray.train.tensorflow import (
             ... TensorflowCheckpoint, TensorflowTrainer, TensorflowPredictor)
             >>> from ray.air import session
-            >>> from ray.air.config import RunConfig, ScalingConfig
+            >>> from ray.air.config import ScalingConfig
 
             >>> def train_fn():
             ...     model = tf.keras.Sequential(
