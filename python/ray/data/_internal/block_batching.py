@@ -136,19 +136,20 @@ def batch_blocks(
     yield from get_batches()
 
 
-def _format_batch(batch: Block, batch_format: str) -> BatchType:
+def _format_batch(batch_format: str):
     if batch_format == "default" or batch_format == "native":
-        batch = BlockAccessor.for_block(batch).to_default()
+        print("ok")
     elif batch_format == "pandas":
-        batch = BlockAccessor.for_block(batch).to_pandas()
+        print("ok")
     elif batch_format == "pyarrow":
-        batch = BlockAccessor.for_block(batch).to_arrow()
+        print("ok")
     elif batch_format == "numpy":
-        batch = BlockAccessor.for_block(batch).to_numpy()
+        print("ok")
     else:
         raise ValueError(
             f"The given batch format: {batch_format} "
-            f"is invalid. Supported batch type: {'default', 'pandas', 'pyarrow', 'numpy'}"
+            f"is invalid. Supported batch type: "
+            f"{'default', 'pandas', 'pyarrow', 'numpy'}"
         )
     return batch
 
