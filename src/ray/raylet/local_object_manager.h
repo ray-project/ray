@@ -92,6 +92,8 @@ class LocalObjectManager {
                                 const rpc::Address &owner_address,
                                 const ObjectID &generator_id = ObjectID::Nil());
 
+  void WaitForObjectFree(const ObjectID &object_id, const rpc::Address &owner_address);
+
   /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///
   /// \return True if spilling is in progress.
@@ -174,7 +176,11 @@ class LocalObjectManager {
                                             : std::optional<ObjectID>(generator_id)) {}
     rpc::Address owner_address;
     bool is_freed = false;
-    const std::optional<ObjectID> generator_id;
+    std::optional<ObjectID> generator_id;
+
+    WorkerID GetOwnerWorkerId() const {
+      return WorkerID::FromBinary(owner_address.worker_id());
+    }
   };
 
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSizeZero);
@@ -243,6 +249,8 @@ class LocalObjectManager {
   /// - objects_pending_spill_: objects pinned and waiting for spill to complete
   /// - spilled_objects_url_: objects already spilled
   absl::flat_hash_map<ObjectID, LocalObjectInfo> local_objects_;
+
+  absl::flat_hash_map<ObjectID, absl::flat_hash_set<ObjectID>> pending_generator_objects_;
 
   // Objects that are pinned on this node.
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
