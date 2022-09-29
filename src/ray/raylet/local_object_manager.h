@@ -216,6 +216,8 @@ class LocalObjectManager {
   void OnObjectSpilled(const std::vector<ObjectID> &object_ids,
                        const rpc::SpillObjectsReply &worker_reply);
 
+  void ReportObjectSpilled(const ObjectID &object_id, const std::string &object_url);
+
   /// Delete spilled objects stored in given urls.
   ///
   /// \param urls_to_delete List of urls to delete from external storages.

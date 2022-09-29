@@ -417,23 +417,35 @@ void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids
     num_bytes_pending_spill_ -= object_size;
     objects_pending_spill_.erase(it);
 
-    // Asynchronously Update the spilled URL.
+    // Only report the object as spilled if it is not part of a pending
+    // generator object. Generator objects are dynamically allocated, and the
+    // owner may not yet know about the ObjectRef. We wait until the generator
+    // is committed before sending any messages to the owner.
     auto freed_it = local_objects_.find(object_id);
-    if (freed_it == local_objects_.end() || freed_it->second.is_freed) {
-      RAY_LOG(DEBUG) << "Spilled object already freed, skipping send of spilled URL to "
-                        "object directory for object "
-                     << object_id;
-      continue;
+    if (freed_it != local_objects_.end() && !freed_it->second.generator_id.has_value()) {
+      ReportObjectSpilled(object_id, object_url);
     }
-    const auto &worker_addr = freed_it->second.owner_address;
-    object_directory_->ReportObjectSpilled(
-        object_id,
-        self_node_id_,
-        worker_addr,
-        object_url,
-        freed_it->second.generator_id.value_or(ObjectID::Nil()),
-        is_external_storage_type_fs_);
   }
+}
+
+void LocalObjectManager::ReportObjectSpilled(const ObjectID &object_id,
+    const std::string &object_url) {
+  // Asynchronously Update the spilled URL.
+  auto freed_it = local_objects_.find(object_id);
+  if (freed_it == local_objects_.end() || freed_it->second.is_freed) {
+    RAY_LOG(DEBUG) << "Spilled object already freed, skipping send of spilled URL to "
+                      "object directory for object "
+                   << object_id;
+    return;
+  }
+  const auto &worker_addr = freed_it->second.owner_address;
+  object_directory_->ReportObjectSpilled(
+      object_id,
+      self_node_id_,
+      worker_addr,
+      object_url,
+      freed_it->second.generator_id.value_or(ObjectID::Nil()),
+      is_external_storage_type_fs_);
 }
 
 std::string LocalObjectManager::GetLocalSpilledObjectURL(const ObjectID &object_id) {
