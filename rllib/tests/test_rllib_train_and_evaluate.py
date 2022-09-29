@@ -5,6 +5,7 @@ import sys
 import unittest
 
 import ray
+from ray import air
 from ray import tune
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import framework_iterator
@@ -175,15 +176,18 @@ def learn_test_multi_agent_plus_evaluate(algo):
             },
         }
         stop = {"episode_reward_mean": 100.0}
-        tune.run(
+        tune.Tuner(
             algo,
-            config=config,
-            stop=stop,
-            checkpoint_freq=1,
-            checkpoint_at_end=True,
-            local_dir=tmp_dir,
-            verbose=1,
-        )
+            param_space=config,
+            run_config=air.RunConfig(
+                stop=stop,
+                verbose=1,
+                checkpoint_config=air.CheckpointConfig(
+                    checkpoint_frequency=1, checkpoint_at_end=True
+                ),
+                local_dir=tmp_dir,
+            ),
+        ).fit()
 
         # Find last checkpoint and use that for the rollout.
         checkpoint_path = os.popen(

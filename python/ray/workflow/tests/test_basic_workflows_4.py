@@ -28,7 +28,7 @@ def test_options_update(shutdown_only):
 
     # Options are given in decorator first, then in the first .options()
     # and finally in the second .options()
-    @workflow.options(name="old_name", metadata={"k": "v"})
+    @workflow.options(task_id="old_name", metadata={"k": "v"})
     @ray.remote(num_cpus=2, max_retries=1)
     def f():
         return
@@ -39,7 +39,7 @@ def test_options_update(shutdown_only):
     # max_retries only defined in the decorator and it got preserved all the way
     new_f = f.options(
         num_returns=2,
-        **workflow.options(name="new_name", metadata={"extra_k2": "extra_v2"}),
+        **workflow.options(task_id="new_name", metadata={"extra_k2": "extra_v2"}),
     )
     options = new_f.bind().get_options()
     assert options == {
@@ -48,7 +48,7 @@ def test_options_update(shutdown_only):
         "max_retries": 1,
         "_metadata": {
             WORKFLOW_OPTIONS: {
-                "name": "new_name",
+                "task_id": "new_name",
                 "metadata": {"extra_k2": "extra_v2"},
             }
         },

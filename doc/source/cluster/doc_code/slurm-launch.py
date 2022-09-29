@@ -51,6 +51,7 @@ if __name__ == "__main__":
         "--load-env",
         type=str,
         help="The script to load your environment ('module load cuda/10.1')",
+        default="",
     )
     parser.add_argument(
         "--command",

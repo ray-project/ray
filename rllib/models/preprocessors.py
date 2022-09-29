@@ -72,12 +72,13 @@ class Preprocessor:
             try:
                 if not self._obs_space.contains(observation):
                     raise ValueError(
-                        "Observation ({} dtype={}) outside given space ({})!",
-                        observation,
-                        observation.dtype
-                        if isinstance(self._obs_space, gym.spaces.Box)
-                        else None,
-                        self._obs_space,
+                        "Observation ({} dtype={}) outside given space ({})!".format(
+                            observation,
+                            observation.dtype
+                            if isinstance(self._obs_space, gym.spaces.Box)
+                            else None,
+                            self._obs_space,
+                        )
                     )
             except AttributeError as e:
                 raise ValueError(
@@ -185,13 +186,7 @@ class OneHotPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
         self.check_shape(observation)
-        arr = np.zeros(self._init_shape(self._obs_space, {}), dtype=np.float32)
-        if isinstance(self._obs_space, gym.spaces.Discrete):
-            arr[observation] = 1
-        else:
-            for i, o in enumerate(observation):
-                arr[np.sum(self._obs_space.nvec[:i]) + o] = 1
-        return arr
+        return gym.spaces.utils.flatten(self._obs_space, observation).astype(np.float32)
 
     @override(Preprocessor)
     def write(self, observation: TensorType, array: np.ndarray, offset: int) -> None:

@@ -3,9 +3,12 @@ import os
 from unittest.mock import patch
 
 import pytest
+import time
 
 import ray
 import ray.train as train
+from ray.air._internal.util import StartTraceback
+from ray.air import session
 from ray.cluster_utils import Cluster
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
@@ -26,6 +29,7 @@ from ray.train.constants import (
 from ray.train.tensorflow import TensorflowConfig
 from ray.train.torch import TorchConfig
 from ray.util.placement_group import get_current_placement_group
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 @pytest.fixture
@@ -171,21 +175,44 @@ def test_train_failure(ray_start_2_cpus):
     e = BackendExecutor(config, num_workers=2)
     e.start()
 
-    with pytest.raises(TrainBackendError):
+    with pytest.raises(StartTraceback) as exc:
         e.get_next_results()
+    assert isinstance(exc.value.__cause__, TrainBackendError)
 
-    with pytest.raises(TrainBackendError):
+    with pytest.raises(StartTraceback) as exc:
         e.pause_reporting()
+    assert isinstance(exc.value.__cause__, TrainBackendError)
 
-    with pytest.raises(TrainBackendError):
+    with pytest.raises(StartTraceback) as exc:
         e.finish_training()
+    assert isinstance(exc.value.__cause__, TrainBackendError)
 
     e.start_training(lambda: 1, dataset_spec=EMPTY_RAY_DATASET_SPEC)
 
-    with pytest.raises(TrainBackendError):
+    with pytest.raises(StartTraceback) as exc:
         e.start_training(lambda: 2, dataset_spec=EMPTY_RAY_DATASET_SPEC)
+    assert isinstance(exc.value.__cause__, TrainBackendError)
 
     assert e.finish_training() == [1, 1]
+
+
+def test_train_single_worker_failure(ray_start_2_cpus):
+    """Tests if training fails immediately if only one worker raises an Exception."""
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=2)
+    e.start()
+
+    def single_worker_fail():
+        if session.get_world_rank() == 0:
+            raise ValueError
+        else:
+            time.sleep(1000000)
+
+    e.start_training(single_worker_fail, dataset_spec=EMPTY_RAY_DATASET_SPEC)
+
+    with pytest.raises(StartTraceback) as exc:
+        e.get_next_results()
+    assert isinstance(exc.value.__cause__, ValueError)
 
 
 def test_worker_failure(ray_start_2_cpus):
@@ -401,8 +428,10 @@ def test_placement_group_parent(ray_4_node_4_cpu, placement_group_capture_child_
         return e.finish_training()
 
     results_future = test.options(
-        placement_group=placement_group,
-        placement_group_capture_child_tasks=placement_group_capture_child_tasks,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=placement_group,
+            placement_group_capture_child_tasks=placement_group_capture_child_tasks,
+        ),
     ).remote()
     results = ray.get(results_future)
     for worker_result in results:

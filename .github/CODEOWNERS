@@ -20,6 +20,9 @@
 /dashboard/modules/snapshot @wuisawesome @ijrsvt @edoakes @alanwguo @architkulkarni
 /python/ray/autoscaler/_private/monitor.py @wuisawesome @DmitriGekhtman
 
+# Autoscaler
+/python/ray/autoscaler/ @wuisawesome @DmitriGekhtman @ericl
+
 # Metrics
 /src/ray/stats/metric_defs.h @ericl @scv119 @rkooo567
 /src/ray/stats/metric_defs.cc @ericl @scv119 @rkooo567

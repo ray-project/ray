@@ -1,6 +1,7 @@
 import unittest
 
 import ray
+from ray import air
 from ray.rllib.algorithms.a2c.a2c import A2C, A2C_DEFAULT_CONFIG
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
@@ -51,7 +52,7 @@ class TestGPUs(unittest.TestCase):
                             and not fake_gpus
                         ):
                             # "Direct" RLlib (create Trainer on the driver).
-                            # Cannot run through ray.tune.run() as it would
+                            # Cannot run through ray.tune.Tuner().fit() as it would
                             # simply wait infinitely for the resources to
                             # become available.
                             print("direct RLlib")
@@ -66,15 +67,19 @@ class TestGPUs(unittest.TestCase):
                             print("direct RLlib")
                             trainer = A2C(config, env="CartPole-v0")
                             trainer.stop()
-                            # Cannot run through ray.tune.run() w/ fake GPUs
+                            # Cannot run through ray.tune.Tuner().fit() w/ fake GPUs
                             # as it would simply wait infinitely for the
                             # resources to become available (even though, we
                             # wouldn't really need them).
                             if num_gpus == 0:
-                                print("via ray.tune.run()")
-                                tune.run(
-                                    "A2C", config=config, stop={"training_iteration": 0}
-                                )
+                                print("via ray.tune.Tuner().fit()")
+                                tune.Tuner(
+                                    "A2C",
+                                    param_space=config,
+                                    run_config=air.RunConfig(
+                                        stop={"training_iteration": 0}
+                                    ),
+                                ).fit()
         ray.shutdown()
 
     def test_gpus_in_local_mode(self):
@@ -99,8 +104,12 @@ class TestGPUs(unittest.TestCase):
                     print("direct RLlib")
                     trainer = A2C(config, env="CartPole-v0")
                     trainer.stop()
-                    print("via ray.tune.run()")
-                    tune.run("A2C", config=config, stop={"training_iteration": 0})
+                    print("via ray.tune.Tuner().fit()")
+                    tune.Tuner(
+                        "A2C",
+                        param_space=config,
+                        run_config=air.RunConfig(stop={"training_iteration": 0}),
+                    ).fit()
 
         ray.shutdown()
 

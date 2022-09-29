@@ -251,6 +251,14 @@ py_test(
     deps = [":ml_lib"]
 )
 
+py_test(
+    name = "test_tracebacks",
+    size = "small",
+    srcs = ["tests/test_tracebacks.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(

@@ -78,6 +78,7 @@ class AlphaZeroConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.alpha_zero import AlphaZeroConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = AlphaZeroConfig()
         >>> # Print out some default values.
@@ -88,11 +89,11 @@ class AlphaZeroConfig(AlgorithmConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "AlphaZero",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -349,7 +350,6 @@ class AlphaZero(Algorithm):
             self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
             # Store new samples in the replay buffer
-            # Use deprecated add_batch() to support old replay buffers for now
             if self.local_replay_buffer is not None:
                 self.local_replay_buffer.add(batch)
 
@@ -448,7 +448,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.alpha_zero.alpha_zero.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.alpha_zero.alpha_zero.AlphaZeroConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

@@ -40,6 +40,8 @@ from ray.serve._private.utils import (
 )
 from ray.serve.schema import ServeApplicationSchema
 
+from ray.experimental.state.api import list_actors
+
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
 from ray.tests.conftest import maybe_external_redis  # noqa: F401
@@ -649,7 +651,8 @@ def test_serve_start_different_http_checkpoint_options_warning(caplog):
 
 def test_recovering_controller_no_redeploy():
     """Ensure controller doesn't redeploy running deployments when recovering."""
-    ray.init(namespace="x")
+    ray_context = ray.init(namespace="x")
+    address = ray_context.address_info["address"]
     client = serve.start(detached=True)
 
     @serve.deployment
@@ -658,17 +661,20 @@ def test_recovering_controller_no_redeploy():
 
     serve.run(f.bind())
 
-    num_actors = len(ray.util.list_named_actors(all_namespaces=True))
+    num_actors = len(list_actors(address, filters=[("state", "=", "ALIVE")]))
+    assert num_actors > 0
+
     pid = ray.get(client._controller.get_pid.remote())
 
     ray.kill(client._controller, no_restart=False)
 
     wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != pid)
 
-    # Confirm that no new deployment is deployed over the next 10 seconds
+    # Confirm that no new deployment is deployed over the next 5 seconds
     with pytest.raises(RuntimeError):
         wait_for_condition(
-            lambda: len(ray.util.list_named_actors(all_namespaces=True)) > num_actors,
+            lambda: len(list_actors(address, filters=[("state", "=", "ALIVE")]))
+            > num_actors,
             timeout=5,
         )
 

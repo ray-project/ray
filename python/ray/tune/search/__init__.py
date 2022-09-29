@@ -133,8 +133,8 @@ def create_searcher(
     Returns:
         ray.tune.search.Searcher: The search algorithm.
     Example:
-        >>> from ray import tune
-        >>> search_alg = tune.create_searcher('ax')
+        >>> from ray import tune # doctest: +SKIP
+        >>> search_alg = tune.create_searcher('ax') # doctest: +SKIP
     """
 
     search_alg = search_alg.lower()

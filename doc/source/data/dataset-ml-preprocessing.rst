@@ -46,7 +46,11 @@ Many common preprocessing transformations, such as:
 - dropping nulls
 - one-hot encoding
 
-can be efficiently applied to a ``Dataset`` using Pandas DataFrame UDFs and ``.map_batches()``; this will execute these transformations in parallel over the ``Dataset`` blocks, and allows you to apply vectorized Pandas operations to the block columns within the UDF.
+can be efficiently applied to a :class:`~ray.data.Dataset` using
+:ref:`user-defined functions <transform_datasets_writing_udfs>` (UDFs) and
+:meth:`~ray.data.Dataset.map_batches`; this will execute these transformations in
+parallel over the :class:`~ray.data.Dataset` blocks, and allows you to apply vectorized
+Pandas operations to the block columns within the UDF.
 
 .. code-block:: python
 
@@ -105,7 +109,7 @@ Other preprocessing operations require global operations, such as groupbys and g
     ds.mean(["B", "C"])
     # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 1730.32it/s]
     # -> GroupBy Reduce: 100%|████████████████████████████████████| 1/1 [00:00<00:00, 231.41it/s]
-    # -> {'mean(B)': 9.0, 'mean(C)': 13.5} 
+    # -> {'mean(B)': 9.0, 'mean(C)': 13.5}
 
     # Multiple global aggregations on multiple columns.
     from ray.data.aggregate import Mean, Std

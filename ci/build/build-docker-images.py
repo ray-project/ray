@@ -30,21 +30,21 @@ DOCKER_HUB_DESCRIPTION = {
 }
 
 PY_MATRIX = {
-    "py36": "3.6.12",
-    "py37": "3.7.7",
-    "py38": "3.8.5",
-    "py39": "3.9.5",
-    "py310": "3.10.4",
+    "py36": "3.6",
+    "py37": "3.7",
+    "py38": "3.8",
+    "py39": "3.9",
+    "py310": "3.10",
 }
 
 BASE_IMAGES = {
-    "cu116": "nvidia/cuda:11.6.1-cudnn8-devel-ubuntu18.04",
-    "cu113": "nvidia/cuda:11.3.1-cudnn8-devel-ubuntu18.04",
-    "cu112": "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04",
-    "cu111": "nvidia/cuda:11.1.1-cudnn8-devel-ubuntu18.04",
-    "cu110": "nvidia/cuda:11.0.3-cudnn8-devel-ubuntu18.04",
-    "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu18.04",
-    "cu101": "nvidia/cuda:10.1-cudnn8-devel-ubuntu18.04",
+    "cu116": "nvidia/cuda:11.6.1-cudnn8-devel-ubuntu20.04",
+    "cu113": "nvidia/cuda:11.3.1-cudnn8-devel-ubuntu20.04",
+    "cu112": "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04",
+    "cu111": "nvidia/cuda:11.1.1-cudnn8-devel-ubuntu20.04",
+    "cu110": "nvidia/cuda:11.0.3-cudnn8-devel-ubuntu20.04",
+    "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu20.04",
+    "cu101": "nvidia/cuda:10.1-cudnn8-devel-ubuntu20.04",
     "cpu": "ubuntu:focal",
 }
 

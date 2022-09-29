@@ -36,9 +36,9 @@ const useStyles = makeStyles((theme) => ({
 
 const columns = [
   "", // Expand button
+  "Host / Cmd Line",
   "State",
   "ID",
-  "Host / Cmd Line",
   "IP / PID",
   "CPU Usage",
   "Memory",
@@ -283,7 +283,7 @@ const Nodes = () => {
                       key={node.raylet.nodeId}
                       node={node}
                       isRefreshing={isRefreshing}
-                      startExpanded={i === 0}
+                      startExpanded={nodeList.length === 1}
                     />
                   ))}
               </TableBody>

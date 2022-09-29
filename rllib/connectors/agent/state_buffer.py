@@ -71,11 +71,11 @@ class StateBufferConnector(AgentConnector):
 
         return ac_data
 
-    def to_config(self):
+    def to_state(self):
         return StateBufferConnector.__name__, None
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: List[Any]):
         return StateBufferConnector(ctx)
 
 

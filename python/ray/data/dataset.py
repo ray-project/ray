@@ -2,6 +2,7 @@ import collections
 import itertools
 import logging
 import os
+import sys
 import time
 import html
 from typing import (
@@ -13,11 +14,13 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Type,
     Optional,
     Tuple,
     Union,
 )
 from uuid import uuid4
+import warnings
 
 import numpy as np
 
@@ -37,6 +40,7 @@ from ray.data._internal.equalize import _equalize
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _estimate_available_parallelism
+from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import (
     ExecutionPlan,
     OneToOneStage,
@@ -95,6 +99,11 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.widgets import Template
 
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
+
 if TYPE_CHECKING:
     import dask
     import mars
@@ -138,9 +147,9 @@ class Dataset(Generic[T]):
     Examples:
         >>> import ray
         >>> # Create dataset from synthetic data.
-        >>> ds = ray.data.range(1000) # doctest: +SKIP
+        >>> ds = ray.data.range(1000)
         >>> # Create dataset from in-memory data.
-        >>> ds = ray.data.from_items( # doctest: +SKIP
+        >>> ds = ray.data.from_items(
         ...     [{"col1": i, "col2": i * 2} for i in range(1000)])
         >>> # Create dataset from external storage system.
         >>> ds = ray.data.read_parquet("s3://bucket/path") # doctest: +SKIP
@@ -159,17 +168,22 @@ class Dataset(Generic[T]):
 
     Examples:
         >>> import ray
-        >>> ds = ray.data.range(1000) # doctest: +SKIP
+        >>> ds = ray.data.range(1000)
         >>> # Transform in parallel with map_batches().
-        >>> ds.map_batches(lambda batch: [v * 2 for v in batch]) # doctest: +SKIP
+        >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
+        Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
         >>> # Compute max.
-        >>> ds.max() # doctest: +SKIP
+        >>> ds.max()
+        999
         >>> # Group the data.
-        >>> ds.groupby(lambda x: x % 3).count() # doctest: +SKIP
+        >>> ds.groupby(lambda x: x % 3).count()
+        Dataset(num_blocks=..., num_rows=3, schema=<class 'tuple'>)
         >>> # Shuffle this dataset randomly.
-        >>> ds.random_shuffle() # doctest: +SKIP
+        >>> ds.random_shuffle()
+        Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
         >>> # Sort it back in order.
-        >>> ds.sort() # doctest: +SKIP
+        >>> ds.sort()
+        Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors without incurring a copy. Datasets support
@@ -221,12 +235,14 @@ class Dataset(Generic[T]):
         Examples:
             >>> import ray
             >>> # Transform python objects.
-            >>> ds = ray.data.range(1000) # doctest: +SKIP
-            >>> ds.map(lambda x: x * 2) # doctest: +SKIP
+            >>> ds = ray.data.range(1000)
+            >>> ds.map(lambda x: x * 2)
+            Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
             >>> # Transform Arrow records.
-            >>> ds = ray.data.from_items( # doctest: +SKIP
+            >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
-            >>> ds.map(lambda record: {"v2": record["value"] * 2}) # doctest: +SKIP
+            >>> ds.map(lambda record: {"v2": record["value"] * 2})
+            Dataset(num_blocks=..., num_rows=1000, schema={v2: int64})
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
             >>> init_model = ... # doctest: +SKIP
@@ -302,97 +318,145 @@ class Dataset(Generic[T]):
         fn: BatchUDF,
         *,
         batch_size: Optional[int] = 4096,
-        compute: Union[str, ComputeStrategy] = None,
-        batch_format: str = "native",
+        compute: Optional[Union[str, ComputeStrategy]] = None,
+        batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset[Any]":
-        """Apply the given function to batches of records of this dataset.
+        """Apply the given function to batches of data.
 
-        The format of the data batch provided to ``fn`` can be controlled via the
-        ``batch_format`` argument, and the output of the UDF can be any batch type.
+        Batches are represented as dataframes, ndarrays, or lists. The default batch
+        type is determined by your dataset's schema. To determine the default batch
+        type, call :meth:`~Dataset.default_batch_format`. Alternatively, set the batch
+        type with ``batch_format``.
 
-        This is a blocking operation.
+        To learn more about writing functions for :meth:`~Dataset.map_batches`, read
+        :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
+
+        .. tip::
+            If you're using :ref:`Ray AIR <air>` for training or batch inference,
+            consider using :class:`~ray.data.preprocessors.BatchMapper`. It's more
+            performant and easier to use.
 
         Examples:
+
+            >>> import pandas as pd
             >>> import ray
-            >>> # Transform python objects.
-            >>> ds = ray.data.range(1000) # doctest: +SKIP
-            >>> # Transform batches in parallel.
-            >>> ds.map_batches(lambda batch: [v * 2 for v in batch]) # doctest: +SKIP
-            >>> # Define a callable class that persists state across
-            >>> # function invocations for efficiency.
-            >>> init_model = ... # doctest: +SKIP
+            >>> df = pd.DataFrame({
+            ...     "name": ["Luna", "Rory", "Scout"],
+            ...     "age": [4, 14, 9]
+            ... })
+            >>> ds = ray.data.from_pandas(df)
+            >>> ds
+            Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64})
+
+            Call :meth:`.default_batch_format` to determine the default batch
+            type.
+
+            >>> ds.default_batch_format()
+            <class 'pandas.core.frame.DataFrame'>
+
+            .. tip::
+
+                Datasets created from tabular data like Arrow tables and Parquet files
+                yield ``pd.DataFrame`` batches.
+
+            Once you know the batch type, define a function that transforms batches
+            of data. ``ds.map_batches`` applies the function in parallel.
+
+            >>> def map_fn(batch: pd.DataFrame) -> pd.DataFrame:
+            ...     batch["age_in_dog_years"] = 7 * batch["age"]
+            ...     return batch
+            >>> ds = ds.map_batches(map_fn)
+            >>> ds
+            Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64, age_in_dog_years: int64})
+
+            Your ``fn`` can return a different type than the input type. To learn more
+            about supported output types, read
+            :ref:`user-defined function output types <transform_datasets_batch_output_types>`.
+
+            >>> from typing import List
+            >>> def map_fn(batch: pd.DataFrame) -> List[int]:
+            ...     return list(batch["age_in_dog_years"])
+            >>> ds = ds.map_batches(map_fn)
+            >>> ds
+            Dataset(num_blocks=1, num_rows=3, schema=<class 'int'>)
+
+            :ref:`Actors <actor-guide>` can improve the performance of some workloads.
+            For example, you can use :ref:`actors <actor-guide>` to load a model once
+            per worker instead of once per inference.
+
+            To transform batches with :ref:`actors <actor-guide>`, pass a callable type
+            to ``fn`` and specify an :class:`~ray.data.ActorPoolStrategy>`.
+
+            In the example below, ``CachedModel`` is called on an autoscaling pool of
+            two to eight :ref:`actors <actor-guide>`, each allocated one GPU by Ray.
+
+            >>> from ray.data import ActorPoolStrategy
+            >>> init_large_model = ... # doctest: +SKIP
             >>> class CachedModel:
             ...    def __init__(self):
-            ...        self.model = init_model()
+            ...        self.model = init_large_model()
             ...    def __call__(self, item):
             ...        return self.model(item)
-            >>> # Apply the transform in parallel on GPUs. Since
-            >>> # compute=ActorPoolStrategy(2, 8) the transform will be applied on an
-            >>> # autoscaling pool of 2-8 Ray actors, each allocated 1 GPU by Ray.
-            >>> from ray.data._internal.compute import ActorPoolStrategy
             >>> ds.map_batches( # doctest: +SKIP
             ...     CachedModel, # doctest: +SKIP
             ...     batch_size=256, # doctest: +SKIP
             ...     compute=ActorPoolStrategy(2, 8), # doctest: +SKIP
-            ...     num_gpus=1) # doctest: +SKIP
-
-            You can use ``map_batches`` to efficiently filter records.
-
-            >>> import ray
-            >>> ds = ray.data.range(10000)  # doctest: +SKIP
-            >>> ds.count()  # doctest: +SKIP
-            10000
-            >>> ds = ds.map_batches(lambda batch: [x for x in batch if x % 2 == 0])  # doctest: +SKIP  # noqa: #501
-            >>> ds.count()  # doctest: +SKIP
-            5000
-
-        Time complexity: O(dataset size / parallelism)
+            ...     num_gpus=1,
+            ... ) # doctest: +SKIP
 
         Args:
             fn: The function to apply to each record batch, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
-            batch_size: The number of rows in each batch, or None to use entire blocks
-                as batches (blocks may contain different number of rows).
-                The final batch may include fewer than ``batch_size`` rows.
-                Defaults to 4096.
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling actor pool. If wanting to
-                configure the min or max size of the autoscaling actor pool, you can
-                provide an
-                :class:`ActorPoolStrategy(min, max) <ray.data.ActorPoolStrategy>`
-                instance. If using callable classes for fn, the actor compute strategy
-                must be used.
-            batch_format: Specify "native" to use the native block format (promotes
-                tables to Pandas and tensors to NumPy), "pandas" to select
-                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
-                to select ``numpy.ndarray`` for tensor datasets and
-                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "native".
-            fn_args: Positional arguments to pass to ``fn``, after the data batch. These
-                arguments will be top-level arguments in the underlying Ray task that's
-                submitted.
-            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments will be
-                top-level arguments in the underlying Ray task that's submitted.
+            batch_size: The number of rows in each batch, or ``None`` to use entire
+                blocks as batches. Blocks can contain different number of rows, and
+                the last batch can include fewer than ``batch_size`` rows. Defaults to
+                ``4096``.
+            compute: The compute strategy, either ``"tasks"`` (default) to use Ray
+                tasks, or ``"actors"`` to use an autoscaling actor pool. If you want to
+                configure the size of the autoscaling actor pool, provide an
+                :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>` instance.
+                If you're passing callable type to ``fn``, you must pass an
+                :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>`.
+            batch_format: Specify ``"default"`` to use the default block format
+                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
+                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
+                ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
+                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
+            fn_args: Positional arguments to pass to ``fn`` after the first argument.
+                These arguments are top-level arguments to the underlying Ray task.
+            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
+                top-level arguments to the underlying Ray task.
             fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
-                This can only be provided if ``fn`` is a callable class and the actor
-                compute strategy is being used. These arguments will be top-level
-                arguments in the underlying Ray actor construction task that's
-                submitted.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
             fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
-                This can only be provided if ``fn`` is a callable class and the actor
-                compute strategy is being used. These arguments will be top-level
-                arguments in the underlying Ray actor construction task that's
-                submitted.
+                This can only be provided if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
-        """
+                ray (e.g., ``num_gpus=1`` to request GPUs for the map tasks).
+
+        .. seealso::
+
+            :meth:`~Dataset.iter_batches`
+                Call this function to iterate over batches of data.
+
+            :meth:`~Dataset.default_batch_format`
+                Call this function to determine the default batch type.
+        """  # noqa: E501
         import pandas as pd
         import pyarrow as pa
+
+        if batch_format == "native":
+            warnings.warn(
+                "The 'native' batch format has been renamed 'default'.",
+                DeprecationWarning,
+            )
 
         if batch_size is not None and batch_size < 1:
             raise ValueError("Batch size cannot be negative or 0")
@@ -512,12 +576,12 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range_table(100) # doctest: +SKIP
+            >>> ds = ray.data.range_table(100)
             >>> # Add a new column equal to value * 2.
-            >>> ds = ds.add_column( # doctest: +SKIP
+            >>> ds = ds.add_column(
             ...     "new_col", lambda df: df["value"] * 2)
             >>> # Overwrite the existing "value" with zeros.
-            >>> ds = ds.add_column("value", lambda df: 0) # doctest: +SKIP
+            >>> ds = ds.add_column("value", lambda df: 0)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -556,12 +620,12 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range_table(100) # doctest: +SKIP
+            >>> ds = ray.data.range_table(100)
             >>> # Add a new column equal to value * 2.
-            >>> ds = ds.add_column( # doctest: +SKIP
+            >>> ds = ds.add_column(
             ...     "new_col", lambda df: df["value"] * 2)
             >>> # Drop the existing "value" column.
-            >>> ds = ds.drop_columns(["value"]) # doctest: +SKIP
+            >>> ds = ds.drop_columns(["value"])
 
 
         Time complexity: O(dataset size / parallelism)
@@ -593,8 +657,9 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(1000) # doctest: +SKIP
-            >>> ds.flat_map(lambda x: [x, x ** 2, x ** 3]) # doctest: +SKIP
+            >>> ds = ray.data.range(1000)
+            >>> ds.flat_map(lambda x: [x, x ** 2, x ** 3])
+            Dataset(num_blocks=..., num_rows=3000, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -659,8 +724,9 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.filter(lambda x: x % 2 == 0) # doctest: +SKIP
+            >>> ds = ray.data.range(100)
+            >>> ds.filter(lambda x: x % 2 == 0)
+            Dataset(num_blocks=..., num_rows=50, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -715,9 +781,9 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds = ray.data.range(100)
             >>> # Set the number of output partitions to write to disk.
-            >>> ds.repartition(10).write_parquet(...) # doctest: +SKIP
+            >>> ds.repartition(10).write_parquet("/tmp/test")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -749,11 +815,13 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds = ray.data.range(100)
             >>> # Shuffle this dataset randomly.
-            >>> ds.random_shuffle() # doctest: +SKIP
+            >>> ds.random_shuffle()
+            Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
             >>> # Shuffle this dataset with a fixed random seed.
-            >>> ds.random_shuffle(seed=12345) # doctest: +SKIP
+            >>> ds.random_shuffle(seed=12345)
+            Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1055,13 +1123,13 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(10) # doctest: +SKIP
-            >>> d1, d2, d3 = ds.split_at_indices([2, 5]) # doctest: +SKIP
-            >>> d1.take() # doctest: +SKIP
+            >>> ds = ray.data.range(10)
+            >>> d1, d2, d3 = ds.split_at_indices([2, 5])
+            >>> d1.take()
             [0, 1]
-            >>> d2.take() # doctest: +SKIP
+            >>> d2.take()
             [2, 3, 4]
-            >>> d3.take() # doctest: +SKIP
+            >>> d3.take()
             [5, 6, 7, 8, 9]
 
         Time complexity: O(num splits)
@@ -1123,13 +1191,13 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(10) # doctest: +SKIP
-            >>> d1, d2, d3 = ds.split_proportionately([0.2, 0.5]) # doctest: +SKIP
-            >>> d1.take() # doctest: +SKIP
+            >>> ds = ray.data.range(10)
+            >>> d1, d2, d3 = ds.split_proportionately([0.2, 0.5])
+            >>> d1.take()
             [0, 1]
-            >>> d2.take() # doctest: +SKIP
+            >>> d2.take()
             [2, 3, 4, 5, 6]
-            >>> d3.take() # doctest: +SKIP
+            >>> d3.take()
             [7, 8, 9]
 
         Time complexity: O(num splits)
@@ -1182,15 +1250,15 @@ class Dataset(Generic[T]):
     ) -> Tuple["Dataset[T]", "Dataset[T]"]:
         """Split the dataset into train and test subsets.
 
-        Example:
-            .. code-block:: python
+        Examples:
 
-                import ray
-
-                ds = ray.data.range(8)
-                train, test = ds.train_test_split(test_size=0.25)
-                print(train.take())  # [0, 1, 2, 3, 4, 5]
-                print(test.take())  # [6, 7]
+            >>> import ray
+            >>> ds = ray.data.range(8)
+            >>> train, test = ds.train_test_split(test_size=0.25)
+            >>> train.take()
+            [0, 1, 2, 3, 4, 5]
+            >>> test.take()
+            [6, 7]
 
         Args:
             test_size: If float, should be between 0.0 and 1.0 and represent the
@@ -1314,11 +1382,13 @@ class Dataset(Generic[T]):
         Examples:
             >>> import ray
             >>> # Group by a key function and aggregate.
-            >>> ray.data.range(100).groupby(lambda x: x % 3).count() # doctest: +SKIP
+            >>> ray.data.range(100).groupby(lambda x: x % 3).count()
+            Dataset(num_blocks=..., num_rows=3, schema=<class 'tuple'>)
             >>> # Group by an Arrow table column and aggregate.
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby( # doctest: +SKIP
-            ...     "A").count() # doctest: +SKIP
+            >>> ray.data.from_items([
+            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
+            ...     "A").count()
+            Dataset(num_blocks=..., num_rows=3, schema={A: int64, count(): int64})
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -1346,9 +1416,11 @@ class Dataset(Generic[T]):
         Examples:
             >>> import ray
             >>> from ray.data.aggregate import Max, Mean
-            >>> ray.data.range(100).aggregate(Max()) # doctest: +SKIP
-            >>> ray.data.range_table(100).aggregate( # doctest: +SKIP
-            ...    Max("value"), Mean("value")) # doctest: +SKIP
+            >>> ray.data.range(100).aggregate(Max())
+            (99,)
+            >>> ray.data.range_table(100).aggregate(
+            ...    Max("value"), Mean("value"))
+            {'max(value)': 99, 'mean(value)': 49.5}
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1376,14 +1448,18 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).sum() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]).sum(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_table(100).sum("value") # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i, "B": i**2} # doctest: +SKIP
-            ...     for i in range(100)]).sum(["A", "B"]) # doctest: +SKIP
+            >>> ray.data.range(100).sum()
+            4950
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).sum(lambda x: x[1])
+            328350
+            >>> ray.data.range_table(100).sum("value")
+            4950
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).sum(["A", "B"])
+            {'sum(A)': 4950, 'sum(B)': 328350}
 
         Args:
             on: The data subset on which to compute the sum.
@@ -1435,14 +1511,18 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).min() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]).min(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_table(100).min("value") # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i, "B": i**2} # doctest: +SKIP
-            ...     for i in range(100)]).min(["A", "B"]) # doctest: +SKIP
+            >>> ray.data.range(100).min()
+            0
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).min(lambda x: x[1])
+            0
+            >>> ray.data.range_table(100).min("value")
+            0
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).min(["A", "B"])
+            {'min(A)': 0, 'min(B)': 0}
 
         Args:
             on: The data subset on which to compute the min.
@@ -1494,14 +1574,18 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).max() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]).max(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_table(100).max("value") # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i, "B": i**2} # doctest: +SKIP
-            ...     for i in range(100)]).max(["A", "B"]) # doctest: +SKIP
+            >>> ray.data.range(100).max()
+            99
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).max(lambda x: x[1])
+            9801
+            >>> ray.data.range_table(100).max("value")
+            99
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).max(["A", "B"])
+            {'max(A)': 99, 'max(B)': 9801}
 
         Args:
             on: The data subset on which to compute the max.
@@ -1553,14 +1637,18 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ray.data.range(100).mean() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]).mean(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_table(100).mean("value") # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i, "B": i**2} # doctest: +SKIP
-            ...     for i in range(100)]).mean(["A", "B"]) # doctest: +SKIP
+            >>> ray.data.range(100).mean()
+            49.5
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).mean(lambda x: x[1])
+            3283.5
+            >>> ray.data.range_table(100).mean("value")
+            49.5
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).mean(["A", "B"])
+            {'mean(A)': 49.5, 'mean(B)': 3283.5}
 
         Args:
             on: The data subset on which to compute the mean.
@@ -1614,15 +1702,19 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> import ray # doctest: +SKIP
-            >>> ray.data.range(100).std() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]).std(lambda x: x[1]) # doctest: +SKIP
-            >>> ray.data.range_table(100).std("value", ddof=0) # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i, "B": i**2} # doctest: +SKIP
-            ...     for i in range(100)]).std(["A", "B"]) # doctest: +SKIP
+            >>> import ray
+            >>> ray.data.range(100).std()
+            29.011491975882016
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).std(lambda x: x[1])
+            2968.1748039269296
+            >>> ray.data.range_table(100).std("value", ddof=0)
+            28.86607004772212
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).std(["A", "B"])
+            {'std(A)': 29.011491975882016, 'std(B)': 2968.1748039269296}
 
         NOTE: This uses Welford's online method for an accumulator-style
         computation of the standard deviation. This method was chosen due to
@@ -1687,14 +1779,16 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> import ray # doctest: +SKIP
+            >>> import ray
             >>> # Sort using the entire record as the key.
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.sort() # doctest: +SKIP
+            >>> ds = ray.data.range(100)
+            >>> ds.sort()
+            Dataset(num_blocks=..., num_rows=100, schema=<class 'int'>)
             >>> # Sort by a single column in descending order.
-            >>> ds = ray.data.from_items( # doctest: +SKIP
+            >>> ds = ray.data.from_items(
             ...     [{"value": i} for i in range(1000)])
-            >>> ds.sort("value", descending=True) # doctest: +SKIP
+            >>> ds.sort("value", descending=True)
+            Dataset(num_blocks=..., num_rows=1000, schema={value: int64})
             >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["value"]) # doctest: +SKIP
 
@@ -1733,8 +1827,8 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(5) # doctest: +SKIP
-            >>> ds.zip(ds).take() # doctest: +SKIP
+            >>> ds = ray.data.range(5)
+            >>> ds.zip(ds).take()
             [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
 
         Returns:
@@ -1754,8 +1848,9 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(1000) # doctest: +SKIP
-            >>> ds.limit(100).map(lambda x: x * 2).take() # doctest: +SKIP
+            >>> ds = ray.data.range(1000)
+            >>> ds.limit(100).map(lambda x: x * 2).take()
+            [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38]
 
         Time complexity: O(limit specified)
 
@@ -2275,15 +2370,15 @@ class Dataset(Generic[T]):
         try:
             dataset_format = self._dataset_format()
         except ValueError:
-            # Dataset is empty or cleared, so fall back to "native".
-            batch_format = "native"
+            # Dataset is empty or cleared, so fall back to "default".
+            batch_format = "default"
         else:
             batch_format = (
                 "pyarrow"
                 if dataset_format == "arrow"
                 else "pandas"
                 if dataset_format == "pandas"
-                else "native"
+                else "default"
             )
         for batch in self.iter_batches(
             batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
@@ -2297,7 +2392,7 @@ class Dataset(Generic[T]):
         *,
         prefetch_blocks: int = 0,
         batch_size: Optional[int] = 256,
-        batch_format: str = "native",
+        batch_format: str = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -2319,11 +2414,11 @@ class Dataset(Generic[T]):
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: The format in which to return each batch.
-                Specify "native" to use the native block format (promoting
+                Specify "default" to use the default block format (promoting
                 tables to Pandas and tensors to NumPy), "pandas" to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
                 to select ``numpy.ndarray`` for tensor datasets and
-                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "native".
+                ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -2335,6 +2430,12 @@ class Dataset(Generic[T]):
         Returns:
             An iterator over record batches.
         """
+        if batch_format == "native":
+            warnings.warn(
+                "The 'native' batch format has been renamed 'default'.",
+                DeprecationWarning,
+            )
+
         blocks = self._plan.execute()
         stats = self._plan.stats()
 
@@ -2450,7 +2551,7 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> for batch in ray.data.range( # doctest: +SKIP
             ...     12,
-            ... ).iter_torch_batches(batch_size=4):
+            ... ).iter_tf_batches(batch_size=4):
             ...     print(batch.shape) # doctest: +SKIP
             (4, 1)
             (4, 1)
@@ -2837,7 +2938,17 @@ class Dataset(Generic[T]):
 
         return dataset
 
-    def to_dask(self) -> "dask.DataFrame":
+    def to_dask(
+        self,
+        meta: Union[
+            "pandas.DataFrame",
+            "pandas.Series",
+            Dict[str, Any],
+            Iterable[Any],
+            Tuple[Any],
+            None,
+        ] = None,
+    ) -> "dask.DataFrame":
         """Convert this dataset into a Dask DataFrame.
 
         This is only supported for datasets convertible to Arrow records.
@@ -2847,12 +2958,30 @@ class Dataset(Generic[T]):
 
         Time complexity: O(dataset size / parallelism)
 
+        Args:
+            meta: An empty pandas DataFrame or Series that matches the dtypes and column
+                names of the Dataset. This metadata is necessary for many algorithms in
+                dask dataframe to work. For ease of use, some alternative inputs are
+                also available. Instead of a DataFrame, a dict of ``{name: dtype}`` or
+                iterable of ``(name, dtype)`` can be provided (note that the order of
+                the names should match the order of the columns). Instead of a series, a
+                tuple of ``(name, dtype)`` can be used.
+                By default, this will be inferred from the underlying Dataset schema,
+                with this argument supplying an optional override.
+
         Returns:
             A Dask DataFrame created from this dataset.
         """
         import dask
         import dask.dataframe as dd
+        import pandas as pd
 
+        try:
+            import pyarrow as pa
+        except Exception:
+            pa = None
+
+        from ray.data._internal.pandas_block import PandasBlockSchema
         from ray.util.client.common import ClientObjectRef
         from ray.util.dask import ray_dask_get
 
@@ -2869,10 +2998,22 @@ class Dataset(Generic[T]):
                 )
             return block.to_pandas()
 
-        # TODO(Clark): Give Dask a Pandas-esque schema via the Pyarrow schema,
-        # once that's implemented.
+        if meta is None:
+            # Infer Dask metadata from Datasets schema.
+            schema = self.schema(fetch_if_missing=True)
+            if isinstance(schema, PandasBlockSchema):
+                meta = pd.DataFrame(
+                    {
+                        col: pd.Series(dtype=dtype)
+                        for col, dtype in zip(schema.names, schema.types)
+                    }
+                )
+            elif pa is not None and isinstance(schema, pa.Schema):
+                meta = schema.empty_table().to_pandas()
+
         ddf = dd.from_delayed(
-            [block_to_df(block) for block in self.get_internal_block_refs()]
+            [block_to_df(block) for block in self.get_internal_block_refs()],
+            meta=meta,
         )
         return ddf
 
@@ -3083,10 +3224,10 @@ class Dataset(Generic[T]):
         Examples:
             >>> import ray
             >>> # Infinite pipeline of numbers [0, 5)
-            >>> ray.data.range(5).repeat().take() # doctest: +SKIP
+            >>> ray.data.range(5).repeat().take()
             [0, 1, 2, 3, 4, 0, 1, 2, 3, 4, ...]
             >>> # Can apply transformations to the pipeline.
-            >>> ray.data.range(5).repeat().map(lambda x: -x).take() # doctest: +SKIP
+            >>> ray.data.range(5).repeat().map(lambda x: -x).take()
             [0, -1, -2, -3, -4, 0, -1, -2, -3, -4, ...]
             >>> # Can shuffle each epoch (dataset) in the pipeline.
             >>> ray.data.range(5).repeat().random_shuffle().take() # doctest: +SKIP
@@ -3513,6 +3654,82 @@ class Dataset(Generic[T]):
             self._lazy,
         )
         return l_ds, r_ds
+
+    def default_batch_format(self) -> Type:
+        """Return this dataset's default batch format.
+
+        The default batch format describes what batches of data look like. To learn more
+        about batch formats, read
+        :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
+
+        Example:
+
+            If your dataset represents a list of Python objects, then the default batch
+            format is ``list``.
+
+            >>> ds = ray.data.range(100)
+            >>> ds  # doctest: +SKIP
+            Dataset(num_blocks=20, num_rows=100, schema=<class 'int'>)
+            >>> ds.default_batch_format()
+            <class 'list'>
+            >>> next(ds.iter_batches(batch_size=4))
+            [0, 1, 2, 3]
+
+            If your dataset contains a single ``TensorDtype`` or ``ArrowTensorType``
+            column named ``__value__`` (as created by :func:`ray.data.from_numpy`), then
+            the default batch format is ``np.ndarray``. For more information on tensor
+            datasets, read the :ref:`tensor support guide <datasets_tensor_support>`.
+
+            >>> ds = ray.data.range_tensor(100)
+            >>> ds  # doctest: +SKIP
+            Dataset(num_blocks=20, num_rows=100, schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})
+            >>> ds.default_batch_format()
+            <class 'numpy.ndarray'>
+            >>> next(ds.iter_batches(batch_size=4))
+            array([[0],
+                   [1],
+                   [2],
+                   [3]])
+
+            If your dataset represents tabular data and doesn't only consist of a
+            ``__value__`` tensor column (such as is created by
+            :meth:`ray.data.from_numpy`), then the default batch format is
+            ``pd.DataFrame``.
+
+            >>> import pandas as pd
+            >>> df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
+            >>> ds = ray.data.from_pandas(df)
+            >>> ds  # doctest: +SKIP
+            Dataset(num_blocks=1, num_rows=2, schema={foo: object, bar: int64})
+            >>> ds.default_batch_format()
+            <class 'pandas.core.frame.DataFrame'>
+            >>> next(ds.iter_batches(batch_size=4))
+              foo  bar
+            0   a    0
+            1   b    1
+
+        .. seealso::
+
+            :meth:`~Dataset.map_batches`
+                Call this function to transform batches of data.
+
+            :meth:`~Dataset.iter_batches`
+                Call this function to iterate over batches of data.
+
+        """  # noqa: E501
+        import pandas as pd
+        import pyarrow as pa
+
+        schema = self.schema()
+        assert isinstance(schema, (type, PandasBlockSchema, pa.Schema))
+
+        if isinstance(schema, type):
+            return list
+
+        if isinstance(schema, (PandasBlockSchema, pa.Schema)):
+            if schema.names == [VALUE_COL_NAME]:
+                return np.ndarray
+            return pd.DataFrame
 
     def _dataset_format(self) -> str:
         """Determine the format of the dataset. Possible values are: "arrow",

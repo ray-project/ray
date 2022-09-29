@@ -75,15 +75,16 @@ class ApexDQNConfig(DQNConfig):
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = ApexDQNConfig()
         >>> config.training(num_atoms=tune.grid_search(list(range(1, 11)))
         >>> config.environment(env="CartPole-v1")
-        >>> tune.run(
+        >>> tune.Tuner(
         >>>     "APEX",
-        >>>     stop={"episode_reward_mean":200},
-        >>>     config=config.to_dict()
-        >>> )
+        >>>     run_config=air.RunConfig(stop={"episode_reward_mean":200}),
+        >>>     param_space=config.to_dict()
+        >>> ).fit()
 
     Example:
         >>> from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQNConfig
@@ -349,10 +350,6 @@ class ApexDQN(DQN):
     @override(Trainable)
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
-
-        # Shortcut: If execution_plan, thread and buffer will be created in there.
-        if self.config["_disable_execution_plan_api"] is False:
-            return
 
         # Tag those workers (top 1/3rd indices) that we should collect episodes from
         # for metrics due to `PerWorkerEpsilonGreedy` exploration strategy.
@@ -665,11 +662,10 @@ class ApexDQN(DQN):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
-        if self.config["_disable_execution_plan_api"]:
-            self._sampling_actor_manager.remove_workers(
-                removed_workers, remove_in_flight_requests=True
-            )
-            self._sampling_actor_manager.add_workers(new_workers)
+        self._sampling_actor_manager.remove_workers(
+            removed_workers, remove_in_flight_requests=True
+        )
+        self._sampling_actor_manager.add_workers(new_workers)
 
     @override(Algorithm)
     def _compile_iteration_results(self, *args, **kwargs):
@@ -758,7 +754,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.dqn.apex.APEX_DEFAULT_CONFIG",
         new="ray.rllib.algorithms.apex_dqn.apex_dqn.ApexDQNConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)
