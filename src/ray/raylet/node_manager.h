@@ -189,7 +189,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Returns workers sorted by the time of the last submitted task, in descending order.
   ///
-  /// retriable.
   /// \return the list of sorted workers
   const std::vector<std::shared_ptr<WorkerInterface>> WorkersWithLatestSubmittedTasks()
       const;

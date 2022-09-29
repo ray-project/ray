@@ -1459,7 +1459,6 @@ const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegistered
       if (filter_dead_workers && worker->IsDead()) {
         continue;
       }
-
       workers.push_back(worker);
     }
   }
