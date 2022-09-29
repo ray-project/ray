@@ -57,7 +57,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - pip install -Ur ./python/requirements_ml_docker.txt
-    # (artur) Install torch version that also fits huggingface's usage so that the transformer GPU test passes
+    # (artur) Install torch 1.11, which also fits huggingface's usage so that the transformer GPU test passes
     - pip uninstall torch -y
     - pip install -U torch==1.11.0+cu113 --extra-index-url https://download.pytorch.org/whl/cu113
     - ./ci/env/env_info.sh
