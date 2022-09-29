@@ -169,7 +169,7 @@ DEFINE_stats(scheduler_failed_worker_startup_total,
              (),
              ray::stats::GAUGE);
 
-/// Raylet Resource Manager
+/// Raylet Resourfe Manager
 DEFINE_stats(resources,
              // TODO(sang): Support placement_group_reserved_available | used
              "Logical Ray resources broken per state {AVAILABLE, USED}",

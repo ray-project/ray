@@ -454,12 +454,19 @@ void LocalResourceManager::RecordMetrics() const {
   const auto &total_map =
       local_resources.GetTotalResourceInstances().ToResourceRequest().ToResourceMap();
 
+  // id -> {used, avail, pg_used, pg_avail}
+
   for (const auto &it : total_map) {
     const auto &resource = it.first;
     auto total = it.second;
     auto avail_it = avail_map.find(resource);
+    double avail;
     // If avail is 0, it doesn't exist in the map.
-    double avail = avail_it == avail_map.end() ? 0 : avail_it->second;
+    if (avail_it == avail_map.end()) {
+      avail = 0;
+    } else {
+      avail = avail_it->second;
+    }
 
     // Ignore the node IP resource. It is useless to track because it is
     // for the affinity purpose.
