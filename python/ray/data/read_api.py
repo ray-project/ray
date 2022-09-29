@@ -330,7 +330,7 @@ def read_mongo(
     schema: Schema,
     **kwargs,
 ) -> Dataset[ArrowRow]:
-    """Create an Arrow dataset from MongoDB for the given queries.
+    """Create an Arrow dataset from MongoDB for the given pipelines.
 
     Examples:
         >>> import ray
