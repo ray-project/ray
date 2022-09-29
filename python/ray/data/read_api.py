@@ -45,6 +45,8 @@ from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup
 
+from pymongoarrow.api import Schema
+
 if TYPE_CHECKING:
     import dask
     import datasets
@@ -321,8 +323,40 @@ def read_datasource(
 
 @PublicAPI(stability="alpha")
 def read_mongo(
-    uri, database, collection, pipelines, schema, **kwargs
+    uri: str,
+    database: str,
+    collection: str,
+    pipelines: List[List[Dict]],
+    schema: Schema,
+    **kwargs,
 ) -> Dataset[ArrowRow]:
+    """Create an Arrow dataset from MongoDB for the given queries.
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.read_mongo( # doctest: +SKIP
+        ...     uri=MY_URI,
+        ...     database=MY_DB,
+        ...     collection=MY_COLLECTION,
+        ...     pipelines=MY_PIPELINES,
+        ...     schema=MY_SCHEMA
+        ... )
+
+    Args:
+        uri: The URI of the source MongoDB where the dataset will be
+            read from. For the URI format, see details in
+            https://www.mongodb.com/docs/manual/reference/connection-string/.
+        database: The name of the database hosted in the MongoDB.
+        collection: The name of the collection in the database.
+        pipelines: A list of pipelines that are used to create blocks, with each
+            corresponding to a block. Each pipeline is a list of MongoDB queries (
+            typed as List[Dict]).
+        schema: The schema used to read the collection.
+
+    Returns:
+        Dataset holding Arrow records read with give pipelines from the specified
+        MongoDB collection.
+    """
     return read_datasource(
         MongoDatasource(),
         parallelism=len(pipelines),
