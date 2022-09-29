@@ -2,6 +2,7 @@ import warnings
 from collections import Counter
 import re
 from unittest.mock import patch
+from typing import Dict, Union
 
 import numpy as np
 import pandas as pd
@@ -44,22 +45,28 @@ def create_dummy_preprocessors():
         def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
             return df
 
-    class DummyPreprocessorWithArrow(DummyPreprocessorWithNothing):
-        def _transform_arrow(self, table: "pyarrow.Table") -> "pyarrow.Table":
-            return table
+    class DummyPreprocessorWithNumpy(DummyPreprocessorWithNothing):
+        batch_format = "numpy"
 
-    class DummyPreprocessorWithPandasAndArrow(DummyPreprocessorWithNothing):
+        def _transform_numpy(
+            self, np_data: Union[np.ndarray, Dict[str, np.ndarray]]
+        ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+            return np_data
+
+    class DummyPreprocessorWithPandasAndNumpy(DummyPreprocessorWithNothing):
         def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
             return df
 
-        def _transform_arrow(self, table: "pyarrow.Table") -> "pyarrow.Table":
-            return table
+        def _transform_numpy(
+            self, np_data: Union[np.ndarray, Dict[str, np.ndarray]]
+        ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+            return np_data
 
     yield (
         DummyPreprocessorWithNothing(),
         DummyPreprocessorWithPandas(),
-        DummyPreprocessorWithArrow(),
-        DummyPreprocessorWithPandasAndArrow(),
+        DummyPreprocessorWithNumpy(),
+        DummyPreprocessorWithPandasAndNumpy(),
     )
 
 
@@ -1132,36 +1139,6 @@ def test_normalizer():
     assert out_df.equals(expected_df)
 
 
-def test_batch_mapper():
-    """Tests batch mapper functionality."""
-    old_column = [1, 2, 3, 4]
-    to_be_modified = [1, -1, 1, -1]
-    in_df = pd.DataFrame.from_dict(
-        {"old_column": old_column, "to_be_modified": to_be_modified}
-    )
-    ds = ray.data.from_pandas(in_df)
-
-    def add_and_modify_udf(df: "pd.DataFrame"):
-        df["new_col"] = df["old_column"] + 1
-        df["to_be_modified"] *= 2
-        return df
-
-    batch_mapper = BatchMapper(fn=add_and_modify_udf)
-    batch_mapper.fit(ds)
-    transformed = batch_mapper.transform(ds)
-    out_df = transformed.to_pandas()
-
-    expected_df = pd.DataFrame.from_dict(
-        {
-            "old_column": old_column,
-            "to_be_modified": [2, -2, 2, -2],
-            "new_col": [2, 3, 4, 5],
-        }
-    )
-
-    assert out_df.equals(expected_df)
-
-
 def test_power_transformer():
     """Tests basic PowerTransformer functionality."""
 
@@ -1592,13 +1569,13 @@ def test_simple_hash():
     assert simple_hash([1, 2, "apple"], 100) == 37
 
 
-def test_arrow_pandas_support_simple_dataset(create_dummy_preprocessors):
+def test_numpy_pandas_support_simple_dataset(create_dummy_preprocessors):
     # Case 1: simple dataset. No support
     (
         with_nothing,
         with_pandas,
-        with_arrow,
-        with_pandas_and_arrow,
+        with_numpy,
+        with_pandas_and_numpy,
     ) = create_dummy_preprocessors
 
     ds = ray.data.range(10)
@@ -1609,19 +1586,19 @@ def test_arrow_pandas_support_simple_dataset(create_dummy_preprocessors):
         with_pandas.transform(ds)
 
     with pytest.raises(ValueError):
-        with_arrow.transform(ds)
+        with_numpy.transform(ds)
 
     with pytest.raises(ValueError):
-        with_pandas_and_arrow.transform(ds)
+        with_pandas_and_numpy.transform(ds)
 
 
-def test_arrow_pandas_support_pandas_dataset(create_dummy_preprocessors):
+def test_numpy_pandas_support_pandas_dataset(create_dummy_preprocessors):
     # Case 2: pandas dataset
     (
         with_nothing,
         with_pandas,
-        with_arrow,
-        with_pandas_and_arrow,
+        _,
+        with_pandas_and_numpy,
     ) = create_dummy_preprocessors
     df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
 
@@ -1631,18 +1608,16 @@ def test_arrow_pandas_support_pandas_dataset(create_dummy_preprocessors):
 
     assert with_pandas.transform(ds)._dataset_format() == "pandas"
 
-    assert with_arrow.transform(ds)._dataset_format() == "arrow"
-
-    assert with_pandas_and_arrow.transform(ds)._dataset_format() == "pandas"
+    assert with_pandas_and_numpy.transform(ds)._dataset_format() == "pandas"
 
 
-def test_arrow_pandas_support_arrow_dataset(create_dummy_preprocessors):
+def test_numpy_pandas_support_arrow_dataset(create_dummy_preprocessors):
     # Case 3: arrow dataset
     (
         with_nothing,
         with_pandas,
-        with_arrow,
-        with_pandas_and_arrow,
+        with_numpy,
+        with_pandas_and_numpy,
     ) = create_dummy_preprocessors
     df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
 
@@ -1652,18 +1627,19 @@ def test_arrow_pandas_support_arrow_dataset(create_dummy_preprocessors):
 
     assert with_pandas.transform(ds)._dataset_format() == "pandas"
 
-    assert with_arrow.transform(ds)._dataset_format() == "arrow"
+    assert with_numpy.transform(ds)._dataset_format() == "arrow"
 
-    assert with_pandas_and_arrow.transform(ds)._dataset_format() == "arrow"
+    # Auto select data_format = "arrow" -> batch_format = "numpy" for performance
+    assert with_pandas_and_numpy.transform(ds)._dataset_format() == "arrow"
 
 
-def test_arrow_pandas_support_transform_batch_wrong_format(create_dummy_preprocessors):
+def test_numpy_pandas_support_transform_batch_wrong_format(create_dummy_preprocessors):
     # Case 1: simple dataset. No support
     (
         with_nothing,
         with_pandas,
-        with_arrow,
-        with_pandas_and_arrow,
+        with_numpy,
+        with_pandas_and_numpy,
     ) = create_dummy_preprocessors
 
     batch = [1, 2, 3]
@@ -1674,51 +1650,105 @@ def test_arrow_pandas_support_transform_batch_wrong_format(create_dummy_preproce
         with_pandas.transform_batch(batch)
 
     with pytest.raises(NotImplementedError):
-        with_arrow.transform_batch(batch)
+        with_numpy.transform_batch(batch)
 
     with pytest.raises(NotImplementedError):
-        with_pandas_and_arrow.transform_batch(batch)
+        with_pandas_and_numpy.transform_batch(batch)
 
 
-def test_arrow_pandas_support_transform_batch_pandas(create_dummy_preprocessors):
+def test_numpy_pandas_support_transform_batch_pandas(create_dummy_preprocessors):
     # Case 2: pandas dataset
     (
         with_nothing,
         with_pandas,
-        with_arrow,
-        with_pandas_and_arrow,
+        with_numpy,
+        with_pandas_and_numpy,
     ) = create_dummy_preprocessors
 
     df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
+    df_single_column = pd.DataFrame([1, 2, 3], columns=["A"])
     with pytest.raises(NotImplementedError):
         with_nothing.transform_batch(df)
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(df_single_column)
 
     assert isinstance(with_pandas.transform_batch(df), pd.DataFrame)
+    assert isinstance(with_pandas.transform_batch(df_single_column), pd.DataFrame)
 
-    assert isinstance(with_arrow.transform_batch(df), pyarrow.Table)
+    assert isinstance(with_numpy.transform_batch(df), (np.ndarray, dict))
+    # We can get pd.DataFrame after returning numpy data from UDF
+    assert isinstance(with_numpy.transform_batch(df_single_column), (np.ndarray, dict))
 
-    assert isinstance(with_pandas_and_arrow.transform_batch(df), pd.DataFrame)
+    assert isinstance(with_pandas_and_numpy.transform_batch(df), pd.DataFrame)
+    assert isinstance(
+        with_pandas_and_numpy.transform_batch(df_single_column), pd.DataFrame
+    )
 
 
-def test_arrow_pandas_support_transform_batch_arrow(create_dummy_preprocessors):
+def test_numpy_pandas_support_transform_batch_arrow(create_dummy_preprocessors):
     # Case 3: arrow dataset
     (
         with_nothing,
         with_pandas,
-        with_arrow,
-        with_pandas_and_arrow,
+        with_numpy,
+        with_pandas_and_numpy,
     ) = create_dummy_preprocessors
 
     df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
+    df_single_column = pd.DataFrame([1, 2, 3], columns=["A"])
+
     table = pyarrow.Table.from_pandas(df)
+    table_single_column = pyarrow.Table.from_pandas(df_single_column)
     with pytest.raises(NotImplementedError):
         with_nothing.transform_batch(table)
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(table_single_column)
 
     assert isinstance(with_pandas.transform_batch(table), pd.DataFrame)
+    assert isinstance(with_pandas.transform_batch(table_single_column), pd.DataFrame)
 
-    assert isinstance(with_arrow.transform_batch(table), pyarrow.Table)
+    assert isinstance(with_numpy.transform_batch(table), (np.ndarray, dict))
+    # We can get pyarrow.Table after returning numpy data from UDF
+    assert isinstance(
+        with_numpy.transform_batch(table_single_column), (np.ndarray, dict)
+    )
+    # Auto select data_format = "arrow" -> batch_format = "numpy" for performance
+    assert isinstance(with_pandas_and_numpy.transform_batch(table), (np.ndarray, dict))
+    # We can get pyarrow.Table after returning numpy data from UDF
+    assert isinstance(
+        with_pandas_and_numpy.transform_batch(table_single_column), (np.ndarray, dict)
+    )
 
-    assert isinstance(with_pandas_and_arrow.transform_batch(table), pyarrow.Table)
+
+def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors):
+    # Case 4: tensor dataset created by from numpy data directly
+    (
+        with_nothing,
+        _,
+        with_numpy,
+        with_pandas_and_numpy,
+    ) = create_dummy_preprocessors
+    np_data = np.arange(12).reshape(3, 2, 2)
+    np_single_column = {"A": np.arange(12).reshape(3, 2, 2)}
+    np_multi_column = {
+        "A": np.arange(12).reshape(3, 2, 2),
+        "B": np.arange(12, 24).reshape(3, 2, 2),
+    }
+
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(np_data)
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(np_single_column)
+    with pytest.raises(NotImplementedError):
+        with_nothing.transform_batch(np_multi_column)
+
+    assert isinstance(with_numpy.transform_batch(np_data), np.ndarray)
+    assert isinstance(with_numpy.transform_batch(np_single_column), dict)
+    assert isinstance(with_numpy.transform_batch(np_multi_column), dict)
+
+    assert isinstance(with_pandas_and_numpy.transform_batch(np_data), np.ndarray)
+    assert isinstance(with_pandas_and_numpy.transform_batch(np_single_column), dict)
+    assert isinstance(with_pandas_and_numpy.transform_batch(np_multi_column), dict)
 
 
 if __name__ == "__main__":
