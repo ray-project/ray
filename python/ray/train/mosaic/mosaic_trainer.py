@@ -245,11 +245,9 @@ class MosaicTrainer(TorchTrainer):
 
     def __init__(
         self,
-        trainer_init_per_worker: Callable[
-            [Iterable, Optional[Iterable], Any], composer.trainer.Trainer
-        ],
+        trainer_init_per_worker: Callable[[Optional[Dict]], composer.trainer.Trainer],
         *,
-        datasets: Dict[str, GenDataset],
+        datasets: Optional[Dict[str, GenDataset]] = dict(),
         trainer_init_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
@@ -288,9 +286,9 @@ class MosaicTrainer(TorchTrainer):
         self, trainer_init_per_worker: Callable, fn_name: str
     ) -> None:
         num_params = len(inspect.signature(trainer_init_per_worker).parameters)
-        if num_params < 3:
+        if num_params > 1:
             raise ValueError(
-                f"{fn_name} should take in at least 3 arguments, "
+                f"{fn_name} should take in at most 1 argument, "
                 f"but it accepts {num_params} arguments instead."
             )
 
@@ -349,9 +347,11 @@ def _mosaic_train_loop_per_worker(config):
             in_memory_logger.append(logger)
 
     # initialize Composer trainer
-    trainer: composer.trainer.Trainer = trainer_init_per_worker(
-        train_torch_iterable, eval_torch_iterable, **config
-    )
+    if train_torch_iterable:
+        config["train_dataset_shard"] = train_dataset
+    if eval_torch_iterable:
+        config["eval_dataset_shard"] = eval_torch_iterable
+    trainer: composer.trainer.Trainer = trainer_init_per_worker(**config)
 
     # We wrap all existing CheckpointSavers with RayTrainReportCallback
     # If none exists, then we create a default one with "ray_tmp" folder

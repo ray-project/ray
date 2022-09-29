@@ -51,3 +51,4 @@ class MosaicCheckpoint(Checkpoint):
         """Retrieve the model stored in this checkpoint."""
         with self.to_dict()["last_checkpoint"][-1] as save_path:
             model = load_model_from_path(save_path, model, strict)
+        return model

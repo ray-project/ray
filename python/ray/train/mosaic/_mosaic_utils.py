@@ -69,9 +69,12 @@ def process_datasets(
     train_dataset: Dataset, eval_dataset: Dataset, batch_size, labels
 ) -> Tuple["Iterable", "Iterable"]:
     """Convert Ray train and validation to Iterables."""
-    train_torch_iterable = _ray_dataset_mosaic_iterable(
-        train_dataset, batch_size, labels
-    )
+    if train_dataset:
+        train_torch_iterable = _ray_dataset_mosaic_iterable(
+            train_dataset, batch_size, labels
+        )
+    else:
+        train_torch_iterable = None
 
     if eval_dataset:
         eval_torch_iterable = _ray_dataset_mosaic_iterable(
