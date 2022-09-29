@@ -20,7 +20,7 @@ class TestFeatureImportance(unittest.TestCase):
         sample_batch = synchronous_parallel_sample(worker_set=runner.workers)
 
         for repeat in [1, 10]:
-            evaluator = FeatureImportance(policy=policy, gamma=0.0, repeat=repeat)
+            evaluator = FeatureImportance(policy=policy, repeat=repeat)
 
             estimate = evaluator.estimate(sample_batch)
 
