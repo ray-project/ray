@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, Type
+from typing import Any, Callable, Dict, Type
 
 from ray.rllib.connectors.connector import (
     ActionConnector,
@@ -52,7 +52,7 @@ def register_lambda_action_connector(
             return name, None
 
         @staticmethod
-        def from_state(ctx: ConnectorContext, params: List[Any]):
+        def from_state(ctx: ConnectorContext, params: Any):
             return LambdaActionConnector(ctx)
 
     LambdaActionConnector.__name__ = name

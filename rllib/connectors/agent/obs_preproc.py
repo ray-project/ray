@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any
 
 from ray.rllib.connectors.connector import (
     AgentConnector,
@@ -57,11 +57,11 @@ class ObsPreprocessorConnector(AgentConnector):
         return ac_data
 
     def to_state(self):
-        return ObsPreprocessorConnector.__name__, {}
+        return ObsPreprocessorConnector.__name__, None
 
     @staticmethod
-    def from_state(ctx: ConnectorContext, params: List[Any]):
-        return ObsPreprocessorConnector(ctx, **params)
+    def from_state(ctx: ConnectorContext, params: Any):
+        return ObsPreprocessorConnector(ctx)
 
 
 register_connector(ObsPreprocessorConnector.__name__, ObsPreprocessorConnector)

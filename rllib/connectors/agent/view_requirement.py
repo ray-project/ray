@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, List
+from typing import Any
 
 from ray.rllib.connectors.connector import (
     AgentConnector,
@@ -120,7 +120,7 @@ class ViewRequirementAgentConnector(AgentConnector):
         return ViewRequirementAgentConnector.__name__, None
 
     @staticmethod
-    def from_state(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: Any):
         return ViewRequirementAgentConnector(ctx)
 
 
