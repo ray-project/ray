@@ -11,6 +11,14 @@ Machine Learning Examples
     :img-top-cls: pt-5 w-75 d-block mx-auto
 
     ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
+    .. link-button:: batch_prediction
+        :type: ref
+        :text: Build Batch Prediction Using Ray
+        :classes: btn-link btn-block stretched-link
+    ---
     :img-top: images/param_actor.png
 
     +++
