@@ -789,18 +789,22 @@ TEST_F(ReferenceCountTest, TestOwnerAddress) {
   auto object_id = ObjectID::FromRandom();
   rpc::Address address;
   address.set_ip_address("1234");
+  address.set_worker_id("1234");
   rc->AddOwnedObject(object_id, {}, address, "", 0, false, /*add_local_ref=*/true);
 
   TaskID added_id;
   rpc::Address added_address;
   ASSERT_TRUE(rc->GetOwner(object_id, &added_address));
   ASSERT_EQ(address.ip_address(), added_address.ip_address());
+  ASSERT_EQ(address.worker_id(), added_address.worker_id());
 
   auto object_id2 = ObjectID::FromRandom();
   address.set_ip_address("5678");
+  address.set_worker_id("5678");
   rc->AddOwnedObject(object_id2, {}, address, "", 0, false, /*add_local_ref=*/true);
   ASSERT_TRUE(rc->GetOwner(object_id2, &added_address));
   ASSERT_EQ(address.ip_address(), added_address.ip_address());
+  ASSERT_EQ(address.worker_id(), added_address.worker_id());
 
   auto object_id3 = ObjectID::FromRandom();
   ASSERT_FALSE(rc->GetOwner(object_id3, &added_address));
