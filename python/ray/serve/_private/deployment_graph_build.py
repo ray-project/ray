@@ -211,6 +211,7 @@ def transform_ray_dag_to_serve_dag(
             init_args=replaced_deployment_init_args,
             init_kwargs=replaced_deployment_init_kwargs,
             route_prefix=route_prefix,
+            _internal=True,
         )
 
         return DeploymentNode(
@@ -377,6 +378,7 @@ def generate_executor_dag_driver_deployment(
     return original_driver_deployment.options(
         init_args=replaced_deployment_init_args,
         init_kwargs=replaced_deployment_init_kwargs,
+        _internal=True,
     )
 
 
@@ -422,7 +424,9 @@ def process_ingress_deployment_in_serve_dag(
     if ingress_deployment.route_prefix in [None, f"/{ingress_deployment.name}"]:
         # Override default prefix to "/" on the ingress deployment, if user
         # didn't provide anything in particular.
-        new_ingress_deployment = ingress_deployment.options(route_prefix="/")
+        new_ingress_deployment = ingress_deployment.options(
+            route_prefix="/", _internal=True
+        )
         deployments[-1] = new_ingress_deployment
 
     # Erase all non ingress deployment route prefix
@@ -438,8 +442,8 @@ def process_ingress_deployment_in_serve_dag(
                 "serve DAG. "
             )
         else:
-            # Earse all default prefix to None for non-ingress deployments to
+            # Erase all default prefix to None for non-ingress deployments to
             # disable HTTP
-            deployments[i] = deployment.options(route_prefix=None)
+            deployments[i] = deployment.options(route_prefix=None, _internal=True)
 
     return deployments
