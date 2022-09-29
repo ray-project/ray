@@ -1,8 +1,9 @@
 from collections import defaultdict
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 import ray.actor
 from ray import tune
+from ray._private.dict import flatten_dict
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.execution.actor_manager import ActorManager
 from ray.air.execution.actor_request import ActorRequest, ActorInfo
@@ -24,12 +25,13 @@ from ray.air.execution.event import (
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.tune.callback import CallbackList, Callback
-from ray.tune.result import RESULT_DUPLICATE, DONE, SHOULD_CHECKPOINT
+from ray.tune.result import RESULT_DUPLICATE, SHOULD_CHECKPOINT
 from ray.tune.stopper import Stopper
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.search import SearchAlgorithm
 from ray.tune.stopper import NoopStopper
+from ray.tune.utils import warn_if_slow
 from ray.tune.utils.callback import _create_default_callbacks
 
 
@@ -171,6 +173,16 @@ class TuneController(Controller):
             self._actors_to_terminate.remove(actor)
             trial.set_status(Trial.TERMINATED)
 
+            self._scheduler.on_trial_complete(
+                None, trial=trial, result=trial.last_result
+            )
+            self._searcher.on_trial_complete(
+                trial_id=trial.trial_id, result=trial.last_result, error=False
+            )
+            self._callbacks.on_trial_complete(
+                iteration=0, trials=self._all_trials, trial=trial
+            )
+
     def future_result(self, result: FutureResult):
         if isinstance(result, FutureFailed):
             self._actor_manager.remove_actor(
@@ -187,54 +199,110 @@ class TuneController(Controller):
         actor = result.actor
         trial = self._live_actors[actor]
 
-        done = result.metrics.get(DONE, False) or result.metrics.get(
-            RESULT_DUPLICATE, False
-        )
+        metrics = result.metrics.copy()
+        metrics.update(trial_id=trial.trial_id)
+
+        # SHOULD_CHECKPOINT is reported when the function runner observed a
+        # checkpoint - then our next future should be trainable.save.remote()
+        should_checkpoint = metrics.get(SHOULD_CHECKPOINT, False)
+
+        # RESULT_DUPLICATE is reported when the function runner thread exits.
+        # Then we should re-use the last available result.
+        is_duplicate = RESULT_DUPLICATE in metrics
+        if is_duplicate:
+            metrics = trial.last_result
+            # This will lead `_get_decision_from_metrics` to return STOP
+            metrics.update(done=True)
+
+        # Update last result
         trial.last_result = result.metrics.copy()
 
-        if result.metrics.get(SHOULD_CHECKPOINT, False):
-            future = actor.save.remote()
-            trial.saving_to = _TrackedCheckpoint(
-                dir_or_data=future,
-                storage_mode=CheckpointStorage.PERSISTENT,
-                metrics=trial.last_result,
-            )
-            self._actor_manager.track_future(
-                actor=actor, future=future, cls=TuneSavingEvent
+        # For our stoppers, we use the flat metrics to be able to specify stopping
+        # conditions better
+        flat_metrics = flatten_dict(metrics)
+
+        # Todo: validate results metrics
+
+        decision = self._get_decision_from_metrics(
+            trial=trial, flat_metrics=flat_metrics
+        )
+
+        # If the scheduler wants to stop, update the metrics
+        if decision == TrialScheduler.STOP:
+            metrics.update(done=True)
+        else:
+            # Only updating search alg if the trial is not to be stopped.
+            # The scheduler has already been informed in
+            # `self._get_decision_from_metrics`
+            with warn_if_slow("search_alg.on_trial_result"):
+                self._searcher.on_trial_result(trial.trial_id, flat_metrics)
+
+        # Inform the callbacks if this is not a duplicate.
+        if not is_duplicate:
+            self._callbacks.on_trial_result(
+                iteration=self._iteration,
+                trials=self._all_trials,
+                trial=trial,
+                result=metrics,
             )
 
-        if done:
-            self._scheduler.on_trial_complete(None, trial=trial, result=result.metrics)
-            self._searcher.on_trial_complete(
-                trial_id=trial.trial_id, result=result.metrics, error=False
-            )
-            self._callbacks.on_trial_complete(
-                iteration=0, trials=self._all_trials, trial=trial
-            )
+        if should_checkpoint:
+            self._schedule_save(actor=actor)
+
+        self._act_on_decision(actor=actor, decision=decision)
+
+    def _get_decision_from_metrics(
+        self, trial: Trial, flat_metrics: Dict[str, Any]
+    ) -> str:
+        if self._stopper(trial.trial_id, flat_metrics) or trial.should_stop(
+            flat_metrics
+        ):
+            # If a stopping condition is met, stop.
             decision = TrialScheduler.STOP
         else:
-            decision = self._scheduler.on_trial_result(
-                None, trial=trial, result=result.metrics
-            )
-            self._searcher.on_trial_result(
-                trial_id=trial.trial_id, result=result.metrics
-            )
-            self._callbacks.on_trial_result(
-                iteration=0, trials=self._all_trials, trial=trial, result=result.metrics
-            )
+            # Otherwise, ask the scheduler what to do
+            with warn_if_slow("scheduler.on_trial_result"):
+                decision = self._scheduler.on_trial_result(self, trial, flat_metrics)
+
+        return decision
+
+    def _act_on_decision(self, actor: ray.actor.ActorHandle, decision: str):
+        trial = self._live_actors[actor]
 
         if decision == TrialScheduler.STOP:
-            self._actors_to_terminate.add(actor)
-            self._actor_manager.remove_actor(actor=actor, resolve_futures=True)
+            self._schedule_stop(actor=actor)
         elif decision == TrialScheduler.PAUSE:
-            self._actors_to_pause.add(actor)
-            self._actor_manager.remove_actor(actor=actor, resolve_futures=True)
+            self._schedule_pause(actor=actor)
         elif decision == TrialScheduler.NOOP:
             pass
-        else:
-            self._actor_manager.track_future(
-                actor=actor, future=actor.train.remote(), cls=TuneTrainingEvent
-            )
+        elif not trial.is_saving:
+            self._schedule_train(actor=actor)
+
+    def _schedule_train(self, actor: ray.actor.ActorHandle):
+        self._actor_manager.track_future(
+            actor=actor, future=actor.train.remote(), cls=TuneTrainingEvent
+        )
+
+    def _schedule_save(self, actor: ray.actor.ActorHandle):
+        trial = self._live_actors[actor]
+
+        future = actor.save.remote()
+        trial.saving_to = _TrackedCheckpoint(
+            dir_or_data=future,
+            storage_mode=CheckpointStorage.PERSISTENT,
+            metrics=trial.last_result,
+        )
+        self._actor_manager.track_future(
+            actor=actor, future=future, cls=TuneSavingEvent
+        )
+
+    def _schedule_stop(self, actor: ray.actor.ActorHandle):
+        self._actors_to_terminate.add(actor)
+        self._actor_manager.remove_actor(actor=actor, resolve_futures=True)
+
+    def _schedule_pause(self, actor: ray.actor.ActorHandle):
+        self._actors_to_pause.add(actor)
+        self._actor_manager.remove_actor(actor=actor, resolve_futures=True)
 
     def _handle_saving_result(self, result: TuneSavingEvent):
         actor = result.actor

@@ -13,7 +13,9 @@ from ray.tune.trainable import wrap_function
 
 @pytest.fixture
 def ray_start_local():
-    address_info = ray.init(local_mode=True, num_cpus=4, num_gpus=2)
+    address_info = ray.init(
+        local_mode=True, num_cpus=4, num_gpus=2, include_dashboard=False
+    )
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()

@@ -60,6 +60,11 @@ class Controller(abc.ABC):
         raise NotImplementedError
 
     def step(self):
+        if self.is_finished():
+            raise RuntimeError(
+                "Cannot step through controller as it has finished already."
+            )
+
         self.on_step_begin()
 
         event = self.next_event()
