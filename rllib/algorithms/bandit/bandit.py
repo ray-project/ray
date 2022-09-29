@@ -126,7 +126,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.bandit.bandit.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.bandit.bandit.BanditLin[UCB|TS]Config(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)
