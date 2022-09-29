@@ -26,6 +26,7 @@ from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private import api as _private_api
+from ray.serve._private.utils import dict_keys_snake_to_camel_case
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -445,7 +446,7 @@ def shutdown(address: str, yes: bool):
     help=APP_DIR_HELP_STR,
 )
 @click.option(
-    "--kubernetes",
+    "--kubernetes_format",
     "-k",
     is_flag=True,
     help="Print Serve config in Kubernetes format.",
@@ -460,7 +461,9 @@ def shutdown(address: str, yes: bool):
         "If not provided, the config will be printed to STDOUT."
     ),
 )
-def build(import_path: str, app_dir: str, yes: bool, output_path: Optional[str]):
+def build(
+    import_path: str, app_dir: str, kubernetes_format: bool, output_path: Optional[str]
+):
     sys.path.insert(0, app_dir)
 
     node: Union[ClassNode, FunctionNode] = import_attr(import_path)
@@ -478,6 +481,9 @@ def build(import_path: str, app_dir: str, yes: bool, output_path: Optional[str])
     config["import_path"] = import_path
     config["host"] = "0.0.0.0"
     config["port"] = 8000
+
+    if kubernetes_format:
+        config = dict_keys_snake_to_camel_case(config)
 
     config_str = (
         "# This file was generated using the `serve build` command "
