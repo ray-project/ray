@@ -79,3 +79,9 @@ class Controller(abc.ABC):
             self.future_result(result=event)
         elif isinstance(event, MultiFutureResult):
             self.multi_future_result(result=event)
+
+        self.on_step_end()
+
+    def step_until_finished(self):
+        while not self.is_finished():
+            self.step()

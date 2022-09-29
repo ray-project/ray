@@ -6,6 +6,7 @@ from ray.air.execution.impl.split.split_controller import SplitController
 from ray.air.execution.impl.tune.tune_controller import TuneController
 from ray.air.execution.resources.fixed import FixedResourceManager
 from ray.air.execution.resources.virtual import VirtualResourceManager
+from ray.tune import Experiment
 from ray.tune.progress_reporter import _detect_reporter, ProgressReporter
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.trainable import wrap_function
@@ -45,7 +46,18 @@ def tune_loop(tune_controller: TuneController):
 def tune_run(
     trainable, num_samples=1, param_space=None, search_alg=None, resource_manager=None
 ):
+    param_space = param_space or {}
+
     search_alg = search_alg or BasicVariantGenerator(max_concurrent=4)
+    search_alg.add_configurations(
+        Experiment(
+            name="some_test",
+            run=trainable,
+            config=param_space,
+            num_samples=num_samples,
+        )
+    )
+
     resource_manager = resource_manager or FixedResourceManager()
 
     tune_controller = TuneController(

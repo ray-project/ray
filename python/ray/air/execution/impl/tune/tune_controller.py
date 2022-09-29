@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Optional, Type
+from typing import Optional, List
 
 import ray.actor
 from ray import tune
@@ -23,13 +23,12 @@ from ray.air.execution.event import (
     MultiFutureResult,
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
-from ray.tune.callback import CallbackList
+from ray.tune.callback import CallbackList, Callback
 from ray.tune.result import RESULT_DUPLICATE, DONE, SHOULD_CHECKPOINT
-from ray.tune.trainable import Trainable
 from ray.tune.stopper import Stopper
-from ray.tune.experiment import Experiment, Trial
+from ray.tune.experiment import Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.search import SearchAlgorithm, BasicVariantGenerator
+from ray.tune.search import SearchAlgorithm
 from ray.tune.stopper import NoopStopper
 from ray.tune.utils.callback import _create_default_callbacks
 
@@ -37,18 +36,14 @@ from ray.tune.utils.callback import _create_default_callbacks
 class TuneController(Controller):
     def __init__(
         self,
-        trainable_cls: Type[Trainable],
-        param_space: dict,
-        num_samples: int = 1,
-        search_alg: Optional[SearchAlgorithm] = None,
+        search_alg: SearchAlgorithm,
         scheduler: Optional[TrialScheduler] = None,
         resource_manager: Optional[ResourceManager] = None,
+        callbacks: Optional[List[Callback]] = None,
     ):
         self._actor_manager = ActorManager(
             resource_manager=resource_manager or FixedResourceManager({"CPU": 8})
         )
-
-        self._param_space = param_space
 
         self._all_trials = []
         self._buffered_actor_requests = []
@@ -58,36 +53,36 @@ class TuneController(Controller):
         self._actors_to_pause = set()
         self._actors_to_terminate = set()
 
-        self._searcher: SearchAlgorithm = search_alg or BasicVariantGenerator()
+        self._searcher: SearchAlgorithm = search_alg
         self._stopper: Stopper = NoopStopper()
         self._scheduler: TrialScheduler = scheduler or FIFOScheduler()
         self._callbacks = CallbackList(
-            _create_default_callbacks([], sync_config=tune.SyncConfig())
+            _create_default_callbacks(callbacks or [], sync_config=tune.SyncConfig())
         )
 
-        self._searcher.add_configurations(
-            Experiment(
-                name="some_test",
-                run=trainable_cls,
-                config=self._param_space,
-                num_samples=num_samples,
-            )
-        )
+        self._iteration = 0
 
     def is_finished(self) -> bool:
         return (
-            self._searcher.is_finished() and not self._live_actors
+            self._searcher.is_finished()
+            and not self._live_actors
+            and not self._pending_actor_requests
+            and not self._buffered_actor_requests
         ) or self._stopper.stop_all()
 
     def next_event(self) -> ExecutionEvent:
         return self._actor_manager.next_event()
 
     def on_step_begin(self) -> None:
+        self._callbacks.on_step_begin(
+            iteration=self._iteration, trials=self._all_trials
+        )
+        self._iteration += 1
         self._create_new_trials()
 
     def on_step_end(self) -> None:
         # Todo: checkpoint etc
-        pass
+        self._callbacks.on_step_end(iteration=self._iteration, trials=self._all_trials)
 
     def _create_new_trials(self) -> None:
         for actor_request in self._buffered_actor_requests:
