@@ -124,7 +124,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus RemovePlacementGroup(
             const CPlacementGroupID &placement_group_id)
         CRayStatus WaitPlacementGroupReady(
-            const CPlacementGroupID &placement_group_id, int timeout_seconds)
+            const CPlacementGroupID &placement_group_id, int64_t timeout_seconds)
         optional[c_vector[CObjectReference]] SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,

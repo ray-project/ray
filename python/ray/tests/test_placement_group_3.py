@@ -110,6 +110,16 @@ def test_placement_group_wait_api(ray_start_cluster_head_with_external_redis):
         placement_group1.wait(10)
 
 
+def test_placement_group_wait_api_timeout(shutdown_only):
+    """Make sure the wait API timeout works
+
+    https://github.com/ray-project/ray/issues/27287
+    """
+    ray.init(num_cpus=1)
+    pg = ray.util.placement_group(bundles=[{"CPU": 2}])
+    assert not pg.wait(1)
+
+
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_schedule_placement_groups_at_the_same_time(connect_to_client):
     ray.init(num_cpus=4)
