@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Type
+from typing import Any, Callable, Type
 
 import numpy as np
 import tree  # dm_tree

@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, List
+from typing import Any
 
 import numpy as np
 import tree  # dm_tree

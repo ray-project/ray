@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any
 
 import tree  # pip install dm_tree
 

@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, List
+from typing import Any
 
 from ray.rllib.connectors.connector import (
     AgentConnector,

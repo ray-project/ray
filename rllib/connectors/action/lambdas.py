@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, Type
+from typing import Any, Callable, Dict, Type
 
 from ray.rllib.connectors.connector import (
     ActionConnector,
