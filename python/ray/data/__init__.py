@@ -35,6 +35,7 @@ from ray.data.read_api import (  # noqa: F401
     read_parquet,
     read_parquet_bulk,
     read_text,
+    read_tfrecords,
 )
 
 # Register custom Arrow JSON ReadOptions and ParseOptions serializer after worker has
@@ -76,6 +77,7 @@ __all__ = [
     "read_numpy",
     "read_parquet",
     "read_parquet_bulk",
+    "read_tfrecords",
     "set_progress_bars",
     "Preprocessor",
 ]

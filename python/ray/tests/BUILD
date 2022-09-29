@@ -13,6 +13,7 @@ py_library(
 py_test_module_list(
   files = [
     "test_dashboard.py",
+    "test_metrics_head.py",
     "test_ray_cluster_with_external_redis.py",
   ],
   size = "large",
@@ -32,7 +33,7 @@ py_test_module_list(
   files = [
     "test_actor_pool.py",
     "test_async.py",
-    "test_actor_failures.py",
+    "test_asyncio.py",
     "test_actor_resources.py",
     "test_actor_lifetime.py",
     "test_advanced.py",
@@ -121,7 +122,6 @@ py_test_module_list(
     "test_multi_node_2.py",
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
-    "test_multiprocessing.py",
     "test_object_assign_owner.py",
     "test_placement_group.py",
     "test_placement_group_2.py",
@@ -129,7 +129,6 @@ py_test_module_list(
     "test_placement_group_5.py",
     "test_ray_init.py",
     "test_ray_init_2.py",
-    "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
     "test_runtime_context.py",
     "test_runtime_env_env_vars.py",
@@ -153,6 +152,7 @@ py_test_module_list(
     "test_namespace.py",
     "test_scheduling.py",
     "test_traceback.py",
+    "test_queue.py",
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
@@ -164,7 +164,6 @@ py_test_module_list(
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
     "test_args.py",
     "test_asyncio_cluster.py",
-    "test_asyncio.py",
     "test_concurrency_group.py",
     "test_component_failures.py",
     "test_debug_tools.py",
@@ -173,7 +172,6 @@ py_test_module_list(
     "test_mini.py",
     "test_node_manager.py",
     "test_numba.py",
-    "test_queue.py",
     "test_ray_shutdown.py",
     "test_unhandled_error.py",
     "test_top_level_api.py",
@@ -254,6 +252,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
+    "test_actor_failures.py",
     "test_failure.py",
     "test_actor_advanced.py",
     "test_threaded_actor.py",
@@ -299,6 +298,8 @@ py_test_module_list(
     "test_placement_group_mini_integration.py",
     "test_scheduling_2.py",
     "test_multi_node_3.py",
+    "test_multiprocessing.py",
+    "test_reference_counting.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_1", "team:core"],

@@ -14,6 +14,7 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Type,
     Optional,
     Tuple,
     Union,
@@ -39,6 +40,7 @@ from ray.data._internal.equalize import _equalize
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _estimate_available_parallelism
+from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import (
     ExecutionPlan,
     OneToOneStage,
@@ -324,88 +326,129 @@ class Dataset(Generic[T]):
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
     ) -> "Dataset[Any]":
-        """Apply the given function to batches of records of this dataset.
+        """Apply the given function to batches of data.
 
-        The format of the data batch provided to ``fn`` can be controlled via the
-        ``batch_format`` argument, and the output of the UDF can be any batch type.
+        Batches are represented as dataframes, ndarrays, or lists. The default batch
+        type is determined by your dataset's schema. To determine the default batch
+        type, call :meth:`~Dataset.default_batch_format`. Alternatively, set the batch
+        type with ``batch_format``.
 
-        This is a blocking operation.
+        To learn more about writing functions for :meth:`~Dataset.map_batches`, read
+        :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
+
+        .. tip::
+            If you're using :ref:`Ray AIR <air>` for training or batch inference,
+            consider using :class:`~ray.data.preprocessors.BatchMapper`. It's more
+            performant and easier to use.
 
         Examples:
+
+            >>> import pandas as pd
             >>> import ray
-            >>> # Transform python objects.
-            >>> ds = ray.data.range(1000)
-            >>> # Transform batches in parallel.
-            >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
-            Dataset(num_blocks=..., num_rows=1000, schema=<class 'int'>)
-            >>> # Define a callable class that persists state across
-            >>> # function invocations for efficiency.
-            >>> init_model = ... # doctest: +SKIP
+            >>> df = pd.DataFrame({
+            ...     "name": ["Luna", "Rory", "Scout"],
+            ...     "age": [4, 14, 9]
+            ... })
+            >>> ds = ray.data.from_pandas(df)
+            >>> ds
+            Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64})
+
+            Call :meth:`.default_batch_format` to determine the default batch
+            type.
+
+            >>> ds.default_batch_format()
+            <class 'pandas.core.frame.DataFrame'>
+
+            .. tip::
+
+                Datasets created from tabular data like Arrow tables and Parquet files
+                yield ``pd.DataFrame`` batches.
+
+            Once you know the batch type, define a function that transforms batches
+            of data. ``ds.map_batches`` applies the function in parallel.
+
+            >>> def map_fn(batch: pd.DataFrame) -> pd.DataFrame:
+            ...     batch["age_in_dog_years"] = 7 * batch["age"]
+            ...     return batch
+            >>> ds = ds.map_batches(map_fn)
+            >>> ds
+            Dataset(num_blocks=1, num_rows=3, schema={name: object, age: int64, age_in_dog_years: int64})
+
+            Your ``fn`` can return a different type than the input type. To learn more
+            about supported output types, read
+            :ref:`user-defined function output types <transform_datasets_batch_output_types>`.
+
+            >>> from typing import List
+            >>> def map_fn(batch: pd.DataFrame) -> List[int]:
+            ...     return list(batch["age_in_dog_years"])
+            >>> ds = ds.map_batches(map_fn)
+            >>> ds
+            Dataset(num_blocks=1, num_rows=3, schema=<class 'int'>)
+
+            :ref:`Actors <actor-guide>` can improve the performance of some workloads.
+            For example, you can use :ref:`actors <actor-guide>` to load a model once
+            per worker instead of once per inference.
+
+            To transform batches with :ref:`actors <actor-guide>`, pass a callable type
+            to ``fn`` and specify an :class:`~ray.data.ActorPoolStrategy>`.
+
+            In the example below, ``CachedModel`` is called on an autoscaling pool of
+            two to eight :ref:`actors <actor-guide>`, each allocated one GPU by Ray.
+
+            >>> from ray.data import ActorPoolStrategy
+            >>> init_large_model = ... # doctest: +SKIP
             >>> class CachedModel:
             ...    def __init__(self):
-            ...        self.model = init_model()
+            ...        self.model = init_large_model()
             ...    def __call__(self, item):
             ...        return self.model(item)
-            >>> # Apply the transform in parallel on GPUs. Since
-            >>> # compute=ActorPoolStrategy(2, 8) the transform will be applied on an
-            >>> # autoscaling pool of 2-8 Ray actors, each allocated 1 GPU by Ray.
-            >>> from ray.data._internal.compute import ActorPoolStrategy
             >>> ds.map_batches( # doctest: +SKIP
             ...     CachedModel, # doctest: +SKIP
             ...     batch_size=256, # doctest: +SKIP
             ...     compute=ActorPoolStrategy(2, 8), # doctest: +SKIP
-            ...     num_gpus=1) # doctest: +SKIP
-
-            You can use ``map_batches`` to efficiently filter records.
-
-            >>> import ray
-            >>> ds = ray.data.range(10000)
-            >>> ds.count()
-            10000
-            >>> ds = ds.map_batches(lambda batch: [x for x in batch if x % 2 == 0])
-            >>> ds.count()
-            5000
-
-        Time complexity: O(dataset size / parallelism)
+            ...     num_gpus=1,
+            ... ) # doctest: +SKIP
 
         Args:
             fn: The function to apply to each record batch, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
-            batch_size: The number of rows in each batch, or None to use entire blocks
-                as batches (blocks may contain different number of rows).
-                The final batch may include fewer than ``batch_size`` rows.
-                Defaults to 4096.
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, or "actors" to use an autoscaling actor pool. If wanting to
-                configure the min or max size of the autoscaling actor pool, you can
-                provide an
-                :class:`ActorPoolStrategy(min, max) <ray.data.ActorPoolStrategy>`
-                instance. If using callable classes for fn, the actor compute strategy
-                must be used.
-            batch_format: Specify "default" to use the default block format (promotes
-                tables to Pandas and tensors to NumPy), "pandas" to select
-                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or "numpy"
-                to select ``numpy.ndarray`` for tensor datasets and
+            batch_size: The number of rows in each batch, or ``None`` to use entire
+                blocks as batches. Blocks can contain different number of rows, and
+                the last batch can include fewer than ``batch_size`` rows. Defaults to
+                ``4096``.
+            compute: The compute strategy, either ``"tasks"`` (default) to use Ray
+                tasks, or ``"actors"`` to use an autoscaling actor pool. If you want to
+                configure the size of the autoscaling actor pool, provide an
+                :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>` instance.
+                If you're passing callable type to ``fn``, you must pass an
+                :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>`.
+            batch_format: Specify ``"default"`` to use the default block format
+                (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
+                ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
+                ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
-            fn_args: Positional arguments to pass to ``fn``, after the data batch. These
-                arguments will be top-level arguments in the underlying Ray task that's
-                submitted.
-            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments will be
-                top-level arguments in the underlying Ray task that's submitted.
+            fn_args: Positional arguments to pass to ``fn`` after the first argument.
+                These arguments are top-level arguments to the underlying Ray task.
+            fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
+                top-level arguments to the underlying Ray task.
             fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
-                This can only be provided if ``fn`` is a callable class and the actor
-                compute strategy is being used. These arguments will be top-level
-                arguments in the underlying Ray actor construction task that's
-                submitted.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
             fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
-                This can only be provided if ``fn`` is a callable class and the actor
-                compute strategy is being used. These arguments will be top-level
-                arguments in the underlying Ray actor construction task that's
-                submitted.
+                This can only be provided if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
-        """
+                ray (e.g., ``num_gpus=1`` to request GPUs for the map tasks).
+
+        .. seealso::
+
+            :meth:`~Dataset.iter_batches`
+                Call this function to iterate over batches of data.
+
+            :meth:`~Dataset.default_batch_format`
+                Call this function to determine the default batch type.
+        """  # noqa: E501
         import pandas as pd
         import pyarrow as pa
 
@@ -2508,7 +2551,7 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> for batch in ray.data.range( # doctest: +SKIP
             ...     12,
-            ... ).iter_torch_batches(batch_size=4):
+            ... ).iter_tf_batches(batch_size=4):
             ...     print(batch.shape) # doctest: +SKIP
             (4, 1)
             (4, 1)
@@ -2895,7 +2938,17 @@ class Dataset(Generic[T]):
 
         return dataset
 
-    def to_dask(self) -> "dask.DataFrame":
+    def to_dask(
+        self,
+        meta: Union[
+            "pandas.DataFrame",
+            "pandas.Series",
+            Dict[str, Any],
+            Iterable[Any],
+            Tuple[Any],
+            None,
+        ] = None,
+    ) -> "dask.DataFrame":
         """Convert this dataset into a Dask DataFrame.
 
         This is only supported for datasets convertible to Arrow records.
@@ -2905,12 +2958,30 @@ class Dataset(Generic[T]):
 
         Time complexity: O(dataset size / parallelism)
 
+        Args:
+            meta: An empty pandas DataFrame or Series that matches the dtypes and column
+                names of the Dataset. This metadata is necessary for many algorithms in
+                dask dataframe to work. For ease of use, some alternative inputs are
+                also available. Instead of a DataFrame, a dict of ``{name: dtype}`` or
+                iterable of ``(name, dtype)`` can be provided (note that the order of
+                the names should match the order of the columns). Instead of a series, a
+                tuple of ``(name, dtype)`` can be used.
+                By default, this will be inferred from the underlying Dataset schema,
+                with this argument supplying an optional override.
+
         Returns:
             A Dask DataFrame created from this dataset.
         """
         import dask
         import dask.dataframe as dd
+        import pandas as pd
 
+        try:
+            import pyarrow as pa
+        except Exception:
+            pa = None
+
+        from ray.data._internal.pandas_block import PandasBlockSchema
         from ray.util.client.common import ClientObjectRef
         from ray.util.dask import ray_dask_get
 
@@ -2927,10 +2998,22 @@ class Dataset(Generic[T]):
                 )
             return block.to_pandas()
 
-        # TODO(Clark): Give Dask a Pandas-esque schema via the Pyarrow schema,
-        # once that's implemented.
+        if meta is None:
+            # Infer Dask metadata from Datasets schema.
+            schema = self.schema(fetch_if_missing=True)
+            if isinstance(schema, PandasBlockSchema):
+                meta = pd.DataFrame(
+                    {
+                        col: pd.Series(dtype=dtype)
+                        for col, dtype in zip(schema.names, schema.types)
+                    }
+                )
+            elif pa is not None and isinstance(schema, pa.Schema):
+                meta = schema.empty_table().to_pandas()
+
         ddf = dd.from_delayed(
-            [block_to_df(block) for block in self.get_internal_block_refs()]
+            [block_to_df(block) for block in self.get_internal_block_refs()],
+            meta=meta,
         )
         return ddf
 
@@ -3571,6 +3654,82 @@ class Dataset(Generic[T]):
             self._lazy,
         )
         return l_ds, r_ds
+
+    def default_batch_format(self) -> Type:
+        """Return this dataset's default batch format.
+
+        The default batch format describes what batches of data look like. To learn more
+        about batch formats, read
+        :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
+
+        Example:
+
+            If your dataset represents a list of Python objects, then the default batch
+            format is ``list``.
+
+            >>> ds = ray.data.range(100)
+            >>> ds  # doctest: +SKIP
+            Dataset(num_blocks=20, num_rows=100, schema=<class 'int'>)
+            >>> ds.default_batch_format()
+            <class 'list'>
+            >>> next(ds.iter_batches(batch_size=4))
+            [0, 1, 2, 3]
+
+            If your dataset contains a single ``TensorDtype`` or ``ArrowTensorType``
+            column named ``__value__`` (as created by :func:`ray.data.from_numpy`), then
+            the default batch format is ``np.ndarray``. For more information on tensor
+            datasets, read the :ref:`tensor support guide <datasets_tensor_support>`.
+
+            >>> ds = ray.data.range_tensor(100)
+            >>> ds  # doctest: +SKIP
+            Dataset(num_blocks=20, num_rows=100, schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})
+            >>> ds.default_batch_format()
+            <class 'numpy.ndarray'>
+            >>> next(ds.iter_batches(batch_size=4))
+            array([[0],
+                   [1],
+                   [2],
+                   [3]])
+
+            If your dataset represents tabular data and doesn't only consist of a
+            ``__value__`` tensor column (such as is created by
+            :meth:`ray.data.from_numpy`), then the default batch format is
+            ``pd.DataFrame``.
+
+            >>> import pandas as pd
+            >>> df = pd.DataFrame({"foo": ["a", "b"], "bar": [0, 1]})
+            >>> ds = ray.data.from_pandas(df)
+            >>> ds  # doctest: +SKIP
+            Dataset(num_blocks=1, num_rows=2, schema={foo: object, bar: int64})
+            >>> ds.default_batch_format()
+            <class 'pandas.core.frame.DataFrame'>
+            >>> next(ds.iter_batches(batch_size=4))
+              foo  bar
+            0   a    0
+            1   b    1
+
+        .. seealso::
+
+            :meth:`~Dataset.map_batches`
+                Call this function to transform batches of data.
+
+            :meth:`~Dataset.iter_batches`
+                Call this function to iterate over batches of data.
+
+        """  # noqa: E501
+        import pandas as pd
+        import pyarrow as pa
+
+        schema = self.schema()
+        assert isinstance(schema, (type, PandasBlockSchema, pa.Schema))
+
+        if isinstance(schema, type):
+            return list
+
+        if isinstance(schema, (PandasBlockSchema, pa.Schema)):
+            if schema.names == [VALUE_COL_NAME]:
+                return np.ndarray
+            return pd.DataFrame
 
     def _dataset_format(self) -> str:
         """Determine the format of the dataset. Possible values are: "arrow",

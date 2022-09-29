@@ -8,4 +8,4 @@ __all__ = [
 
 from ray.rllib.utils.deprecation import deprecation_warning
 
-deprecation_warning("ray.rllib.agents.mbmpo", "ray.rllib.algorithms.mbmpo", error=False)
+deprecation_warning("ray.rllib.agents.mbmpo", "ray.rllib.algorithms.mbmpo", error=True)

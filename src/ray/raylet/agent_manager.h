@@ -65,7 +65,7 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
     }
   }
 
-  void HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
+  void HandleRegisterAgent(rpc::RegisterAgentRequest request,
                            rpc::RegisterAgentReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
@@ -112,7 +112,7 @@ class DefaultAgentManagerServiceHandler : public rpc::AgentManagerServiceHandler
   explicit DefaultAgentManagerServiceHandler(std::shared_ptr<AgentManager> &delegate)
       : delegate_(delegate) {}
 
-  void HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
+  void HandleRegisterAgent(rpc::RegisterAgentRequest request,
                            rpc::RegisterAgentReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override {
     RAY_CHECK(delegate_ != nullptr);

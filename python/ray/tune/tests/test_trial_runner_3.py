@@ -9,6 +9,7 @@ import unittest
 
 import ray
 from ray.rllib import _register_all
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
 from ray.tune import TuneError
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
@@ -25,6 +26,20 @@ from ray.tune.search import Searcher, ConcurrencyLimiter
 from ray.tune.search.search_generator import SearchGenerator
 from ray.tune.syncer import SyncConfig, Syncer
 from ray.tune.tests.tune_test_util import TrialResultObserver
+
+
+class MyCallbacks(DefaultCallbacks):
+    def on_episode_start(
+        self,
+        *,
+        worker,
+        base_env,
+        policies,
+        episode,
+        env_index,
+        **kwargs,
+    ):
+        print("in callback")
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -544,11 +559,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         trial = Trial(
             "__fake",
-            config={
-                "callbacks": {
-                    "on_episode_start": lambda i: i,
-                }
-            },
+            config={"callbacks": MyCallbacks},
             checkpoint_freq=1,
         )
         runner = TrialRunner(local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
@@ -560,7 +571,6 @@ class TrialRunnerTest3(unittest.TestCase):
         runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
         new_trial = runner2.get_trials()[0]
         self.assertTrue("callbacks" in new_trial.config)
-        self.assertTrue("on_episode_start" in new_trial.config["callbacks"])
 
     def testCheckpointOverwrite(self):
         def count_checkpoints(cdir):
