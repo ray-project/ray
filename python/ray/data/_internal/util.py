@@ -1,7 +1,7 @@
 import importlib
 import logging
-from typing import Union, Optional, TYPE_CHECKING
-from types import ModuleType
+from types import MethodType, ModuleType
+from typing import TYPE_CHECKING, Optional, Union
 import sys
 
 import ray
@@ -162,7 +162,7 @@ def _estimate_available_parallelism() -> int:
     return _estimate_avail_cpus(cur_pg)
 
 
-def _check_import(obj, *, module: str, package: str) -> None:
+def _check_import(obj, *, module: str, package: Optional[str] = None) -> None:
     """Check if a required dependency is installed.
 
     If `module` can't be imported, this function raises an `ImportError` instructing
@@ -171,13 +171,20 @@ def _check_import(obj, *, module: str, package: str) -> None:
     Args:
         obj: The object that has a dependency.
         module: The name of the module to import.
-        package: The name of the package on PyPI.
+        package: The name of the package on PyPI. If unspecified, this function assumes
+            the package name is the same as the module name.
     """
+    if package is None:
+        package = module
+
     try:
         importlib.import_module(module)
     except ImportError:
+        if isinstance(obj, MethodType):
+            name = obj.__qualname__
+        else:
+            name = obj.__class__.__name__
         raise ImportError(
-            f"`{obj.__class__.__name__}` depends on '{package}', but '{package}' "
-            f"couldn't be imported. You can install '{package}' by running `pip "
-            f"install {package}`."
+            f"`{name}` depends on '{package}', but '{package}' couldn't be imported. "
+            f"You can install '{package}' by running `pip install {package}`."
         )

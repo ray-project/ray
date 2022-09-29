@@ -12,17 +12,17 @@ import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray.data._internal.stats import _StatsActor
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.pandas_block import PandasRow
+from ray.data._internal.stats import _StatsActor
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, _sliding_window
-from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
+from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
     ArrowTensorType,
@@ -1306,103 +1306,6 @@ def test_tensors_in_tables_to_torch_mix(ray_start_regular_shared, pipelined):
         np.testing.assert_array_equal(labels, np.sort(df["label"].to_numpy()))
 
 
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_tensors_in_tables_to_tf(ray_start_regular_shared, pipelined):
-    import tensorflow as tf
-
-    outer_dim = 3
-    inner_shape = (2, 2, 2)
-    shape = (outer_dim,) + inner_shape
-    num_items = np.prod(np.array(shape))
-    arr = np.arange(num_items).reshape(shape).astype(np.float)
-    df1 = pd.DataFrame(
-        {
-            "one": TensorArray(arr),
-            "two": TensorArray(arr + 1),
-            "label": [1, 2, 3],
-        }
-    )
-    arr2 = np.arange(num_items, 2 * num_items).reshape(shape).astype(np.float)
-    df2 = pd.DataFrame(
-        {
-            "one": TensorArray(arr2),
-            "two": TensorArray(arr2 + 1),
-            "label": [4, 5, 6],
-        }
-    )
-    df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
-    ds = maybe_pipeline(ds, pipelined)
-    tfd = ds.to_tf(
-        label_column="label",
-        output_signature=(
-            tf.TensorSpec(shape=(None, 2, 2, 2, 2), dtype=tf.float32),
-            tf.TensorSpec(shape=(None,), dtype=tf.float32),
-        ),
-        batch_size=2,
-    )
-    features, labels = [], []
-    for batch in tfd.as_numpy_iterator():
-        features.append(batch[0])
-        labels.append(batch[1])
-    features, labels = np.concatenate(features), np.concatenate(labels)
-    values = np.stack([df["one"].to_numpy(), df["two"].to_numpy()], axis=1)
-    np.testing.assert_array_equal(values, features)
-    np.testing.assert_array_equal(df["label"].to_numpy(), labels)
-
-
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_tensors_in_tables_to_tf_mix(ray_start_regular_shared, pipelined):
-    import tensorflow as tf
-
-    outer_dim = 3
-    inner_shape = (2, 2, 2)
-    shape = (outer_dim,) + inner_shape
-    num_items = np.prod(np.array(shape))
-    arr = np.arange(num_items).reshape(shape).astype(np.float)
-    df1 = pd.DataFrame(
-        {
-            "one": TensorArray(arr),
-            "two": [1, 2, 3],
-            "label": [1.0, 2.0, 3.0],
-        }
-    )
-    arr2 = np.arange(num_items, 2 * num_items).reshape(shape).astype(np.float)
-    df2 = pd.DataFrame(
-        {
-            "one": TensorArray(arr2),
-            "two": [4, 5, 6],
-            "label": [4.0, 5.0, 6.0],
-        }
-    )
-    df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
-    ds = maybe_pipeline(ds, pipelined)
-    tfd = ds.to_tf(
-        label_column="label",
-        feature_columns=[["one"], ["two"]],
-        output_signature=(
-            (
-                tf.TensorSpec(shape=(None, 2, 2, 2), dtype=tf.float32),
-                tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
-            ),
-            tf.TensorSpec(shape=(None,), dtype=tf.float32),
-        ),
-        batch_size=2,
-    )
-    col1, col2, labels = [], [], []
-    for batch in tfd.as_numpy_iterator():
-        col1.append(batch[0][0])
-        col2.append(batch[0][1])
-        labels.append(batch[1])
-    col1 = np.concatenate(col1)
-    col2 = np.squeeze(np.concatenate(col2), axis=1)
-    labels = np.concatenate(labels)
-    np.testing.assert_array_equal(col1, np.sort(df["one"].to_numpy()))
-    np.testing.assert_array_equal(col2, np.sort(df["two"].to_numpy()))
-    np.testing.assert_array_equal(labels, np.sort(df["label"].to_numpy()))
-
-
 def test_empty_shuffle(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=100)
     ds = ds.filter(lambda x: x)
@@ -2644,34 +2547,6 @@ def test_to_modin(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
-def test_to_tf(ray_start_regular_shared, pipelined):
-    import tensorflow as tf
-
-    df1 = pd.DataFrame(
-        {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
-    )
-    df2 = pd.DataFrame(
-        {"one": [4, 5, 6], "two": [4.0, 5.0, 6.0], "label": [4.0, 5.0, 6.0]}
-    )
-    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
-    df = pd.concat([df1, df2, df3])
-    ds = ray.data.from_pandas([df1, df2, df3])
-    ds = maybe_pipeline(ds, pipelined)
-    tfd = ds.to_tf(
-        label_column="label",
-        output_signature=(
-            tf.TensorSpec(shape=(None, 2), dtype=tf.float32),
-            tf.TensorSpec(shape=(None), dtype=tf.float32),
-        ),
-    )
-    iterations = []
-    for batch in tfd.as_numpy_iterator():
-        iterations.append(np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1))
-    combined_iterations = np.concatenate(iterations)
-    np.testing.assert_array_equal(df.values, combined_iterations)
-
-
-@pytest.mark.parametrize("pipelined", [False, True])
 def test_iter_tf_batches(ray_start_regular_shared, pipelined):
     df1 = pd.DataFrame(
         {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
@@ -2710,143 +2585,6 @@ def test_iter_tf_batches_tensor_ds(ray_start_regular_shared, pipelined):
             iterations.append(batch)
         combined_iterations = np.concatenate(iterations)
         np.testing.assert_array_equal(arr, combined_iterations)
-
-
-def test_to_tf_feature_columns_list(ray_start_regular_shared):
-    import tensorflow as tf
-
-    df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6], "X3": [7, 8, 9]})
-    ds = ray.data.from_pandas([df])
-
-    feature_columns = ["X1", "X3"]
-    batch_size = 2
-    dataset = ds.to_tf(
-        feature_columns=feature_columns,
-        output_signature=tf.TensorSpec(shape=(None, len(feature_columns))),
-        batch_size=batch_size,
-    )
-
-    batches = list(dataset.as_numpy_iterator())
-    assert len(batches) == math.ceil(len(df) / batch_size)
-    assert np.array_equal(batches[0], np.array([[1, 7], [2, 8]]))
-    assert np.array_equal(batches[1], np.array([[3, 9]]))
-
-
-def test_to_tf_feature_columns_list_with_label(ray_start_regular_shared):
-    import tensorflow as tf
-
-    df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6], "Y": [7, 8, 9]})
-    ds = ray.data.from_pandas([df])
-
-    feature_columns = ["X1", "X2"]
-    output_signature = [
-        tf.TensorSpec(shape=(None, len(feature_columns))),
-        tf.TensorSpec(shape=(None)),
-    ]
-    batch_size = 2
-    dataset = ds.to_tf(
-        feature_columns=feature_columns,
-        label_column="Y",
-        output_signature=output_signature,
-        batch_size=batch_size,
-    )
-
-    batches = list(dataset.as_numpy_iterator())
-    assert len(batches) == math.ceil(len(df) / batch_size)
-    # Each batch should be a two-tuple corresponding to (features, labels).
-    assert all(len(batch) == 2 for batch in batches)
-    np.testing.assert_array_equal(batches[0][0], np.array([[1, 4], [2, 5]]))
-    np.testing.assert_array_equal(batches[0][1], np.array([7, 8]))
-    np.testing.assert_array_equal(batches[1][0], np.array([[3, 6]]))
-    np.testing.assert_array_equal(batches[1][1], np.array([9]))
-
-
-def test_to_tf_feature_columns_nested_list(ray_start_regular_shared):
-    import tensorflow as tf
-
-    df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6], "X3": [7, 8, 9]})
-    ds = ray.data.from_pandas([df])
-
-    feature_columns = [["X1", "X2"], ["X3"]]
-    output_signature = [
-        tf.TensorSpec(shape=(None, len(feature_columns[0]))),
-        tf.TensorSpec(shape=(None, len(feature_columns[1]))),
-    ]
-    batch_size = 2
-    dataset = ds.to_tf(
-        feature_columns=feature_columns,
-        output_signature=output_signature,
-        batch_size=batch_size,
-    )
-
-    batches = list(dataset.as_numpy_iterator())
-    assert len(batches) == math.ceil(len(df) / batch_size)
-    assert all(len(batch) == len(feature_columns) for batch in batches)
-    np.testing.assert_array_equal(batches[0][0], np.array([[1, 4], [2, 5]]))
-    np.testing.assert_array_equal(batches[0][1], np.array([[7], [8]]))
-    np.testing.assert_array_equal(batches[1][0], np.array([[3, 6]]))
-    np.testing.assert_array_equal(batches[1][1], np.array([[9]]))
-
-
-def test_to_tf_feature_columns_dict(ray_start_regular_shared):
-    import tensorflow as tf
-
-    df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6], "X3": [7, 8, 9]})
-    ds = ray.data.from_pandas([df])
-
-    feature_columns = {"A": ["X1", "X2"], "B": ["X3"]}
-    output_signature = {
-        "A": tf.TensorSpec(shape=(None, len(feature_columns["A"]))),
-        "B": tf.TensorSpec(shape=(None, len(feature_columns["B"]))),
-    }
-    batch_size = 2
-    dataset = ds.to_tf(
-        feature_columns=feature_columns, output_signature=output_signature, batch_size=2
-    )
-
-    batches = list(dataset.as_numpy_iterator())
-    assert len(batches) == math.ceil(len(df) / batch_size)
-    assert all(batch.keys() == feature_columns.keys() for batch in batches)
-    np.testing.assert_array_equal(batches[0]["A"], np.array([[1, 4], [2, 5]]))
-    np.testing.assert_array_equal(batches[0]["B"], np.array([[7], [8]]))
-    np.testing.assert_array_equal(batches[1]["A"], np.array([[3, 6]]))
-    np.testing.assert_array_equal(batches[1]["B"], np.array([[9]]))
-
-
-def test_to_tf_feature_columns_dict_with_label(ray_start_regular_shared):
-    import tensorflow as tf
-
-    df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6], "Y": [7, 8, 9]})
-    ds = ray.data.from_pandas([df])
-
-    feature_columns = {"A": ["X1", "X2"]}
-    output_signature = (
-        {
-            "A": tf.TensorSpec(shape=(None, len(feature_columns["A"]))),
-        },
-        tf.TensorSpec(shape=(None)),
-    )
-    batch_size = 2
-    dataset = ds.to_tf(
-        feature_columns=feature_columns,
-        label_column="Y",
-        output_signature=output_signature,
-        batch_size=2,
-    )
-
-    batches = list(dataset.as_numpy_iterator())
-    assert len(batches) == math.ceil(len(df) / batch_size)
-    # Each batch should be a two-tuple corresponding to (features, labels).
-    assert all(len(batch) == 2 for batch in batches)
-    assert all(features.keys() == feature_columns.keys() for features, _ in batches)
-
-    features0, labels0 = batches[0]
-    np.testing.assert_array_equal(features0["A"], np.array([[1, 4], [2, 5]]))
-    np.testing.assert_array_equal(labels0, np.array([7, 8]))
-
-    features1, labels1 = batches[1]
-    np.testing.assert_array_equal(features1["A"], np.array([[3, 6]]))
-    np.testing.assert_array_equal(labels1, np.array([9]))
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
