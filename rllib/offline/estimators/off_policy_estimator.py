@@ -106,9 +106,9 @@ class OffPolicyEstimator(OfflineEvaluator):
         return all_episodes
 
     @OverrideToImplementCustomLogic
-    def peak_on_single_episode(self, episode: SampleBatch) -> None:
+    def peek_on_single_episode(self, episode: SampleBatch) -> None:
         """This is called on each episode before it is passed to
-        estimate_on_single_episode(). Using this method, you can get a peak at the
+        estimate_on_single_episode(). Using this method, you can get a peek at the
         entire validation dataset before runnining the estimation. For examlpe if you
         need to perform any normalizations of any sorts on the dataset, you can compute
         the normalization parameters here.
@@ -156,7 +156,7 @@ class OffPolicyEstimator(OfflineEvaluator):
                     "the batch by episodes. Each row in the dataset should be "
                     "one episode. Check your evaluation dataset for errors."
                 )
-                self.peak_on_single_episode(episode)
+                self.peek_on_single_episode(episode)
 
             for episode in all_episodes:
                 estimate_step_results = self.estimate_on_single_episode(episode)

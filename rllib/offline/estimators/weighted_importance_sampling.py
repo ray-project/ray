@@ -79,6 +79,7 @@ class WeightedImportanceSampling(OffPolicyEstimator):
 
         return estimates_per_epsiode
 
+    @override(OffPolicyEstimator)
     def on_before_split_batch_by_episode(
         self, sample_batch: SampleBatch
     ) -> SampleBatch:
@@ -88,7 +89,8 @@ class WeightedImportanceSampling(OffPolicyEstimator):
 
         return sample_batch
 
-    def peak_on_single_episode(self, episode: SampleBatch) -> None:
+    @override(OffPolicyEstimator)
+    def peek_on_single_episode(self, episode: SampleBatch) -> None:
         old_prob = episode["action_prob"]
         log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, episode)
         new_prob = np.exp(convert_to_numpy(log_likelihoods))
