@@ -12,6 +12,7 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
+    ExperimentalAPI,
     OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.deprecation import Deprecated
@@ -238,7 +239,8 @@ class OffPolicyEstimator(OfflineEvaluator):
                 "`off_policy_estimation_methods: {}` to disable estimation."
             )
 
-    def _compute_action_probs(self, batch: SampleBatch):
+    @ExperimentalAPI
+    def compute_action_probs(self, batch: SampleBatch):
         log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, batch)
         new_prob = np.exp(convert_to_numpy(log_likelihoods))
 

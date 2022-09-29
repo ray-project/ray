@@ -2,7 +2,6 @@ from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.policy.sample_batch import SampleBatch
 from typing import Dict, List
-import numpy as np
 
 
 @DeveloperAPI
@@ -26,7 +25,7 @@ class ImportanceSampling(OffPolicyEstimator):
         estimates_per_epsiode = {}
 
         rewards, old_prob = episode["rewards"], episode["action_prob"]
-        new_prob = self._compute_action_probs(episode)
+        new_prob = self.compute_action_probs(episode)
 
         # calculate importance ratios
         p = []
@@ -56,7 +55,7 @@ class ImportanceSampling(OffPolicyEstimator):
         estimates_per_epsiode = {}
 
         rewards, old_prob = batch["rewards"], batch["action_prob"]
-        new_prob = self._compute_action_probs(batch)
+        new_prob = self.compute_action_probs(batch)
 
         weights = new_prob / old_prob
         v_behavior = rewards

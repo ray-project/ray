@@ -86,7 +86,7 @@ class DoublyRobust(OffPolicyEstimator):
         estimates_per_epsiode = {}
 
         rewards, old_prob = episode["rewards"], episode["action_prob"]
-        new_prob = self._compute_action_probs(episode)
+        new_prob = self.compute_action_probs(episode)
 
         v_behavior = 0.0
         v_target = 0.0
@@ -115,7 +115,7 @@ class DoublyRobust(OffPolicyEstimator):
         estimates_per_epsiode = {}
 
         rewards, old_prob = batch["rewards"], batch["action_prob"]
-        new_prob = self._compute_action_probs(batch)
+        new_prob = self.compute_action_probs(batch)
 
         q_values = self.model.estimate_q(batch)
         q_values = convert_to_numpy(q_values)
