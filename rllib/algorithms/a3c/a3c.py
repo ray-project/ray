@@ -51,11 +51,11 @@ class A3CConfig(AlgorithmConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "A3C",
         ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -278,7 +278,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.a3c.a3c.A3CConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

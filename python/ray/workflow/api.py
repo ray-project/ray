@@ -294,18 +294,18 @@ def resume_async(workflow_id: str) -> ray.ObjectRef:
 
 
 @PublicAPI(stability="alpha")
-def get_output(workflow_id: str, *, name: Optional[str] = None) -> Any:
+def get_output(workflow_id: str, *, task_id: Optional[str] = None) -> Any:
     """Get the output of a running workflow.
 
     Args:
         workflow_id: The workflow to get the output of.
-        name: If set, fetch the specific task instead of the output of the
+        task_id: If set, fetch the specific task instead of the output of the
             workflow.
 
     Examples:
         >>> from ray import workflow
         >>> start_trip = ... # doctest: +SKIP
-        >>> trip = start_trip.options(name="trip").bind() # doctest: +SKIP
+        >>> trip = start_trip.options(task_id="trip").bind() # doctest: +SKIP
         >>> res1 = workflow.run_async(trip, workflow_id="trip1") # doctest: +SKIP
         >>> # you could "get_output()" in another machine
         >>> res2 = workflow.get_output_async("trip1") # doctest: +SKIP
@@ -316,7 +316,7 @@ def get_output(workflow_id: str, *, name: Optional[str] = None) -> Any:
     Returns:
         The output of the workflow task.
     """
-    return ray.get(get_output_async(workflow_id, task_id=name))
+    return ray.get(get_output_async(workflow_id, task_id=task_id))
 
 
 @PublicAPI(stability="alpha")
@@ -596,20 +596,20 @@ def sleep(duration: float) -> "DAGNode[Event]":
 
 @PublicAPI(stability="alpha")
 @client_mode_wrap
-def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]:
+def get_metadata(workflow_id: str, task_id: Optional[str] = None) -> Dict[str, Any]:
     """Get the metadata of the workflow.
 
     This will return a dict of metadata of either the workflow (
     if only workflow_id is given) or a specific workflow task (if
-    both workflow_id and task name are given). Exception will be
-    raised if the given workflow id or task name does not exist.
+    both workflow_id and task id are given). Exception will be
+    raised if the given workflow id or task id does not exist.
 
     If only workflow id is given, this will return metadata on
     workflow level, which includes running status, workflow-level
     user metadata and workflow-level running stats (e.g. the
     start time and end time of the workflow).
 
-    If both workflow id and task name are given, this will return
+    If both workflow id and task id are given, this will return
     metadata on workflow task level, which includes task inputs,
     task-level user metadata and task-level running stats (e.g.
     the start time and end time of the task).
@@ -617,14 +617,14 @@ def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]
 
     Args:
         workflow_id: The workflow to get the metadata of.
-        name: If set, fetch the metadata of the specific task instead of
+        task_id: If set, fetch the metadata of the specific task instead of
             the metadata of the workflow.
 
     Examples:
         >>> from ray import workflow
         >>> trip = ... # doctest: +SKIP
         >>> workflow_task = trip.options( # doctest: +SKIP
-        ...     **workflow.options(name="trip", metadata={"k1": "v1"})).bind()
+        ...     **workflow.options(task_id="trip", metadata={"k1": "v1"})).bind()
         >>> workflow.run(workflow_task, # doctest: +SKIP
         ...     workflow_id="trip1", metadata={"k2": "v2"})
         >>> workflow_metadata = workflow.get_metadata("trip1") # doctest: +SKIP
@@ -646,10 +646,10 @@ def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]
     """
     _ensure_workflow_initialized()
     store = WorkflowStorage(workflow_id)
-    if name is None:
+    if task_id is None:
         return store.load_workflow_metadata()
     else:
-        return store.load_task_metadata(name)
+        return store.load_task_metadata(task_id)
 
 
 @PublicAPI(stability="alpha")
@@ -751,7 +751,7 @@ class options:
         # TODO(suquark): More rigid arguments check like @ray.remote arguments. This is
         # fairly complex, but we should enable it later.
         valid_options = {
-            "name",
+            "task_id",
             "metadata",
             "catch_exceptions",
             "checkpoint",

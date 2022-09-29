@@ -154,6 +154,62 @@ class TestPreprocessors(unittest.TestCase):
             [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0],
         )
 
+    def test_multidimensional_multidiscrete_one_hot_preprocessor(self):
+        space2d = MultiDiscrete([[2, 2], [3, 3]])
+        space3d = MultiDiscrete([[[2, 2], [3, 4]], [[5, 6], [7, 8]]])
+        pp2d = get_preprocessor(space2d)(space2d)
+        pp3d = get_preprocessor(space3d)(space3d)
+        self.assertTrue(isinstance(pp2d, OneHotPreprocessor))
+        self.assertTrue(isinstance(pp3d, OneHotPreprocessor))
+        self.assertTrue(pp2d.shape == (10,))
+        self.assertTrue(pp3d.shape == (37,))
+        check(
+            pp2d.transform(np.array([[1, 0], [2, 1]])),
+            [0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0],
+        )
+        check(
+            pp3d.transform(np.array([[[0, 1], [2, 3]], [[4, 5], [6, 7]]])),
+            [
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+            ],
+        )
+
 
 if __name__ == "__main__":
     import pytest

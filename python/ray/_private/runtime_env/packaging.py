@@ -163,8 +163,8 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
                 netloc='_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip'
             )
             -> ("gcs", "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
-    For HTTPS URIs, the netloc will have '.' replaced with '_', and
-    the path will have '/' replaced with '_'. The package name will be the
+    For HTTPS URIs, the netloc will have '.', ':', and '@' swapped with '_',
+    and the path will have '/' replaced with '_'. The package name will be the
     adjusted path with 'https_' prepended.
         urlparse(
             "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
@@ -216,9 +216,10 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     if protocol == Protocol.S3 or protocol == Protocol.GS:
         return (protocol, f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
     elif protocol == Protocol.HTTPS:
+        parsed_netloc = uri.netloc.replace(".", "_").replace(":", "_").replace("@", "_")
         return (
             protocol,
-            f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}",
+            f"https_{parsed_netloc}{uri.path.replace('/', '_')}",
         )
     elif protocol == Protocol.FILE:
         return (
@@ -800,10 +801,13 @@ def unzip_package(
         top_level_directory = get_top_level_dir_from_compressed_package(package_path)
         if top_level_directory is None:
             raise ValueError(
-                "The package at package_path must contain "
+                f"The zip package at {package_path} must contain "
                 "a single top level directory. Make sure there "
                 "are no hidden files at the same level as the "
-                "top level directory."
+                "top level directory. You can ensure this by running "
+                "`zip -r example.zip example_dir` from the parent "
+                "directory of example_dir when creating the zip file. "
+                "You can check the contents with `zipinfo -1 example.zip`."
             )
 
         remove_dir_from_filepaths(target_dir, top_level_directory)

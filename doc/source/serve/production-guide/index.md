@@ -43,6 +43,10 @@ import_path: fruit:deployment_graph
 
 runtime_env: {}
 
+host: 0.0.0.0
+
+port: 8000
+
 deployments:
 
 - name: MangoStand

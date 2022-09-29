@@ -171,7 +171,7 @@ class DynamicTFPolicy(TFPolicy):
                 assume a value of 1.
         """
         if obs_include_prev_action_reward != DEPRECATED_VALUE:
-            deprecation_warning(old="obs_include_prev_action_reward", error=False)
+            deprecation_warning(old="obs_include_prev_action_reward", error=True)
         self.observation_space = obs_space
         self.action_space = action_space
         self.config = config
@@ -728,7 +728,10 @@ class DynamicTFPolicy(TFPolicy):
                 logger.info("Adding extra-action-fetch `{}` to view-reqs.".format(key))
                 self.view_requirements[key] = ViewRequirement(
                     space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype.name
+                        -1.0,
+                        1.0,
+                        shape=value.shape.as_list()[1:],
+                        dtype=value.dtype.name,
                     ),
                     used_for_compute_actions=False,
                 )
@@ -940,7 +943,7 @@ class TFMultiGPUTowerStack:
             deprecation_warning(
                 old="TFMultiGPUTowerStack(...)",
                 new="TFMultiGPUTowerStack(policy=[Policy])",
-                error=False,
+                error=True,
             )
             self.policy = None
             self.optimizers = optimizer

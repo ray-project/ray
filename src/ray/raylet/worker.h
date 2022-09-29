@@ -108,8 +108,7 @@ class WorkerInterface {
   virtual bool IsAvailableForScheduling() const = 0;
 
   /// Time when the last task was assigned to this worker.
-  virtual const std::chrono::high_resolution_clock::time_point GetAssignedTaskTime()
-      const = 0;
+  virtual const std::chrono::steady_clock::time_point GetAssignedTaskTime() const = 0;
 
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
@@ -210,10 +209,10 @@ class Worker : public WorkerInterface {
 
   void SetAssignedTask(const RayTask &assigned_task) {
     assigned_task_ = assigned_task;
-    task_assign_time_ = std::chrono::high_resolution_clock::now();
+    task_assign_time_ = std::chrono::steady_clock::now();
   };
 
-  const std::chrono::high_resolution_clock::time_point GetAssignedTaskTime() const {
+  const std::chrono::steady_clock::time_point GetAssignedTaskTime() const {
     return task_assign_time_;
   };
 
@@ -295,7 +294,7 @@ class Worker : public WorkerInterface {
   /// RayTask being assigned to this worker.
   RayTask assigned_task_;
   /// Time when the last task was assigned to this worker.
-  std::chrono::high_resolution_clock::time_point task_assign_time_;
+  std::chrono::steady_clock::time_point task_assign_time_;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.
   bool notify_gcs_restarted_ = false;
 };

@@ -63,6 +63,7 @@ class DDPPOConfig(PPOConfig):
 
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = DDPPOConfig()
         >>> # Print out some default values.
@@ -73,11 +74,11 @@ class DDPPOConfig(PPOConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "DDPPO",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -188,9 +189,9 @@ class DDPPO(PPO):
 
         # Auto-train_batch_size: Calculate from rollout len and
         # envs-per-worker.
-        config["train_batch_size"] = config.get(
-            "rollout_fragment_length", DEFAULT_CONFIG["rollout_fragment_length"]
-        ) * config.get("num_envs_per_worker", DEFAULT_CONFIG["num_envs_per_worker"])
+        self.config["train_batch_size"] = (
+            self.config["rollout_fragment_length"] * self.config["num_envs_per_worker"]
+        )
 
     @classmethod
     @override(PPO)
@@ -374,7 +375,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.ppo.ddppo::DEFAULT_CONFIG",
         new="ray.rllib.algorithms.ddppo.ddppo::DDPPOConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)
