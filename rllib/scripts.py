@@ -126,19 +126,19 @@ def train(
     local_dir: str = typer.Option(
         DEFAULT_RESULTS_DIR, help=train_help.get("local_dir")
     ),
-    local_mode: bool = typer.Option(False, help=train_help.get("local_mode")),
     restore: str = typer.Option(None, help=get_help("restore")),
     framework: Framework = typer.Option(None, help=train_help.get("framework")),
     resources_per_trial: str = typer.Option(None, help=get_help("resources_per_trial")),
-    sync_on_checkpoint: bool = typer.Option(False, help=get_help("sync_on_checkpoint")),
     keep_checkpoints_num: int = typer.Option(
         None, help=get_help("keep_checkpoints_num")
     ),
     checkpoint_score_attr: str = typer.Option(
         "training_iteration", help=get_help("sync_on_checkpoint")
     ),
-    export_formats: str = typer.Option(None, help=get_help("export_formats")),
-    max_failures: int = typer.Option(3, help=get_help("max_failures")),
+    upload_dir: str = typer.Option("", help=train_help.get("upload_dir")),
+    trace: bool = typer.Option(False, help=train_help.get("trace")),
+    # Ray-specific options.
+    local_mode: bool = typer.Option(False, help=train_help.get("local_mode")),
     scheduler: str = typer.Option("FIFO", help=get_help("scheduler")),
     scheduler_config: str = typer.Option("{}", help=get_help("scheduler_config")),
     ray_address: str = typer.Option(None, help=train_help.get("ray_address")),
@@ -149,8 +149,6 @@ def train(
     ray_object_store_memory: int = typer.Option(
         None, help=train_help.get("ray_object_store_memory")
     ),
-    upload_dir: str = typer.Option("", help=train_help.get("upload_dir")),
-    trace: bool = typer.Option(False, help=train_help.get("trace")),
 ):
     """Train a reinforcement learning agent.
 
@@ -171,7 +169,7 @@ def train(
 
     framework = framework.value if framework else None
 
-    train.run(
+    trial_list = train.run(
         run=run,
         env=env,
         config=config,
@@ -185,15 +183,14 @@ def train(
         checkpoint_freq=checkpoint_freq,
         checkpoint_at_end=checkpoint_at_end,
         local_dir=local_dir,
-        local_mode=local_mode,
         restore=restore,
         framework=framework,
         resources_per_trial=resources_per_trial,
-        sync_on_checkpoint=sync_on_checkpoint,
         keep_checkpoints_num=keep_checkpoints_num,
         checkpoint_score_attr=checkpoint_score_attr,
-        export_formats=export_formats,
-        max_failures=max_failures,
+        upload_dir=upload_dir,
+        trace=trace,
+        local_mode=local_mode,
         scheduler=scheduler,
         scheduler_config=scheduler_config,
         ray_address=ray_address,
@@ -202,15 +199,23 @@ def train(
         ray_num_gpus=ray_num_gpus,
         ray_num_nodes=ray_num_nodes,
         ray_object_store_memory=ray_object_store_memory,
-        upload_dir=upload_dir,
-        trace=trace,
     )
+    # from ray.tune.analysis import ExperimentAnalysis
+    #
+    # analysis = ExperimentAnalysis(
+    #     experiment_checkpoint_path=local_dir,
+    #     trials=trial_list)
+    #
+    # best_result = analysis.best_checkpoint
+    # print("Best result: {}".format(best_result))
 
 
 @app.command()
 def evaluate(
     checkpoint: str = typer.Argument(None, help=eval_help.get("checkpoint")),
-    run: str = typer.Option(..., "--run", "-r", help=eval_help.get("run")),
+    run: str = typer.Option(
+        ..., "--run", "--algorithm", "-r", "-a", help=eval_help.get("run")
+    ),
     env: str = typer.Option(..., "--env", "-e", help=eval_help.get("env")),
     local_mode: bool = typer.Option(False, help=eval_help.get("local_mode")),
     render: bool = typer.Option(False, help=eval_help.get("render")),
@@ -295,7 +300,7 @@ def rollout(
 @app.callback()
 def main_helper():
     """Welcome to the\n
-    .                                                 ╔▄▓▓▓▓▄\n
+    .                                                  ╔▄▓▓▓▓▄\n
     .                                                ╔██▀╙╙╙▀██▄\n
     . ╫█████████████▓   ╫████▓             ╫████▓    ██▌     ▐██   ╫████▒\n
     . ╫███████████████▓ ╫█████▓            ╫█████▓   ╫██     ╫██   ╫██████▒\n
@@ -321,7 +326,6 @@ def main_helper():
 
 
 def cli():
-
     app()
 
 

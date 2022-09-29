@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import yaml
 import typer
+from typing import Optional
 
 import ray
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -18,96 +19,88 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-def run(
-    run: str = typer.Option(...),
-    env: str = typer.Option(None),
-    config: str = typer.Option("{}"),
-    config_file: str = typer.Option(None),
-    stop: str = typer.Option("{}"),
-    experiment_name: str = typer.Option("default"),
-    v: bool = typer.Option(False),
-    vv: bool = typer.Option(False),
-    resume: bool = typer.Option(False),
-    num_samples: int = typer.Option(1),
-    checkpoint_freq: int = typer.Option(0),
-    checkpoint_at_end: bool = typer.Option(False),
-    local_dir: str = typer.Option(DEFAULT_RESULTS_DIR),
-    local_mode: bool = typer.Option(False),
-    restore: str = typer.Option(None),
-    framework: str = typer.Option(None),
-    resources_per_trial: str = typer.Option(None),
-    sync_on_checkpoint: bool = typer.Option(False),
-    keep_checkpoints_num: int = typer.Option(None),
-    checkpoint_score_attr: str = typer.Option("training_iteration"),
-    export_formats: str = typer.Option(None),
-    max_failures: int = typer.Option(3),
-    scheduler: str = typer.Option("FIFO"),
-    scheduler_config: str = typer.Option("{}"),
-    ray_address: str = typer.Option(None),
-    ray_ui: bool = typer.Option(False),
-    ray_num_cpus: int = typer.Option(None),
-    ray_num_gpus: int = typer.Option(None),
-    ray_num_nodes: int = typer.Option(None),
-    ray_object_store_memory: int = typer.Option(None),
-    upload_dir: str = typer.Option(""),
-    trace: bool = typer.Option(False),
+def _patch_path(path: str):
+    """
+    Patch a path to be relative to the current working directory.
+
+    Args:
+        path: relative input path.
+
+    Returns: Patched path.
+    """
+    # This script runs in the ray/rllib dir.
+    rllib_dir = Path(__file__).parent
+    if isinstance(path, list):
+        return [_patch_path(i) for i in path]
+    elif isinstance(path, dict):
+        return {_patch_path(k): _patch_path(v) for k, v in path.items()}
+    elif isinstance(path, str):
+        if os.path.exists(path):
+            return path
+        else:
+            abs_path = str(rllib_dir.absolute().joinpath(path))
+            return abs_path if os.path.exists(abs_path) else path
+    else:
+        return path
+
+
+def load_experiments_from_file(config_file: str):
+    with open(config_file) as f:
+        experiments = yaml.safe_load(f)
+    return experiments
+
+
+def load_single_experiment_from_config(
+    run: str,
+    env: str,
+    config: str,
+    stop: str,
+    experiment_name: str,
+    num_samples: int,
+    checkpoint_freq: int,
+    checkpoint_at_end: bool,
+    local_dir: str,
+    restore: str,
+    resources_per_trial: str,
+    keep_checkpoints_num: int,
+    checkpoint_score_attr: str,
+    upload_dir: str
 ):
-    # FIXME: sync_on_checkpoint, export_formats, max_failures not used anywhere.
-    stop = json.loads(stop)
     config = json.loads(config)
-    scheduler_config = json.loads(scheduler_config)
     resources_per_trial = json_to_resources(resources_per_trial)
 
-    if config_file:
-        with open(config_file) as f:
-            experiments = yaml.safe_load(f)
-    else:
-        # Note: keep this in sync with tune/experiment/__config_parser.py
-        experiments = {
-            experiment_name: {  # i.e. log to ~/ray_results/default
-                "run": run,
-                "checkpoint_freq": checkpoint_freq,
-                "checkpoint_at_end": checkpoint_at_end,
-                "keep_checkpoints_num": keep_checkpoints_num,
-                "checkpoint_score_attr": checkpoint_score_attr,
-                "local_dir": local_dir,
-                "resources_per_trial": (resources_to_json(resources_per_trial)),
-                "stop": stop,
-                "config": dict(config, env=env),
-                "restore": restore,
-                "num_samples": num_samples,
-                "sync_config": {
-                    "upload_dir": upload_dir,
-                },
-            }
+    experiment = {
+        experiment_name: {  # i.e. log to ~/ray_results/default
+            "run": run,
+            "checkpoint_freq": checkpoint_freq,
+            "checkpoint_at_end": checkpoint_at_end,
+            "keep_checkpoints_num": keep_checkpoints_num,
+            "checkpoint_score_attr": checkpoint_score_attr,
+            "local_dir": local_dir,
+            "resources_per_trial": (
+                resources_per_trial and resources_to_json(resources_per_trial)
+            ),
+            "stop": json.loads(stop),
+            "config": dict(config, env=env),
+            "restore": restore,
+            "num_samples": num_samples,
+            "sync_config": {
+                "upload_dir": upload_dir,
+            },
         }
+    }
+    return experiment
 
+
+def override_experiments_with_config(experiments, v, vv, framework, trace):
     verbose = 1
     for exp in experiments.values():
         # Bazel makes it hard to find files specified in `args` (and `data`).
         # Look for them here.
         # NOTE: Some of our yaml files don't have a `config` section.
         input_ = exp.get("config", {}).get("input")
-
         if input_ and input_ != "sampler":
-            # This script runs in the ray/rllib dir.
-            rllib_dir = Path(__file__).parent
-
-            def patch_path(path):
-                if isinstance(path, list):
-                    return [patch_path(i) for i in path]
-                elif isinstance(path, dict):
-                    return {patch_path(k): patch_path(v) for k, v in path.items()}
-                elif isinstance(path, str):
-                    if os.path.exists(path):
-                        return path
-                    else:
-                        abs_path = str(rllib_dir.absolute().joinpath(path))
-                        return abs_path if os.path.exists(abs_path) else path
-                else:
-                    return path
-
-            exp["config"]["input"] = patch_path(input_)
+            exp["config"]["input"] = _patch_path(input_)
 
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             raise ValueError(
@@ -117,12 +110,10 @@ def run(
             )
         elif framework is not None:
             exp["config"]["framework"] = framework
-
         if trace:
             if exp["config"]["framework"] not in ["tf2", "tfe"]:
                 raise ValueError("Must enable --eager to enable tracing.")
             exp["config"]["eager_tracing"] = True
-
         if v:
             exp["config"]["log_level"] = "INFO"
             verbose = 3  # Print details on trial result
@@ -130,6 +121,18 @@ def run(
             exp["config"]["log_level"] = "DEBUG"
             verbose = 3  # Print details on trial result
 
+    return experiments, verbose
+
+
+def init_ray_from_config(
+    ray_num_nodes,
+    ray_num_cpus,
+    ray_num_gpus,
+    ray_object_store_memory,
+    ray_ui,
+    ray_address,
+    local_mode,
+):
     if ray_num_nodes:
         # Import this only here so that train.py also works with
         # older versions (and user doesn't use `--ray-num-nodes`).
@@ -153,15 +156,96 @@ def run(
             local_mode=local_mode,
         )
 
-    run_experiments(
+
+def run(
+    # Config-based arguments.
+    run: str = typer.Option(...),
+    env: str = typer.Option(None),
+    config: str = typer.Option("{}"),
+    stop: str = typer.Option("{}"),
+    experiment_name: str = typer.Option("default"),
+    num_samples: int = typer.Option(1),
+    checkpoint_freq: int = typer.Option(0),
+    checkpoint_at_end: bool = typer.Option(False),
+    local_dir: str = typer.Option(DEFAULT_RESULTS_DIR),
+    restore: str = typer.Option(None),
+    resources_per_trial: str = typer.Option(None),
+    keep_checkpoints_num: int = typer.Option(None),
+    checkpoint_score_attr: str = typer.Option("training_iteration"),
+    upload_dir: str = typer.Option(""),
+    # File-based arguments.
+    config_file: str = typer.Option(None),
+    # Additional config arguments used for overriding.
+    v: bool = typer.Option(False),
+    vv: bool = typer.Option(False),
+    framework: str = typer.Option(None),
+    trace: bool = typer.Option(False),
+    # Ray cluster options.
+    local_mode: bool = typer.Option(False),
+    ray_address: str = typer.Option(None),
+    ray_ui: bool = typer.Option(False),
+    ray_num_cpus: int = typer.Option(None),
+    ray_num_gpus: int = typer.Option(None),
+    ray_num_nodes: int = typer.Option(None),
+    ray_object_store_memory: int = typer.Option(None),
+    # Ray scheduling options.
+    resume: bool = typer.Option(False),
+    scheduler: str = typer.Option("FIFO"),
+    scheduler_config: str = typer.Option("{}"),
+):
+    # Either load experiments from file, or create a single experiment from
+    # the command line arguments passed in.
+    if config_file:
+        experiments = load_experiments_from_file(config_file)
+    else:
+        experiments = load_single_experiment_from_config(
+            run=run,
+            env=env,
+            config=config,
+            stop=stop,
+            experiment_name=experiment_name,
+            num_samples=num_samples,
+            checkpoint_freq=checkpoint_freq,
+            checkpoint_at_end=checkpoint_at_end,
+            local_dir=local_dir,
+            restore=restore,
+            resources_per_trial=resources_per_trial,
+            keep_checkpoints_num=keep_checkpoints_num,
+            checkpoint_score_attr=checkpoint_score_attr,
+            upload_dir=upload_dir,
+        )
+
+    # Override experiment data with command line arguments.
+    experiments, verbose = override_experiments_with_config(
+        experiments=experiments,
+        v=v,
+        vv=vv,
+        framework=framework,
+        trace=trace,
+    )
+
+    # Initialize the Ray cluster with the specified options.
+    init_ray_from_config(
+        ray_num_nodes=ray_num_nodes,
+        ray_num_cpus=ray_num_cpus,
+        ray_num_gpus=ray_num_gpus,
+        ray_object_store_memory=ray_object_store_memory,
+        ray_ui=ray_ui,
+        ray_address=ray_address,
+        local_mode=local_mode,
+    )
+
+    # Run the Tune experiment and return the trials.
+    scheduler_config = json.loads(scheduler_config)
+    trials = run_experiments(
         experiments,
         scheduler=create_scheduler(scheduler, **scheduler_config),
         resume=resume,
         verbose=verbose,
         concurrent=True,
     )
-
     ray.shutdown()
+    return trials
 
 
 def main():
