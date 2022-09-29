@@ -86,3 +86,20 @@ export type DriverInfo = {
   node_id: string;
   pid: string;
 };
+
+export type TaskProgress = {
+  numFinished?: number;
+  numPendingArgsAvail?: number;
+  numSubmittedToWorker?: number;
+  numRunning?: number;
+  numPendingNodeAssignment?: number;
+  numUnknown?: number;
+};
+
+export type JobProgressRsp = {
+  data: {
+    detail: TaskProgress;
+  };
+  msg: string;
+  result: boolean;
+};
