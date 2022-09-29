@@ -65,15 +65,58 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
   }
 }
 
+bool LocalObjectManager::CommitGeneratorObjects(const ObjectID &generator_id) {
+  auto generator_it = pending_generator_objects_.find(generator_id);
+  if (generator_it == pending_generator_objects_.end()) {
+    return false;
+  }
+
+  for (const auto &object_id : generator_it->second) {
+    auto it = local_objects_.find(object_id);
+    // No one should have freed the object while the generator was still
+    // pending.
+    RAY_CHECK(it != local_objects_.end());
+    RAY_CHECK(!it->second.is_freed);
+
+    // Unset the generator ID to unblock all messages to the owner.
+    it->second.generator_id = std::nullopt;
+
+    // The owner now knows about the dynamically generated objects. Flush all
+    // messages to the owner.
+    // TODO(swang): All of the messages will go to the same owner, so these
+    // could be batched together.
+    WaitForObjectFree(object_id, it->second.owner_address);
+
+    auto spilled_it = spilled_objects_url_.find(object_id);
+    if (spilled_it != spilled_objects_url_.end()) {
+      ReportObjectSpilled(object_id, spilled_it->second);
+    }
+  }
+
+  pending_generator_objects_.erase(generator_it);
+  return true;
+}
+
+void LocalObjectManager::AbortGeneratorObjects(const ObjectID &generator_id) {
+  auto generator_it = pending_generator_objects_.find(generator_id);
+  if (generator_it == pending_generator_objects_.end()) {
+    return;
+  }
+
+  // Free all generator objects.
+  for (const auto &object_id : generator_it->second) {
+    ReleaseFreedObject(object_id);
+  }
+
+  pending_generator_objects_.erase(generator_it);
+}
+
 void LocalObjectManager::WaitForObjectFree(const ObjectID &object_id,
                                       const rpc::Address &owner_address) {
   // Create a object eviction subscription message.
   auto wait_request = std::make_unique<rpc::WorkerObjectEvictionSubMessage>();
   wait_request->set_object_id(object_id.Binary());
   wait_request->set_intended_worker_id(owner_address.worker_id());
-  // if (!generator_id.IsNil()) {
-  //  wait_request->set_generator_id(generator_id.Binary());
-  //}
   rpc::Address subscriber_address;
   subscriber_address.set_raylet_id(self_node_id_.Binary());
   subscriber_address.set_ip_address(self_node_address_);
@@ -444,7 +487,6 @@ void LocalObjectManager::ReportObjectSpilled(const ObjectID &object_id,
       self_node_id_,
       worker_addr,
       object_url,
-      freed_it->second.generator_id.value_or(ObjectID::Nil()),
       is_external_storage_type_fs_);
 }
 

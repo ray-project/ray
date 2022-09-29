@@ -1060,8 +1060,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void AddSpilledObjectLocationOwner(const ObjectID &object_id,
                                      const std::string &spilled_url,
-                                     const NodeID &spilled_node_id,
-                                     const std::optional<ObjectID> &generator_id);
+                                     const NodeID &spilled_node_id);
 
   void AddObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
 

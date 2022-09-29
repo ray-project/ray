@@ -92,7 +92,9 @@ class LocalObjectManager {
                                 const rpc::Address &owner_address,
                                 const ObjectID &generator_id = ObjectID::Nil());
 
-  void WaitForObjectFree(const ObjectID &object_id, const rpc::Address &owner_address);
+  bool CommitGeneratorObjects(const ObjectID &generator_id);
+
+  void AbortGeneratorObjects(const ObjectID &generator_id);
 
   /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///
@@ -188,6 +190,8 @@ class LocalObjectManager {
   FRIEND_TEST(LocalObjectManagerTest,
               TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
+
+  void WaitForObjectFree(const ObjectID &object_id, const rpc::Address &owner_address);
 
   /// Asynchronously spill objects when space is needed. The callback tries to
   /// spill at least num_bytes_to_spill and returns true if we found objects to
