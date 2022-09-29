@@ -406,7 +406,9 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
             assert tensor.is_cuda
 
         ray.train.save_checkpoint(state_dict=state_dict)
-        ray.train.report(state_dict=state_dict)
+
+        # No longer supported.
+        # ray.train.report(state_dict=state_dict)
 
     trainer = Trainer("torch", num_workers=num_workers, use_gpu=True)
     trainer.start()
