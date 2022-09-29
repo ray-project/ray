@@ -5,7 +5,9 @@ debian_packages:
   - zip
 
 python:
-  pip_packages: []
+  pip_packages:
+      - gym>=0.21.0,<0.24.1
+      - ale-py~=0.8.0
   conda_packages: []
 
 post_build_cmds:
