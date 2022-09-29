@@ -32,7 +32,6 @@ GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
 GRAFANA_HEALTHCHECK_PATH = f"api/health"
 
 
-
 class MetricsHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
@@ -40,7 +39,9 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self._metrics_root = os.environ.get(
             METRICS_OUTPUT_ROOT_ENV_VAR, default_metrics_root
         )
-        self._grafana_dashboard_output_dir = os.environ.get(GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR)
+        self._grafana_dashboard_output_dir = os.environ.get(
+            GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR
+        )
         self._session = aiohttp.ClientSession()
 
     @routes.get("/api/grafana_health")
@@ -69,7 +70,6 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         return dashboard_optional_utils.rest_response(
             success=False, message="Grafana healtcheck failed"
         )
-
 
     @staticmethod
     def is_minimal_module():
@@ -108,12 +108,16 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
         # Output the dashboards in a special directory
         if self._grafana_dashboard_output_dir:
-            grafana_dashboards_dir = os.path.join(GRAFANA_CONFIG_INPUT_PATH, "dashboards")
+            grafana_dashboards_dir = os.path.join(
+                GRAFANA_CONFIG_INPUT_PATH, "dashboards"
+            )
             # Copy all dashboard jsons from directory
             for root, _, files in os.walk(grafana_dashboards_dir):
                 for file in files:
-                    shutil.copy2(os.path.join(root, file), os.path.join(self._grafana_dashboard_output_dir, file))
-
+                    shutil.copy2(
+                        os.path.join(root, file),
+                        os.path.join(self._grafana_dashboard_output_dir, file),
+                    )
 
     def _create_default_prometheus_configs(self):
         """
