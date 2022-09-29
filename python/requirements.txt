@@ -34,6 +34,8 @@ flask
 pygame
 gym>=0.21.0,<0.24.0; python_version >= '3.7'
 gym==0.19.0; python_version < '3.7'
+autorom[accept-rom-license]
+ale-py~=0.8.0
 lz4
 scikit-image
 pandas>=1.0.5; python_version < '3.7'
