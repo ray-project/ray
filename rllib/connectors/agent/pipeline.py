@@ -1,3 +1,4 @@
+import logging
 from typing import Any, List
 
 from ray.rllib.connectors.connector import (
@@ -10,6 +11,9 @@ from ray.rllib.connectors.connector import (
 )
 from ray.rllib.utils.typing import ActionConnectorDataType, AgentConnectorDataType
 from ray.util.annotations import PublicAPI
+
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
@@ -55,8 +59,9 @@ class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
             try:
                 name, subparams = state
                 connectors.append(get_connector(ctx, name, subparams))
-            except:
-                raise TypeError(f"Failed to de-serialize connector state: {state}")
+            except Exception as e:
+                logger.error(f"Failed to de-serialize connector state: {state}")
+                raise e
         return AgentConnectorPipeline(ctx, connectors)
 
 
