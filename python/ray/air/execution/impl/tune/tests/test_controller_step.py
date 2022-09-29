@@ -76,6 +76,10 @@ def test_stopping_criterion(ray_start_local, tune_setup):
         5,
     ]
 
+    # test_trial_runner::TrialRunnerTest::testMultiStepRun2: Overstepping raises error
+    with pytest.raises(RuntimeError):
+        controller.step()
+
 
 if __name__ == "__main__":
     import sys
