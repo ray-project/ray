@@ -1,3 +1,4 @@
+import gym
 import numpy as np
 import tree
 from typing import Dict, Any, List
@@ -245,7 +246,7 @@ class OffPolicyEstimator(OfflineEvaluator):
         new_prob = np.exp(convert_to_numpy(log_likelihoods))
 
         if self.epsilon_greedy > 0.0:
-            if not hasattr(self.policy.action_space, "n"):
+            if not issubclass(self.policy.action_space, gym.spaces.Discrete):
                 raise ValueError(
                     "Evaluation with epsilon-greedy exploration is only supported "
                     "with discrete action spaces."
