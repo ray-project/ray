@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 from functools import partial
@@ -17,7 +18,6 @@ from ray.data.datasource import (
     PartitionStyle,
     PathPartitionEncoder,
     PathPartitionFilter,
-    Partitioning,
 )
 
 from ray.data.tests.util import Counter

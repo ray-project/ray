@@ -22,14 +22,12 @@ from ray.data.datasource import (
     PartitionStyle,
     PathPartitionEncoder,
     PathPartitionFilter,
-    Partitioning,
 )
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 
 
 def df_to_csv(dataframe, path, **kwargs):
     dataframe.to_csv(path, **kwargs)
-
 
 
 def test_csv_read_partitioning(ray_start_regular_shared, tmp_path):
@@ -119,7 +117,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(path, "data1.csv")
     df2.to_csv(path2, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv(path, filesystem=fs.  partitioning=None)
+    ds = ray.data.read_csv(path, filesystem=fs, partitioning=None)
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
@@ -146,7 +144,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
     file_path3 = os.path.join(path2, "data2.csv")
     df3.to_csv(file_path3, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv([path1, path2], filesystem=fs,  partitioning=None)
+    ds = ray.data.read_csv([path1, path2], filesystem=fs, partitioning=None)
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
@@ -169,7 +167,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(data_path, "data1.csv")
     df2.to_csv(path2, index=False, storage_options=storage_options)
-    ds = ray.data.read_csv([dir_path, path2], filesystem=fs,  partitioning=None)
+    ds = ray.data.read_csv([dir_path, path2], filesystem=fs, partitioning=None)
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
