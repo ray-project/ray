@@ -473,14 +473,27 @@ def guarded_deprecation_warning(*args, **kwargs):
 def snake_to_camel_case(snake_str: str) -> str:
     """Convert a snake case string to camel case."""
 
-    words = snake_str.split("_")
+    words = snake_str.lstrip("_").strip("_").split("_")
     return words[0] + "".join(word[:1].upper() + word[1:] for word in words[1:])
 
 
-def dict_keys_snake_to_camel_case(d: dict) -> dict:
+def dict_keys_snake_to_camel_case(snake_dict: dict) -> dict:
     """Converts dictionary's keys from snake case to camel case.
 
-    Creates a new dictionary, but shallow copies values from old dictionary.
+    Also converts nested dictionary keys. Does not modify original dictionaries.
     """
 
-    pass
+    camel_dict = dict()
+
+    for key, val in snake_dict.items():
+
+        # Update nested dictionary keys
+        if isinstance(val, dict):
+            val = dict_keys_snake_to_camel_case(val)
+
+        if isinstance(key, str):
+            camel_dict[snake_to_camel_case(key)] = val
+        else:
+            camel_dict[key] = val
+
+    return camel_dict

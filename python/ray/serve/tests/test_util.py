@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from copy import deepcopy
 
 import numpy as np
 import pytest
@@ -18,6 +19,7 @@ from ray.serve._private.utils import (
     msgpack_serialize,
     msgpack_deserialize,
     snake_to_camel_case,
+    dict_keys_snake_to_camel_case,
 )
 
 
@@ -339,6 +341,14 @@ class TestSnakeToCamelCase:
             == "thereAreMultipleWordsInThisPhrase"
         )
 
+    def test_single_char_words(self):
+        assert snake_to_camel_case("this_is_a_test") == "thisIsATest"
+
+    def test_leading_capitalization(self):
+        """If the leading character is already capitalized, leave it capitalized."""
+
+        assert snake_to_camel_case("Leading_cap") == "LeadingCap"
+
     def test_leading_alphanumeric(self):
         assert (
             snake_to_camel_case("check_@lphanum3ric_©har_behavior")
@@ -357,18 +367,164 @@ class TestSnakeToCamelCase:
     def test_leading_underscore(self):
         """Should strip leading underscores."""
 
-        snake_to_camel_case("_leading_underscore") == "leadingUnderscore"
+        assert snake_to_camel_case("_leading_underscore") == "leadingUnderscore"
 
     def test_trailing_underscore(self):
         """Should strip trailing underscores."""
 
-        snake_to_camel_case("trailing_underscore_") == "trailingUnderscore"
+        assert snake_to_camel_case("trailing_underscore_") == "trailingUnderscore"
+
+    def test_leading_and_trailing_underscores(self):
+        """Should strip leading and trailing underscores"""
+
+        assert snake_to_camel_case(f"{'_' * 5}hello__world{'_' * 10}") == "helloWorld"
 
     def test_double_underscore(self):
         """Should treat repeated underscores as single underscore."""
 
-        snake_to_camel_case("double__underscore") == "doubleUnderscore"
-        snake_to_camel_case(f"many{'_' * 30}underscore") == "manyUnderscore"
+        assert snake_to_camel_case("double__underscore") == "doubleUnderscore"
+        assert snake_to_camel_case(f"many{'_' * 30}underscore") == "manyUnderscore"
+
+
+class TestDictKeysSnakeToCamelCase:
+    def test_empty(self):
+        assert dict_keys_snake_to_camel_case({}) == {}
+
+    def test_shallow_dict(self):
+        snake_dict = {
+            "hello_world": 1,
+            "check_this": "check it out",
+            "skateboard_park": "what fun",
+            "this_is_quite_a_long_phrase": 2,
+            "-this_1_hAs_@lph@num3RiCs_In_IT": 55,
+        }
+
+        camel_dict = {
+            "helloWorld": 1,
+            "checkThis": "check it out",
+            "skateboardPark": "what fun",
+            "thisIsQuiteALongPhrase": 2,
+            "-this1HAs@lph@num3RiCsInIT": 55,
+        }
+
+        assert dict_keys_snake_to_camel_case(snake_dict) == camel_dict
+
+    def test_nested_dict(self):
+        snake_dict = {
+            "hello_world": 1,
+            "down_we_go": {
+                "alice_in_wonderland": "mad_hatter",
+                "anotherDrop": {
+                    "here_we_are": "hello",
+                    "what_aW_orld": 33,
+                    "cRAZ333_World_4ever": 1,
+                },
+                "drop_3ncore": {"well_well_well": 5},
+                "emptiness": {},
+            },
+            "another_dict": {"not_much_info": 0},
+            "this_is_quite_a_long_phrase": 2,
+            "-this_1_hAs_@lph@num3RiCs_In_IT": 55,
+        }
+
+        camel_dict = {
+            "helloWorld": 1,
+            "downWeGo": {
+                "aliceInWonderland": "mad_hatter",
+                "anotherDrop": {
+                    "hereWeAre": "hello",
+                    "whatAWOrld": 33,
+                    "cRAZ333World4ever": 1,
+                },
+                "drop3ncore": {"wellWellWell": 5},
+                "emptiness": {},
+            },
+            "anotherDict": {"notMuchInfo": 0},
+            "thisIsQuiteALongPhrase": 2,
+            "-this1HAs@lph@num3RiCsInIT": 55,
+        }
+
+        assert dict_keys_snake_to_camel_case(snake_dict) == camel_dict
+
+    def test_mixed_key_types_flat(self):
+        snake_dict = {
+            "hello_world": 1,
+            3: "check it out",
+            "skateboard_park": "what fun",
+            (1, 2): 2,
+            "-this_1_hAs_@lph@num3RiCs_In_IT": 55,
+        }
+        snake_dict_copy = deepcopy(snake_dict)
+
+        camel_dict = {
+            "helloWorld": 1,
+            3: "check it out",
+            "skateboardPark": "what fun",
+            (1, 2): 2,
+            "-this1HAs@lph@num3RiCsInIT": 55,
+        }
+
+        assert dict_keys_snake_to_camel_case(snake_dict) == camel_dict
+
+        # dict_keys_snake_to_camel_case should not mutate original dict
+        assert snake_dict == snake_dict_copy
+
+    def test_mixed_key_types_nested(self):
+        snake_dict = {
+            (0, 0): 1,
+            "down_we_go": {
+                "alice_in_wonderland": "mad_hatter",
+                "anotherDrop": {
+                    12: "hello",
+                    "what_aW_orld": 33,
+                    "cRAZ333_World_4ever": 1,
+                },
+                "drop_3ncore": {"well_well_well": 5},
+                (0, 0): {},
+            },
+            5: {"not_much_info": 0},
+            "this_is_quite_a_long_phrase": 2,
+            "-this_1_hAs_@lph@num3RiCs_In_IT": 55,
+        }
+        snake_dict_copy = deepcopy(snake_dict)
+
+        camel_dict = {
+            (0, 0): 1,
+            "downWeGo": {
+                "aliceInWonderland": "mad_hatter",
+                "anotherDrop": {12: "hello", "whatAWOrld": 33, "cRAZ333World4ever": 1},
+                "drop3ncore": {"wellWellWell": 5},
+                (0, 0): {},
+            },
+            5: {"notMuchInfo": 0},
+            "thisIsQuiteALongPhrase": 2,
+            "-this1HAs@lph@num3RiCsInIT": 55,
+        }
+
+        assert dict_keys_snake_to_camel_case(snake_dict) == camel_dict
+
+        # dict_keys_snake_to_camel_case should not mutate original dict
+        assert snake_dict == snake_dict_copy
+
+    def test_shallow_copy(self):
+        """dict_keys_snake_to_camel_case should make shallow copies only.
+
+        However, nested dictionaries are replaced with new dictionaries.
+        """
+
+        list1 = [1, 2, 3]
+        list2 = [4, 5, "hi"]
+
+        snake_dict = {
+            "list": list1,
+            "nested": {
+                "list2": list2,
+            },
+        }
+
+        camel_dict = dict_keys_snake_to_camel_case(snake_dict)
+        assert camel_dict["list"] is list1
+        assert camel_dict["nested"]["list2"] is list2
 
 
 if __name__ == "__main__":
