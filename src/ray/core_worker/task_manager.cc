@@ -499,6 +499,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
+    it->second.SetStatus(rpc::TaskStatus::FINISHED);
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 

@@ -314,6 +314,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       counter.Increment({spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL});
     }
 
+    ~TaskEntry() {
+      RAY_CHECK(status == rpc::TaskStatus::FINISHED) << "Finished task must have status FINISHED.";
+    }
+
     void SetStatus(rpc::TaskStatus new_status) {
       counter.Swap({spec.GetName(), status}, {spec.GetName(), new_status});
       status = new_status;

@@ -341,6 +341,39 @@ time.sleep(999)
     proc.kill()
 
 
+def test_task_failure(shutdown_only):
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+
+    driver = """
+import ray
+import time
+import os
+
+ray.init("auto")
+
+@ray.remote(num_retries=0)
+def f():
+    print("RUNNING FAILING TASK")
+    os._exit(1)
+
+@ray.remote(num_retries=0)
+def g(x):
+    pass
+
+g.remote(f.remote())
+time.sleep(999)
+"""
+
+    proc = run_string_as_driver_nonblocking(driver)
+    expected = {
+        "FINISHED": 1.0,  # Only recorded as finished once.
+    }
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+    )
+    proc.kill()
+
+
 def test_concurrent_actor_tasks(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
