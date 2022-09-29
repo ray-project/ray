@@ -228,6 +228,10 @@ class ActorManager:
 
         return ready[0]
 
+    @property
+    def num_actor_requests(self):
+        return len(self._actor_requests)
+
     def add_actor(self, actor_request: ActorRequest):
         """Add actor to be managed by actor manager."""
         self._actor_requests.append(actor_request)

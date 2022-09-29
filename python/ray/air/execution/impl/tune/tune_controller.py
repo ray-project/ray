@@ -15,6 +15,7 @@ from ray.air.execution.impl.tune.tune_result import (
     TuneSavingEvent,
     TuneRestoringEvent,
 )
+from ray.air.execution.impl.tune.utils import get_max_pending_trials
 from ray.air.execution.resources.fixed import FixedResourceManager
 from ray.air.execution.resources.request import ResourceRequest
 from ray.air.execution.event import (
@@ -62,6 +63,8 @@ class TuneController(Controller):
             _create_default_callbacks(callbacks or [], sync_config=tune.SyncConfig())
         )
 
+        self._max_pending_trials = get_max_pending_trials(self._searcher)
+
         self._iteration = 0
 
     def is_finished(self) -> bool:
@@ -88,12 +91,19 @@ class TuneController(Controller):
 
     def _create_new_trials(self) -> None:
         for actor_request in self._buffered_actor_requests:
+            if self._actor_manager.num_actor_requests >= self._max_pending_trials:
+                break
             self._actor_manager.add_actor(actor_request)
 
         self._buffered_actor_requests = []
 
+        if self._actor_manager.num_actor_requests >= self._max_pending_trials:
+            return
+
         trial = self._searcher.next_trial()
-        while trial:
+        while (
+            trial and self._actor_manager.num_actor_requests < self._max_pending_trials
+        ):
             trial.set_status(Trial.PENDING)
             trial.init_logdir()
 
