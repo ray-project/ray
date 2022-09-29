@@ -8,7 +8,7 @@ Other Examples
   Example of using a Trainable function with HyperBandScheduler.
   Also uses the AsyncHyperBandScheduler.
 - :doc:`/tune/examples/pbt_visualization/pbt_visualization`:
-  Configuring and running PBT and understanding the underlying algorithm behavior with a simple example.
+  Configuring and running (synchronous) PBT and understanding the underlying algorithm behavior with a simple example.
 - :doc:`/tune/examples/includes/pbt_function`:
   Example of using the function API with a PopulationBasedTraining scheduler.
 - :doc:`/tune/examples/includes/pb2_example`: Example of using the Population-based Bandits (PB2) scheduler.
