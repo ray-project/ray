@@ -304,7 +304,12 @@ class _TrainSession:
             encoded = True
 
         if checkpoint and type(checkpoint) is Checkpoint:
-            intended_checkpoint_class = self._get_checkpoint_class_fn({})
+            checkpoint_dict = (
+                {}
+                if checkpoint.get_internal_representation()[0] != "data_dict"
+                else checkpoint.to_dict()
+            )
+            intended_checkpoint_class = self._get_checkpoint_class_fn(checkpoint_dict)
             if intended_checkpoint_class is not Checkpoint:
                 if log_once("bad_checkpoint_type"):
                     warnings.warn(

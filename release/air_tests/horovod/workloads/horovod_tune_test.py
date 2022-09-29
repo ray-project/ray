@@ -14,7 +14,7 @@ from torchvision.models import resnet18
 
 import ray
 from ray import tune
-from ray.air.checkpoint import Checkpoint
+from ray.train.torch.torch_checkpoint import TorchCheckpoint
 from ray.tune.schedulers import create_scheduler
 
 
@@ -91,7 +91,7 @@ def train_loop_per_worker(config):
             if config["smoke_test"]:
                 break
 
-        checkpoint = Checkpoint.from_dict(
+        checkpoint = TorchCheckpoint.from_dict(
             dict(
                 model_state=net.state_dict(),
                 optimizer_state=optimizer.state_dict(),

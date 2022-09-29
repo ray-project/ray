@@ -10,7 +10,7 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
 import ray
-from ray.air import Checkpoint, session
+from ray.air import session
 from ray.cluster_utils import Cluster
 
 import ray.train as train
@@ -36,6 +36,7 @@ from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.torch.config import TorchConfig, _TorchBackend
 from ray.train.torch.torch_trainer import TorchTrainer
 from ray.train._internal.worker_group import WorkerGroup
+from ray.train.torch.torch_checkpoint import TorchCheckpoint
 
 
 @pytest.fixture
@@ -472,7 +473,7 @@ def test_horovod_torch_mnist_gpu_checkpoint(ray_start_4_cpus_2_gpus):
         net = torch.nn.Linear(in_features=8, out_features=16)
         net.to("cuda")
 
-        checkpoint = Checkpoint.from_dict({"model": net.state_dict()})
+        checkpoint = TorchCheckpoint.from_state_dict(net.state_dict())
         session.report({"metric": 1}, checkpoint=checkpoint)
 
     num_workers = 2

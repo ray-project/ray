@@ -2,7 +2,6 @@ import argparse
 from filelock import FileLock
 import horovod.torch as hvd
 import os
-from ray.air.checkpoint import Checkpoint
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -11,8 +10,9 @@ from torchvision import datasets, transforms
 
 import ray
 from ray.air import session
-from ray.train.horovod import HorovodTrainer
 from ray.air.config import ScalingConfig
+from ray.train.horovod import HorovodTrainer
+from ray.train.torch.torch_checkpoint import TorchCheckpoint
 
 
 def metric_average(val, name):
@@ -152,7 +152,7 @@ def train_func(config):
             checkpoint_dict = dict(model=model.state_dict())
         else:
             checkpoint_dict = dict(model=model)
-        checkpoint_dict = Checkpoint.from_dict(checkpoint_dict)
+        checkpoint_dict = TorchCheckpoint.from_dict(checkpoint_dict)
         results.append(loss)
         session.report(dict(loss=loss), checkpoint=checkpoint_dict)
 
