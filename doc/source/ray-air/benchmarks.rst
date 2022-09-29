@@ -135,6 +135,7 @@ We test out the performance across different cluster sizes and data sizes.
       - 885.98 s (183.19 images/sec)
       - `python gpu_batch_prediction.py --data-size-gb=100`
 
+.. _pytorch_gpu_training_benchmark:
 
 GPU image training
 ------------------
