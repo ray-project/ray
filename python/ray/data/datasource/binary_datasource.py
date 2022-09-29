@@ -1,5 +1,5 @@
 from io import BytesIO
-from typing import TYPE_CHECKING, List, Union, Tuple
+from typing import TYPE_CHECKING, List, Union, Tuple, Optional
 
 if TYPE_CHECKING:
     import pyarrow
@@ -47,21 +47,23 @@ class BinaryDatasource(FileBasedDatasource):
             return [data]
 
     def _convert_block_to_tabular_block(
-        self, block: List[Union[bytes, Tuple[bytes, str]]]
+        self,
+        block: List[Union[bytes, Tuple[bytes, str]]],
+        column_name: Optional[str] = None,
     ) -> "pyarrow.Table":
-        import pandas as pd
         import pyarrow as pa
+
+        if column_name is None:
+            column_name = self._COLUMN_NAME
 
         assert len(block) == 1
         record = block[0]
 
         if isinstance(record, tuple):
             path, data = record
-            df = pd.DataFrame({self._COLUMN_NAME: [data], "path": [path]})
-            return pa.Table.from_pandas(df)
+            return pa.table({column_name: [data], "path": [path]})
 
-        df = pd.DataFrame({self._COLUMN_NAME: [record]})
-        return pa.Table.from_pandas(df)
+        return pa.table({column_name: [record]})
 
     def _rows_per_file(self):
         return 1

@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Union, Tuple
+from typing import TYPE_CHECKING, List, Optional
 
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.util.annotations import PublicAPI
@@ -27,11 +27,16 @@ class TextDatasource(BinaryDatasource):
         return lines
 
     def _convert_block_to_tabular_block(
-        self, block: List[Union[bytes, Tuple[bytes, str]]]
+        self,
+        block: List[str],
+        column_name: Optional[str] = None,
     ) -> "pyarrow.Table":
         import pyarrow as pa
 
-        return pa.Table.from_pydict({self._COLUMN_NAME: block})
+        if column_name is None:
+            column_name = self._COLUMN_NAME
+
+        return pa.table({column_name: block})
 
     def _rows_per_file(self):
         return None
