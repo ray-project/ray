@@ -27,6 +27,8 @@ class TensorflowCheckpoint(Checkpoint):
     ``TensorflowCheckpoint.from_checkpoint(ckpt)``.
     """
 
+    _SERIALIZED_ATTRS = ("_flavor",)
+
     class Flavor(Enum):
         # Various flavors with which TensorflowCheckpoint is generated.
         # This is necessary metadata to decide how to load model from a checkpoint.
@@ -34,11 +36,12 @@ class TensorflowCheckpoint(Checkpoint):
         SAVED_MODEL = 2
         H5 = 3
 
-    def __init__(self,
+    def __init__(
+        self,
         local_path: Optional[str] = None,
         data_dict: Optional[dict] = None,
         uri: Optional[str] = None,
-        obj_ref: Optional["ray.ObjectRef"] = None
+        obj_ref: Optional["ray.ObjectRef"] = None,
     ):
         super().__init__(local_path, data_dict, uri, obj_ref)
         self._flavor = None
@@ -91,40 +94,38 @@ class TensorflowCheckpoint(Checkpoint):
 
         Examples:
 
-        .. code-block: python
+            >>> import tensorflow as tf
 
-            import tensorflow as tf
+            >>> import ray
+            >>> from ray.train.batch_predictor import BatchPredictor
+            >>> from ray.train.tensorflow import (
+            ...     TensorflowCheckpoint, TensorflowTrainer, TensorflowPredictor
+            ... )
+            >>> from ray.air import session
+            >>> from ray.air.config import RunConfig, ScalingConfig
 
-            import ray
-            from ray.train.batch_predictor import BatchPredictor
-            from ray.train.tensorflow import (
-                TensorflowCheckpoint, TensorflowTrainer, TensorflowPredictor
-            )
-            from ray.air import session
-            from ray.air.config import RunConfig, ScalingConfig
+            >>> def train_func():
+            ...     model = tf.keras.Sequential(
+            ...         [
+            ...             tf.keras.layers.InputLayer(input_shape=()),
+            ...             tf.keras.layers.Flatten(),
+            ...             tf.keras.layers.Dense(10),
+            ...             tf.keras.layers.Dense(1),
+            ...         ]
+            ...     )
+            ...     model.save("my_model.h5")
+            ...     checkpoint = TensorflowCheckpoint.from_h5("my_model.h5")
+            ...     session.report({"my_metric": 1}, checkpoint=checkpoint)
 
-            def train_func():
-                model = tf.keras.Sequential(
-                    [
-                        tf.keras.layers.InputLayer(input_shape=()),
-                        tf.keras.layers.Flatten(),
-                        tf.keras.layers.Dense(10),
-                        tf.keras.layers.Dense(1),
-                    ]
-                )
-                model.save("my_model.h5")
-                checkpoint = TensorflowCheckpoint.from_h5("my_model.h5")
-                session.report({"my_metric": 1}, checkpoint=checkpoint)
+            >>> trainer = TensorflowTrainer(
+            ...     train_loop_per_worker=train_func,
+            ...     scaling_config=ScalingConfig(num_workers=2))
 
-            trainer = TensorflowTrainer(
-                train_loop_per_worker=train_func,
-                scaling_config=ScalingConfig(num_workers=2))
+            >>> result_checkpoint = trainer.fit().checkpoint
 
-            result_checkpoint = trainer.fit().checkpoint
-
-            batch_predictor = BatchPredictor.from_checkpoint(
-                result_checkpoint, TensorflowPredictor)
-            batch_predictor.predict(ray.data.range(3))
+            >>> batch_predictor = BatchPredictor.from_checkpoint(
+            ...     result_checkpoint, TensorflowPredictor)
+            >>> batch_predictor.predict(ray.data.range(3))
         """
         assert path.isfile(file_path) and file_path.endswith(
             ".h5"
@@ -154,37 +155,36 @@ class TensorflowCheckpoint(Checkpoint):
 
         Examples:
 
-        .. code-block: python
+            >>> import tensorflow as tf
 
-            import tensorflow as tf
+            >>> import ray
+            >>> from ray.train.batch_predictor import BatchPredictor
+            >>> from ray.train.tensorflow import (
+            ... TensorflowCheckpoint, TensorflowTrainer, TensorflowPredictor)
+            >>> from ray.air import session
+            >>> from ray.air.config import RunConfig, ScalingConfig
 
-            from ray.train.batch_predictor import BatchPredictor
-            from ray.train.tensorflow import TensorflowCheckpoint, TensorflowTrainer
-            from ray.air import session
-            from ray.air.config import RunConfig, ScalingConfig
+            >>> def train_fn():
+            ...     model = tf.keras.Sequential(
+            ...         [
+            ...             tf.keras.layers.InputLayer(input_shape=()),
+            ...             tf.keras.layers.Flatten(),
+            ...             tf.keras.layers.Dense(10),
+            ...             tf.keras.layers.Dense(1),
+            ...         ])
+            ...     model.save("my_model")
+            ...     checkpoint = TensorflowCheckpoint.from_saved_model("my_model")
+            ...     session.report({"my_metric": 1}, checkpoint=checkpoint)
 
-            def train_fn():
-                model = tf.keras.Sequential(
-                    [
-                        tf.keras.layers.InputLayer(input_shape=()),
-                        tf.keras.layers.Flatten(),
-                        tf.keras.layers.Dense(10),
-                        tf.keras.layers.Dense(1),
-                    ]
-                )
-                model.save("my_model")
-                checkpoint = TensorflowCheckpoint.from_saved_model("my_model")
-                session.report({"my_metric": 1}, checkpoint=checkpoint)
+            >>> trainer = TensorflowTrainer(
+            ...     train_loop_per_worker=train_fn,
+            ...     scaling_config=ScalingConfig(num_workers=2))
 
-            trainer = TensorflowTrainer(
-                train_loop_per_worker=train_func,
-                scaling_config=ScalingConfig(num_workers=2))
+            >>> result_checkpoint = trainer.fit().checkpoint
 
-            result_checkpoint = trainer.fit().checkpoint
-
-            batch_predictor = BatchPredictor.from_checkpoint(
-                result_checkpoint, TensorflowPredictor)
-            batch_predictor.predict(ray.data.range(3))
+            >>> batch_predictor = BatchPredictor.from_checkpoint(
+            ...     result_checkpoint, TensorflowPredictor)
+            >>> batch_predictor.predict(ray.data.range(3))
         """
         if preprocessor:
             save_preprocessor_to_dir(preprocessor, dir_path)
@@ -222,7 +222,6 @@ class TensorflowCheckpoint(Checkpoint):
                     " flavor is not `MODEL_WEIGHTS`."
                 )
             get_model = None
-
             if self._flavor == self.Flavor.H5:
 
                 def get_model(path: str):
