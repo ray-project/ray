@@ -26,7 +26,8 @@ namespace ray {
 namespace core {
 
 TaskSpecification CreateTaskHelper(uint64_t num_returns,
-                                   std::vector<ObjectID> dependencies) {
+                                   std::vector<ObjectID> dependencies,
+                                   bool dynamic_returns = false) {
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID::FromInt(1)).Binary());
   task.GetMutableMessage().set_num_returns(num_returns);
@@ -34,22 +35,35 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
     task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
         dep.Binary());
   }
+
+  if (dynamic_returns) {
+    task.GetMutableMessage().set_returns_dynamic(true);
+  }
+
   return task;
+}
+
+rpc::Address GetRandomWorkerAddr() {
+  rpc::Address addr;
+  addr.set_worker_id(WorkerID::FromRandom().Binary());
+  return addr;
 }
 
 class TaskManagerTest : public ::testing::Test {
  public:
   TaskManagerTest(bool lineage_pinning_enabled = false,
                   int64_t max_lineage_bytes = 1024 * 1024 * 1024)
-      : store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
+      : addr_(GetRandomWorkerAddr()),
         publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
         subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
         reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
-            rpc::Address(),
+            addr_,
             publisher_.get(),
             subscriber_.get(),
             [this](const NodeID &node_id) { return all_nodes_alive_; },
             lineage_pinning_enabled))),
+        store_(std::shared_ptr<CoreWorkerMemoryStore>(
+            new CoreWorkerMemoryStore(reference_counter_))),
         manager_(
             store_,
             reference_counter_,
@@ -75,10 +89,11 @@ class TaskManagerTest : public ::testing::Test {
     ASSERT_EQ(manager_.total_lineage_footprint_bytes_, 0);
   }
 
-  std::shared_ptr<CoreWorkerMemoryStore> store_;
+  rpc::Address addr_;
   std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
   std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
+  std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool all_nodes_alive_ = true;
   TaskManager manager_;
   int num_retries_ = 0;
@@ -816,6 +831,192 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
   }
   ASSERT_TRUE(stored_in_plasma.count(return_id1));
   ASSERT_FALSE(stored_in_plasma.count(return_id2));
+}
+
+// Test that we update ref counter correctly for tasks with
+// num_returns="dynamic".
+TEST_F(TaskManagerLineageTest, TestResubmittedTaskFails) {
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(2, {});
+  auto return_id1 = spec.ReturnId(0);
+  auto return_id2 = spec.ReturnId(1);
+  manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/1);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+
+  // The task completes. One return object is stored in plasma.
+  {
+    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+    rpc::PushTaskReply reply;
+    auto return_object1 = reply.add_return_objects();
+    return_object1->set_object_id(return_id1.Binary());
+    auto data = GenerateRandomBuffer();
+    return_object1->set_data(data->Data(), data->Size());
+    return_object1->set_in_plasma(true);
+    auto return_object2 = reply.add_return_objects();
+    return_object2->set_object_id(return_id2.Binary());
+    return_object2->set_data(data->Data(), data->Size());
+    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  }
+
+  // The task finished, its return ID is still in scope, and the return object
+  // was stored in plasma. It is okay to resubmit it now.
+  ASSERT_TRUE(stored_in_plasma.empty());
+  std::vector<ObjectID> resubmitted_task_deps;
+  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
+  ASSERT_EQ(num_retries_, 1);
+
+  // The re-executed task fails due to worker crashed.
+  {
+    reference_counter_->AddLocalReference(return_id1, "");
+    reference_counter_->AddLocalReference(return_id2, "");
+    manager_.MarkDependenciesResolved(spec.TaskId());
+    ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+    ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+
+    manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
+  }
+  ASSERT_TRUE(stored_in_plasma.count(return_id1));
+  ASSERT_FALSE(stored_in_plasma.count(return_id2));
+}
+
+// Test submission and resubmission for a task with dynamic returns.
+TEST_F(TaskManagerLineageTest, TestDynamicReturnsTask) {
+  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
+  auto return_id = spec.ReturnId(0);
+  manager_.AddPendingTask(addr_, spec, "", /*num_retries=*/1);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+
+  std::vector<ObjectID> dynamic_return_ids;
+
+  // The task completes and returns dynamic returns.
+  {
+    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+    rpc::PushTaskReply reply;
+    auto return_object = reply.add_return_objects();
+    return_object->set_object_id(return_id.Binary());
+    auto data = GenerateRandomBuffer();
+    return_object->set_data(data->Data(), data->Size());
+
+    for (int i = 0; i < 3; i++) {
+      auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), i + 2);
+      dynamic_return_ids.push_back(dynamic_return_id);
+      auto dynamic_return_object = reply.add_dynamic_return_objects();
+      dynamic_return_object->set_object_id(dynamic_return_id.Binary());
+      dynamic_return_object->set_data(data->Data(), data->Size());
+      dynamic_return_object->set_in_plasma(true);
+    }
+
+    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  }
+
+  // The task finished, its return ID is still in scope, and the return object
+  // was stored in plasma. It is okay to resubmit it now.
+  ASSERT_TRUE(stored_in_plasma.empty());
+
+  // Generator ref and all 3 internal refs are in scope.
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 4);
+  for (const auto &dynamic_return_id : dynamic_return_ids) {
+    rpc::Address owner_addr;
+    ASSERT_TRUE(reference_counter_->GetOwner(dynamic_return_id, &owner_addr));
+    ASSERT_EQ(owner_addr.worker_id(), addr_.worker_id());
+  }
+
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  std::vector<std::shared_ptr<RayObject>> results;
+  RAY_CHECK_OK(store_->Get(dynamic_return_ids, 3, -1, ctx, false, &results));
+  ASSERT_EQ(results.size(), 3);
+  for (int i = 0; i < 3; i++) {
+    ASSERT_TRUE(results[i]->IsInPlasmaError());
+  }
+  // If we remove the generator ref, all internal refs also go out of scope.
+  // This is equivalent to deleting the generator ObjectRef without iterating
+  // over its internal ObjectRefs.
+  reference_counter_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+}
+
+// Test resubmission for a task with num_returns="dynamic" that returns objects
+// in plasma. If the task fails, we should store errors for all internal
+// ObjectRefs in plasma.
+TEST_F(TaskManagerLineageTest, TestResubmittedDynamicReturnsTaskFails) {
+  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
+  auto generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(addr_, spec, "", /*num_retries=*/1);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+
+  std::vector<ObjectID> dynamic_return_ids;
+
+  // The task completes and returns dynamic returns.
+  {
+    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+    rpc::PushTaskReply reply;
+    auto return_object = reply.add_return_objects();
+    return_object->set_object_id(generator_id.Binary());
+    auto data = GenerateRandomBuffer();
+    return_object->set_data(data->Data(), data->Size());
+
+    for (int i = 0; i < 3; i++) {
+      auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), i + 2);
+      dynamic_return_ids.push_back(dynamic_return_id);
+      auto dynamic_return_object = reply.add_dynamic_return_objects();
+      dynamic_return_object->set_object_id(dynamic_return_id.Binary());
+      dynamic_return_object->set_data(data->Data(), data->Size());
+      dynamic_return_object->set_in_plasma(true);
+    }
+
+    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  }
+
+  // Resubmit the task.
+  ASSERT_TRUE(stored_in_plasma.empty());
+  std::vector<ObjectID> resubmitted_task_deps;
+  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
+  ASSERT_EQ(num_retries_, 1);
+
+  // Dereference the generator to a list of its internal ObjectRefs.
+  for (const auto &dynamic_return_id : dynamic_return_ids) {
+    reference_counter_->AddLocalReference(dynamic_return_id, "");
+  }
+  reference_counter_->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
+  store_->Delete({generator_id});
+
+  // The re-executed task fails.
+  {
+    manager_.MarkDependenciesResolved(spec.TaskId());
+    ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+    ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+    manager_.MarkTaskWaitingForExecution(spec.TaskId());
+    ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
+
+    manager_.FailOrRetryPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
+  }
+
+  // No error stored for the generator ID, which should have gone out of scope.
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  std::vector<std::shared_ptr<RayObject>> results;
+  ASSERT_FALSE(store_->Get({generator_id}, 1, 0, ctx, false, &results).ok());
+
+  // The internal ObjectRefs have the right error.
+  RAY_CHECK_OK(store_->Get(dynamic_return_ids, 3, -1, ctx, false, &results));
+  ASSERT_EQ(results.size(), 3);
+  for (int i = 0; i < 3; i++) {
+    rpc::ErrorType stored_error;
+    ASSERT_TRUE(results[i]->IsException(&stored_error));
+    ASSERT_EQ(stored_error, rpc::ErrorType::OBJECT_IN_PLASMA);
+  }
+  ASSERT_EQ(stored_in_plasma.size(), 3);
 }
 
 }  // namespace core
