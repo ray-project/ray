@@ -626,8 +626,9 @@ def test_torch_auto_unwrap(ray_start_2_cpus):
         # Save DDP wrapped model.
         train.save_checkpoint(model=model)
 
+        # This is no longer supported.
         # Report DDP wrapped model.
-        train.report(model=model)
+        # train.report(model=model)
 
     num_workers = 2
     trainer = Trainer("torch", num_workers)

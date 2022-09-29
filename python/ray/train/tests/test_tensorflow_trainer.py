@@ -70,7 +70,7 @@ def test_tensorflow_linear(ray_start_4_cpus, num_workers):
 
 def test_tensorflow_e2e(ray_start_4_cpus):
     def train_func():
-        model = build_model().get_weights()
+        model = build_model()
         session.report({}, checkpoint=TensorflowCheckpoint.from_model(model))
 
     scaling_config = ScalingConfig(num_workers=2)
