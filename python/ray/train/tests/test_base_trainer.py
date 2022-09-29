@@ -361,7 +361,7 @@ def test_trainable_name_is_overriden_gbdt_trainer(ray_start_4_cpus):
     _is_trainable_name_overriden(trainer)
 
 
-def test_repr():
+def test_repr(ray_start_4_cpus):
     def training_loop(self):
         pass
 
@@ -379,6 +379,7 @@ def test_repr():
 
 
 def test_large_params(ray_start_4_cpus):
+    """Tests if large arguments are can be serialized by the Trainer."""
     array_size = int(1e8)
 
     def training_loop(self):
