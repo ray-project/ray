@@ -167,6 +167,9 @@ class BlockExecStats:
     def add(self, other: "BlockExecStats"):
         """Add the other BlockExecStats into this BlockExecStats, by combining
         each statistic.
+
+        Assume these statistics are independent without overlap between each other,
+        so they can be added up such as wall clock time.
         """
         if other.wall_time_s:
             self.wall_time_s = float(self.wall_time_s or 0) + other.wall_time_s
