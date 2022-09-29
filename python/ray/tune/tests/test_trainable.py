@@ -66,6 +66,11 @@ class SavingTrainable(tune.Trainable):
             with open(checkpoint_file, "rb") as f:
                 checkpoint_data = json.load(f)
 
+        checkpoint_data = {
+            key: value
+            for key, value in checkpoint_data.items()
+            if not key.startswith("_")
+        }
         assert checkpoint_data == {"data": 1}, checkpoint_data
 
 

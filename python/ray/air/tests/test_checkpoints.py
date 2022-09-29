@@ -81,6 +81,70 @@ class TestCheckpointTypeCasting:
             uri = OtherStubCheckpoint.from_dict({"foo": "bar"}).to_uri("memory://3/")
             StubCheckpoint.from_uri(uri)
 
+    def test_e2e(self):
+        from ray.air import session
+        from ray.air.config import ScalingConfig
+        from ray.train.torch import TorchTrainer
+
+        def train_loop_per_worker():
+            checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+            session.report({}, checkpoint=checkpoint)
+
+        trainer = TorchTrainer(
+            train_loop_per_worker=train_loop_per_worker,
+            scaling_config=ScalingConfig(num_workers=1),
+        )
+        results = trainer.fit()
+        assert isinstance(results.checkpoint, StubCheckpoint)
+
+
+class TestCheckpointSerializedAttrs:
+    def test_dict(self):
+        checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+        assert "foo" in checkpoint._SERIALIZED_ATTRS
+        checkpoint.foo = "bar"
+
+        recovered_checkpoint = StubCheckpoint.from_dict(checkpoint.to_dict())
+
+        assert recovered_checkpoint.foo == "bar"
+
+    def test_directory(self):
+        checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+        assert "foo" in checkpoint._SERIALIZED_ATTRS
+        checkpoint.foo = "bar"
+
+        recovered_checkpoint = StubCheckpoint.from_directory(checkpoint.to_directory())
+
+        assert recovered_checkpoint.foo == "bar"
+
+    def test_uri(self):
+        checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+        assert "foo" in checkpoint._SERIALIZED_ATTRS
+        checkpoint.foo = "bar"
+
+        uri = checkpoint.to_uri("memory://bucket")
+        recovered_checkpoint = StubCheckpoint.from_uri(uri)
+
+        assert recovered_checkpoint.foo == "bar"
+
+    def test_e2e(self):
+        from ray.air import session
+        from ray.air.config import ScalingConfig
+        from ray.train.torch import TorchTrainer
+
+        def train_loop_per_worker():
+            checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+            assert "foo" in checkpoint._SERIALIZED_ATTRS
+            checkpoint.foo = "bar"
+            session.report({}, checkpoint=checkpoint)
+
+        trainer = TorchTrainer(
+            train_loop_per_worker=train_loop_per_worker,
+            scaling_config=ScalingConfig(num_workers=1),
+        )
+        results = trainer.fit()
+        assert results.checkpoint.foo == "bar"
+
 
 class CheckpointsConversionTest(unittest.TestCase):
     def setUp(self):
@@ -136,6 +200,11 @@ class CheckpointsConversionTest(unittest.TestCase):
         if check_state:
             self.assertEqual(checkpoint.foo, "bar")
             self.assertEqual(checkpoint.baz, None)
+        checkpoint_data = {
+            key: value
+            for key, value in checkpoint_data.items()
+            if not key.startswith("_")
+        }
         self.assertDictEqual(checkpoint_data, self.checkpoint_dict_data)
 
     def test_dict_checkpoint_bytes(self):

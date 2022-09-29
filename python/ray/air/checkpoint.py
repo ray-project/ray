@@ -37,6 +37,7 @@ _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY = "_ray_additional_checkpoint_files"
 _METADATA_CHECKPOINT_SUFFIX = ".meta.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
+_METADATA_KEY = "_metadata"
 _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
 
 logger = logging.getLogger(__name__)
@@ -54,23 +55,6 @@ class _CheckpointMetadata:
 
     checkpoint_type: Type["Checkpoint"]
     checkpoint_state: Dict[str, Any]
-
-
-class _CheckpointDict(dict):
-    """A ``dict`` that represents a checkpoint.
-
-    Args:
-        metadata: Metadata about the checkpoint that this ``dict`` represents.
-    """
-
-    def __init__(self, *args, metadata: _CheckpointMetadata, **kwargs):
-        self._metadata = metadata
-        super().__init__(*args, **kwargs)
-
-    @property
-    def metadata(self) -> _CheckpointMetadata:
-        """Metadata about the checkpoint that this ``dict`` represents."""
-        return self._metadata
 
 
 @PublicAPI(stability="beta")
@@ -320,9 +304,10 @@ class Checkpoint:
             Checkpoint: checkpoint object.
         """
         state = {}
-        if isinstance(data, _CheckpointDict):
-            cls = cls._get_checkpoint_type(data.metadata.checkpoint_type)
-            state = data.metadata.checkpoint_state
+        if _METADATA_KEY in data:
+            metadata = data[_METADATA_KEY]
+            cls = cls._get_checkpoint_type(metadata.checkpoint_type)
+            state = metadata.checkpoint_state
 
         checkpoint = cls(data_dict=data)
         checkpoint.__dict__.update(state)
@@ -331,11 +316,6 @@ class Checkpoint:
 
     def to_dict(self) -> dict:
         """Return checkpoint data as dictionary.
-
-        .. note::
-            :meth:`~Checkpoint.to_dict` returns a ``dict`` subclass that contains
-            information about the checkpoint type. This ``dict`` subclass is
-            functionally identical to the built-in ``dict``.
 
         Returns:
             dict: Dictionary containing checkpoint data.
@@ -402,7 +382,8 @@ class Checkpoint:
         else:
             raise RuntimeError(f"Empty data for checkpoint {self}")
 
-        return _CheckpointDict(checkpoint_data, metadata=self._metadata)
+        checkpoint_data[_METADATA_KEY] = self._metadata
+        return checkpoint_data
 
     @classmethod
     @Deprecated(
