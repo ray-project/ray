@@ -83,6 +83,8 @@ import pandas as pd
 
 # Load dataset.
 ds = ray.data.read_csv("example://iris.csv")
+ds.default_batch_format()
+# -> pandas.core.frame.DataFrame
 
 # UDF as a function on Pandas DataFrame batches.
 def pandas_transform(df: pd.DataFrame) -> pd.DataFrame:
@@ -111,6 +113,8 @@ import numpy as np
 
 # Load dataset.
 ds = ray.data.range_tensor(1000, shape=(2, 2))
+ds.default_batch_format()
+# -> numpy.ndarray
 
 # UDF as a function on NumPy ndarray batches.
 def tensor_transform(arr: np.ndarray) -> np.ndarray:
@@ -133,6 +137,8 @@ import ray
 
 # Load dataset.
 ds = ray.data.range(1000)
+ds.default_batch_format()
+# -> list
 
 # UDF as a function on Python list batches.
 def list_transform(list) -> list:
@@ -145,32 +151,6 @@ ds.map_batches(list_transform).show(2)
 # 2
 
 # __writing_default_udfs_list_end__
-# fmt: on
-
-# fmt: off
-# __writing_default_udfs_begin__
-import ray
-import pandas as pd
-
-# Load dataset.
-ds = ray.data.read_csv("example://iris.csv")
-
-# UDF as a function on Pandas DataFrame batches.
-def pandas_transform(df: pd.DataFrame) -> pd.DataFrame:
-    # Filter rows.
-    df = df[df["variety"] == "Versicolor"]
-    # Add derived column.
-    df["normalized.sepal.length"] =  df["sepal.length"] / df["sepal.length"].max()
-    # Drop column.
-    df = df.drop(columns=["sepal.length"])
-    return df
-
-ds.map_batches(pandas_transform).show(2)
-# -> {'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,
-#     'variety': 'Versicolor', 'normalized.sepal.length': 1.0}
-# -> {'sepal.width': 3.2, 'petal.length': 4.5, 'petal.width': 1.5,
-#     'variety': 'Versicolor', 'normalized.sepal.length': 0.9142857142857144}
-# __writing_pandas_udfs_end__
 # fmt: on
 
 # fmt: off

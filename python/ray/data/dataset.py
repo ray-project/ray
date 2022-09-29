@@ -344,7 +344,7 @@ class Dataset(Generic[T]):
         .. tip::
 
             For some standardized operations like imputing, encoding or normalization,
-            one may find directly using ``ray.data.preprocessors.Preprocessor`` to be
+            one may find directly using :py:class:`~ray.data.preprocessors.Preprocessor` to be
             more convenient.
 
         Examples:
