@@ -36,9 +36,8 @@ const columns = [
   { label: "Job ID" },
   { label: "Submission ID" },
   { label: "Status" },
-  { label: "Progress" },
   {
-    label: "Logs",
+    label: "Progress",
     helpInfo: (
       <Typography>
         The progress of the all submitted tasks per job. Tasks that are not yet
@@ -52,6 +51,9 @@ const columns = [
         for instructions.
       </Typography>
     ),
+  },
+  {
+    label: "Logs",
   },
   { label: "StartTime" },
   { label: "EndTime" },

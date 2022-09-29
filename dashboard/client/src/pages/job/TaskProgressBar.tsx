@@ -76,11 +76,6 @@ export const MiniTaskProgressBar = ({
       color: "#f79e02",
     },
     {
-      label: "Waiting for dependencies",
-      value: numPendingArgsAvail,
-      color: "#f79e02",
-    },
-    {
       label: "Unknown",
       value: numUnknown,
       color: "#5f6469",
