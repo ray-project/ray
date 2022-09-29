@@ -499,6 +499,16 @@ std::string TaskSpecification::DebugString() const {
   return stream.str();
 }
 
+bool TaskSpecification::IsRetriable() const {
+  if (!IsActorCreationTask() && MaxRetries() == 0) {
+    return false;
+  }
+  if (IsActorCreationTask() && MaxActorRestarts() == 0) {
+    return false;
+  }
+  return true;
+}
+
 std::string TaskSpecification::CallSiteString() const {
   std::ostringstream stream;
   auto desc = FunctionDescriptor();

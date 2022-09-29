@@ -377,6 +377,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool IsSpreadSchedulingStrategy() const;
 
+  /// \return true if the task or actor is retriable.
+  bool IsRetriable() const;
+
  private:
   void ComputeResources();
 

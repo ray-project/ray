@@ -189,11 +189,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Returns workers sorted by the time of the last submitted task, in descending order.
   ///
-  /// \param filter_non_retriable_workers whether to exclude workers that are not
   /// retriable.
   /// \return the list of sorted workers
-  const std::vector<std::shared_ptr<WorkerInterface>> WorkersWithLatestSubmittedTasks(
-      bool filter_non_retriable_workers = true) const;
+  const std::vector<std::shared_ptr<WorkerInterface>> WorkersWithLatestSubmittedTasks() const;
 
   /// Returns debug string of the workers.
   ///

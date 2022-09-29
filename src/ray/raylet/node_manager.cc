@@ -3009,8 +3009,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           }
         } else {
           const static int64_t max_to_print = 10;
-          auto all_workers = this->WorkersWithLatestSubmittedTasks(
-              /* filter_non_retriable_workers */ false);
+          auto all_workers = this->WorkersWithLatestSubmittedTasks();
           RAY_LOG_EVERY_MS(INFO, 10 * 1000)
               << "Memory usage above threshold but there are no workers to "
                  "kill. Most like the workers are using the memory are non-retriable and "
@@ -3049,16 +3048,20 @@ void NodeManager::GCTaskFailureReason() {
 }
 
 const std::vector<std::shared_ptr<WorkerInterface>>
-NodeManager::WorkersWithLatestSubmittedTasks(bool filter_non_retriable_workers) const {
+NodeManager::WorkersWithLatestSubmittedTasks() const {
   auto workers = worker_pool_.GetAllRegisteredWorkers(
       /* filter_dead_worker */ false,
-      /* filter_io_workers */ false,
-      /* filter_non_retriable_workers */ filter_non_retriable_workers);
+      /* filter_io_workers */ false);
   std::sort(workers.begin(),
             workers.end(),
             [](std::shared_ptr<WorkerInterface> const &left,
                std::shared_ptr<WorkerInterface> const &right) -> bool {
-              return left->GetAssignedTaskTime() > right->GetAssignedTaskTime();
+              int left_retriable = left->GetAssignedTask().GetTaskSpecification().IsRetriable() ? 0 : 1;
+              int right_retriable = right->GetAssignedTask().GetTaskSpecification().IsRetriable() ? 0 : 1;
+              if (left_retriable == right_retriable) {
+                return left->GetAssignedTaskTime() > right->GetAssignedTaskTime();
+              }
+              return left_retriable < right_retriable;
             });
   return workers;
 }

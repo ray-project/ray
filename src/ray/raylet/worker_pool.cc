@@ -1444,8 +1444,7 @@ inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) const
 
 const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers(
     bool filter_dead_workers,
-    bool filter_io_workers,
-    bool filter_non_retriable_workers) const {
+    bool filter_io_workers) const {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
 
   for (const auto &entry : states_by_lang_) {
@@ -1460,17 +1459,6 @@ const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegistered
 
       if (filter_dead_workers && worker->IsDead()) {
         continue;
-      }
-
-      if (filter_non_retriable_workers) {
-        if (worker->GetActorId().IsNil() &&
-            worker->GetAssignedTask().GetTaskSpecification().MaxRetries() == 0) {
-          continue;
-        }
-        if (!worker->GetActorId().IsNil() &&
-            worker->GetAssignedTask().GetTaskSpecification().MaxActorRestarts() == 0) {
-          continue;
-        }
       }
 
       workers.push_back(worker);
