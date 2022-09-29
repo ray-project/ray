@@ -1,7 +1,7 @@
 import { blueGrey, grey, lightBlue } from "@material-ui/core/colors";
-import { createMuiTheme } from "@material-ui/core/styles";
+import { createMuiTheme, ThemeOptions } from "@material-ui/core/styles";
 
-const basicTheme = {
+const basicTheme: ThemeOptions = {
   typography: {
     fontSize: 12,
     fontFamily: [
@@ -16,6 +16,9 @@ const basicTheme = {
       '"Segoe UI Emoji"',
       '"Segoe UI Symbol"',
     ].join(","),
+    body1: {
+      fontSize: "0.75rem",
+    },
   },
   props: {
     MuiPaper: {

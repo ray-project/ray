@@ -1,5 +1,12 @@
-import { createStyles, makeStyles } from "@material-ui/core";
+import {
+  createStyles,
+  makeStyles,
+  Paper,
+  TooltipProps,
+  Typography,
+} from "@material-ui/core";
 import React from "react";
+import { StyledTooltip } from "./Tooltip";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -31,20 +38,19 @@ const useStyles = makeStyles((theme) =>
       marginRight: theme.spacing(1),
     },
     progressBarRoot: {
-      display: "block",
-      position: "relative",
+      display: "flex",
+      flexDirection: "row",
+      flexWrap: "nowrap",
       width: "100%",
       height: 8,
-      backgroundColor: "lightgrey",
+      backgroundColor: "white",
       borderRadius: 6,
       overflow: "hidden",
     },
     segment: {
-      display: "block",
-      position: "absolute",
-      height: "100%",
-      borderStartEndRadius: "6px",
-      borderEndEndRadius: "6px",
+      "&:not(:last-child)": {
+        marginRight: 1,
+      },
     },
   }),
 );
@@ -88,6 +94,10 @@ export type ProgressBarProps = {
    * Whether a legend is shown. Default to true.
    */
   showLegend?: boolean;
+  /**
+   * Whether to show the a legend as a tooltip.
+   */
+  showTooltip?: boolean;
 };
 
 export const ProgressBar = ({
@@ -95,6 +105,7 @@ export const ProgressBar = ({
   total,
   unaccountedLabel,
   showLegend = true,
+  showTooltip = false,
 }: ProgressBarProps) => {
   const classes = useStyles();
   const segmentTotal = progress.reduce((acc, { value }) => acc + value, 0);
@@ -113,21 +124,7 @@ export const ProgressBar = ({
         ]
       : progress;
 
-  const segmentsWithWidth: (ProgressBarSegment & { width: string })[] = [];
-  let runningTotal = 0;
-  segments.forEach((segment) => {
-    const { value } = segment;
-    if (value !== 0) {
-      segmentsWithWidth.push({
-        ...segment,
-        width: `${((value + runningTotal) / finalTotal) * 100}%`,
-      });
-      runningTotal += value;
-    }
-  });
-  // Reverse because default z-indexing is elements on the DOM will overlap elements before them
-  // and we want to show earlier items above later items.
-  segmentsWithWidth.reverse();
+  const filteredSegments = segments.filter(({ value }) => value);
 
   return (
     <div className={classes.root}>
@@ -138,32 +135,114 @@ export const ProgressBar = ({
               className={classes.colorLegend}
               style={{ backgroundColor: "black" }}
             />
-            Total: {finalTotal}
+            <Typography>Total: {finalTotal}</Typography>
           </div>
-          {segments.map(({ value, label, color }) => (
+          {filteredSegments.map(({ value, label, color }) => (
             <div key={label} className={classes.legendItemContainer}>
               <div
                 className={classes.colorLegend}
                 style={{ backgroundColor: color }}
               />
-              {label}: {value}
+              <Typography>
+                {label}: {value}
+              </Typography>
             </div>
           ))}
         </div>
       )}
-      <div className={classes.progressBarRoot}>
-        {segmentsWithWidth.map(({ width, color, label }) => (
-          <span
-            key={label}
-            className={classes.segment}
-            style={{
-              width,
-              backgroundColor: color,
-            }}
-            data-testid="progress-bar-segment"
-          />
-        ))}
-      </div>
+      <LegendTooltip
+        showTooltip={showTooltip}
+        total={finalTotal}
+        segments={filteredSegments}
+      >
+        <div
+          className={classes.progressBarRoot}
+          style={{
+            backgroundColor: segmentTotal === 0 ? "lightGrey" : "white",
+          }}
+        >
+          {filteredSegments.map(({ color, label, value }) => (
+            <span
+              key={label}
+              className={classes.segment}
+              style={{
+                flex: value,
+                backgroundColor: color,
+              }}
+              data-testid="progress-bar-segment"
+            />
+          ))}
+        </div>
+      </LegendTooltip>
     </div>
   );
+};
+
+const useLegendStyles = makeStyles((theme) =>
+  createStyles({
+    legendItemContainer: {
+      display: "flex",
+      flexDirection: "row",
+      flexWrap: "nowrap",
+      alignItems: "center",
+      "&:not(:first-child)": {
+        marginTop: theme.spacing(1),
+      },
+    },
+    colorLegend: {
+      width: 16,
+      height: 16,
+      borderRadius: 4,
+      marginRight: theme.spacing(1),
+    },
+  }),
+);
+
+type LegendTooltipProps = {
+  showTooltip: boolean;
+  segments: ProgressBarSegment[];
+  total: number;
+  children: TooltipProps["children"];
+};
+
+const LegendTooltip = ({
+  showTooltip,
+  segments,
+  total,
+  children,
+}: LegendTooltipProps) => {
+  const classes = useLegendStyles();
+
+  if (showTooltip) {
+    return (
+      <StyledTooltip
+        title={
+          <Paper>
+            <div className={classes.legendItemContainer}>
+              <div
+                className={classes.colorLegend}
+                style={{ backgroundColor: "black" }}
+              />
+              <Typography>Total: {total}</Typography>
+            </div>
+            {segments.map(({ value, label, color }) => (
+              <div key={label} className={classes.legendItemContainer}>
+                <div
+                  className={classes.colorLegend}
+                  style={{ backgroundColor: color }}
+                />
+                <Typography>
+                  {label}: {value}
+                </Typography>
+              </div>
+            ))}
+          </Paper>
+        }
+      >
+        {children}
+      </StyledTooltip>
+    );
+  }
+
+  return children;
 };

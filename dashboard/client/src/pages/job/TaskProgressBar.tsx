@@ -15,13 +15,6 @@ export const TaskProgressBar = ({
   numUnknown = 0,
 }: TaskProgressBarProps) => {
   const theme = useTheme<Theme>();
-  const total =
-    numFinished +
-    numRunning +
-    numPendingArgsAvail +
-    numPendingNodeAssignment +
-    numSubmittedToWorker +
-    numUnknown;
   const progress: ProgressBarSegment[] = [
     {
       label: "Finished",
@@ -43,14 +36,13 @@ export const TaskProgressBar = ({
       value: numPendingArgsAvail,
       color: "#f79e02",
     },
+    {
+      label: "Unknown",
+      value: numUnknown,
+      color: "#5f6469",
+    },
   ];
-  return (
-    <ProgressBar
-      progress={progress}
-      total={total}
-      unaccountedLabel="Scheduled"
-    />
-  );
+  return <ProgressBar progress={progress} />;
 };
 
 export const MiniTaskProgressBar = ({
@@ -62,13 +54,6 @@ export const MiniTaskProgressBar = ({
   numUnknown = 0,
 }: TaskProgressBarProps) => {
   const theme = useTheme<Theme>();
-  const total =
-    numFinished +
-    numRunning +
-    numPendingArgsAvail +
-    numPendingNodeAssignment +
-    numSubmittedToWorker +
-    numUnknown;
   const progress: ProgressBarSegment[] = [
     {
       label: "Finished",
@@ -90,13 +75,16 @@ export const MiniTaskProgressBar = ({
       value: numPendingArgsAvail,
       color: "#f79e02",
     },
+    {
+      label: "Waiting for dependencies",
+      value: numPendingArgsAvail,
+      color: "#f79e02",
+    },
+    {
+      label: "Unknown",
+      value: numUnknown,
+      color: "#5f6469",
+    },
   ];
-  return (
-    <ProgressBar
-      progress={progress}
-      total={total}
-      unaccountedLabel="Scheduled"
-      showLegend={false}
-    />
-  );
+  return <ProgressBar progress={progress} showLegend={false} showTooltip />;
 };

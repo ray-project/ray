@@ -23,7 +23,7 @@ export const JobRow = ({
   },
 }: JobRowProps) => {
   const { ipLogMap } = useContext(GlobalContext);
-  const { progress } = useJobProgress(job_id ?? undefined);
+  const { progress, error } = useJobProgress(job_id ?? undefined);
 
   return (
     <TableRow>
@@ -31,7 +31,7 @@ export const JobRow = ({
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">{status}</TableCell>
       <TableCell align="center">
-        {progress ? <MiniTaskProgressBar {...progress} /> : "-"}
+        {progress && !error ? <MiniTaskProgressBar {...progress} /> : "-"}
       </TableCell>
       <TableCell align="center">
         {/* TODO(aguo): Also show logs for the job id instead

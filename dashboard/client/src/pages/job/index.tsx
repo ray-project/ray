@@ -1,4 +1,5 @@
 import {
+  Box,
   Switch,
   Table,
   TableBody,
@@ -14,10 +15,9 @@ import React from "react";
 import Loading from "../../components/Loading";
 import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
+import { HelpInfo } from "../../components/Tooltip";
 import { useJobList } from "./hook/useJobList";
-import { useJobProgress } from "./hook/useJobProgress";
 import { JobRow } from "./JobRow";
-import { TaskProgressBar } from "./TaskProgressBar";
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -27,17 +27,35 @@ const useStyles = makeStyles((theme) => ({
   progressError: {
     marginTop: theme.spacing(1),
   },
+  helpInfo: {
+    marginLeft: theme.spacing(1),
+  },
 }));
 
 const columns = [
-  "Job ID",
-  "Submission ID",
-  "Status",
-  "Progress",
-  "Logs",
-  "StartTime",
-  "EndTime",
-  "Driver Pid",
+  { label: "Job ID" },
+  { label: "Submission ID" },
+  { label: "Status" },
+  { label: "Progress" },
+  {
+    label: "Logs",
+    helpInfo: (
+      <Typography>
+        The progress of the all submitted tasks per job. Tasks that are not yet
+        submitted will not show up in the progress bar.
+        <br />
+        <br />
+        Note: This column requires that prometheus is running. See{" "}
+        <a href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html#exporting-metrics">
+          here
+        </a>{" "}
+        for instructions.
+      </Typography>
+    ),
+  },
+  { label: "StartTime" },
+  { label: "EndTime" },
+  { label: "Driver Pid" },
 ];
 
 const JobList = () => {
@@ -52,13 +70,6 @@ const JobList = () => {
     setPage,
   } = useJobList();
 
-  const {
-    progress,
-    error: progressError,
-    msg: progressMsg,
-    onSwitchChange: onProgressSwitchChange,
-  } = useJobProgress();
-
   return (
     <div className={classes.root}>
       <Loading loading={msg.startsWith("Loading")} />
@@ -68,21 +79,12 @@ const JobList = () => {
           checked={isRefreshing}
           onChange={(event) => {
             onSwitchChange(event);
-            onProgressSwitchChange(event);
           }}
           name="refresh"
           inputProps={{ "aria-label": "secondary checkbox" }}
         />
         <br />
         Request Status: {msg}
-      </TitleCard>
-      <TitleCard title="Progress">
-        <TaskProgressBar {...progress} />
-        {progressError && (
-          <Typography className={classes.progressError} color="error">
-            {progressMsg}
-          </Typography>
-        )}
       </TitleCard>
       <TitleCard title="Job List">
         <TableContainer>
@@ -106,9 +108,20 @@ const JobList = () => {
           <Table>
             <TableHead>
               <TableRow>
-                {columns.map((col) => (
-                  <TableCell align="center" key={col}>
-                    {col}
+                {columns.map(({ label, helpInfo }) => (
+                  <TableCell align="center" key={label}>
+                    <Box
+                      display="flex"
+                      justifyContent="center"
+                      alignItems="center"
+                    >
+                      {label}
+                      {helpInfo && (
+                        <HelpInfo className={classes.helpInfo}>
+                          {helpInfo}
+                        </HelpInfo>
+                      )}
+                    </Box>
                   </TableCell>
                 ))}
               </TableRow>
