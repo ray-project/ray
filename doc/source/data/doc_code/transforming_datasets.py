@@ -84,7 +84,7 @@ import pandas as pd
 # Load dataset.
 ds = ray.data.read_csv("example://iris.csv")
 ds.default_batch_format()
-# -> pandas.core.frame.DataFrame
+# pandas.core.frame.DataFrame
 
 # UDF as a function on Pandas DataFrame batches.
 def pandas_transform(df_batch: pd.DataFrame) -> pd.DataFrame:
@@ -114,7 +114,7 @@ import numpy as np
 # Load dataset.
 ds = ray.data.range_tensor(1000, shape=(2, 2))
 ds.default_batch_format()
-# -> numpy.ndarray
+# numpy.ndarray
 
 # UDF as a function on NumPy ndarray batches.
 def tensor_transform(arr: np.ndarray) -> np.ndarray:
@@ -138,7 +138,7 @@ import ray
 # Load dataset.
 ds = ray.data.range(1000)
 ds.default_batch_format()
-# -> list
+# list
 
 # UDF as a function on Python list batches.
 def list_transform(list) -> list:
