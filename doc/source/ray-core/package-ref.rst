@@ -297,8 +297,3 @@ Exceptions
    :members:
 .. autoclass:: ray.exceptions.CrossLanguageError
    :members:
-
-    cli.rst
-    ../ray-observability/state/cli.rst
-    ../ray-observability/state/ray-state-api-reference.rst
-
