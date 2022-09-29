@@ -147,3 +147,9 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
         locations.extend(location_data[block]["node_ids"])
     assert set(locations) == {bar_node_id}, locations
     assert sorted(ds.take()) == ["goodbye", "hello", "world"]
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

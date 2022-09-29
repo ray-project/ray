@@ -112,3 +112,9 @@ def test_read_pandas_data_array_column(ray_start_regular_shared):
     row = ds.take(1)[0]
     assert row["one"] == 1
     assert all(row["array"] == [1, 1, 1])
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

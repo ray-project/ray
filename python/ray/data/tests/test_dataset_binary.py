@@ -176,3 +176,9 @@ def test_read_binary_snappy_partitioned_with_filter(
         assert ray.get(skipped_file_counter.get.remote()) == 1
         ray.get(kept_file_counter.reset.remote())
         ray.get(skipped_file_counter.reset.remote())
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

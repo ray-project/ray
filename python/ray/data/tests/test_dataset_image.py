@@ -188,3 +188,9 @@ def test_image_folder_reader_estimate_data_size(
     assert (
         data_size >= expected_size and data_size <= expected_size * 1.5
     ), "estimated data size is out of expected bound"
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
