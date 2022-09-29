@@ -45,7 +45,10 @@ class WeightedImportanceSampling(OffPolicyEstimator):
 
         eps_id = episode[SampleBatch.EPS_ID][0]
         if eps_id not in self.p:
-            raise ValueError(f"Episode {eps_id} not passed through the fit function")
+            raise ValueError(
+                f"Cannot find target weight for episode {eps_id}. "
+                f"Did it go though the peek_on_single_episode() function?"
+            )
 
         # calculate stepwise weighted IS estimate
         v_behavior = 0.0
@@ -115,6 +118,7 @@ class WeightedImportanceSampling(OffPolicyEstimator):
         eps_id = episode[SampleBatch.EPS_ID][0]
         if eps_id in self.p:
             raise ValueError(
-                f"Episode {eps_id} already paseed through the fit function"
+                f"eps_id {eps_id} was already passed to the peek function."
+                f"Make sure dataset contains only unique episodes with unique ids."
             )
         self.p[eps_id] = episode_p
