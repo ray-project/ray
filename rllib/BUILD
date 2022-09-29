@@ -1834,6 +1834,13 @@ py_test(
 )
 
 py_test(
+    name = "test_ope_math",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/estimators/tests/test_ope_math.py"]
+)
+
+py_test(
     name = "test_dm_learning",
     tags = ["team:rllib", "offline"],
     size = "large",

@@ -1,7 +1,7 @@
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.policy.sample_batch import SampleBatch
-from typing import Dict
+from typing import Dict, List
 import numpy as np
 
 
@@ -22,8 +22,8 @@ class ImportanceSampling(OffPolicyEstimator):
     For more information refer to https://arxiv.org/pdf/1911.06854.pdf"""
 
     @override(OffPolicyEstimator)
-    def estimate_multi_step(self, episode: SampleBatch) -> Dict[str, float]:
-        estimates_per_epsiode = {"v_behavior": None, "v_target": None}
+    def estimate_on_single_episode(self, episode: SampleBatch) -> Dict[str, float]:
+        estimates_per_epsiode = {}
 
         rewards, old_prob = episode["rewards"], episode["action_prob"]
         new_prob = self._compute_action_probs(episode)
@@ -50,15 +50,17 @@ class ImportanceSampling(OffPolicyEstimator):
         return estimates_per_epsiode
 
     @override(OffPolicyEstimator)
-    def estimate_single_step(self, batch: SampleBatch) -> Dict[str, float]:
-        estimates_per_epsiode = {"v_behavior": None, "v_target": None}
+    def estimate_on_single_step_samples(
+        self, batch: SampleBatch
+    ) -> Dict[str, List[float]]:
+        estimates_per_epsiode = {}
 
         rewards, old_prob = batch["rewards"], batch["action_prob"]
         new_prob = self._compute_action_probs(batch)
 
         weights = new_prob / old_prob
-        v_behavior = np.mean(rewards)
-        v_target = np.mean(weights * rewards)
+        v_behavior = rewards
+        v_target = weights * rewards
 
         estimates_per_epsiode["v_behavior"] = v_behavior
         estimates_per_epsiode["v_target"] = v_target

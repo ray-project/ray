@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.policy import Policy
@@ -67,8 +67,8 @@ class DirectMethod(OffPolicyEstimator):
         ), "self.model must implement `estimate_v`!"
 
     @override(OffPolicyEstimator)
-    def estimate_multi_step(self, episode: SampleBatch) -> Dict[str, float]:
-        estimates_per_epsiode = {"v_behavior": None, "v_target": None}
+    def estimate_on_single_episode(self, episode: SampleBatch) -> Dict[str, Any]:
+        estimates_per_epsiode = {}
         rewards = episode["rewards"]
 
         v_behavior = 0.0
@@ -83,11 +83,13 @@ class DirectMethod(OffPolicyEstimator):
         return estimates_per_epsiode
 
     @override(OffPolicyEstimator)
-    def estimate_single_step(self, batch: SampleBatch) -> Dict[str, float]:
-        estimates_per_epsiode = {"v_behavior": None, "v_target": None}
+    def estimate_on_single_step_samples(
+        self, batch: SampleBatch
+    ) -> Dict[str, List[float]]:
+        estimates_per_epsiode = {}
         rewards = batch["rewards"]
 
-        v_behavior = np.mean(rewards)
+        v_behavior = rewards
         v_target = self._compute_v_target(batch)
 
         estimates_per_epsiode["v_behavior"] = v_behavior
@@ -97,7 +99,7 @@ class DirectMethod(OffPolicyEstimator):
 
     def _compute_v_target(self, init_step):
         v_target = self.model.estimate_v(init_step)
-        v_target = convert_to_numpy(v_target).mean()
+        v_target = convert_to_numpy(v_target)
         return v_target
 
     @override(OffPolicyEstimator)

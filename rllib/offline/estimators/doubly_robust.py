@@ -1,9 +1,11 @@
 import logging
-from typing import Dict, Any, Optional
+import numpy as np
+
+from typing import Dict, Any, Optional, List
 from ray.rllib.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.typing import SampleBatchType
-import numpy as np
 from ray.rllib.utils.numpy import convert_to_numpy
 
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
@@ -80,8 +82,8 @@ class DoublyRobust(OffPolicyEstimator):
         ), "self.model must implement `estimate_q`!"
 
     @override(OffPolicyEstimator)
-    def estimate_multi_step(self, episode: SampleBatchType) -> Dict[str, float]:
-        estimates_per_epsiode = {"v_behavior": None, "v_target": None}
+    def estimate_on_single_episode(self, episode: SampleBatch) -> Dict[str, Any]:
+        estimates_per_epsiode = {}
 
         rewards, old_prob = episode["rewards"], episode["action_prob"]
         new_prob = self._compute_action_probs(episode)
@@ -107,8 +109,10 @@ class DoublyRobust(OffPolicyEstimator):
         return estimates_per_epsiode
 
     @override(OffPolicyEstimator)
-    def estimate_single_step(self, batch: SampleBatchType) -> Dict[str, float]:
-        estimates_per_epsiode = {"v_behavior": None, "v_target": None}
+    def estimate_on_single_step_samples(
+        self, batch: SampleBatch
+    ) -> Dict[str, List[float]]:
+        estimates_per_epsiode = {}
 
         rewards, old_prob = batch["rewards"], batch["action_prob"]
         new_prob = self._compute_action_probs(batch)
@@ -118,10 +122,10 @@ class DoublyRobust(OffPolicyEstimator):
         v_values = self.model.estimate_v(batch)
         v_values = convert_to_numpy(v_values)
 
-        v_behavior = np.mean(rewards)
+        v_behavior = rewards
 
         weight = new_prob / old_prob
-        v_target = np.mean(v_values + weight * (rewards - q_values))
+        v_target = v_values + weight * (rewards - q_values)
 
         estimates_per_epsiode["v_behavior"] = v_behavior
         estimates_per_epsiode["v_target"] = v_target
@@ -136,7 +140,7 @@ class DoublyRobust(OffPolicyEstimator):
         batch: A SampleBatch or MultiAgentbatch to train on
 
         Returns:
-        A dict with key "loss" and value as the mean training loss.
+            A dict with key "loss" and value as the mean training loss.
         """
         batch = self.convert_ma_batch_to_sample_batch(batch)
         losses = self.model.train(batch)
