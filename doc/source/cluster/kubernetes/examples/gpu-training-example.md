@@ -34,7 +34,10 @@ gcloud container node-pools create gpu-node-pool \
 kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/cos/daemonset-preloaded.yaml
 
 # Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
-# Please make sure you are connected to your Kubernetes cluster. (For GCP, you can do so by running the relevant "gcloud containers" command.)
+# Please make sure you are connected to your Kubernetes cluster. For GCP, you can do so by:
+#   (Method 1) Copy the connection command from the GKE console
+#   (Method 2) "gcloud container clusters get-credentials <your-cluster-name> --region <your-region> --project <your-project>"
+#   (Method 3) "kubectl config use-context ..."
 
 # Create the KubeRay operator
 kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
@@ -96,7 +99,11 @@ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container
 
 ## Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
 
-To execute the following steps, please make sure you are connected to your Kubernetes cluster. (For GCP, you can do so by running the relevant `gcloud containers` command.)
+To execute the following steps, please make sure you are connected to your Kubernetes cluster. For GCP, you can do so by:
+* Copy the connection command from the GKE console
+* `gcloud container clusters get-credentials <your-cluster-name> --region <your-region> --project <your-project>` ([Link](https://cloud.google.com/sdk/gcloud/reference/container/clusters/get-credentials))
+* `kubectl config use-context` ([Link](https://kubernetes.io/docs/tasks/access-application-cluster/configure-access-multiple-clusters/))
+
 The first command will deploy KubeRay (ray-operator) to your Kubernetes cluster. The second command will create a ray cluster with the help of KubeRay.
 
 The third command is used to map port 8265 of the `ray-head` pod to **127.0.0.1:8265**. You can check
@@ -119,6 +126,31 @@ ray job submit --address http://localhost:8265 -- python -c "import ray; ray.ini
 ```
 
 ## Step 3: Run the PyTorch image training benchmark.
+We will use the [Ray Job Python SDK](https://docs.ray.io/en/latest/cluster/running-applications/job-submission/sdk.html#ray-job-sdk) to submit the PyTorch workload.
+The following code is `pytorch_training_e2e_submit.py`.
+```python
+from ray.job_submission import JobSubmissionClient
+
+client = JobSubmissionClient("http://127.0.0.1:8265")
+
+kick_off_pytorch_benchmark = (
+    # Clone ray. If ray is already present, don't clone again.
+    "git clone https://github.com/ray-project/ray || true;"
+    # Run the benchmark.
+    "python ray/release/air_tests/air_benchmarks/workloads/pytorch_training_e2e.py"
+    " --data-size-gb=1 --num-epochs=2 --num-workers=1"
+)
+
+
+submission_id = client.submit_job(
+    entrypoint=kick_off_pytorch_benchmark,
+)
+
+print("Use the following command to follow this Job's logs:")
+print(f"ray job logs '{submission_id}' --follow")
+```
+
+To submit the workload, run the above Python script. The script is available in the [Ray repository](https://github.com/ray-project/ray/tree/master/doc/source/cluster/doc_code/pytorch_training_e2e_submit.py)
 ```shell
 # Step 3: Run the PyTorch image training benchmark.
 # Install Ray if needed
