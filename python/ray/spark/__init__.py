@@ -1,9 +1,9 @@
 import os
 import sys
-from urllib.parse import urlparse
 import time
 import threading
 import logging
+from packaging.version import Version
 
 from .utils import (
     exec_cmd,
@@ -15,6 +15,14 @@ from .utils import (
     get_spark_task_assigned_physical_gpus,
     get_per_spark_task_memory,
 )
+
+_spark_dependency_error = "ray.spark module requires pyspark >= 3.3"
+try:
+    import pyspark
+    if Version(pyspark.__version__) < Version("3.3"):
+        raise RuntimeError(_spark_dependency_error)
+except ImportError:
+    raise RuntimeError(_spark_dependency_error)
 
 
 def _create_ray_tmp_dir(prefix):
@@ -94,6 +102,7 @@ def init_cluster(num_spark_tasks):
     num_spark_task_gpus = int(spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0"))
 
     ray_worker_memory_in_bytes = get_per_spark_task_memory()
+
     def ray_cluster_job_mapper(_):
         from pyspark.taskcontext import BarrierTaskContext
 
