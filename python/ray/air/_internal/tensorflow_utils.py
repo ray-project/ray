@@ -65,7 +65,7 @@ def convert_pandas_to_tf_tensor(
     def tensorize(series):
         try:
             return tf.convert_to_tensor(series, dtype=dtype)
-        except ValueError as outer_e:
+        except ValueError:
             # This exception will be raised if series is of object dtype or otherwise
             # cannot be made into a tensor directly. We assume it's a sequence in that
             # case. This is more robust than checking for dtype.
@@ -74,16 +74,19 @@ def convert_pandas_to_tf_tensor(
                 return tf.stack(tensors)
             except Exception:
                 # Try to coerce the tensor to a ragged tensor, if possible.
-                try:
-                    return tf.ragged.stack(tensors)
-                except Exception:
-                    # Otherwise, raise the original error.
-                    raise outer_e from None
+                # If this fails, the exception will be propagated up to the caller.
+                return tf.ragged.stack(tensors)
 
     tensors = []
     for column in df.columns:
         series = df[column]
-        tensor = tensorize(series)
+        try:
+            tensor = tensorize(series)
+        except Exception:
+            raise ValueError(
+                f"Failed to convert column {column} to a TensorFlow Tensor of dtype "
+                f"{dtype}. See above exception chain for the exact failure."
+            )
         tensors.append(tensor)
 
     if len(tensors) > 1:

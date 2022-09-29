@@ -1156,9 +1156,10 @@ def test_tensors_in_tables_pandas_roundtrip(
     num_items = np.prod(np.array(shape))
     arr = np.arange(num_items).reshape(shape)
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arr)})
-    ds = ray.data.from_pandas([df])
+    ds = ray.data.from_pandas(df)
+    ds = ds.map_batches(lambda df: df + 1, batch_size=2)
     ds_df = ds.to_pandas()
-    expected_df = df
+    expected_df = df + 1
     if enable_automatic_tensor_extension_cast:
         expected_df.loc[:, "two"] = list(expected_df["two"].to_numpy())
     pd.testing.assert_frame_equal(ds_df, expected_df)
@@ -1177,8 +1178,9 @@ def test_tensors_in_tables_pandas_roundtrip_variable_shaped(
     outer_dim = len(arrs)
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arrs)})
     ds = ray.data.from_pandas(df)
+    ds = ds.map_batches(lambda df: df + 1, batch_size=2)
     ds_df = ds.to_pandas()
-    expected_df = df
+    expected_df = df + 1
     if enable_automatic_tensor_extension_cast:
         expected_df.loc[:, "two"] = list(expected_df["two"].to_numpy())
     pd.testing.assert_frame_equal(ds_df, expected_df)
@@ -1191,11 +1193,12 @@ def test_tensors_in_tables_parquet_roundtrip(ray_start_regular_shared, tmp_path)
     num_items = np.prod(np.array(shape))
     arr = np.arange(num_items).reshape(shape)
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arr)})
-    ds = ray.data.from_pandas([df])
+    ds = ray.data.from_pandas(df)
+    ds = ds.map_batches(lambda df: df + 1, batch_size=2)
     ds.write_parquet(str(tmp_path))
     ds = ray.data.read_parquet(str(tmp_path))
     values = [[s["one"], s["two"]] for s in ds.take()]
-    expected = list(zip(list(range(outer_dim)), arr))
+    expected = list(zip(list(range(1, outer_dim + 1)), arr + 1))
     for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
 
@@ -1211,11 +1214,12 @@ def test_tensors_in_tables_parquet_roundtrip_variable_shaped(
     ]
     outer_dim = len(arrs)
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arrs)})
-    ds = ray.data.from_pandas([df])
+    ds = ray.data.from_pandas(df)
+    ds = ds.map_batches(lambda df: df + 1, batch_size=2)
     ds.write_parquet(str(tmp_path))
     ds = ray.data.read_parquet(str(tmp_path))
     values = [[s["one"], s["two"]] for s in ds.take()]
-    expected = list(zip(range(outer_dim), arrs))
+    expected = list(zip(list(range(1, outer_dim + 1)), [arr + 1 for arr in arrs]))
     for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
 

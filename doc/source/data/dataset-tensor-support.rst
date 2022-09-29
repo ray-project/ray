@@ -3,13 +3,13 @@
 ML Tensor Support
 =================
 
-Tensor (multi-dimensional array) data is ubiquitous in ML workloads. However, popular data formats such as Pandas, Parquet, and Arrow don't natively support tensor data types. To bridge this gap, Datasets provides a unified tensor data type that can be used to represent and store tensor data:
+Tensor (multi-dimensional array) data is ubiquitous in ML workloads. However, popular data formats such as Pandas, Parquet, and Arrow don't natively support tensor data types. To bridge this gap, Datasets provides a unified tensor data type that can be used to represent, transform, and store tensor data:
 
 * For Pandas, Datasets will transparently convert ``List[np.ndarray]`` columns to and from the :class:`TensorDtype <ray.data.extensions.tensor_extension.TensorDtype>` extension type.
-* For Parquet, the Datasets Arrow extension :class:`ArrowTensorType <ray.data.extensions.tensor_extension.ArrowTensorType>` allows tensors to be loaded from and stored in Parquet format.
-* In addition, single-column Tensor datasets can be created from NumPy (.npy) files.
+* For Parquet, Datasets has an Arrow extension :class:`ArrowTensorType <ray.data.extensions.tensor_extension.ArrowTensorType>` that allows tensors to be loaded from and stored in the Parquet format.
+* In addition, single-column tensor datasets can be created from NumPy (.npy) files.
 
-Datasets automatically converts between the extension types/arrays above. This means you can just think of ``Tensor`` as a single first-class data type in Datasets.
+Datasets automatically converts between the extension types/arrays above. This means you can think of a ``Tensor`` as a first-class data type in Datasets.
 
 Creating Tensor Datasets
 ------------------------
@@ -240,3 +240,11 @@ below.
 
     ctx = DatasetContext.get_current()
     ctx.enable_tensor_extension_casting = False
+
+
+Limitations
+-----------
+
+The following are current limitations of tensor datasets.
+
+* Arbitrarily `nested/ragged tensors <https://www.tensorflow.org/guide/ragged_tensor>`__ are not supported. Only tensors with all uniform dimensions (i.e. a fully well-defined shape) and tensors representing a collection of variable-shaped tensor elements (e.g. a collection of images with different shapes) are supported; arbitrary raggedness and nested ragged tensors is not supported.

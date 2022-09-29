@@ -4,6 +4,7 @@ from typing import Iterable, Optional, Tuple, List, Union
 import numpy as np
 import pyarrow as pa
 
+from ray.air.util.tensor_extensions.utils import _is_ndarray_variable_shaped_tensor
 from ray.util.annotations import PublicAPI
 
 
@@ -115,23 +116,36 @@ class ArrowTensorArray(pa.ExtensionArray):
         return list(self)
 
     @classmethod
-    def from_numpy(cls, arr):
+    def from_numpy(
+        cls, arr: Union[np.ndarray, Iterable[np.ndarray]]
+    ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
         """
-        Convert an ndarray or an iterable of fixed-shape ndarrays to an array
-        of fixed-shape, homogeneous-typed tensors.
+        Convert an ndarray or an iterable of ndarrays to an array of homogeneous-typed
+        tensors. If given fixed-shape tensor elements, this will return an
+        ``ArrowTensorArray``; if given variable-shape tensor elements, this will return
+        an ``ArrowVariableShapedTensorArray``.
 
         Args:
-            arr: An ndarray or an iterable of fixed-shape ndarrays.
+            arr: An ndarray or an iterable of ndarrays.
 
         Returns:
-            An ArrowTensorArray containing len(arr) tensors of fixed shape.
+            - If fixed-shape tensor elements, an ``ArrowTensorArray`` containing
+              ``len(arr)`` tensors of fixed shape.
+            - If variable-shaped tensor elements, an ``ArrowVariableShapedTensorArray``
+              containing ``len(arr)`` tensors of variable shape.
+            - If scalar elements, a ``pyarrow.Array``.
         """
         if isinstance(arr, (list, tuple)) and arr and isinstance(arr[0], np.ndarray):
             # Stack ndarrays and pass through to ndarray handling logic below.
             arr = np.stack(arr, axis=0)
         if isinstance(arr, np.ndarray):
             if len(arr) > 0 and np.isscalar(arr[0]):
+                # Elements are scalar so a plain Arrow Array will suffice.
                 return pa.array(arr)
+            if _is_ndarray_variable_shaped_tensor(arr):
+                # Tensor elements have variable shape, so we delegate to
+                # ArrowVariableShapedTensorArray.
+                return ArrowVariableShapedTensorArray.from_numpy(arr)
             if not arr.flags.c_contiguous:
                 # We only natively support C-contiguous ndarrays.
                 arr = np.ascontiguousarray(arr)

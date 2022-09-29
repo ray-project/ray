@@ -44,6 +44,7 @@ from pandas.core.dtypes.generic import ABCDataFrame, ABCSeries
 from pandas.core.indexers import check_array_indexer, validate_indices
 from pandas.io.formats.format import ExtensionArrayFormatter
 
+from ray.air.util.tensor_extensions.utils import _is_ndarray_variable_shaped_tensor
 from ray.util.annotations import PublicAPI
 
 try:
@@ -296,6 +297,30 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         instances of `type`.
         """
         return TensorArrayElement
+
+    @property
+    def element_dtype(self):
+        """
+        The dtype of the underlying tensor elements.
+        """
+        return self._dtype
+
+    @property
+    def element_shape(self):
+        """
+        The shape of the underlying tensor elements. This will be None if the
+        corresponding TensorArray for this TensorDtype holds variable-shaped tensor
+        elements.
+        """
+        return self._shape
+
+    @property
+    def is_variable_shaped(self):
+        """
+        Whether the corresponding TensorArray for this TensorDtype holds variable-shaped
+        tensor elements.
+        """
+        return self.shape is None
 
     @property
     def name(self) -> str:
@@ -743,7 +768,7 @@ class TensorArray(
             )
         assert isinstance(values, np.ndarray)
         self._tensor = values
-        self._is_variable_shaped = is_ndarray_variable_shaped_tensor(values)
+        self._is_variable_shaped = None
 
     @classmethod
     def _from_sequence(
@@ -862,7 +887,7 @@ class TensorArray(
         """
         An instance of 'ExtensionDtype'.
         """
-        if self._is_variable_shaped:
+        if self.is_variable_shaped:
             # A tensor is only considered variable-shaped if it's non-empty, so no
             # non-empty check is needed here.
             dtype = self._tensor[0].dtype
@@ -871,6 +896,15 @@ class TensorArray(
             dtype = self.numpy_dtype
             shape = self.numpy_shape[1:]
         return TensorDtype(shape, dtype)
+
+    @property
+    def is_variable_shaped(self):
+        """
+        Whether this TensorArray holds variable-shaped tensor elements.
+        """
+        if self._is_variable_shaped is None:
+            self._is_variable_shaped = _is_ndarray_variable_shaped_tensor(self._tensor)
+        return self._is_variable_shaped
 
     @property
     def nbytes(self) -> int:
@@ -902,15 +936,15 @@ class TensorArray(
         if self._tensor.dtype.type is np.object_:
             # Avoid comparing with __eq__ because the elements of the tensor
             # may do something funny with that operation.
-            result_list = [self._tensor[i] is None for i in range(len(self))]
-            result = np.broadcast_to(
-                np.array(result_list, dtype=np.bool), self.numpy_shape
+            return np.array(
+                [self._tensor[i] is None for i in range(len(self))], dtype=bool
             )
         elif self._tensor.dtype.type is np.str_:
-            result = self._tensor == ""
+            return np.all(self._tensor == "", axis=tuple(range(1, self._tensor.ndim)))
         else:
-            result = np.isnan(self._tensor)
-        return TensorArray(result)
+            return np.all(
+                np.isnan(self._tensor), axis=tuple(range(1, self._tensor.ndim))
+            )
 
     def take(
         self, indices: Sequence[int], allow_fill: bool = False, fill_value: Any = None
@@ -1050,11 +1084,13 @@ class TensorArray(
         for a in to_concat:
             if shape is None:
                 shape = a.numpy_shape
-            if a._is_variable_shaped or a.numpy_shape != shape:
+            if a.is_variable_shaped or a.numpy_shape != shape:
                 should_flatten = True
                 break
         if should_flatten:
-            concated = TensorArray(np.array([e for a in to_concat for e in a._tensor]))
+            concated = TensorArray(
+                np.array([e for a in to_concat for e in a._tensor], dtype=object)
+            )
         else:
             concated = TensorArray(np.concatenate([a._tensor for a in to_concat]))
         return concated
@@ -1351,7 +1387,7 @@ class TensorArray(
             ArrowVariableShapedTensorArray,
         )
 
-        if self._is_variable_shaped:
+        if self.is_variable_shaped:
             return ArrowVariableShapedTensorArray.from_numpy(self._tensor)
         else:
             return ArrowTensorArray.from_numpy(self._tensor)
@@ -1384,28 +1420,6 @@ TensorArrayElement._add_logical_ops()
 TensorArray._add_arithmetic_ops()
 TensorArray._add_comparison_ops()
 TensorArray._add_logical_ops()
-
-
-@PublicAPI(stability="beta")
-def is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
-    """Return whether the provided NumPy ndarray is representing a variable-shaped
-    tensor.
-
-    NOTE: This is an O(rows) check.
-    """
-    if arr.dtype.type is not np.object_:
-        return False
-    if len(arr) == 0:
-        return False
-    if not isinstance(arr[0], np.ndarray):
-        return False
-    shape = arr[0].shape
-    for a in arr[1:]:
-        if not isinstance(a, np.ndarray):
-            return False
-        if a.shape != shape:
-            return True
-    return True
 
 
 @PublicAPI(stability="beta")
