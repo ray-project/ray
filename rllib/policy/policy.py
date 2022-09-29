@@ -1327,6 +1327,6 @@ class Policy(metaclass=ABCMeta):
     def __repr__(self):
         return type(self).__name__
 
-    @Deprecated(new="get_exploration_state", error=False)
+    @Deprecated(new="get_exploration_state", error=True)
     def get_exploration_info(self) -> Dict[str, TensorType]:
         return self.get_exploration_state()

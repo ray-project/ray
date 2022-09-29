@@ -515,7 +515,7 @@ class EnvRunnerV2:
             episode: EpisodeV2 = self._active_episodes[env_id]
             # If this episode is brand-new, call the episode start callback(s).
             # Note: EpisodeV2s are initialized with length=-1 (before the reset).
-            if episode.length == -1:
+            if not episode.has_init_obs():
                 self._call_on_episode_start(episode, env_id)
 
             # Episode length after this step.
@@ -610,7 +610,6 @@ class EnvRunnerV2:
                     sample_batches_by_policy[policy_id].append((agent_id, values_dict))
 
             # Run agent connectors.
-            processed = []
             for policy_id, batches in sample_batches_by_policy.items():
                 policy: Policy = self._worker.policy_map[policy_id]
                 # Collected full MultiAgentDicts for this environment.
@@ -623,24 +622,29 @@ class EnvRunnerV2:
                     AgentConnectorDataType(env_id, agent_id, data)
                     for agent_id, data in batches
                 ]
-                processed.extend(policy.agent_connectors(acd_list))
 
-            for d in processed:
-                # Record transition info if applicable.
-                if not episode.has_init_obs(d.agent_id):
-                    episode.add_init_obs(
-                        d.agent_id,
-                        d.data.raw_dict[SampleBatch.T],
-                        d.data.raw_dict[SampleBatch.NEXT_OBS],
-                    )
-                else:
-                    episode.add_action_reward_done_next_obs(d.agent_id, d.data.raw_dict)
+                # For all agents mapped to policy_id, run their data
+                # through agent_connectors.
+                processed = policy.agent_connectors(acd_list)
 
-                if not all_agents_done and not agent_dones[d.agent_id]:
-                    # Add to eval set if env is not done and this particular agent
-                    # is also not done.
-                    item = AgentConnectorDataType(d.env_id, d.agent_id, d.data)
-                    to_eval[policy_id].append(item)
+                for d in processed:
+                    # Record transition info if applicable.
+                    if not episode.has_init_obs(d.agent_id):
+                        episode.add_init_obs(
+                            d.agent_id,
+                            d.data.raw_dict[SampleBatch.T],
+                            d.data.raw_dict[SampleBatch.NEXT_OBS],
+                        )
+                    else:
+                        episode.add_action_reward_done_next_obs(
+                            d.agent_id, d.data.raw_dict
+                        )
+
+                    if not all_agents_done and not agent_dones[d.agent_id]:
+                        # Add to eval set if env is not done and this particular agent
+                        # is also not done.
+                        item = AgentConnectorDataType(d.env_id, d.agent_id, d.data)
+                        to_eval[policy_id].append(item)
 
             # Finished advancing episode by 1 step, mark it so.
             episode.step()
@@ -804,7 +808,6 @@ class EnvRunnerV2:
                 policy_id: PolicyID = new_episode.policy_for(agent_id)
                 per_policy_resetted_obs[policy_id].append((agent_id, raw_obs))
 
-            processed = []
             for policy_id, agents_obs in per_policy_resetted_obs.items():
                 policy = self._worker.policy_map[policy_id]
                 acd_list: List[AgentConnectorDataType] = [
@@ -819,16 +822,16 @@ class EnvRunnerV2:
                     for agent_id, obs in agents_obs
                 ]
                 # Call agent connectors on these initial obs.
-                processed.extend(policy.agent_connectors(acd_list))
+                processed = policy.agent_connectors(acd_list)
 
-            for d in processed:
-                # Add initial obs to buffer.
-                new_episode.add_init_obs(
-                    d.agent_id,
-                    d.data.raw_dict[SampleBatch.T],
-                    d.data.raw_dict[SampleBatch.NEXT_OBS],
-                )
-                to_eval[policy_id].append(d)
+                for d in processed:
+                    # Add initial obs to buffer.
+                    new_episode.add_init_obs(
+                        d.agent_id,
+                        d.data.raw_dict[SampleBatch.T],
+                        d.data.raw_dict[SampleBatch.NEXT_OBS],
+                    )
+                    to_eval[policy_id].append(d)
 
             # Step after adding initial obs. This will give us 0 env and agent step.
             new_episode.step()
