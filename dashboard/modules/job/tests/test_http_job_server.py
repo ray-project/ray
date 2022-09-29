@@ -1,5 +1,4 @@
 import asyncio
-import collections
 import json
 import logging
 import os
@@ -25,8 +24,7 @@ from ray._private.test_utils import (
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
 from ray.dashboard.modules.job.pydantic_models import JobDetails
-from ray.dashboard.datacenter import DataOrganizer
-from ray.dashboard.modules.job.job_head import JobHead, JobAgentSubmissionClient
+from ray.dashboard.modules.job.job_head import JobHead
 from ray.dashboard.modules.version import CURRENT_VERSION
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobStatus, JobSubmissionClient
@@ -649,36 +647,36 @@ ray.init(address="auto")
         assert f.read().strip() == "Ray rocks!"
 
 
-class MockJobHead(JobHead):
-    def __init__(self):
-        self._agents = collections.OrderedDict()
-        self._agents_pool = dict()
-
-
-class MockDataOrganizer(DataOrganizer):
-
-    agents = {}
-
-    @classmethod
-    async def get_all_agent_infos(cls):
-        return cls.agents
-
-
-class MockJobAgentSubmissionClient(JobAgentSubmissionClient):
-    def __init__(self, address, *args, **kwargs):
-        self._address = address
-
-
 @pytest.mark.asyncio
 async def test_job_head_choose_job_agent():
-    with patch(
-        "ray.dashboard.modules.job.job_head.DataOrganizer", MockDataOrganizer
-    ), patch(
-        "ray.dashboard.modules.job.job_head.JobAgentSubmissionClient",
-        MockJobAgentSubmissionClient,
-    ), patch(
-        "ray.dashboard.modules.job.job_head.dashboard_consts.CANDIDATE_AGENT_NUMBER", 2
-    ):
+    with set_env_var("CANDIDATE_AGENT_NUMBER", "2"):
+        import importlib
+
+        importlib.reload(ray.dashboard.consts)
+
+        from ray.dashboard.datacenter import DataSource
+
+        class MockJobHead(JobHead):
+            def __init__(self):
+                self._agents = dict()
+
+        DataSource.agents = {}
+        DataSource.node_id_to_ip = {}
+        job_head = MockJobHead()
+
+        def add_agent(agent):
+            node_id = agent[0]
+            node_ip = agent[1]["ipAddress"]
+            http_port = agent[1]["httpPort"]
+            grpc_port = agent[1]["grpcPort"]
+            DataSource.node_id_to_ip[node_id] = node_ip
+            DataSource.agents[node_id] = (http_port, grpc_port)
+
+        def del_agent(agent):
+            node_id = agent[0]
+            DataSource.node_id_to_ip.pop(node_id)
+            DataSource.agents.pop(node_id)
+
         agent_1 = (
             "node1",
             dict(
@@ -707,63 +705,57 @@ async def test_job_head_choose_job_agent():
             ),
         )
 
-        MockDataOrganizer.agents["node1"] = dict(
-            ipAddress="1.1.1.1",
-            httpPort=1,
-            grpcPort=1,
-            httpAddress="1.1.1.1:1",
-        )
-        job_head = MockJobHead()
+        add_agent(agent_1)
         job_agent_client = await job_head.choose_agent()
-        assert job_agent_client._address == "http://1.1.1.1:1"
+        assert job_agent_client._agent_address == "http://1.1.1.1:1"
 
-        del MockDataOrganizer.agents["node1"]
+        del_agent(agent_1)
         with pytest.raises(asyncio.TimeoutError):
             await asyncio.wait_for(job_head.choose_agent(), timeout=3)
 
-        MockDataOrganizer.agents[agent_1[0]] = agent_1[1]
-        MockDataOrganizer.agents[agent_2[0]] = agent_2[1]
-        MockDataOrganizer.agents[agent_3[0]] = agent_3[1]
+        add_agent(agent_1)
+        add_agent(agent_2)
+        add_agent(agent_3)
 
         # Theoretically, the probability of failure is 1/3^100
         addresses_1 = set()
         for address in range(100):
             job_agent_client = await job_head.choose_agent()
-            addresses_1.add(job_agent_client._address)
+            addresses_1.add(job_agent_client._agent_address)
         assert len(addresses_1) == 2
         addresses_2 = set()
         for address in range(100):
             job_agent_client = await job_head.choose_agent()
-            addresses_2.add(job_agent_client._address)
+            addresses_2.add(job_agent_client._agent_address)
         assert len(addresses_2) == 2 and addresses_1 == addresses_2
 
         for agent in [agent_1, agent_2, agent_3]:
             if f"http://{agent[1]['httpAddress']}" in addresses_2:
                 break
-        del MockDataOrganizer.agents[agent[0]]
+        del_agent(agent)
 
         # Theoretically, the probability of failure is 1/2^100
         addresses_3 = set()
         for address in range(100):
             job_agent_client = await job_head.choose_agent()
-            addresses_3.add(job_agent_client._address)
+            addresses_3.add(job_agent_client._agent_address)
         assert len(addresses_3) == 2
         assert addresses_2 - addresses_3 == {f"http://{agent[1]['httpAddress']}"}
         addresses_4 = set()
         for address in range(100):
             job_agent_client = await job_head.choose_agent()
-            addresses_4.add(job_agent_client._address)
+            addresses_4.add(job_agent_client._agent_address)
         assert addresses_4 == addresses_3
 
         for agent in [agent_1, agent_2, agent_3]:
             if f"http://{agent[1]['httpAddress']}" in addresses_4:
                 break
-        del MockDataOrganizer.agents[agent[0]]
+        del_agent(agent)
         address = None
         for _ in range(3):
             job_agent_client = await job_head.choose_agent()
-            assert address is None or address == job_agent_client._address
-            address = job_agent_client._address
+            assert address is None or address == job_agent_client._agent_address
+            address = job_agent_client._agent_address
 
 
 if __name__ == "__main__":
