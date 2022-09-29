@@ -316,6 +316,69 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     #         ray.get(ref)
 
 
+def test_dynamic_generator_reconstruction_fails(ray_start_cluster):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "max_direct_call_object_size": 100,
+        "task_retry_delay_ms": 100,
+        "object_timeout_milliseconds": 200,
+        "fetch_warn_timeout_milliseconds": 1000,
+    }
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=1,
+        _system_config=config,
+        enable_object_reconstruction=True,
+        resources={"head": 1},
+    )
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=1, resources={"head": 1})
+    class FailureSignal:
+        def __init__(self):
+            return
+
+        def ping(self):
+            return
+
+    @ray.remote(num_returns="dynamic")
+    def dynamic_generator(failure_signal):
+        num_returns = 10
+        for i in range(num_returns):
+            yield np.ones(1_000_000, dtype=np.int8) * i
+            if i == num_returns // 2:
+                # If this is the re-execution, fail the worker after partial yield.
+                try:
+                    ray.get(failure_signal.ping.remote())
+                except ray.exceptions.RayActorError:
+                    sys.exit(-1)
+
+    @ray.remote
+    def fetch(*refs):
+        pass
+
+    failure_signal = FailureSignal.remote()
+    gen = ray.get(dynamic_generator.remote(failure_signal))
+    refs = list(gen)
+    ray.get(fetch.remote(*refs))
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    done = fetch.remote(*refs)
+
+    ray.kill(failure_signal)
+    # Make sure we can get the error.
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        for ref in refs:
+            ray.get(ref)
+    # Make sure other tasks can also get the error.
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(done)
+
+
 def test_dynamic_empty_generator_reconstruction_nondeterministic(ray_start_cluster):
     config = {
         "num_heartbeats_timeout": 10,

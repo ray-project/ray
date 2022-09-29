@@ -57,8 +57,7 @@ class TaskFinisherInterface {
   virtual void FailPendingTask(const TaskID &task_id,
                                rpc::ErrorType error_type,
                                const Status *status = nullptr,
-                               const rpc::RayErrorInfo *ray_error_info = nullptr,
-                               bool mark_task_object_failed = true) = 0;
+                               const rpc::RayErrorInfo *ray_error_info = nullptr) = 0;
 
   virtual bool FailOrRetryPendingTask(const TaskID &task_id,
                                       rpc::ErrorType error_type,
@@ -75,11 +74,6 @@ class TaskFinisherInterface {
   virtual void MarkDependenciesResolved(const TaskID &task_id) = 0;
 
   virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
-
-  virtual void MarkTaskReturnObjectsFailed(
-      const TaskSpecification &spec,
-      rpc::ErrorType error_type,
-      const rpc::RayErrorInfo *ray_error_info = nullptr) = 0;
 
   virtual absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
 
@@ -186,7 +180,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Nullptr means that there's no error information.
   /// TODO(sang): Remove nullptr case. Every error message should have metadata.
   /// \param[in] mark_task_object_failed whether or not it marks the task
-  /// return object as failed.
+  /// return object as failed. If this is set to false, then the caller is
+  /// responsible for later failing or completing the task.
   /// \return Whether the task will be retried or not.
   bool FailOrRetryPendingTask(const TaskID &task_id,
                               rpc::ErrorType error_type,
@@ -207,8 +202,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   void FailPendingTask(const TaskID &task_id,
                        rpc::ErrorType error_type,
                        const Status *status = nullptr,
-                       const rpc::RayErrorInfo *ray_error_info = nullptr,
-                       bool mark_task_object_failed = true) override;
+                       const rpc::RayErrorInfo *ray_error_info = nullptr) override;
 
   /// Treat a pending task's returned Ray object as failed. The lock should not be held
   /// when calling this method because it may trigger callbacks in this or other classes.
@@ -219,7 +213,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   void MarkTaskReturnObjectsFailed(
       const TaskSpecification &spec,
       rpc::ErrorType error_type,
-      const rpc::RayErrorInfo *ray_error_info = nullptr) override LOCKS_EXCLUDED(mu_);
+      const rpc::RayErrorInfo *ray_error_info,
+      const absl::flat_hash_set<ObjectID> &store_in_plasma_ids) LOCKS_EXCLUDED(mu_);
 
   /// A task's dependencies were inlined in the task spec. This will decrement
   /// the ref count for the dependency IDs. If the dependencies contained other
@@ -400,6 +395,20 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       bool release_lineage,
       const rpc::Address &worker_addr,
       const ReferenceCounter::ReferenceTableProto &borrowed_refs);
+
+  // Get the objects that were stored in plasma upon the first successful
+  // execution of this task. If the task is re-executed, these objects should
+  // get stored in plasma again, even if they are small and were returned
+  // directly in the worker's reply. This ensures that any reference holders
+  // that are already scheduled at the raylet can retrieve these objects
+  // through plasma.
+  // \param[in] task_id The task ID.
+  // \param[out] first_execution Whether the task has been successfully
+  // executed before. If this is false, then the objects to store in plasma
+  // will be empty.
+  // \param [out] Return objects that should be stored in plasma.
+  absl::flat_hash_set<ObjectID> GetTaskReturnObjectsToStoreInPlasma(
+      const TaskID &task_id, bool *first_execution = nullptr) const LOCKS_EXCLUDED(mu_);
 
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);
