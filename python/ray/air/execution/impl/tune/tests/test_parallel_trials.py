@@ -45,14 +45,14 @@ _empty_train_class = wrap_function(_empty_train_fn)
 @pytest.mark.parametrize("max_pending_trials", [1, 2, 10])
 def test_max_pending_trials(ray_start_local, tune_setup, max_pending_trials):
     """Tests that the trial queue is filling with PENDING trials up to
-    max_pending_trials
+    `max_pending_trials`.
 
     Legacy test: test_trial_runner::TrialRunnerTest::testQueueFilling
 
     - Cluster has 4 CPUs, 2 GPUs
     - We request 10 trials with 2 CPUs each
     - We run until end
-    - Assert that we had at least 8 pending trials at some point.
+    - Assert that we had max ` max_pending_trials` pending trials at every point.
     """
     resource_manager, search_alg, trial_states, controller = tune_setup
     controller._max_pending_trials = max_pending_trials
