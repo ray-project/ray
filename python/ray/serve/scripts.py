@@ -445,6 +445,12 @@ def shutdown(address: str, yes: bool):
     help=APP_DIR_HELP_STR,
 )
 @click.option(
+    "--kubernetes",
+    "-k",
+    is_flag=True,
+    help="Print Serve config in Kubernetes format.",
+)
+@click.option(
     "--output-path",
     "-o",
     default=None,
@@ -454,7 +460,7 @@ def shutdown(address: str, yes: bool):
         "If not provided, the config will be printed to STDOUT."
     ),
 )
-def build(import_path: str, app_dir: str, output_path: Optional[str]):
+def build(import_path: str, app_dir: str, yes: bool, output_path: Optional[str]):
     sys.path.insert(0, app_dir)
 
     node: Union[ClassNode, FunctionNode] = import_attr(import_path)
