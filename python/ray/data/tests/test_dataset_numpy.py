@@ -270,3 +270,9 @@ def test_numpy_write_block_path_provider(
     assert arr1.sum() == 10
     assert arr2.sum() == 35
     np.testing.assert_equal(ds.take(1), [np.array([0])])
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
