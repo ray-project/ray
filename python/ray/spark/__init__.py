@@ -43,8 +43,11 @@ def wait_ray_node_available(hostname, port, timeout, error_on_failure):
         raise RuntimeError(error_on_failure)
 
 
-
 class RayClusterOnSpark:
+    """
+    The class is the type of instance returned by `init_cluster` API.
+    It can be used to shutdown the cluster.
+    """
 
     def __init__(self, address, head_proc, spark_job_group_id):
         self.address = address
@@ -52,6 +55,9 @@ class RayClusterOnSpark:
         self.spark_job_group_id = spark_job_group_id
 
     def shutdown(self):
+        """
+        Shutdown the ray cluster created by `init_cluster` API.
+        """
         get_spark_session().sparkContext.cancelJobGroup(self.spark_job_group_id)
         self.head_proc.kill()
 
@@ -61,6 +67,18 @@ def _convert_ray_node_options(options):
 
 
 def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
+    """
+    Initialize a ray cluster on the spark cluster, via creating a background spark barrier
+    mode job and each spark task running a ray worker node, and in spark driver side
+    a ray head node is started. And then connect to the created ray cluster.
+
+    Args
+        num_spark_tasks: Specify the spark task number the spark job will create.
+            This argument controls how many resources (CPU / GPU / memory) the ray cluster
+            can use.
+        head_options: A dict representing Ray head node options.
+        worker_options: A dict representing Ray worker node options.
+    """
     import ray
     from pyspark.util import inheritable_thread_target
 
