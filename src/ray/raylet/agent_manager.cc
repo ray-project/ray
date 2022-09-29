@@ -26,7 +26,7 @@
 namespace ray {
 namespace raylet {
 
-void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
+void AgentManager::HandleRegisterAgent(rpc::RegisterAgentRequest request,
                                        rpc::RegisterAgentReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
   reported_agent_ip_address_ = request.agent_ip_address();

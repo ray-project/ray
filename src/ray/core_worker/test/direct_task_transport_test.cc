@@ -46,6 +46,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             TaskID::Nil(),
                             empty_address,
                             1,
+                            false,
                             resources,
                             resources,
                             serialized_runtime_env,
@@ -100,7 +101,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_tasks_complete++;
   }
 
-  bool RetryTaskIfPossible(const TaskID &task_id) override {
+  bool RetryTaskIfPossible(const TaskID &task_id, bool task_failed_due_to_oom) override {
     num_task_retries_attempted++;
     return false;
   }
@@ -167,6 +168,15 @@ class MockRayletClient : public WorkerLeaseInterface {
       }
     }
     return Status::OK();
+  }
+
+  void GetTaskFailureCause(
+      const TaskID &task_id,
+      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
+      override {
+    ray::rpc::GetTaskFailureCauseReply reply;
+    callback(Status::OK(), reply);
+    num_get_task_failure_causes += 1;
   }
 
   void ReportWorkerBacklog(
@@ -283,10 +293,13 @@ class MockRayletClient : public WorkerLeaseInterface {
   int num_workers_returned_exiting = 0;
   int num_workers_disconnected = 0;
   int num_leases_canceled = 0;
+  int num_get_task_failure_causes = 0;
   int reported_backlog_size = 0;
   std::map<SchedulingClass, int64_t> reported_backlogs;
   std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
   std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
+  std::list<rpc::ClientCallback<rpc::GetTaskFailureCauseReply>>
+      get_task_failure_cause_callbacks = {};
 };
 
 class MockActorCreator : public ActorCreatorInterface {
@@ -543,6 +556,7 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+  ASSERT_EQ(raylet_client->num_get_task_failure_causes, 1);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 
