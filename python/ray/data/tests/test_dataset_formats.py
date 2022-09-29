@@ -17,6 +17,7 @@ from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource import (
     Datasource,
     DummyOutputDatasource,
+    MongoDatasource,
     SimpleTensorFlowDatasource,
     SimpleTorchDatasource,
     WriteResult,
@@ -111,6 +112,7 @@ def test_get_internal_block_refs(ray_start_regular_shared):
 
 def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     """Same as `test_parquet_write` but using a custom, fsspec filesystem.
+
     TODO (Alex): We should write a similar test with a mock PyArrow fs, but
     unfortunately pa.fs._MockFileSystem isn't serializable, so this may require
     some effort.
@@ -406,6 +408,95 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
     assert list(df["float_list"]) == [[1.0, 2.0, 3.0, 4.0]]
     assert list(df["bytes"]) == [b"abc"]
     assert list(df["bytes_list"]) == [[b"abc", b"1234"]]
+
+
+def test_mongo_datasource(ray_start_regular_shared):
+    import pymongo
+    from pymongoarrow.api import Schema
+
+    # Setup mongodb.
+    mongo_url = "mongodb://localhost:27017"
+    client = pymongo.MongoClient(mongo_url)
+    foo_db = "foo-db"
+    foo_collection = "foo-collection"
+    foo = client[foo_db][foo_collection]
+    foo.delete_many({})
+
+    # Test docs.
+    docs = [
+        {"title": "MongoDB Datasource test", "partition_key": key} for key in range(4)
+    ]
+    df = pd.DataFrame(docs)
+    foo.insert_many(docs)
+
+    def formulate_query(x, y):
+        # Range query for [x, y) on partition_key field.
+        return [{"$match": {"partition_key": {"$gte": x, "$lt": y}}}]
+
+    # Create two queries, i.e. two blocks for Dataset.
+    queries = [formulate_query(0, 2), formulate_query(2, 4)]
+
+    # Read with schema inference, which will read all columns (including the auto
+    # generated internal column "_id").
+    ds = ray.data.read_datasource(
+        MongoDatasource(),
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
+        pipelines=queries,
+        schema=None,
+        kwargs={},
+    ).fully_executed()
+    assert ds._block_num_rows() == [2, 2]
+    assert str(ds) == (
+        "Dataset(num_blocks=2, num_rows=4, "
+        "schema={_id: fixed_size_binary[12], title: string, partition_key: int32})"
+    )
+
+    # Read with a specified schema.
+    schema = Schema({"title": pa.string(), "partition_key": pa.int64()})
+    ds = ray.data.read_datasource(
+        MongoDatasource(),
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
+        pipelines=queries,
+        schema=schema,
+        kwargs={},
+    ).fully_executed()
+    assert ds._block_num_rows() == [2, 2]
+    assert str(ds) == (
+        "Dataset(num_blocks=2, num_rows=4, "
+        "schema={title: string, partition_key: int64})"
+    )
+    assert df.equals(ds.to_pandas())
+
+    # Add a column and then write back to MongoDB.
+    ds2 = ds.add_column("new_col", lambda df: 2 * df["partition_key"])
+    ds2.write_mongo(uri=mongo_url, database=foo_db, collection=foo_collection)
+
+    # Read again to verify the content.
+    ds3 = ray.data.read_datasource(
+        MongoDatasource(),
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
+        pipelines=queries,
+        schema=None,
+        kwargs={},
+    )
+    assert str(ds3) == (
+        "Dataset(num_blocks=2, num_rows=None, "
+        "schema={_id: fixed_size_binary[12], title: string, partition_key: int32, "
+        "new_col: int32})"
+    )
+    ds3.to_pandas().equals(ds2.to_pandas)
+
+    # list is not supported (yet) in pymongoarrow.
+    with pytest.raises(ValueError):
+        ray.data.range(10).write_mongo(
+            uri=mongo_url, database=foo_db, collection=foo_collection
+        )
 
 
 if __name__ == "__main__":
