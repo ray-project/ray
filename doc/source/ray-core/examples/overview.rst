@@ -14,12 +14,19 @@ Machine Learning Examples
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
+    .. link-button:: batch_prediction
+        :type: ref
+        :text: Build Batch Prediction Using Ray
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
     .. link-button:: batch_training
         :type: ref
         :text: Build Batch Training Using Ray
         :classes: btn-link btn-block stretched-link
-    ---
-
     ---
     :img-top: images/param_actor.png
 
