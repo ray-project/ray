@@ -27,6 +27,7 @@ PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
 
 DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
+GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR = "RAY_METRICS_GRAFANA_DASHBOARD_OUTPUT_DIR"
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
 GRAFANA_HEALTHCHECK_PATH = f"api/health"
 
@@ -36,9 +37,10 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         default_metrics_root = os.path.join(self._dashboard_head.session_dir, "metrics")
-        self.metrics_root = os.environ.get(
+        self._metrics_root = os.environ.get(
             METRICS_OUTPUT_ROOT_ENV_VAR, default_metrics_root
         )
+        self._grafana_dashboard_output_dir = os.environ.get(GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR)
         self._session = aiohttp.ClientSession()
 
     @routes.get("/api/grafana_health")
@@ -77,7 +79,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         """
         Creates the grafana configurations that are by default provided by Ray.
         """
-        grafana_config_output_path = os.path.join(self.metrics_root, "grafana")
+        grafana_config_output_path = os.path.join(self._metrics_root, "grafana")
 
         # Copy default grafana configurations
         if os.path.exists(grafana_config_output_path):
@@ -104,12 +106,21 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         ) as f:
             f.write(GRAFANA_DATASOURCE_TEMPLATE.format(prometheus_host=prometheus_host))
 
+        # Output the dashboards in a special directory
+        if self._grafana_dashboard_output_dir:
+            grafana_dashboards_dir = os.path.join(GRAFANA_CONFIG_INPUT_PATH, "dashboards")
+            # Copy all dashboard jsons from directory
+            for root, _, files in os.walk(grafana_dashboards_dir):
+                for file in files:
+                    shutil.copy2(os.path.join(root, file), os.path.join(self._grafana_dashboard_output_dir, file))
+
+
     def _create_default_prometheus_configs(self):
         """
         Creates the prometheus configurations that are by default provided by Ray.
         """
         prometheus_config_output_path = os.path.join(
-            self.metrics_root, "prometheus", "prometheus.yml"
+            self._metrics_root, "prometheus", "prometheus.yml"
         )
 
         # Copy default prometheus configurations
@@ -123,5 +134,5 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self._create_default_prometheus_configs()
 
         logger.info(
-            f"Generated prometheus and grafana configurations in: {self.metrics_root}"
+            f"Generated prometheus and grafana configurations in: {self._metrics_root}"
         )
