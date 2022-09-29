@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
 from typing import Callable, Dict, Optional, Type, Union
+import warnings
 
 import ray
 from ray.air._internal.util import StartTraceback, RunnerThread
@@ -28,6 +29,7 @@ from ray.train.constants import (
 )
 from ray.train.error import SessionMisuseError
 from ray.train.session import _TrainSessionImpl
+from ray.util import log_once
 
 
 class TrainingResultType(Enum):
@@ -300,6 +302,21 @@ class _TrainSession:
                 self._encode_data_fn(checkpoint.to_dict())
             )
             encoded = True
+
+        if checkpoint and type(checkpoint) is Checkpoint:
+            intended_checkpoint_class = self._get_checkpoint_class_fn({})
+            if intended_checkpoint_class is not Checkpoint:
+                if log_once("bad_checkpoint_type"):
+                    warnings.warn(
+                        f"You have reported a checkpoint with the `{Checkpoint}` "
+                        "type, but the intended checkpoint type for the Trainer "
+                        f"you are using is `{intended_checkpoint_class}`. Not using "
+                        "the intended checkpoint type may cause issues or "
+                        "exceptions, especially during serialization and "
+                        "deserialization. The checkpoint type will be changed "
+                        "automatically. This behavior may change in the future."
+                    )
+                checkpoint.__class__ = intended_checkpoint_class
 
         result = TrainingResult(
             TrainingResultType.CHECKPOINT,
