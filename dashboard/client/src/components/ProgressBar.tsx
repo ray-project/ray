@@ -216,6 +216,7 @@ const LegendTooltip = ({
   if (showTooltip) {
     return (
       <StyledTooltip
+        placement="right"
         title={
           <Paper>
             <div className={classes.legendItemContainer}>

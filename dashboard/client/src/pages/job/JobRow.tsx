@@ -31,7 +31,11 @@ export const JobRow = ({
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">{status}</TableCell>
       <TableCell align="center">
-        {progress && !error ? <MiniTaskProgressBar {...progress} /> : "-"}
+        {progress && !error ? (
+          <MiniTaskProgressBar {...progress} />
+        ) : (
+          "unavailable"
+        )}
       </TableCell>
       <TableCell align="center">
         {/* TODO(aguo): Also show logs for the job id instead
