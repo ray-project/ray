@@ -203,7 +203,6 @@ def serve_start(
         "max_concurrency": CONTROLLER_MAX_CONCURRENCY,
     }
 
-    print("FLAG_DISABLE_HTTP_PROXY: ", FLAG_DISABLE_HTTP_PROXY)
     if FLAG_DISABLE_HTTP_PROXY:
         controller = ServeController.options(**controller_actor_options).remote(
             controller_name,

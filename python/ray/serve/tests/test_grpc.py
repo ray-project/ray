@@ -114,7 +114,7 @@ def test_schemas_attach_grpc_server():
 
     # Failed with initiate solely
     with pytest.raises(RayServeException):
-        ingress = gRPCIngress()
+        _ = gRPCIngress()
 
     class MyDriver(gRPCIngress):
         def __init__(self):
@@ -122,7 +122,7 @@ def test_schemas_attach_grpc_server():
 
     # Failed with no schema gRPC binding function
     with pytest.raises(RayServeException):
-        my_driver = MyDriver()
+        _ = MyDriver()
 
 
 if __name__ == "__main__":

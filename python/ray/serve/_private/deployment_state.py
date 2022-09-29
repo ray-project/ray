@@ -1643,11 +1643,15 @@ class DriverDeploymentState(DeploymentState):
         detached: bool,
         long_poll_host: LongPollHost,
         _save_checkpoint_func: Callable,
+        gcs_client: GcsClient = None,
     ):
         super().__init__(
             name, controller_name, detached, long_poll_host, _save_checkpoint_func
         )
-        self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+        if gcs_client:
+            self._gcs_client = gcs_client
+        else:
+            self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
     def _get_all_node_ids(self):
         # Test mock purpose
