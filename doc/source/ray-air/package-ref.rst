@@ -74,6 +74,15 @@ Feature Scalers
 .. autoclass:: ray.data.preprocessors.StandardScaler
     :show-inheritance:
 
+K-Bins Discretizers
+###################
+
+.. autoclass:: ray.data.preprocessors.CustomKBinsDiscretizer
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.UniformKBinsDiscretizer
+    :show-inheritance:
+
 Text Encoders
 #############
 

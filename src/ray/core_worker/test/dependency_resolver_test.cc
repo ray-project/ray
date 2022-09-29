@@ -41,6 +41,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             TaskID::Nil(),
                             empty_address,
                             1,
+                            false,
                             resources,
                             resources,
                             serialized_runtime_env,
@@ -64,7 +65,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_tasks_complete++;
   }
 
-  bool RetryTaskIfPossible(const TaskID &task_id) override {
+  bool RetryTaskIfPossible(const TaskID &task_id, bool task_failed_due_to_oom) override {
     num_task_retries_attempted++;
     return false;
   }

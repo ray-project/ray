@@ -34,19 +34,20 @@
 namespace ray {
 namespace core {
 
-/// Extract a key to identify a Address so that the flyweight can look 
+/// Extract a key to identify a Address so that the flyweight can look
 /// up the Address from the pool.
 struct AddressWorkeridExtractor {
-  const std::string& operator()(const rpc::Address& addr)const
-  {
+  const std::string &operator()(const rpc::Address &addr) const {
     return addr.worker_id();
   }
 };
 
-/// Since the owner address has high redundency across objects, 
+/// Since the owner address has high redundency across objects,
 /// we use boost::flyweight to maintain an intern table to reduce
-/// memory footprint per object. 
-typedef boost::flyweight<boost::flyweights::key_value<std::string,rpc::Address,AddressWorkeridExtractor>> InternAddress;
+/// memory footprint per object.
+typedef boost::flyweight<
+    boost::flyweights::key_value<std::string, rpc::Address, AddressWorkeridExtractor>>
+    InternAddress;
 
 // Interface for mocking.
 class ReferenceCounterInterface {
@@ -206,6 +207,17 @@ class ReferenceCounter : public ReferenceCounterInterface,
                       bool add_local_ref,
                       const absl::optional<NodeID> &pinned_at_raylet_id =
                           absl::optional<NodeID>()) LOCKS_EXCLUDED(mutex_);
+
+  /// Add an owned object that was dynamically created. These are objects that
+  /// were created by a task that we called, but that we own.
+  ///
+  /// \param[in] object_id The ID of the object that we now own.
+  /// \param[in] generator_id The ID of the object that wraps the dynamically
+  /// created object ref. This should be an object that we own, and we will
+  /// update its ref count info to show that it contains the dynamically
+  /// created ObjectID.
+  void AddDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Update the size of the object.
   ///
@@ -573,7 +585,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
         : call_site(call_site),
           object_size(object_size),
           owner_address(owner_address),
-          pinned_at_raylet_id(boost::flyweight<NodeID>(pinned_at_raylet_id.value_or(NodeID::Nil()))),
+          pinned_at_raylet_id(
+              boost::flyweight<NodeID>(pinned_at_raylet_id.value_or(NodeID::Nil()))),
           owned_by_us(true),
           is_reconstructable(is_reconstructable),
           foreign_owner_already_monitoring(false),
@@ -751,6 +764,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
   using ReferenceProtoTable = absl::flat_hash_map<ObjectID, rpc::ObjectReferenceCount>;
+
+  bool AddOwnedObjectInternal(const ObjectID &object_id,
+                              const std::vector<ObjectID> &contained_ids,
+                              const rpc::Address &owner_address,
+                              const std::string &call_site,
+                              const int64_t object_size,
+                              bool is_reconstructable,
+                              bool add_local_ref,
+                              const absl::optional<NodeID> &pinned_at_raylet_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);

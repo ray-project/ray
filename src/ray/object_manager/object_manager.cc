@@ -556,7 +556,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
 }
 
 /// Implementation of ObjectManagerServiceHandler
-void ObjectManager::HandlePush(const rpc::PushRequest &request,
+void ObjectManager::HandlePush(rpc::PushRequest request,
                                rpc::PushReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
@@ -629,7 +629,7 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
   }
 }
 
-void ObjectManager::HandlePull(const rpc::PullRequest &request,
+void ObjectManager::HandlePull(rpc::PullRequest request,
                                rpc::PullReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
@@ -642,7 +642,7 @@ void ObjectManager::HandlePull(const rpc::PullRequest &request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void ObjectManager::HandleFreeObjects(const rpc::FreeObjectsRequest &request,
+void ObjectManager::HandleFreeObjects(rpc::FreeObjectsRequest request,
                                       rpc::FreeObjectsReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> object_ids;

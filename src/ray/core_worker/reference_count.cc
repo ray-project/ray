@@ -198,10 +198,60 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       bool is_reconstructable,
                                       bool add_local_ref,
                                       const absl::optional<NodeID> &pinned_at_raylet_id) {
-  RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
-  RAY_CHECK(object_id_refs_.count(object_id) == 0)
+  RAY_CHECK(AddOwnedObjectInternal(object_id,
+                                   inner_ids,
+                                   owner_address,
+                                   call_site,
+                                   object_size,
+                                   is_reconstructable,
+                                   add_local_ref,
+                                   pinned_at_raylet_id))
       << "Tried to create an owned object that already exists: " << object_id;
+}
+
+void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
+                                        const ObjectID &generator_id) {
+  absl::MutexLock lock(&mutex_);
+  auto outer_it = object_id_refs_.find(generator_id);
+  if (outer_it == object_id_refs_.end()) {
+    // Outer object already went out of scope. Either:
+    // 1. The inner object was never deserialized and has already gone out of
+    // scope.
+    // 2. The inner object was deserialized and we already added it as a
+    // dynamic return.
+    // Either way, we shouldn't add the inner object to the ref count.
+    return;
+  }
+  RAY_LOG(DEBUG) << "Adding dynamic return " << object_id
+                 << " contained in generator object " << generator_id;
+  RAY_CHECK(outer_it->second.owned_by_us);
+  RAY_CHECK(outer_it->second.owner_address.has_value());
+  rpc::Address owner_address(outer_it->second.owner_address.value());
+  RAY_UNUSED(AddOwnedObjectInternal(object_id,
+                                    {},
+                                    owner_address,
+                                    outer_it->second.call_site,
+                                    /*object_size=*/-1,
+                                    outer_it->second.is_reconstructable,
+                                    /*add_local_ref=*/false,
+                                    absl::optional<NodeID>()));
+  AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
+}
+
+bool ReferenceCounter::AddOwnedObjectInternal(
+    const ObjectID &object_id,
+    const std::vector<ObjectID> &inner_ids,
+    const rpc::Address &owner_address,
+    const std::string &call_site,
+    const int64_t object_size,
+    bool is_reconstructable,
+    bool add_local_ref,
+    const absl::optional<NodeID> &pinned_at_raylet_id) {
+  if (object_id_refs_.count(object_id) != 0) {
+    return false;
+  }
+  RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
@@ -233,6 +283,7 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   if (add_local_ref) {
     it->second.local_ref_count++;
   }
+  return true;
 }
 
 void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t object_size) {
@@ -680,7 +731,8 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &raylet_id) {
   absl::MutexLock lock(&mutex_);
   for (auto it = object_id_refs_.begin(); it != object_id_refs_.end(); it++) {
     const auto &object_id = it->first;
-    if (it->second.pinned_at_raylet_id.value_or(boost::flyweight<NodeID>(NodeID::Nil())) == raylet_id ||
+    if (it->second.pinned_at_raylet_id.value_or(
+            boost::flyweight<NodeID>(NodeID::Nil())) == raylet_id ||
         it->second.spilled_node_id == raylet_id) {
       ReleasePlasmaObject(it);
       if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
@@ -739,7 +791,9 @@ bool ReferenceCounter::IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id,
     if (it->second.owned_by_us) {
       *owned_by_us = true;
       *spilled = it->second.spilled;
-      *pinned_at = it->second.pinned_at_raylet_id.value_or(boost::flyweight<NodeID>(NodeID::Nil())).get();
+      *pinned_at =
+          it->second.pinned_at_raylet_id.value_or(boost::flyweight<NodeID>(NodeID::Nil()))
+              .get();
     }
     return true;
   }
@@ -809,10 +863,9 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
       RAY_LOG(WARNING)
           << "Tried to decrease ref count for object ID that has count 0 " << borrowed_id
           << ". This should only happen if ray.internal.free was called earlier.";
-      continue;
+    } else {
+      it->second.local_ref_count--;
     }
-
-    it->second.local_ref_count--;
     PRINT_REF_COUNT(it);
     if (it->second.RefCount() == 0) {
       DeleteReferenceInternal(it, deleted);
@@ -1392,7 +1445,8 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto &spilled_url = it->second.spilled_url;
   const auto &spilled_node_id = it->second.spilled_node_id;
   const auto &optional_primary_node_id = it->second.pinned_at_raylet_id;
-  const auto &primary_node_id = optional_primary_node_id.value_or(boost::flyweight<NodeID>(NodeID::Nil()));
+  const auto &primary_node_id =
+      optional_primary_node_id.value_or(boost::flyweight<NodeID>(NodeID::Nil()));
   RAY_LOG(DEBUG) << "Published message for " << object_id << ", " << locations.size()
                  << " locations, spilled url: [" << spilled_url
                  << "], spilled node ID: " << spilled_node_id
@@ -1432,7 +1486,8 @@ void ReferenceCounter::FillObjectInformationInternal(
   object_info->set_object_size(it->second.object_size);
   object_info->set_spilled_url(it->second.spilled_url);
   object_info->set_spilled_node_id(it->second.spilled_node_id.get().Binary());
-  auto primary_node_id = it->second.pinned_at_raylet_id.value_or(boost::flyweight<NodeID>(NodeID::Nil()));
+  auto primary_node_id =
+      it->second.pinned_at_raylet_id.value_or(boost::flyweight<NodeID>(NodeID::Nil()));
   object_info->set_primary_node_id(primary_node_id.get().Binary());
   object_info->set_pending_creation(it->second.pending_creation);
 }

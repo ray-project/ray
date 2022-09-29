@@ -322,6 +322,16 @@ def test_path_partition_parser_dir(fs, base_dir):
     partitioned_path = posixpath.join(base_dir, "2/1/test")
     assert partition_parser(partitioned_path) == {"bar": "2", "foo": "1"}
 
+    partition_parser = PathPartitionParser.of(
+        PartitionStyle.DIRECTORY,
+        base_dir=base_dir,
+        field_names=["year", None, "country"],
+        filesystem=fs,
+    )
+
+    partitioned_path = posixpath.join(base_dir, "1970/countries/fr/products.csv")
+    assert partition_parser(partitioned_path) == {"year": "1970", "country": "fr"}
+
 
 @pytest.mark.parametrize(
     "fs,base_dir",
