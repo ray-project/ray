@@ -14,6 +14,7 @@ from .utils import (
     is_in_databricks_runtime,
     get_spark_task_assigned_physical_gpus,
     get_per_spark_task_memory,
+    get_dbutils,
 )
 
 _spark_dependency_error = "ray.spark module requires pyspark >= 3.3"
@@ -211,8 +212,15 @@ def init_cluster(num_spark_tasks):
     # discover the ray cluster.
     ray.init(address=f"{ray_head_hostname}:{ray_head_port}")
 
-    # TODO:
-    #  Register databricks REPL detach event hook to shutdown the ray cluster.
+    if is_in_databricks_runtime():
+        try:
+            get_dbutils().entry_point.registerBackgroundSparkJobGroup(spark_job_group_id)
+        except Exception:
+            logging.warning(
+                "Register ray cluster spark job as background job failed. You need to manually "
+                "call `ray_cluster_on_spark.shutdown()` before detaching your databricks "
+                "python REPL."
+            )
     return RayClusterOnSpark(
         address=f"{ray_head_hostname}:{ray_head_port}",
         head_proc=ray_node_proc,
