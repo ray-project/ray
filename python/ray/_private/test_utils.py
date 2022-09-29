@@ -1457,6 +1457,24 @@ def get_local_state_client():
     return client
 
 
+def get_gcs_memory_used():
+    import psutil
+
+    m = 0
+    for process in psutil.process_iter():
+        try:
+            if process.name() in ("gcs_server", "redis-server"):
+                m += process.memory_info().rss
+        except psutil.NoSuchProcess:
+            # NOTE(rickyx):
+            # From https://psutil.readthedocs.io/en/latest/#psutil.process_iter
+            # If you’re not interested in retrieving zombies just
+            # catch NoSuchProcess.
+            continue
+
+    return m
+
+
 # Global counter to test different return values
 # for external_ray_cluster_activity_hook1.
 ray_cluster_activity_hook_counter = 0
