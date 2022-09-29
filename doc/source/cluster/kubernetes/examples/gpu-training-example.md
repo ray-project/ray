@@ -127,7 +127,7 @@ ray job submit --address http://localhost:8265 -- python -c "import ray; ray.ini
 
 ## Step 3: Run the PyTorch image training benchmark.
 We will use the [Ray Job Python SDK](https://docs.ray.io/en/latest/cluster/running-applications/job-submission/sdk.html#ray-job-sdk) to submit the PyTorch workload.
-The following code is `pytorch_training_e2e_submit.py`.
+
 ```python
 from ray.job_submission import JobSubmissionClient
 
