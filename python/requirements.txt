@@ -53,7 +53,6 @@ gradio; platform_system != "Windows"
 async-exit-stack
 async-generator
 asyncmock
-autorom[accept-rom-license]
 azure-cli-core==2.29.1
 azure-identity==1.7.0
 azure-mgmt-compute==23.1.0
@@ -69,7 +68,6 @@ feather-format
 google-api-python-client
 google-cloud-storage
 gym-minigrid==1.0.3
-gym[atari]
 kubernetes
 # higher version of llvmlite breaks windows
 llvmlite==0.34.0
