@@ -105,7 +105,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
     ):
         def __init__(
             self,
-            obs_space,
+            observation_space,
             action_space,
             config,
             existing_model=None,
@@ -122,18 +122,20 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             # that base.__init__ will use the make_model() call.
             VTraceClipGradients.__init__(self)
             VTraceOptimizer.__init__(self)
-            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
 
             # Initialize base class.
             base.__init__(
                 self,
-                obs_space,
+                observation_space,
                 action_space,
                 config,
                 existing_inputs=existing_inputs,
                 existing_model=existing_model,
             )
 
+            # TF LearningRateSchedule depends on self.framework, so initialize
+            # after base.__init__() is called.
+            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
             EntropyCoeffSchedule.__init__(
                 self, config["entropy_coeff"], config["entropy_coeff_schedule"]
             )
@@ -146,7 +148,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             self.maybe_initialize_optimizer_and_loss()
 
             # Initiate TargetNetwork ops after loss initialization.
-            TargetNetworkMixin.__init__(self, obs_space, action_space, config)
+            TargetNetworkMixin.__init__(self, observation_space, action_space, config)
 
         @override(base)
         def make_model(self) -> ModelV2:

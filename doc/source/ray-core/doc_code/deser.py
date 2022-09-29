@@ -8,7 +8,10 @@ def f(arr):
     arr[0] = 1
 
 
-ray.get(f.remote(np.zeros(100)))
+try:
+    ray.get(f.remote(np.zeros(100)))
+except ray.exceptions.RayTaskError as e:
+    print(e)
 # ray.exceptions.RayTaskError(ValueError): ray::f()
 #   File "test.py", line 6, in f
 #     arr[0] = 1

@@ -104,6 +104,13 @@ _common_options = {
 }
 
 
+def issubclass_safe(obj: Any, cls_: type) -> bool:
+    try:
+        return issubclass(obj, cls_)
+    except TypeError:
+        return False
+
+
 _task_only_options = {
     "max_calls": _counting_option("max_calls", False, default_value=0),
     # Normal tasks may be retried on failure this many times.
@@ -113,13 +120,30 @@ _task_only_options = {
     ),
     # override "_common_options"
     "num_cpus": _resource_option("num_cpus", default_value=1),
-    "num_returns": _counting_option("num_returns", False, default_value=1),
+    "num_returns": Option(
+        (int, str, type(None)),
+        lambda x: x is None or x == "dynamic" or x >= 0,
+        "The keyword 'num_returns' only accepts None, a non-negative integer, or "
+        '"dynamic" (for generators)',
+        default_value=1,
+    ),
     "object_store_memory": Option(  # override "_common_options"
         (int, type(None)),
         lambda x: x is None,
         "Setting 'object_store_memory' is not implemented for tasks",
     ),
-    "retry_exceptions": Option(bool, default_value=False),
+    "retry_exceptions": Option(
+        (bool, list, tuple),
+        lambda x: (
+            isinstance(x, bool)
+            or (
+                isinstance(x, (list, tuple))
+                and all(issubclass_safe(x_, Exception) for x_ in x)
+            )
+        ),
+        "retry_exceptions must be either a boolean or a list of exceptions",
+        default_value=False,
+    ),
 }
 
 _actor_only_options = {

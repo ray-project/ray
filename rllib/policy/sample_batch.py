@@ -49,6 +49,10 @@ class SampleBatch(dict):
     OBS_EMBEDS = "obs_embeds"
     T = "t"
 
+    # decision transformer
+    RETURNS_TO_GO = "returns_to_go"
+    ATTENTION_MASKS = "attention_masks"
+
     # Extra action fetches keys.
     ACTION_DIST_INPUTS = "action_dist_inputs"
     ACTION_PROB = "action_prob"
@@ -335,9 +339,12 @@ class SampleBatch(dict):
         return self
 
     @PublicAPI
-    def split_by_episode(self) -> List["SampleBatch"]:
+    def split_by_episode(self, key: Optional[str] = None) -> List["SampleBatch"]:
         """Splits by `eps_id` column and returns list of new batches.
         If `eps_id` is not present, splits by `dones` instead.
+
+        Args:
+            key: If specified, overwrite default and use key to split.
 
         Returns:
             List of batches, one per distinct episode.
@@ -370,8 +377,8 @@ class SampleBatch(dict):
             [{"a": [1, 2, 3, 4, 5], "dones": [0, 0, 0, 0, 0]}]
         """
 
-        slices = []
-        if SampleBatch.EPS_ID in self:
+        def slice_by_eps_id():
+            slices = []
             # Produce a new slice whenever we find a new episode ID.
             cur_eps_id = self[SampleBatch.EPS_ID][0]
             offset = 0
@@ -383,9 +390,10 @@ class SampleBatch(dict):
                     cur_eps_id = next_eps_id
             # Add final slice.
             slices.append(self[offset : self.count])
+            return slices
 
-        # No eps_id in data -> split by dones instead
-        elif SampleBatch.DONES in self:
+        def slice_by_dones():
+            slices = []
             offset = 0
             for i in range(self.count):
                 if self[SampleBatch.DONES][i]:
@@ -397,8 +405,30 @@ class SampleBatch(dict):
             # Add final slice.
             if offset != self.count:
                 slices.append(self[offset:])
+            return slices
+
+        key_to_method = {
+            SampleBatch.EPS_ID: slice_by_eps_id,
+            SampleBatch.DONES: slice_by_dones,
+        }
+
+        # If key not specified, default to this order.
+        key_resolve_order = [SampleBatch.EPS_ID, SampleBatch.DONES]
+
+        slices = None
+        if key is not None:
+            # If key specified, directly use it.
+            if key not in self:
+                raise KeyError(f"{self} does not have key `{key}`!")
+            slices = key_to_method[key]()
         else:
-            raise KeyError(f"{self} does not have `eps_id` or `dones`!")
+            # If key not specified, go in order.
+            for key in key_resolve_order:
+                if key in self:
+                    slices = key_to_method[key]()
+                    break
+            if slices is None:
+                raise KeyError(f"{self} does not have keys {key_resolve_order}!")
 
         assert (
             sum(s.count for s in slices) == self.count
@@ -638,8 +668,7 @@ class SampleBatch(dict):
         if framework == "torch":
             assert torch is not None
             for k, v in self.items():
-                if isinstance(v, np.ndarray) and v.dtype != object:
-                    self[k] = convert_to_torch_tensor(v, device)
+                self[k] = convert_to_torch_tensor(v, device)
         else:
             raise NotImplementedError
         return self
@@ -1250,6 +1279,10 @@ class MultiAgentBatch:
             This very instance of MultiAgentBatch.
         """
         return self
+
+    def __getitem__(self, key: str) -> SampleBatch:
+        """Returns the SampleBatch for the given policy id."""
+        return self.policy_batches[key]
 
     def __str__(self):
         return "MultiAgentBatch({}, env_steps={})".format(

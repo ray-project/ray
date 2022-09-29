@@ -746,6 +746,7 @@ class Policy(metaclass=ABCMeta):
         return []
 
     @DeveloperAPI
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def get_state(self) -> PolicyState:
         """Returns the entire current state of this Policy.
 
@@ -767,9 +768,9 @@ class Policy(metaclass=ABCMeta):
             # Checkpoint connectors state as well if enabled.
             connector_configs = {}
             if self.agent_connectors:
-                connector_configs["agent"] = self.agent_connectors.to_config()
+                connector_configs["agent"] = self.agent_connectors.to_state()
             if self.action_connectors:
-                connector_configs["action"] = self.action_connectors.to_config()
+                connector_configs["action"] = self.action_connectors.to_state()
             state["connector_configs"] = connector_configs
         return state
 
@@ -803,6 +804,7 @@ class Policy(metaclass=ABCMeta):
             logger.info(self.action_connectors.__str__(indentation=4))
 
     @DeveloperAPI
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def set_state(self, state: PolicyState) -> None:
         """Restores the entire current state of this Policy from `state`.
 
@@ -986,7 +988,10 @@ class Policy(metaclass=ABCMeta):
         return {
             SampleBatch.OBS: ViewRequirement(space=self.observation_space),
             SampleBatch.NEXT_OBS: ViewRequirement(
-                data_col=SampleBatch.OBS, shift=1, space=self.observation_space
+                data_col=SampleBatch.OBS,
+                shift=1,
+                space=self.observation_space,
+                used_for_compute_actions=False,
             ),
             SampleBatch.ACTIONS: ViewRequirement(
                 space=self.action_space, used_for_compute_actions=False
@@ -1003,7 +1008,7 @@ class Policy(metaclass=ABCMeta):
                 data_col=SampleBatch.REWARDS, shift=-1
             ),
             SampleBatch.DONES: ViewRequirement(),
-            SampleBatch.INFOS: ViewRequirement(),
+            SampleBatch.INFOS: ViewRequirement(used_for_compute_actions=False),
             SampleBatch.T: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
@@ -1322,6 +1327,6 @@ class Policy(metaclass=ABCMeta):
     def __repr__(self):
         return type(self).__name__
 
-    @Deprecated(new="get_exploration_state", error=False)
+    @Deprecated(new="get_exploration_state", error=True)
     def get_exploration_info(self) -> Dict[str, TensorType]:
         return self.get_exploration_state()

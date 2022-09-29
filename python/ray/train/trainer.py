@@ -10,6 +10,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import CheckpointConfig
+from ray.air._internal.util import StartTraceback
 from ray.train._internal.backend_executor import (
     BackendExecutor,
     InactiveWorkerGroupError,
@@ -755,18 +756,25 @@ class TrainingIterator:
     def __next__(self):
         if self.is_finished():
             raise StopIteration
-        next_results = self._run_with_error_handling(self._fetch_next_result)
-        if next_results is None:
-            try:
+        try:
+            next_results = self._run_with_error_handling(self._fetch_next_result)
+            if next_results is None:
                 self._final_results = self._run_with_error_handling(
                     self._finish_training
                 )
-            finally:
                 self._finished_training = True
-            raise StopIteration
-        else:
-
-            return next_results
+                raise StopIteration
+            else:
+                return next_results
+        except StartTraceback:
+            # If this is a StartTraceback, then this is a user error.
+            # We raise it directly
+            try:
+                self._backend_executor.shutdown()
+                self._finished_training = True
+            except Exception:
+                pass
+            raise
 
     def _fetch_next_result(self) -> Optional[List[Dict]]:
         """Fetch next results produced by ``train.report()`` from each worker.

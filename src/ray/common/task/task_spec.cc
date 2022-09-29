@@ -113,7 +113,13 @@ void TaskSpecification::ComputeResources() {
   if (!IsActorTask()) {
     // There is no need to compute `SchedulingClass` for actor tasks since
     // the actor tasks need not be scheduled.
-    const auto &resource_set = GetRequiredResources();
+    const bool is_actor_creation_task = IsActorCreationTask();
+    const bool should_report_placement_resources =
+        RayConfig::instance().report_actor_placement_resources();
+    const auto &resource_set =
+        (is_actor_creation_task && should_report_placement_resources)
+            ? GetRequiredPlacementResources()
+            : GetRequiredResources();
     const auto &function_descriptor = FunctionDescriptor();
     auto depth = GetDepth();
     auto sched_cls_desc = SchedulingClassDescriptor(
@@ -199,6 +205,21 @@ size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }
 
 ObjectID TaskSpecification::ReturnId(size_t return_index) const {
   return ObjectID::FromIndex(TaskId(), return_index + 1);
+}
+
+bool TaskSpecification::ReturnsDynamic() const { return message_->returns_dynamic(); }
+
+std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
+  RAY_CHECK(message_->returns_dynamic());
+  std::vector<ObjectID> dynamic_return_ids;
+  for (const auto &dynamic_return_id : message_->dynamic_return_ids()) {
+    dynamic_return_ids.push_back(ObjectID::FromBinary(dynamic_return_id));
+  }
+  return dynamic_return_ids;
+}
+
+void TaskSpecification::AddDynamicReturnId(const ObjectID &dynamic_return_id) {
+  message_->add_dynamic_return_ids(dynamic_return_id.Binary());
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
@@ -322,6 +343,10 @@ bool TaskSpecification::IsActorTask() const {
 bool TaskSpecification::IsSpreadSchedulingStrategy() const {
   return message_->scheduling_strategy().scheduling_strategy_case() ==
          rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy;
+}
+
+const std::string TaskSpecification::GetSerializedRetryExceptionAllowlist() const {
+  return message_->serialized_retry_exception_allowlist();
 }
 
 // === Below are getter methods specific to actor creation tasks.

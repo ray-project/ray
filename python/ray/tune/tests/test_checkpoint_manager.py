@@ -18,12 +18,12 @@ from ray.tune.execution.checkpoint_manager import _CheckpointManager
 class CheckpointManagerTest(unittest.TestCase):
     @staticmethod
     def mock_result(metric, i):
-        return {"i": metric, TRAINING_ITERATION: i}
+        return {"evaluation": {"episode_reward_mean": metric}, TRAINING_ITERATION: i}
 
     def checkpoint_manager(self, keep_checkpoints_num):
         return _CheckpointManager(
             keep_checkpoints_num=keep_checkpoints_num,
-            checkpoint_score_attr="i",
+            checkpoint_score_attr="evaluation/episode_reward_mean",
             delete_fn=lambda c: None,
         )
 
@@ -238,7 +238,7 @@ class CheckpointManagerTest(unittest.TestCase):
     def testSameCheckpoint(self):
         checkpoint_manager = _CheckpointManager(
             keep_checkpoints_num=1,
-            checkpoint_score_attr="i",
+            checkpoint_score_attr="evaluation/episode_reward_mean",
             delete_fn=lambda c: os.remove(c.dir_or_data),
         )
 

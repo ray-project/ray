@@ -16,6 +16,7 @@ import io.ray.serve.deployment.DeploymentCreator;
 import io.ray.serve.deployment.DeploymentRoute;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorNameList;
+import io.ray.serve.poll.LongPollClientFactory;
 import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.CommonUtil;
@@ -143,7 +144,10 @@ public class Serve {
     }
 
     client.shutdown();
+    LongPollClientFactory.stop();
+    LongPollClientFactory.clearAllCache();
     setGlobalClient(null);
+    setInternalReplicaContext(null);
   }
 
   /**

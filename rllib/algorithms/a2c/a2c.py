@@ -42,6 +42,8 @@ class A2CConfig(A3CConfig):
         >>> trainer.train()
 
     Example:
+        >>> import ray.air as air
+        >>> from ray import tune
         >>> config = A2CConfig()
         >>> # Print out some default values.
         >>> print(config.sample_async)
@@ -51,11 +53,11 @@ class A2CConfig(A3CConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "A2C",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self):
@@ -130,8 +132,34 @@ class A2C(A3C):
 
             if config["num_gpus"] > 1:
                 raise AttributeError(
-                    "A2C does not support micro-batching and multiple GPUs "
-                    "at the same time."
+                    "A2C does not support multiple GPUs when micro-batching is set."
+                )
+        else:
+            sample_batch_size = (
+                config["rollout_fragment_length"]
+                * config["num_workers"]
+                * config["num_envs_per_worker"]
+            )
+            if config["train_batch_size"] < sample_batch_size:
+                logger.warning(
+                    f"`train_batch_size` ({config['train_batch_size']}) "
+                    "cannot be smaller than sample_batch_size "
+                    "(`rollout_fragment_length` x `num_workers` x "
+                    f"`num_envs_per_worker`) ({sample_batch_size}) when micro-batching"
+                    " is not set. This is to"
+                    " ensure that only on gradient update is applied to policy in every"
+                    " iteration on the entire collected batch. As a result of we do not"
+                    " change the policy too much before we sample again and stay on"
+                    " policy as much as possible. This will help the learning"
+                    " stability."
+                    f" Setting train_batch_size = {sample_batch_size}."
+                )
+                config["train_batch_size"] = sample_batch_size
+
+            if "sgd_minibatch_size" in config:
+                raise AttributeError(
+                    "A2C does not support sgd mini batching as it will instabilize the"
+                    " training. Use `train_batch_size` instead."
                 )
 
     @override(Algorithm)
@@ -230,7 +258,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.a3c.a2c.A2C_DEFAULT_CONFIG",
         new="ray.rllib.algorithms.a2c.a2c.A2CConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

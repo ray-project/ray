@@ -44,8 +44,8 @@ class AlgorithmConfig:
         >>> config = AlgorithmConfig()
         >>> config.training(lr=tune.grid_search([0.01, 0.001]))
         >>> # Use `to_dict()` method to get the legacy plain python config dict
-        >>> # for usage with `tune.run()`.
-        >>> tune.run("[registered trainer class]", config=config.to_dict())
+        >>> # for usage with `tune.Tuner().fit()`.
+        >>> tune.Tuner("[registered trainer class]", param_space=config.to_dict()).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -158,7 +158,6 @@ class AlgorithmConfig:
         self.policy_mapping_fn = None
         self.policies_to_train = None
         self.observation_fn = None
-        self.replay_mode = "independent"
         self.count_steps_by = "env_steps"
 
         # `self.offline_data()`
@@ -180,9 +179,11 @@ class AlgorithmConfig:
         self.evaluation_parallel_to_training = False
         self.evaluation_config = {}
         self.off_policy_estimation_methods = {}
+        self.ope_split_batch_by_episode = True
         self.evaluation_num_workers = 0
         self.custom_evaluation_function = None
         self.always_attach_evaluation_results = False
+        self.enable_async_evaluation = False
         # TODO: Set this flag still in the config or - much better - in the
         #  RolloutWorker as a property.
         self.in_evaluation = False
@@ -227,6 +228,7 @@ class AlgorithmConfig:
         self.replay_batch_size = DEPRECATED_VALUE
         # -1 = DEPRECATED_VALUE is a valid value for replay_sequence_length
         self.replay_sequence_length = None
+        self.replay_mode = DEPRECATED_VALUE
         self.prioritized_replay_alpha = DEPRECATED_VALUE
         self.prioritized_replay_beta = DEPRECATED_VALUE
         self.prioritized_replay_eps = DEPRECATED_VALUE
@@ -240,7 +242,7 @@ class AlgorithmConfig:
 
         Returns:
             A complete AlgorithmConfigDict, usable in backward-compatible Tune/RLlib
-            use cases, e.g. w/ `tune.run()`.
+            use cases, e.g. w/ `tune.Tuner().fit()`.
         """
         config = copy.deepcopy(vars(self))
         config.pop("algo_class")
@@ -255,7 +257,7 @@ class AlgorithmConfig:
             config["input"] = getattr(self, "input_")
             config.pop("input_")
 
-        # Setup legacy multiagent sub-dict:
+        # Setup legacy multi-agent sub-dict:
         config["multiagent"] = {}
         for k in [
             "policies",
@@ -264,7 +266,6 @@ class AlgorithmConfig:
             "policy_mapping_fn",
             "policies_to_train",
             "observation_fn",
-            "replay_mode",
             "count_steps_by",
         ]:
             config["multiagent"][k] = config.pop(k)
@@ -449,8 +450,8 @@ class AlgorithmConfig:
 
     def environment(
         self,
-        *,
         env: Optional[Union[str, EnvType]] = None,
+        *,
         env_config: Optional[EnvConfigDict] = None,
         observation_space: Optional[gym.spaces.Space] = None,
         action_space: Optional[gym.spaces.Space] = None,
@@ -818,7 +819,7 @@ class AlgorithmConfig:
         self,
         *,
         evaluation_interval: Optional[int] = None,
-        evaluation_duration: Optional[int] = None,
+        evaluation_duration: Optional[Union[int, str]] = None,
         evaluation_duration_unit: Optional[str] = None,
         evaluation_sample_timeout_s: Optional[float] = None,
         evaluation_parallel_to_training: Optional[bool] = None,
@@ -826,9 +827,11 @@ class AlgorithmConfig:
             Union["AlgorithmConfig", PartialAlgorithmConfigDict]
         ] = None,
         off_policy_estimation_methods: Optional[Dict] = None,
+        ope_split_batch_by_episode: Optional[bool] = None,
         evaluation_num_workers: Optional[int] = None,
         custom_evaluation_function: Optional[Callable] = None,
         always_attach_evaluation_results: Optional[bool] = None,
+        enable_async_evaluation: Optional[bool] = None,
     ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
 
@@ -878,6 +881,11 @@ class AlgorithmConfig:
                 You can also add additional config arguments to be passed to the
                 OffPolicyEstimator in the dict, e.g.
                 {"qreg_dr": {"type": DoublyRobust, "q_model_type": "qreg", "k": 5}}
+            ope_split_batch_by_episode: Whether to use SampleBatch.split_by_episode() to
+                split the input batch to episodes before estimating the ope metrics. In
+                case of bandits you should make this False to see improvements in ope
+                evaluation speed. In case of bandits, it is ok to not split by episode,
+                since each record is one timestep already. The default is True.
             evaluation_num_workers: Number of parallel workers to use for evaluation.
                 Note that this is set to zero by default, which means evaluation will
                 be run in the algorithm process (only if evaluation_interval is not
@@ -893,6 +901,10 @@ class AlgorithmConfig:
                 results are always attached to a step result dict. This may be useful
                 if Tune or some other meta controller needs access to evaluation metrics
                 all the time.
+            enable_async_evaluation: If True, use an AsyncRequestsManager for
+                the evaluation workers and use this manager to send `sample()` requests
+                to the evaluation workers. This way, the Algorithm becomes more robust
+                against long running episodes and/or failing (and restarting) workers.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -919,8 +931,12 @@ class AlgorithmConfig:
             self.evaluation_num_workers = evaluation_num_workers
         if custom_evaluation_function is not None:
             self.custom_evaluation_function = custom_evaluation_function
-        if always_attach_evaluation_results:
+        if always_attach_evaluation_results is not None:
             self.always_attach_evaluation_results = always_attach_evaluation_results
+        if enable_async_evaluation is not None:
+            self.enable_async_evaluation = enable_async_evaluation
+        if ope_split_batch_by_episode is not None:
+            self.ope_split_batch_by_episode = ope_split_batch_by_episode
 
         return self
 
@@ -1037,8 +1053,8 @@ class AlgorithmConfig:
         policy_mapping_fn=None,
         policies_to_train=None,
         observation_fn=None,
-        replay_mode=None,
         count_steps_by=None,
+        replay_mode=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's multi-agent settings.
 
@@ -1064,11 +1080,6 @@ class AlgorithmConfig:
             observation_fn: Optional function that can be used to enhance the local
                 agent observations to include more state. See
                 rllib/evaluation/observation_function.py for more info.
-            replay_mode: When replay_mode=lockstep, RLlib will replay all the agent
-                transitions at a particular timestep together in a batch. This allows
-                the policy to implement differentiable shared computations between
-                agents it controls at that timestep. When replay_mode=independent,
-                transitions are replayed independently per policy.
             count_steps_by: Which metric to use as the "batch size" when building a
                 MultiAgentBatch. The two supported values are:
                 "env_steps": Count each time the env is "stepped" (no matter how many
@@ -1091,8 +1102,13 @@ class AlgorithmConfig:
             self.policies_to_train = policies_to_train
         if observation_fn is not None:
             self.observation_fn = observation_fn
-        if replay_mode is not None:
-            self.replay_mode = replay_mode
+        if replay_mode != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.multi_agent(replay_mode=..)",
+                new="AlgorithmConfig.training("
+                "replay_buffer_config={'replay_mode': ..})",
+                error=True,
+            )
         if count_steps_by is not None:
             self.count_steps_by = count_steps_by
 

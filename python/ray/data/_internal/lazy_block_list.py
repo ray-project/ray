@@ -95,6 +95,7 @@ class LazyBlockList(BlockList):
         # Whether the block list is owned by consuming APIs, and if so it can be
         # eagerly deleted after read by the consumer.
         self._owned_by_consumer = owned_by_consumer
+        self._stats_actor = _get_or_create_stats_actor()
 
     def get_metadata(self, fetch_if_missing: bool = False) -> List[BlockMetadata]:
         """Get the metadata for all blocks."""
@@ -139,6 +140,7 @@ class LazyBlockList(BlockList):
             None for _ in self._block_partition_meta_refs
         ]
         self._cached_metadata = [None for _ in self._cached_metadata]
+        self._stats_actor = None
 
     def is_cleared(self) -> bool:
         return all(ref is None for ref in self._block_partition_refs)
@@ -215,6 +217,41 @@ class LazyBlockList(BlockList):
                 )
             )
         return output
+
+    def truncate_by_rows(self, limit: int) -> "LazyBlockList":
+        """Truncate the block list to the minimum number of blocks that contains at
+        least limit rows.
+
+        If the number of rows is not available, it will be treated as a 0-row block and
+        will be included in the truncated output.
+        """
+        self._check_if_cleared()
+        out_tasks, out_blocks, out_blocks_meta, out_cached_meta = [], [], [], []
+        out_num_rows = 0
+        for t, b, bm, c in zip(
+            self._tasks,
+            self._block_partition_refs,
+            self._block_partition_meta_refs,
+            self._cached_metadata,
+        ):
+            m = t.get_metadata()
+            num_rows = m.num_rows
+            if num_rows is None:
+                num_rows = 0
+            out_tasks.append(t)
+            out_blocks.append(b)
+            out_blocks_meta.append(bm)
+            out_cached_meta.append(c)
+            out_num_rows += num_rows
+            if out_num_rows >= limit:
+                break
+        return LazyBlockList(
+            out_tasks,
+            out_blocks,
+            out_blocks_meta,
+            out_cached_meta,
+            owned_by_consumer=self._owned_by_consumer,
+        )
 
     # Note: does not force execution prior to division.
     def divide(self, part_idx: int) -> ("LazyBlockList", "LazyBlockList"):
@@ -502,7 +539,9 @@ class LazyBlockList(BlockList):
         self, task_idx: int
     ) -> Tuple[ObjectRef[MaybeBlockPartition], ObjectRef[BlockPartitionMetadata]]:
         """Submit the task with index task_idx."""
-        stats_actor = _get_or_create_stats_actor()
+        if self._stats_actor is None:
+            self._stats_actor = _get_or_create_stats_actor()
+        stats_actor = self._stats_actor
         if not self._execution_started:
             stats_actor.record_start.remote(self._stats_uuid)
             self._execution_started = True

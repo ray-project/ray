@@ -12,7 +12,7 @@ def get_dag_node_str(
         dag_node._bound_other_args_to_resolve
     )
     return (
-        f"({dag_node.__class__.__name__})(\n"
+        f"({dag_node.__class__.__name__}, {dag_node._stable_uuid})(\n"
         f"{indent}body={body_line}\n"
         f"{indent}args={_get_args_lines(dag_node._bound_args)}\n"
         f"{indent}kwargs={_get_kwargs_lines(dag_node._bound_kwargs)}\n"

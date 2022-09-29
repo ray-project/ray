@@ -22,14 +22,14 @@ def test_dedupe_cluster_failure(shutdown_only, tmp_path):
     ======== driver 1 ===========
     1. Checkpoing the input args
         * Uploads
-    2. Begin to run step
+    2. Begin to run task
         * Crash
 
     ====== driver 2 ============
     1. Recover inputs
         * Creates a new object ref
-    2. Finish running step
-    3. Checkpoint step output
+    2. Finish running task
+    3. Checkpoint task output
         * Should not trigger upload
     """
     lock_file = tmp_path / "lock"

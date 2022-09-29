@@ -59,6 +59,7 @@ class GcsNodeManager;
 class GcsActorManager;
 class GcsJobManager;
 class GcsWorkerManager;
+class GcsPlacementGroupScheduler;
 class GcsPlacementGroupManager;
 
 /// The GcsServer will take over all requests from GcsClient and transparent
@@ -202,6 +203,8 @@ class GcsServer {
   std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs actor manager.
   std::shared_ptr<GcsActorManager> gcs_actor_manager_;
+  /// The gcs placement group scheduler.
+  std::shared_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
   /// The gcs placement group manager.
   std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   /// Job info handler and service.

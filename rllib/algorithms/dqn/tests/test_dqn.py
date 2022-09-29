@@ -24,7 +24,11 @@ class TestDQN(unittest.TestCase):
     def test_dqn_compilation(self):
         """Test whether DQN can be built on all frameworks."""
         num_iterations = 1
-        config = dqn.dqn.DQNConfig().rollouts(num_rollout_workers=2)
+        config = (
+            dqn.dqn.DQNConfig()
+            .rollouts(num_rollout_workers=2)
+            .training(num_steps_sampled_before_learning_starts=0)
+        )
 
         for _ in framework_iterator(config, with_eager_tracing=True):
             # Double-dueling DQN.
@@ -54,13 +58,53 @@ class TestDQN(unittest.TestCase):
 
             trainer.stop()
 
+    def test_dqn_compilation_integer_rewards(self):
+        """Test whether DQN can be built on all frameworks.
+        Unlike the previous test, this uses an environment with integer rewards
+        in order to test that type conversions are working correctly."""
+        num_iterations = 1
+        config = (
+            dqn.dqn.DQNConfig()
+            .rollouts(num_rollout_workers=2)
+            .training(num_steps_sampled_before_learning_starts=0)
+        )
+
+        for _ in framework_iterator(config, with_eager_tracing=True):
+            # Double-dueling DQN.
+            print("Double-dueling")
+            plain_config = deepcopy(config)
+            trainer = dqn.DQN(config=plain_config, env="Taxi-v3")
+            for i in range(num_iterations):
+                results = trainer.train()
+                check_train_results(results)
+                print(results)
+
+            check_compute_single_action(trainer)
+            trainer.stop()
+
+            # Rainbow.
+            print("Rainbow")
+            rainbow_config = deepcopy(config).training(
+                num_atoms=10, noisy=True, double_q=True, dueling=True, n_step=5
+            )
+            trainer = dqn.DQN(config=rainbow_config, env="Taxi-v3")
+            for i in range(num_iterations):
+                results = trainer.train()
+                check_train_results(results)
+                print(results)
+
+            check_compute_single_action(trainer)
+
+            trainer.stop()
+
     def test_dqn_exploration_and_soft_q_config(self):
         """Tests, whether a DQN Agent outputs exploration/softmaxed actions."""
         config = (
             dqn.dqn.DQNConfig()
             .rollouts(num_rollout_workers=0)
             .environment(env_config={"is_slippery": False, "map_name": "4x4"})
-        )
+        ).training(num_steps_sampled_before_learning_starts=0)
+
         obs = np.array(0)
 
         # Test against all frameworks.

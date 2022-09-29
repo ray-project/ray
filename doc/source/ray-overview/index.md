@@ -7,7 +7,7 @@
 
 This tutorial will give you a quick tour of Ray's features.
 To get started, we'll start by installing Ray.
-Most of the examples in this guide are based on Python, but we'll also show you how to user Ray Core in Java.
+Most of the examples in this guide are based on Python, but we'll also show you how to use Ray Core in Java.
 
 ````{panels}
 :container: text-center
@@ -38,12 +38,20 @@ Check out our detailed [installation guide](installation.rst).
 
 `````{dropdown} Efficiently process your data into features.
 
-Preprocess your data with a ``Preprocessor``.
+Load data into a ``Dataset``.
 
 ```{literalinclude} ../ray-air/examples/xgboost_starter.py
     :language: python
     :start-after: __air_generic_preprocess_start__
     :end-before: __air_generic_preprocess_end__
+```
+
+Preprocess your data with a ``Preprocessor``.
+
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
+    :language: python
+    :start-after: __air_xgb_preprocess_start__
+    :end-before: __air_xgb_preprocess_end__
 ```
 `````
 
@@ -549,7 +557,7 @@ Assuming you have stored this configuration in a file called `cluster.yaml`, you
 ray submit cluster.yaml example.py --start
 ```
 
-```{link-button} cluster-cloud
+```{link-button} cluster-index
 :type: ref
 :text: Learn more about launching Ray Clusters
 :classes: btn-outline-primary btn-block

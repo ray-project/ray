@@ -78,7 +78,7 @@ import ray
 torch_ds = ray.data.read_parquet("example://iris.parquet") \
     .repeat() \
     .random_shuffle_each_window() \
-    .to_torch()
+    .iter_torch_batches()
 
 # Streaming batch inference pipeline that pipelines the transforming of a single
 # file with the reading of a single file (at most 2 file's worth of data in-flight

@@ -35,7 +35,7 @@ Predictors expose a ``predict`` method that accepts an input batch of type ``Dat
 
 **Life of a prediction:** Underneath the hood, when the ``Predictor.predict`` method is called the following occurs:
 
-- The input batch is converted into a Pandas DataFrame. Tensor input (like a ``np.ndarray``) will be converted into a single column Pandas Dataframe.
+- The input batch is converted into a Pandas DataFrame. Tensor input (like a ``np.ndarray``) will be converted into a single-column Pandas Dataframe.
 - If there is a :ref:`Preprocessor <air-preprocessor-ref>` saved in the provided :ref:`Checkpoint <air-checkpoint-ref>`, the preprocessor will be used to transform the DataFrame.
 - The transformed DataFrame will be passed to the model for inference.
 - The predictions will be outputted by ``predict`` in the same type as the original input.
@@ -121,7 +121,7 @@ If you have a large dataset but not a lot of available memory, you can use the
 :meth:`predict_pipelined <ray.train.batch_predictor.BatchPredictor.predict_pipelined>` method.
 
 Unlike :py:meth:`predict` which will load the entire data into memory, ``predict_pipelined`` will create a 
-:class:`DatasetPipeline`` object, which will *lazily* load the data and perform inference on a smaller batch of data at a time.
+:class:`DatasetPipeline` object, which will *lazily* load the data and perform inference on a smaller batch of data at a time.
 
 The lazy loading of the data will allow you to operate on datasets much greater than your available memory.
 Execution can be triggered by pulling from the pipeline, as shown in the example below.

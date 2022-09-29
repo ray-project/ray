@@ -32,7 +32,7 @@
 import itertools
 import numbers
 import os
-from distutils.version import LooseVersion
+from packaging.version import Version
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -166,7 +166,7 @@ if os.getenv(_FORMATTER_ENABLED_ENV_VAR, "1") == "1":
     ExtensionArrayFormatter._format_strings_orig = (
         ExtensionArrayFormatter._format_strings
     )
-    if LooseVersion("1.1.0") <= LooseVersion(pd.__version__) < LooseVersion("1.3.0"):
+    if Version("1.1.0") <= Version(pd.__version__) < Version("1.3.0"):
         ExtensionArrayFormatter._format_strings = _format_strings_patched
     else:
         ExtensionArrayFormatter._format_strings = _format_strings_patched_v1_0_0
@@ -435,7 +435,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         return is_bool_dtype(self._dtype)
 
 
-class TensorOpsMixin(pd.api.extensions.ExtensionScalarOpsMixin):
+class _TensorOpsMixin(pd.api.extensions.ExtensionScalarOpsMixin):
     """
     Mixin for TensorArray operator support, applying operations on the
     underlying ndarrays.
@@ -489,7 +489,7 @@ class TensorOpsMixin(pd.api.extensions.ExtensionScalarOpsMixin):
         return cls._create_method(op)
 
 
-class TensorScalarCastMixin:
+class _TensorScalarCastMixin:
     """
     Mixin for casting scalar tensors to a particular numeric type.
     """
@@ -513,7 +513,8 @@ class TensorScalarCastMixin:
         return self._scalarfunc(oct)
 
 
-class TensorArrayElement(TensorOpsMixin, TensorScalarCastMixin):
+@PublicAPI(stability="beta")
+class TensorArrayElement(_TensorOpsMixin, _TensorScalarCastMixin):
     """
     Single element of a TensorArray, wrapping an underlying ndarray.
     """
@@ -578,8 +579,8 @@ class TensorArrayElement(TensorOpsMixin, TensorScalarCastMixin):
 @PublicAPI(stability="beta")
 class TensorArray(
     pd.api.extensions.ExtensionArray,
-    TensorOpsMixin,
-    TensorScalarCastMixin,
+    _TensorOpsMixin,
+    _TensorScalarCastMixin,
 ):
     """
     Pandas `ExtensionArray` representing a tensor column, i.e. a column

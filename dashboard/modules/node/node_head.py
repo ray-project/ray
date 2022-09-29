@@ -38,6 +38,21 @@ def gcs_node_info_to_dict(message):
     )
 
 
+def gcs_stats_to_dict(message):
+    decode_keys = {
+        "actorId",
+        "jobId",
+        "taskId",
+        "parentTaskId",
+        "sourceActorId",
+        "callerId",
+        "rayletId",
+        "workerId",
+        "placementGroupId",
+    }
+    return dashboard_utils.message_to_dict(message, decode_keys)
+
+
 def node_stats_to_dict(message):
     decode_keys = {
         "actorId",
@@ -71,6 +86,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         self._stubs = {}
         # NodeInfoGcsService
         self._gcs_node_info_stub = None
+        # NodeResourceInfoGcsService
+        self._gcs_node_resource_info_sub = None
         self._collect_memory_info = False
         DataSource.nodes.signal.append(self._update_stubs)
         # Total number of node updates happened.
@@ -80,6 +97,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # The time it takes until the head node is registered. None means
         # head node hasn't been registered.
         self._head_node_registration_time_s = None
+        self._gcs_aio_client = dashboard_head.gcs_aio_client
 
     async def _update_stubs(self, change):
         if change.old:
@@ -307,6 +325,17 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             except Exception:
                 logger.exception(f"Error updating node stats of {node_id}.")
 
+        # Update scheduling stats (e.g., pending actor creation tasks) of gcs.
+        try:
+            reply = await self._gcs_node_resource_info_stub.GetGcsSchedulingStats(
+                gcs_service_pb2.GetGcsSchedulingStatsRequest(),
+                timeout=2,
+            )
+            if reply.status.code == 0:
+                DataSource.gcs_scheduling_stats = gcs_stats_to_dict(reply)
+        except Exception:
+            logger.exception("Error updating gcs stats.")
+
     async def _update_log_info(self):
         if ray_constants.DISABLE_DASHBOARD_LOG_INFO:
             return
@@ -377,6 +406,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             gcs_channel
+        )
+        self._gcs_node_resource_info_stub = (
+            gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
         )
 
         await asyncio.gather(

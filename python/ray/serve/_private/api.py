@@ -11,6 +11,7 @@ from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
     SERVE_CONTROLLER_NAME,
     SERVE_NAMESPACE,
+    RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
 )
 from ray.serve._private.client import ServeControllerClient
 
@@ -201,7 +202,9 @@ def serve_start(
         # Schedule the controller on the head node with a soft constraint. This
         # prefers it to run on the head node in most cases, but allows it to be
         # restarted on other nodes in an HA cluster.
-        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=True),
+        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=True)
+        if RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE
+        else None,
         namespace=SERVE_NAMESPACE,
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
     ).remote(

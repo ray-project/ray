@@ -522,6 +522,17 @@ def _inject_tracing_into_class(_cls):
         if is_static_method(_cls, name) or is_class_method(method):
             continue
 
+        # Don't decorate the __del__ magic method.
+        # It's because the __del__ can be called after Python
+        # modules are garbage colleted, which means the modules
+        # used for the decorator (e.g., `span_wrapper`) may not be
+        # available. For example, it is not guranteed that
+        # `_is_tracing_enabled` is available when `__del__` is called.
+        # Tracing `__del__` is also not very useful.
+        # https://joekuan.wordpress.com/2015/06/30/python-3-__del__-method-and-imported-modules/ # noqa
+        if name == "__del__":
+            continue
+
         # Add _ray_trace_ctx to method signature
         setattr(
             method,

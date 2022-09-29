@@ -29,6 +29,9 @@ def test_serve_metrics_for_successful_connection(serve_instance):
         except requests.ConnectionError:
             return False
 
+        # NOTE: These metrics should be documented at
+        # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
+        # Any updates to here should be reflected there too.
         expected_metrics = [
             # counter
             "serve_num_router_requests",
@@ -46,6 +49,7 @@ def test_serve_metrics_for_successful_connection(serve_instance):
             # handle
             "serve_handle_request_counter",
         ]
+
         for metric in expected_metrics:
             # For the final error round
             if do_assert:
@@ -63,6 +67,10 @@ def test_serve_metrics_for_successful_connection(serve_instance):
 
 
 def test_http_metrics(serve_instance):
+
+    # NOTE: These metrics should be documented at
+    # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
+    # Any updates here should be reflected there too.
     expected_metrics = ["serve_num_http_requests", "serve_num_http_error_requests"]
 
     def verify_metrics(expected_metrics, do_assert=False):
@@ -91,6 +99,9 @@ def test_http_metrics(serve_instance):
     except RuntimeError:
         verify_metrics(expected_metrics, True)
 
+    # NOTE: This metric should be documented at
+    # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
+    # Any updates here should be reflected there too.
     expected_metrics.append("serve_num_deployment_http_error_requests")
 
     @serve.deployment(name="A")
@@ -148,7 +159,7 @@ def test_actor_summary(serve_instance):
         pass
 
     serve.run(f.bind())
-    actors = state_api.list_actors()
+    actors = state_api.list_actors(filters=[("state", "=", "ALIVE")])
     class_names = {actor["class_name"] for actor in actors}
     assert class_names.issuperset(
         {"ServeController", "HTTPProxyActor", "ServeReplica:f"}

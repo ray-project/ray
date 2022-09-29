@@ -76,10 +76,42 @@ RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 /// The duration between raylet check memory pressure and send gc request
 RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 
+/// Threshold when the node is beyond the memory capacity.
+/// Ranging from [0, 1]
+RAY_CONFIG(float, memory_usage_threshold_fraction, 0.9)
+
+/// The interval between runs of the memory usage monitor.
+/// Monitor is disabled when this value is 0.
+RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 0)
+
+/// The TTL for when the task failure entry is considered
+/// eligble for garbage colletion.
+RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
+
+/// The number of retries for the task or actor when
+/// it fails due to the process being killed when the memory is running low on the node.
+/// The process killing is done by memory monitor, which is enabled via
+/// memory_monitor_interval_ms. If the task or actor is not retriable then this value is
+/// ignored. This retry counter is only used when the process is killed due to memory, and
+/// the retry counter of the task or actor is only used when it fails in other ways
+/// that is not related to running out of memory. Note infinite retry (-1) is not
+/// supported.
+RAY_CONFIG(uint64_t, task_oom_retries, 3)
+
+/// If the raylet fails to get agent info, we will retry after this interval.
+RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
+
 /// For a raylet, if the last resource report was sent more than this many
 /// report periods ago, then a warning will be logged that the report
 /// handler is drifting.
 RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
+
+/// Whether to report placement or regular resource usage for an actor.
+/// Reporting placement may cause the autoscaler to overestimate the resources
+/// required of the cluster, but reporting regular resource may lead to no
+/// autoscaling when an actor can't be placed.
+/// https://github.com/ray-project/ray/issues/26806
+RAY_CONFIG(bool, report_actor_placement_resources, true)
 
 /// Whether to record the creation sites of object references. This adds more
 /// information to `ray memory`, but introduces a little extra overhead when
@@ -165,7 +197,7 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 // The max gRPC message size (the gRPC internal default is 4MB). We use a higher
 // limit in Ray to avoid crashing with many small inlined task arguments.
 // Keep in sync with GCS_STORAGE_MAX_SIZE in packaging.py.
-RAY_CONFIG(int64_t, max_grpc_message_size, 250 * 1024 * 1024)
+RAY_CONFIG(int64_t, max_grpc_message_size, 500 * 1024 * 1024)
 
 // Retry timeout for trying to create a gRPC server. Only applies if the number
 // of retries is non zero.
@@ -442,7 +474,7 @@ RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 RAY_CONFIG(int64_t, num_workers_soft_limit, -1)
 
 // The interval where metrics are exported in milliseconds.
-RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
+RAY_CONFIG(uint64_t, metrics_report_interval_ms, 5000)
 
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.

@@ -59,6 +59,7 @@ class AlphaStarConfig(appo.APPOConfig):
 
     Example:
         >>> from ray.rllib.algorithms.alpha_star import AlphaStarConfig
+        >>> from ray import air
         >>> from ray import tune
         >>> config = AlphaStarConfig()
         >>> # Print out some default values.
@@ -69,11 +70,11 @@ class AlphaStarConfig(appo.APPOConfig):
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "AlphaStar",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -141,11 +142,6 @@ class AlphaStarConfig(appo.APPOConfig):
         self.min_time_s_per_iteration = 2
         # __sphinx_doc_end__
         # fmt: on
-
-        # TODO: IMPALA and APPO - for now - are back on the exec plan API
-        #  due to some buffer issues (fix in progress). AlphaStar is
-        #  not affected by this (never had an execution_plan implementation).
-        self._disable_execution_plan_api = True
 
     @override(appo.APPOConfig)
     def training(
@@ -558,7 +554,7 @@ class AlphaStar(appo.APPO):
             )
             if replay_actor is not None:
                 ma_batch = MultiAgentBatch({pid: batch}, batch.count)
-                replay_actor.add_batch.remote(ma_batch)
+                replay_actor.add.remote(ma_batch)
         # Return counts (env-steps, agent-steps).
         return sample.count, sample.agent_steps()
 
@@ -631,7 +627,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.alpha_star.alpha_star.DEFAULT_CONFIG",
         new="ray.rllib.algorithms.alpha_star.alpha_star.AlphaStarConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

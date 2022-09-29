@@ -1,7 +1,11 @@
+<<<<<<< HEAD
 .. _ray-observability-ref:
+=======
+.. _observability:
+>>>>>>> master
 
 Observability
-===============
+=============
 
 .. toctree::
     :maxdepth: 2

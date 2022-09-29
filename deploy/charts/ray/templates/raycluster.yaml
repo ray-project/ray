@@ -90,6 +90,10 @@ spec:
           {{- if $.Values.serviceAccountName }}
           serviceAccountName: {{ $.Values.serviceAccountName }}
           {{- end }}
+          {{- with $.Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 10 }}
+          {{- end }}
     {{- end }}
   # Commands to start Ray on the head node. You don't need to change this.
   # Note dashboard-host is set to 0.0.0.0 so that Kubernetes can port forward.

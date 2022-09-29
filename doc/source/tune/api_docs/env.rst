@@ -32,7 +32,7 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_FORCE_TRIAL_CLEANUP_S**: By default, Ray Tune will gracefully terminate trials,
   letting them finish the current training step and any user-defined cleanup.
   Setting this variable to a non-zero, positive integer will cause trials to be forcefully
-  terminated after a grace period of that many seconds. Defaults to ``0``.
+  terminated after a grace period of that many seconds. Defaults to ``600`` (seconds).
 * **TUNE_GET_EXECUTOR_EVENT_WAIT_S**: The time that TrialRunner waits for the
   next ExecutorEvent in a blocking fashion. Defaults to ``5``.
 * **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
@@ -57,6 +57,8 @@ These are the environment variables Ray Tune currently considers:
   In normal circumstances these shouldn't differ anyway, but reconcilation makes sure to capture cases when
   placement groups are manually destroyed. Reconcilation doesn't take much time, but it can add up when
   running a large number of short trials. Defaults to every ``5`` (seconds).
+* **TUNE_PRINT_ALL_TRIAL_ERRORS**: If ``1``, will print all trial errors as they come up. Otherwise, errors
+  will only be saved as text files to the trial directory and not printed. Defaults to ``1``.
 * **TUNE_RESULT_DIR**: Directory where Ray Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
 * **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed

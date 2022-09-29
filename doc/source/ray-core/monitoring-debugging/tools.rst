@@ -3,7 +3,7 @@ Troubleshooting Tools and Features
 
 This section covers a list of available monitoring and debugging tools and features in Ray.
 
-This documentation only covers the high-level description of available tools and features. For more details, see :ref:`Ray Observability <ray-observability-ref>`.
+This documentation only covers the high-level description of available tools and features. For more details, see :ref:`Ray Observability <observability>`.
 
 Application Logging
 -------------------

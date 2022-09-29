@@ -115,6 +115,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                     name="one_hot_{}".format(i),
                 )
                 concat_size += self.one_hot[i].num_outputs
+                self.add_module("one_hot_{}".format(i), self.one_hot[i])
             # Everything else (1D Box).
             else:
                 size = int(np.product(component.shape))
@@ -133,6 +134,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 )
                 self.flatten_dims[i] = size
                 concat_size += self.flatten[i].num_outputs
+                self.add_module("flatten_{}".format(i), self.flatten[i])
 
         # Optional post-concat FC-stack.
         post_fc_stack_config = {

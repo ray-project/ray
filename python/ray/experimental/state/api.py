@@ -8,7 +8,6 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 import requests
 
-import ray
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
@@ -17,7 +16,6 @@ from ray.experimental.state.common import (
     ActorState,
     GetApiOptions,
     GetLogOptions,
-    JobState,
     ListApiOptions,
     NodeState,
     ObjectState,
@@ -29,6 +27,7 @@ from ray.experimental.state.common import (
     SupportedFilterType,
     TaskState,
     WorkerState,
+    ray_address_to_api_server_url,
 )
 from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
 
@@ -92,7 +91,7 @@ If you have any feedback, you could do so at either way as below:
 Usage:
     1. [Recommended] With StateApiClient:
     ```
-        client = StateApiClient(address="localhost:8265")
+        client = StateApiClient(address="auto")
         data = client.list(StateResource.NODES)
         ...
     ```
@@ -102,7 +101,7 @@ Usage:
     invocations of listing are used, it is better to reuse the `StateApiClient`
     as suggested above.
     ```
-        data = list_nodes(address="localhost:8265")
+        data = list_nodes(address="auto")
     ```
 """
 
@@ -119,8 +118,9 @@ class StateApiClient(SubmissionClient):
         """Initialize a StateApiClient and check the connection to the cluster.
 
         Args:
-            address: The address of Ray API server. If not provided,
-                it will be configured automatically from querying the GCS server.
+            address: Ray bootstrap address. E.g. `127.0.0.0:6379`, `auto`.
+                If not provided, it will be detected automatically from any running
+                local ray cluster.
             cookies: Cookies to use when sending requests to the HTTP job server.
             headers: Headers to use when sending requests to the HTTP job server, used
                 for cases like authentication to a remote cluster.
@@ -132,8 +132,12 @@ class StateApiClient(SubmissionClient):
             )
         if not headers:
             headers = {"Content-Type": "application/json"}
+
+        # Resolve API server URL
+        api_server_url = ray_address_to_api_server_url(address)
+
         super().__init__(
-            address,
+            address=api_server_url,
             create_cluster_if_needed=False,
             headers=headers,
             cookies=cookies,
@@ -155,7 +159,7 @@ class StateApiClient(SubmissionClient):
                 for filter in options.filters:
                     if len(filter) != 3:
                         raise ValueError(
-                            f"The given filter has incorrect intput type, {filter}. "
+                            f"The given filter has incorrect input type, {filter}. "
                             "Provide (key, predicate, value) tuples."
                         )
                     filter_k, filter_predicate, filter_val = filter
@@ -176,7 +180,7 @@ class StateApiClient(SubmissionClient):
         params: Dict,
         timeout: float,
         _explain: bool = False,
-    ):
+    ) -> Dict:
         with warnings_on_slow_request(
             address=self._address, endpoint=endpoint, timeout=timeout, explain=_explain
         ):
@@ -249,7 +253,7 @@ class StateApiClient(SubmissionClient):
                 latency or failed query information.
 
         Returns:
-            None if not found, and found:
+            None if not found, and if found, a dictionarified:
             - ActorState for actors
             - PlacementGroupState for placement groups
             - NodeState for nodes
@@ -387,8 +391,8 @@ class StateApiClient(SubmissionClient):
         """Raise an exception when the API resopnse contains a missing output.
 
         Output can be missing if (1) Failures on some of data source queries (e.g.,
-        `ray list tasks` queries all raylets, and if some of quries fail, it will
-        contain missing output. If all quries fail, it will just fail). (2) Data
+        `ray list tasks` queries all raylets, and if some of queries fail, it will
+        contain missing output. If all queries fail, it will just fail). (2) Data
         is truncated because the output is too large.
 
         Args:
@@ -511,17 +515,30 @@ class StateApiClient(SubmissionClient):
         return summary_api_response["result"]["node_id_to_summary"]
 
 
-"""
-Convenient Methods for get_<RESOURCE> by id
-"""
-
-
 def get_actor(
     id: str,
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> Optional[ActorState]:
+) -> Optional[Dict]:
+    """Get an actor by id.
+
+    Args:
+        id: Id of the actor
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        timeout: Max timeout value for the state API requests made.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        None if actor not found, or dictionarified
+        :ref:`ActorState <state-api-schema-actor>`.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            failed to query the data.
+    """
     return StateApiClient(address=address).get(
         StateResource.ACTORS, id, GetApiOptions(timeout=timeout), _explain=_explain
     )
@@ -533,7 +550,7 @@ def get_job(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> Optional[JobState]:
+) -> Optional[Dict]:
     raise NotImplementedError("Get Job by id is currently not supported")
 
 
@@ -542,7 +559,25 @@ def get_placement_group(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> Optional[PlacementGroupState]:
+) -> Optional[Dict]:
+    """Get a placement group by id.
+
+    Args:
+        id: Id of the placement group
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        timeout: Max timeout value for the state APIs requests made.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        None if actor not found, or dictionarified
+        :ref:`PlacementGroupState <state-api-schema-pg>`.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            failed to query the data.
+    """
     return StateApiClient(address=address).get(
         StateResource.PLACEMENT_GROUPS,
         id,
@@ -556,7 +591,25 @@ def get_node(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> Optional[NodeState]:
+) -> Optional[Dict]:
+    """Get a node by id.
+
+    Args:
+        id: Id of the node.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        timeout: Max timeout value for the state APIs requests made.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        None if actor not found, or dictionarified
+        :ref:`NodeState <state-api-schema-node>`.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI is failed to query the data.
+    """
     return StateApiClient(address=address).get(
         StateResource.NODES,
         id,
@@ -570,7 +623,25 @@ def get_worker(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> Optional[WorkerState]:
+) -> Optional[Dict]:
+    """Get a worker by id.
+
+    Args:
+        id: Id of the worker
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        timeout: Max timeout value for the state APIs requests made.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        None if actor not found, or dictionarified
+        :ref:`WorkerState <state-api-schema-worker>`.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            failed to query the data.
+    """
     return StateApiClient(address=address).get(
         StateResource.WORKERS,
         id,
@@ -584,7 +655,25 @@ def get_task(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> Optional[TaskState]:
+) -> Optional[Dict]:
+    """Get a task by id.
+
+    Args:
+        id: Id of the task
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        timeout: Max timeout value for the state APIs requests made.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        None if actor not found, or dictionarified
+        :ref:`TaskState <state-api-schema-task>`.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            failed to query the data.
+    """
     return StateApiClient(address=address).get(
         StateResource.TASKS,
         id,
@@ -598,27 +687,33 @@ def get_objects(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> List[ObjectState]:
+) -> List[Dict]:
+    """Get objects by id.
+
+    There could be more than 1 entry returned since an object could be
+    referenced at different places.
+
+    Args:
+        id: Id of the object
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        timeout: Max timeout value for the state APIs requests made.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        List of dictionarified :ref:`ObjectState <state-api-schema-obj>`.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>`  if the CLI
+            failed to query the data.
+    """
     return StateApiClient(address=address).get(
         StateResource.OBJECTS,
         id,
         GetApiOptions(timeout=timeout),
         _explain=_explain,
     )
-
-
-"""
-Convenient methods for list_<RESOURCE>
-
-Supported arguments to the below methods, see `ListApiOptions`:
-    address: The IP address and port of the head node. Defaults to
-        http://localhost:8265.
-    filters: Optional list of filter key-value pair.
-    timeout: Time for the request.
-    limit: Limit of entries in the result
-    detail: If True, APIs will return more detailed output.
-        In this case, it can query more sources (more expensive).
-"""
 
 
 def list_actors(
@@ -629,7 +724,32 @@ def list_actors(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> List[Dict]:
+    """List actors in the cluster.
+
+    Args:
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        filters: List of tuples of filter key, predicate (=, or !=), and
+            the filter value. E.g., `("id", "=", "abcd")`
+        limit: Max number of entries returned by the state backend.
+        timeout: Max timeout value for the state APIs requests made.
+        detail: When True, more details info (specified in `ActorState`)
+            will be queried and returned. See
+            :ref:`ActorState <state-api-schema-actor>`.
+        raise_on_missing_output: When True, exceptions will be raised if
+            there is missing data due to truncation/data source unavailable.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        List of dictionarified
+        :ref:`ActorState <state-api-schema-actor>`.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            failed to query the data.
+    """
     return StateApiClient(address=address).list(
         StateResource.ACTORS,
         options=ListApiOptions(
@@ -651,7 +771,32 @@ def list_placement_groups(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> List[Dict]:
+    """List placement groups in the cluster.
+
+    Args:
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        filters: List of tuples of filter key, predicate (=, or !=), and
+            the filter value. E.g., `("state", "=", "abcd")`
+        limit: Max number of entries returned by the state backend.
+        timeout: Max timeout value for the state APIs requests made.
+        detail: When True, more details info (specified in `PlacementGroupState`)
+            will be queried and returned. See
+            :ref:`PlacementGroupState <state-api-schema-pg>`.
+        raise_on_missing_output: When True, exceptions will be raised if
+            there is missing data due to truncation/data source unavailable.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        List of dictionarified
+        :ref:`PlacementGroupState <state-api-schema-pg>`.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            failed to query the data.
+    """
     return StateApiClient(address=address).list(
         StateResource.PLACEMENT_GROUPS,
         options=ListApiOptions(
@@ -670,7 +815,32 @@ def list_nodes(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> List[Dict]:
+    """List nodes in the cluster.
+
+    Args:
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        filters: List of tuples of filter key, predicate (=, or !=), and
+            the filter value. E.g., `("node_name", "=", "abcd")`
+        limit: Max number of entries returned by the state backend.
+        timeout: Max timeout value for the state APIs requests made.
+        detail: When True, more details info (specified in `NodeState`)
+            will be queried and returned. See
+            :ref:`NodeState <state-api-schema-node>`.
+        raise_on_missing_output: When True, exceptions will be raised if
+            there is missing data due to truncation/data source unavailable.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        List of dictionarified
+        :ref:`NodeState <state-api-schema-node>`.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI failed to query the data.
+    """
     return StateApiClient(address=address).list(
         StateResource.NODES,
         options=ListApiOptions(
@@ -689,7 +859,32 @@ def list_jobs(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> List[Dict]:
+    """List jobs submitted to the cluster by :ref: `ray job submission <jobs-overview>`.
+
+    Args:
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        filters: List of tuples of filter key, predicate (=, or !=), and
+            the filter value. E.g., `("status", "=", "abcd")`
+        limit: Max number of entries returned by the state backend.
+        timeout: Max timeout value for the state APIs requests made.
+        detail: When True, more details info (specified in `JobState`)
+            will be queried and returned. See
+            :ref:`JobState <state-api-schema-job>`.
+        raise_on_missing_output: When True, exceptions will be raised if
+            there is missing data due to truncation/data source unavailable.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        List of dictionarified
+        :ref:`JobState <state-api-schema-job>`.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            failed to query the data.
+    """
     return StateApiClient(address=address).list(
         StateResource.JOBS,
         options=ListApiOptions(
@@ -708,7 +903,32 @@ def list_workers(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> List[Dict]:
+    """List workers in the cluster.
+
+    Args:
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        filters: List of tuples of filter key, predicate (=, or !=), and
+            the filter value. E.g., `("is_alive", "=", "True")`
+        limit: Max number of entries returned by the state backend.
+        timeout: Max timeout value for the state APIs requests made.
+        detail: When True, more details info (specified in `WorkerState`)
+            will be queried and returned. See
+            :ref:`WorkerState <state-api-schema-worker>`.
+        raise_on_missing_output: When True, exceptions will be raised if
+            there is missing data due to truncation/data source unavailable.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        List of dictionarified
+        :ref:`WorkerState <state-api-schema-worker>`.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            failed to query the data.
+    """
     return StateApiClient(address=address).list(
         StateResource.WORKERS,
         options=ListApiOptions(
@@ -727,7 +947,32 @@ def list_tasks(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> List[Dict]:
+    """List tasks in the cluster.
+
+    Args:
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        filters: List of tuples of filter key, predicate (=, or !=), and
+            the filter value. E.g., `("is_alive", "=", "True")`
+        limit: Max number of entries returned by the state backend.
+        timeout: Max timeout value for the state APIs requests made.
+        detail: When True, more details info (specified in `WorkerState`)
+            will be queried and returned. See
+            :ref:`WorkerState <state-api-schema-worker>`.
+        raise_on_missing_output: When True, exceptions will be raised if
+            there is missing data due to truncation/data source unavailable.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        List of dictionarified
+        :ref:`WorkerState <state-api-schema-worker>`.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            failed to query the data.
+    """
     return StateApiClient(address=address).list(
         StateResource.TASKS,
         options=ListApiOptions(
@@ -746,7 +991,32 @@ def list_objects(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> List[Dict]:
+    """List objects in the cluster.
+
+    Args:
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        filters: List of tuples of filter key, predicate (=, or !=), and
+            the filter value. E.g., `("ip", "=", "0.0.0.0")`
+        limit: Max number of entries returned by the state backend.
+        timeout: Max timeout value for the state APIs requests made.
+        detail: When True, more details info (specified in `ObjectState`)
+            will be queried and returned. See
+            :ref:`ObjectState <state-api-schema-obj>`.
+        raise_on_missing_output: When True, exceptions will be raised if
+            there is missing data due to truncation/data source unavailable.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        List of dictionarified
+        :ref:`ObjectState <state-api-schema-obj>`.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            failed to query the data.
+    """
     return StateApiClient(address=address).list(
         StateResource.OBJECTS,
         options=ListApiOptions(
@@ -765,7 +1035,32 @@ def list_runtime_envs(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> List[Dict]:
+    """List runtime environments in the cluster.
+
+    Args:
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        filters: List of tuples of filter key, predicate (=, or !=), and
+            the filter value. E.g., `("node_id", "=", "abcdef")`
+        limit: Max number of entries returned by the state backend.
+        timeout: Max timeout value for the state APIs requests made.
+        detail: When True, more details info (specified in `RuntimeEnvState`)
+            will be queried and returned. See
+            :ref:`RuntimeEnvState <state-api-schema-runtime-env>`.
+        raise_on_missing_output: When True, exceptions will be raised if
+            there is missing data due to truncation/data source unavailable.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        List of dictionarified
+        :ref:`RuntimeEnvState <state-api-schema-runtime-env>`.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            failed to query the data.
+    """
     return StateApiClient(address=address).list(
         StateResource.RUNTIME_ENVS,
         options=ListApiOptions(
@@ -782,7 +1077,7 @@ Log APIs
 
 
 def get_log(
-    api_server_url: str = None,
+    address: Optional[str] = None,
     node_id: Optional[str] = None,
     node_ip: Optional[str] = None,
     filename: Optional[str] = None,
@@ -794,12 +1089,44 @@ def get_log(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _interval: Optional[float] = None,
 ) -> Generator[str, None, None]:
-    if api_server_url is None:
-        assert ray.is_initialized()
-        api_server_url = (
-            f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
-        )
+    """Retrieve log file based on file name or some entities ids (pid, actor id, task id).
 
+    Examples:
+        >>> import ray
+        >>> from ray.experimental.state.api import get_log # doctest: +SKIP
+        # To connect to an existing ray instance if there is
+        >>> ray.init("auto") # doctest: +SKIP
+        # Node IP could be retrieved from list_nodes() or ray.nodes()
+        >>> node_ip = "172.31.47.143"  # doctest: +SKIP
+        >>> filename = "gcs_server.out" # doctest: +SKIP
+        >>> for l in get_log(filename=filename, node_ip=node_ip): # doctest: +SKIP
+        >>>    print(l) # doctest: +SKIP
+
+    Args:
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If not specified, it will be retrieved from the initialized ray cluster.
+        node_id: Id of the node containing the logs .
+        node_ip: Ip of the node containing the logs. (At least one of the node_id and
+            node_ip have to be supplied when identifying a node).
+        filename: Name of the file (relative to the ray log directory) to be retrieved.
+        actor_id: Id of the actor if getting logs from an actor.
+        task_id: Id of the task if getting logs generated by a task.
+        pid: PID of the worker if getting logs generated by a worker.
+        follow: When set to True, logs will be streamed and followed.
+        tail: Number of lines to get from the end of the log file. Set to -1 for getting
+            the entire log.
+        timeout: Max timeout for requests made when getting the logs.
+        _interval: The interval in secs to print new logs when `follow=True`.
+
+    Return:
+        A Generator of log line, None for SendType and ReturnType.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            failed to query the data.
+    """
+
+    api_server_url = ray_address_to_api_server_url(address)
     media_type = "stream" if follow else "file"
 
     options = GetLogOptions(
@@ -841,17 +1168,36 @@ def get_log(
 
 
 def list_logs(
-    api_server_url: str = None,
-    node_id: str = None,
-    node_ip: str = None,
-    glob_filter: str = None,
+    address: Optional[str] = None,
+    node_id: Optional[str] = None,
+    node_ip: Optional[str] = None,
+    glob_filter: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
 ) -> Dict[str, List[str]]:
-    if api_server_url is None:
-        assert ray.is_initialized()
-        api_server_url = (
-            f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
-        )
+    """Listing log files available.
+
+    Args:
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If not specified, it will be retrieved from the initialized ray cluster.
+        node_id: Id of the node containing the logs .
+        node_ip: Ip of the node containing the logs. (At least one of the node_id and
+            node_ip have to be supplied when identifying a node).
+        glob_filter: Name of the file (relative to the ray log directory) to be
+            retrieved. E.g. `glob_filter="*worker*"` for all worker logs.
+        actor_id: Id of the actor if getting logs from an actor.
+        timeout: Max timeout for requests made when getting the logs.
+        _interval: The interval in secs to print new logs when `follow=True`.
+
+    Return:
+        A dictionary where the keys are log groups (e.g. gcs, raylet, worker), and
+        values are list of log filenames.
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            failed to query the data.
+    """
+
+    api_server_url = ray_address_to_api_server_url(address)
 
     if not glob_filter:
         glob_filter = "*"
@@ -885,11 +1231,29 @@ Summary APIs
 
 
 def summarize_tasks(
-    address: str = None,
+    address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> Dict:
+    """Summarize the tasks in cluster.
+
+    Args:
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        timeout: Max timeout for requests made when getting the states.
+        raise_on_missing_output: When True, exceptions will be raised if
+            there is missing data due to truncation/data source unavailable.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Return:
+        Dictionarified :ref:`TaskSummaries <state-api-schema-task-summaries>`
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI is failed to query the data.
+    """
     return StateApiClient(address=address).summary(
         SummaryResource.TASKS,
         options=SummaryApiOptions(timeout=timeout),
@@ -899,11 +1263,29 @@ def summarize_tasks(
 
 
 def summarize_actors(
-    address: str = None,
+    address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> Dict:
+    """Summarize the actors in cluster.
+
+    Args:
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        timeout: Max timeout for requests made when getting the states.
+        raise_on_missing_output: When True, exceptions will be raised if
+            there is missing data due to truncation/data source unavailable.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Return:
+        Dictionarified :ref:`ActorSummaries <state-api-schema-actor-summaries>`
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            failed to query the data.
+    """
     return StateApiClient(address=address).summary(
         SummaryResource.ACTORS,
         options=SummaryApiOptions(timeout=timeout),
@@ -913,11 +1295,29 @@ def summarize_actors(
 
 
 def summarize_objects(
-    address: str = None,
+    address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> Dict:
+    """Summarize the objects in cluster.
+
+    Args:
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        timeout: Max timeout for requests made when getting the states.
+        raise_on_missing_output: When True, exceptions will be raised if
+            there is missing data due to truncation/data source unavailable.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Return:
+        Dictionarified :ref:`ObjectSummaries <state-api-schema-object-summaries>`
+
+    Raises:
+        Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
+            failed to query the data.
+    """
     return StateApiClient(address=address).summary(
         SummaryResource.OBJECTS,
         options=SummaryApiOptions(timeout=timeout),

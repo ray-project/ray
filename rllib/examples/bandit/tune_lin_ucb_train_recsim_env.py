@@ -42,8 +42,8 @@ if __name__ == "__main__":
     }
 
     # Actual env timesteps per `train()` call will be
-    # 10 * min_sample_timesteps_per_iteration (100 by default) = 1,000
-    training_iterations = 5000
+    # 100 * min_sample_timesteps_per_iteration (100 by default) = 10,000
+    training_iterations = 100
 
     print("Running training for %s time steps" % training_iterations)
 
@@ -53,7 +53,7 @@ if __name__ == "__main__":
         param_space=config,
         run_config=air.RunConfig(
             stop={"training_iteration": training_iterations},
-            checkpoint_confnig=air.CheckpointConfig(
+            checkpoint_config=air.CheckpointConfig(
                 checkpoint_at_end=False,
             ),
         ),

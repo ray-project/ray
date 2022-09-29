@@ -5,7 +5,17 @@ from ray.data._internal.compute import CallableClass, ComputeStrategy
 from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
-from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
+from ._internal.table_block import TableBlockAccessor
+from ray.data.aggregate import (
+    _AggregateOnKeyBase,
+    AggregateFn,
+    Count,
+    Max,
+    Mean,
+    Min,
+    Std,
+    Sum,
+)
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -33,6 +43,9 @@ class _GroupbyOp(ShuffleOp):
     ) -> List[Union[BlockMetadata, Block]]:
         """Partition the block and combine rows with the same key."""
         stats = BlockExecStats.builder()
+
+        block = _GroupbyOp._prune_unused_columns(block, key, aggs)
+
         if key is None:
             partitions = [block]
         else:
@@ -58,6 +71,38 @@ class _GroupbyOp(ShuffleOp):
         return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
             list(mapper_outputs), key, aggs, finalize=not partial_reduce
         )
+
+    @staticmethod
+    def _prune_unused_columns(
+        block: Block,
+        key: KeyFn,
+        aggs: Tuple[AggregateFn],
+    ) -> Block:
+        """Prune unused columns from block before aggregate."""
+        prune_columns = True
+        columns = set()
+
+        if isinstance(key, str):
+            columns.add(key)
+        elif callable(key):
+            prune_columns = False
+
+        for agg in aggs:
+            if isinstance(agg, _AggregateOnKeyBase) and isinstance(agg._key_fn, str):
+                columns.add(agg._key_fn)
+            elif not isinstance(agg, Count):
+                # Don't prune columns if any aggregate key is not string.
+                prune_columns = False
+
+        block_accessor = BlockAccessor.for_block(block)
+        if (
+            prune_columns
+            and isinstance(block_accessor, TableBlockAccessor)
+            and block_accessor.num_rows() > 0
+        ):
+            return block_accessor.select(list(columns))
+        else:
+            return block
 
 
 class SimpleShuffleGroupbyOp(_GroupbyOp, SimpleShufflePlan):
@@ -185,7 +230,7 @@ class GroupedDataset(Generic[T]):
         fn: Union[CallableClass, Callable[[BatchType], BatchType]],
         *,
         compute: Union[str, ComputeStrategy] = None,
-        batch_format: str = "native",
+        batch_format: str = "default",
         **ray_remote_args,
     ) -> "Dataset[Any]":
         # TODO AttributeError: 'GroupedDataset' object has no attribute 'map_groups'
@@ -230,7 +275,7 @@ class GroupedDataset(Generic[T]):
                 batch of zero or more records, similar to map_batches().
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
-            batch_format: Specify "native" to use the native block format
+            batch_format: Specify "default" to use the default block format
                 (promotes Arrow to pandas), "pandas" to select
                 ``pandas.DataFrame`` as the batch format,
                 or "pyarrow" to select ``pyarrow.Table``.
@@ -249,31 +294,29 @@ class GroupedDataset(Generic[T]):
         else:
             sorted_ds = self._dataset.repartition(1)
 
-        def get_key(row):
-            if isinstance(self._key, Callable):
-                return self._key(row)
-            elif isinstance(self._key, str):
-                return row[self._key]
-            else:
-                return None
-
         # Returns the group boundaries.
-        def get_boundaries(block):
+        def get_key_boundaries(block_accessor: BlockAccessor):
+            import numpy as np
+
             boundaries = []
-            pre = None
-            for i, item in enumerate(block.iter_rows()):
-                if pre is not None and get_key(pre) != get_key(item):
-                    boundaries.append(i)
-                pre = item
-            if block.num_rows() > 0:
-                boundaries.append(block.num_rows())
+            # Get the keys of the batch in numpy array format
+            keys_block = block_accessor.select([self._key])
+            keys = BlockAccessor.for_block(keys_block).to_numpy()
+            start = 0
+            while start < keys.size:
+                end = start + np.searchsorted(keys[start:], keys[start], side="right")
+                boundaries.append(end)
+                start = end
             return boundaries
 
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
         def group_fn(batch):
             block_accessor = BlockAccessor.for_block(batch)
-            boundaries = get_boundaries(block_accessor)
+            if self._key:
+                boundaries = get_key_boundaries(block_accessor)
+            else:
+                boundaries = [block_accessor.num_rows()]
             builder = block_accessor.builder()
             start = 0
             for end in boundaries:
@@ -281,7 +324,6 @@ class GroupedDataset(Generic[T]):
                 applied = fn(group)
                 builder.add_block(applied)
                 start = end
-
             rs = builder.build()
             return rs
 

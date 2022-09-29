@@ -1161,6 +1161,12 @@ class ActorHandle:
                 not self._ray_is_cross_language
             ), "Cross language remote actor method cannot be executed locally."
 
+        if num_returns == "dynamic":
+            # TODO(swang): Support dynamic generators for actors.
+            raise NotImplementedError(
+                'num_returns="dynamic" not yet supported for actor tasks.'
+            )
+
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
             self._ray_actor_id,
@@ -1292,8 +1298,10 @@ class ActorHandle:
 
     def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
-        state = self._serialization_helper()
-        return ActorHandle._deserialization_helper, state
+        (serialized, _) = self._serialization_helper()
+        # There is no outer object ref when the actor handle is
+        # deserialized out-of-band using pickle.
+        return ActorHandle._deserialization_helper, (serialized, None)
 
 
 def _modify_class(cls):

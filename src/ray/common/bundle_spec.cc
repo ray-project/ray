@@ -131,6 +131,19 @@ std::string GetOriginalResourceName(const std::string &resource) {
   return resource.substr(0, idx);
 }
 
+std::string GetOriginalResourceNameFromWildcardResource(const std::string &resource) {
+  static const std::regex wild_card_resource_pattern("^(.*)_group_([0-9a-f]+)$");
+  std::smatch match_groups;
+  if (!std::regex_match(resource, match_groups, wild_card_resource_pattern) ||
+      match_groups.size() != 3) {
+    return "";
+  }
+
+  // group 0: resource
+  // group 1: pg id
+  return match_groups[1].str();
+}
+
 std::string GetDebugStringForBundles(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles) {
   std::ostringstream debug_info;

@@ -34,7 +34,6 @@ from ray._private.test_utils import (
 )
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
-from ray.dashboard.modules.dashboard_sdk import DEFAULT_DASHBOARD_ADDRESS
 from ray.experimental.state.api import StateApiClient
 from ray.experimental.state.common import ListApiOptions, StateResource
 from ray.experimental.state.exception import ServerUnavailable
@@ -964,7 +963,7 @@ def test_dashboard_requests_fail_on_missing_deps(ray_start_with_dashboard):
     response = None
 
     with pytest.raises(ServerUnavailable):
-        client = StateApiClient(address=DEFAULT_DASHBOARD_ADDRESS)
+        client = StateApiClient()
         response = client.list(
             StateResource.NODES, options=ListApiOptions(), raise_on_missing_output=False
         )

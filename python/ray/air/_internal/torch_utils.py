@@ -168,9 +168,9 @@ def load_torch_model(
 ) -> torch.nn.Module:
     """Loads a PyTorch model from the provided ``saved_model``.
 
-    If ``saved_model`` is a torch Module, then return it directly. If ``saved_model`` is
-    a torch state dict, then load it in the ``model_definition`` and return the loaded
-    model.
+    ``model_definition`` is only used when ``saved_model`` is
+    a torch state dict, which will be loaded into ``model_definition``.
+    Otherwise, ``model_definition`` is discarded.
     """
     if isinstance(saved_model, torch.nn.Module):
         return saved_model
@@ -190,3 +190,19 @@ def load_torch_model(
             f"to be of type `torch.nn.Module`, or a model "
             f"state dict of type dict."
         )
+
+
+def contains_tensor(obj):
+    if isinstance(obj, torch.Tensor):
+        return True
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            if contains_tensor(k):
+                return True
+            if contains_tensor(v):
+                return True
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            if contains_tensor(v):
+                return True
+    return False
