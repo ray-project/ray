@@ -11,7 +11,7 @@ Ray :class:`Datasets <ray.data.Dataset>` can be created from:
 * local and external storage systems (local disk, cloud storage, HDFS, etc.).
 
 This guide surveys the many ways to create a ``Dataset``. If none of these meet your
-needs, please reach out on `Discourse <https://discuss.ray.io/>`__ or open a feature
+needs, please reach out to us on `Discourse <https://discuss.ray.io/>`__ or open a feature
 request on the `Ray GitHub repo <https://github.com/ray-project/ray>`__, and check out
 our :ref:`guide for implementing a custom Datasets datasource <custom_datasources>`
 if you're interested in rolling your own integration!
