@@ -1058,7 +1058,7 @@
     test_name: horovod_user_test_latest
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1082,7 +1082,7 @@
     test_name: horovod_user_test_master
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1106,7 +1106,7 @@
     test_name: train_tensorflow_mnist_test
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1130,7 +1130,7 @@
     test_name: train_torch_linear_test
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1154,7 +1154,7 @@
     test_name: xgboost_gpu_connect_latest
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1177,7 +1177,7 @@
     test_name: xgboost_gpu_connect_master
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1200,7 +1200,7 @@
     test_name: ray_lightning_user_test_latest
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1224,7 +1224,7 @@
     test_name: ray_lightning_user_test_master
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1248,7 +1248,7 @@
     test_name: tune_rllib_connect_test
     test_suite: ml_user_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1644,7 +1644,7 @@
     test_name: result_throughput_cluster
     test_suite: tune_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: ml
   env: staging
 
@@ -1763,7 +1763,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
+    prepare: ray stop 
     script: python workloads/actor_deaths.py
     long_running: true
     type: sdk_command
@@ -1853,7 +1853,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
+    prepare: ray stop 
     script: python workloads/many_actor_tasks.py
     long_running: true
     type: sdk_command
@@ -1882,7 +1882,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
+    prepare: ray stop 
     script: python workloads/many_drivers.py --iteration-num=4000
     long_running: true
     type: sdk_command
@@ -1945,7 +1945,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
+    prepare: ray stop 
     script: python workloads/many_tasks.py
     long_running: true
     type: sdk_command
@@ -1974,7 +1974,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
+    prepare: ray stop 
     script: python workloads/many_tasks_serialized_ids.py
     long_running: true
     type: sdk_command
@@ -2003,7 +2003,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
+    prepare: ray stop 
     script: python workloads/node_failures.py
     long_running: true
     type: sdk_command
@@ -2094,7 +2094,7 @@
 
   run:
     timeout: 86400
-    prepare: ray stop
+    prepare: ray stop 
     script: python workloads/serve_failure.py
     long_running: true
     type: sdk_command
@@ -3033,8 +3033,9 @@
   group: core-multi-test
 
   team: core
-  frequency: multi
+  frequency: nightly
   working_dir: nightly_tests
+  env: staging
 
   legacy:
     test_name: shuffle_10gb
@@ -3058,8 +3059,9 @@
     test_name: shuffle_50gb
     test_suite: nightly_tests
 
-  frequency: multi
+  frequency: nightly
   team: core
+  env: staging
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_single.yaml
@@ -3077,8 +3079,9 @@
     test_name: shuffle_50gb_large_partition
     test_suite: nightly_tests
 
-  frequency: multi
+  frequency: nightly
   team: core
+  env: staging
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_single.yaml
@@ -3096,8 +3099,9 @@
     test_name: shuffle_100gb
     test_suite: nightly_tests
 
-  frequency: multi
+  frequency: nightly
   team: core
+  env: staging
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_multi.yaml
@@ -3118,8 +3122,9 @@
     test_name: non_streaming_shuffle_100gb
     test_suite: nightly_tests
 
-  frequency: multi
+  frequency: nightly
   team: core
+  env: staging
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_multi.yaml
@@ -3142,8 +3147,9 @@
     test_name: non_streaming_shuffle_50gb_large_partition
     test_suite: nightly_tests
 
-  frequency: multi
+  frequency: nightly
   team: core
+  env: staging
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_single.yaml
@@ -3163,8 +3169,9 @@
     test_name: non_streaming_shuffle_50gb
     test_suite: nightly_tests
 
-  frequency: multi
+  frequency: nightly
   team: core
+  env: staging
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_single.yaml
@@ -3184,8 +3191,9 @@
     test_name: stress_test_placement_group
     test_suite: nightly_tests
 
-  frequency: multi
+  frequency: nightly
   team: core
+  env: staging
   cluster:
     cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/placement_group_tests_compute.yaml
@@ -3205,6 +3213,7 @@
 
   frequency: nightly
   team: core
+  env: staging
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_large_scale.yaml
@@ -3227,6 +3236,7 @@
 
   frequency: nightly
   team: core
+  env: staging
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_large_scale.yaml
@@ -3249,8 +3259,9 @@
     test_name: shuffle_1tb_5000_partitions
     test_suite: nightly_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: core
+  env: staging
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_large_scale.yaml
@@ -3271,7 +3282,7 @@
     test_name: decision_tree_autoscaling
     test_suite: nightly_tests
 
-  frequency: multi
+  frequency: nightly
   team: core
   cluster:
     cluster_env: decision_tree/decision_tree_app_config.yaml
@@ -3290,7 +3301,7 @@
     test_name: decision_tree_autoscaling_20_runs
     test_suite: nightly_tests
 
-  frequency: multi
+  frequency: nightly
   team: core
   cluster:
     cluster_env: decision_tree/decision_tree_app_config.yaml
@@ -3309,8 +3320,9 @@
     test_name: autoscaling_shuffle_1tb_1000_partitions
     test_suite: nightly_tests
 
-  frequency: multi
+  frequency: nightly
   team: core
+  env: staging
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
@@ -3330,7 +3342,7 @@
     test_name: pg_long_running_performance_test
     test_suite: nightly_tests
 
-  frequency: multi
+  frequency: nightly
   team: core
   cluster:
     cluster_env: placement_group_tests/app_config.yaml
@@ -3470,7 +3482,7 @@
     file_manager: sdk
 
   smoke_test:
-    frequency: multi
+    frequency: nightly
     cluster:
       app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
       cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
@@ -3508,7 +3520,7 @@
     file_manager: sdk
 
   smoke_test:
-    frequency: multi
+    frequency: nightly
     cluster:
       app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
       cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
@@ -3530,6 +3542,7 @@
 
   frequency: nightly
   team: core
+  env: staging
   cluster:
     cluster_env: stress_tests/state_api_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute_large.yaml
@@ -3543,13 +3556,15 @@
     file_manager: sdk
 
   smoke_test:
-    frequency: multi
+    frequency: nightly
     cluster:
       app_config: stress_tests/state_api_app_config.yaml
       cluster_compute: stress_tests/smoke_test_compute.yaml
 
     run:
       timeout: 3600
+      wait_for_nodes:
+        num_nodes: 5
       script: python stress_tests/test_state_api_scale.py --smoke-test
 
 
@@ -3583,24 +3598,30 @@
 
   frequency: nightly
   team: core
+  env: staging
   cluster:
     cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
     timeout: 7200
+    wait_for_nodes:
+      num_nodes: 101
+
     script: python stress_tests/test_many_tasks.py
     type: sdk_command
     file_manager: sdk
 
   smoke_test:
-    frequency: multi
+    frequency: nightly
     cluster:
       app_config: stress_tests/stress_tests_app_config.yaml
       cluster_compute: stress_tests/smoke_test_compute.yaml
 
     run:
       timeout: 3600
+      wait_for_nodes:
+        num_nodes: 5
       script: python stress_tests/test_many_tasks.py --num-nodes=4 --smoke-test
 
 - name: stress_test_dead_actors
@@ -3612,6 +3633,7 @@
 
   frequency: nightly
   team: core
+  env: staging
   cluster:
     cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute.yaml
@@ -3623,7 +3645,7 @@
     file_manager: sdk
 
   smoke_test:
-    frequency: multi
+    frequency: nightly
     cluster:
       app_config: stress_tests/stress_tests_app_config.yaml
       cluster_compute: stress_tests/smoke_test_compute.yaml
@@ -3727,7 +3749,7 @@
     test_name: many_nodes_actor_test
     test_suite: nightly_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: core
   cluster:
     cluster_env: many_nodes_tests/app_config.yaml
@@ -3796,7 +3818,7 @@
     test_name: single_node
     test_suite: benchmark_tests
 
-  frequency: multi
+  frequency: nightly
   team: core
   cluster:
     cluster_env: app_config.yaml
@@ -3816,7 +3838,7 @@
     test_name: object_store
     test_suite: benchmark_tests
 
-  frequency: multi
+  frequency: nightly
   team: core
   cluster:
     cluster_env: app_config.yaml
@@ -3860,7 +3882,7 @@
     test_name: many_actors_smoke_test
     test_suite: benchmark_tests
 
-  frequency: multi
+  frequency: nightly
   team: core
   cluster:
     cluster_env: app_config.yaml
@@ -3898,7 +3920,7 @@
     file_manager: sdk
 
   smoke_test:
-    frequency: multi
+    frequency: nightly
     cluster:
       cluster_env: app_config.yaml
       cluster_compute: distributed_smoke_test.yaml
@@ -3938,7 +3960,7 @@
     test_name: many_pgs_smoke_test
     test_suite: benchmark_tests
 
-  frequency: multi
+  frequency: nightly
   team: core
   cluster:
     cluster_env: app_config.yaml
@@ -3962,7 +3984,7 @@
     test_name: many_nodes
     test_suite: benchmark_tests
 
-  frequency: nightly
+  frequency: nightly-3x
   team: core
   cluster:
     cluster_env: app_config.yaml
@@ -4088,8 +4110,8 @@
     test_name: inference
     test_suite: dataset_test
 
-  frequency: multi
-  team: core
+  frequency: nightly
+  team: data
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: inference.yaml
@@ -4110,8 +4132,8 @@
     test_name: shuffle_data_loader
     test_suite: dataset_test
 
-  frequency: multi
-  team: core
+  frequency: nightly
+  team: data
   cluster:
     cluster_env: shuffle_app_config.yaml
     cluster_compute: shuffle_compute.yaml
@@ -4129,8 +4151,8 @@
     test_name: parquet_metadata_resolution
     test_suite: dataset_test
 
-  frequency: multi
-  team: core
+  frequency: nightly
+  team: data
   cluster:
     cluster_env: pipelined_training_app.yaml
     cluster_compute: pipelined_training_compute.yaml
@@ -4149,8 +4171,8 @@
   working_dir: nightly_tests/dataset
   stable: false
 
-  frequency: multi
-  team: core
+  frequency: nightly
+  team: data
   cluster:
     cluster_env: pipelined_training_app.yaml
     cluster_compute: pipelined_training_compute.yaml
@@ -4169,7 +4191,7 @@
   working_dir: nightly_tests/dataset
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute.yaml
@@ -4183,6 +4205,23 @@
     type: sdk_command
     file_manager: sdk
 
+- name: aggregate_benchmark
+  group: core-dataset-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: aggregate_benchmark_compute.yaml
+
+  run:
+    timeout: 1800
+    script: python aggregate_benchmark.py
+
+    type: sdk_command
+    file_manager: sdk
+
 - name: pipelined_training_50_gb
   group: core-dataset-tests
   working_dir: nightly_tests/dataset
@@ -4190,8 +4229,8 @@
     test_name: pipelined_training_50_gb
     test_suite: dataset_test
 
-  frequency: multi
-  team: core
+  frequency: nightly
+  team: data
   cluster:
     cluster_env: pipelined_training_app.yaml
     cluster_compute: pipelined_training_compute.yaml
@@ -4213,7 +4252,7 @@
     test_suite: dataset_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: pipelined_ingestion_app.yaml
     cluster_compute: pipelined_ingestion_compute.yaml
@@ -4236,8 +4275,8 @@
     test_name: datasets_ingest_train_infer
     test_suite: dataset_test
 
-  frequency: multi
-  team: core
+  frequency: nightly
+  team: data
   cluster:
     cluster_env: ray_sgd_training_app.yaml
     cluster_compute: ray_sgd_training_compute.yaml
@@ -4254,7 +4293,7 @@
     file_manager: sdk
 
   smoke_test:
-    frequency: multi
+    frequency: nightly
     cluster:
       app_config: ray_sgd_training_app.yaml
       cluster_compute: ray_sgd_training_smoke_compute.yaml
@@ -4273,7 +4312,7 @@
     test_suite: dataset_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: ray_sgd_training_app.yaml
     cluster_compute: ray_sgd_training_compute_no_gpu.yaml
@@ -4296,8 +4335,8 @@
     test_name: datasets_ingest_400G
     test_suite: dataset_test
 
-  frequency: multi
-  team: core
+  frequency: nightly
+  team: data
   cluster:
     cluster_env: ray_sgd_training_app.yaml
     cluster_compute: dataset_ingest_400G_compute.yaml
@@ -4316,7 +4355,7 @@
     test_suite: dataset_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
@@ -4337,7 +4376,7 @@
     test_suite: dataset_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
@@ -4358,7 +4397,7 @@
     test_suite: dataset_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
@@ -4379,7 +4418,7 @@
     test_suite: dataset_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
@@ -4400,7 +4439,7 @@
     test_suite: dataset_test
 
   frequency: nightly
-  team: core
+  team: data
   cluster:
     cluster_env: shuffle/100tb_shuffle_app_config.yaml
     cluster_compute: shuffle/100tb_shuffle_compute.yaml
@@ -4424,7 +4463,7 @@
     test_name: chaos_many_tasks_no_object_store
     test_suite: chaos_test
 
-  frequency: multi
+  frequency: nightly
   team: core
   cluster:
     cluster_env: chaos_test/app_config.yaml
@@ -4447,7 +4486,7 @@
     test_name: chaos_many_actors
     test_suite: chaos_test
 
-  frequency: multi
+  frequency: nightly
   team: core
   cluster:
     cluster_env: chaos_test/app_config.yaml

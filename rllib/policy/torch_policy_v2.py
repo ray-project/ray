@@ -40,6 +40,7 @@ from ray.rllib.utils.typing import (
     GradInfoDict,
     ModelGradients,
     ModelWeights,
+    PolicyState,
     TensorStructType,
     TensorType,
 )
@@ -878,7 +879,9 @@ class TorchPolicyV2(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def get_state(self) -> PolicyState:
+        # Legacy Policy state (w/o torch.nn.Module and w/o PolicySpec).
         state = super().get_state()
         state["_optimizer_variables"] = []
         for i, o in enumerate(self._optimizers):
@@ -890,7 +893,8 @@ class TorchPolicyV2(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def set_state(self, state: dict) -> None:
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def set_state(self, state: PolicyState) -> None:
         # Set optimizer vars first.
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars:
@@ -940,7 +944,7 @@ class TorchPolicyV2(Policy):
         }
 
         if not os.path.exists(export_dir):
-            os.makedirs(export_dir)
+            os.makedirs(export_dir, exist_ok=True)
 
         seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
         if onnx:

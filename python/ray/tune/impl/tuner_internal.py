@@ -215,7 +215,7 @@ class TunerInternal:
                 self._setup_create_experiment_checkpoint_dir(self._run_config)
             )
             for file_dir in experiment_checkpoint_path.glob("*"):
-                file_dir.rename(new_exp_path / file_dir.name)
+                file_dir.replace(new_exp_path / file_dir.name)
             shutil.rmtree(experiment_checkpoint_path)
             self._experiment_checkpoint_dir = str(new_exp_path)
 
@@ -258,7 +258,7 @@ class TunerInternal:
             run_config.name,
         )
         if not os.path.exists(path):
-            os.makedirs(path)
+            os.makedirs(path, exist_ok=True)
         return path
 
     # This has to be done through a function signature (@property won't do).

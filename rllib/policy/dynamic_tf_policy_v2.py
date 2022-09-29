@@ -1,10 +1,9 @@
+from collections import OrderedDict
+import gym
 import logging
 import re
-from collections import OrderedDict
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
-
-import gym
 import tree  # pip install dm_tree
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2

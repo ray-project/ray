@@ -719,9 +719,11 @@ available_node_types:
     assert cluster_config_to_report.min_workers == 1
     assert cluster_config_to_report.max_workers is None
     assert cluster_config_to_report.head_node_instance_type == "m5.large"
-    assert cluster_config_to_report.worker_node_instance_types == list(
-        {"m3.large", "Standard_D2s_v3", "n1-standard-2"}
-    )
+    assert set(cluster_config_to_report.worker_node_instance_types) == {
+        "m3.large",
+        "Standard_D2s_v3",
+        "n1-standard-2",
+    }
 
     cluster_config_file_path.write_text(
         """
@@ -767,6 +769,19 @@ available_node_types:
     assert cluster_config_to_report.max_workers is None
     assert cluster_config_to_report.head_node_instance_type is None
     assert cluster_config_to_report.worker_node_instance_types is None
+
+    monkeypatch.setenv("RAY_USAGE_STATS_KUBERAY_IN_USE", "1")
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        tmp_path / "does_not_exist.yaml"
+    )
+    assert cluster_config_to_report.cloud_provider == "kuberay"
+
+    monkeypatch.delenv("RAY_USAGE_STATS_KUBERAY_IN_USE")
+    monkeypatch.setenv("RAY_USAGE_STATS_LEGACY_OPERATOR_IN_USE", "1")
+    cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+        tmp_path / "does_not_exist.yaml"
+    )
+    assert cluster_config_to_report.cloud_provider == "legacy_ray_operator"
 
 
 @pytest.mark.skipif(
