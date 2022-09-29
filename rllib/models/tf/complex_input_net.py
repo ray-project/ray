@@ -1,4 +1,4 @@
-from gym.spaces import Box, Discrete, MultiDiscrete
+from gym.spaces import Box, Discrete, MultiDiscrete, MultiBinary
 import numpy as np
 import tree  # pip install dm_tree
 
@@ -57,7 +57,7 @@ class ComplexInputNetwork(TFModelV2):
         concat_size = 0
         for i, component in enumerate(self.flattened_input_space):
             # Image space.
-            if len(component.shape) == 3:
+            if len(component.shape) == 3 and isinstance(component, Box):
                 config = {
                     "conv_filters": model_config["conv_filters"]
                     if "conv_filters" in model_config
@@ -78,6 +78,9 @@ class ComplexInputNetwork(TFModelV2):
             elif isinstance(component, (Discrete, MultiDiscrete)):
                 if isinstance(component, Discrete):
                     size = component.n
+                elif isinstance(component, MultiBinary):
+                    # Treat MultiBinary as Tuple
+                    size = np.product(component.n)
                 else:
                     size = np.sum(component.nvec)
                 config = {
