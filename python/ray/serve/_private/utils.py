@@ -468,3 +468,10 @@ def guarded_deprecation_warning(*args, **kwargs):
             return func
 
         return noop_decorator
+
+
+def snake_to_camel_case(snake_str: str) -> str:
+    """Convert a snake case string to camel case."""
+
+    words = snake_str.split("_")
+    return words[0] + "".join(word[:1].upper() + word[1:] for word in words[1:])

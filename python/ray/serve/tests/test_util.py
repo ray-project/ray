@@ -17,6 +17,7 @@ from ray.serve._private.utils import (
     merge_dict,
     msgpack_serialize,
     msgpack_deserialize,
+    snake_to_camel_case,
 )
 
 
@@ -323,6 +324,51 @@ class TestOverrideRuntimeEnvsExceptEnvVars:
                     return os.getenv("var1") + " " + os.getenv("var2")
 
             assert ray.get(test_task.remote()) == "hello world"
+
+
+class TestSnakeToCamelCase:
+    def test_empty(self):
+        assert "" == snake_to_camel_case("")
+
+    def test_single_word(self):
+        assert snake_to_camel_case("oneword") == "oneword"
+
+    def test_multiple_words(self):
+        assert (
+            snake_to_camel_case("there_are_multiple_words_in_this_phrase")
+            == "thereAreMultipleWordsInThisPhrase"
+        )
+
+    def test_leading_alphanumeric(self):
+        assert (
+            snake_to_camel_case("check_@lphanum3ric_©har_behavior")
+            == "check@lphanum3ric©harBehavior"
+        )
+
+    def test_embedded_capitalization(self):
+        assert snake_to_camel_case("check_eMbEDDed_caPs") == "checkEMbEDDedCaPs"
+
+    def test_mixed_caps_alphanumeric(self):
+        assert (
+            snake_to_camel_case("check_3Mb3DD*d_©a!s_behAvior_Here_wIth_MIxed_cAPs")
+            == "check3Mb3DD*d©a!sBehAviorHereWIthMIxedCAPs"
+        )
+
+    def test_leading_underscore(self):
+        """Should strip leading underscores."""
+
+        snake_to_camel_case("_leading_underscore") == "leadingUnderscore"
+
+    def test_trailing_underscore(self):
+        """Should strip trailing underscores."""
+
+        snake_to_camel_case("trailing_underscore_") == "trailingUnderscore"
+
+    def test_double_underscore(self):
+        """Should treat repeated underscores as single underscore."""
+
+        snake_to_camel_case("double__underscore") == "doubleUnderscore"
+        snake_to_camel_case(f"many{'_' * 30}underscore") == "manyUnderscore"
 
 
 if __name__ == "__main__":
