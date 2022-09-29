@@ -3056,8 +3056,10 @@ NodeManager::WorkersWithLatestSubmittedTasks() const {
             workers.end(),
             [](std::shared_ptr<WorkerInterface> const &left,
                std::shared_ptr<WorkerInterface> const &right) -> bool {
-              int left_retriable = left->GetAssignedTask().GetTaskSpecification().IsRetriable() ? 0 : 1;
-              int right_retriable = right->GetAssignedTask().GetTaskSpecification().IsRetriable() ? 0 : 1;
+              int left_retriable =
+                  left->GetAssignedTask().GetTaskSpecification().IsRetriable() ? 0 : 1;
+              int right_retriable =
+                  right->GetAssignedTask().GetTaskSpecification().IsRetriable() ? 0 : 1;
               if (left_retriable == right_retriable) {
                 return left->GetAssignedTaskTime() > right->GetAssignedTaskTime();
               }

@@ -118,10 +118,14 @@ def has_metric_tagged_with_value(tag, value) -> bool:
 def test_memory_pressure_kill_actor(ray_with_memory_monitor):
     leaker = Leaker.options(max_restarts=0, max_task_retries=0).remote()
 
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction - 0.1)
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
+        memory_usage_threshold_fraction - 0.1
+    )
     ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
 
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction + 0.1)
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
+        memory_usage_threshold_fraction + 0.1
+    )
     with pytest.raises(ray.exceptions.RayActorError) as _:
         ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
 
@@ -141,7 +145,9 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
 def test_memory_pressure_kill_restartable_actor(ray_with_memory_monitor):
     leaker = Leaker.options(max_restarts=1, max_task_retries=1).remote()
 
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction + 0.1)
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
+        memory_usage_threshold_fraction + 0.1
+    )
     with pytest.raises(ray.exceptions.RayActorError) as _:
         ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
 
@@ -323,7 +329,7 @@ def test_task_oom_no_oom_retry_fails_immediately(
 
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(
-            allocate_memory.options(max_retries=0).remote(
+            allocate_memory.options(max_retries=1).remote(
                 allocate_bytes=bytes_to_alloc, post_allocate_sleep_s=100
             )
         )
@@ -383,7 +389,7 @@ def test_memory_pressure_newer_task_not_retriable_kill_older_retriable_task_firs
     ray.get(non_retriable_actor_ref)
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(retriable_task_ref)
-    
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

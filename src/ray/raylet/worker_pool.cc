@@ -1443,8 +1443,7 @@ inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) const
 }
 
 const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers(
-    bool filter_dead_workers,
-    bool filter_io_workers) const {
+    bool filter_dead_workers, bool filter_io_workers) const {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
 
   for (const auto &entry : states_by_lang_) {

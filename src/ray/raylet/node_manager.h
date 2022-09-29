@@ -191,7 +191,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// retriable.
   /// \return the list of sorted workers
-  const std::vector<std::shared_ptr<WorkerInterface>> WorkersWithLatestSubmittedTasks() const;
+  const std::vector<std::shared_ptr<WorkerInterface>> WorkersWithLatestSubmittedTasks()
+      const;
 
   /// Returns debug string of the workers.
   ///
