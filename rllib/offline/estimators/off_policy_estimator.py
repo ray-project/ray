@@ -1,3 +1,4 @@
+import gym
 import numpy as np
 import tree
 from typing import Dict, Any, List
@@ -12,6 +13,7 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
+    ExperimentalAPI,
     OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.deprecation import Deprecated
@@ -27,15 +29,25 @@ class OffPolicyEstimator(OfflineEvaluator):
     """Interface for an off policy estimator for counterfactual evaluation."""
 
     @DeveloperAPI
-    def __init__(self, policy: Policy, gamma: float = 0.0):
+    def __init__(
+        self,
+        policy: Policy,
+        gamma: float = 0.0,
+        epsilon_greedy: float = 0.0,
+    ):
         """Initializes an OffPolicyEstimator instance.
 
         Args:
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
+            epsilon_greedy: The probability by which we act acording to a fully random
+            policy during deployment. With 1-epsilon_greedy we act according the target
+            policy.
+            # TODO (kourosh): convert the input parameters to a config dict.
         """
         self.policy = policy
         self.gamma = gamma
+        self.epsilon_greedy = epsilon_greedy
 
     @DeveloperAPI
     def estimate_on_single_episode(self, episode: SampleBatch) -> Dict[str, Any]:
@@ -227,6 +239,22 @@ class OffPolicyEstimator(OfflineEvaluator):
                 "`exploration_config: {type: 'SoftQ'}`. You can also set "
                 "`off_policy_estimation_methods: {}` to disable estimation."
             )
+
+    @ExperimentalAPI
+    def compute_action_probs(self, batch: SampleBatch):
+        log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, batch)
+        new_prob = np.exp(convert_to_numpy(log_likelihoods))
+
+        if self.epsilon_greedy > 0.0:
+            if not isinstance(self.policy.action_space, gym.spaces.Discrete):
+                raise ValueError(
+                    "Evaluation with epsilon-greedy exploration is only supported "
+                    "with discrete action spaces."
+                )
+            eps = self.epsilon_greedy
+            new_prob = new_prob * (1 - eps) + eps / self.policy.action_space.n
+
+        return new_prob
 
     @DeveloperAPI
     def train(self, batch: SampleBatchType) -> Dict[str, Any]:

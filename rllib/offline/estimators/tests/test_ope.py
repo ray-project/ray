@@ -64,10 +64,10 @@ class TestOPE(unittest.TestCase):
                 evaluation_num_workers=1,
                 evaluation_duration_unit="episodes",
                 off_policy_estimation_methods={
-                    "is": {"type": ImportanceSampling},
-                    "wis": {"type": WeightedImportanceSampling},
-                    "dm_fqe": {"type": DirectMethod},
-                    "dr_fqe": {"type": DoublyRobust},
+                    "is": {"type": ImportanceSampling, "epsilon_greedy": 0.1},
+                    "wis": {"type": WeightedImportanceSampling, "epsilon_greedy": 0.1},
+                    "dm_fqe": {"type": DirectMethod, "epsilon_greedy": 0.1},
+                    "dr_fqe": {"type": DoublyRobust, "epsilon_greedy": 0.1},
                 },
             )
         )

@@ -34,6 +34,7 @@ class DirectMethod(OffPolicyEstimator):
         self,
         policy: Policy,
         gamma: float,
+        epsilon_greedy: float = 0.0,
         q_model_config: Optional[Dict] = None,
     ):
         """Initializes a Direct Method OPE Estimator.
@@ -41,15 +42,18 @@ class DirectMethod(OffPolicyEstimator):
         Args:
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.
+            epsilon_greedy: The probability by which we act acording to a fully random
+                policy during deployment. With 1-epsilon_greedy we act according the
+                target policy.
             q_model_config: Arguments to specify the Q-model. Must specify
-            a `type` key pointing to the Q-model class.
-            This Q-model is trained in the train() method and is used
-            to compute the state-value estimates for the DirectMethod estimator.
-            It must implement `train` and `estimate_v`.
-            TODO (Rohan138): Unify this with RLModule API.
+                a `type` key pointing to the Q-model class.
+                This Q-model is trained in the train() method and is used
+                to compute the state-value estimates for the DirectMethod estimator.
+                It must implement `train` and `estimate_v`.
+                TODO (Rohan138): Unify this with RLModule API.
         """
 
-        super().__init__(policy, gamma)
+        super().__init__(policy, gamma, epsilon_greedy)
 
         q_model_config = q_model_config or {}
         model_cls = q_model_config.pop("type", FQETorchModel)

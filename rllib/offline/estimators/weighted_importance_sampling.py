@@ -3,10 +3,8 @@ import numpy as np
 
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.numpy import convert_to_numpy
 
 
 @DeveloperAPI
@@ -29,8 +27,8 @@ class WeightedImportanceSampling(OffPolicyEstimator):
     For more information refer to https://arxiv.org/pdf/1911.06854.pdf"""
 
     @override(OffPolicyEstimator)
-    def __init__(self, policy: Policy, gamma: float):
-        super().__init__(policy, gamma)
+    def __init__(self, policy: Policy, gamma: float, epsilon_greedy: float = 0.0):
+        super().__init__(policy, gamma, epsilon_greedy)
         # map from time to cummulative propensity values
         self.cummulative_ips_values = []
         # map from time to number of episodes that reached this time
@@ -70,8 +68,7 @@ class WeightedImportanceSampling(OffPolicyEstimator):
     ) -> Dict[str, List[float]]:
         estimates_per_epsiode = {}
         rewards, old_prob = batch["rewards"], batch["action_prob"]
-        log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, batch)
-        new_prob = np.exp(convert_to_numpy(log_likelihoods))
+        new_prob = self.compute_action_probs(batch)
 
         weights = new_prob / old_prob
         v_behavior = rewards
@@ -95,8 +92,7 @@ class WeightedImportanceSampling(OffPolicyEstimator):
     @override(OffPolicyEstimator)
     def peek_on_single_episode(self, episode: SampleBatch) -> None:
         old_prob = episode["action_prob"]
-        log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, episode)
-        new_prob = np.exp(convert_to_numpy(log_likelihoods))
+        new_prob = self.compute_action_probs(episode)
 
         # calculate importance ratios
         episode_p = []
