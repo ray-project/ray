@@ -22,8 +22,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-ENCODED_DATA_KEY = "torch_encoded_data"
-
 
 @PublicAPI(stability="beta")
 @dataclass

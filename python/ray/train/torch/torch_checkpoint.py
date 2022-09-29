@@ -10,7 +10,6 @@ from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.train.data_parallel_trainer import _load_checkpoint
 from ray.air._internal.torch_utils import load_torch_model
 from ray.util.annotations import PublicAPI
-from torch.nn.parallel import DistributedDataParallel
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -29,6 +28,8 @@ class TorchCheckpoint(Checkpoint):
     # Special encoding logic to avoid serialization errors with torch.
     def _encode_data_dict(self, data_dict: dict) -> dict:
         """Encode data_dict using torch.save."""
+        from torch.nn.parallel import DistributedDataParallel
+
         for k, v in data_dict.items():
             if isinstance(v, DistributedDataParallel) and hasattr(v, "module"):
                 data_dict[k] = v.module
