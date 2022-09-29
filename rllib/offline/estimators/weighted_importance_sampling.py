@@ -68,7 +68,7 @@ class WeightedImportanceSampling(OffPolicyEstimator):
     ) -> Dict[str, List[float]]:
         estimates_per_epsiode = {}
         rewards, old_prob = batch["rewards"], batch["action_prob"]
-        new_prob = self._compute_action_probs(batch)
+        new_prob = self.compute_action_probs(batch)
 
         weights = new_prob / old_prob
         v_behavior = rewards
@@ -92,7 +92,7 @@ class WeightedImportanceSampling(OffPolicyEstimator):
     @override(OffPolicyEstimator)
     def peek_on_single_episode(self, episode: SampleBatch) -> None:
         old_prob = episode["action_prob"]
-        new_prob = self._compute_action_probs(episode)
+        new_prob = self.compute_action_probs(episode)
 
         # calculate importance ratios
         episode_p = []
