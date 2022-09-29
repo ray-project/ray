@@ -155,6 +155,7 @@ def load_policies_from_checkpoint(
             policy_spec.action_space,
         )
         if id in policy_states:
+            # print(policy_states[id])
             policy.set_state(policy_states[id])
         policies[id] = policy
 
