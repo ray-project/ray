@@ -328,6 +328,9 @@ class Deployment:
                 internally by Serve. It should be False when called by users.
         """
 
+        # NOTE: The user_configured_option_names should be the first thing that's
+        # defined in this method. It depends on the locals() dictionary storing
+        # only the function args/kwargs.
         # Create list of all user-configured options from keyword args
         user_configured_option_names = [
             option
