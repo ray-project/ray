@@ -3,6 +3,8 @@ import numpy as np
 import sys
 
 import ray
+from ray._private.internal_api import memory_summary
+from ray._private.test_utils import wait_for_condition
 
 
 def test_generator_oom(ray_start_regular):
@@ -196,6 +198,33 @@ def test_dynamic_generator(ray_start_regular, store_in_plasma):
 
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(static.remote(3))
+
+
+def test_dynamic_generator_fails(ray_start_regular):
+    address = ray_start_regular["address"]
+
+    @ray.remote(num_returns="dynamic")
+    def dynamic_generator(num_returns):
+        for i in range(num_returns):
+            yield np.ones(1_000_000, dtype=np.int8) * i
+        sys.exit(-1)
+
+    @ray.remote
+    def read(gen):
+        for i, ref in enumerate(gen):
+            if ray.get(ref)[0] != i:
+                return False
+        return True
+
+    gen_ref = dynamic_generator.remote(10)
+
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        ray.get(gen_ref)
+
+    # All partially stored objects should eventually get cleaned up.
+    # TODO(swang): Also test case where task fails on first try, succeeds on
+    # second.
+    wait_for_condition(lambda: "Plasma memory usage 0 MiB" in memory_summary(address))
 
 
 def test_dynamic_generator_reconstruction(ray_start_cluster):
