@@ -475,3 +475,12 @@ def snake_to_camel_case(snake_str: str) -> str:
 
     words = snake_str.split("_")
     return words[0] + "".join(word[:1].upper() + word[1:] for word in words[1:])
+
+
+def dict_keys_snake_to_camel_case(d: dict) -> dict:
+    """Converts dictionary's keys from snake case to camel case.
+
+    Creates a new dictionary, but shallow copies values from old dictionary.
+    """
+
+    pass
