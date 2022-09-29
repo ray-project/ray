@@ -83,14 +83,14 @@ class TaskPoolStrategy(ComputeStrategy):
         blocks = block_list.get_blocks_with_metadata()
         # Bin blocks by target block size.
         if target_block_size is not None:
-            binned_blocks = _bin_blocks_up_to_size(blocks, target_block_size)
+            block_bundles = _bundle_blocks_up_to_size(blocks, target_block_size)
         else:
-            binned_blocks = [((b,), (m,)) for b, m in blocks]
+            block_bundles = [((b,), (m,)) for b, m in blocks]
         del blocks
         if name is None:
             name = "map"
         name = name.title()
-        map_bar = ProgressBar(name, total=len(binned_blocks))
+        map_bar = ProgressBar(name, total=len(block_bundles))
 
         if context.block_splitting_enabled:
             map_block = cached_remote_fn(_map_block_split).options(
@@ -105,7 +105,7 @@ class TaskPoolStrategy(ComputeStrategy):
                     *(bs + fn_args),
                     **fn_kwargs,
                 )
-                for bs, ms in binned_blocks
+                for bs, ms in block_bundles
             ]
         else:
             map_block = cached_remote_fn(_map_block_nosplit).options(
@@ -120,7 +120,7 @@ class TaskPoolStrategy(ComputeStrategy):
                     *(bs + fn_args),
                     **fn_kwargs,
                 )
-                for bs, ms in binned_blocks
+                for bs, ms in block_bundles
             ]
             data_refs, refs = map(list, zip(*all_refs))
 
@@ -243,9 +243,9 @@ class ActorPoolStrategy(ComputeStrategy):
         blocks_in = block_list.get_blocks_with_metadata()
         # Bin blocks by target block size.
         if target_block_size is not None:
-            binned_blocks = _bin_blocks_up_to_size(blocks_in, target_block_size)
+            block_bundles = _bundle_blocks_up_to_size(blocks_in, target_block_size)
         else:
-            binned_blocks = [((b,), (m,)) for b, m in blocks_in]
+            block_bundles = [((b,), (m,)) for b, m in blocks_in]
         del blocks_in
         owned_by_consumer = block_list._owned_by_consumer
 
@@ -253,7 +253,7 @@ class ActorPoolStrategy(ComputeStrategy):
         if clear_input_blocks:
             block_list.clear()
 
-        orig_num_blocks = len(binned_blocks)
+        orig_num_blocks = len(block_bundles)
         results = []
         if name is None:
             name = "map"
@@ -375,10 +375,10 @@ class ActorPoolStrategy(ComputeStrategy):
 
                 # Schedule a new task.
                 while (
-                    binned_blocks
+                    block_bundles
                     and tasks_in_flight[worker] < self.max_tasks_in_flight_per_actor
                 ):
-                    blocks, metas = binned_blocks.pop()
+                    blocks, metas = block_bundles.pop()
                     # TODO(swang): Support block splitting for compute="actors".
                     ref, meta_ref = worker.map_block_nosplit.remote(
                         [f for meta in metas for f in meta.input_files],
@@ -388,7 +388,7 @@ class ActorPoolStrategy(ComputeStrategy):
                     )
                     metadata_mapping[ref] = meta_ref
                     tasks[ref] = worker
-                    block_indices[ref] = len(binned_blocks)
+                    block_indices[ref] = len(block_bundles)
                     tasks_in_flight[worker] += 1
 
             map_bar.close()
@@ -484,26 +484,26 @@ def _map_block_nosplit(
     )
 
 
-def _bin_blocks_up_to_size(
+def _bundle_blocks_up_to_size(
     blocks: List[Tuple[Block, BlockMetadata]],
     target_size: int,
 ) -> List[Tuple[List[Block], List[BlockMetadata]]]:
-    """Group blocks into bins that are up to (but not exceeding) the provided target
+    """Group blocks into bundles that are up to (but not exceeding) the provided target
     size.
     """
-    binned_blocks = []
-    curr_bin = []
-    curr_bin_size = 0
+    block_bundles = []
+    curr_bundle = []
+    curr_bundle_size = 0
     for b, m in blocks:
         num_rows = m.num_rows
         if num_rows is None:
             num_rows = float("inf")
-        if curr_bin_size > 0 and curr_bin_size + num_rows > target_size:
-            binned_blocks.append(curr_bin)
-            curr_bin = []
-            curr_bin_size = 0
-        curr_bin.append((b, m))
-        curr_bin_size += num_rows
-    if curr_bin:
-        binned_blocks.append(curr_bin)
-    return [tuple(zip(*block_bin)) for block_bin in binned_blocks]
+        if curr_bundle_size > 0 and curr_bundle_size + num_rows > target_size:
+            block_bundles.append(curr_bundle)
+            curr_bundle = []
+            curr_bundle_size = 0
+        curr_bundle.append((b, m))
+        curr_bundle_size += num_rows
+    if curr_bundle:
+        block_bundles.append(curr_bundle)
+    return [tuple(zip(*block_bundle)) for block_bundle in block_bundles]

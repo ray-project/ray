@@ -1,3 +1,4 @@
+import itertools
 import math
 import os
 import random
@@ -2711,6 +2712,90 @@ def test_map_batches_batch_mutation(
     # Apply UDF that mutates the batches.
     ds = ds.map_batches(mutate, batch_size=batch_size)
     assert [row["value"] for row in ds.iter_rows()] == list(range(1, num_rows + 1))
+
+
+BLOCK_BUNDLING_TEST_CASES = [
+    (block_size, batch_size)
+    for batch_size in range(1, 8)
+    for block_size in range(1, 2 * batch_size + 1)
+]
+
+
+@pytest.mark.parametrize("block_size,batch_size", BLOCK_BUNDLING_TEST_CASES)
+def test_map_batches_block_bundling_auto(
+    ray_start_regular_shared, block_size, batch_size
+):
+    # Ensure that we test at least 2 batches worth of blocks.
+    num_blocks = max(10, 2 * batch_size // block_size)
+    ds = ray.data.range(num_blocks * block_size, parallelism=num_blocks)
+    # Confirm that we have the expected number of initial blocks.
+    assert ds.num_blocks() == num_blocks
+    ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+    # Blocks should be bundled up to the batch size.
+    assert ds.num_blocks() == math.ceil(num_blocks / max(batch_size // block_size, 1))
+
+
+@pytest.mark.parametrize(
+    "block_sizes,batch_size,expected_num_blocks",
+    [
+        ([1, 2], 3, 1),
+        ([2, 2, 1], 3, 2),
+        ([1, 2, 3, 4], 4, 3),
+        ([3, 1, 1, 3], 4, 2),
+        ([2, 4, 1, 8], 4, 4),
+        ([1, 1, 1, 1], 4, 1),
+        ([1, 0, 3, 2], 4, 2),
+        ([4, 4, 4, 4], 4, 4),
+    ],
+)
+def test_map_batches_block_bundling_skewed_manual(
+    ray_start_regular_shared, block_sizes, batch_size, expected_num_blocks
+):
+    num_blocks = len(block_sizes)
+    ds = ray.data.from_pandas(
+        [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
+    )
+    # Confirm that we have the expected number of initial blocks.
+    assert ds.num_blocks() == num_blocks
+    ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+
+    # Blocks should be bundled up to the batch size.
+    assert ds.num_blocks() == expected_num_blocks
+
+
+BLOCK_BUNDLING_SKEWED_TEST_CASES = [
+    (block_sizes, batch_size)
+    for batch_size in range(1, 4)
+    for num_blocks in range(1, batch_size + 1)
+    for block_sizes in itertools.product(
+        range(1, 2 * batch_size + 1), repeat=num_blocks
+    )
+]
+
+
+@pytest.mark.parametrize("block_sizes,batch_size", BLOCK_BUNDLING_SKEWED_TEST_CASES)
+def test_map_batches_block_bundling_skewed_auto(
+    ray_start_regular_shared, block_sizes, batch_size
+):
+    num_blocks = len(block_sizes)
+    ds = ray.data.from_pandas(
+        [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
+    )
+    # Confirm that we have the expected number of initial blocks.
+    assert ds.num_blocks() == num_blocks
+    ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+    curr = 0
+    num_out_blocks = 0
+    for block_size in block_sizes:
+        if curr > 0 and curr + block_size > batch_size:
+            num_out_blocks += 1
+            curr = 0
+        curr += block_size
+    if curr > 0:
+        num_out_blocks += 1
+
+    # Blocks should be bundled up to the batch size.
+    assert ds.num_blocks() == num_out_blocks
 
 
 def test_union(ray_start_regular_shared):

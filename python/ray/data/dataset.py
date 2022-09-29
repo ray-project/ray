@@ -355,6 +355,14 @@ class Dataset(Generic[T]):
             If ``fn`` mutates its input, you will need to ensure that the batch provided
             to ``fn`` is writable. See the ``allow_mutate_batch`` parameter.
 
+        .. note::
+            The size of the batches provided to ``fn`` may be smaller than the provided
+            ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent to
+            a given map task. Each map task will be sent a single block if the block is
+            equal to or larger than ``batch_size``, and will be sent a bundle of blocks
+            up to (but not exceeding) ``batch_size`` if blocks are smaller than
+            ``batch_size``.
+
         Examples:
 
             >>> import pandas as pd
@@ -429,8 +437,9 @@ class Dataset(Generic[T]):
                 only supported for the actor compute strategy.
             batch_size: The desired number of rows in each batch, or None to use entire
                 blocks as batches (blocks may contain different number of rows).
-                The actual batch size provided to fn may be smaller than ``batch_size``.
-                Defaults to 4096.
+                The actual size of the batch provided to ``fn`` may be smaller than
+                ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
+                to a given map task. Defaults to 4096.
             compute: The compute strategy, either ``"tasks"`` (default) to use Ray
                 tasks, or ``"actors"`` to use an autoscaling actor pool. If you want to
                 configure the size of the autoscaling actor pool, provide an
@@ -529,7 +538,7 @@ class Dataset(Generic[T]):
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
             # TODO(Clark): Expose this zero-copy behavior as a map_batches parameter.
-            batcher = Batcher(batch_size, zero_copy=False)
+            batcher = Batcher(batch_size, ensure_copy=True)
             for block in blocks:
                 batcher.add(block)
             batcher.done_adding()
