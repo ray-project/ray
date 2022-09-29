@@ -71,7 +71,10 @@ class _TrainSession:
         dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         checkpoint: Optional[Union[Dict, Checkpoint]] = None,
+        # Deprecated
         encode_data_fn: Callable = None,
+        # Temporary until train.save_checkpoint is hard-deprecated.
+        get_checkpoint_class_fn: Callable = None,
         detailed_autofilled_metrics: bool = False,
     ):
 
@@ -85,13 +88,16 @@ class _TrainSession:
         self.loaded_checkpoint: Optional[Union[Dict, Checkpoint]] = checkpoint
 
         # Function to encode checkpoint dict before sending to the driver.
-        if not encode_data_fn:
-
-            def noop(x):
-                return x
-
-            encode_data_fn = noop
         self._encode_data_fn = encode_data_fn
+
+        # Temporary until train.save_checkpoint is hard-deprecated.
+        if not get_checkpoint_class_fn:
+
+            def get_checkpoint_cls(x):
+                return Checkpoint
+
+            get_checkpoint_class_fn = get_checkpoint_cls
+        self._get_checkpoint_class_fn = get_checkpoint_class_fn
 
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         if trial_info:
@@ -242,13 +248,13 @@ class _TrainSession:
         if self.ignore_report:
             return
 
-        kwargs = self._encode_data_fn(self._auto_fill_metrics(kwargs))
+        kwargs = self._auto_fill_metrics(kwargs)
+        encoded = False
+        if self._encode_data_fn:
+            kwargs = self._encode_data_fn(kwargs)
+            encoded = True
 
-        result = TrainingResult(
-            TrainingResultType.REPORT,
-            kwargs,
-            encoded=True,
-        )
+        result = TrainingResult(TrainingResultType.REPORT, kwargs, encoded=encoded)
 
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
@@ -285,10 +291,11 @@ class _TrainSession:
         self.loaded_checkpoint = checkpoint
 
         encoded = False
+
         # Only store checkpoints on worker with rank 0.
         if self.world_rank != 0:
             checkpoint = None
-        elif checkpoint and checkpoint.get_internal_representation()[0] == "data_dict":
+        elif checkpoint and self._encode_data_fn:
             checkpoint = checkpoint.from_dict(
                 self._encode_data_fn(checkpoint.to_dict())
             )
@@ -297,7 +304,7 @@ class _TrainSession:
         result = TrainingResult(
             TrainingResultType.CHECKPOINT,
             checkpoint,
-            metadata=self._auto_fill_checkpoint_metrics({}),
+            self._auto_fill_checkpoint_metrics({}),
             encoded=encoded,
         )
         # Add result to a thread-safe queue.

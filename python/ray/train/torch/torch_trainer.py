@@ -100,8 +100,8 @@ class TorchTrainer(DataParallelTrainer):
 
             import ray
             from ray import train
-            from ray.air import session, Checkpoint
-            from ray.train.torch import TorchTrainer
+            from ray.air import session
+            from ray.train.torch import TorchTrainer, TorchCheckpoint
             from ray.air.config import ScalingConfig
 
             input_size = 1
@@ -141,8 +141,8 @@ class TorchTrainer(DataParallelTrainer):
 
                     session.report(
                         {},
-                        checkpoint=Checkpoint.from_dict(
-                            dict(epoch=epoch, model=model.state_dict())
+                        checkpoint=TorchCheckpoint.from_state_dict(
+                            model.state_dict()
                         ),
                     )
 

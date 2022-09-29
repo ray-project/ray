@@ -2,6 +2,7 @@ import logging
 import os
 from collections import defaultdict
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
+import warnings
 
 import ray
 from ray._private.ray_constants import env_integer
@@ -17,7 +18,7 @@ from ray.train._internal.session import (
 )
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
-from ray.train.backend import BackendConfig
+from ray.train.backend import Backend, BackendConfig, _encode_decode_deprecation_message
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
@@ -306,6 +307,7 @@ class BackendExecutor:
             checkpoint,
             dataset_shard,
             encode_data_fn,
+            get_checkpoint_class_fn,
         ):
             try:
                 init_session(
@@ -317,6 +319,7 @@ class BackendExecutor:
                     dataset_shard=dataset_shard,
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
+                    get_checkpoint_class_fn=get_checkpoint_class_fn,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
                 )
             except ValueError:
@@ -333,6 +336,17 @@ class BackendExecutor:
 
         local_rank_map = self._create_local_rank_map()
 
+        # If we get a user-defined encode data func, we'll print a deprecation warning.
+        encode_data_fn = (
+            self._backend.encode_data
+            if self._backend.encode_data != Backend.encode_data
+            else None
+        )
+        if encode_data_fn:
+            warnings.warn(
+                _encode_decode_deprecation_message, DeprecationWarning, stacklevel=2
+            )
+
         futures = []
         for index in range(len(self.worker_group)):
             futures.append(
@@ -346,7 +360,8 @@ class BackendExecutor:
                     train_func=train_func,
                     dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint,
-                    encode_data_fn=self._backend.encode_data,
+                    encode_data_fn=encode_data_fn,
+                    get_checkpoint_class_fn=self._backend.get_checkpoint_class,
                 )
             )
 

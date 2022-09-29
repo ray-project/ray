@@ -236,7 +236,7 @@ def save_checkpoint(**kwargs) -> None:
     if session is None:
         _warn_session_misuse(save_checkpoint.__name__)
         return
-    checkpoint = Checkpoint.from_dict(kwargs)
+    checkpoint = session._get_checkpoint_class_fn(kwargs).from_dict(kwargs)
     session.checkpoint(checkpoint)
 
 

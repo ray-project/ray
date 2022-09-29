@@ -2,12 +2,13 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from typing import List
+from typing import List, Type
 
 import ray
 from ray.train.backend import BackendConfig, Backend
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
+from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
 from ray.util import PublicAPI
 
 
@@ -56,3 +57,11 @@ class _TensorflowBackend(Backend):
                 )
             )
         ray.get(setup_futures)
+
+    @staticmethod
+    def get_checkpoint_class(data_dict: dict) -> Type[TensorflowCheckpoint]:
+        """Get Ray AIR Checkpoint class to use with the legacy Train API.
+
+        This is temporary until ``ray.train.save_checkpoint`` is
+        hard-deprecated."""
+        return TensorflowCheckpoint

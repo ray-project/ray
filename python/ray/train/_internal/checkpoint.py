@@ -109,10 +109,11 @@ class CheckpointManager(CommonCheckpointManager):
         if encoded:
             checkpoint_data = decode_checkpoint_fn(checkpoint_data.to_dict())
             checkpoint_data_dict = checkpoint_data
-        elif checkpoint_data.uri:
-            # TODO: ensure that the dir is created in the proper place
-            checkpoint_data = checkpoint_data.to_directory()
-            checkpoint_data_dict = {}
+        # This is too risky for now (will be saved to a tmp dir)
+        # elif checkpoint_data.uri:
+        #     # TODO: ensure that the dir is created in the proper place
+        #     checkpoint_data = checkpoint_data.to_directory()
+        #     checkpoint_data_dict = {}
         else:
             checkpoint_data = checkpoint_data.to_dict()
             checkpoint_data_dict = checkpoint_data
