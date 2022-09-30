@@ -6,7 +6,8 @@ import numpy as np
 
 import ray
 from ray.air import Checkpoint
-from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
+from ray.air.data_batch_type import DataBatchType
+from ray.air.util.data_batch_conversion import BatchFormat, convert_batch_type_to_pandas
 from ray.data import Preprocessor
 from ray.data.context import DatasetContext
 from ray.data.preprocessors import BatchMapper
@@ -185,7 +186,7 @@ class BatchPredictor:
         has_predict_numpy = (
             self._predictor_cls._predict_numpy != Predictor._predict_numpy
         )
-        batch_format = "numpy" if has_predict_numpy else "pandas"
+        batch_format = BatchFormat.NUMPY if has_predict_numpy else BatchFormat.PANDAS
 
         ctx = DatasetContext.get_current()
         cast_tensor_columns = ctx.enable_tensor_extension_casting
@@ -204,7 +205,7 @@ class BatchPredictor:
 
             def _select_columns_from_batch(
                 self,
-                batch_data: Union[pd.DataFrame, np.ndarray, Dict[str, np.ndarray]],
+                batch_data: DataBatchType,
                 select_columns: Optional[List[str]] = None,
             ):
                 """Return a subset of batch_data based on provided columns."""
@@ -216,7 +217,7 @@ class BatchPredictor:
                         f"Column name(s) {select_columns} should not be "
                         "provided for prediction data type of `numpy.ndarray`"
                     )
-                elif batch_format == "numpy":
+                elif batch_format == BatchFormat.NUMPY:
                     if isinstance(batch_data, dict):
                         return {
                             k: v for k, v in batch_data.items() if k in select_columns
@@ -232,13 +233,13 @@ class BatchPredictor:
                     batch, select_columns=feature_columns
                 )
                 prediction_output = self._predictor.predict(
-                    prediction_batch, **predict_kwargs
+                    prediction_batch, batch_format=batch_format, **predict_kwargs
                 )
                 prediction_output = self._select_columns_from_batch(
                     prediction_output, select_columns=keep_columns
                 )
 
-                if batch_format == "numpy":
+                if batch_format == BatchFormat.NUMPY:
                     # User code just need to return Numpy format where we will
                     # internall convert to Arrow format.
                     # TODO (jiaodong): Test against ragged tensors

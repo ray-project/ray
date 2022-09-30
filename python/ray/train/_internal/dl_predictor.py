@@ -4,7 +4,7 @@ from typing import Dict, TypeVar, Union
 import numpy as np
 import pandas as pd
 
-from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type, DataType
+from ray.air.util.data_batch_conversion import BatchFormat, convert_pandas_to_batch_type
 from ray.air.util.tensor_extensions.pandas import TensorArray
 from ray.train.predictor import Predictor
 
@@ -66,7 +66,7 @@ class DLPredictor(Predictor):
     ) -> pd.DataFrame:
         tensors = convert_pandas_to_batch_type(
             data,
-            DataType.NUMPY,
+            BatchFormat.NUMPY,
             self._cast_tensor_columns,
         )
         model_input = self._arrays_to_tensors(tensors, dtype)

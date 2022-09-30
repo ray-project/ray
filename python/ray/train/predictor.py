@@ -7,7 +7,7 @@ import pandas as pd
 from ray.air.checkpoint import Checkpoint
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import (
-    DataType,
+    BatchFormat,
     convert_batch_type_to_pandas,
     convert_pandas_to_batch_type,
 )
@@ -21,11 +21,10 @@ try:
 except ImportError:
     pa_table = None
 
-TYPE_TO_ENUM: Dict[Type[DataBatchType], DataType] = {
-    np.ndarray: DataType.NUMPY,
-    dict: DataType.NUMPY,
-    pd.DataFrame: DataType.PANDAS,
-    pa_table: DataType.ARROW,
+TYPE_TO_ENUM: Dict[Type[DataBatchType], BatchFormat] = {
+    np.ndarray: BatchFormat.NUMPY,
+    dict: BatchFormat.NUMPY,
+    pd.DataFrame: BatchFormat.PANDAS,
 }
 
 
@@ -133,34 +132,45 @@ class Predictor(abc.ABC):
         """
         self._cast_tensor_columns = True
 
-    def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
+    def predict(
+        self, data: DataBatchType, batch_format: Optional[str] = None, **kwargs
+    ) -> DataBatchType:
         """Perform inference on a batch of data.
 
         Args:
             data: A batch of input data of type ``DataBatchType``.
+            batch_format: The format of the input batch.
             kwargs: Arguments specific to predictor implementations. These are passed
-            directly to ``_predict_pandas``.
+            directly to ``_predict_numpy`` or ``_predict_pandas``.
 
         Returns:
             DataBatchType:
                 Prediction result. The return type will be the same as the input type.
         """
-        data_df = convert_batch_type_to_pandas(data, self._cast_tensor_columns)
-
         if not hasattr(self, "_preprocessor"):
             raise NotImplementedError(
                 "Subclasses of Predictor must call Predictor.__init__(preprocessor)."
             )
 
-        if self._preprocessor:
-            data_df = self._preprocessor.transform_batch(data_df)
+        if batch_format is None:
+            batch_format = TYPE_TO_ENUM[type(data)]
 
-        predictions_df = self._predict_pandas(data_df, **kwargs)
-        return convert_pandas_to_batch_type(
-            predictions_df,
-            type=TYPE_TO_ENUM[type(data)],
-            cast_tensor_columns=self._cast_tensor_columns,
-        )
+        if batch_format == BatchFormat.NUMPY:
+            if self._preprocessor:
+                data = self._preprocessor.transform_batch(data)
+            return self._predict_numpy(data, **kwargs)
+
+        elif batch_format == BatchFormat.PANDAS:
+            data_df = convert_batch_type_to_pandas(data, self._cast_tensor_columns)
+            if self._preprocessor:
+                data_df = self._preprocessor.transform_batch(data_df)
+
+            predictions_df = self._predict_pandas(data_df, **kwargs)
+            return convert_pandas_to_batch_type(
+                predictions_df,
+                type=TYPE_TO_ENUM[type(data)],
+                cast_tensor_columns=self._cast_tensor_columns,
+            )
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":

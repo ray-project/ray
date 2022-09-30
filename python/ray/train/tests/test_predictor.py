@@ -3,7 +3,7 @@ from unittest import mock
 
 import pandas as pd
 import pytest
-from ray.air.util.data_batch_conversion import DataType
+from ray.air.util.data_batch_conversion import BatchFormat
 
 import ray
 from ray.air.checkpoint import Checkpoint
@@ -79,7 +79,7 @@ def test_predict(convert_to_pandas_mock, convert_from_pandas_mock):
     pd.testing.assert_frame_equal(
         convert_from_pandas_mock.call_args[0][0], expected_output
     )
-    assert convert_from_pandas_mock.call_args[1]["type"] == DataType.PANDAS
+    assert convert_from_pandas_mock.call_args[1]["type"] == BatchFormat.PANDAS
 
 
 def test_from_udf():
