@@ -1,10 +1,7 @@
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
 from typing import Dict, List
-import numpy as np
 
 
 @DeveloperAPI
@@ -28,8 +25,7 @@ class ImportanceSampling(OffPolicyEstimator):
         estimates_per_epsiode = {}
 
         rewards, old_prob = episode["rewards"], episode["action_prob"]
-        log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, episode)
-        new_prob = np.exp(convert_to_numpy(log_likelihoods))
+        new_prob = self.compute_action_probs(episode)
 
         # calculate importance ratios
         p = []
@@ -59,8 +55,7 @@ class ImportanceSampling(OffPolicyEstimator):
         estimates_per_epsiode = {}
 
         rewards, old_prob = batch["rewards"], batch["action_prob"]
-        log_likelihoods = compute_log_likelihoods_from_input_dict(self.policy, batch)
-        new_prob = np.exp(convert_to_numpy(log_likelihoods))
+        new_prob = self.compute_action_probs(batch)
 
         weights = new_prob / old_prob
         v_behavior = rewards

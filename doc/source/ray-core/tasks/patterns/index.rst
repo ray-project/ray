@@ -17,4 +17,3 @@ You may also be interested in visiting the design patterns section for :ref:`act
     map-reduce
     closure-capture
     global-variables
-    too-many-results
