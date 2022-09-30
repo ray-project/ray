@@ -10,7 +10,7 @@ from ray._private import test_utils
 from ray._private.test_utils import get_node_stats, wait_for_condition
 
 
-memory_usage_threshold_fraction = 0.5
+memory_usage_threshold_fraction = 0.65
 task_oom_retries = 1
 memory_monitor_interval_ms = 100
 expected_worker_eviction_message = (
@@ -142,7 +142,9 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_memory_pressure_kill_restartable_actor(ray_with_memory_monitor):
+def test_restartable_actor_killed_by_memory_monitor_with_actor_error(
+    ray_with_memory_monitor,
+):
     leaker = Leaker.options(max_restarts=1, max_task_retries=1).remote()
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
@@ -164,7 +166,9 @@ def test_memory_pressure_kill_restartable_actor(ray_with_memory_monitor):
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_memory_pressure_kill_task(ray_with_memory_monitor):
+def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
+    ray_with_memory_monitor,
+):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(allocate_memory.options(max_retries=0).remote(bytes_to_alloc))

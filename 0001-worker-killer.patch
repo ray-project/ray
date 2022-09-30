@@ -1,0 +1,386 @@
+From 8a4bdb1130d57a578892ae1b991b16bd1a8992d3 Mon Sep 17 00:00:00 2001
+From: Clarence Ng <clarence.wyng@gmail.com>
+Date: Wed, 28 Sep 2022 22:29:46 -0700
+Subject: [PATCH] worker killer
+
+---
+ src/ray/raylet/worker_killer.cc              |  19 +++
+ src/ray/raylet/worker_killer.h               |  67 ++++++++++
+ src/ray/raylet/worker_killing_policy.cc      |  62 +++++++++
+ src/ray/raylet/worker_killing_policy.h       |  57 ++++++++
+ src/ray/raylet/worker_killing_policy_test.cc | 130 +++++++++++++++++++
+ 5 files changed, 335 insertions(+)
+ create mode 100644 src/ray/raylet/worker_killer.cc
+ create mode 100644 src/ray/raylet/worker_killer.h
+ create mode 100644 src/ray/raylet/worker_killing_policy.cc
+ create mode 100644 src/ray/raylet/worker_killing_policy.h
+ create mode 100644 src/ray/raylet/worker_killing_policy_test.cc
+
+diff --git a/src/ray/raylet/worker_killer.cc b/src/ray/raylet/worker_killer.cc
+new file mode 100644
+index 000000000..8cd28e925
+--- /dev/null
++++ b/src/ray/raylet/worker_killer.cc
+@@ -0,0 +1,19 @@
++#include "ray/raylet/worker_killer.h"
++
++
++namespace ray {
++
++namespace raylet {
++
++
++WorkerKiller::WorkerKiller(const WorkerPool &worker_pool)
++    : worker_pool_(worker_pool) {
++      }
++
++WorkerKiller SelectWorkerToKillForPolicy(const WorkerKillingPolicy &worker_killing_policy) {
++
++}
++
++}  // namespace raylet
++
++}  // namespace ray
+diff --git a/src/ray/raylet/worker_killer.h b/src/ray/raylet/worker_killer.h
+new file mode 100644
+index 000000000..39d0f6476
+--- /dev/null
++++ b/src/ray/raylet/worker_killer.h
+@@ -0,0 +1,67 @@
++// Copyright 2022 The Ray Authors.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//  http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#pragma once
++
++#include <gtest/gtest_prod.h>
++
++#include "ray/common/asio/instrumented_io_context.h"
++#include "ray/common/asio/periodical_runner.h"
++#include "ray/raylet/worker_pool.h"
++#include "ray/raylet/worker.h"
++
++
++namespace ray {
++
++namespace raylet {
++
++
++class WorkerKillingPolicy {
++  /// Selects a worker to be killed.
++  ///
++  /// \param worker_pool the pool of workers to select from for killing.
++  /// \param worker_to_be_killed the worker that is pending killing.
++  ///
++  /// \return the selected worker.
++  WorkerInterface SelectWorkerToKill(const WorkerPool &worker_pool, std::shared_ptr<WorkerInterface> worker_to_be_killed);
++};
++
++/// Kills worker from the worker pool based on some selected policy.
++class WorkerKiller {
++ public:
++  /// Constructor.
++  ///
++  /// \param worker_pool the pool of workers to select from for killing.
++  WorkerKiller(const WorkerPool &worker_pool);
++
++ public:
++  /// \param worker_killing_policy the policy that selects the worker to kill.
++  ///
++  /// \return the selected worker.
++  const std::shared_ptr<WorkerInterface> SelectWorkerToKillForPolicy(const WorkerKillingPolicy &worker_killing_policy) const;
++
++ private:
++  /// The pool of workers.
++  const WorkerPool &worker_pool_; 
++
++  /// Target worker that is being killed. Once it is killed it will be removed from here.
++  std::shared_ptr<WorkerInterface> worker_to_be_killed;
++
++ private:
++  // FRIEND_TEST(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold);
++};
++
++}  // namespace raylet
++
++}  // namespace ray
+diff --git a/src/ray/raylet/worker_killing_policy.cc b/src/ray/raylet/worker_killing_policy.cc
+new file mode 100644
+index 000000000..4a604f5d4
+--- /dev/null
++++ b/src/ray/raylet/worker_killing_policy.cc
+@@ -0,0 +1,62 @@
++// Copyright 2022 The Ray Authors.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//  http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#pragma once
++
++#include <gtest/gtest_prod.h>
++
++#include "ray/common/asio/instrumented_io_context.h"
++#include "ray/common/asio/periodical_runner.h"
++#include "ray/raylet/worker_pool.h"
++#include "ray/raylet/worker.h"
++#include "ray/raylet/worker_killing_policy.h"
++
++
++namespace ray {
++
++namespace raylet {
++
++RetriableLIFOWorkerKillingPolicy::RetriableLIFOWorkerKillingPolicy() {}
++
++const std::vector<std::shared_ptr<WorkerInterface>> RetriableLIFOWorkerKillingPolicy::SortWorkersToKill(const WorkerPool &worker_pool) const {
++  auto workers = worker_pool.GetAllRegisteredWorkers();
++  std::sort(workers.begin(),
++            workers.end(),
++            [this](std::shared_ptr<WorkerInterface> const &left,
++               std::shared_ptr<WorkerInterface> const &right) -> bool {
++              int left_retriable = this->IsWorkerRetriable(left) ? 0 : 1;
++              int right_retriable = this->IsWorkerRetriable(right) ? 0 : 1;
++              if (left_retriable == right_retriable) {
++                return left->GetAssignedTaskTime() > right->GetAssignedTaskTime();
++              }
++              return left_retriable < right_retriable;
++            });
++  return workers;
++}
++
++bool RetriableLIFOWorkerKillingPolicy::IsWorkerRetriable(const std::shared_ptr<WorkerInterface> const &worker) const {
++  if (worker->GetActorId().IsNil() &&
++      worker->GetAssignedTask().GetTaskSpecification().MaxRetries() == 0) {
++    return false;
++  }
++  if (!worker->GetActorId().IsNil() &&
++      worker->GetAssignedTask().GetTaskSpecification().MaxActorRestarts() == 0) {
++    return false;
++  }
++  return true;
++}
++
++}  // namespace raylet
++
++}  // namespace ray
+diff --git a/src/ray/raylet/worker_killing_policy.h b/src/ray/raylet/worker_killing_policy.h
+new file mode 100644
+index 000000000..243a45b35
+--- /dev/null
++++ b/src/ray/raylet/worker_killing_policy.h
+@@ -0,0 +1,57 @@
++// Copyright 2022 The Ray Authors.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//  http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#pragma once
++
++#include <gtest/gtest_prod.h>
++
++#include "ray/common/asio/instrumented_io_context.h"
++#include "ray/common/asio/periodical_runner.h"
++#include "ray/raylet/worker_pool.h"
++#include "ray/raylet/worker.h"
++
++
++namespace ray {
++
++namespace raylet {
++
++class WorkerKillingPolicy {
++  /// Selects a worker to be killed.
++  ///
++  /// \param worker_pool the pool of workers to select from.
++  ///
++  /// \return the selected worker or null if the pool is empty.
++  virtual const std::vector<std::shared_ptr<WorkerInterface>> SortWorkersToKill(const WorkerPool &worker_pool) const = 0;
++
++  /// Selects a worker to be killed.
++  ///
++  /// \param worker_pool the pool of workers to select from.
++  ///
++  /// \return the selected worker or null if the pool is empty.
++  // virtual const std::shared_ptr<WorkerInterface> SelectWorkerToKill(const WorkerPool &worker_pool) const = 0;
++};
++
++/// Prefers killing retriable workers, in LIFO order.
++class RetriableLIFOWorkerKillingPolicy : WorkerKillingPolicy {
++ public:
++  RetriableLIFOWorkerKillingPolicy();
++  const std::vector<std::shared_ptr<WorkerInterface>> SortWorkersToKill(const WorkerPool &worker_pool) const;
++
++  /// \return true if the worker's task or actor is retriable.
++  bool IsWorkerRetriable(const std::shared_ptr<WorkerInterface> const &worker) const;
++};
++
++}  // namespace raylet
++
++}  // namespace ray
+diff --git a/src/ray/raylet/worker_killing_policy_test.cc b/src/ray/raylet/worker_killing_policy_test.cc
+new file mode 100644
+index 000000000..cf9187414
+--- /dev/null
++++ b/src/ray/raylet/worker_killing_policy_test.cc
+@@ -0,0 +1,130 @@
++// Copyright 2022 The Ray Authors.
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//  http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#include "ray/raylet/worker_killing_policy.h"
++
++#include <sys/sysinfo.h>
++
++#include "gtest/gtest.h"
++
++namespace ray {
++class RetriableLIFOWorkerKillingPolicyTest : public ::testing::Test {
++  void SetUp() override {
++    
++  }
++};
++
++TEST_F(RetriableLIFOWorkerKillingPolicyTest, TestEmptyWorkerPool) {
++  RetriableLIFOWorkerKillingPolicyTest policy;
++
++  policy.SortWorkersToKill()
++  
++}
++
++TEST_F(MemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold) {
++  MemoryMonitor monitor(
++      MemoryMonitorTest::io_context_,
++      1 /*usage_threshold*/,
++      0 /*refresh_interval_ms*/,
++      [](bool is_usage_above_threshold,
++         MemorySnapshot system_memory,
++         float usage_threshold) { FAIL() << "Expected monitor to not run"; });
++  ASSERT_FALSE(monitor.IsUsageAboveThreshold({9, 10}));
++}
++
++TEST_F(MemoryMonitorTest, TestUsageAtThresholdReportsTrue) {
++  MemoryMonitor monitor(
++      MemoryMonitorTest::io_context_,
++      0.5 /*usage_threshold*/,
++      0 /*refresh_interval_ms*/,
++      [](bool is_usage_above_threshold,
++         MemorySnapshot system_memory,
++         float usage_threshold) { FAIL() << "Expected monitor to not run"; });
++  ASSERT_FALSE(monitor.IsUsageAboveThreshold({4, 10}));
++  ASSERT_TRUE(monitor.IsUsageAboveThreshold({5, 10}));
++  ASSERT_TRUE(monitor.IsUsageAboveThreshold({6, 10}));
++}
++
++TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive) {
++  {
++    MemoryMonitor monitor(
++        MemoryMonitorTest::io_context_,
++        0 /*usage_threshold*/,
++        0 /*refresh_interval_ms*/,
++        [](bool is_usage_above_threshold,
++           MemorySnapshot system_memory,
++           float usage_threshold) { FAIL() << "Expected monitor to not run"; });
++    auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
++    ASSERT_GT(total_bytes, 0);
++    ASSERT_GT(total_bytes, used_bytes);
++  }
++}
++
++TEST_F(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
++  {
++    MemoryMonitor monitor(
++        MemoryMonitorTest::io_context_,
++        0 /*usage_threshold*/,
++        0 /*refresh_interval_ms*/,
++        [](bool is_usage_above_threshold,
++           MemorySnapshot system_memory,
++           float usage_threshold) { FAIL() << "Expected monitor to not run"; });
++    auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
++    auto [cgroup_used_bytes, cgroup_total_bytes] = monitor.GetCGroupMemoryBytes();
++
++    auto cmd_out = Process::Exec("free -b");
++    std::string title;
++    std::string total;
++    std::string used;
++    std::string free;
++    std::string shared;
++    std::string cache;
++    std::string available;
++    std::istringstream cmd_out_ss(cmd_out);
++    cmd_out_ss >> total >> used >> free >> shared >> cache >> available;
++    cmd_out_ss >> title >> total >> used >> free >> shared >> cache >> available;
++
++    int64_t free_total_bytes;
++    std::istringstream total_ss(total);
++    total_ss >> free_total_bytes;
++
++    ASSERT_TRUE(total_bytes == free_total_bytes || total_bytes == cgroup_total_bytes);
++  }
++}
++
++TEST_F(MemoryMonitorTest, TestMonitorPeriodSetCallbackExecuted) {
++  std::condition_variable callback_ran;
++  std::mutex callback_ran_mutex;
++
++  MemoryMonitor monitor(MemoryMonitorTest::io_context_,
++                        1 /*usage_threshold*/,
++                        1 /*refresh_interval_ms*/,
++                        [&callback_ran](bool is_usage_above_threshold,
++                                        MemorySnapshot system_memory,
++                                        float usage_threshold) {
++                          ASSERT_EQ(1.0f, usage_threshold);
++                          ASSERT_GT(system_memory.total_bytes, 0);
++                          ASSERT_GT(system_memory.used_bytes, 0);
++                          callback_ran.notify_all();
++                        });
++  std::unique_lock<std::mutex> callback_ran_mutex_lock(callback_ran_mutex);
++  callback_ran.wait(callback_ran_mutex_lock);
++}
++
++}  // namespace ray
++
++int main(int argc, char **argv) {
++  ::testing::InitGoogleTest(&argc, argv);
++  return RUN_ALL_TESTS();
++}
+-- 
+2.25.1
+

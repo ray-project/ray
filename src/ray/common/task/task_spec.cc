@@ -456,7 +456,8 @@ std::string TaskSpecification::DebugString() const {
 
   stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
          << ", job_id=" << JobId() << ", num_args=" << NumArgs()
-         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth();
+         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth()
+         << ", attempt_number=" << AttemptNumber();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
@@ -470,6 +471,8 @@ std::string TaskSpecification::DebugString() const {
     stream << ", actor_task_spec={actor_id=" << ActorId()
            << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
            << "}";
+  } else if (IsNormalTask()) {
+    stream << ", max_retries=" << MaxRetries();
   }
 
   // Print runtime env.
@@ -500,10 +503,13 @@ std::string TaskSpecification::DebugString() const {
 }
 
 bool TaskSpecification::IsRetriable() const {
-  if (!IsActorCreationTask() && MaxRetries() == 0) {
+  if (IsActorTask()) {
     return false;
   }
   if (IsActorCreationTask() && MaxActorRestarts() == 0) {
+    return false;
+  }
+  if (IsNormalTask() && MaxRetries() == 0) {
     return false;
   }
   return true;
