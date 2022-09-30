@@ -2960,8 +2960,8 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
               << "), which exceeds the memory usage threshold of " << usage_threshold
               << ". Ray killed this worker (ID: " << worker_to_kill->WorkerId()
               << ") because it was the most recently scheduled task; to see more "
-              << "information about memory usage on this node, use `ray logs raylet.out "
-              << "-ip "
+                 "information about memory usage on this node, use `ray logs raylet.out "
+                 "-ip "
               << worker_to_kill->IpAddress()
               << "`. To see the logs of the worker, use `ray logs worker-"
               << worker_to_kill->WorkerId() << "*out -ip " << worker_to_kill->IpAddress()
@@ -2973,7 +2973,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
               << "worker eviction, set the environment variable "
               << "`RAY_memory_monitor_interval_ms` to zero.";
           std::string worker_exit_message = worker_exit_message_ss.str();
-          /// TODO: (clarng) add a link to the oom killer / memory manager
+          /// TODO: (clarng) add a link to the oom killer / memory manager documentation
           RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << worker_exit_message;
 
           rpc::RayErrorInfo task_failure_reason;
@@ -2982,8 +2982,8 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           SetTaskFailureReason(worker_to_kill->GetAssignedTaskId(),
                                std::move(task_failure_reason));
           /// TODO: (clarng) right now destroy is called after the messages are created
-          /// since we print the process memory in the message. Destroy should be
-          /// called as soon as possible to free up memory.
+          /// since we print the process memory in the message. Destroy should be called
+          /// as soon as possible to free up memory.
           DestroyWorker(high_memory_eviction_target_,
                         rpc::WorkerExitType::USER_ERROR,
                         worker_exit_message,

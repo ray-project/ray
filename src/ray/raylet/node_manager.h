@@ -46,7 +46,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/raylet/placement_group_resource_manager.h"
-
 // clang-format on
 
 namespace ray {
