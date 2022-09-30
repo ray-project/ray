@@ -7,6 +7,7 @@ from ray.rllib.utils.test_utils import check
 from ray.rllib.models.specs.specs_torch import TorchSpecs
 from ray.rllib.models.specs.specs_np import NPSpecs
 from ray.rllib.models.specs.specs_tf import TFSpecs
+
 # TODO: add jax tests
 
 SPEC_CLASSES = {"torch": TorchSpecs, "np": NPSpecs, "tf": TFSpecs}
