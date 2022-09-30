@@ -81,9 +81,7 @@ DECLARE_stats(scheduler_failed_worker_startup_total);
 DECLARE_stats(scheduler_tasks);
 DECLARE_stats(scheduler_unscheduleable_tasks);
 
-/// Local Object Manager
-DECLARE_stats(spill_manager_objects);
-DECLARE_stats(spill_manager_objects_bytes);
+/// Spill Manager
 DECLARE_stats(spill_manager_request_total);
 DECLARE_stats(spill_manager_throughput_mb);
 

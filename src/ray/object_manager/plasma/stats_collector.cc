@@ -169,26 +169,26 @@ void ObjectStatsCollector::OnObjectRefDecreased(const LocalObject &obj) {
 }
 
 void ObjectStatsCollector::RecordMetrics() const {
-  // By State
+  // By Type
   ray::stats::STATS_object_store_memory_count.Record(num_objects_spillable_,
-                                                     {{"State" : "Spillable"}});
+                                                     {{"Type" : "Spillable"}});
   ray::stats::STATS_object_store_memory_bytes.Record(num_bytes_spillable_,
-                                                     {{"State" : "Spillable"}});
+                                                     {{"Type" : "Spillable"}});
 
   ray::stats::STATS_object_store_memory_count.Record(num_objects_unsealed_,
-                                                     {{"State" : "PendingCreation"}});
+                                                     {{"Type" : "PendingCreation"}});
   ray::stats::STATS_object_store_memory_bytes.Record(num_bytes_unsealed_,
-                                                     {{"State" : "PendingCreation"}});
+                                                     {{"Type" : "PendingCreation"}});
 
   ray::stats::STATS_object_store_memory_count.Record(num_objects_in_use_,
-                                                     {{"State" : "InUse"}});
+                                                     {{"Type" : "InUse"}});
   ray::stats::STATS_object_store_memory_bytes.Record(num_bytes_in_use_,
-                                                     {{"State" : "InUse"}});
+                                                     {{"Type" : "InUse"}});
 
   ray::stats::STATS_object_store_memory_count.Record(num_objects_evictable_,
-                                                     {{"State" : "Evictable"}});
+                                                     {{"Type" : "Evictable"}});
   ray::stats::STATS_object_store_memory_bytes.Record(num_bytes_evictable_,
-                                                     {{"State" : "Evictable"}});
+                                                     {{"Type" : "Evictable"}});
 
   // By Creator
   ray::stats::STATS_object_store_memory_count.Record(num_objects_created_by_worker_,

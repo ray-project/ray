@@ -162,17 +162,6 @@ DEFINE_stats(scheduler_failed_worker_startup_total,
              ray::stats::GAUGE);
 
 /// Local Object Manager
-DEFINE_stats(
-    spill_manager_objects,
-    "Number of local objects broken per state {Pinned, PendingRestore, PendingSpill}.",
-    ("State"),
-    (),
-    ray::stats::GAUGE);
-DEFINE_stats(spill_manager_objects_bytes,
-             "Byte size of local objects broken per state {Pinned, PendingSpill}.",
-             ("State"),
-             (),
-             ray::stats::GAUGE);
 DEFINE_stats(spill_manager_request_total,
              "Number of {spill, restore} requests.",
              ("Type"),
@@ -199,18 +188,19 @@ DEFINE_stats(gcs_storage_operation_count,
 /// Object store
 /// Local object store memory of different types reported from multiple
 /// components. Reported metric from different subtypes, e.g. Location
-/// and State could overlap. Reported metric within the same type might
+/// and Type could overlap. Reported metric within the same type might
 /// also overlap.
 DEFINE_stats(object_store_memory_bytes,
-             "Object store memory by various types on this node",
+             "Object store memory by various sub-kinds on this node",
              /// Location:
              ///    - InMemory: currently in memory
              ///    - Spilled: spilled to disk
              ///    - Fallback: fallback allocated
-             /// State:
-             ///    - PrimaryCopy: pinned by local raylet
+             /// Type:
              ///    - PendingCreation: unsealed memory created
+             ///    - PrimaryCopy: pinned by local raylet and pending spills
              ///    - PendingSpill: still in memory but to be spilled
+             ///    - PendingRestore: to be restored from spill
              ///    - Spillable: spillable objects
              ///    - InUse: objects currently in use with positive ref counts
              ///    - Evictable: objects with 0 ref counts
@@ -219,12 +209,12 @@ DEFINE_stats(object_store_memory_bytes,
              ///    - RemoteRaylet: received from other raylets
              ///    - RestoredStorage: restored from spilled storage
              ///    - Error: used as errors by the raylet
-             ("Location", "State", "Creator"),
+             ("Location", "Type", "Creator"),
              (),
              ray::stats::GAUGE);
 DEFINE_stats(object_store_memory_count,
-             "Number of objects by various types on this node",
-             ("Location", "State", "Creator"),
+             "Number of objects by various sub-kinds on this node",
+             ("Location", "Type", "Creator"),
              (),
              ray::stats::GAUGE);
 

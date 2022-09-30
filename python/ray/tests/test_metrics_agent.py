@@ -31,9 +31,13 @@ except ImportError:
 # NOTE: Commented out metrics are not available in this test.
 # TODO(Clark): Find ways to trigger commented out metrics in cluster setup.
 _METRICS = [
+    # TODO(rickyx): refactoring the below 3 metric seem to be a bit involved
+    # , e.g. need product side changes on the metric subscribers.
     "ray_object_store_available_memory",
     "ray_object_store_used_memory",
     "ray_object_store_num_local_objects",
+    "ray_object_store_memory_bytes",
+    "ray_object_store_memory_count",
     "ray_object_manager_num_pull_requests",
     "ray_object_directory_subscriptions",
     "ray_object_directory_updates",
@@ -73,10 +77,6 @@ _METRICS = [
     "ray_gcs_placement_group_scheduling_latency_ms_sum",
     "ray_gcs_placement_group_count",
     "ray_gcs_actors_count",
-    "ray_plasma_objects_by_state_count",
-    "ray_plasma_objects_by_state_bytes",
-    "ray_plasma_objects_by_source_count",
-    "ray_plasma_objects_by_source_bytes",
 ]
 
 if not ray._raylet.Config.use_ray_syncer():
