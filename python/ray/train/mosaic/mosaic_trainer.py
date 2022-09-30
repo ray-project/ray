@@ -330,7 +330,11 @@ def _mosaic_train_loop_per_worker(config):
     checkpoint = session.get_checkpoint()
     # use the last checkpoint as the load_path if load_path is not already defined
     if checkpoint and "load_path" not in config:
-        config["load_path"] = str(checkpoint.to_dict()["all_checkpoints"][-1])
+        checkpoint_dict = checkpoint.to_dict()
+        load_path = os.path.join(
+            checkpoint_dict["working_directory"], checkpoint_dict["all_checkpoints"][-1]
+        )
+        config["load_path"] = load_path
 
     # add RayLogger to Composer trainer loggers
     ray_logger = RayLogger(keys=config.pop("log_keys", []))

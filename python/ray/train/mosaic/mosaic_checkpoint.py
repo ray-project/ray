@@ -2,10 +2,12 @@ from ray.air.checkpoint import Checkpoint
 from pathlib import Path
 import torch
 from composer.loggers import InMemoryLogger
+import os
+from typing import Union
 
 
 def load_model_from_path(
-    path: Path,
+    path: Union[str, Path],
     model: torch.nn.Module,
     strict: bool = False,
 ):
@@ -50,8 +52,11 @@ class MosaicCheckpoint(Checkpoint):
         strict: bool = False,
     ) -> torch.nn.Module:
         """Retrieve the model stored in this checkpoint."""
-        with self.to_dict()["all_checkpoints"][-1] as save_path:
-            model = load_model_from_path(save_path, model, strict)
+        checkpoint_dict = self.to_dict()
+        save_path = os.path.join(
+            checkpoint_dict["working_directory"], checkpoint_dict["all_checkpoints"][-1]
+        )
+        model = load_model_from_path(save_path, model, strict)
         return model
 
     @classmethod

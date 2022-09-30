@@ -4,6 +4,8 @@ import torch
 from ray.train.mosaic.mosaic_checkpoint import MosaicCheckpoint
 from ray.train.torch import TorchPredictor
 from ray.train.mosaic.mosaic_checkpoint import load_model_from_path
+import os
+from typing import Union
 
 
 class MosaicPredictor(TorchPredictor):
@@ -20,7 +22,7 @@ class MosaicPredictor(TorchPredictor):
     @classmethod
     def from_save_path(
         cls,
-        path: Path,
+        path: Union[str, Path],
         model: torch.nn.Module,
         use_gpu: bool = False,
         strict: bool = False,
@@ -57,5 +59,8 @@ class MosaicPredictor(TorchPredictor):
                 prediction happens on GPU.
             strict: the boolean variable for strict state_dict loading onto the model
         """
-        save_path = checkpoint.to_dict()["all_checkpoints"][-1]
+        checkpoint_dict = checkpoint.to_dict()
+        save_path = os.path.join(
+            checkpoint_dict["working_directory"], checkpoint_dict["all_checkpoints"][-1]
+        )
         return cls.from_save_path(save_path, model, use_gpu, strict)

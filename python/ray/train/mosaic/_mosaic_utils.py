@@ -1,7 +1,7 @@
 import math
 from typing import Any, Dict, Tuple, Union, Iterable
 import torch
-from pathlib import Path
+import os
 from ray.air import session
 from ray.data.dataset import Dataset
 from ray.train.mosaic.mosaic_checkpoint import MosaicCheckpoint
@@ -184,18 +184,16 @@ class RayTrainReportCallback(Callback):
         self.in_memory_logger = in_memory_logger
         self.ray_logger = ray_logger
         self.checkpoint_savers = checkpoint_savers
-        print("checkpoint saver : ", self.checkpoint_savers)
 
     def close(self, state: State, logger: Logger) -> None:
         del logger  # unused
         all_checkpoints = []
         for checkpoint_saver in self.checkpoint_savers:
-            all_checkpoints.extend(
-                [Path(p).absolute() for p in checkpoint_saver.saved_checkpoints]
-            )
+            all_checkpoints.extend(checkpoint_saver.saved_checkpoints)
 
         checkpoint = MosaicCheckpoint.from_dict(
             {
+                "working_directory": os.getcwd(),
                 "in_memory_logger": self.in_memory_logger,
                 "all_checkpoints": all_checkpoints,
             }
