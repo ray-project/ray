@@ -46,7 +46,7 @@ class TestAlphaStar(unittest.TestCase):
                 use_kl_loss=True,
             )
             .rollouts(num_rollout_workers=4, num_envs_per_worker=5)
-            .resources(num_gpus=4, _fake_gpus=True)
+            .resources(num_gpus=4, _fake_gpus=True, num_cpus_per_worker=0.5)
         )
 
         num_iterations = 2
