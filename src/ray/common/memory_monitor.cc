@@ -206,7 +206,7 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
   return {used_bytes, mem_total_bytes};
 }
 
-int64_t MemoryMonitor::GetProcessMemoryBytes(int64_t process_id) {
+int64_t MemoryMonitor::GetProcessMemoryBytes(int64_t process_id) const {
   std::stringstream smap_path;
   smap_path << "/proc/" << std::to_string(process_id) << "/smaps_rollup";
   return GetLinuxProcessMemoryBytesFromSmap(smap_path.str());

@@ -213,6 +213,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   uint64_t AttemptNumber() const;
 
+  int32_t MaxRetries() const;
+
   size_t NumArgs() const;
 
   size_t NumReturns() const;
@@ -374,6 +376,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   bool ExecuteOutOfOrder() const;
 
   bool IsSpreadSchedulingStrategy() const;
+
+  /// \return true if the task or actor is retriable.
+  bool IsRetriable() const;
 
  private:
   void ComputeResources();
