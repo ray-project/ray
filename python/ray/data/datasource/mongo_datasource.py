@@ -35,12 +35,13 @@ class MongoDatasource(Datasource):
     Examples:
         >>> import ray
         >>> from ray.data.datasource import MongoDatasource
+        >>> from pymongoarrow.api import Schema
         >>> ds = ray.data.read_datasource( # doctest: +SKIP
         ...     MongoDatasource(),
-        ...     uri=MY_MONGO_URI,
-        ...     database=MY_MONGO_DB,
-        ...     collection=MY_MONGO_COLLECTION,
-        ...     schema=MY_MONGO_SCHEMA,
+        ...     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501",
+        ...     database="my_db",
+        ...     collection="my_collection",
+        ...     schema=Schema({"col1": pa.string(), "col2": pa.int64()}),
         ... )
     """
 
