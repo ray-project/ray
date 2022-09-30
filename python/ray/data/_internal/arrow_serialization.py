@@ -126,7 +126,7 @@ def _get_arrow_array_types() -> List[type]:
         # No pyarrow installed so not using Arrow, so no need for custom serializer.
         return []
 
-    from ray.data.extensions import ArrowTensorArray
+    from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
 
     array_types = [
         pa.lib.NullArray,
@@ -164,6 +164,7 @@ def _get_arrow_array_types() -> List[type]:
         pa.lib.StructArray,
         pa.lib.ExtensionArray,
         ArrowTensorArray,
+        ArrowVariableShapedTensorArray,
     ]
     try:
         array_types.append(pa.lib.MonthDayNanoIntervalArray)
@@ -190,32 +191,7 @@ def _arrow_array_reduce(a: "pyarrow.Array"):
 
     See https://issues.apache.org/jira/browse/ARROW-10739.
     """
-    from ray.air.util.tensor_extensions.arrow import (
-        ArrowTensorArray,
-        _copy_tensor_array_if_needed,
-    )
-
     global _serialization_fallback_set
-
-    if isinstance(a, ArrowTensorArray):
-        # Custom path for copying the buffers underlying our tensor column extension
-        # array.
-        try:
-            maybe_copy = _copy_tensor_array_if_needed(a)
-        except Exception as e:
-            if _is_in_test():
-                # If running in a test, we want to raise the error, not fall back.
-                raise e from None
-            if type(a) not in _serialization_fallback_set:
-                logger.warning(
-                    "Failed to complete optimized serialization of tensor extension "
-                    "array, falling back to default serialization. Note that this may "
-                    "result in bloated serialized arrays. Error:",
-                    exc_info=True,
-                )
-                _serialization_fallback_set.add(type(a))
-            maybe_copy = a
-        return maybe_copy.__reduce__()
 
     try:
         maybe_copy = _copy_array_if_needed(a)
@@ -248,6 +224,13 @@ def _copy_array_if_needed(a: "pyarrow.Array") -> "pyarrow.Array":
     # needing to be recomputed on deserialization?
     import pyarrow as pa
 
+    from ray.air.util.tensor_extensions.arrow import (
+        ArrowTensorArray,
+        ArrowVariableShapedTensorArray,
+        _copy_tensor_array_if_needed,
+        _copy_variable_shaped_tensor_array_if_needed,
+    )
+
     if pa.types.is_union(a.type) and a.type.mode != "sparse":
         # Dense unions not supported.
         # TODO(Clark): Support dense unions.
@@ -255,6 +238,16 @@ def _copy_array_if_needed(a: "pyarrow.Array") -> "pyarrow.Array":
             "Custom slice view serialization of dense union arrays is not yet "
             "supported."
         )
+
+    if isinstance(a, ArrowTensorArray):
+        # Custom path for copying the buffers underlying our tensor column extension
+        # array.
+        return _copy_tensor_array_if_needed(a)
+
+    if isinstance(a, ArrowVariableShapedTensorArray):
+        # Custom path for copying the buffers underlying our variable-shaped tensor
+        # column extension array.
+        return _copy_variable_shaped_tensor_array_if_needed(a)
 
     if pa.types.is_dictionary(a.type):
         # Custom path for dictionary arrays.

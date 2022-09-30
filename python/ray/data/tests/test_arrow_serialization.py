@@ -20,6 +20,7 @@ from ray.data._internal.arrow_serialization import (
 )
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
+    ArrowVariableShapedTensorArray,
 )
 
 
@@ -177,13 +178,47 @@ def test_copy_bitpacked_buffer_if_needed():
             0.5,
         ),
         # Tensor extension array
-        (ArrowTensorArray.from_numpy(np.arange(100 * 4 * 4).reshape(100, 4, 4)), 0.5),
+        (ArrowTensorArray.from_numpy(np.arange(100 * 4 * 4).reshape((100, 4, 4))), 0.5),
         # Boolean tensor extension array
         (
             ArrowTensorArray.from_numpy(
                 np.array(
                     [True, False, False, True, False, False, True, True] * 2 * 100
-                ).reshape(100, 4, 4)
+                ).reshape((100, 4, 4))
+            ),
+            0.5,
+        ),
+        # Variable-shaped tensor extension array
+        (
+            ArrowVariableShapedTensorArray.from_numpy(
+                np.array(
+                    [
+                        np.arange(4).reshape((2, 2)),
+                        np.arange(4, 13).reshape((3, 3)),
+                    ]
+                    * 50,
+                    dtype=object,
+                ),
+            ),
+            0.5,
+        ),
+        # Boolean variable-shaped tensor extension array
+        (
+            ArrowVariableShapedTensorArray.from_numpy(
+                np.array(
+                    [
+                        np.array([[True, False], [False, True]]),
+                        np.array(
+                            [
+                                [False, True, False],
+                                [True, True, False],
+                                [False, False, False],
+                            ],
+                        ),
+                    ]
+                    * 50,
+                    dtype=object,
+                )
             ),
             0.5,
         ),
@@ -220,7 +255,7 @@ def test_custom_arrow_array_serializer(ray_start_regular, arr, cap_mult):
     view = arr.slice(10, 10)
     s_arr = pickle.dumps(arr)
     s_view = pickle.dumps(view)
-    # Check that the slice view is at least twice as small as the full array.
+    # Check that the slice view is at least cap_mult the size of the full array.
     assert len(s_view) <= cap_mult * len(s_arr)
     # Check for round-trip equality.
     assert view.equals(pickle.loads(s_view)), pickle.loads(s_view)
