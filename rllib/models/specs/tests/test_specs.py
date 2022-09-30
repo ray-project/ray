@@ -14,7 +14,6 @@ class TestSpecs(unittest.TestCase):
         b, h = 2, 3
         tensor_1 = torch.randn(b, h).double()
 
-
         matching_specs = [
             TorchSpecs("b h"),
             TorchSpecs("b h", h=h),
@@ -34,24 +33,23 @@ class TestSpecs(unittest.TestCase):
         non_matching_specs = [
             TorchSpecs("b"),
             TorchSpecs("b h1 h2"),
-            TorchSpecs("b h", h=h+1),
+            TorchSpecs("b h", h=h + 1),
             TorchSpecs("b h", dtype=torch.float),
         ]
-                
+
         for spec in non_matching_specs:
             self.assertRaises(ValueError, lambda: spec.validate(tensor_1))
-        
+
         # non unique dimensions
-        self.assertRaises(ValueError, lambda: TorchSpecs("b b")) 
+        self.assertRaises(ValueError, lambda: TorchSpecs("b b"))
         # unknown dimensions
-        self.assertRaises(ValueError, lambda: TorchSpecs("b h", b=1, h=2, c=3)) 
+        self.assertRaises(ValueError, lambda: TorchSpecs("b h", b=1, h=2, c=3))
         self.assertRaises(ValueError, lambda: TorchSpecs("b1", b2=1))
         # zero dimensions
-        self.assertRaises(ValueError, lambda: TorchSpecs("b h", b=1, h=0)) 
+        self.assertRaises(ValueError, lambda: TorchSpecs("b h", b=1, h=0))
         # non-integer dimension
-        self.assertRaises(ValueError, lambda: TorchSpecs("b h", b=1, h='h')) 
-             
-        
+        self.assertRaises(ValueError, lambda: TorchSpecs("b h", b=1, h="h"))
+
 
 if __name__ == "__main__":
     import pytest

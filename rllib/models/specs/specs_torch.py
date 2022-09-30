@@ -8,7 +8,6 @@ torch, _ = try_import_torch()
 
 
 class TorchSpecs(TensorSpecs):
-    
     def get_shape(self, tensor: torch.Tensor) -> Tuple[int]:
         return tuple(tensor.shape)
 
