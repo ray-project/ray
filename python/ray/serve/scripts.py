@@ -483,6 +483,15 @@ def build(
     config["port"] = 8000
 
     if kubernetes_format:
+
+        # Convert ray_actor_options keys, deployment keys, and top-level
+        # config keys to camel case
+        for idx, deployment in enumerate(config["deployments"]):
+            if isinstance(deployment["ray_actor_options"], dict):
+                deployment["ray_actor_options"] = dict_keys_snake_to_camel_case(
+                    deployment["ray_actor_options"]
+                )
+            config["deployments"][idx] = dict_keys_snake_to_camel_case(deployment)
         config = dict_keys_snake_to_camel_case(config)
 
     config_str = (

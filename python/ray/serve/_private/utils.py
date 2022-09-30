@@ -480,17 +480,12 @@ def snake_to_camel_case(snake_str: str) -> str:
 def dict_keys_snake_to_camel_case(snake_dict: dict) -> dict:
     """Converts dictionary's keys from snake case to camel case.
 
-    Also converts nested dictionary keys. Does not modify original dictionaries.
+    Does not modify original dictionary.
     """
 
     camel_dict = dict()
 
     for key, val in snake_dict.items():
-
-        # Update nested dictionary keys
-        if isinstance(val, dict):
-            val = dict_keys_snake_to_camel_case(val)
-
         if isinstance(key, str):
             camel_dict[snake_to_camel_case(key)] = val
         else:

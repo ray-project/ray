@@ -516,6 +516,58 @@ def test_build(ray_start_stop, node):
         print("Delete succeeded! Node is not reachable over HTTP.")
 
 
+k8sFNode = global_f.options(ray_actor_options={"num_cpus": 2, "num_gpus": 1}).bind()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_build_kubernetes_flag():
+    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
+        print("Building k8sFNode.")
+        subprocess.check_output(
+            [
+                "serve",
+                "build",
+                "ray.serve.tests.test_cli.k8sFNode",
+                "-o",
+                tmp.name,
+                "-k",
+            ]
+        )
+        print("Build succeeded!")
+
+        tmp.seek(0)
+        config = yaml.safe_load(tmp.read())
+        assert config == {
+            "importPath": "ray.serve.tests.test_cli.k8sFNode",
+            "runtimeEnv": {},
+            "host": "0.0.0.0",
+            "port": 8000,
+            "deployments": [
+                {
+                    "name": "global_f",
+                    "numReplicas": 1,
+                    "routePrefix": "/",
+                    "maxConcurrentQueries": 100,
+                    "userConfig": None,
+                    "autoscalingConfig": None,
+                    "gracefulShutdownWaitLoopS": 2.0,
+                    "gracefulShutdownTimeoutS": 20.0,
+                    "healthCheckPeriodS": 10.0,
+                    "healthCheckTimeoutS": 30.0,
+                    "rayActorOptions": {
+                        "runtimeEnv": {},
+                        "numCpus": 2.0,
+                        "numGpus": 1.0,
+                        "memory": None,
+                        "objectStoreMemory": None,
+                        "resources": {},
+                        "acceleratorType": None,
+                    },
+                },
+            ],
+        }
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 @pytest.mark.parametrize("use_command", [True, False])
 def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):

@@ -430,16 +430,16 @@ class TestDictKeysSnakeToCamelCase:
         camel_dict = {
             "helloWorld": 1,
             "downWeGo": {
-                "aliceInWonderland": "mad_hatter",
+                "alice_in_wonderland": "mad_hatter",
                 "anotherDrop": {
-                    "hereWeAre": "hello",
-                    "whatAWOrld": 33,
-                    "cRAZ333World4ever": 1,
+                    "here_we_are": "hello",
+                    "what_aW_orld": 33,
+                    "cRAZ333_World_4ever": 1,
                 },
-                "drop3ncore": {"wellWellWell": 5},
+                "drop_3ncore": {"well_well_well": 5},
                 "emptiness": {},
             },
-            "anotherDict": {"notMuchInfo": 0},
+            "anotherDict": {"not_much_info": 0},
             "thisIsQuiteALongPhrase": 2,
             "-this1HAs@lph@num3RiCsInIT": 55,
         }
@@ -491,12 +491,16 @@ class TestDictKeysSnakeToCamelCase:
         camel_dict = {
             (0, 0): 1,
             "downWeGo": {
-                "aliceInWonderland": "mad_hatter",
-                "anotherDrop": {12: "hello", "whatAWOrld": 33, "cRAZ333World4ever": 1},
-                "drop3ncore": {"wellWellWell": 5},
+                "alice_in_wonderland": "mad_hatter",
+                "anotherDrop": {
+                    12: "hello",
+                    "what_aW_orld": 33,
+                    "cRAZ333_World_4ever": 1,
+                },
+                "drop_3ncore": {"well_well_well": 5},
                 (0, 0): {},
             },
-            5: {"notMuchInfo": 0},
+            5: {"not_much_info": 0},
             "thisIsQuiteALongPhrase": 2,
             "-this1HAs@lph@num3RiCsInIT": 55,
         }
