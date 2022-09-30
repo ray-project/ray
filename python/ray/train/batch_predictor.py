@@ -224,7 +224,7 @@ class BatchPredictor:
                         }
                     elif isinstance(batch_data, np.ndarray):
                         return batch_data
-                else:
+                elif batch_format == BatchFormat.PANDAS:
                     # Select a subset of the pandas columns.
                     return batch_data[select_columns]
 
@@ -248,16 +248,15 @@ class BatchPredictor:
                         "provided for input or prediction output data type of "
                         "``numpy.ndarray``"
                     )
-                else:
-                    if batch_format == BatchFormat.NUMPY:
-                        for column in keep_columns:
-                            prediction_output_batch[column] = input_batch[column]
-                        return prediction_output_batch
-                    elif batch_format == BatchFormat.PANDAS:
-                        prediction_output_batch[keep_columns] = input_batch[
-                            keep_columns
-                        ]
-                        return prediction_output_batch
+                elif batch_format == BatchFormat.NUMPY:
+                    for column in keep_columns:
+                        prediction_output_batch[column] = input_batch[column]
+                    return prediction_output_batch
+                elif batch_format == BatchFormat.PANDAS:
+                    prediction_output_batch[keep_columns] = input_batch[
+                        keep_columns
+                    ]
+                    return prediction_output_batch
 
             def __call__(self, input_batch: DataBatchType) -> DataBatchType:
                 prediction_batch = self._select_columns_from_input_batch(

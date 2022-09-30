@@ -24,6 +24,8 @@ except ImportError:
 @DeveloperAPI
 class BatchFormat(str, Enum):
     PANDAS = "pandas"
+    # TODO: Remove once Arrow is deprecated as user facing batch format
+    ARROW = "arrow"
     NUMPY = "numpy"  # Either a single numpy array or a Dict of numpy arrays.
 
 
