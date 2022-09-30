@@ -47,6 +47,13 @@ class ViewRequirementAgentConnector(AgentConnector):
                     "_disable_action_flattening", False
                 ),
                 is_policy_recurrent=ctx.is_policy_recurrent,
+                # Note(jungong): We only leverage AgentCollector for building sample
+                # batches for computing actions.
+                # So regardless of whether this ViewRequirement connector is in
+                # training or inference mode, we should tell these AgentCollectors
+                # to behave in inference mode, so they don't accumulate episode data
+                # that is not useful for inference.
+                is_training=False,
             )
         )
         self.agent_collectors = defaultdict(lambda: env_default)
@@ -54,21 +61,6 @@ class ViewRequirementAgentConnector(AgentConnector):
     def reset(self, env_id: str):
         if env_id in self.agent_collectors:
             del self.agent_collectors[env_id]
-
-    def _get_sample_batch_for_action(
-        self, view_requirements, agent_batch
-    ) -> SampleBatch:
-        # TODO(jungong) : actually support buildling input sample batch with all the
-        #  view shift requirements, etc.
-        # For now, we only support last elemen (no shift).
-        input_dict = {}
-        for col, req in view_requirements.items():
-            if not req.used_for_compute_actions:
-                continue
-            if col not in agent_batch:
-                continue
-            input_dict[col] = agent_batch[col][-1]
-        return SampleBatch(input_dict, is_training=False)
 
     def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
         d = ac_data.data
