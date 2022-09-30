@@ -84,7 +84,7 @@ def test_predict_model_not_training(model, use_gpu):
     assert not predictor.model.training
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
 def test_predict(batch_type):
     predictor = TorchPredictor(model=DummyModelMultiInput())
 

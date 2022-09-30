@@ -57,7 +57,7 @@ def test_lightgbm_checkpoint():
     assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
 def test_predict(batch_type):
     preprocessor = DummyPreprocessor()
     predictor = LightGBMPredictor(model=model, preprocessor=preprocessor)
@@ -70,7 +70,7 @@ def test_predict(batch_type):
     assert predictor.get_preprocessor().has_preprocessed
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame])
 def test_predict_batch(ray_start_4_cpus, batch_type):
     checkpoint, _ = create_checkpoint_preprocessor()
     predictor = BatchPredictor.from_checkpoint(checkpoint, LightGBMPredictor)

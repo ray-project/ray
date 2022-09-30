@@ -5,7 +5,6 @@ from typing import Optional
 import gym
 import numpy as np
 import pandas as pd
-import pyarrow as pa
 import pytest
 import ray
 
@@ -149,7 +148,7 @@ def test_repr():
     assert pattern.match(representation)
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
 @pytest.mark.parametrize("batch_size", [1, 20])
 def test_predict_no_preprocessor(batch_type, batch_size):
     checkpoint = create_checkpoint()
@@ -168,7 +167,7 @@ def test_predict_no_preprocessor(batch_type, batch_size):
     assert all(1.0 <= action.item() < 2.0 for action in np.array(actions))
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
 @pytest.mark.parametrize("batch_size", [1, 20])
 def test_predict_with_preprocessor(batch_type, batch_size):
     preprocessor = DummyPreprocessor(lambda df: 2 * df)
@@ -189,7 +188,7 @@ def test_predict_with_preprocessor(batch_type, batch_size):
     assert all(2.0 <= action.item() < 3.0 for action in np.array(actions))
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame])
 @pytest.mark.parametrize("batch_size", [1, 20])
 def test_predict_batch(ray_start_4_cpus, batch_type, batch_size):
     preprocessor = DummyPreprocessor(lambda df: 2 * df)
@@ -205,8 +204,6 @@ def test_predict_batch(ray_start_4_cpus, batch_type, batch_size):
         dataset = ray.data.from_numpy(data.to_numpy())
     elif batch_type == pd.DataFrame:
         dataset = ray.data.from_pandas(data)
-    elif batch_type == pa.Table:
-        dataset = ray.data.from_arrow(pa.Table.from_pandas(data))
     else:
         raise RuntimeError("Invalid batch_type")
 

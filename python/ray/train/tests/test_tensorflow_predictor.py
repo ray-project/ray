@@ -136,7 +136,7 @@ def test_predict_array_with_preprocessor(use_gpu):
     assert predictions.flatten().tolist() == [2, 4, 6]
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
 def test_predict(batch_type):
     predictor = TensorflowPredictor(model_definition=build_model_multi_input)
 

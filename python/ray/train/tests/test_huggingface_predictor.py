@@ -38,7 +38,7 @@ def test_repr(tmpdir):
     assert pattern.match(representation)
 
 
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
 def test_predict(tmpdir, ray_start_runtime_env, batch_type):
     dtype_prompts = convert_pandas_to_batch_type(prompts, type=TYPE_TO_ENUM[batch_type])
 
@@ -100,7 +100,7 @@ def create_checkpoint():
         return HuggingFaceCheckpoint.from_dict(checkpoint.to_dict())
 
 
-@pytest.mark.parametrize("batch_type", [pd.DataFrame, pa.Table])
+@pytest.mark.parametrize("batch_type", [pd.DataFrame])
 def test_predict_batch(ray_start_4_cpus, batch_type):
     checkpoint = create_checkpoint()
     predictor = BatchPredictor.from_checkpoint(

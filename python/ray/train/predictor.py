@@ -153,7 +153,7 @@ class Predictor(abc.ABC):
             )
 
         if batch_format is None:
-            batch_format = TYPE_TO_ENUM[type(data)]
+            batch_format = BatchFormat.PANDAS
 
         if batch_format == BatchFormat.NUMPY:
             if self._preprocessor:
