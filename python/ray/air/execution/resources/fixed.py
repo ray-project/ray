@@ -8,6 +8,11 @@ from ray.air.execution.resources.request import ResourceRequest, ReadyResource
 from ray.air.execution.resources.resource_manager import ResourceManager
 
 
+# Avoid numerical errors by multiplying and subtracting with this number.
+# Compare: 0.99 - 0.33 vs (0.99 * 1000 - 0.33 * 1000) / 1000
+_DIGITS = 100000
+
+
 def _sum_bundle_resources(bundles: List[Dict[str, float]]) -> Dict[str, float]:
     all_resources = {}
     for resources in bundles:
@@ -73,7 +78,9 @@ class FixedResourceManager(ResourceManager):
         for used_resources in self._used_resources:
             all_resources = _sum_bundle_resources(used_resources.bundles)
             for k, v in all_resources.items():
-                available_resources[k] -= v
+                available_resources[k] = (
+                    available_resources[k] * _DIGITS - v * _DIGITS
+                ) / _DIGITS
         return available_resources
 
     def request_resources(self, resources: ResourceRequest):

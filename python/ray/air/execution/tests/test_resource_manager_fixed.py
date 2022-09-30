@@ -20,6 +20,24 @@ def test_acquire_return_resources():
     assert manager.has_resources_ready(REQUEST_4_CPU)
 
 
+def test_numerical_error():
+    """Make sure we don't run into numerical errors when using fractional resources.
+
+    Legacy test: test_trial_runner::TrialRunnerTest::testResourceNumericalError
+    """
+    manager = FixedResourceManager(
+        total_resources={"CPU": 0.99, "GPU": 0.99, "a": 0.99}
+    )
+    for i in range(3):
+        assert manager.acquire_resources(
+            ResourceRequest([{"CPU": 0.33, "GPU": 0.33, "a": 0.33}])
+        ), manager._available_resources
+
+    assert manager._available_resources["CPU"] == 0
+    assert manager._available_resources["GPU"] == 0
+    assert manager._available_resources["a"] == 0
+
+
 if __name__ == "__main__":
     import sys
 
