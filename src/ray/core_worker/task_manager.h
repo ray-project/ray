@@ -313,8 +313,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     }
 
     ~TaskEntry() {
-      RAY_CHECK(status == rpc::TaskStatus::FINISHED)
-          << "Finished task must have status FINISHED.";
+      RAY_CHECK(status == rpc::TaskStatus::FINISHED || status == rpc::TaskStatus::FAILED)
+          << "Finished task must have status FINISHED or FAILED.";
     }
 
     void SetStatus(rpc::TaskStatus new_status) {
