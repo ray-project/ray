@@ -18,20 +18,12 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_mixins import (
-    LearningRateSchedule,
-    TargetNetworkMixin,
-)
+from ray.rllib.policy.tf_mixins import LearningRateSchedule, TargetNetworkMixin
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import huber_loss
 from ray.rllib.utils.typing import ModelInputDict, TensorType, AlgorithmConfigDict
 
 tf1, tf, tfv = try_import_tf()
-
-
-class R2D2TargetNetworkMixin(TargetNetworkMixin):
-    def __init__(self, *args, **kwargs):
-        super().__init__(update_target_in_init=False)
 
 
 def build_r2d2_model(
@@ -327,7 +319,15 @@ def before_loss_init(
     config: AlgorithmConfigDict,
 ) -> None:
     ComputeTDErrorMixin.__init__(policy)
-    R2D2TargetNetworkMixin.__init__(policy)
+
+
+def setup_late_mixins(
+    policy: Policy,
+    obs_space: gym.spaces.Space,
+    action_space: gym.spaces.Space,
+    config: AlgorithmConfigDict,
+) -> None:
+    TargetNetworkMixin.__init__(policy)
 
 
 R2D2TFPolicy = build_tf_policy(
@@ -344,8 +344,9 @@ R2D2TFPolicy = build_tf_policy(
     extra_learn_fetches_fn=lambda policy: {"td_error": policy._td_error},
     before_init=setup_early_mixins,
     before_loss_init=before_loss_init,
+    after_init=setup_late_mixins,
     mixins=[
-        R2D2TargetNetworkMixin,
+        TargetNetworkMixin,
         ComputeTDErrorMixin,
         LearningRateSchedule,
     ],
