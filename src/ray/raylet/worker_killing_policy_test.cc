@@ -81,7 +81,6 @@ TEST_F(WorkerKillerTest, TestEmptyWorkerPoolSelectsNullWorker) {
 TEST_F(WorkerKillerTest,
        TestPreferRetriableOverNonRetriableAndOrderByTimestampDescending) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-
   auto first_submitted = WorkerKillerTest::CreateActorWorker(7 /* max_restarts */);
   auto second_submitted =
       WorkerKillerTest::CreateActorCreationWorker(5 /* max_restarts */);
@@ -98,35 +97,21 @@ TEST_F(WorkerKillerTest,
   workers.push_back(fifth_submitted);
   workers.push_back(sixth_submitted);
 
-  // First kill retriable but older workers in descending order of task time.
-  std::shared_ptr<WorkerInterface> worker_to_kill =
-      worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
-  ASSERT_EQ(worker_to_kill->WorkerId(), fourth_submitted->WorkerId());
+  std::vector<std::shared_ptr<WorkerInterface>> expected_order;
+  expected_order.push_back(fourth_submitted);
+  expected_order.push_back(second_submitted);
+  expected_order.push_back(sixth_submitted);
+  expected_order.push_back(fifth_submitted);
+  expected_order.push_back(third_submitted);
+  expected_order.push_back(first_submitted);
 
-  workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
-                workers.end());
-  worker_to_kill = worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
-  ASSERT_EQ(worker_to_kill->WorkerId(), second_submitted->WorkerId());
-
-  workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
-                workers.end());
-  worker_to_kill = worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
-  ASSERT_EQ(worker_to_kill->WorkerId(), sixth_submitted->WorkerId());
-
-  workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
-                workers.end());
-  worker_to_kill = worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
-  ASSERT_EQ(worker_to_kill->WorkerId(), fifth_submitted->WorkerId());
-
-  workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
-                workers.end());
-  worker_to_kill = worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
-  ASSERT_EQ(worker_to_kill->WorkerId(), third_submitted->WorkerId());
-
-  workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
-                workers.end());
-  worker_to_kill = worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
-  ASSERT_EQ(worker_to_kill->WorkerId(), first_submitted->WorkerId());
+  for (const auto &expected : expected_order) {
+    std::shared_ptr<WorkerInterface> worker_to_kill =
+        worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
+    ASSERT_EQ(worker_to_kill->WorkerId(), expected->WorkerId());
+    workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
+                  workers.end());
+  }
 }
 
 }  // namespace raylet
