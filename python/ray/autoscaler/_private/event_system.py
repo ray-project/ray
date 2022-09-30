@@ -1,7 +1,7 @@
 from enum import Enum, auto
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from ray._private.event.event_logger import get_event_logger
+# from ray._private.event.event_logger import get_event_logger
 from ray.autoscaler._private.cli_logger import cli_logger
 
 
