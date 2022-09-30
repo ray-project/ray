@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/raylet/worker_killing_policy.h"
+
 #include <gtest/gtest_prod.h>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/raylet/worker_pool.h"
 #include "ray/raylet/worker.h"
-#include "ray/raylet/worker_killing_policy.h"
-
+#include "ray/raylet/worker_pool.h"
 
 namespace ray {
 
@@ -27,7 +27,10 @@ namespace raylet {
 
 RetriableLIFOWorkerKillingPolicy::RetriableLIFOWorkerKillingPolicy() {}
 
-const std::shared_ptr<WorkerInterface> RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(const std::vector<std::shared_ptr<WorkerInterface>> &workers, const MemoryMonitor &memory_monitor) const {
+const std::shared_ptr<WorkerInterface>
+RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(
+    const std::vector<std::shared_ptr<WorkerInterface>> &workers,
+    const MemoryMonitor &memory_monitor) const {
   if (workers.empty()) {
     RAY_LOG_EVERY_MS(INFO, 5000) << "Worker list is empty. Nothing can be killed";
     return nullptr;
@@ -38,7 +41,7 @@ const std::shared_ptr<WorkerInterface> RetriableLIFOWorkerKillingPolicy::SelectW
   std::sort(sorted.begin(),
             sorted.end(),
             [this](std::shared_ptr<WorkerInterface> const &left,
-               std::shared_ptr<WorkerInterface> const &right) -> bool {
+                   std::shared_ptr<WorkerInterface> const &right) -> bool {
               int left_retriable =
                   left->GetAssignedTask().GetTaskSpecification().IsRetriable() ? 0 : 1;
               int right_retriable =
@@ -48,11 +51,11 @@ const std::shared_ptr<WorkerInterface> RetriableLIFOWorkerKillingPolicy::SelectW
               }
               return left_retriable < right_retriable;
             });
-  
 
   const static int32_t max_to_print = 10;
-  RAY_LOG_EVERY_MS(INFO, 5000) << "Top 10 worker candidates to kill based on worker killing policy:\n"
-                << WorkersDebugString(sorted, max_to_print, memory_monitor);
+  RAY_LOG_EVERY_MS(INFO, 5000)
+      << "Top 10 worker candidates to kill based on worker killing policy:\n"
+      << WorkersDebugString(sorted, max_to_print, memory_monitor);
 
   return sorted.front();
 }

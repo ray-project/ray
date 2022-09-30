@@ -13,36 +13,31 @@
 // limitations under the License.
 
 #include "ray/raylet/worker_killing_policy.h"
-#include "ray/raylet/test/util.h"
-#include "ray/common/task/task_spec.h"
-#include "ray/common/task/task_spec.h"
 
 #include <sys/sysinfo.h>
 
 #include "gtest/gtest.h"
+#include "ray/common/task/task_spec.h"
+#include "ray/raylet/test/util.h"
 
 namespace ray {
 
 namespace raylet {
 
-
 class WorkerKillerTest : public ::testing::Test {
  protected:
   instrumented_io_context io_context_;
   MemoryMonitor memory_monitor_ = {
-    io_context_,
+      io_context_,
       0 /*usage_threshold*/,
       0 /*refresh_interval_ms*/,
       [](bool is_usage_above_threshold,
          MemorySnapshot system_memory,
-         float usage_threshold) { FAIL() << "Monitor should not be running"; }
-  };
+         float usage_threshold) { FAIL() << "Monitor should not be running"; }};
   int32_t port_ = 1234;
   RetriableLIFOWorkerKillingPolicy worker_killing_policy_;
-  
-  std::shared_ptr<WorkerInterface> CreateActorWorker(
-    int32_t max_restarts
-  ) {
+
+  std::shared_ptr<WorkerInterface> CreateActorWorker(int32_t max_restarts) {
     rpc::TaskSpec message;
     message.mutable_actor_creation_task_spec()->set_max_actor_restarts(max_restarts);
     message.set_type(ray::rpc::TaskType::ACTOR_TASK);
@@ -53,9 +48,7 @@ class WorkerKillerTest : public ::testing::Test {
     return worker;
   }
 
-  std::shared_ptr<WorkerInterface> CreateActorCreationWorker(
-    int32_t max_restarts
-  ) {
+  std::shared_ptr<WorkerInterface> CreateActorCreationWorker(int32_t max_restarts) {
     rpc::TaskSpec message;
     message.mutable_actor_creation_task_spec()->set_max_actor_restarts(max_restarts);
     message.set_type(ray::rpc::TaskType::ACTOR_CREATION_TASK);
@@ -66,9 +59,7 @@ class WorkerKillerTest : public ::testing::Test {
     return worker;
   }
 
-  std::shared_ptr<WorkerInterface> CreateTaskWorker(
-    int32_t max_retries
-  ) {
+  std::shared_ptr<WorkerInterface> CreateTaskWorker(int32_t max_retries) {
     rpc::TaskSpec message;
     message.set_max_retries(max_retries);
     message.set_type(ray::rpc::TaskType::NORMAL_TASK);
@@ -82,18 +73,22 @@ class WorkerKillerTest : public ::testing::Test {
 
 TEST_F(WorkerKillerTest, TestEmptyWorkerPoolSelectsNullWorker) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  std::shared_ptr<WorkerInterface> worker_to_kill = worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
+  std::shared_ptr<WorkerInterface> worker_to_kill =
+      worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
   ASSERT_TRUE(worker_to_kill == nullptr);
 }
 
-TEST_F(WorkerKillerTest, TestPreferRetriableOverNonRetriableAndOrderByTimestampDescending) {
+TEST_F(WorkerKillerTest,
+       TestPreferRetriableOverNonRetriableAndOrderByTimestampDescending) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  
+
   auto first_submitted = WorkerKillerTest::CreateActorWorker(7 /* max_restarts */);
-  auto second_submitted = WorkerKillerTest::CreateActorCreationWorker(5 /* max_restarts */);
+  auto second_submitted =
+      WorkerKillerTest::CreateActorCreationWorker(5 /* max_restarts */);
   auto third_submitted = WorkerKillerTest::CreateTaskWorker(0 /* max_restarts */);
   auto fourth_submitted = WorkerKillerTest::CreateTaskWorker(11 /* max_restarts */);
-  auto fifth_submitted = WorkerKillerTest::CreateActorCreationWorker(0 /* max_restarts */);
+  auto fifth_submitted =
+      WorkerKillerTest::CreateActorCreationWorker(0 /* max_restarts */);
   auto sixth_submitted = WorkerKillerTest::CreateActorWorker(0 /* max_restarts */);
 
   workers.push_back(first_submitted);
@@ -102,28 +97,34 @@ TEST_F(WorkerKillerTest, TestPreferRetriableOverNonRetriableAndOrderByTimestampD
   workers.push_back(fourth_submitted);
   workers.push_back(fifth_submitted);
   workers.push_back(sixth_submitted);
-  
+
   // First kill retriable but older workers in descending order of task time.
-  std::shared_ptr<WorkerInterface> worker_to_kill = worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
+  std::shared_ptr<WorkerInterface> worker_to_kill =
+      worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
   ASSERT_EQ(worker_to_kill->WorkerId(), fourth_submitted->WorkerId());
 
-  workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill), workers.end());
+  workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
+                workers.end());
   worker_to_kill = worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
   ASSERT_EQ(worker_to_kill->WorkerId(), second_submitted->WorkerId());
 
-  workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill), workers.end());
+  workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
+                workers.end());
   worker_to_kill = worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
   ASSERT_EQ(worker_to_kill->WorkerId(), sixth_submitted->WorkerId());
 
-  workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill), workers.end());
+  workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
+                workers.end());
   worker_to_kill = worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
   ASSERT_EQ(worker_to_kill->WorkerId(), fifth_submitted->WorkerId());
 
-  workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill), workers.end());
+  workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
+                workers.end());
   worker_to_kill = worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
   ASSERT_EQ(worker_to_kill->WorkerId(), third_submitted->WorkerId());
 
-  workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill), workers.end());
+  workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
+                workers.end());
   worker_to_kill = worker_killing_policy_.SelectWorkerToKill(workers, memory_monitor_);
   ASSERT_EQ(worker_to_kill->WorkerId(), first_submitted->WorkerId());
 }

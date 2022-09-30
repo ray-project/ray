@@ -18,10 +18,9 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/raylet/worker_pool.h"
-#include "ray/raylet/worker.h"
 #include "ray/common/memory_monitor.h"
-
+#include "ray/raylet/worker.h"
+#include "ray/raylet/worker_pool.h"
 
 namespace ray {
 
@@ -35,24 +34,31 @@ class WorkerKillingPolicy {
   /// \param workers the list of candidate workers.
   ///
   /// \return the worker to kill, or nullptr if the worker list is empty.
-  virtual const std::shared_ptr<WorkerInterface> SelectWorkerToKill(const std::vector<std::shared_ptr<WorkerInterface>> &workers, const MemoryMonitor &memory_monitor) const = 0;
+  virtual const std::shared_ptr<WorkerInterface> SelectWorkerToKill(
+      const std::vector<std::shared_ptr<WorkerInterface>> &workers,
+      const MemoryMonitor &memory_monitor) const = 0;
 
  protected:
   /// Returns debug string of the workers.
   ///
   /// \param workers The workers to be printed.
   /// \param num_workers The number of workers to print starting from the beginning of the
-  /// worker list. 
+  /// worker list.
   ///
   /// \return the debug string.
-  static std::string WorkersDebugString(const std::vector<std::shared_ptr<WorkerInterface>> &workers, int32_t num_workers, const MemoryMonitor &memory_monitor);
+  static std::string WorkersDebugString(
+      const std::vector<std::shared_ptr<WorkerInterface>> &workers,
+      int32_t num_workers,
+      const MemoryMonitor &memory_monitor);
 };
 
 /// Prefers killing retriable workers over non-retriable ones, in LIFO order.
 class RetriableLIFOWorkerKillingPolicy : public WorkerKillingPolicy {
  public:
   RetriableLIFOWorkerKillingPolicy();
-  const std::shared_ptr<WorkerInterface> SelectWorkerToKill(const std::vector<std::shared_ptr<WorkerInterface>> &workers, const MemoryMonitor &memory_monitor) const;
+  const std::shared_ptr<WorkerInterface> SelectWorkerToKill(
+      const std::vector<std::shared_ptr<WorkerInterface>> &workers,
+      const MemoryMonitor &memory_monitor) const;
 };
 
 }  // namespace raylet
