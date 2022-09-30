@@ -675,6 +675,13 @@ class PopulationBasedTraining(FIFOScheduler):
             return summary_str
         for param_name in old_params:
             old_val = old_params[param_name]
+            assert param_name in new_params and param_name in operations, (
+                "`old_params`, `new_params`, and `operations` "
+                f"must all contain the key: '{param_name}'\n"
+                f"old_params.keys() = {old_params.keys()}\n"
+                f"new_params.keys() = {new_params.keys()}\n"
+                f"operations.keys() = {operations.keys()}\n"
+            )
             new_val = new_params[param_name]
             summary_str += f"{prefix}{param_name} : "
             if isinstance(old_val, Dict):

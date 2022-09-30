@@ -704,6 +704,19 @@ class PopulationBasedTrainingLoggingTest(unittest.TestCase):
         )
         assert operations["a"] in ["shift left (noop)", "shift right (noop)"]
 
+        # 5. Test that missing keys in inputs raises an error
+        with self.assertRaises(AssertionError):
+            scheduler._summarize_hyperparam_changes(
+                {"a": 1, "b": {"c": 2}},
+                {"a": 1, "b": {}},
+                {"a": "noop", "b": {"c": "noop"}},
+            )
+        with self.assertRaises(AssertionError):
+            scheduler._summarize_hyperparam_changes(
+                {"a": 1, "b": {"c": 2}}, {"a": 1, "b": {"c": 2}}, {"a": "noop"}
+            )
+
+
 if __name__ == "__main__":
     import pytest
 
