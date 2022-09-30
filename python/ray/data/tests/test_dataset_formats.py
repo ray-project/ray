@@ -416,6 +416,7 @@ def test_mongo_datasource(ray_start_regular_shared):
     from pymongoarrow.api import Schema
 
     # Setup mongodb.
+    subprocess.run(["sudo", "rm", "/var/lib/mongodb/mongod.lock"])
     subprocess.run(["sudo", "service", "mongodb", " start"])
     mongo_url = "mongodb://localhost:27017"
     client = pymongo.MongoClient(mongo_url)
@@ -501,6 +502,7 @@ def test_mongo_datasource(ray_start_regular_shared):
         )
 
     subprocess.run(["sudo", "service", "mongodb", " stop"])
+
 
 if __name__ == "__main__":
     import sys

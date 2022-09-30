@@ -2313,9 +2313,9 @@ class Dataset(Generic[T]):
             >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
             >>> ds.write_mongo( # doctest: +SKIP
             >>>     MongoDatasource(), # doctest: +SKIP
-            >>>     uri=MY_URI, # doctest: +SKIP
-            >>>     database=MY_DATABASE, # doctest: +SKIP
-            >>>     collection=MY_COLLECTION, # doctest: +SKIP
+            >>>     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # doctest: +SKIP  # noqa: E501
+            >>>     database="my_db", # doctest: +SKIP
+            >>>     collection="my_collection", # doctest: +SKIP
             >>> ) # doctest: +SKIP
 
         Args:

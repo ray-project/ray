@@ -337,11 +337,11 @@ def read_mongo(
     Examples:
         >>> import ray
         >>> ds = ray.data.read_mongo( # doctest: +SKIP
-        ...     uri=MY_URI,
-        ...     database=MY_DB,
-        ...     collection=MY_COLLECTION,
-        ...     pipelines=MY_PIPELINES,
-        ...     schema=MY_SCHEMA
+        ...     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501
+        ...     database="my_db",
+        ...     collection="my_collection",
+        ...     pipelines=[[{"$match": {"col2": {"$gte": 0, "$lt": 100}}}]],
+        ...     schema={"col1": pa.string(), "col2": pa.int64()}
         ... )
 
     Args:
