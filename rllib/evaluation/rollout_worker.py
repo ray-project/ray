@@ -1265,8 +1265,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 )
             }
 
-        connectors_enabled = merged_config.get("enable_connectors", False)
-
         self.policy_dict.update(policy_dict_to_add)
         self._build_policy_map(
             policy_dict=policy_dict_to_add,
@@ -1278,6 +1276,8 @@ class RolloutWorker(ParallelIteratorWorker):
         # Set the state of the newly created policy.
         if policy_state:
             new_policy.set_state(policy_state)
+
+        connectors_enabled = merged_config.get("enable_connectors", False)
 
         # Enabling connectors is not per policy, so we can use the general config here
         if not connectors_enabled:
