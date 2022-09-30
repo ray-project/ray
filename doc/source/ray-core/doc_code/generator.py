@@ -69,3 +69,50 @@ assert array_size == ray.get(get_size.remote(ref_generator))
 # (get_size pid=1504184) <ray._raylet.ObjectRefGenerator object at 0x7f81c4251b50>
 # __dynamic_generator_pass_end__
 # fmt: on
+
+
+# fmt: off
+# __generator_errors_start__
+@ray.remote
+def generator():
+    for i in range(2):
+        yield i
+    raise Exception("error")
+
+
+ref1, ref2, ref3, ref4 = generator.options(num_returns=4).remote()
+assert ray.get([ref1, ref2]) == [0, 1]
+# All remaining ObjectRefs will contain the error.
+try:
+    ray.get([ref3, ref4])
+except Exception as error:
+    print(error)
+
+dynamic_ref = generator.options(num_returns="dynamic").remote()
+ref_generator = ray.get(dynamic_ref)
+ref1, ref2, ref3 = ref_generator
+assert ray.get([ref1, ref2]) == [0, 1]
+# Generators with num_returns="dynamic" will store the exception in the final
+# ObjectRef.
+try:
+    ray.get(ref3)
+except Exception as error:
+    print(error)
+# __generator_errors_end__
+# fmt: on
+
+# fmt: off
+# __generator_errors_unsupported_start__
+# Generators that yield more values than expected currently do not throw an
+# exception (the error is only logged).
+# See https://github.com/ray-project/ray/issues/28689.
+ref1, ref2 = generator.options(num_returns=2).remote()
+assert ray.get([ref1, ref2]) == [0, 1]
+"""
+(generator pid=2375938) 2022-09-28 11:08:51,386 ERROR worker.py:755 --
+    Unhandled error: Task threw exception, but all return values already
+    created.  This should only occur when using generator tasks.
+...
+"""
+# __generator_errors_unsupported_end__
+# fmt: on

@@ -133,7 +133,8 @@ Status TaskExecutor::ExecuteTask(
     std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
     bool *is_retryable_error,
     const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
-    const std::string name_of_concurrency_group_to_execute) {
+    const std::string name_of_concurrency_group_to_execute,
+    bool is_reattempt) {
   RAY_LOG(DEBUG) << "Execute task type: " << TaskType_Name(task_type)
                  << " name:" << task_name;
   RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);

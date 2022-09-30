@@ -69,18 +69,32 @@ We can also pass the ``ObjectRef`` returned by a task with ``num_returns="dynami
     :start-after: __dynamic_generator_pass_start__
     :end-before: __dynamic_generator_pass_end__
 
+Exception handling
+------------------
+
+If a generator function raises an exception before yielding all its values, the values that it already stored will still be accessible through their ``ObjectRefs``.
+The remaining ``ObjectRefs`` will contain the thrown exception.
+This is true for both static and dynamic ``num_returns``.
+If the task was called with ``num_returns="dynamic"``, the exception will be stored as an additional final ``ObjectRef`` in the ``ObjectRefGenerator``.
+
+.. literalinclude:: ../doc_code/generator.py
+    :language: python
+    :start-after: __generator_errors_start__
+    :end-before: __generator_errors_end__
+
+Note that there is currently a known bug where exceptions will not be propagated for generators that yield more values than expected. This can occur in two cases:
+
+1. When ``num_returns`` is set by the caller, but the generator task returns more than this value.
+2. When a generator task with ``num_returns="dynamic"`` is :ref:`re-executed <task-retries>`, and the re-executed task yields more values than the original execution. Note that in general, Ray does not guarantee correctness for task re-execution if the task is nondeterministic, and it is recommended to set ``@ray.remote(num_retries=0)`` for such tasks.
+
+.. literalinclude:: ../doc_code/generator.py
+    :language: python
+    :start-after: __generator_errors_unsupported_start__
+    :end-before: __generator_errors_unsupported_end__
+
 Limitations
 -----------
 
 Although a generator function creates ``ObjectRefs`` one at a time, currently Ray will not schedule dependent tasks until the entire task is complete and all values have been created. This is similar to the semantics used by tasks that return multiple values as a list.
 
 ``num_returns="dynamic"`` is not yet supported for actor tasks.
-
-If a generator function raises an exception before yielding all its values, all values returned by the generator will be replaced by the exception traceback, including values that were already successfully yielded.
-If the task was called with ``num_returns="dynamic"``, the exception will be stored in the ``ObjectRef`` returned by the task instead of the usual ``ObjectRefGenerator``.
-
-Note that there is currently a known bug where exceptions will not be propagated for generators that yield objects in Ray's shared-memory object store before erroring. In this case, these objects will still be accessible through the returned ``ObjectRefs`` and you may see an error like the following:
-
-.. code-block:: text
-
-    $ ERROR worker.py:754 -- Generator threw exception after returning partial values in the object store, error may be unhandled.

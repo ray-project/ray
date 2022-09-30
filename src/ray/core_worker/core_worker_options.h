@@ -53,7 +53,8 @@ struct CoreWorkerOptions {
       // Defined concurrency groups of this actor. Note this is only
       // used for actor creation task.
       const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
-      const std::string name_of_concurrency_group_to_execute)>;
+      const std::string name_of_concurrency_group_to_execute,
+      bool is_reattempt)>;
 
   CoreWorkerOptions()
       : store_socket(""),

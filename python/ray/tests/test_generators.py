@@ -81,26 +81,14 @@ def test_generator_returns(ray_start_regular, use_actors, store_in_plasma):
     except ray.exceptions.RayTaskError as e:
         assert isinstance(e.as_instanceof_cause(), ValueError)
 
-    if store_in_plasma:
-        # TODO(swang): Currently there is a bug when a generator errors after
-        # already storing some values in plasma. The already stored values can
-        # be accessed and the error is lost.  Propagate the error correctly by
-        # replacing all successfully stored return values with the same error.
-        ray.get(
-            remote_generator_fn.options(num_returns=num_returns).remote(
-                num_returns + 1, store_in_plasma
-            )
+    # TODO(swang): When generators return more values than expected, we log an
+    # error but the exception is not thrown to the application.
+    # https://github.com/ray-project/ray/issues/28689.
+    ray.get(
+        remote_generator_fn.options(num_returns=num_returns).remote(
+            num_returns + 1, store_in_plasma
         )
-    else:
-        try:
-            ray.get(
-                remote_generator_fn.options(num_returns=num_returns).remote(
-                    num_returns + 1, store_in_plasma
-                )
-            )
-            assert False
-        except ray.exceptions.RayTaskError as e:
-            assert isinstance(e.as_instanceof_cause(), ValueError)
+    )
 
     # Check return values.
     [
@@ -132,21 +120,17 @@ def test_generator_errors(ray_start_regular, store_in_plasma):
         raise Exception("error")
 
     ref1, ref2, ref3 = generator.options(num_returns=3).remote(3, store_in_plasma)
-    # TODO(swang): Currently there is a bug when a generator errors after
-    # already storing some values in plasma. The already stored values can
-    # be accessed and the error is lost.  Propagate the error correctly by
-    # replacing all successfully stored return values with the same error.
-    if not store_in_plasma:
-        with pytest.raises(ray.exceptions.RayTaskError):
-            ray.get(ref1)
+    ray.get(ref1)
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(ref2)
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(ref3)
 
     dynamic_ref = generator.options(num_returns="dynamic").remote(3, store_in_plasma)
+    ref1, ref2 = ray.get(dynamic_ref)
+    ray.get(ref1)
     with pytest.raises(ray.exceptions.RayTaskError):
-        ray.get(dynamic_ref)
+        ray.get(ref2)
 
 
 @pytest.mark.parametrize("store_in_plasma", [False, True])
@@ -179,15 +163,12 @@ def test_dynamic_generator(ray_start_regular, store_in_plasma):
     assert ray.get(read.remote(gen))
     assert ray.get(read.remote(ray.get(gen)))
 
-    # Generator remote functions with num_returns=1 error if they return more
-    # than 1 value.
-    # TODO(swang): Currently there is a bug when a generator errors after
-    # already storing some values in plasma. The already stored values can
-    # be accessed and the error is lost. Propagate the error correctly by
-    # replacing all successfully stored return values with the same error.
-    if not store_in_plasma:
-        with pytest.raises(ray.exceptions.RayTaskError):
-            ray.get(dynamic_generator.options(num_returns=1).remote(3, store_in_plasma))
+    # Also works if we override num_returns with a static value.
+    ray.get(
+        read.remote(
+            dynamic_generator.options(num_returns=10).remote(10, store_in_plasma)
+        )
+    )
 
     # Normal remote functions don't work with num_returns="dynamic".
     @ray.remote(num_returns="dynamic")
@@ -263,7 +244,7 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
-        num_cpus=0,
+        num_cpus=1,
         _system_config=config,
         enable_object_reconstruction=True,
         resources={"head": 1},
@@ -273,19 +254,20 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
     cluster.wait_for_nodes()
 
-    @ray.remote(num_cpus=0, resources={"head": 1})
-    class ExecutionCounter:
+    @ray.remote(num_cpus=1, resources={"head": 1})
+    class FailureSignal:
         def __init__(self):
-            self.count = 0
+            return
 
-        def inc(self):
-            self.count += 1
-            return self.count
+        def ping(self):
+            return
 
     @ray.remote(num_returns="dynamic")
-    def dynamic_generator(exec_counter):
+    def dynamic_generator(failure_signal):
         num_returns = 10
-        if ray.get(exec_counter.inc.remote()) > 1:
+        try:
+            ray.get(failure_signal.ping.remote())
+        except ray.exceptions.RayActorError:
             if too_many_returns:
                 num_returns += 1
             else:
@@ -297,10 +279,10 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     def fetch(x):
         return
 
-    exec_counter = ExecutionCounter.remote()
-    gen = ray.get(dynamic_generator.remote(exec_counter))
+    failure_signal = FailureSignal.remote()
+    gen = ray.get(dynamic_generator.remote(failure_signal))
     cluster.remove_node(node_to_kill, allow_graceful=False)
-    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10 ** 8)
+    ray.kill(failure_signal)
     refs = list(gen)
     if too_many_returns:
         for ref in refs:
