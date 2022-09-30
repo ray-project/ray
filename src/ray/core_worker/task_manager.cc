@@ -298,7 +298,8 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::PushTaskReply &reply,
-                                      const rpc::Address &worker_addr) {
+                                      const rpc::Address &worker_addr,
+                                      bool is_application_error) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
 
   bool first_execution = false;
@@ -375,7 +376,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                    << " plasma returns in scope";
     it->second.num_successful_executions++;
 
-    it->second.SetStatus(rpc::TaskStatus::FINISHED);
+    if (is_application_error) {
+      it->second.SetStatus(rpc::TaskStatus::FAILED);
+    } else {
+      it->second.SetStatus(rpc::TaskStatus::FINISHED);
+    }
     num_pending_tasks_--;
 
     // A finished task can only be re-executed if it has some number of
@@ -485,7 +490,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
-    it->second.SetStatus(rpc::TaskStatus::FINISHED);
+    it->second.SetStatus(rpc::TaskStatus::FAILED);
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 
