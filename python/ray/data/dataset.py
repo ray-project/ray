@@ -320,7 +320,7 @@ class Dataset(Generic[T]):
         batch_size: Optional[int] = 4096,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
-        zero_copy_batch: bool = True,
+        zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -436,7 +436,7 @@ class Dataset(Generic[T]):
             zero_copy_batch: Whether to pass a zero-copy read-only batch to fn. If fn
                 mutates its input, this will need to be disabled in order to avoid
                 "assignment destination is read-only" or "buffer source array is
-                read-only" errors. Default is True.
+                read-only" errors. Default is False.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
