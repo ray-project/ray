@@ -2945,9 +2945,9 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
               static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024, 2);
           std::stringstream id_ss;
           if (worker_to_kill->GetActorId().IsNil()) {
-            id_ss << "task ID " << worker_to_kill->GetAssignedTaskId();
+            id_ss << "task ID: " << worker_to_kill->GetAssignedTaskId();
           } else {
-            id_ss << "actor ID " << worker_to_kill->GetActorId();
+            id_ss << "actor ID: " << worker_to_kill->GetActorId();
           }
 
           std::stringstream is_retriable_ss;
@@ -2965,8 +2965,9 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           worker_exit_message_ss
               << "Task was killed due to the node running low on memory.\n\n"
               << "Memory on the node (IP: " << worker_to_kill->IpAddress()
-              << ", ID: " << this->self_node_id_ << ") where the task was running was "
-              << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
+              << ", ID: " << this->self_node_id_ << ") where the task (" << id_ss.sr()
+              << ")was running was " << used_bytes_gb << "GB / " << total_bytes_gb
+              << "GB (" << usage_fraction
               << "), which exceeds the memory usage threshold of " << usage_threshold
               << ". Ray killed this worker (ID: " << worker_to_kill->WorkerId()
               << ") because it was the most recently scheduled task"
