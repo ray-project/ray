@@ -121,11 +121,13 @@ def test_report_and_load_using_ml_session(ray_start_4_cpus):
         preprocessor=DummyPreprocessor(),
     )
     result = trainer.fit()
+    assert isinstance(checkpoint.get_preprocessor(), DummyPreprocessor)
 
     trainer2 = TensorflowTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
         resume_from_checkpoint=result.checkpoint,
+        preprocessor=DummyPreprocessor(),
     )
     result = trainer2.fit()
     checkpoint = result.checkpoint
