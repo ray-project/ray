@@ -88,6 +88,8 @@ message DeploymentConfig {
   AutoscalingConfig autoscaling_config = 10;
 
   string version = 11;
+
+  repeated string user_configured_option_names = 12;
 }
 
 // Deployment language.
@@ -207,4 +209,17 @@ message ApplicationStatusInfo {
 message StatusOverview {
   ApplicationStatusInfo app_status = 1;
   DeploymentStatusInfoList deployment_statuses = 2;
+}
+
+// RPC Schema
+message PredictRequest {
+  map<string, bytes> input = 2;
+}
+
+message PredictResponse {
+  bytes prediction = 1;
+}
+
+service PredictAPIsService {
+  rpc Predict(PredictRequest) returns (PredictResponse);
 }
