@@ -447,7 +447,16 @@ class JobManager:
 
         while is_alive:
             try:
-                await job_supervisor.ping.remote()
+                # Workaround for https://github.com/ray-project/ray/issues/28058.
+                # Once fixed, replace with `await job_supervisor.ping.remote()`.
+                ref = job_supervisor.ping.remote()
+                not_ready = [ref]
+                while not_ready:
+                    ready, not_ready = ray.wait(ref, timeout=0.1)
+                    if ready:
+                        ray.get(ready)
+                    else:
+                        await asyncio.sleep(0)
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
                 is_alive = False
