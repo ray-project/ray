@@ -177,6 +177,12 @@ class DeploymentSchema(
         default=DEFAULT.VALUE, description="Options set for each replica actor."
     )
 
+    is_driver_deployment: bool = Field(
+        default=DEFAULT.VALUE,
+        description="Indicate Whether the deployment is driver deployment "
+        "Driver deployments are spawned one per node.",
+    )
+
     @root_validator
     def num_replicas_and_autoscaling_config_mutually_exclusive(cls, values):
         if values.get("num_replicas", None) not in [DEFAULT.VALUE, None] and values.get(

@@ -2524,6 +2524,55 @@
   alert: default
   stable: False
 
+
+- name: serve_micro_protocol_grpc_benchmark
+  group: Serve tests
+  working_dir: serve_tests
+
+  legacy:
+    test_name: serve_grpc_benchmark
+    test_suite: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_single_node.yaml
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/serve_protocol_benchmark.py --data-size=1048576
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: serve_micro_protocol_http_benchmark
+  group: Serve tests
+  working_dir: serve_tests
+
+  legacy:
+    test_name: serve_http_benchmark
+    test_suite: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_single_node.yaml
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/serve_protocol_benchmark.py --data-size=1048576 --http-test
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
 ########################
 # Train tests
 ########################
