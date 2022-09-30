@@ -483,6 +483,12 @@ def build(
     config["port"] = 8000
 
     if kubernetes_format:
+        print(
+            "NOTE: Kubernetes requires the following fields to be "
+            "strings: user_config, runtime_env (in ray_actor_options), "
+            "and resources (in ray_actor_options). You must manually convert "
+            "these to strings by adding pipe characters to each line.\n"
+        )
 
         # Convert ray_actor_options keys, deployment keys, and top-level
         # config keys to camel case
