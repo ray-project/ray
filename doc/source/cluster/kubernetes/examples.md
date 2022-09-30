@@ -15,3 +15,4 @@ This section presents example Ray workloads to try out on your Kubernetes cluste
 More examples will be added in the future. Running the distributed XGBoost example below is a
 great way to start experimenting with production Ray workloads on Kubernetes.
 - {ref}`kuberay-ml-example`
+- {ref}`kuberay-gpu-training-example`

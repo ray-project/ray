@@ -1253,7 +1253,7 @@ def test_get_directory_size_bytes():
         assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 152
 
 
-def check_local_files_gced(cluster):
+def check_local_files_gced(cluster, whitelist=None):
     for node in cluster.list_all_nodes():
         for subdir in ["conda", "pip", "working_dir_files", "py_modules_files"]:
             all_files = os.listdir(
@@ -1261,16 +1261,13 @@ def check_local_files_gced(cluster):
             )
             # Check that there are no files remaining except for .lock files
             # and generated requirements.txt files.
+            # Note: On Windows the top folder is not deleted as it is in use.
             # TODO(architkulkarni): these files should get cleaned up too!
-            if (
-                len(
-                    list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
-                )
-                > 0
-            ):
-                print(str(all_files))
+            items = list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
+            if whitelist and set(items).issubset(whitelist):
+                continue
+            if len(items) > 0:
                 return False
-
     return True
 
 
@@ -1424,6 +1421,17 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
             continue
     assert reply is not None
     return reply
+
+
+# Send a RPC to the raylet to have it self-destruct its process.
+def kill_raylet(raylet, graceful=False):
+    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    channel = grpc.insecure_channel(raylet_address)
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    try:
+        stub.ShutdownRaylet(node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+    except _InactiveRpcError:
+        assert not graceful
 
 
 # Creates a state api client assuming the head node (gcs) is local.
