@@ -171,45 +171,45 @@ void ObjectStatsCollector::OnObjectRefDecreased(const LocalObject &obj) {
 void ObjectStatsCollector::RecordMetrics() const {
   // By Type
   ray::stats::STATS_object_store_memory_count.Record(num_objects_spillable_,
-                                                     {{"Type" : "Spillable"}});
+                                                     {{"Type", "Spillable"}});
   ray::stats::STATS_object_store_memory_bytes.Record(num_bytes_spillable_,
-                                                     {{"Type" : "Spillable"}});
+                                                     {{"Type", "Spillable"}});
 
   ray::stats::STATS_object_store_memory_count.Record(num_objects_unsealed_,
-                                                     {{"Type" : "PendingCreation"}});
+                                                     {{"Type", "PendingCreation"}});
   ray::stats::STATS_object_store_memory_bytes.Record(num_bytes_unsealed_,
-                                                     {{"Type" : "PendingCreation"}});
+                                                     {{"Type", "PendingCreation"}});
 
   ray::stats::STATS_object_store_memory_count.Record(num_objects_in_use_,
-                                                     {{"Type" : "InUse"}});
+                                                     {{"Type", "InUse"}});
   ray::stats::STATS_object_store_memory_bytes.Record(num_bytes_in_use_,
-                                                     {{"Type" : "InUse"}});
+                                                     {{"Type", "InUse"}});
 
   ray::stats::STATS_object_store_memory_count.Record(num_objects_evictable_,
-                                                     {{"Type" : "Evictable"}});
+                                                     {{"Type", "Evictable"}});
   ray::stats::STATS_object_store_memory_bytes.Record(num_bytes_evictable_,
-                                                     {{"Type" : "Evictable"}});
+                                                     {{"Type", "Evictable"}});
 
   // By Creator
   ray::stats::STATS_object_store_memory_count.Record(num_objects_created_by_worker_,
-                                                     {{"Creator" : "Worker"}});
+                                                     {{"Creator", "Worker"}});
   ray::stats::STATS_object_store_memory_bytes.Record(num_bytes_created_by_worker_,
-                                                     {{"Creator" : "Worker"}});
+                                                     {{"Creator", "Worker"}});
 
   ray::stats::STATS_object_store_memory_count.Record(num_objects_restored_,
-                                                     {{"Creator" : "RestoredStorage"}});
+                                                     {{"Creator", "RestoredStorage"}});
   ray::stats::STATS_object_store_memory_bytes.Record(num_bytes_restored_,
-                                                     {{"Creator" : "RestoredStorage"}});
+                                                     {{"Creator", "RestoredStorage"}});
 
   ray::stats::STATS_object_store_memory_count.Record(num_objects_received_,
-                                                     {{"Creator" : "RemoteRaylet"}});
+                                                     {{"Creator", "RemoteRaylet"}});
   ray::stats::STATS_object_store_memory_bytes.Record(num_bytes_received_,
-                                                     {{"Creator" : "RemoteRaylet"}});
+                                                     {{"Creator", "RemoteRaylet"}});
 
   ray::stats::STATS_object_store_memory_count.Record(num_objects_errored_,
-                                                     {{"Creator" : "Error"}});
+                                                     {{"Creator", "Error"}});
   ray::stats::STATS_object_store_memory_bytes.Record(num_bytes_errored_,
-                                                     {{"Creator" : "Error"}});
+                                                     {{"Creator", "Error"}});
 }
 
 void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {

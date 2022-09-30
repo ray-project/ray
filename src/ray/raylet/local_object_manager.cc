@@ -601,18 +601,18 @@ void LocalObjectManager::RecordMetrics() const {
   // Object memory metrics known at LocalObjectManager
   // TODO(rickyx): add current spilled metric
   ray::stats::STATS_object_store_memory_count.Record(GetPrimaryCount(),
-                                                     {{"Type" : "PrimaryCopy"}});
+                                                     {{"Type", "PrimaryCopy"}});
   ray::stats::STATS_object_store_memory_count.Record(objects_pending_spill_.size(),
-                                                     {{"Type" : "PendingSpill"}});
+                                                     {{"Type", "PendingSpill"}});
   ray::stats::STATS_object_store_memory_count.Record(objects_pending_restore_.size(),
-                                                     {{"Type" : "PendingRestore"}});
+                                                     {{"Type", "PendingRestore"}});
 
   ray::stats::STATS_object_store_memory_bytes.Record(GetPrimaryBytes(),
-                                                     {{"Type" : "PrimaryCopy"}});
+                                                     {{"Type", "PrimaryCopy"}});
   ray::stats::STATS_object_store_memory_bytes.Record(num_bytes_pending_spill_,
-                                                     {{"Type" : "PendingSpill"}});
+                                                     {{"Type", "PendingSpill"}});
   ray::stats::STATS_object_store_memory_bytes.Record(num_bytes_pending_restore_,
-                                                     {{"Type" : "PendingRestore"}});
+                                                     {{"Type", "PendingRestore"}});
   // Cumulative spill/restore stats
   ray::stats::STATS_spill_manager_request_total.Record(spilled_objects_total_, "Spilled");
   ray::stats::STATS_spill_manager_request_total.Record(restored_objects_total_,
