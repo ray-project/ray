@@ -1,12 +1,13 @@
 from typing import Tuple, Any, Union
 
-from ray.rllib.utils.framework import  try_import_jax
+from ray.rllib.utils.framework import try_import_jax
 from ray.rllib.models.specs.specs_base import TensorSpecs
 
 jax, _ = try_import_jax()
 jnp = None
 if jax is not None:
     jnp = jax.numpy
+
 
 class JAXSpecs(TensorSpecs):
     def get_shape(self, tensor: jnp.ndarray) -> Tuple[int]:
