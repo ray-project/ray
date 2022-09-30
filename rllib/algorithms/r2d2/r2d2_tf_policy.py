@@ -33,6 +33,7 @@ class R2D2TargetNetworkMixin(TargetNetworkMixin):
     def __init__(self, *args, **kwargs):
         super().__init__(update_target_in_init=False)
 
+
 def build_r2d2_model(
     policy: Policy,
     obs_space: gym.spaces.Space,
