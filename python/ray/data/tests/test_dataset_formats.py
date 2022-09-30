@@ -411,10 +411,12 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
 
 
 def test_mongo_datasource(ray_start_regular_shared):
+    import subprocess
     import pymongo
     from pymongoarrow.api import Schema
 
     # Setup mongodb.
+    subprocess.run(["sudo", "service", "mongodb", " start"])
     mongo_url = "mongodb://localhost:27017"
     client = pymongo.MongoClient(mongo_url)
     foo_db = "foo-db"
@@ -498,6 +500,7 @@ def test_mongo_datasource(ray_start_regular_shared):
             uri=mongo_url, database=foo_db, collection=foo_collection
         )
 
+    subprocess.run(["sudo", "service", "mongodb", " stop"])
 
 if __name__ == "__main__":
     import sys
