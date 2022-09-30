@@ -2,6 +2,7 @@ import inspect
 import logging
 from typing import Any, Dict, Optional, List, Type, Union, Callable
 import pandas as pd
+import numpy as np
 
 import ray
 from ray.air import Checkpoint
@@ -179,6 +180,13 @@ class BatchPredictor:
             )
             predictor_kwargs["use_gpu"] = True
 
+        # For DL predictors that implemented _predict_numpy, we prefer to use
+        # numpy batch format for better perf and user experience.
+        has_predict_numpy = (
+            self._predictor_cls._predict_numpy != Predictor._predict_numpy
+        )
+        batch_format = "numpy" if has_predict_numpy else "pandas"
+
         ctx = DatasetContext.get_current()
         cast_tensor_columns = ctx.enable_tensor_extension_casting
 
@@ -194,19 +202,51 @@ class BatchPredictor:
                 if override_prep:
                     self._predictor.set_preprocessor(override_prep)
 
-            def __call__(self, batch):
-                if feature_columns:
-                    prediction_batch = batch[feature_columns]
+            def _select_columns_from_batch(
+                self,
+                batch_data: Union[pd.DataFrame, np.ndarray, Dict[str, np.ndarray]],
+                select_columns: Optional[List[str]] = None,
+            ):
+                """Return a subset of batch_data based on provided columns."""
+                # No select columns specified, use all columns.
+                if not select_columns:
+                    return batch_data
+                elif select_columns and isinstance(batch_data, np.ndarray):
+                    raise ValueError(
+                        f"Column name(s) {select_columns} should not be "
+                        "provided for prediction data type of `numpy.ndarray`"
+                    )
+                elif batch_format == "numpy":
+                    if isinstance(batch_data, dict):
+                        return {
+                            k: v for k, v in batch_data.items() if k in select_columns
+                        }
+                    elif isinstance(batch_data, np.ndarray):
+                        return batch_data
                 else:
-                    prediction_batch = batch
+                    # Select a subset of the pandas columns.
+                    return batch_data[select_columns]
+
+            def __call__(self, batch):
+                prediction_batch = self._select_columns_from_batch(
+                    batch, select_columns=feature_columns
+                )
                 prediction_output = self._predictor.predict(
                     prediction_batch, **predict_kwargs
                 )
-                if keep_columns:
-                    prediction_output[keep_columns] = batch[keep_columns]
-                return convert_batch_type_to_pandas(
-                    prediction_output, cast_tensor_columns
+                prediction_output = self._select_columns_from_batch(
+                    prediction_output, select_columns=keep_columns
                 )
+
+                if batch_format == "numpy":
+                    # User code just need to return Numpy format where we will
+                    # internall convert to Arrow format.
+                    # TODO (jiaodong): Test against ragged tensors
+                    return prediction_output
+                else:
+                    return convert_batch_type_to_pandas(
+                        prediction_output, cast_tensor_columns
+                    )
 
         compute = ray.data.ActorPoolStrategy(
             min_size=min_scoring_workers, max_size=max_scoring_workers
@@ -223,12 +263,12 @@ class BatchPredictor:
                 # GPU stage. Otherwise, the preprocessing will be applied twice.
                 override_prep = BatchMapper(lambda x: x)
                 batch_fn = preprocessor._transform_batch
-                data = data.map_batches(batch_fn, batch_format="pandas")
+                data = data.map_batches(batch_fn, batch_format=batch_format)
 
         prediction_results = data.map_batches(
             ScoringWrapper,
             compute=compute,
-            batch_format="pandas",
+            batch_format=batch_format,
             batch_size=batch_size,
             **ray_remote_args,
         )

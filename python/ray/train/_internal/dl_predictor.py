@@ -83,3 +83,11 @@ class DLPredictor(Predictor):
                 {"predictions": TensorArray(self._tensor_to_array(output))},
                 columns=["predictions"],
             )
+
+    def _predict_numpy(
+        self,
+        data: Union[np.ndarray, Dict[str, np.ndarray]],
+        dtype: Union[TensorDtype, Dict[str, TensorDtype]],
+    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+        model_input = self._arrays_to_tensors(data, dtype)
+        return self.call_model(model_input)

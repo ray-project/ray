@@ -1,5 +1,5 @@
 import abc
-from typing import Dict, Type, Optional, Callable
+from typing import Dict, Type, Optional, Union, Callable
 
 import numpy as np
 import pandas as pd
@@ -179,21 +179,21 @@ class Predictor(abc.ABC):
         raise NotImplementedError
 
     @DeveloperAPI
-    def _predict_arrow(self, data: "pyarrow.Table", **kwargs) -> "pyarrow.Table":
-        """Perform inference on an Arrow Table.
+    def _predict_numpy(
+        self, data: Union[np.ndarray, Dict[str, np.ndarray]], **kwargs
+    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+        """Perform inference on a Numpy data.
 
-        Predictors can implement this method instead of ``_predict_pandas``
-        for better performance when the input batch type is a Numpy array, dict of
-        numpy arrays, or an Arrow Table as conversion from these types are zero copy.
+        All DL predictors are expected to implement this method.
 
         Args:
-            data: An Arrow Table to perform predictions on.
+            data: A Numpy ndarray or dictionary of ndarray to perform predictions on.
             kwargs: Arguments specific to the predictor implementation.
 
         Returns:
-            An Arrow Table containing the prediction result.
-        """
+            A Numpy ndarray or dictionary of ndarray containing the prediction result.
 
+        """
         raise NotImplementedError
 
     def __reduce__(self):
