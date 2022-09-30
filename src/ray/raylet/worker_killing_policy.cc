@@ -40,7 +40,7 @@ RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(
 
   std::sort(sorted.begin(),
             sorted.end(),
-            [this](std::shared_ptr<WorkerInterface> const &left,
+            [](std::shared_ptr<WorkerInterface> const &left,
                    std::shared_ptr<WorkerInterface> const &right) -> bool {
               int left_retriable =
                   left->GetAssignedTask().GetTaskSpecification().IsRetriable() ? 0 : 1;
