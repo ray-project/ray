@@ -1,4 +1,4 @@
-from gym.spaces import Box, Dict, Discrete, Tuple, MultiDiscrete
+from gym.spaces import Box, Dict, Discrete, Tuple, MultiDiscrete, MultiBinary
 import numpy as np
 import unittest
 
@@ -45,6 +45,7 @@ OBSERVATION_SPACES_TO_TEST = {
             "position": Box(-1.0, 1.0, (5,), dtype=np.float32),
         }
     ),
+    "multi_binary": MultiBinary([3, 10, 10]),
 }
 
 
