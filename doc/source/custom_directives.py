@@ -96,6 +96,7 @@ MOCK_MODULES = [
     "ray.core.generated.ray.protocol.Task",
     "ray.serve.generated",
     "ray.serve.generated.serve_pb2",
+    "ray.serve.generated.serve_pb2_grpc",
     "scipy.signal",
     "scipy.stats",
     "setproctitle",
