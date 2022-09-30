@@ -156,10 +156,13 @@ class _TrackedCheckpoint:
 
     def __repr__(self):
         if self.storage_mode == CheckpointStorage.MEMORY:
-            return f"<_TrackedCheckpoint storage='MEMORY' result={self.metrics}>"
+            return (
+                f"<_TrackedCheckpoint id={self.id} storage='MEMORY' "
+                f"result={self.metrics}>"
+            )
 
         return (
-            f"<_TrackedCheckpoint storage='PERSISTENT' "
+            f"<_TrackedCheckpoint id={self.id} storage='PERSISTENT' "
             f"dir_or_data={self.dir_or_data}>"
         )
 
