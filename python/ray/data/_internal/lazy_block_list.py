@@ -641,7 +641,7 @@ def _execute_read_task_nosplit(
     metadata = BlockAccessor.for_block(block).get_metadata(
         input_files=metadata.input_files, exec_stats=stats.build()
     )
-    stats_actor.record_task.remote(stats_uuid, i, metadata)
+    stats_actor.record_task.remote(stats_uuid, i, [metadata])
     return block, metadata
 
 
@@ -663,19 +663,18 @@ def _execute_read_task_split(
     # Execute the task.
     blocks = task()
 
-    task_metadata = task.get_metadata()
-    task_metadata.exec_stats = BlockExecStats()
+    input_files = task.get_metadata().input_files
     blocks_metadata = []
     block_exec_stats = BlockExecStats.builder()
     for block in blocks:
         metadata = BlockAccessor.for_block(block).get_metadata(
-            input_files=task_metadata.input_files, exec_stats=block_exec_stats.build()
+            input_files=input_files,
+            exec_stats=block_exec_stats.build(),
         )
         yield block
         blocks_metadata.append(metadata)
-        task_metadata.exec_stats.add(metadata.exec_stats)
         block_exec_stats = BlockExecStats.builder()
 
-    stats_actor.record_task.remote(stats_uuid, i, task_metadata)
+    stats_actor.record_task.remote(stats_uuid, i, blocks_metadata)
     # Return metadata of blocks as a list at the end.
     yield blocks_metadata

@@ -205,10 +205,12 @@ def test_image_folder_dynamic_block_split(ray_start_regular_shared):
         ds.fully_executed()
         # Verify dynamic block splitting taking effect to generate more blocks.
         assert ds.num_blocks() == 3
+        assert "3 blocks executed" in ds.stats()
 
         # Test union of same datasets
         union_ds = ds.union(ds, ds, ds).fully_executed()
         assert union_ds.num_blocks() == 12
+        assert "3 blocks executed" in union_ds.stats()
     finally:
         ctx.target_max_block_size = target_max_block_size
         ctx.block_splitting_enabled = block_splitting_enabled

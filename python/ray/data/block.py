@@ -164,19 +164,6 @@ class BlockExecStats:
         # differentiate from previous tasks on the same worker.
         self.max_rss_bytes: int = 0
 
-    def add(self, other: "BlockExecStats"):
-        """Add the other BlockExecStats into this BlockExecStats, by combining
-        each statistic.
-
-        Assume these statistics are independent without overlap between each other,
-        so they can be added up such as wall clock time.
-        """
-        if other.wall_time_s:
-            self.wall_time_s = float(self.wall_time_s or 0) + other.wall_time_s
-        if other.cpu_time_s:
-            self.cpu_time_s = float(self.cpu_time_s or 0) + other.cpu_time_s
-        self.max_rss_bytes = max(self.max_rss_bytes, other.max_rss_bytes)
-
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
         return _BlockExecStatsBuilder()
