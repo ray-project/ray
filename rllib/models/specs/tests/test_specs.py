@@ -5,28 +5,40 @@ import numpy as np
 from ray.rllib.models.specs.specs_torch import TorchSpecs
 from ray.rllib.models.specs.specs_np import NPSpecs
 
-SPEC_CLASSES = {
-    "torch": TorchSpecs,
-    "np": NPSpecs
-}
+SPEC_CLASSES = {"torch": TorchSpecs, "np": NPSpecs}
 
-DOUBLE_TYPE = {
-    "torch": torch.float64,
-    "np": np.float64
-}
+DOUBLE_TYPE = {"torch": torch.float64, "np": np.float64}
 
-FLOAT_TYPE = {
-    "torch": torch.float32,
-    "np": np.float32
-}
-    
+FLOAT_TYPE = {"torch": torch.float32, "np": np.float32}
+
+
 class TestSpecs(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         pass
-    
 
-    def test_tensor_spec_2d(self):
+    def test_sampling(self):
+
+        for fw in SPEC_CLASSES.keys():
+            spec_class = SPEC_CLASSES[fw]
+            double_type = DOUBLE_TYPE[fw]
+
+            # if un-specified dims should be 1, dtype is not important
+            x = spec_class("b h").sample(float(2.0))
+
+            # check the shape
+            self.assertEqual(x.shape, (1, 1))
+            # check the value
+            self.assertEqual(x.item(), 2.0)
+
+            x = spec_class("b h", b=2, h=3).sample(float(2.0))
+            self.assertEqual(x.shape, (2, 3))
+
+            x = spec_class("b h1 h2 h3", h1=2, h2=3, h3=3, dtype=double_type).sample(2)
+            self.assertEqual(x.shape, (1, 2, 3, 3))
+            self.assertEqual(x.dtype, double_type)
+
+    def test_validation(self):
 
         b, h = 2, 3
 
