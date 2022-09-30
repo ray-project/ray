@@ -2967,11 +2967,11 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
               << worker_to_kill->WorkerId() << "*out -ip " << worker_to_kill->IpAddress()
               << "`.\n\n"
               << "Consider provisioning more memory on this node or reducing task "
-              << "parallelism by requesting more CPUs per task. To adjust the eviction "
-              << "threshold, set the environment variable "
-              << "`RAY_memory_usage_threshold_fraction` when starting Ray. To disable "
-              << "worker eviction, set the environment variable "
-              << "`RAY_memory_monitor_interval_ms` to zero.";
+                 "parallelism by requesting more CPUs per task. To adjust the eviction "
+                 "threshold, set the environment variable "
+                 "`RAY_memory_usage_threshold_fraction` when starting Ray. To disable "
+                 "worker eviction, set the environment variable "
+                 "`RAY_memory_monitor_interval_ms` to zero.";
           std::string worker_exit_message = worker_exit_message_ss.str();
           /// TODO: (clarng) add a link to the oom killer / memory manager documentation
           RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << worker_exit_message;
