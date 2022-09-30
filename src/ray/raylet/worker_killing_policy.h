@@ -38,6 +38,8 @@ class WorkerKillingPolicy {
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const MemoryMonitor &memory_monitor) const = 0;
 
+  virtual ~WorkerKillingPolicy() {}
+
  protected:
   /// Returns debug string of the workers.
   ///
