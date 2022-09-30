@@ -2,15 +2,28 @@ import unittest
 import torch
 import numpy as np
 import tensorflow as tf
+import jax.numpy as jnp
 
 from ray.rllib.utils.test_utils import check
 from ray.rllib.models.specs.specs_torch import TorchSpecs
 from ray.rllib.models.specs.specs_np import NPSpecs
 from ray.rllib.models.specs.specs_tf import TFSpecs
+from ray.rllib.models.specs.specs_jax import JAXSpecs
 
-SPEC_CLASSES = {"torch": TorchSpecs, "np": NPSpecs, "tf": TFSpecs}
-DOUBLE_TYPE = {"torch": torch.float64, "np": np.float64, "tf": tf.float64}
-FLOAT_TYPE = {"torch": torch.float32, "np": np.float32, "tf": tf.float32}
+SPEC_CLASSES = {"torch": TorchSpecs, "np": NPSpecs, "tf": TFSpecs, "jax": JAXSpecs}
+DOUBLE_TYPE = {
+    "torch": torch.float64,
+    "np": np.float64,
+    "tf": tf.float64,
+    # TODO (kourosh): jnp.float64(foo) does not make foo float64, why?
+    "jax": jnp.float32,
+}
+FLOAT_TYPE = {
+    "torch": torch.float32,
+    "np": np.float32,
+    "tf": tf.float32,
+    "jax": jnp.float32,
+}
 
 
 class TestSpecs(unittest.TestCase):
@@ -70,8 +83,9 @@ class TestSpecs(unittest.TestCase):
                 spec_class("b"),
                 spec_class("b h1 h2"),
                 spec_class("b h", h=h + 1),
-                spec_class("b h", dtype=float_type),
             ]
+            if fw != "jax":
+                non_matching_specs.append(spec_class("b h", dtype=float_type))
 
             for spec in non_matching_specs:
                 self.assertRaises(ValueError, lambda: spec.validate(tensor_2d))
