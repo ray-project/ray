@@ -203,12 +203,12 @@ class BatchPredictor:
                 if override_prep:
                     self._predictor.set_preprocessor(override_prep)
 
-            def _select_columns_from_batch(
+            def _select_columns_from_input_batch(
                 self,
                 batch_data: DataBatchType,
                 select_columns: Optional[List[str]] = None,
             ):
-                """Return a subset of batch_data based on provided columns."""
+                """Return a subset of input batch based on provided columns."""
                 # No select columns specified, use all columns.
                 if not select_columns:
                     return batch_data
@@ -228,25 +228,56 @@ class BatchPredictor:
                     # Select a subset of the pandas columns.
                     return batch_data[select_columns]
 
-            def __call__(self, batch):
-                prediction_batch = self._select_columns_from_batch(
-                    batch, select_columns=feature_columns
+            def _keep_columns_from_input_batch(
+                self,
+                input_batch: DataBatchType,
+                prediction_output_batch: DataBatchType,
+                keep_columns: Optional[List[str]] = None,
+            ):
+                """Return a union of input batch and prediction output batch
+                based on provided columns.
+                """
+                if not keep_columns:
+                    return prediction_output_batch
+                elif keep_columns and (
+                    isinstance(input_batch, np.ndarray)
+                    or isinstance(prediction_output_batch, np.ndarray)
+                ):
+                    raise ValueError(
+                        f"Column name(s) {keep_columns} should not be "
+                        "provided for input or prediction output data type of "
+                        "``numpy.ndarray``"
+                    )
+                else:
+                    if batch_format == BatchFormat.NUMPY:
+                        for column in keep_columns:
+                            prediction_output_batch[column] = input_batch[column]
+                        return prediction_output_batch
+                    elif batch_format == BatchFormat.PANDAS:
+                        prediction_output_batch[keep_columns] = input_batch[
+                            keep_columns
+                        ]
+                        return prediction_output_batch
+
+            def __call__(self, input_batch: DataBatchType) -> DataBatchType:
+                prediction_batch = self._select_columns_from_input_batch(
+                    input_batch, select_columns=feature_columns
                 )
-                prediction_output = self._predictor.predict(
+                prediction_output_batch = self._predictor.predict(
                     prediction_batch, batch_format=batch_format, **predict_kwargs
                 )
-                prediction_output = self._select_columns_from_batch(
-                    prediction_output, select_columns=keep_columns
+                prediction_output_batch = self._keep_columns_from_input_batch(
+                    input_batch, prediction_output_batch, keep_columns=keep_columns
                 )
 
                 if batch_format == BatchFormat.NUMPY:
                     # User code just need to return Numpy format where we will
                     # internall convert to Arrow format.
                     # TODO (jiaodong): Test against ragged tensors
-                    return prediction_output
+                    return prediction_output_batch
                 else:
                     return convert_batch_type_to_pandas(
-                        prediction_output, cast_tensor_columns
+                        prediction_output_batch, cast_tensor_columns
                     )
 
         compute = ray.data.ActorPoolStrategy(

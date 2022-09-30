@@ -70,14 +70,14 @@ def convert_batch_type_to_pandas(
 @DeveloperAPI
 def convert_pandas_to_batch_type(
     data: pd.DataFrame,
-    type: DataBatchType,
+    type: BatchFormat,
     cast_tensor_columns: bool = False,
 ) -> DataBatchType:
     """Convert the provided Pandas dataframe to the provided ``type``.
 
     Args:
         data: A Pandas DataFrame
-        type: The specific ``DataBatchType`` to convert to.
+        type: The specific ``BatchFormat`` to convert to.
         cast_tensor_columns: Whether tensor columns should be cast to our tensor
             extension type.
 

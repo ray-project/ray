@@ -23,6 +23,9 @@ class DummyPreprocessor(Preprocessor):
     def _transform_pandas(self, df):
         return df * self.multiplier
 
+    def _transform_numpy(self, np_data):
+        return np_data * self.multiplier
+
 
 def test_repr(shutdown_only):
     predictor = BatchPredictor.from_checkpoint(

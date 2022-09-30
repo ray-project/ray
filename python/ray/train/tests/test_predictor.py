@@ -16,8 +16,8 @@ class DummyPreprocessor(Preprocessor):
     def __init__(self, multiplier=2):
         self.multiplier = multiplier
 
-    def transform_batch(self, df):
-        return df * self.multiplier
+    def transform_batch(self, data):
+        return data * self.multiplier
 
 
 class DummyPredictor(Predictor):
