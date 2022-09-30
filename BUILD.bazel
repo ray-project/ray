@@ -1597,10 +1597,10 @@ cc_test(
 )
 
 cc_test(
-    name = "worker_killer_test",
+    name = "worker_killing_policy_test",
     size = "small",
     srcs = [
-        "src/ray/raylet/worker_killer_test.cc",
+        "src/ray/raylet/worker_killing_policy_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],
