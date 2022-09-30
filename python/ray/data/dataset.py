@@ -320,7 +320,7 @@ class Dataset(Generic[T]):
         batch_size: Optional[int] = 4096,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
-        zero_copy_batch: bool = False,
+        allow_mutate_batch: bool = True,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -349,8 +349,8 @@ class Dataset(Generic[T]):
             more convenient.
 
         .. note::
-            If fn mutates its input, you may need to copy the batch first. See the
-            zero_copy_batch parameter.
+            If ``fn`` mutates its input, you will need to ensure that the batch provided
+            to ``fn`` is writable. See the ``allow_mutate_batch`` parameter.
 
         Examples:
 
@@ -439,10 +439,13 @@ class Dataset(Generic[T]):
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
                 ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
-            zero_copy_batch: Whether to pass a zero-copy read-only batch to fn. If fn
-                mutates its input, this will need to be disabled in order to avoid
-                "assignment destination is read-only" or "buffer source array is
-                read-only" errors. Default is False.
+            allow_mutate_batch: Whether the ``fn`` UDF needs to be able to mutate the
+                input batch. If this is True, the batch will be writable, which may
+                require an extra copy. If this is False, the batch may be a zero-copy,
+                read-only view on data in Ray's object store, which can decrease memory
+                utilization and improve performance. If fn mutates its input, this will
+                need to be True in order to avoid "assignment destination is read-only"
+                or "buffer source array is read-only" errors. Default is True.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
@@ -529,7 +532,7 @@ class Dataset(Generic[T]):
             for start in range(0, total_rows, max_batch_size):
                 # Build a block for each batch.
                 end = min(total_rows, start + max_batch_size)
-                view = block.slice(start, end, copy=not zero_copy_batch)
+                view = block.slice(start, end, copy=allow_mutate_batch)
                 # Convert to batch format.
                 view = BlockAccessor.for_block(view).to_batch_format(batch_format)
 
@@ -545,10 +548,10 @@ class Dataset(Generic[T]):
                         raise ValueError(
                             f"Batch mapper function {fn.__name__} tried to mutate a "
                             "zero-copy read-only batch. To be able to mutate the "
-                            "batch, pass zero_copy_batch=False to map_batches(); this "
-                            "will copy the batch before giving it to fn. To elide this "
-                            "copy, modify your mapper function so it doesn't try to "
-                            "mutate its input."
+                            "batch, pass allow_mutate_batch=True to map_batches(); "
+                            "this will copy the batch before giving it to fn. To elide "
+                            "this copy, modify your mapper function so it doesn't try "
+                            "to mutate its input."
                         ) from e
                     else:
                         raise e from None
@@ -638,7 +641,7 @@ class Dataset(Generic[T]):
             process_batch,
             batch_format="pandas",
             compute=compute,
-            zero_copy_batch=False,
+            allow_mutate_batch=True,
             **ray_remote_args,
         )
 
