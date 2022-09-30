@@ -671,3 +671,9 @@ def test_csv_invalid_file_handler(shutdown_only, tmp_path):
             delimiter=",", invalid_row_handler=lambda i: "skip"
         ),
     )
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

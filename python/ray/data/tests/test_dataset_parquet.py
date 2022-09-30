@@ -896,3 +896,9 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
         shutil.rmtree(path)
     else:
         fs.delete_dir(_unwrap_protocol(path))
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

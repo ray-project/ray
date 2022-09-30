@@ -475,12 +475,17 @@ def build(
 
     app = build_app(node)
 
-    config = ServeApplicationSchema(
-        deployments=[deployment_to_schema(d) for d in app.deployments.values()]
-    ).dict()
-    config["import_path"] = import_path
-    config["host"] = "0.0.0.0"
-    config["port"] = 8000
+    config = {
+        "import_path": import_path,
+        "runtime_env": {},
+        "host": "0.0.0.0",
+        "port": 8000,
+    }
+    config.update(
+        ServeApplicationSchema(
+            deployments=[deployment_to_schema(d) for d in app.deployments.values()]
+        ).dict(exclude_defaults=True)
+    )
 
     if kubernetes_format:
         print(
@@ -507,6 +512,9 @@ def build(
     config_str += yaml.dump(
         config, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
     )
+
+    # Ensure file ends with only one newline
+    config_str = config_str.rstrip("\n") + "\n"
 
     with open(output_path, "w") if output_path else sys.stdout as f:
         f.write(config_str)

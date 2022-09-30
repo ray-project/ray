@@ -4213,11 +4213,28 @@
   team: data
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: aggregate_benchmark_compute.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
 
   run:
     timeout: 1800
     script: python aggregate_benchmark.py
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: read_benchmark_single_node
+  group: core-dataset-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: multi
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    timeout: 1800
+    script: python read_benchmark.py
 
     type: sdk_command
     file_manager: sdk
