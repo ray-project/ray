@@ -49,6 +49,6 @@ class MosaicCheckpoint(Checkpoint):
         strict: bool = False,
     ) -> torch.nn.Module:
         """Retrieve the model stored in this checkpoint."""
-        with self.to_dict()["last_checkpoint"][-1] as save_path:
+        with self.to_dict()["all_checkpoints"][-1] as save_path:
             model = load_model_from_path(save_path, model, strict)
         return model

@@ -7,7 +7,7 @@ from ray.train.constants import (
     TRAIN_DATASET_KEY,
 )
 
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Iterable
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.mosaic._mosaic_utils import (
@@ -330,7 +330,7 @@ def _mosaic_train_loop_per_worker(config):
     checkpoint = session.get_checkpoint()
     # use the last checkpoint as the load_path if load_path is not already defined
     if checkpoint and "load_path" not in config:
-        config["load_path"] = str(checkpoint.to_dict()["last_checkpoint"][-1])
+        config["load_path"] = str(checkpoint.to_dict()["all_checkpoints"][-1])
 
     # add RayLogger to Composer trainer loggers
     ray_logger = RayLogger(keys=config.pop("log_keys", []))
@@ -355,27 +355,22 @@ def _mosaic_train_loop_per_worker(config):
 
     # We wrap all existing CheckpointSavers with RayTrainReportCallback
     # If none exists, then we create a default one with "ray_tmp" folder
-    is_report_call_added = False
+    checkpoint_savers = []
     for callback in trainer.state.callbacks:
         if isinstance(callback, CheckpointSaver):
-            trainer.state.callbacks.remove(callback)
-            trainer.state.callbacks.append(
-                RayTrainReportCallback(
-                    in_memory_logger=in_memory_logger,
-                    ray_logger=ray_logger,
-                    checkpoint_saver=callback,
-                )
-            )
-            is_report_call_added = True
-    if not is_report_call_added:
+            # trainer.state.callbacks.remove(callback)
+            checkpoint_savers.append(callback)
+    if len(checkpoint_savers) == 0:
         trainer.state.callbacks.append(
-            RayTrainReportCallback(
-                in_memory_logger=in_memory_logger,
-                ray_logger=ray_logger,
-                folder="ray_tmp",
-                overwrite=True,
-            )
+            CheckpointSaver(folder="ray_tmp", overwrite=True)
         )
-
+        checkpoint_savers.append(trainer.state.callbacks[-1])
+    trainer.state.callbacks.append(
+        RayTrainReportCallback(
+            in_memory_logger=in_memory_logger,
+            ray_logger=ray_logger,
+            checkpoint_savers=checkpoint_savers,
+        )
+    )
     # call the trainer
     trainer.fit(**fit_config)

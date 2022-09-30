@@ -1,7 +1,7 @@
 import math
 from typing import Any, Dict, Tuple, Union, Iterable
 import torch
-
+from pathlib import Path
 from ray.air import session
 from ray.data.dataset import Dataset
 from ray.train.mosaic.mosaic_checkpoint import MosaicCheckpoint
@@ -11,6 +11,7 @@ from composer.loggers.logger import LogLevel
 from composer.loggers.logger_destination import LoggerDestination
 from composer.core.state import State
 from composer.callbacks.checkpoint_saver import CheckpointSaver
+from composer.core.callback import Callback
 
 
 class _mosaic_iterator:
@@ -112,7 +113,7 @@ class RayLogger(LoggerDestination):
     """
 
     def __init__(
-        self, log_level: Union[str, int, LogLevel] = LogLevel.BATCH, keys=[]
+        self, log_level: Union[str, int, LogLevel] = LogLevel.BATCH, keys=list()
     ) -> None:
         self.log_level = LogLevel(log_level)
         self.data = {}
@@ -137,7 +138,7 @@ class RayLogger(LoggerDestination):
         session.report(self.data)
 
 
-class RayTrainReportCallback(CheckpointSaver):
+class RayTrainReportCallback(Callback):
     """A callback that wraps Composer's ``CheckpointSaver``.
 
     This class is used to wrap each Composer ``CheckpointSaver`` to be used in Composer
@@ -178,59 +179,26 @@ class RayTrainReportCallback(CheckpointSaver):
         self,
         in_memory_logger,
         ray_logger,
-        checkpoint_saver: CheckpointSaver = None,
-        **args
+        checkpoint_savers: CheckpointSaver,
     ):
         self.in_memory_logger = in_memory_logger
         self.ray_logger = ray_logger
-        self.last_checkpoint = None
-        self.checkpoint_count = 0
-
-        if checkpoint_saver:
-            super(RayTrainReportCallback, self).__init__(
-                checkpoint_saver.folder,
-                checkpoint_saver.filename,
-                checkpoint_saver.artifact_name,
-                checkpoint_saver.latest_filename,
-                checkpoint_saver.latest_artifact_name,
-                checkpoint_saver.save_interval,
-                overwrite=checkpoint_saver.overwrite,
-                num_checkpoints_to_keep=checkpoint_saver.num_checkpoints_to_keep,
-                weights_only=checkpoint_saver.weights_only,
-                **args
-            )
-        else:
-            super(RayTrainReportCallback, self).__init__(**args)
+        self.checkpoint_savers = checkpoint_savers
+        print("checkpoint saver : ", self.checkpoint_savers)
 
     def close(self, state: State, logger: Logger) -> None:
         del logger  # unused
+        all_checkpoints = []
+        for checkpoint_saver in self.checkpoint_savers:
+            all_checkpoints.extend(
+                [Path(p).absolute() for p in checkpoint_saver.saved_checkpoints]
+            )
+
         checkpoint = MosaicCheckpoint.from_dict(
             {
-                "last_checkpoint": self.last_checkpoint,
-                "in_memory_logger": self.in_memory_logger,
-                "all_checkpoints": self.saved_checkpoints,
+                # "in_memory_logger": self.in_memory_logger,
+                "all_checkpoints": all_checkpoints,
             }
         )
+
         session.report(metrics=self.ray_logger.data, checkpoint=checkpoint)
-
-    def epoch_checkpoint(self, state: State, logger: Logger) -> None:
-        super().epoch_checkpoint(state, logger)
-        self._update_checkpoint(state)
-
-    def batch_checkpoint(self, state: State, logger: Logger) -> None:
-        super().batch_checkpoint(state, logger)
-        self._update_checkpoint(state)
-
-    def _update_checkpoint(self, state: State):
-        # check that the saved checkpoint is not redundant
-        if len(self.saved_checkpoints) > self.checkpoint_count:
-            self.last_checkpoint = [
-                chkpt_path.absolute() for chkpt_path in self.saved_checkpoints[-1][1]
-            ]
-            self.checkpoint_count = len(self.saved_checkpoints)
-            session.report(
-                metrics=self.ray_logger.data,
-                checkpoint=MosaicCheckpoint.from_dict(
-                    {"last_checkpoint": self.last_checkpoint}
-                ),
-            )

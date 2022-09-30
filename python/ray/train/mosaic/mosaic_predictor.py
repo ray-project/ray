@@ -57,5 +57,5 @@ class MosaicPredictor(TorchPredictor):
                 prediction happens on GPU.
             strict: the boolean variable for strict state_dict loading onto the model
         """
-        save_path = checkpoint.to_dict()["last_checkpoint"][-1]
+        save_path = checkpoint.to_dict()["all_checkpoints"][-1]
         return cls.from_save_path(save_path, model, use_gpu, strict)
