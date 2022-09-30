@@ -2,8 +2,8 @@
 
 Submits many jobs on a long running cluster.
 
-20 jobs every 10 seconds for 8 hours (or 10 minutes if smoke test).
-Each job sleeps for 60 seconds. Total of ~50k jobs.
+5 jobs every 30 seconds for 8 hours (or 10 minutes if smoke test).
+Each job is a simple Tune job (~10s). Total of ~5k jobs.
 
 Test owner: architkulkarni
 
@@ -15,10 +15,17 @@ import json
 import os
 import time
 import pprint
-from typing import Optional
+import random
+from typing import List, Optional
 from ray.dashboard.modules.job.common import JobStatus
 
 from ray.job_submission import JobSubmissionClient
+
+NUM_CLIENTS = 4
+NUM_JOBS_PER_BATCH = 5
+
+SMOKE_TEST_TIMEOUT = 10 * 60  # 10 minutes
+FULL_TEST_TIMEOUT = 8 * 60 * 60  # 8 hours
 
 
 def wait_until_finish(
@@ -40,21 +47,24 @@ def wait_until_finish(
 
 
 def submit_batch_jobs(
-    client: JobSubmissionClient,
+    clients: List[JobSubmissionClient],
     num_jobs: int,
     timeout_s: int = 10 * 60,
     retry_interval_s: int = 1,
 ) -> bool:
     job_ids = []
     for i in range(num_jobs):
+        # Cycle through clients arbitrarily
+        client = clients[i % len(clients)]
         job_id = client.submit_job(
             runtime_env={"working_dir": os.path.dirname(os.path.abspath(__file__))},
-            entrypoint="echo starting && sleep 60 && echo finished",
+            entrypoint="python run_simple_tune_job.py",
         )
         job_ids.append(job_id)
         print(f"submitted job: {job_id}")
 
     for job_id in job_ids:
+        client = clients[job_ids.index(job_id) % len(clients)]
         status = wait_until_finish(client, job_id, timeout_s, retry_interval_s)
         if status != JobStatus.SUCCEEDED:
             print(
@@ -72,11 +82,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     if args.smoke_test:
-        print("Running smoke test")
-        timeout = 10 * 60
+        print(f"Running smoke test with timeout {SMOKE_TEST_TIMEOUT} seconds")
+        timeout = SMOKE_TEST_TIMEOUT
     else:
-        print("Running full test")
-        timeout = 8 * 60 * 60
+        print(f"Running full test (timeout: {FULL_TEST_TIMEOUT}s)")
+        timeout = FULL_TEST_TIMEOUT
 
     start = time.time()
 
@@ -86,20 +96,27 @@ if __name__ == "__main__":
     if address is None or not address.startswith("anyscale://"):
         address = "http://127.0.0.1:8265"
 
-    client = JobSubmissionClient(address)
+    clients = [JobSubmissionClient(address) for i in range(NUM_CLIENTS)]
 
     while time.time() - start < timeout:
         # Submit a batch of jobs
-        if not submit_batch_jobs(client, 20):
+        if not submit_batch_jobs(clients, NUM_JOBS_PER_BATCH):
             print("FAILED")
             exit(1)
 
         # Test list jobs
-        jobs = client.list_jobs()
+        jobs = clients[0].list_jobs()
         print("list jobs:")
         pprint.pprint(jobs)
 
-        time.sleep(10)
+        # Get job logs from random job
+        job_id = random.choice(jobs).submission_id
+        print(f"getting logs for job {job_id}")
+        logs = clients[0].get_job_logs(job_id)
+        print(logs)
+
+        print("sleeping for 30 seconds")
+        time.sleep(30)
 
     time_taken = time.time() - start
     result = {
