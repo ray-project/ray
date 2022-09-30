@@ -1228,9 +1228,8 @@ class RolloutWorker(ParallelIteratorWorker):
             KeyError: If the given `policy_id` already exists in this worker's
                 PolicyMap.
         """
-        merged_config = (
-            {**self.policy_config, **config} if config else self.policy_config
-        )
+        merged_config = merge_dicts(self.policy_config, config or {})
+
         if policy_id in self.policy_map:
             raise KeyError(
                 f"Policy ID '{policy_id}' already exists in policy map! "
