@@ -631,7 +631,7 @@ def _execute_read_task_nosplit(
     DatasetContext._set_current(context)
     stats = BlockExecStats.builder()
 
-    # Execute the task. Expect only one block returned, when dynamic block splitting is
+    # Execute the task. Expect only one block returned when dynamic block splitting is
     # not enabled.
     blocks = list(task())
     assert len(blocks) == 1
