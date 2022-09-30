@@ -7,7 +7,10 @@ import numpy as np
 import ray
 from ray.air import Checkpoint
 from ray.air.data_batch_type import DataBatchType
-from ray.air.util.data_batch_conversion import BatchFormat, convert_batch_type_to_pandas
+from ray.air.util.data_batch_conversion import (
+    BatchFormat,
+    convert_batch_type_to_pandas
+)
 from ray.data import Preprocessor
 from ray.data.context import DatasetContext
 from ray.data.preprocessors import BatchMapper
@@ -262,7 +265,9 @@ class BatchPredictor:
                 prediction_batch = self._select_columns_from_input_batch(
                     input_batch, select_columns=feature_columns
                 )
-                prediction_output_batch = self._predictor.predict(
+                prediction_output_batch: Union[
+                    np.ndarray, Dict[str, np.ndarray]
+                ] = self._predictor.predict(
                     prediction_batch, batch_format=batch_format, **predict_kwargs
                 )
                 prediction_output_batch = self._keep_columns_from_input_batch(
