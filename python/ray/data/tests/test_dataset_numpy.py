@@ -47,6 +47,21 @@ def test_from_numpy(ray_start_regular_shared, from_ref):
     assert "from_numpy_refs" in ds.stats()
 
 
+def test_from_numpy_variable_shaped(ray_start_regular_shared):
+    arr = np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object)
+    ds = ray.data.from_numpy(arr)
+    values = np.array(ds.take(2), dtype=object)
+
+    def recursive_to_list(a):
+        if not isinstance(a, (list, np.ndarray)):
+            return a
+        return [recursive_to_list(e) for e in a]
+
+    # Convert to a nested Python list in order to circumvent failed comparisons on
+    # ndarray raggedness.
+    np.testing.assert_equal(recursive_to_list(values), recursive_to_list(arr))
+
+
 def test_to_numpy_refs(ray_start_regular_shared):
     # Simple Dataset
     ds = ray.data.range(10)
@@ -270,3 +285,9 @@ def test_numpy_write_block_path_provider(
     assert arr1.sum() == 10
     assert arr2.sum() == 35
     np.testing.assert_equal(ds.take(1), [np.array([0])])
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
