@@ -204,13 +204,14 @@ class TargetNetworkMixin:
     master learner.
     """
 
-    def __init__(self):
+    def __init__(self, update_target_in_init=True):
+
+        model_vars = self.model.trainable_variables()
+        target_model_vars = self.target_model.trainable_variables()
         @make_tf_callable(self.get_session())
         def update_target_fn(tau):
             tau = tf.convert_to_tensor(tau, dtype=tf.float32)
             update_target_expr = []
-            model_vars = self.model.trainable_variables()
-            target_model_vars = self.target_model.trainable_variables()
             assert len(model_vars) == len(target_model_vars), (
                 model_vars,
                 target_model_vars,
@@ -224,11 +225,15 @@ class TargetNetworkMixin:
 
         # Hard initial update.
         self._do_update = update_target_fn
-        # TODO (kourosh): The previous SAC implementation does an update(1.0) here.
+        # TODO: The previous SAC implementation does an update(1.0) here.
         # If this is changed to tau ~= 1.0 the sac_loss_function test fails. Why?
         # Also the test is not very maintainable, we need to change that unittest
         # anyway.
-        self.update_target(tau=1.0)  # self.config.get("tau", 1.0))
+        # TODO: The unittest on learning_tests_stateless_cartpole_r2d2_fake_gpus fails 
+        # on tf1 when we call update_target() here. The reason is unkown. This is a 
+        # workaround that will be removed once we move to the new policy stack.
+        if update_target_in_init:
+            self.update_target(tau=1.0)  # self.config.get("tau", 1.0))
 
     @property
     def q_func_vars(self):
