@@ -2950,6 +2950,16 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
             id_ss << "actor ID " << worker_to_kill->GetActorId();
           }
 
+          std::stringstream is_retriable_ss;
+          std::stringstream retriable_recommendation_ss;
+          if (worker_to_kill->GetAssignedTask().GetTaskSpecification().IsRetriable()) {
+            is_retriable_ss << ", and the task is retriable";
+          } else {
+            is_retriable_ss << ", the task is non-retriable but there are no other "
+                               "retriable tasks to kill first";
+            retriable_recommendation_ss << "Make the task retriable if possible. ";
+          }
+
           /// TODO: (clarng) expose this string in the frontend python error as well.
           std::stringstream worker_exit_message_ss;
           worker_exit_message_ss
@@ -2959,7 +2969,9 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
               << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
               << "), which exceeds the memory usage threshold of " << usage_threshold
               << ". Ray killed this worker (ID: " << worker_to_kill->WorkerId()
-              << ") because it was the most recently scheduled task; to see more "
+              << ") because it was the most recently scheduled task"
+              << is_retriable_ss.str()
+              << "; to see more "
                  "information about memory usage on this node, use `ray logs raylet.out "
                  "-ip "
               << worker_to_kill->IpAddress()
@@ -2967,10 +2979,12 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
               << worker_to_kill->WorkerId() << "*out -ip " << worker_to_kill->IpAddress()
               << "`.\n\n"
               << "Consider provisioning more memory on this node or reducing task "
-                 "parallelism by requesting more CPUs per task. To adjust the eviction "
+                 "parallelism by requesting more CPUs per task. "
+              << retriable_recommendation_ss.str()
+              << "To adjust the kill "
                  "threshold, set the environment variable "
                  "`RAY_memory_usage_threshold_fraction` when starting Ray. To disable "
-                 "worker eviction, set the environment variable "
+                 "worker killing, set the environment variable "
                  "`RAY_memory_monitor_interval_ms` to zero.";
           std::string worker_exit_message = worker_exit_message_ss.str();
           /// TODO: (clarng) add a link to the oom killer / memory manager documentation
