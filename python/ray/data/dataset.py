@@ -2312,11 +2312,11 @@ class Dataset(Generic[T]):
             >>> docs = [{"title": "MongoDB Datasource test"} for key in range(4)]
             >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
             >>> ds.write_mongo( # doctest: +SKIP
-            >>>     MongoDatasource(), # doctest: +SKIP
-            >>>     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # doctest: +SKIP  # noqa: E501
-            >>>     database="my_db", # doctest: +SKIP
-            >>>     collection="my_collection", # doctest: +SKIP
-            >>> ) # doctest: +SKIP
+            >>>     MongoDatasource(),
+            >>>     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501
+            >>>     database="my_db",
+            >>>     collection="my_collection",
+            >>> )
 
         Args:
             uri: The URI to the destination MongoDB where the dataset will be

@@ -334,6 +334,37 @@ def read_mongo(
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from MongoDB for the given pipelines.
 
+    A MongoDB is described by three elements: URI, database and collection.
+
+    The URI points to an MongoDB instance, for example, a local instance would be
+    "mongodb://localhost:27017", or a hosted instance would be
+    "mongodb+srv://USERNAME:PASSWORD@CLUSTERID.azure.mongodb.net/sample_weatherdata?retryWrites=true&w=majority".
+    For more details, see
+    https://www.mongodb.com/docs/manual/reference/connection-string/.
+
+    The database is similar to the database concept in SQL, and the collection is
+    similar to the table concept in a SQL database.
+
+    To read the MongoDB in parallel, users should provide a list of MongoDB
+    pipelines, with each corresponding to a block to be created for Dataset. Those
+    pipelines are usually formulated as disjoint range queries over a specific field (
+    i.e. partition field). Each pipeline is composed of a series of MongoDB queries,
+    for example, the following is a pipeline which contains 3 steps:
+        pipeline = [
+            {
+                "$match": {"partition_field": {"$gte": 0, "$lt": 100}}
+            }, {
+                "$sort": "sort_field"
+            }, {
+                "$limit": 10
+            }
+        ]
+    Note that a pipeline can contain just a single query.
+
+    Implementation wise, we will use pymongo to connect to MongoDB, and use pymongoarrow
+    to convert MongoDB documents to/from Arrow format, which is a supported block format
+    in Dataset.
+
     Examples:
         >>> import ray
         >>> from pymongoarrow.api import Schema
