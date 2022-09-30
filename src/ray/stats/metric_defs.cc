@@ -196,36 +196,35 @@ DEFINE_stats(gcs_storage_operation_count,
              (),
              ray::stats::COUNT);
 
-/// Plasma store
-/// Objects in plasma by state:
-///     - Spillable: spillable objects with ref count = 1 and created by workers
-///     - Unsealed: created by not yet sealed
-///     - InUse: objects with ref count > 0
-///     - Evictable: objects with ref count == 0
-DEFINE_stats(plasma_objects_by_state_count,
-             "Current number of objects in plasma store of a particular state.",
-             ("State"),
+/// Object store
+/// Local object store memory of different types reported from multiple
+/// components. Reported metric from different subtypes, e.g. Location
+/// and State could overlap. Reported metric within the same type might
+/// also overlap.
+DEFINE_stats(object_store_memory_bytes,
+             "Object store memory by various types on this node",
+             /// Location:
+             ///    - InMemory: currently in memory
+             ///    - Spilled: spilled to disk
+             ///    - Fallback: fallback allocated
+             /// State:
+             ///    - PrimaryCopy: pinned by local raylet
+             ///    - PendingCreation: unsealed memory created
+             ///    - PendingSpill: still in memory but to be spilled
+             ///    - Spillable: spillable objects
+             ///    - InUse: objects currently in use with positive ref counts
+             ///    - Evictable: objects with 0 ref counts
+             /// Creator:
+             ///    - Worker: created by core worker, e.g. through ray.put
+             ///    - RemoteRaylet: received from other raylets
+             ///    - RestoredStorage: restored from spilled storage
+             ///    - Error: used as errors by the raylet
+             ("Location", "State", "Creator"),
              (),
              ray::stats::GAUGE);
-DEFINE_stats(plasma_objects_by_state_bytes,
-             "Size of objects in bytes in plasma store of a particular state.",
-             ("State"),
-             (),
-             ray::stats::GAUGE);
-
-/// Objects in plasma from different sources:
-///     - Worker: objects created by core worker, e.g. through ray.put
-///     - Restored: objects restored from storage
-///     - Received: objects received from remote raylets
-///     - Error: objects added by local raylet to indicate errors
-DEFINE_stats(plasma_objects_by_source_count,
-             "Current number of objects in plasma store created from a source.",
-             ("Source"),
-             (),
-             ray::stats::GAUGE);
-DEFINE_stats(plasma_objects_by_source_bytes,
-             "Size of objects in bytes in plasma store created from a source.",
-             ("Source"),
+DEFINE_stats(object_store_memory_count,
+             "Number of objects by various types on this node",
+             ("Location", "State", "Creator"),
              (),
              ray::stats::GAUGE);
 

@@ -91,11 +91,9 @@ DECLARE_stats(spill_manager_throughput_mb);
 DECLARE_stats(gcs_storage_operation_latency_ms);
 DECLARE_stats(gcs_storage_operation_count);
 
-/// Plasma Store
-DECLARE_stats(plasma_objects_by_state_count);
-DECLARE_stats(plasma_objects_by_state_bytes);
-DECLARE_stats(plasma_objects_by_source_count);
-DECLARE_stats(plasma_objects_by_source_bytes);
+/// Object Store
+DECLARE_stats(object_store_memory_bytes);
+DECLARE_stats(object_store_memory_count);
 
 /// Placement Group
 DECLARE_stats(gcs_placement_group_creation_latency_ms);
