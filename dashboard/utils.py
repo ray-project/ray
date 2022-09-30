@@ -16,6 +16,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 from ray._private.gcs_utils import GcsClient
+from ray._private.utils import split_address
 
 import aiosignal  # noqa: F401
 
@@ -515,6 +516,21 @@ def async_loop_forever(interval_seconds, cancellable=False):
     return _wrapper
 
 
+def ray_client_address_to_api_server_url(address: str):
+    """Convert a Ray Client address of a running Ray cluster to its API server URL.
+
+    Args:
+        address: The Ray Client address, e.g. "ray://my-cluster".
+
+    Returns:
+        str: The API server URL of the cluster, e.g. "http://<head-node-ip>:8265".
+    """
+    with ray.init(address=address) as client_context:
+        dashboard_url = client_context.dashboard_url
+
+    return f"http://{dashboard_url}"
+
+
 def ray_address_to_api_server_url(address: Optional[str]) -> str:
     """Parse a Ray cluster address into API server URL.
 
@@ -528,21 +544,12 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
         address: Ray cluster bootstrap address or Ray Client address.
             Could also be `auto`.
 
-    Return:
+    Returns:
         API server HTTP URL.
     """
-    # Check the case of a Ray Client address (e.g. "ray://<head_node_ip>:10001").
-    # This case is not checked by canonicalize_bootstrap_address_or_die.
-    address_env_var = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if address_env_var and address_env_var.startswith("ray://"):
-        address = address_env_var
-    if address and address.startswith("ray://"):
-        with ray.init(address=address_env_var, ignore_reinit_error=True) as ray_context:
-            gcs_address = ray_context.address_info["gcs_address"]
-            gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
-    else:
-        address = services.canonicalize_bootstrap_address_or_die(address)
-        gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
+
+    address = services.canonicalize_bootstrap_address_or_die(address)
+    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
 
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     api_server_url = ray._private.utils.internal_kv_get_with_retry(
@@ -562,3 +569,36 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
         )
     api_server_url = f"http://{api_server_url.decode()}"
     return api_server_url
+
+
+def get_address_for_submission_client(address: Optional[str]) -> str:
+    """Get Ray API server address from Ray bootstrap or Client address.
+
+    If None, it will try to auto-detect a running Ray instance, or look
+    for local GCS process.
+
+    `address` is always overridden by the RAY_ADDRESS environment
+    variable, just like the `address` argument in `ray.init()`.
+
+    Args:
+        address: Ray cluster bootstrap address or Ray Client address.
+            Could also be "auto".
+
+    Returns:
+        API server HTTP URL, e.g. "http://<head-node-ip>:8265".
+    """
+    if os.environ.get("RAY_ADDRESS"):
+        logger.debug(f"Using RAY_ADDRESS={os.environ['RAY_ADDRESS']}")
+        address = os.environ["RAY_ADDRESS"]
+
+    if address and "://" in address:
+        module_string, _ = split_address(address)
+        if module_string == "ray":
+            logger.debug(
+                f"Retrieving API server address from Ray Client address {address}..."
+            )
+            address = ray_client_address_to_api_server_url(address)
+    else:
+        # User specified a non-Ray-Client Ray cluster address.
+        address = ray_address_to_api_server_url(address)
+    logger.debug(f"Using API server address {address}.")
