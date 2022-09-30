@@ -1292,8 +1292,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.filters[policy_id] = get_filter(
                 (config or {}).get("observation_filter", "NoFilter"), filter_shape
             )
-
-        if connectors_enabled and policy_id in self.policy_map:
+        else:
             create_connectors_for_policy(self.policy_map[policy_id], self.policy_config)
 
             # As long as the historic filter synchronization mechanism is in
@@ -1309,12 +1308,6 @@ class RolloutWorker(ParallelIteratorWorker):
                     "SyncedFilterAgentConnector but can only have one."
                 )
                 self.filters[policy_id] = filter_connectors[0].filter
-
-        # Create connectors for the new policy, if necessary.
-        # Only if connectors are enables and we created the new policy from scratch
-        # (it was not provided to us via the `policy` arg.
-        if policy is None and connectors_enabled:
-            create_connectors_for_policy(new_policy, config=merged_config)
 
         self.set_policy_mapping_fn(policy_mapping_fn)
         if policies_to_train is not None:
