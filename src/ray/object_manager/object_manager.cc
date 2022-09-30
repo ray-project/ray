@@ -750,7 +750,7 @@ void ObjectManager::RecordMetrics() {
   auto fallback_memory = plasma::plasma_store_runner->GetFallbackAllocated();
 
   stats::ObjectStoreUsedMemory().Record(used_memory);
-  stats::ObjectStoreFallbackMemory().Record(fallback);
+  stats::ObjectStoreFallbackMemory().Record(fallback_memory);
   stats::ObjectStoreLocalObjects().Record(local_objects_.size());
   stats::ObjectManagerPullRequests().Record(pull_manager_->NumObjectPullRequests());
 
