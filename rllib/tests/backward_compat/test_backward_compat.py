@@ -3,7 +3,11 @@ from pathlib import Path
 import unittest
 
 import ray
+import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.checkpoints import get_checkpoint_info
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -23,7 +27,7 @@ class TestBackwardCompatibility(unittest.TestCase):
         print(f"rllib dir={rllib_dir} exists={os.path.isdir(rllib_dir)}")
 
         for version in ["v0", "v1"]:
-            for fw in framework_iterator():
+            for fw in framework_iterator(with_eager_tracing=True):
                 path_to_checkpoint = os.path.join(
                     rllib_dir,
                     "tests",
@@ -38,9 +42,23 @@ class TestBackwardCompatibility(unittest.TestCase):
                     f"exists={os.path.isdir(path_to_checkpoint)}"
                 )
 
-                # Should work for both old ("v0") and newer versions of checkpoints:
-                # Simply use new Algorithm.from_checkpoint staticmethod.
-                algo = Algorithm.from_checkpoint(path_to_checkpoint)
+                checkpoint_info = get_checkpoint_info(path_to_checkpoint)
+                # v0: Need to create algo first, then restore.
+                if checkpoint_info["checkpoint_version"] == "v0":
+                    # For checkpoints <= v0, we need to magically know the original
+                    # config used as well as the algo class.
+                    with open(checkpoint_info["state_file"], "rb") as f:
+                        state = pickle.load(f)
+                    worker_state = pickle.loads(state["worker"])
+                    algo = PPO(config=worker_state["policy_config"])
+                    algo.restore(path_to_checkpoint)
+                # >v0: Simply use new `Algorithm.from_checkpoint()` staticmethod.
+                else:
+                    algo = Algorithm.from_checkpoint(path_to_checkpoint)
+
+                    # Also test restoring a Policy from an algo checkpoint.
+                    policies = Policy.from_checkpoint(path_to_checkpoint)
+                    assert "default_policy" in policies
 
                 print(algo.train())
                 algo.stop()

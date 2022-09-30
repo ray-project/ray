@@ -573,7 +573,7 @@ class TFPolicy(Policy):
             and hasattr(self.model, "base_model")
             and isinstance(self.model.base_model, tf.keras.Model)
         ):
-            if self.config["checkpoints_contain_native_model_files"]:
+            if self.config["export_native_model_files"]:
                 with self.get_session().graph.as_default():
                     try:
                         self.model.base_model.save(

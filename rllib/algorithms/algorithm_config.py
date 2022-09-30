@@ -197,7 +197,7 @@ class AlgorithmConfig:
         self.min_sample_timesteps_per_iteration = 0
 
         # `self.checkpointing()`
-        self.checkpoints_contain_native_model_files = False
+        self.export_native_model_files = False
 
         # `self.debugging()`
         self.logger_creator = None
@@ -1178,12 +1178,12 @@ class AlgorithmConfig:
 
     def checkpointing(
         self,
-        checkpoints_contain_native_model_files: Optional[bool] = None,
+        export_native_model_files: Optional[bool] = None,
     ) -> "AlgorithmConfig":
         """Sets the config's checkpointing settings.
 
         Args:
-            checkpoints_contain_native_model_files: Whether an individual Policy-
+            export_native_model_files: Whether an individual Policy-
                 or the Algorithm's checkpoints also contain (tf or torch) native
                 model files. These could be used to restore just the NN models
                 from these files w/o requiring RLlib. These files are generated
@@ -1194,10 +1194,8 @@ class AlgorithmConfig:
             This updated AlgorithmConfig object.
         """
 
-        if checkpoints_contain_native_model_files is not None:
-            self.checkpoints_contain_native_model_files = (
-                checkpoints_contain_native_model_files
-            )
+        if export_native_model_files is not None:
+            self.export_native_model_files = export_native_model_files
 
         return self
 

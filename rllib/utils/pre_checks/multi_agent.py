@@ -46,6 +46,11 @@ def check_multi_agent(
     from ray.rllib.algorithms.algorithm import COMMON_CONFIG
 
     allowed = list(COMMON_CONFIG["multiagent"].keys())
+    if (
+        "replay_mode" in multiagent_config
+        and multiagent_config["replay_mode"] == "independent"
+    ):
+        multiagent_config.pop("replay_mode")
     if any(k not in allowed for k in multiagent_config.keys()):
         raise KeyError(
             f"You have invalid keys in your 'multiagent' config dict! "

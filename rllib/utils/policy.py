@@ -4,9 +4,8 @@ from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
@@ -115,53 +114,6 @@ def parse_policy_specs_from_checkpoint(
 
 
 @PublicAPI(stability="alpha")
-def load_policies_from_checkpoint(
-    path: str, policy_ids: Optional[List[PolicyID]] = None
-) -> Dict[str, "Policy"]:
-    """Load the list of policies from a connector enabled policy checkpoint.
-
-    Args:
-        path: File path to the checkpoint file.
-        policy_ids: a list of policy IDs to be restored. If missing, we will
-        load all policies contained in this checkpoint.
-
-    Returns:
-
-    """
-    policy_config, policy_specs, policy_states = parse_policy_specs_from_checkpoint(
-        path
-    )
-
-    policies = {}
-    for id, policy_spec in policy_specs.items():
-        if policy_ids and id not in policy_ids:
-            # User want specific policies, and this is not one of them.
-            continue
-
-        merged_config = merge_dicts(policy_config, policy_spec.config or {})
-        # Similar to PolicyMap.create_policy(), we need to wrap a TF2 policy
-        # automatically into an eager traced policy class if necessary.
-        # Basically, PolicyMap handles this step automatically for training,
-        # and we handle it automatically here for inference use cases.
-        policy_class = get_tf_eager_cls_if_necessary(
-            policy_spec.policy_class, merged_config
-        )
-
-        policy = create_policy_for_framework(
-            id,
-            policy_class,
-            merged_config,
-            policy_spec.observation_space,
-            policy_spec.action_space,
-        )
-        if id in policy_states:
-            policy.set_state(policy_states[id])
-        policies[id] = policy
-
-    return policies
-
-
-@PublicAPI(stability="alpha")
 def local_policy_inference(
     policy: "Policy",
     env_id: str,
@@ -256,3 +208,11 @@ def compute_log_likelihoods_from_input_dict(
         actions_normalized=policy.config.get("actions_in_input_normalized", False),
     )
     return log_likelihoods
+
+
+@Deprecated(new="Policy.from_checkpoint([checkpoint path], [policy IDs]?)", error=False)
+def load_policies_from_checkpoint(
+    path: str, policy_ids: Optional[List[PolicyID]] = None
+) -> Dict[PolicyID, "Policy"]:
+
+    return Policy.from_checkpoint(path, policy_ids)

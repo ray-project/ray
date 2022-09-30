@@ -43,7 +43,7 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
         )
 
         checkpoint_path = os.popen(
-            "ls {}/default/*/checkpoint_000001/state.pkl".format(tmp_dir)
+            "ls {}/default/*/checkpoint_000001/algorithm_state.pkl".format(tmp_dir)
         ).read()[:-1]
         if not os.path.exists(checkpoint_path):
             sys.exit(1)
@@ -104,17 +104,19 @@ def learn_test_plus_evaluate(algo, env="CartPole-v0"):
 
         # Find last checkpoint and use that for the rollout.
         checkpoint_path = os.popen(
-            "ls {}/default/*/checkpoint_*/state.pkl".format(tmp_dir)
+            "ls {}/default/*/checkpoint_*/algorithm_state.pkl".format(tmp_dir)
         ).read()[:-1]
         checkpoints = [
-            cp for cp in checkpoint_path.split("\n") if re.match(r"^.+state.pkl$", cp)
+            cp
+            for cp in checkpoint_path.split("\n")
+            if re.match(r"^.+algorithm_state.pkl$", cp)
         ]
         # Sort by number and pick last (which should be the best checkpoint).
         last_checkpoint = sorted(
             checkpoints,
             key=lambda x: int(re.match(r".+checkpoint_(\d+).+", x).group(1)),
         )[-1]
-        assert re.match(r"^.+checkpoint_\d+/state.pkl$", last_checkpoint)
+        assert re.match(r"^.+checkpoint_\d+/algorithm_state.pkl$", last_checkpoint)
         if not os.path.exists(last_checkpoint):
             sys.exit(1)
         print("Best checkpoint={} (exists)".format(last_checkpoint))

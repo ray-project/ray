@@ -727,7 +727,7 @@ class EagerTFPolicyV2(Policy):
             and hasattr(self.model, "base_model")
             and isinstance(self.model.base_model, tf.keras.Model)
         ):
-            if self.config["checkpoints_contain_native_model_files"]:
+            if self.config["export_native_model_files"]:
                 try:
                     self.model.base_model.save(export_dir, save_format="tf")
                 except Exception:
