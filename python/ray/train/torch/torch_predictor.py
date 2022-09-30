@@ -14,6 +14,7 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+    from ray.air.util.data_batch_conversion import BatchFormat
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +141,7 @@ class TorchPredictor(DLPredictor):
     def predict(
         self,
         data: DataBatchType,
+        batch_format: Optional["BatchFormat"] = None,
         dtype: Optional[Union[torch.dtype, Dict[str, torch.dtype]]] = None,
     ) -> DataBatchType:
         """Run inference on data batch.
@@ -155,6 +157,7 @@ class TorchPredictor(DLPredictor):
 
         Args:
             data: A batch of input data of ``DataBatchType``.
+            batch_format: Input data batch format.
             dtype: The dtypes to use for the tensors. Either a single dtype for all
                 tensors or a mapping from column name to dtype.
 
@@ -195,7 +198,9 @@ class TorchPredictor(DLPredictor):
             DataBatchType: Prediction result. The return type will be the same as the
                 input type.
         """
-        return super(TorchPredictor, self).predict(data=data, dtype=dtype)
+        return super(TorchPredictor, self).predict(
+            data=data, batch_format=batch_format, dtype=dtype
+        )
 
     def _arrays_to_tensors(
         self,

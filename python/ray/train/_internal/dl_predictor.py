@@ -4,10 +4,7 @@ from typing import Dict, TypeVar, Union
 import numpy as np
 import pandas as pd
 
-from ray.air.util.data_batch_conversion import (
-    BatchFormat,
-    convert_pandas_to_batch_type
-)
+from ray.air.util.data_batch_conversion import BatchFormat, convert_pandas_to_batch_type
 from ray.air.util.tensor_extensions.pandas import TensorArray
 from ray.train.predictor import Predictor
 
@@ -97,9 +94,6 @@ class DLPredictor(Predictor):
         # TODO (jiaodong): Investigate perf implication of this.
         # Move DL Tensor to CPU and convert to numpy.
         if isinstance(model_output, dict):
-            return {
-                k: self._tensor_to_array(v)
-                for k, v in model_output.items()
-            }
+            return {k: self._tensor_to_array(v) for k, v in model_output.items()}
         else:
             return self._tensor_to_array(model_output)
