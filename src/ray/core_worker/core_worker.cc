@@ -271,6 +271,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             "CoreWorker.HandleException");
       }));
 
+  // TODO(swang): Pool connections?
+  auto raylet_client_factory = [this](const std::string ip_address, int port) {
+    auto grpc_client =
+        rpc::NodeManagerWorkerClient::make(ip_address, port, *client_call_manager_);
+    return std::shared_ptr<raylet::RayletClient>(
+        new raylet::RayletClient(std::move(grpc_client)));
+  };
+
   auto push_error_callback = [this](const JobID &job_id,
                                     const std::string &type,
                                     const std::string &error_message,
@@ -308,6 +316,40 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         }
       },
       push_error_callback,
+      [this, raylet_client_factory](
+          const ObjectID &generator_id, const NodeID &raylet_id, bool commit) {
+        if (raylet_id.IsNil()) {
+          RAY_LOG(INFO)
+              << (commit ? "Commit" : "Abort") << " object generator " << generator_id
+              << " failed because the raylet ID where the task executed was not provided";
+          return;
+        }
+        RAY_LOG(DEBUG) << (commit ? "Committing" : "Aborting") << " object generator "
+                       << generator_id << " at raylet " << raylet_id;
+        auto node_info = gcs_client_->Nodes().Get(raylet_id);
+        if (node_info == nullptr || node_info->state() == rpc::GcsNodeInfo::DEAD) {
+          // We don't need to do anything if the node is dead since:
+          // - commit=true: We will handle the failure separately via standard
+          // object recovery.
+          // - commit=false: The node is dead anyway, so the generator objects
+          // stored on the node are gone.
+          RAY_LOG(DEBUG) << "Raylet " << raylet_id << " with object generator "
+                         << generator_id << " unreachable";
+          return;
+        }
+        auto raylet_client = raylet_client_factory(node_info->node_manager_address(),
+                                                   node_info->node_manager_port());
+        raylet_client->CommitOrAbortGeneratorObjects(
+            generator_id, commit, [commit, generator_id](bool success) {
+              RAY_LOG(DEBUG) << (commit ? "Commit" : "Abort") << " of object generator "
+                             << generator_id << " done, success: " << success;
+              if (commit && !success) {
+                RAY_LOG(INFO) << "Failed to commit dynamically created objects stored in "
+                                 "ObjectRefGenerator "
+                              << generator_id;
+              }
+            });
+      },
       RayConfig::instance().max_lineage_bytes()));
 
   // Create an entry for the driver task in the task table. This task is
@@ -328,13 +370,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     // Drivers are never re-executed.
     SetCurrentTaskId(task_id, /*attempt_number=*/0, "driver");
   }
-
-  auto raylet_client_factory = [this](const std::string ip_address, int port) {
-    auto grpc_client =
-        rpc::NodeManagerWorkerClient::make(ip_address, port, *client_call_manager_);
-    return std::shared_ptr<raylet::RayletClient>(
-        new raylet::RayletClient(std::move(grpc_client)));
-  };
 
   auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
@@ -2910,10 +2945,9 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
                       /*failure_callback_on_reply*/ nullptr);
 }
 
-void CoreWorker::AddSpilledObjectLocationOwner(
-    const ObjectID &object_id,
-    const std::string &spilled_url,
-    const NodeID &spilled_node_id) {
+void CoreWorker::AddSpilledObjectLocationOwner(const ObjectID &object_id,
+                                               const std::string &spilled_url,
+                                               const NodeID &spilled_node_id) {
   RAY_LOG(DEBUG) << "Received object spilled location update for object " << object_id
                  << ", which has been spilled to " << spilled_url << " on node "
                  << spilled_node_id;

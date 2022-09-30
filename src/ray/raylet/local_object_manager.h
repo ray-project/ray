@@ -220,7 +220,7 @@ class LocalObjectManager {
   void OnObjectSpilled(const std::vector<ObjectID> &object_ids,
                        const rpc::SpillObjectsReply &worker_reply);
 
-  void ReportObjectSpilled(const ObjectID &object_id, const std::string &object_url);
+  void ReportObjectSpilledIfNeeded(const ObjectID &object_id);
 
   /// Delete spilled objects stored in given urls.
   ///

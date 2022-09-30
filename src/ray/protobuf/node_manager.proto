@@ -182,6 +182,21 @@ message PinObjectIDsReply {
   repeated bool successes = 1;
 }
 
+message CommitGeneratorObjectsRequest {
+  bytes generator_id = 1;
+}
+
+message CommitGeneratorObjectsReply {
+  bool success = 1;
+}
+
+message AbortGeneratorObjectsRequest {
+  bytes generator_id = 1;
+}
+
+message AbortGeneratorObjectsReply {
+}
+
 message GetNodeStatsRequest {
   // Whether to include memory stats. This could be large since it includes
   // metadata for all live object references.
@@ -383,6 +398,8 @@ service NodeManagerService {
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
   // Pin the provided object IDs.
   rpc PinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
+  rpc CommitGeneratorObjects(CommitGeneratorObjectsRequest) returns (CommitGeneratorObjectsReply);
+  rpc AbortGeneratorObjects(AbortGeneratorObjectsRequest) returns (AbortGeneratorObjectsReply);
   // Get the current node stats.
   rpc GetNodeStats(GetNodeStatsRequest) returns (GetNodeStatsReply);
   // Trigger garbage collection in all workers across the cluster.

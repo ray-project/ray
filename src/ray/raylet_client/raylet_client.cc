@@ -488,6 +488,32 @@ void raylet::RayletClient::PinObjectIDs(
   grpc_client_->PinObjectIDs(request, rpc_callback);
 }
 
+void raylet::RayletClient::CommitOrAbortGeneratorObjects(
+    const ObjectID &generator_id,
+    bool commit,
+    const std::function<void(bool)> &callback) {
+  if (commit) {
+    rpc::CommitGeneratorObjectsRequest request;
+    request.set_generator_id(generator_id.Binary());
+    grpc_client_->CommitGeneratorObjects(
+        request,
+        [this, callback](Status status, const rpc::CommitGeneratorObjectsReply &reply) {
+          callback(reply.success());
+        });
+  } else {
+    rpc::AbortGeneratorObjectsRequest request;
+    request.set_generator_id(generator_id.Binary());
+    grpc_client_->AbortGeneratorObjects(
+        request,
+        [this, callback](Status status, const rpc::AbortGeneratorObjectsReply &reply) {
+          // Abort requests should always succeed because either
+          // the raylet is dead or it succeeded in erasing the
+          // objects.
+          callback(true);
+        });
+  }
+}
+
 void raylet::RayletClient::ShutdownRaylet(
     const NodeID &node_id,
     bool graceful,

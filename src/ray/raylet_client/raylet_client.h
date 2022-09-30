@@ -452,6 +452,10 @@ class RayletClient : public RayletClientInterface {
       const ObjectID &generator_id,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
 
+  void CommitOrAbortGeneratorObjects(const ObjectID &generator_id,
+                                     bool commit,
+                                     const std::function<void(bool)> &callback);
+
   void ShutdownRaylet(
       const NodeID &node_id,
       bool graceful,

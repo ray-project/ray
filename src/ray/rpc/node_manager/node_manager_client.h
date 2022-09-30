@@ -163,6 +163,18 @@ class NodeManagerWorkerClient
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
+  /// Notify the raylet to pin the provided object IDs.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         CommitGeneratorObjects,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  /// Notify the raylet to pin the provided object IDs.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         AbortGeneratorObjects,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
   /// Trigger global GC across the cluster.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GlobalGC,

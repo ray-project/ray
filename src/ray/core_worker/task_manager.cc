@@ -326,6 +326,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   std::vector<ObjectID> dynamic_return_ids;
   std::vector<ObjectID> dynamic_returns_in_plasma;
   std::vector<ObjectID> direct_return_ids;
+  const auto primary_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
   if (reply.dynamic_return_objects_size() > 0) {
     RAY_CHECK(reply.return_objects_size() == 1)
         << "Dynamic generators only supported for num_returns=1";
@@ -338,20 +339,26 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       }
       if (!HandleTaskReturn(object_id,
                             return_object,
-                            NodeID::FromBinary(worker_addr.raylet_id()),
+                            primary_raylet_id,
                             store_in_plasma_ids.count(object_id))) {
         if (first_execution) {
           dynamic_returns_in_plasma.push_back(object_id);
         }
       }
     }
+
+    // Now that we have added the dynamically generated ObjectRefs to our local
+    // ref counter, we should commit the objects at the primary raylet. The
+    // raylet should send a spilled URL if it has one and subscribe for
+    // notifications about when to evict the objects.
+    commit_or_abort_generator_callback_(generator_id, primary_raylet_id, /*commit=*/true);
   }
 
   for (const auto &return_object : reply.return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
     if (HandleTaskReturn(object_id,
                          return_object,
-                         NodeID::FromBinary(worker_addr.raylet_id()),
+                         primary_raylet_id,
                          store_in_plasma_ids.count(object_id))) {
       direct_return_ids.push_back(object_id);
     }
@@ -470,6 +477,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
                                   rpc::ErrorType error_type,
                                   const Status *status,
                                   const rpc::RayErrorInfo *ray_error_info,
+                                  const NodeID &generator_raylet_id,
                                   bool mark_task_object_failed) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
@@ -523,6 +531,16 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info, store_in_plasma_ids);
   }
 
+  // If the failed task was a generator task, it may have stored partial
+  // results that we now need to abort, since no one has a reference to these
+  // objects.
+  if (spec.ReturnsDynamic()) {
+    // Generator tasks return a single ObjectRef that contains the dynamically
+    // generated ObjectRefs.
+    commit_or_abort_generator_callback_(
+        spec.ReturnId(0), generator_raylet_id, /*commit=*/false);
+  }
+
   ShutdownIfNeeded();
 }
 
@@ -530,14 +548,43 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
                                          rpc::ErrorType error_type,
                                          const Status *status,
                                          const rpc::RayErrorInfo *ray_error_info,
+                                         const NodeID &generator_raylet_id,
                                          bool mark_task_object_failed) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type);
+
+  ObjectID generator_id_to_abort;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    if (it != submissible_tasks_.end() && it->second.spec.ReturnsDynamic()) {
+      generator_id_to_abort = it->second.spec.ReturnId(0);
+    }
+  }
+  // If the failed task was a generator task, it may have stored partial
+  // results that we now need to abort, since no one has a reference to these
+  // objects.
+  if (!generator_id_to_abort.IsNil()) {
+    // TODO(swang): Actor tasks with num_returns="dynamic" should also pass
+    // through the NodeID of the raylet where the generator task executed.
+    // Generator tasks return a single ObjectRef that contains the dynamically
+    // generated ObjectRefs.
+    commit_or_abort_generator_callback_(
+        generator_id_to_abort, generator_raylet_id, /*commit=*/false);
+  }
+
   const bool will_retry = RetryTaskIfPossible(task_id);
   if (!will_retry) {
-    FailPendingTask(task_id, error_type, status, ray_error_info, mark_task_object_failed);
+    // We don't pass the generator raylet ID through because
+    // we already failed the generator objects above.
+    FailPendingTask(task_id,
+                    error_type,
+                    status,
+                    ray_error_info,
+                    /*generator_raylet_id=*/NodeID::Nil(),
+                    mark_task_object_failed);
   }
 
   ShutdownIfNeeded();

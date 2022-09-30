@@ -35,6 +35,8 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedWorkers, -1)   \
   RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease, -1)      \
   RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs, -1)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, CommitGeneratorObjects, -1) \
+  RPC_SERVICE_HANDLER(NodeManagerService, AbortGeneratorObjects, -1)  \
   RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats, -1)           \
   RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC, -1)               \
   RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo, -1) \
@@ -121,6 +123,14 @@ class NodeManagerServiceHandler {
   virtual void HandlePinObjectIDs(const PinObjectIDsRequest &request,
                                   PinObjectIDsReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCommitGeneratorObjects(const CommitGeneratorObjectsRequest &request,
+                                            CommitGeneratorObjectsReply *reply,
+                                            SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleAbortGeneratorObjects(const AbortGeneratorObjectsRequest &request,
+                                           AbortGeneratorObjectsReply *reply,
+                                           SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetNodeStats(const GetNodeStatsRequest &request,
                                   GetNodeStatsReply *reply,

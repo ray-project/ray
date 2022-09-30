@@ -57,12 +57,14 @@ class TaskFinisherInterface {
                                rpc::ErrorType error_type,
                                const Status *status = nullptr,
                                const rpc::RayErrorInfo *ray_error_info = nullptr,
+                               const NodeID &generator_raylet_id = NodeID::Nil(),
                                bool mark_task_object_failed = true) = 0;
 
   virtual bool FailOrRetryPendingTask(const TaskID &task_id,
                                       rpc::ErrorType error_type,
                                       const Status *status,
                                       const rpc::RayErrorInfo *ray_error_info = nullptr,
+                                      const NodeID &generator_raylet_id = NodeID::Nil(),
                                       bool mark_task_object_failed = true) = 0;
 
   virtual void MarkTaskWaitingForExecution(const TaskID &task_id) = 0;
@@ -95,6 +97,8 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &type,
                                                const std::string &error_message,
                                                double timestamp)>;
+using CommitOrAbortGeneratorCallback = std::function<void(
+    const ObjectID &generator_id, const NodeID &primary_raylet_id, bool commit)>;
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
@@ -103,12 +107,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               PutInLocalPlasmaCallback put_in_local_plasma_callback,
               RetryTaskCallback retry_task_callback,
               PushErrorCallback push_error_callback,
+              CommitOrAbortGeneratorCallback commit_or_abort_generator_callback,
               int64_t max_lineage_bytes)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(put_in_local_plasma_callback),
         retry_task_callback_(retry_task_callback),
         push_error_callback_(push_error_callback),
+        commit_or_abort_generator_callback_(commit_or_abort_generator_callback),
         max_lineage_bytes_(max_lineage_bytes) {
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
@@ -180,6 +186,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                               rpc::ErrorType error_type,
                               const Status *status = nullptr,
                               const rpc::RayErrorInfo *ray_error_info = nullptr,
+                              const NodeID &generator_raylet_id = NodeID::Nil(),
                               bool mark_task_object_failed = true) override;
 
   /// A pending task failed. This will mark the task as failed.
@@ -196,6 +203,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                        rpc::ErrorType error_type,
                        const Status *status = nullptr,
                        const rpc::RayErrorInfo *ray_error_info = nullptr,
+                       const NodeID &generator_raylet_id = NodeID::Nil(),
                        bool mark_task_object_failed = true) override;
 
   /// Treat a pending task's returned Ray object as failed. The lock should not be held
@@ -291,7 +299,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// directly by value.
   bool HandleTaskReturn(const ObjectID &object_id,
                         const rpc::ReturnObject &return_object,
-                        const NodeID &worker_raylet_id,
+                        const NodeID &generator_raylet_id,
                         bool store_in_plasma);
 
  private:
@@ -419,6 +427,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   // Called to push an error to the relevant driver.
   const PushErrorCallback push_error_callback_;
+
+  const CommitOrAbortGeneratorCallback commit_or_abort_generator_callback_;
 
   const int64_t max_lineage_bytes_;
 

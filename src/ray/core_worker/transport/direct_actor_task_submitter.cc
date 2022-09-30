@@ -520,6 +520,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         error_type,
         &status,
         &error_info,
+        NodeID::Nil(),
         /*mark_task_object_failed*/ is_actor_dead);
 
     if (!is_actor_dead && !will_retry) {

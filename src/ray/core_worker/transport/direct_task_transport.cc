@@ -597,7 +597,9 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
               task_id,
               is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
-              &status));
+              &status,
+              nullptr,
+              addr.raylet_id));
         } else {
           if (!task_spec.GetMessage().retry_exceptions() || !reply.is_retryable_error() ||
               !task_finisher_->RetryTaskIfPossible(task_id)) {

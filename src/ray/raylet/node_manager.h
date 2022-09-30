@@ -579,6 +579,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                           rpc::PinObjectIDsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `CommitGeneratorObjects` request.
+  void HandleCommitGeneratorObjects(const rpc::CommitGeneratorObjectsRequest &request,
+                                    rpc::CommitGeneratorObjectsReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `AbortGeneratorObjects` request.
+  void HandleAbortGeneratorObjects(const rpc::AbortGeneratorObjectsRequest &request,
+                                   rpc::AbortGeneratorObjectsReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `NodeStats` request.
   void HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
                           rpc::GetNodeStatsReply *reply,

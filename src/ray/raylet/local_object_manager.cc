@@ -46,6 +46,8 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     } else {
       auto original_worker_id = inserted.first->second.GetOwnerWorkerId();
       auto new_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+      // TODO(swang): If owner is the same as before, but the object has been
+      // freed, un-free it and send messages again?
       if (original_worker_id != new_worker_id) {
         // TODO(swang): Handle this case. We should use the new owner address
         // and object copy.
@@ -86,11 +88,8 @@ bool LocalObjectManager::CommitGeneratorObjects(const ObjectID &generator_id) {
     // TODO(swang): All of the messages will go to the same owner, so these
     // could be batched together.
     WaitForObjectFree(object_id, it->second.owner_address);
-
-    auto spilled_it = spilled_objects_url_.find(object_id);
-    if (spilled_it != spilled_objects_url_.end()) {
-      ReportObjectSpilled(object_id, spilled_it->second);
-    }
+    ReportObjectSpilledIfNeeded(object_id);
+    // TODO(swang): Object directory should also re-report object location.
   }
 
   pending_generator_objects_.erase(generator_it);
@@ -112,7 +111,7 @@ void LocalObjectManager::AbortGeneratorObjects(const ObjectID &generator_id) {
 }
 
 void LocalObjectManager::WaitForObjectFree(const ObjectID &object_id,
-                                      const rpc::Address &owner_address) {
+                                           const rpc::Address &owner_address) {
   // Create a object eviction subscription message.
   auto wait_request = std::make_unique<rpc::WorkerObjectEvictionSubMessage>();
   wait_request->set_object_id(object_id.Binary());
@@ -466,13 +465,17 @@ void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids
     // is committed before sending any messages to the owner.
     auto freed_it = local_objects_.find(object_id);
     if (freed_it != local_objects_.end() && !freed_it->second.generator_id.has_value()) {
-      ReportObjectSpilled(object_id, object_url);
+      ReportObjectSpilledIfNeeded(object_id);
     }
   }
 }
 
-void LocalObjectManager::ReportObjectSpilled(const ObjectID &object_id,
-    const std::string &object_url) {
+void LocalObjectManager::ReportObjectSpilledIfNeeded(const ObjectID &object_id) {
+  auto spilled_it = spilled_objects_url_.find(object_id);
+  if (spilled_it == spilled_objects_url_.end()) {
+    return;
+  }
+  const auto &object_url = spilled_it->second;
   // Asynchronously Update the spilled URL.
   auto freed_it = local_objects_.find(object_id);
   if (freed_it == local_objects_.end() || freed_it->second.is_freed) {
@@ -483,11 +486,7 @@ void LocalObjectManager::ReportObjectSpilled(const ObjectID &object_id,
   }
   const auto &worker_addr = freed_it->second.owner_address;
   object_directory_->ReportObjectSpilled(
-      object_id,
-      self_node_id_,
-      worker_addr,
-      object_url,
-      is_external_storage_type_fs_);
+      object_id, self_node_id_, worker_addr, object_url, is_external_storage_type_fs_);
 }
 
 std::string LocalObjectManager::GetLocalSpilledObjectURL(const ObjectID &object_id) {

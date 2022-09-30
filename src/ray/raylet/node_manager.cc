@@ -2502,6 +2502,25 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+void NodeManager::HandleCommitGeneratorObjects(
+    const rpc::CommitGeneratorObjectsRequest &request,
+    rpc::CommitGeneratorObjectsReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const auto generator_id = ObjectID::FromBinary(request.generator_id());
+  bool success = local_object_manager_.CommitGeneratorObjects(generator_id);
+  reply->set_success(success);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleAbortGeneratorObjects(
+    const rpc::AbortGeneratorObjectsRequest &request,
+    rpc::AbortGeneratorObjectsReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const auto generator_id = ObjectID::FromBinary(request.generator_id());
+  local_object_manager_.AbortGeneratorObjects(generator_id);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleGetSystemConfig(const rpc::GetSystemConfigRequest &request,
                                         rpc::GetSystemConfigReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
