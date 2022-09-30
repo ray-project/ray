@@ -53,9 +53,23 @@ class TensorSpecs(abc.ABC):
         """Returns the data type of a tensor."""
         raise NotImplementedError
 
-    @abc.abstractmethod
     def sample(self, fill_value: float = 0.0) -> TensorType:
+        sampled_shape = self._sample_shape()
+        return self._sample(sampled_shape, fill_value)
+
+    @abc.abstractmethod
+    def _sample(self, shape: Tuple[int], fill_value: float = 0.0) -> TensorType:
+        """Returns a sample tensor with the given shape."""
         raise NotImplementedError
+
+    def _sample_shape(self) -> Tuple[int]:
+        sampled_shape = tuple()
+        for d in self._expected_shape:
+            if isinstance(d, int):
+                sampled_shape += (d,)
+            else:
+                sampled_shape += (1,)
+        return sampled_shape
 
     def _parse_expected_shape(self, shape: str, shape_vals: Dict[str, int]) -> tuple:
         expected_shape = tuple()
