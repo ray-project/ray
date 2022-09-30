@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Optional, Dict, List, Tuple
+from typing import Any, Optional, Dict, List, Tuple, Union
 
 from ray.rllib.utils.typing import TensorType
 
@@ -58,7 +58,9 @@ class TensorSpecs(abc.ABC):
         return self._sample(sampled_shape, fill_value)
 
     @abc.abstractmethod
-    def _sample(self, shape: Tuple[int], fill_value: float = 0.0) -> TensorType:
+    def _sample(
+        self, shape: Tuple[int], fill_value: Union[float, int] = 0
+    ) -> TensorType:
         """Returns a sample tensor with the given shape."""
         raise NotImplementedError
 

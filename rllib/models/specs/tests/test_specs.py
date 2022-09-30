@@ -1,15 +1,16 @@
 import unittest
 import torch
 import numpy as np
+import tensorflow as tf
 
+from ray.rllib.utils.test_utils import check
 from ray.rllib.models.specs.specs_torch import TorchSpecs
 from ray.rllib.models.specs.specs_np import NPSpecs
+from ray.rllib.models.specs.specs_tf import TFSpecs
 
-SPEC_CLASSES = {"torch": TorchSpecs, "np": NPSpecs}
-
-DOUBLE_TYPE = {"torch": torch.float64, "np": np.float64}
-
-FLOAT_TYPE = {"torch": torch.float32, "np": np.float32}
+SPEC_CLASSES = {"torch": TorchSpecs, "np": NPSpecs, "tf": TFSpecs}
+DOUBLE_TYPE = {"torch": torch.float64, "np": np.float64, "tf": tf.float64}
+FLOAT_TYPE = {"torch": torch.float32, "np": np.float32, "tf": tf.float32}
 
 
 class TestSpecs(unittest.TestCase):
@@ -29,7 +30,7 @@ class TestSpecs(unittest.TestCase):
             # check the shape
             self.assertEqual(x.shape, (1, 1))
             # check the value
-            self.assertEqual(x.item(), 2.0)
+            check(x, np.array([[2.0]]))
 
             x = spec_class("b h", b=2, h=3).sample(float(2.0))
             self.assertEqual(x.shape, (2, 3))

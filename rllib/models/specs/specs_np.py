@@ -1,7 +1,7 @@
-from typing import Tuple, Any
+from typing import Tuple, Any, Union
 import numpy as np
 
-from .specs_base import TensorSpecs
+from ray.rllib.models.specs.specs_base import TensorSpecs
 
 
 class NPSpecs(TensorSpecs):
@@ -11,5 +11,7 @@ class NPSpecs(TensorSpecs):
     def get_dtype(self, tensor: np.ndarray) -> Any:
         return tensor.dtype
 
-    def _sample(self, shape: Tuple[int], fill_value: float = 0.0) -> np.ndarray:
+    def _sample(
+        self, shape: Tuple[int], fill_value: Union[float, int] = 0
+    ) -> np.ndarray:
         return np.full(shape, fill_value, dtype=self.dtype)
