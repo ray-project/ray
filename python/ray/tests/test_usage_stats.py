@@ -719,9 +719,11 @@ available_node_types:
     assert cluster_config_to_report.min_workers == 1
     assert cluster_config_to_report.max_workers is None
     assert cluster_config_to_report.head_node_instance_type == "m5.large"
-    assert cluster_config_to_report.worker_node_instance_types == list(
-        {"m3.large", "Standard_D2s_v3", "n1-standard-2"}
-    )
+    assert set(cluster_config_to_report.worker_node_instance_types) == {
+        "m3.large",
+        "Standard_D2s_v3",
+        "n1-standard-2",
+    }
 
     cluster_config_file_path.write_text(
         """

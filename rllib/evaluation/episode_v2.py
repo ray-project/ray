@@ -333,8 +333,16 @@ class EpisodeV2:
         self.active_agent_steps = 0
         self.active_env_steps = 0
 
-    def has_init_obs(self, agent_id: AgentID) -> bool:
-        return agent_id in self._has_init_obs and self._has_init_obs[agent_id]
+    def has_init_obs(self, agent_id: AgentID = None) -> bool:
+        """Returns whether this episode has initial obs for an agent.
+
+        If agent_id is None, return whether we have received any initial obs,
+        in other words, whether this episode is completely fresh.
+        """
+        if agent_id:
+            return agent_id in self._has_init_obs and self._has_init_obs[agent_id]
+        else:
+            return any(list(self._has_init_obs.values()))
 
     def is_done(self, agent_id: AgentID) -> bool:
         return self._last_dones.get(agent_id, False)
