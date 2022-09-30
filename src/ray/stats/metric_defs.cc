@@ -193,14 +193,18 @@ DEFINE_stats(gcs_storage_operation_count,
 DEFINE_stats(object_store_memory_bytes,
              "Object store memory by various sub-kinds on this node",
              /// Location:
-             ///    - InMemory: currently in memory
-             ///    - Spilled: spilled to disk
-             ///    - Fallback: fallback allocated
+             ///    - InMemory: currently in memory (ObjectManager)
+             ///    TODO(rickyx): current spilled
+             ///    - Spilled: spilled to disk (LocalObjectManager)
+             ///    - Fallback: fallback allocated (ObjectManager)
              /// Type:
-             ///    - PendingCreation: unsealed memory created
+             ///     reported from LocalObjectManager
              ///    - PrimaryCopy: pinned by local raylet and pending spills
              ///    - PendingSpill: still in memory but to be spilled
              ///    - PendingRestore: to be restored from spill
+             ///
+             ///     reported from ObjectManager(plasma store)
+             ///    - PendingCreation: unsealed memory created
              ///    - Spillable: spillable objects
              ///    - InUse: objects currently in use with positive ref counts
              ///    - Evictable: objects with 0 ref counts
@@ -214,7 +218,7 @@ DEFINE_stats(object_store_memory_bytes,
              ray::stats::GAUGE);
 DEFINE_stats(object_store_memory_count,
              "Number of objects by various sub-kinds on this node",
-             ("Location", "Type", "Creator"),
+             ("Type", "Creator"),
              (),
              ray::stats::GAUGE);
 

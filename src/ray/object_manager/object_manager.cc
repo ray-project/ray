@@ -746,10 +746,11 @@ void ObjectManager::RecordMetrics() {
       plasma::plasma_store_runner->GetFallbackAllocated());
   // Subtract fallback allocated memory. It is tracked separately by
   // `ObjectStoreFallbackMemory`.
-  stats::ObjectStoreUsedMemory().Record(
-      used_memory_ - plasma::plasma_store_runner->GetFallbackAllocated());
-  stats::ObjectStoreFallbackMemory().Record(
-      plasma::plasma_store_runner->GetFallbackAllocated());
+  auto used_memory = used_memory_ - plasma::plasma_store_runner->GetFallbackAllocated();
+  auto fallback_memory = plasma::plasma_store_runner->GetFallbackAllocated();
+
+  stats::ObjectStoreUsedMemory().Record(used_memory);
+  stats::ObjectStoreFallbackMemory().Record(fallback);
   stats::ObjectStoreLocalObjects().Record(local_objects_.size());
   stats::ObjectManagerPullRequests().Record(pull_manager_->NumObjectPullRequests());
 
@@ -767,6 +768,13 @@ void ObjectManager::RecordMetrics() {
                                                           "FailedCancelled");
   ray::stats::STATS_object_manager_received_chunks.Record(
       num_chunks_received_failed_due_to_plasma_, "FailedPlasmaFull");
+
+  // Object store memory
+  // TODO(rickyx): maybe refactoring the reporting(dedup with above or merge)
+  ray::stats::STATS_object_store_memory_bytes.Record(used_memory,
+                                                     {{"Location", "InMemory"}});
+  ray::stats::STATS_object_store_memory_bytes.Record(fallback_memory,
+                                                     {{"Location", "Fallback"}});
 }
 
 void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
