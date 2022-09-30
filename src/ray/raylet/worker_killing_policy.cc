@@ -41,7 +41,8 @@ RetriableLIFOWorkerKillingPolicy::SelectWorkerToKill(
   std::sort(sorted.begin(),
             sorted.end(),
             [](std::shared_ptr<WorkerInterface> const &left,
-                   std::shared_ptr<WorkerInterface> const &right) -> bool {
+               std::shared_ptr<WorkerInterface> const &right) -> bool {
+              // First sort by retriable tasks and then by task time in descending order.
               int left_retriable =
                   left->GetAssignedTask().GetTaskSpecification().IsRetriable() ? 0 : 1;
               int right_retriable =
