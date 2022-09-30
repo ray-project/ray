@@ -34,7 +34,7 @@ class WorkerKillerTest : public ::testing::Test {
       [](bool is_usage_above_threshold,
          MemorySnapshot system_memory,
          float usage_threshold) { FAIL() << "Monitor should not be running"; }};
-  int32_t port_ = 1234;
+  int32_t port_ = 2389;
   RetriableLIFOWorkerKillingPolicy worker_killing_policy_;
 
   std::shared_ptr<WorkerInterface> CreateActorWorker(int32_t max_restarts) {
