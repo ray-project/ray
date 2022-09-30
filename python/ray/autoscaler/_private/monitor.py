@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, Optional, Union
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
-from ray._private.event.event_logger import get_event_logger, EventLoggerOption
+from ray._private.event.event_logger import EventLoggerOption, get_event_logger
 from ray._private.event.event_types import SOURCE_AUTOSCALER, EventTypes
 from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.gcs_utils import GcsClient
@@ -190,7 +190,9 @@ class Monitor:
         self.event_logger = get_event_logger(
             EventLoggerOption(sink_dir=logs_dir, source=SOURCE_AUTOSCALER)
         )
-        self.event_logger.info(event_type=EventTypes.AUTOSCALER_STARTED, message="Autoscaler started")
+        self.event_logger.info(
+            event_type=EventTypes.AUTOSCALER_STARTED, message="Autoscaler started"
+        )
 
         self.prom_metrics = AutoscalerPrometheusMetrics()
         if monitor_ip and prometheus_client:

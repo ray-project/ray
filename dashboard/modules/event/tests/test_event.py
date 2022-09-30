@@ -70,9 +70,7 @@ def _test_logger(name, log_file, max_bytes, backup_count):
 
 
 def test_python_global_event_logger(tmp_path):
-    logger = get_event_logger(
-        EventLoggerOption(sink_dir=str(tmp_path), source="TEST")
-    )
+    logger = get_event_logger(EventLoggerOption(sink_dir=str(tmp_path), source="TEST"))
     logger.set_global_context({"test_meta": "1"})
     logger.info(EventTypes.TEST, "message", a="a", b="b")
     logger.debug(EventTypes.TEST, "message", a="a", b="b")

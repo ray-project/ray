@@ -6,6 +6,8 @@ SOURCE_DASHBOARD = "DASHBOARD"
 
 
 from enum import Enum
+
+
 class EventTypes(Enum):
     AUTOSCALER_STARTED = "AUTOSCALER_STARTED"
     AUTOSCALER_EVENT = "AUTOSCALER_EVENT"

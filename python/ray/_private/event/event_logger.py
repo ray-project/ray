@@ -13,6 +13,7 @@ from ray._private.event.event_types import EventTypes
 
 logger = logging.getLogger(__name__)
 
+
 def get_event_id():
     return "".join([random.choice(string.hexdigits) for _ in range(36)])
 
@@ -28,11 +29,11 @@ class EventLoggerAdapter:
             "source_pid": os.getpid(),
             "metadata": {},
         }
-    
+
     def set_global_context(self, metadata: dict = None):
         metadata = {} if not metadata else metadata
         self.global_context["metadata"] = metadata
-    
+
     def info(self, event_type: EventTypes, message: str, **kwargs):
         self._emit("INFO", event_type, message, **kwargs)
 
@@ -52,7 +53,7 @@ class EventLoggerAdapter:
         allowed_severity = ["INFO", "WARNING", "ERROR", "DEBUG", "FATAL"]
         if severity not in allowed_severity:
             assert False, "Invalid severity {}.".format(severity)
-        
+
         self.global_context["metadata"].update(**kwargs)
 
         self.logger.info(
@@ -99,7 +100,7 @@ _event_logger = None
 
 def get_event_logger(option: EventLoggerOption):
     """Get the event logger of the current process.
-    
+
     There's only 1 event logger per process.
     """
     global _event_logger
