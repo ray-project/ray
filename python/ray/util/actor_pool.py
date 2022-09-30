@@ -25,7 +25,7 @@ class ActorPool:
     """
 
     def __init__(self, actors: list):
-        ray._private.usage.usage_lib.record_library_usage("util_ActorPool")
+        ray._private.usage.usage_lib.record_library_usage("util.ActorPool")
 
         # actors to be used
         self._idle_actors = list(actors)

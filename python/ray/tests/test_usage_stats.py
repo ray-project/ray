@@ -604,11 +604,11 @@ with joblib.parallel_backend("ray"):
         "dataset",
         "workflow",
         "serve",
-        "util_ActorGroup",
-        "util_ActorPool",
-        "util_multiprocessing_Pool",
-        "util_Queue",
-        "util_joblib",
+        "util.ActorGroup",
+        "util.ActorPool",
+        "util.multiprocessing.Pool",
+        "util.Queue",
+        "util.joblib",
     }
     assert set(library_usages) == expected
     if not ray_client:
