@@ -374,6 +374,9 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
                                     bool &is_infeasible) {
   auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
       work->task.GetTaskSpecification(),
+      // We should prefer to stay local if possible
+      // to avoid unnecessary spillback
+      // since this node is already selected by the cluster scheduler.
       /*prioritize_local_node*/ true,
       /*exclude_local_node*/ false,
       /*requires_object_store_memory*/ false,
