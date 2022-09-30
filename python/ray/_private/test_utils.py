@@ -1253,7 +1253,7 @@ def test_get_directory_size_bytes():
         assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 152
 
 
-def check_local_files_gced(cluster, whitelist=None):
+def check_local_files_gced(cluster):
     for node in cluster.list_all_nodes():
         for subdir in ["conda", "pip", "working_dir_files", "py_modules_files"]:
             all_files = os.listdir(
@@ -1261,11 +1261,12 @@ def check_local_files_gced(cluster, whitelist=None):
             )
             # Check that there are no files remaining except for .lock files
             # and generated requirements.txt files.
-            # Note: On Windows the top folder is not deleted as it is in use.
             # TODO(architkulkarni): these files should get cleaned up too!
+            if sys.platform == "win32" and subdir != "py_modules_files":
+                # Note: On Windows the deleting is not complete due to directories
+                # being in use.  Filter out the directories.
+                all_files = [f for f in all_files if not os.path.isdir(f)]
             items = list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
-            if whitelist and set(items).issubset(whitelist):
-                continue
             if len(items) > 0:
                 return False
     return True
