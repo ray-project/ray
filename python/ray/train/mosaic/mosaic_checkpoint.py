@@ -1,6 +1,7 @@
 from ray.air.checkpoint import Checkpoint
 from pathlib import Path
 import torch
+from composer.loggers import InMemoryLogger
 
 
 def load_model_from_path(
@@ -52,3 +53,26 @@ class MosaicCheckpoint(Checkpoint):
         with self.to_dict()["all_checkpoints"][-1] as save_path:
             model = load_model_from_path(save_path, model, strict)
         return model
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Checkpoint":
+        _data = data.copy()
+        logger_data = []
+        if "in_memory_logger" in _data:
+            for logger in _data["in_memory_logger"]:
+                logger_data.append(logger.data)
+            _data["in_memory_logger"] = logger_data
+
+        return super().from_dict(_data)
+
+    def to_dict(self):
+        checkpoint_data = super().to_dict()
+        in_memory_logger = []
+        if "in_memory_logger" in checkpoint_data:
+            for logger_data in checkpoint_data["in_memory_logger"]:
+                _logger = InMemoryLogger()
+                _logger.data = logger_data.copy()
+                in_memory_logger.append(_logger)
+            checkpoint_data["in_memory_logger"] = in_memory_logger
+
+        return checkpoint_data

@@ -196,7 +196,7 @@ class RayTrainReportCallback(Callback):
 
         checkpoint = MosaicCheckpoint.from_dict(
             {
-                # "in_memory_logger": self.in_memory_logger,
+                "in_memory_logger": self.in_memory_logger,
                 "all_checkpoints": all_checkpoints,
             }
         )
