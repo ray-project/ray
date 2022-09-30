@@ -1205,6 +1205,16 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             {3, 4, 8, 10},
         )
 
+        # Check that tuple also works
+        assertProduces(lambda: explore_fn({"v": 4}, {"v": (3, 4, 8, 10)}, 0.0), {3, 8})
+        assertProduces(lambda: explore_fn({"v": 3}, {"v": (3, 4, 8, 10)}, 0.0), {3, 4})
+
+        # Passing in an invalid types should raise an error
+        with self.assertRaises(ValueError):
+            explore_fn({"v": 4}, {"v": {3, 4, 8, 10}}, 0.0)
+        with self.assertRaises(ValueError):
+            explore_fn({"v": 4}, {"v": "invalid"}, 0.0)
+
         # Continuous case
         assertProduces(
             lambda: explore_fn(

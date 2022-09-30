@@ -632,10 +632,16 @@ class PopulationBasedTrainingLoggingTest(unittest.TestCase):
             def __init__(self, config):
                 self.config = config
 
-        def test_config(hyperparam_mutations, old_config, print_summary=False):
+        def test_config(
+            hyperparam_mutations,
+            old_config,
+            resample_probability=0.25,
+            print_summary=False,
+        ):
             scheduler = PopulationBasedTraining(
                 time_attr="training_iteration",
                 hyperparam_mutations=hyperparam_mutations,
+                resample_probability=resample_probability,
             )
             new_config, operations = scheduler._get_new_config(
                 None, DummyTrial(old_config)
@@ -691,6 +697,12 @@ class PopulationBasedTrainingLoggingTest(unittest.TestCase):
         ] + ["resample"]
         assert operations["c"]["e"]["f"] in ["shift left", "shift right", "resample"]
 
+        # 4. Test shift that results in noop
+        hyperparam_mutations = {"a": [1]}
+        scheduler, new_config, operations = test_config(
+            hyperparam_mutations, {"a": 1}, resample_probability=0
+        )
+        assert operations["a"] in ["shift left (noop)", "shift right (noop)"]
 
 if __name__ == "__main__":
     import pytest
