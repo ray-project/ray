@@ -53,5 +53,12 @@ BAD_RUNTIME_ENV_CACHE_TTL_SECONDS = env_integer(
 # Example: "your.module.ray_cluster_activity_hook".
 RAY_CLUSTER_ACTIVITY_HOOK = "RAY_CLUSTER_ACTIVITY_HOOK"
 
+# The number of candidate agents
+CANDIDATE_AGENT_NUMBER = max(env_integer("CANDIDATE_AGENT_NUMBER", 1), 1)
+# when head receive JobSubmitRequest, maybe not any agent is available,
+# we need to wait for agents in other node start
+WAIT_AVAILABLE_AGENT_TIMEOUT = 10
+TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS = 0.1
+
 # Port that dashboard prometheus metrics will be exported to
 DASHBOARD_METRIC_PORT = env_integer("DASHBOARD_METRIC_PORT", 44227)
