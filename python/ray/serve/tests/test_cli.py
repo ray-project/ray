@@ -516,7 +516,9 @@ def test_build(ray_start_stop, node):
         print("Delete succeeded! Node is not reachable over HTTP.")
 
 
-k8sFNode = global_f.options(ray_actor_options={"num_cpus": 2, "num_gpus": 1}).bind()
+k8sFNode = global_f.options(
+    num_replicas=2, ray_actor_options={"num_cpus": 2, "num_gpus": 1}
+).bind()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -537,6 +539,7 @@ def test_build_kubernetes_flag():
 
         tmp.seek(0)
         config = yaml.safe_load(tmp.read())
+        print(config)
         assert config == {
             "importPath": "ray.serve.tests.test_cli.k8sFNode",
             "runtimeEnv": {},
@@ -545,23 +548,10 @@ def test_build_kubernetes_flag():
             "deployments": [
                 {
                     "name": "global_f",
-                    "numReplicas": 1,
-                    "routePrefix": "/",
-                    "maxConcurrentQueries": 100,
-                    "userConfig": None,
-                    "autoscalingConfig": None,
-                    "gracefulShutdownWaitLoopS": 2.0,
-                    "gracefulShutdownTimeoutS": 20.0,
-                    "healthCheckPeriodS": 10.0,
-                    "healthCheckTimeoutS": 30.0,
+                    "numReplicas": 2,
                     "rayActorOptions": {
-                        "runtimeEnv": {},
                         "numCpus": 2.0,
                         "numGpus": 1.0,
-                        "memory": None,
-                        "objectStoreMemory": None,
-                        "resources": {},
-                        "acceleratorType": None,
                     },
                 },
             ],
