@@ -452,7 +452,7 @@ class JobManager:
                 ref = job_supervisor.ping.remote()
                 not_ready = [ref]
                 while not_ready:
-                    ready, not_ready = ray.wait(ref, timeout=0.1)
+                    ready, not_ready = ray.wait(not_ready, timeout=0.1)
                     if ready:
                         ray.get(ready)
                     else:
