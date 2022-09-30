@@ -2953,32 +2953,35 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           std::stringstream is_retriable_ss;
           std::stringstream retriable_recommendation_ss;
           if (worker_to_kill->GetAssignedTask().GetTaskSpecification().IsRetriable()) {
-            is_retriable_ss << ", and the task is retriable";
+            is_retriable_ss << " that is retriable";
           } else {
-            is_retriable_ss << ", the task is non-retriable but there are no other "
-                               "retriable tasks to kill first";
+            is_retriable_ss << " that is not retriable - there are no more "
+                               "retriable tasks to kill";
             retriable_recommendation_ss << "Make the task retriable if possible. ";
           }
 
           /// TODO: (clarng) expose this string in the frontend python error as well.
-          std::stringstream worker_exit_message_ss;
-          worker_exit_message_ss
-              << "Task was killed due to the node running low on memory.\n\n"
+          std::stringstream oom_kill_title_ss;
+          std::stringstream oom_kill_details_ss;
+          std::stringstream oom_kill_suggestions_ss;
+          oom_kill_title_ss << "Task was killed due to the node running low on memory. ";
+          oom_kill_details_ss
               << "Memory on the node (IP: " << worker_to_kill->IpAddress()
-              << ", ID: " << this->self_node_id_ << ") where the task (" << id_ss.sr()
-              << ")was running was " << used_bytes_gb << "GB / " << total_bytes_gb
+              << ", ID: " << this->self_node_id_ << ") where the task (" << id_ss.str()
+              << ") was running was " << used_bytes_gb << "GB / " << total_bytes_gb
               << "GB (" << usage_fraction
               << "), which exceeds the memory usage threshold of " << usage_threshold
               << ". Ray killed this worker (ID: " << worker_to_kill->WorkerId()
-              << ") because it was the most recently scheduled task"
-              << is_retriable_ss.str()
+              << ") because it was "
+              << "the most recently scheduled task" << is_retriable_ss.str()
               << "; to see more "
                  "information about memory usage on this node, use `ray logs raylet.out "
                  "-ip "
               << worker_to_kill->IpAddress()
               << "`. To see the logs of the worker, use `ray logs worker-"
               << worker_to_kill->WorkerId() << "*out -ip " << worker_to_kill->IpAddress()
-              << "`.\n\n"
+              << "`. ";
+          oom_kill_suggestions_ss
               << "Consider provisioning more memory on this node or reducing task "
                  "parallelism by requesting more CPUs per task. "
               << retriable_recommendation_ss.str()
@@ -2987,12 +2990,17 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
                  "`RAY_memory_usage_threshold_fraction` when starting Ray. To disable "
                  "worker killing, set the environment variable "
                  "`RAY_memory_monitor_interval_ms` to zero.";
-          std::string worker_exit_message = worker_exit_message_ss.str();
           /// TODO: (clarng) add a link to the oom killer / memory manager documentation
-          RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << worker_exit_message;
+          RAY_LOG_EVERY_MS_OR(ERROR, 10000, INFO) << oom_kill_title_ss.str() << "\n\n"
+                                                  << oom_kill_details_ss.str() << "\n\n"
+                                                  << oom_kill_suggestions_ss.str();
 
+          std::stringstream error_message_ss;
+          error_message_ss << oom_kill_title_ss.str() << oom_kill_details_ss.str()
+                           << oom_kill_suggestions_ss.str();
+          std::string error_message = error_message_ss.str();
           rpc::RayErrorInfo task_failure_reason;
-          task_failure_reason.set_error_message(worker_exit_message);
+          task_failure_reason.set_error_message(error_message);
           task_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
           SetTaskFailureReason(worker_to_kill->GetAssignedTaskId(),
                                std::move(task_failure_reason));
@@ -3001,7 +3009,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           /// as soon as possible to free up memory.
           DestroyWorker(high_memory_eviction_target_,
                         rpc::WorkerExitType::USER_ERROR,
-                        worker_exit_message,
+                        error_message,
                         true /* force */);
 
           if (worker_to_kill->GetActorId().IsNil()) {
