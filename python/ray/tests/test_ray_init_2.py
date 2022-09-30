@@ -167,11 +167,6 @@ def test_hosted_external_dashboard_url_with_connecting_to_existing_cluster(
     assert info.address_info["webui_url"] == "external_dashboard_url"
     assert ray._private.worker._global_node.webui_url == "127.0.0.1:8265"
     assert ray_address_to_api_server_url("auto") == "http://" + "127.0.0.1:8265"
-    # Test Ray Client address
-    assert (
-        ray_address_to_api_server_url("ray://localhost:25553")
-        == "http://" + "127.0.0.1:8265"
-    )
 
 
 def test_shutdown_and_reset_global_worker(shutdown_only):

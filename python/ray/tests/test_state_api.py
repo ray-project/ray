@@ -282,8 +282,6 @@ def test_ray_address_to_api_server_url(shutdown_only):
     # localhost string
     gcs_port = gcs_address.split(":")[1]
     assert api_server_url == ray_address_to_api_server_url(f"localhost:{gcs_port}")
-    # Ray Client address
-    assert api_server_url == ray_address_to_api_server_url("ray://localhost:10001")
 
 
 def test_state_schema():
