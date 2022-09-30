@@ -76,8 +76,11 @@ class MosaicCheckpoint(Checkpoint):
         if "in_memory_logger" in checkpoint_data:
             for logger_data in checkpoint_data["in_memory_logger"]:
                 _logger = InMemoryLogger()
-                _logger.data = logger_data.copy()
-                in_memory_logger.append(_logger)
+                if not isinstance(logger_data, InMemoryLogger):
+                    _logger.data = logger_data.copy()
+                    in_memory_logger.append(_logger)
+                else:
+                    in_memory_logger.append(logger_data)
             checkpoint_data["in_memory_logger"] = in_memory_logger
 
         return checkpoint_data
