@@ -318,8 +318,8 @@ class Deployment:
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+        is_driver_deployment: bool = DEFAULT.VALUE,
         _internal: bool = False,
-        is_driver_deployment: bool = False,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -414,8 +414,8 @@ class Deployment:
         if health_check_timeout_s is not DEFAULT.VALUE:
             new_config.health_check_timeout_s = health_check_timeout_s
 
-        if is_driver_deployment:
-            self._is_driver_deployment = is_driver_deployment
+        if is_driver_deployment is DEFAULT.VALUE:
+            self._is_driver_deployment = False
 
         return Deployment(
             func_or_class,
@@ -450,8 +450,8 @@ class Deployment:
         graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+        is_driver_deployment: bool = DEFAULT.VALUE,
         _internal: bool = False,
-        is_driver_deployment: bool = False,
     ) -> None:
         """Overwrite this deployment's options. Mutates the deployment.
 

@@ -380,6 +380,9 @@ def deployment(
             "Explicitly specifying version will raise an error in the future!"
         )
 
+    if is_driver_deployment is DEFAULT.VALUE:
+        is_driver_deployment = False
+
     config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,

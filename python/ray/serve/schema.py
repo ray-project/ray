@@ -178,7 +178,7 @@ class DeploymentSchema(
     )
 
     is_driver_deployment: bool = Field(
-        default=False,
+        default=DEFAULT.VALUE,
         description="Indicate Whether the deployment is driver deployment "
         "Driver deployments are spawned one per node.",
     )
