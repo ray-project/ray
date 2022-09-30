@@ -1293,7 +1293,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 (config or {}).get("observation_filter", "NoFilter"), filter_shape
             )
         else:
-            create_connectors_for_policy(self.policy_map[policy_id], self.policy_config)
+            create_connectors_for_policy(self.policy_map[policy_id], merged_config)
 
             # As long as the historic filter synchronization mechanism is in
             # place, we need to put filters into self.filters so that they get
