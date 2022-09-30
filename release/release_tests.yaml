@@ -3759,7 +3759,7 @@
     timeout: 7200
     script: python many_nodes_tests/actor_test.py
     wait_for_nodes:
-      num_nodes: 251
+      num_nodes: 241
 
     type: sdk_command
     file_manager: sdk
@@ -3994,7 +3994,7 @@
     timeout: 3600
     script: python distributed/test_many_tasks.py --num-tasks=1000
     wait_for_nodes:
-      num_nodes: 250
+      num_nodes: 240
 
     type: sdk_command
     file_manager: sdk
