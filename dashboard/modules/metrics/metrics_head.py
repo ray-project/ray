@@ -27,6 +27,7 @@ PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
 
 DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
+GRAFANA_IFRAME_HOST_ENV_VAR = "RAY_GRAFANA_IFRAME_HOST"
 GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR = "RAY_METRICS_GRAFANA_DASHBOARD_OUTPUT_DIR"
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
 GRAFANA_HEALTHCHECK_PATH = "api/health"
@@ -50,6 +51,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         Endpoint that checks if grafana is running
         """
         grafana_host = os.environ.get(GRAFANA_HOST_ENV_VAR, DEFAULT_GRAFANA_HOST)
+        grafana_iframe_host = os.environ.get(GRAFANA_IFRAME_HOST_ENV_VAR, grafana_host)
         path = f"{grafana_host}/{GRAFANA_HEALTHCHECK_PATH}"
         try:
             async with self._session.get(path) as resp:
@@ -59,13 +61,12 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                         return dashboard_optional_utils.rest_response(
                             success=True,
                             message="Grafana running",
-                            grafana_host=grafana_host,
+                            grafana_host=grafana_iframe_host,
                         )
         except Exception as e:
             logger.warning(
                 "Error fetching grafana endpoint. Is grafana running?", exc_info=e
             )
-            pass
 
         return dashboard_optional_utils.rest_response(
             success=False, message="Grafana healtcheck failed"
