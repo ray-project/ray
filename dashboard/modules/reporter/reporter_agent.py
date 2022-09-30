@@ -22,7 +22,7 @@ from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.util.debug import log_once
-from ray._private.event_logger import EventLogger
+from ray._private.event.event_logger import get_event_logger
 
 
 logger = logging.getLogger(__name__)
@@ -248,7 +248,8 @@ class ReporterAgent(
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
         )
-        self.event_logger = EventLogger("MONITOR", "/tmp/ray/")
+        # SANG-TODO
+        # self.event_logger = get_event_logger("MONITOR", "/tmp/ray/")
 
     async def GetProfilingStats(self, request, context):
         pid = request.pid
@@ -797,6 +798,7 @@ class ReporterAgent(
                 )
 
                 stats = self._get_all_stats()
+                # SANG-TODO
                 # mem_perc = stats["mem"][2]
                 # if mem_perc > 0.1:
                 #     self.event_logger.emit(

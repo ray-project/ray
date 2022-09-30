@@ -27,6 +27,7 @@ message Event {
     GCS = 2;
     RAYLET = 3;
     MONITOR = 4;
+    AUTOSCALER = 5;
   }
 
   enum Severity {

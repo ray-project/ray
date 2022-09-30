@@ -4,6 +4,7 @@ import logging
 from dataclasses import asdict, fields
 from itertools import islice
 from typing import List, Tuple
+from datetime import datetime
 
 from ray._private.ray_constants import env_integer
 
@@ -601,14 +602,14 @@ class StateAPIManager:
         result = []
         for _, events in DataSource.events.items():
             for _, event in events.items():
-                logger.info(event)
+                event["time"] = str(datetime.utcfromtimestamp(event["timestamp"]))
                 result.append(event)
 
         num_after_truncation = len(result)
+        result.sort(key=lambda entry: entry["timestamp"])
         result = self._filter(result, option.filters, ClusterEventState, option.detail)
         num_filtered = len(result)
         # Sort to make the output deterministic.
-        result.sort(key=lambda entry: entry["timestamp"])
         result = list(islice(result, option.limit))
         return ListApiResponse(
             result=result,

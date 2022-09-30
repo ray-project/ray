@@ -1,7 +1,7 @@
 from enum import Enum, auto
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from ray._private.event_logger import EventLogger
+from ray._private.event.event_logger import get_event_logger
 from ray.autoscaler._private.cli_logger import cli_logger
 
 
@@ -49,7 +49,8 @@ class _EventSystem:
 
     def __init__(self):
         self.callback_map = {}
-        self.event_logger = EventLogger("MONITOR", "/tmp/ray/")
+        # SANG-TODO
+        # self.event_logger = EventLogger("MONITOR", "/tmp/ray/")
 
     def add_callback_handler(
         self,
@@ -89,7 +90,7 @@ class _EventSystem:
         if event_data is None:
             event_data = {}
 
-        self.event_logger.emit(type="CLUSTER_EVENT", message=event, **event_data)
+        # self.event_logger.emit(type="CLUSTER_EVENT", message=event, **event_data)
         event_data["event_name"] = event
         if event in self.callback_map:
             for callback in self.callback_map[event]:

@@ -8,12 +8,15 @@ import requests
 import asyncio
 import random
 import tempfile
+import socket
 
 import pytest
 import numpy as np
 
 import ray
 from ray._private.utils import binary_to_hex
+from ray._private.event.event_logger import get_event_logger, EventLoggerOption
+from ray._private.event.event_types import EventTypes
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.event import event_consts
 from ray.core.generated import event_pb2
@@ -64,6 +67,37 @@ def _test_logger(name, log_file, max_bytes, backup_count):
     logger.addHandler(handler)
 
     return logger
+
+
+def test_python_global_event_logger(tmp_path):
+    logger = get_event_logger(
+        EventLoggerOption(sink_dir=str(tmp_path), source="TEST")
+    )
+    logger.set_global_context({"test_meta": "1"})
+    logger.info(EventTypes.TEST, "message", a="a", b="b")
+    logger.debug(EventTypes.TEST, "message", a="a", b="b")
+    logger.error(EventTypes.TEST, "message", a="a", b="b")
+    logger.warning(EventTypes.TEST, "message", a="a", b="b")
+    logger.fatal(EventTypes.TEST, "message", a="a", b="b")
+    event_dir = tmp_path / "events"
+    assert event_dir.exists()
+    event_file = event_dir / "event_TEST.log"
+    assert event_file.exists()
+
+    line_severities = ["INFO", "DEBUG", "ERROR", "WARNING", "FATAL"]
+
+    with event_file.open() as f:
+        for line, severity in zip(f.readlines(), line_severities):
+            data = json.loads(line)
+            assert data["severity"] == severity
+            assert data["type"] == EventTypes.TEST.value
+            assert "timestamp" in data
+            assert len(data["event_id"]) == 36
+            assert data["message"] == "message"
+            assert data["source_hostname"] == socket.gethostname()
+            assert data["source_pid"] == os.getpid()
+            assert data["metadata"]["a"] == "a"
+            assert data["metadata"]["b"] == "b"
 
 
 def test_event_basic(disable_aiohttp_cache, ray_start_with_dashboard):
