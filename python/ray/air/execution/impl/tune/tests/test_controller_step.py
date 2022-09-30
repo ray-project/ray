@@ -1,11 +1,6 @@
 import pytest
 import ray
-from ray.air.execution.impl.tune.tests.common import (
-    SimpleSearchAlgorithm,
-    TrialStateCallback,
-)
-from ray.air.execution.impl.tune.tune_controller import TuneController
-from ray.air.execution.resources.fixed import FixedResourceManager
+from ray.air.execution.impl.tune.tests.common import tune_setup
 from ray.rllib import _register_all
 from ray.tune.experiment import Trial
 from ray.tune.trainable import wrap_function
@@ -21,20 +16,6 @@ def ray_start_local():
     ray.shutdown()
 
 
-@pytest.fixture
-def tune_setup():
-    resource_manager = FixedResourceManager(total_resources={"CPU": 4, "GPU": 2})
-    search_alg = SimpleSearchAlgorithm()
-    trial_states = TrialStateCallback()
-    controller = TuneController(
-        search_alg=search_alg,
-        resource_manager=resource_manager,
-        callbacks=[trial_states],
-    )
-
-    yield resource_manager, search_alg, trial_states, controller
-
-
 def _empty_train_fn(config):
     return 1
 
@@ -42,7 +23,7 @@ def _empty_train_fn(config):
 _empty_train_class = wrap_function(_empty_train_fn)
 
 
-def test_stopping_criterion(ray_start_local, tune_setup):
+def test_stopping_criterion(ray_start_local):
     """Tests that we step multiple times
 
     Legacy test: test_trial_runner::TrialRunnerTest::testMultiStepRun
@@ -53,7 +34,7 @@ def test_stopping_criterion(ray_start_local, tune_setup):
     - Run them
     - Assert that they all ran for five iterations
     """
-    resource_manager, search_alg, trial_states, controller = tune_setup
+    resource_manager, search_alg, scheduler, trial_states, controller = tune_setup()
     _register_all()
 
     for i in range(4):

@@ -1,9 +1,36 @@
 from collections import deque, Counter
 
+from ray.air.execution.impl.tune.tune_controller import TuneController
+from ray.air.execution.resources.fixed import FixedResourceManager
+from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.tune import Callback
 from ray.tune.experiment import Trial
+from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.search import SearchAlgorithm
-from typing import List
+from typing import List, Optional
+
+
+def tune_setup(
+    resource_manager: Optional[ResourceManager] = None,
+    search_alg: Optional[SearchAlgorithm] = None,
+    scheduler: Optional[TrialScheduler] = None,
+    callbacks: Optional[List[Callback]] = None,
+):
+    resource_manager = resource_manager or FixedResourceManager(
+        total_resources={"CPU": 4, "GPU": 2}
+    )
+    search_alg = search_alg or SimpleSearchAlgorithm()
+    scheduler = scheduler or FIFOScheduler()
+    trial_states = TrialStateCallback()
+    callbacks = callbacks or []
+    controller = TuneController(
+        search_alg=search_alg,
+        scheduler=scheduler,
+        resource_manager=resource_manager,
+        callbacks=callbacks + [trial_states],
+    )
+
+    return resource_manager, search_alg, scheduler, trial_states, controller
 
 
 class SimpleSearchAlgorithm(SearchAlgorithm):

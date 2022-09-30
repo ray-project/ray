@@ -10,6 +10,7 @@ from ray.air.execution.actor_request import ActorRequest, ActorInfo
 from ray.air.execution.controller import Controller
 
 # Legacy tune
+from ray.air.execution.impl.tune.legacy import LegacyTrialRunner
 from ray.air.execution.impl.tune.tune_result import (
     TuneTrainingEvent,
     TuneSavingEvent,
@@ -25,6 +26,7 @@ from ray.air.execution.event import (
     MultiFutureResult,
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
+from ray.tune import PlacementGroupFactory
 from ray.tune.callback import CallbackList, Callback
 from ray.tune.result import RESULT_DUPLICATE, SHOULD_CHECKPOINT
 from ray.tune.stopper import Stopper
@@ -48,6 +50,8 @@ class TuneController(Controller):
             resource_manager=resource_manager or FixedResourceManager({"CPU": 8})
         )
 
+        self._legacy_wrapper = None  # LegacyTrialRunner(self)
+
         self._all_trials = []
         self._buffered_actor_requests = []
         self._pending_actor_requests = {}
@@ -55,6 +59,7 @@ class TuneController(Controller):
         self._actions = defaultdict(list)
         self._actors_to_pause = set()
         self._actors_to_terminate = set()
+        self._actors_to_fail = set()
 
         self._searcher: SearchAlgorithm = search_alg
         self._stopper: Stopper = NoopStopper()
@@ -66,6 +71,12 @@ class TuneController(Controller):
         self._max_pending_trials = get_max_pending_trials(self._searcher)
 
         self._iteration = 0
+
+        self._trial_resources_to_update: Dict[Trial, PlacementGroupFactory] = {}
+
+    @property
+    def scheduler_interface(self):
+        return self._legacy_wrapper or self
 
     def is_finished(self) -> bool:
         return (
@@ -160,15 +171,7 @@ class TuneController(Controller):
         self._actors_to_pause.discard(actor)
         self._actors_to_terminate.discard(actor)
 
-        trial.set_status(Trial.ERROR)
-        # Todo: Let's get rid of trial.runner completely
-        trial.set_runner(None)
-
-        self._scheduler.on_trial_error(None, trial)
-        self._searcher.on_trial_complete(trial.trial_id, error=True)
-        self._callbacks.on_trial_error(
-            iteration=0, trials=self._all_trials, trial=trial
-        )
+        self._trial_failed(trial)
 
     def actor_stopped(self, actor: ray.actor.ActorHandle, actor_info: ActorInfo):
         trial = self._live_actors.pop(actor)
@@ -176,15 +179,25 @@ class TuneController(Controller):
 
         if actor in self._actors_to_pause:
             self._actors_to_pause.remove(actor)
+            trial.set_status(Trial.PAUSED)
+
+            # Maybe update resources
+            new_resources = self._trial_resources_to_update.pop(trial, None)
+            if new_resources:
+                trial.update_resources(new_resources)
+                actor_info.actor_request.resources = ResourceRequest(
+                    bundles=trial.placement_group_factory.bundles
+                )
+
+            # Re-schedule actor
             self._pending_actor_requests[actor_info.actor_request] = trial
             self._buffered_actor_requests.append(actor_info.actor_request)
-            trial.set_status(Trial.PAUSED)
         elif actor in self._actors_to_terminate:
             self._actors_to_terminate.remove(actor)
             trial.set_status(Trial.TERMINATED)
 
             self._scheduler.on_trial_complete(
-                None, trial=trial, result=trial.last_result
+                self.scheduler_interface, trial=trial, result=trial.last_result
             )
             self._searcher.on_trial_complete(
                 trial_id=trial.trial_id, result=trial.last_result, error=False
@@ -192,12 +205,25 @@ class TuneController(Controller):
             self._callbacks.on_trial_complete(
                 iteration=0, trials=self._all_trials, trial=trial
             )
+        elif actor in self._actors_to_fail:
+            self._trial_failed(trial)
+
+    def _trial_failed(self, trial: Trial):
+        trial.set_status(Trial.ERROR)
+        # Todo: Let's get rid of trial.runner completely
+        trial.set_runner(None)
+
+        self._scheduler.on_trial_error(self.scheduler_interface, trial)
+        self._searcher.on_trial_complete(trial.trial_id, error=True)
+        self._callbacks.on_trial_error(
+            iteration=0, trials=self._all_trials, trial=trial
+        )
 
     def future_result(self, result: FutureResult):
         if isinstance(result, FutureFailed):
-            self._actor_manager.remove_actor(
-                actor=result.actor, resolve_futures=False, exception=result.exception
-            )
+            trial = self._live_actors[result.actor]
+            self._schedule_fail(actor=result.actor, exception=result.exception)
+            self._actors_to_fail.add(trial)
             return
 
         if isinstance(result, TuneTrainingEvent):
@@ -272,7 +298,9 @@ class TuneController(Controller):
         else:
             # Otherwise, ask the scheduler what to do
             with warn_if_slow("scheduler.on_trial_result"):
-                decision = self._scheduler.on_trial_result(self, trial, flat_metrics)
+                decision = self._scheduler.on_trial_result(
+                    self.scheduler_interface, trial, flat_metrics
+                )
 
         return decision
 
@@ -306,6 +334,12 @@ class TuneController(Controller):
             actor=actor, future=future, cls=TuneSavingEvent
         )
 
+    def _schedule_fail(self, actor: ray.actor.ActorHandle, exception: Exception):
+        self._actors_to_fail.add(actor)
+        self._actor_manager.remove_actor(
+            actor=actor, resolve_futures=False, exception=exception
+        )
+
     def _schedule_stop(self, actor: ray.actor.ActorHandle):
         self._actors_to_terminate.add(actor)
         self._actor_manager.remove_actor(actor=actor, resolve_futures=True)
@@ -322,3 +356,15 @@ class TuneController(Controller):
 
     def multi_future_result(self, result: MultiFutureResult):
         pass
+
+    @property
+    def trials(self):
+        return self._all_trials
+
+    def update_trial_resources(self, trial: Trial, resources: PlacementGroupFactory):
+        """Update trial resources.
+
+        Trial resources will be updated the next time the trial is resumed. Usually
+        this requires to PAUSE the trial.
+        """
+        self._trial_resources_to_update[trial] = resources
