@@ -27,14 +27,13 @@ public final class ConcurrencyGroupUtils {
     /// Extract the concurrency groups definition.
     ArrayList<ConcurrencyGroup> ret = new ArrayList<ConcurrencyGroup>();
     Map<String, ConcurrencyGroupImpl> allConcurrencyGroupsMap =
-      extractConcurrencyGroupsFromClassAnnotation(actorClz);
+        extractConcurrencyGroupsFromClassAnnotation(actorClz);
     Class<?>[] interfaces = actorClz.getInterfaces();
     for (Class<?> interfaceClz : interfaces) {
       Preconditions.checkState(interfaceClz != null);
       Map<String, ConcurrencyGroupImpl> currConcurrencyGroups =
-        extractConcurrencyGroupsFromClassAnnotation(interfaceClz);
+          extractConcurrencyGroupsFromClassAnnotation(interfaceClz);
       allConcurrencyGroupsMap.putAll(currConcurrencyGroups);
-
     }
 
     /// Extract the using of concurrency groups which annotated on the actor methods.
@@ -65,10 +64,10 @@ public final class ConcurrencyGroupUtils {
   /// Extract the concurrency groups from the class annotation.
   /// Both work for class and interface.
   private static Map<String, ConcurrencyGroupImpl> extractConcurrencyGroupsFromClassAnnotation(
-    Class<?> clz) {
+      Class<?> clz) {
     Map<String, ConcurrencyGroupImpl> ret = new HashMap<>();
     DefConcurrencyGroups concurrencyGroupsDefinitionAnnotation =
-      clz.getAnnotation(DefConcurrencyGroups.class);
+        clz.getAnnotation(DefConcurrencyGroups.class);
     if (concurrencyGroupsDefinitionAnnotation != null) {
       DefConcurrencyGroup[] defAnnotations = concurrencyGroupsDefinitionAnnotation.value();
       if (defAnnotations.length == 0) {
@@ -82,9 +81,9 @@ public final class ConcurrencyGroupUtils {
       DefConcurrencyGroup defConcurrencyGroup = clz.getAnnotation(DefConcurrencyGroup.class);
       if (defConcurrencyGroup != null) {
         ret.put(
-          defConcurrencyGroup.name(),
-          new ConcurrencyGroupImpl(
-            defConcurrencyGroup.name(), defConcurrencyGroup.maxConcurrency()));
+            defConcurrencyGroup.name(),
+            new ConcurrencyGroupImpl(
+                defConcurrencyGroup.name(), defConcurrencyGroup.maxConcurrency()));
       } else {
         /// This actor is not defined with concurrency groups annotation.
         return ret;
