@@ -358,7 +358,8 @@ TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
   ASSERT_TRUE(RegisterNode(register_node_info_request));
   std::vector<rpc::GcsNodeInfo> node_info_list = GetAllNodeInfo();
   ASSERT_EQ(1, node_info_list.size());
-  ASSERT_EQ(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE, node_info_list[0].state());
+  ASSERT_EQ(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE,
+            node_info_list[0].state());
 
   // Report heartbeat
   report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
@@ -371,7 +372,8 @@ TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
   ASSERT_TRUE(DrainNode(unregister_node_info_request));
   node_info_list = GetAllNodeInfo();
   ASSERT_EQ(1, node_info_list.size());
-  ASSERT_EQ(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD, node_info_list[0].state());
+  ASSERT_EQ(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD,
+            node_info_list[0].state());
 }
 
 TEST_F(GcsServerTest, TestStats) {
