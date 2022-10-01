@@ -435,6 +435,44 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             t += 1
         print(total_rewards)
 
+    def test_vr_connector_only_keeps_useful_timesteps(self):
+        """Tests that the connector respects the flags within view_requirements (i.e.
+        used_for_training, used_for_compute_actions).
+
+        the returned data is the input dict itself, which the policy collector in
+        env_runner will use to construct the episode, and a SampleBatch that can be
+        used to run corresponding policy.
+        """
+        view_rqs = {
+            "obs": ViewRequirement(
+                None, used_for_training=True, used_for_compute_actions=True
+            ),
+        }
+
+        config = PPOConfig().to_dict()
+        ctx = ConnectorContext(
+            view_requirements=view_rqs,
+            config=config,
+            is_policy_recurrent=False,
+        )
+
+        c = ViewRequirementAgentConnector(ctx)
+        c.in_training()
+
+        for i in range(5):
+            obs_arr = np.array([0, 1, 2, 3]) + i
+            agent_data = {SampleBatch.NEXT_OBS: obs_arr}
+            data = AgentConnectorDataType(0, 1, agent_data)
+
+            # Feed ViewRequirementAgentConnector 5 samples.
+            c([data])
+
+        obs_data = c.agent_collectors[0][1].buffers["obs"][0]
+        # Only keep data for the last timestep.
+        self.assertEqual(len(obs_data), 1)
+        # Data matches the latest timestep.
+        self.assertTrue(np.array_equal(obs_data[0], np.array([4, 5, 6, 7])))
+
 
 if __name__ == "__main__":
     import sys
