@@ -679,7 +679,7 @@ cdef execute_task(
     task_name = name.decode("utf-8")
     name_of_concurrency_group_to_execute = \
         c_name_of_concurrency_group_to_execute.decode("ascii")
-    title = f"ray::{task_name}"
+    title = f"ray::{task_name}()"
 
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
         next_title = "ray::IDLE"
@@ -2467,7 +2467,7 @@ cdef class CoreWorker:
 
     def get_actor_call_stats(self):
         cdef:
-            unordered_map[c_string, c_vector[uint64_t]] c_tasks_count
+            unordered_map[c_string, c_vector[int64_t]] c_tasks_count
 
         c_tasks_count = (
             CCoreWorkerProcess.GetCoreWorker().GetActorCallStats())

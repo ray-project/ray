@@ -223,7 +223,7 @@ def test_ray_task_name_setproctitle(ray_start_2_cpus):
             assert setproctitle.getproctitle() == "ray::UniqueName.__init__()"
 
         def f(self):
-            assert setproctitle.getproctitle() == f"ray::{method_task_name}"
+            assert setproctitle.getproctitle() == f"ray::{method_task_name}()"
 
     task_name = "bar"
 

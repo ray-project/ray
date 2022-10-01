@@ -58,7 +58,7 @@ class FunctionDescriptorInterface : public MessageWrapper<rpc::FunctionDescripto
   virtual std::string CallString() const = 0;
 
   // The default name for a task that executes this function.
-  virtual std::string DefaultTaskName() const { return CallString() + "()"; }
+  virtual std::string DefaultTaskName() const { return CallString(); }
 
   template <typename Subtype>
   Subtype *As() {

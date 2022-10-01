@@ -264,7 +264,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         int64_t GetNumLeasesRequested() const
 
-        unordered_map[c_string, c_vector[uint64_t]] GetActorCallStats() const
+        unordered_map[c_string, c_vector[int64_t]] GetActorCallStats() const
 
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type

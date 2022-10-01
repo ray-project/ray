@@ -41,8 +41,9 @@ DEFINE_stats(
     tasks,
     "Current number of tasks currently in a particular state.",
     // State: the task state, as described by rpc::TaskState proto in common.proto.
+    // Name: the name of the function called.
     // Source: component reporting, e.g., "core_worker", "executor", or "pull_manager".
-    ("State", "Source"),
+    ("State", "Name", "Source"),
     (),
     ray::stats::GAUGE);
 
