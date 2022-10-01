@@ -32,8 +32,8 @@ class TensorSpecs(abc.ABC):
     Examples:
         >>> spec = TensorSpec("b h", h=128, dtype=tf.float32)
         >>> spec.shape  # ('b', 128)
-        >>> spec.validate(torch.rand(32, 128, dtype=torch.float64))  # passes
-        >>> spec.validate(torch.rand(32, 64, dtype=torch.float64))   # raises ValueError
+        >>> spec.validate(torch.rand(32, 128, dtype=torch.float32))  # passes
+        >>> spec.validate(torch.rand(32, 64, dtype=torch.float32))   # raises ValueError
         >>> spec.validate(torch.rand(32, 128, dtype=torch.float64))  # raises ValueError
 
     Public Methods:
