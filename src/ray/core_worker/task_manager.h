@@ -51,14 +51,14 @@ class TaskFinisherInterface {
                                    const rpc::PushTaskReply &reply,
                                    const rpc::Address &actor_addr) = 0;
 
-  virtual bool RetryTaskIfPossible(const TaskID &task_id) = 0;
+  virtual bool RetryTaskIfPossible(const TaskID &task_id,
+                                   bool task_failed_due_to_oom) = 0;
 
   virtual void FailPendingTask(const TaskID &task_id,
                                rpc::ErrorType error_type,
                                const Status *status = nullptr,
                                const rpc::RayErrorInfo *ray_error_info = nullptr,
-                               const NodeID &generator_raylet_id = NodeID::Nil(),
-                               bool mark_task_object_failed = true) = 0;
+                               const NodeID &generator_raylet_id = NodeID::Nil()) = 0;
 
   virtual bool FailOrRetryPendingTask(const TaskID &task_id,
                                       rpc::ErrorType error_type,
@@ -168,7 +168,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                            const rpc::PushTaskReply &reply,
                            const rpc::Address &worker_addr) override;
 
-  bool RetryTaskIfPossible(const TaskID &task_id) override;
+  /// Returns true if task can be retried.
+  ///
+  /// \param[in] task_id ID of the task to be retried.
+  /// \param[in] task_failed_due_to_oom last task attempt failed due to node running out
+  /// of memory.
+  /// \return true if task is scheduled to be retried.
+  bool RetryTaskIfPossible(const TaskID &task_id, bool task_failed_due_to_oom) override;
 
   /// A pending task failed. This will either retry the task or mark the task
   /// as failed if there are no retries left.
@@ -180,7 +186,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Nullptr means that there's no error information.
   /// TODO(sang): Remove nullptr case. Every error message should have metadata.
   /// \param[in] mark_task_object_failed whether or not it marks the task
-  /// return object as failed.
+  /// return object as failed. If this is set to false, then the caller is
+  /// responsible for later failing or completing the task.
   /// \return Whether the task will be retried or not.
   bool FailOrRetryPendingTask(const TaskID &task_id,
                               rpc::ErrorType error_type,
@@ -203,8 +210,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                        rpc::ErrorType error_type,
                        const Status *status = nullptr,
                        const rpc::RayErrorInfo *ray_error_info = nullptr,
-                       const NodeID &generator_raylet_id = NodeID::Nil(),
-                       bool mark_task_object_failed = true) override;
+                       const NodeID &generator_raylet_id = NodeID::Nil()) override;
 
   /// Treat a pending task's returned Ray object as failed. The lock should not be held
   /// when calling this method because it may trigger callbacks in this or other classes.
@@ -307,12 +313,16 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     TaskEntry(const TaskSpecification &spec_arg,
               int num_retries_left_arg,
               size_t num_returns,
-              TaskStatusCounter &counter)
-        : spec(spec_arg), num_retries_left(num_retries_left_arg), counter(counter) {
+              TaskStatusCounter &counter,
+              int64_t num_oom_retries_left)
+        : spec(spec_arg),
+          num_retries_left(num_retries_left_arg),
+          counter(counter),
+          num_oom_retries_left(num_oom_retries_left) {
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
-      counter.Increment(rpc::TaskStatus::WAITING_FOR_DEPENDENCIES);
+      counter.Increment(rpc::TaskStatus::PENDING_ARGS_AVAIL);
     }
 
     void SetStatus(rpc::TaskStatus new_status) {
@@ -325,7 +335,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     bool IsPending() const { return status != rpc::TaskStatus::FINISHED; }
 
     bool IsWaitingForExecution() const {
-      return status == rpc::TaskStatus::WAITING_FOR_EXECUTION;
+      return status == rpc::TaskStatus::SUBMITTED_TO_WORKER;
     }
 
     /// The task spec. This is pinned as long as the following are true:
@@ -342,9 +352,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     const TaskSpecification spec;
     // Number of times this task may be resubmitted. If this reaches 0, then
     // the task entry may be erased.
-    int num_retries_left;
+    int32_t num_retries_left;
     // Reference to the task stats tracker.
     TaskStatusCounter &counter;
+    // Number of times this task may be resubmitted if the task failed
+    // due to out of memory failure.
+    int32_t num_oom_retries_left;
     // Number of times this task successfully completed execution so far.
     int num_successful_executions = 0;
     // Objects returned by this task that are reconstructable. This is set
@@ -367,7 +380,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
    private:
     // The task's current execution status.
-    rpc::TaskStatus status = rpc::TaskStatus::WAITING_FOR_DEPENDENCIES;
+    rpc::TaskStatus status = rpc::TaskStatus::PENDING_ARGS_AVAIL;
   };
 
   /// Remove a lineage reference to this object ID. This should be called
