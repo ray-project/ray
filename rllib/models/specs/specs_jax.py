@@ -1,5 +1,6 @@
 from typing import Tuple, Any, Union
 
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_jax
 from ray.rllib.models.specs.specs_base import TensorSpecs
 
@@ -9,6 +10,7 @@ if jax is not None:
     jnp = jax.numpy
 
 
+@DeveloperAPI
 class JAXSpecs(TensorSpecs):
     def get_shape(self, tensor: jnp.ndarray) -> Tuple[int]:
         return tuple(tensor.shape)

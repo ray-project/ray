@@ -1,5 +1,6 @@
 from typing import Tuple, Any, Union
 
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.models.specs.specs_base import TensorSpecs
 
@@ -7,6 +8,7 @@ from ray.rllib.models.specs.specs_base import TensorSpecs
 torch, _ = try_import_torch()
 
 
+@DeveloperAPI
 class TorchSpecs(TensorSpecs):
     def get_shape(self, tensor: torch.Tensor) -> Tuple[int]:
         return tuple(tensor.shape)

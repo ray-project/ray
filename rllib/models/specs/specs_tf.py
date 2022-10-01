@@ -1,11 +1,13 @@
 from typing import Tuple, Any, Union
 
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.models.specs.specs_base import TensorSpecs
 
 _, tf, tfv = try_import_tf()
 
 
+@DeveloperAPI
 class TFSpecs(TensorSpecs):
     def get_shape(self, tensor: tf.Tensor) -> Tuple[int]:
         return tuple(tensor.shape)
