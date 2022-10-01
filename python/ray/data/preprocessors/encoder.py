@@ -112,7 +112,6 @@ class OrdinalEncoder(Preprocessor):
             s_values = self.stats_[f"unique_values({s.name})"]
             return s.map(s_values)
 
-        df = df.copy(deep=True)
         df[self.columns] = df[self.columns].apply(column_ordinal_encoder)
         return df
 
@@ -216,7 +215,6 @@ class OneHotEncoder(Preprocessor):
         _validate_df(df, *self.columns)
 
         columns_to_drop = set(self.columns)
-        df = df.copy(deep=True)
 
         # Compute new one-hot encoded columns
         for column in self.columns:
@@ -328,7 +326,6 @@ class MultiHotEncoder(Preprocessor):
             counter = Counter(element)
             return [counter.get(x, 0) for x in stats]
 
-        df = df.copy(deep=True)
         for column in self.columns:
             df[column] = df[column].map(partial(encode_list, name=column))
 
@@ -406,7 +403,6 @@ class LabelEncoder(Preprocessor):
             s_values = self.stats_[f"unique_values({s.name})"]
             return s.map(s_values)
 
-        df = df.copy(deep=True)
         df[self.label_column] = df[self.label_column].transform(column_label_encoder)
         return df
 

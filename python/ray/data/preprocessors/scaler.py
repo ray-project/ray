@@ -82,7 +82,6 @@ class StandardScaler(Preprocessor):
 
             return (s - s_mean) / s_std
 
-        df = df.copy(deep=True)
         df.loc[:, self.columns] = df.loc[:, self.columns].transform(
             column_standard_scaler
         )
@@ -166,7 +165,6 @@ class MinMaxScaler(Preprocessor):
 
             return (s - s_min) / diff
 
-        df = df.copy(deep=True)
         df.loc[:, self.columns] = df.loc[:, self.columns].transform(
             column_min_max_scaler
         )
@@ -244,7 +242,6 @@ class MaxAbsScaler(Preprocessor):
 
             return s / s_abs_max
 
-        df = df.copy(deep=True)
         df.loc[:, self.columns] = df.loc[:, self.columns].transform(
             column_abs_max_scaler
         )
@@ -361,7 +358,6 @@ class RobustScaler(Preprocessor):
 
             return (s - s_median) / diff
 
-        df = df.copy(deep=True)
         df.loc[:, self.columns] = df.loc[:, self.columns].transform(
             column_robust_scaler
         )
