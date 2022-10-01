@@ -1,7 +1,7 @@
 import fnmatch
 import os
-from packaging import version
 import urllib.parse
+from pkg_resources import packaging
 from typing import List, Optional, Tuple
 
 from ray.air._internal.filelock import TempFileLock
@@ -119,7 +119,10 @@ def get_fs_and_path(
         try:
             import gcsfs
 
-            if version.parse(gcsfs.__version__) > version.parse("2022.7.1"):
+            # For minimal install that only needs python3-setuptools
+            if packaging.version.parse(gcsfs.__version__) > packaging.version.parse(
+                "2022.7.1"
+            ):
                 raise RuntimeError(
                     "`gcsfs` versions greater than '2022.7.1' are not "
                     f"compatible with pyarrow. You have gcsfs version "
@@ -154,6 +157,21 @@ def delete_at_uri(uri: str):
         fs.delete_dir(bucket_path)
     except Exception as e:
         logger.warning(f"Caught exception when clearing URI `{uri}`: {e}")
+
+
+def read_file_from_uri(uri: str) -> bytes:
+    _assert_pyarrow_installed()
+
+    fs, file_path = get_fs_and_path(uri)
+    if not fs:
+        raise ValueError(
+            f"Could not download from URI: "
+            f"URI `{uri}` is not a valid or supported cloud target. "
+            f"Hint: {fs_hint(uri)}"
+        )
+
+    with fs.open_input_file(file_path) as file:
+        return file.read()
 
 
 def download_from_uri(uri: str, local_path: str, filelock: bool = True):

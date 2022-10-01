@@ -113,7 +113,7 @@ class ServerCallFactory {
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
 template <class ServiceHandler, class Request, class Reply>
-using HandleRequestFunction = void (ServiceHandler::*)(const Request &,
+using HandleRequestFunction = void (ServiceHandler::*)(Request,
                                                        Reply *,
                                                        SendReplyCallback);
 
@@ -184,7 +184,7 @@ class ServerCallImpl : public ServerCall {
       factory.CreateCall();
     }
     (service_handler_.*handle_request_function_)(
-        request_,
+        std::move(request_),
         reply_,
         [this](
             Status status, std::function<void()> success, std::function<void()> failure) {
@@ -260,6 +260,7 @@ class ServerCallImpl : public ServerCall {
   instrumented_io_context &io_service_;
 
   /// The request message.
+  /// Request will be released when it's passed to the callback handler
   Request request_;
 
   /// The reply message. This one is owned by arena. It's not valid beyond

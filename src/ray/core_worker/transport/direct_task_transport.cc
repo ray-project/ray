@@ -611,7 +611,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
         }
         if (status.ok()) {
           if (!task_spec.GetMessage().retry_exceptions() || !reply.is_retryable_error() ||
-              !task_finisher_->RetryTaskIfPossible(task_id)) {
+              !task_finisher_->RetryTaskIfPossible(task_id,
+                                                   /*task_failed_due_to_oom*/ false)) {
             task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
           }
         }
@@ -635,6 +636,7 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
       task_error_type = get_task_failure_cause_reply.failure_cause().error_type();
       error_info = std::make_unique<rpc::RayErrorInfo>(
           get_task_failure_cause_reply.failure_cause());
+      // TODO(clarng): track and append task retry history to the error message.
     }
   } else {
     RAY_LOG(DEBUG) << "Failed to fetch task result with status "
@@ -740,7 +742,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
         // Retry is not attempted if !status.ok() because force-kill may kill the worker
         // before the reply is sent.
         if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to cancel a task due to " << status.ToString();
+          RAY_LOG(DEBUG) << "Failed to cancel a task due to " << status.ToString();
           return;
         }
 
@@ -760,11 +762,11 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
                               force_kill,
                               recursive));
             } else {
-              RAY_LOG(ERROR)
+              RAY_LOG(DEBUG)
                   << "Failed to cancel a task which is running. Stop retrying.";
             }
           } else {
-            RAY_LOG(ERROR) << "Attempt to cancel task " << task_spec.TaskId()
+            RAY_LOG(DEBUG) << "Attempt to cancel task " << task_spec.TaskId()
                            << " in a worker that doesn't have this task.";
           }
         }

@@ -84,7 +84,8 @@ class TorchPredictor(DLPredictor):
                 ``TorchTrainer`` run.
             model: If the checkpoint contains a model state dict, and not
                 the model itself, then the state dict will be loaded to this
-                ``model``.
+                ``model``. If the checkpoint already contains the model itself,
+                this model argument will be discarded.
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
         """

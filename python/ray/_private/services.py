@@ -1137,6 +1137,8 @@ def _start_redis_instance(
         if Config.REDIS_CLIENT_KEY():
             command += ["--tls-key-file", Config.REDIS_CLIENT_KEY()]
         command += ["--tls-replication", "yes"]
+    if sys.platform != "win32":
+        command += ["--save", "", "--appendonly", "no"]
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REDIS_SERVER,
