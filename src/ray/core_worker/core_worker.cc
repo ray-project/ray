@@ -2335,7 +2335,8 @@ Status CoreWorker::ExecuteTask(
       creation_task_exception_pb_bytes,
       is_retryable_error,
       defined_concurrency_groups,
-      name_of_concurrency_group_to_execute);
+      name_of_concurrency_group_to_execute,
+      /*is_reattempt=*/task_spec.AttemptNumber() > 0);
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
