@@ -214,14 +214,20 @@ class BatchPredictor:
                     return batch_data
                 elif select_columns and isinstance(batch_data, np.ndarray):
                     raise ValueError(
-                        f"Column name(s) {select_columns} should not be "
-                        "provided for prediction data type of `numpy.ndarray`"
+                        f"Column name(s) {select_columns} should not be provided "
+                        "for prediction input data type of ``numpy.ndarray``"
                     )
                 elif batch_format == BatchFormat.NUMPY:
                     if isinstance(batch_data, dict):
-                        return {
-                            k: v for k, v in batch_data.items() if k in select_columns
-                        }
+                        if len(select_columns) == 1:
+                            # Single column selection return numpy array
+                            return batch_data[select_columns[0]]
+                        else:
+                            return {
+                                k: v
+                                for k, v in batch_data.items()
+                                if k in select_columns
+                            }
                     elif isinstance(batch_data, np.ndarray):
                         return batch_data
                 elif batch_format == BatchFormat.PANDAS:
@@ -239,14 +245,10 @@ class BatchPredictor:
                 """
                 if not keep_columns:
                     return prediction_output_batch
-                elif keep_columns and (
-                    isinstance(input_batch, np.ndarray)
-                    or isinstance(prediction_output_batch, np.ndarray)
-                ):
+                elif keep_columns and (isinstance(input_batch, np.ndarray)):
                     raise ValueError(
-                        f"Column name(s) {keep_columns} should not be "
-                        "provided for input or prediction output data type of "
-                        "``numpy.ndarray``"
+                        f"Column name(s) {keep_columns} should not be provided "
+                        "for prediction input data type of ``numpy.ndarray``"
                     )
                 elif batch_format == BatchFormat.NUMPY:
                     for column in keep_columns:

@@ -96,4 +96,4 @@ class DLPredictor(Predictor):
         if isinstance(model_output, dict):
             return {k: self._tensor_to_array(v) for k, v in model_output.items()}
         else:
-            return self._tensor_to_array(model_output)
+            return {"predictions": self._tensor_to_array(model_output)}
