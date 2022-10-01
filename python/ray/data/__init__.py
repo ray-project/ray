@@ -1,9 +1,5 @@
 import ray
-from ray.data._internal.arrow_serialization import (
-    _register_arrow_array_serializer,
-    _register_arrow_json_parseoptions_serializer,
-    _register_arrow_json_readoptions_serializer,
-)
+from ray.data._internal.arrow_serialization import _register_custom_serializers
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data.dataset import Dataset
@@ -38,20 +34,10 @@ from ray.data.read_api import (  # noqa: F401
     read_tfrecords,
 )
 
-# Register custom Arrow array, JSON ReadOptions, and JSON ParseOptions serializers after
-# worker has initialized.
-if ray.is_initialized():
-    _register_arrow_array_serializer()
-    _register_arrow_json_readoptions_serializer()
-    _register_arrow_json_parseoptions_serializer()
-else:
-    ray._private.worker._post_init_hooks.extend(
-        [
-            _register_arrow_array_serializer,
-            _register_arrow_json_parseoptions_serializer,
-            _register_arrow_json_readoptions_serializer,
-        ]
-    )
+# Register custom serializers needed for Datasets.
+ray._private.worker.global_worker.run_function_on_all_workers(
+    lambda _: _register_custom_serializers()
+)
 
 __all__ = [
     "ActorPoolStrategy",
