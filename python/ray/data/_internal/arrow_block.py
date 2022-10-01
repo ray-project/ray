@@ -395,8 +395,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
             bounds = np.searchsorted(table[col], boundaries)
         last_idx = 0
         for idx in bounds:
-            # Slices need to be copied to avoid including the base table
-            # during serialization.
             partitions.append(table.slice(last_idx, idx - last_idx))
             last_idx = idx
         partitions.append(table.slice(last_idx))
