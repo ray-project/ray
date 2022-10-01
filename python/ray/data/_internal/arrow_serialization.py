@@ -35,6 +35,13 @@ def _is_in_test():
     return _in_test
 
 
+def _register_custom_serializers():
+    # Register all custom serializers required by Datasets.
+    _register_arrow_array_serializer()
+    _register_arrow_json_readoptions_serializer()
+    _register_arrow_json_parseoptions_serializer()
+
+
 # Register custom Arrow JSON ReadOptions serializer to workaround it not being picklable
 # in Arrow < 8.0.0.
 def _register_arrow_json_readoptions_serializer():
@@ -112,7 +119,7 @@ def _register_arrow_array_serializer():
         )
         return
 
-    context = ray.worker.global_worker.get_serialization_context()
+    context = ray._private.worker.global_worker.get_serialization_context()
     array_types = _get_arrow_array_types()
     for array_type in array_types:
         context._register_cloudpickle_reducer(array_type, _arrow_array_reduce)
