@@ -55,8 +55,8 @@ class Batcher(BatcherInterface):
 
         Args:
             batch_size: The size of batches to yield.
-            ensure_copy: Whether the Batcher should guarantee that batches are copied
-                slice copies of the base blocks (not zero-copy views).
+            ensure_copy: Whether batches are always copied from the underlying base
+                blocks (not zero-copy views).
         """
         self._batch_size = batch_size
         self._buffer = []

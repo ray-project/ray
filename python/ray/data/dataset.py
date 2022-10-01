@@ -538,7 +538,7 @@ class Dataset(Generic[T]):
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
             # TODO(Clark): Expose this zero-copy behavior as a map_batches parameter.
-            batcher = Batcher(batch_size, ensure_copy=True)
+            batcher = Batcher(batch_size, ensure_copy=batch_size is not None)
             for block in blocks:
                 batcher.add(block)
             batcher.done_adding()
@@ -597,6 +597,7 @@ class Dataset(Generic[T]):
                 transform,
                 compute,
                 ray_remote_args,
+                # TODO(Clark): Add a strict cap here.
                 target_block_size=batch_size,
                 fn=fn,
                 fn_args=fn_args,

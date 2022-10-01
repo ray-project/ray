@@ -1,5 +1,6 @@
 import collections
 import logging
+import math
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 import ray
@@ -18,6 +19,7 @@ from ray.data.block import (
     RowUDF,
 )
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DatasetContext
+from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -80,15 +82,16 @@ class TaskPoolStrategy(ComputeStrategy):
         if block_list.initial_num_blocks() == 0:
             return block_list
 
+        if name is None:
+            name = "map"
         blocks = block_list.get_blocks_with_metadata()
         # Bin blocks by target block size.
         if target_block_size is not None:
-            block_bundles = _bundle_blocks_up_to_size(blocks, target_block_size)
+            _check_batch_size(blocks, target_block_size, name)
+            block_bundles = _bundle_blocks_up_to_size(blocks, target_block_size, name)
         else:
             block_bundles = [((b,), (m,)) for b, m in blocks]
         del blocks
-        if name is None:
-            name = "map"
         name = name.title()
         map_bar = ProgressBar(name, total=len(block_bundles))
 
@@ -240,10 +243,15 @@ class ActorPoolStrategy(ComputeStrategy):
         if fn_constructor_kwargs is None:
             fn_constructor_kwargs = {}
 
+        if name is None:
+            name = "map"
         blocks_in = block_list.get_blocks_with_metadata()
         # Bin blocks by target block size.
         if target_block_size is not None:
-            block_bundles = _bundle_blocks_up_to_size(blocks_in, target_block_size)
+            _check_batch_size(blocks_in, target_block_size, name)
+            block_bundles = _bundle_blocks_up_to_size(
+                blocks_in, target_block_size, name
+            )
         else:
             block_bundles = [((b,), (m,)) for b, m in blocks_in]
         del blocks_in
@@ -255,8 +263,6 @@ class ActorPoolStrategy(ComputeStrategy):
 
         orig_num_blocks = len(block_bundles)
         results = []
-        if name is None:
-            name = "map"
         name = name.title()
         map_bar = ProgressBar(name, total=orig_num_blocks)
 
@@ -485,9 +491,10 @@ def _map_block_nosplit(
 
 
 def _bundle_blocks_up_to_size(
-    blocks: List[Tuple[Block, BlockMetadata]],
+    blocks: List[Tuple[ObjectRef[Block], BlockMetadata]],
     target_size: int,
-) -> List[Tuple[List[Block], List[BlockMetadata]]]:
+    name: str,
+) -> List[Tuple[List[ObjectRef[Block]], List[BlockMetadata]]]:
     """Group blocks into bundles that are up to (but not exceeding) the provided target
     size.
     """
@@ -506,4 +513,41 @@ def _bundle_blocks_up_to_size(
         curr_bundle_size += num_rows
     if curr_bundle:
         block_bundles.append(curr_bundle)
+    if len(blocks) / len(block_bundles) >= 10:
+        logger.warning(
+            f"Having to send 10 or more blocks to a single {name} task to create a "
+            f"batch of size {target_size}, which may result in less transformation "
+            "parallelism than expected. This may indicate that your blocks are too "
+            "small and/or your batch size is too large, and you may want to decrease "
+            "your read parallelism and/or decrease your batch size."
+        )
     return [tuple(zip(*block_bundle)) for block_bundle in block_bundles]
+
+
+def _check_batch_size(
+    blocks_and_meta: List[Tuple[ObjectRef[Block], BlockMetadata]],
+    batch_size: int,
+    name: str,
+):
+    """Log a warning if the provided batch size exceeds the configured target max block
+    size.
+    """
+    batch_size_bytes = None
+    for _, meta in blocks_and_meta:
+        if meta.num_rows and meta.size_bytes:
+            batch_size_bytes = math.ceil(batch_size * (meta.size_bytes / meta.num_rows))
+    context = DatasetContext.get_current()
+    if (
+        batch_size_bytes is not None
+        and batch_size_bytes > context.target_max_block_size
+    ):
+        logger.warning(
+            f"Requested batch size {batch_size} results in batches of "
+            f"{batch_size_bytes} bytes for {name} tasks, which is larger than the "
+            f"configured target max block size {context.target_max_block_size}. This "
+            "may result in out-of-memory errors for certain workloads, and you may "
+            "want to decrease your batch size or increase the configured target max "
+            "block size, e.g.: "
+            "from ray.data.context import DatasetContext; "
+            "DatasetContext.get_current().target_max_block_size = 4_000_000_000"
+        )

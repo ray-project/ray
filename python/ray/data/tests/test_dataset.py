@@ -2692,7 +2692,6 @@ def test_map_batches_actors_preserves_order(ray_start_regular_shared):
     [
         (10, 5, 2),
         (10, 1, 10),
-        (10, 1, None),
         (12, 3, 2),
     ],
 )
