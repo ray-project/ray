@@ -742,7 +742,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
         // Retry is not attempted if !status.ok() because force-kill may kill the worker
         // before the reply is sent.
         if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to cancel a task due to " << status.ToString();
+          RAY_LOG(DEBUG) << "Failed to cancel a task due to " << status.ToString();
           return;
         }
 
@@ -762,11 +762,11 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
                               force_kill,
                               recursive));
             } else {
-              RAY_LOG(ERROR)
+              RAY_LOG(DEBUG)
                   << "Failed to cancel a task which is running. Stop retrying.";
             }
           } else {
-            RAY_LOG(ERROR) << "Attempt to cancel task " << task_spec.TaskId()
+            RAY_LOG(DEBUG) << "Attempt to cancel task " << task_spec.TaskId()
                            << " in a worker that doesn't have this task.";
           }
         }
