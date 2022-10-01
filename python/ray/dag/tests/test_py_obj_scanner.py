@@ -1,4 +1,6 @@
-from ray.dag.py_obj_scanner import _PyObjScanner, _instances
+from concurrent.futures import ThreadPoolExecutor
+
+from ray.dag.py_obj_scanner import PyObjScanner
 import pytest
 
 
@@ -7,14 +9,23 @@ class Source:
 
 
 def test_simple_replace():
-    scanner = _PyObjScanner(source_type=Source)
-    my_objs = [Source(), [Source(), {"key": Source()}]]
+    with PyObjScanner(
+        [Source(), [Source(), {"key": Source()}]], source_type=Source
+    ) as scanner:
+        assert scanner.found_objects == 3
+        scanner.replace_with_dict({obj: 1 for obj in scanner.found_objects})
+        assert scanner.reconstruct() == [1, [1, {"key": 1}]]
 
-    found = scanner.find_nodes(my_objs)
-    assert len(found) == 3
+        scanner.replace_with_list([2, 2, 2])
+        assert scanner.reconstruct() == [2, [2, {"key": 2}]]
 
-    replaced = scanner.replace_nodes({obj: 1 for obj in found})
-    assert replaced == [1, [1, {"key": 1}]]
+        scanner.replace_with_func(lambda x: 3)
+        assert scanner.reconstruct() == [3, [3, {"key": 3}]]
+
+    from ray.dag.py_obj_scanner import _local
+
+    # test the resources are GCed correctly
+    assert not hasattr(_local, "scanner")
 
 
 class NotSerializable:
@@ -23,41 +34,34 @@ class NotSerializable:
 
 
 def test_not_serializing_objects():
-    scanner = _PyObjScanner(source_type=Source)
     not_serializable = NotSerializable()
-    my_objs = [not_serializable, {"key": Source()}]
+    with PyObjScanner(
+        [not_serializable, {"key": Source()}], source_type=Source
+    ) as scanner:
+        assert len(scanner.found_objects) == 1
 
-    found = scanner.find_nodes(my_objs)
-    assert len(found) == 1
-
-    replaced = scanner.replace_nodes({obj: 1 for obj in found})
-    assert replaced == [not_serializable, {"key": 1}]
+        scanner.replace_with_dict({obj: 1 for obj in scanner.found_objects})
+        assert scanner.reconstruct() == [not_serializable, {"key": 1}]
 
 
-def test_scanner_clear():
-    """Test scanner clear to make the scanner GCable"""
-    prev_len = len(_instances)
+def test_scanner_multi_thread():
+    inputs = [Source() for _ in range(100000)]
 
-    def call_find_nodes():
-        scanner = _PyObjScanner(source_type=Source)
-        my_objs = [Source(), [Source(), {"key": Source()}]]
-        scanner.find_nodes(my_objs)
-        scanner.clear()
-        assert id(scanner) not in _instances
+    def _worker(x):
+        with PyObjScanner(x, source_type=Source) as scanner:
+            scanner.replace_with_func(lambda n: 1)
+            assert sum(scanner.reconstruct()) == 100000
 
-    call_find_nodes()
-    assert prev_len == len(_instances)
+    with ThreadPoolExecutor(max_workers=100) as pool:
+        for _ in range(10):
+            list(pool.map(_worker, [inputs] * 100))
 
-    def call_find_and_replace_nodes():
-        scanner = _PyObjScanner(source_type=Source)
-        my_objs = [Source(), [Source(), {"key": Source()}]]
-        found = scanner.find_nodes(my_objs)
-        scanner.replace_nodes({obj: 1 for obj in found})
-        scanner.clear()
-        assert id(scanner) not in _instances
 
-    call_find_and_replace_nodes()
-    assert prev_len == len(_instances)
+def test_no_nested():
+    with PyObjScanner([Source()], source_type=Source):
+        with pytest.raises(RuntimeError):
+            with PyObjScanner([Source()], source_type=Source):
+                pass
 
 
 if __name__ == "__main__":

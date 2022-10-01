@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 import ray
 from ray.actor import ActorHandle
-from ray.dag.py_obj_scanner import _PyObjScanner
+from ray.dag.py_obj_scanner import PyObjScanner
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 
@@ -47,16 +47,13 @@ class Query:
 
     async def resolve_async_tasks(self):
         """Find all unresolved asyncio.Task and gather them all at once."""
-        scanner = _PyObjScanner(source_type=asyncio.Task)
-        tasks = scanner.find_nodes((self.args, self.kwargs))
-
-        if len(tasks) > 0:
-            resolved = await asyncio.gather(*tasks)
-            replacement_table = dict(zip(tasks, resolved))
-            self.args, self.kwargs = scanner.replace_nodes(replacement_table)
-
-        # Make the scanner GCable to avoid memory leak
-        scanner.clear()
+        with PyObjScanner(
+            (self.args, self.kwargs), source_type=asyncio.Task
+        ) as scanner:
+            tasks = scanner.found_objects
+            if len(tasks) > 0:
+                scanner.replace_with_list(await asyncio.gather(*tasks))
+                self.args, self.kwargs = scanner.reconstruct()
 
 
 class ReplicaSet:

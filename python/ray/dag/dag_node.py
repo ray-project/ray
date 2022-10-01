@@ -1,6 +1,6 @@
 import ray
 from ray.dag.base import DAGNodeBase
-from ray.dag.py_obj_scanner import _PyObjScanner
+from ray.dag.py_obj_scanner import PyObjScanner
 from ray.util.annotations import DeveloperAPI
 
 from typing import (
@@ -153,6 +153,15 @@ class DAGNode(DAGNodeBase):
                     children.append(a)
         return children
 
+    def _scan_inputs(self) -> PyObjScanner:
+        return PyObjScanner(
+            [
+                self._bound_args,
+                self._bound_kwargs,
+                self._bound_other_args_to_resolve,
+            ]
+        )
+
     def _get_all_child_nodes(self) -> List["DAGNode"]:
         """Return the list of nodes referenced by the args, kwargs, and
         args_to_resolve in current node, even they're deeply nested.
@@ -161,20 +170,13 @@ class DAGNode(DAGNodeBase):
             f.remote(a, [b]) -> [a, b]
             f.remote(a, [b], key={"nested": [c]}) -> [a, b, c]
         """
-
-        scanner = _PyObjScanner()
         # we use List instead of Set here, reason explained
         # in `_get_toplevel_child_nodes`.
         children = []
-        for n in scanner.find_nodes(
-            [
-                self._bound_args,
-                self._bound_kwargs,
-                self._bound_other_args_to_resolve,
-            ]
-        ):
-            if n not in children:
-                children.append(n)
+        with self._scan_inputs() as scanner:
+            for n in scanner.found_objects:
+                if n not in children:
+                    children.append(n)
         return children
 
     def _apply_and_replace_all_child_nodes(
@@ -192,24 +194,11 @@ class DAGNode(DAGNodeBase):
             New DAGNode after replacing all child nodes.
         """
 
-        replace_table = {}
         # CloudPickler scanner object for current layer of DAGNode. Same
         # scanner should be use for a full find & replace cycle.
-        scanner = _PyObjScanner()
-        # Find all first-level nested DAGNode children in args.
-        # Update replacement table and execute the replace.
-        for node in scanner.find_nodes(
-            [
-                self._bound_args,
-                self._bound_kwargs,
-                self._bound_other_args_to_resolve,
-            ]
-        ):
-            if node not in replace_table:
-                replace_table[node] = fn(node)
-        new_args, new_kwargs, new_other_args_to_resolve = scanner.replace_nodes(
-            replace_table
-        )
+        with self._scan_inputs() as scanner:
+            scanner.replace_with_func(fn)
+            new_args, new_kwargs, new_other_args_to_resolve = scanner.reconstruct()
 
         # Return updated copy of self.
         return self._copy(
@@ -282,14 +271,12 @@ class DAGNode(DAGNodeBase):
                 source_input_list that passes predictate_fn.
         """
         replace_table = {}
-        scanner = _PyObjScanner()
-        for node in scanner.find_nodes(source_input_list):
-            if predictate_fn(node) and node not in replace_table:
-                replace_table[node] = apply_fn(node)
-
-        replaced_inputs = scanner.replace_nodes(replace_table)
-
-        return replaced_inputs
+        with PyObjScanner(source_input_list) as scanner:
+            for node in scanner.found_objects:
+                if predictate_fn(node) and node not in replace_table:
+                    replace_table[node] = apply_fn(node)
+            scanner.replace_with_dict(replace_table)
+            return scanner.reconstruct()
 
     def _execute_impl(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this node, assuming args have been transformed already."""
