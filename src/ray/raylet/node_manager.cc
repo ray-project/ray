@@ -1086,6 +1086,8 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
       }
     }
   }
+
+  local_object_manager_.AbortGeneratorObjectsOwnedByWorker(worker_id, node_id);
 }
 
 bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,

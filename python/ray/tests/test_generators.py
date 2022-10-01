@@ -200,14 +200,32 @@ def test_dynamic_generator(ray_start_regular, store_in_plasma):
         ray.get(static.remote(3))
 
 
-def test_dynamic_generator_fails(ray_start_regular):
+@pytest.mark.parametrize("temporary_failure", [False, True])
+def test_dynamic_generator_fails(ray_start_regular, temporary_failure):
     address = ray_start_regular["address"]
 
+    @ray.remote(num_cpus=0)
+    class FailureSignal:
+        def __init__(self):
+            self.fail = True
+            self.count = 0
+
+        def set(self, fail):
+            self.fail = fail
+
+        def get(self):
+            self.count += 1
+            return self.fail
+
+        def count(self):
+            return self.count
+
     @ray.remote(num_returns="dynamic")
-    def dynamic_generator(num_returns):
+    def dynamic_generator(signal, num_returns):
         for i in range(num_returns):
             yield np.ones(1_000_000, dtype=np.int8) * i
-        sys.exit(-1)
+        if ray.get(signal.get.remote()):
+            sys.exit(-1)
 
     @ray.remote
     def read(gen):
@@ -216,14 +234,26 @@ def test_dynamic_generator_fails(ray_start_regular):
                 return False
         return True
 
-    gen_ref = dynamic_generator.remote(10)
+    signal = FailureSignal.remote()
+    max_retries = -1 if temporary_failure else 1
+    gen_ref = dynamic_generator.options(max_retries=max_retries).remote(signal, 10)
 
-    with pytest.raises(ray.exceptions.WorkerCrashedError):
-        ray.get(gen_ref)
+    if temporary_failure:
+        while ray.get(signal.count.remote()) < 3:
+            signal.set.remote(False)
+        for i, ref in enumerate(ray.get(gen_ref)):
+            assert ray.get(ref)[0] == i
+        del ref
+        del gen_ref
+    else:
+        with pytest.raises(ray.exceptions.WorkerCrashedError):
+            ray.get(gen_ref)
 
     # All partially stored objects should eventually get cleaned up.
-    # TODO(swang): Also test case where task fails on first try, succeeds on
+    # TODO(swang): test case where task fails on first try, succeeds on
     # second.
+    # TODO(swang): test static num_returns.
+    # TODO(swang): test case where owner dies.
     wait_for_condition(lambda: "Plasma memory usage 0 MiB" in memory_summary(address))
 
 

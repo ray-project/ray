@@ -571,6 +571,7 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
     // through the NodeID of the raylet where the generator task executed.
     // Generator tasks return a single ObjectRef that contains the dynamically
     // generated ObjectRefs.
+    // TODO(swang): Also abort objects for static num_returns?
     commit_or_abort_generator_callback_(
         generator_id_to_abort, generator_raylet_id, /*commit=*/false);
   }

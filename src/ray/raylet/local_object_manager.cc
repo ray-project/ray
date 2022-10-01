@@ -114,6 +114,22 @@ void LocalObjectManager::AbortGeneratorObjects(const ObjectID &generator_id) {
   pending_generator_objects_.erase(generator_it);
 }
 
+void LocalObjectManager::AbortGeneratorObjectsOwnedByWorker(const WorkerID &worker_id,
+                                                            const NodeID &node_id) {
+  for (const auto &generator : pending_generator_objects_) {
+    const auto &generator_id = generator.first;
+    auto it = local_objects_.find(generator_id);
+    RAY_CHECK(it != local_objects_.end());
+    if (!worker_id.IsNil() &&
+        worker_id == WorkerID::FromBinary(it->second.owner_address.worker_id())) {
+      AbortGeneratorObjects(generator_id);
+    } else if (!node_id.IsNil() &&
+               node_id == NodeID::FromBinary(it->second.owner_address.raylet_id())) {
+      AbortGeneratorObjects(generator_id);
+    }
+  }
+}
+
 void LocalObjectManager::WaitForObjectFree(const ObjectID &object_id,
                                            const rpc::Address &owner_address) {
   // Create a object eviction subscription message.

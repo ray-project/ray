@@ -98,6 +98,9 @@ class LocalObjectManager {
 
   void AbortGeneratorObjects(const ObjectID &generator_id);
 
+  void AbortGeneratorObjectsOwnedByWorker(const WorkerID &worker_id,
+                                          const NodeID &node_id);
+
   /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///
   /// \return True if spilling is in progress.
