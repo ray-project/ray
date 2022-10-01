@@ -220,6 +220,15 @@ class ObjectManager : public ObjectManagerInterface,
   ///                   or send it to all the object stores.
   void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only);
 
+  /// If the object is local, report the object being added
+  /// to the directory. This should be used in cases where
+  /// the owner may have missed the initial notification
+  /// (i.e. dynamic generator objects where the owner does
+  /// not yet know all ObjectRefs created by a task).
+  ///
+  /// \param object_id The object ID to report.
+  void ReportObjectAddedIfLocal(const ObjectID &object_id);
+
   /// Returns debug string for class.
   ///
   /// \return string.

@@ -186,6 +186,15 @@ void ObjectManager::StopRpcService() {
   object_manager_server_.Shutdown();
 }
 
+void ObjectManager::ReportObjectAddedIfLocal(const ObjectID &object_id) {
+  auto it = local_objects_.find(object_id);
+  if (it == local_objects_.end()) {
+    return;
+  }
+
+  object_directory_->ReportObjectAdded(object_id, self_node_id_, it->second.object_info);
+}
+
 void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   // Notify the object directory that the object has been added to this node.
   const ObjectID &object_id = object_info.object_id;

@@ -51,6 +51,7 @@ class LocalObjectManager {
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
+      std::function<void(const ray::ObjectID &)> report_local_object_to_directory,
       pubsub::SubscriberInterface *core_worker_subscriber,
       IObjectDirectory *object_directory)
       : self_node_id_(node_id),
@@ -66,6 +67,7 @@ class LocalObjectManager {
         num_active_workers_(0),
         max_active_workers_(max_io_workers),
         is_plasma_object_spillable_(is_plasma_object_spillable),
+        report_local_object_to_directory_(report_local_object_to_directory),
         is_external_storage_type_fs_(is_external_storage_type_fs),
         max_fused_object_count_(max_fused_object_count),
         next_spill_error_log_bytes_(RayConfig::instance().verbose_spill_logs()),
@@ -324,6 +326,13 @@ class LocalObjectManager {
   /// Callback to check if a plasma object is pinned in workers.
   /// Return true if unpinned, meaning we can safely spill the object. False otherwise.
   std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable_;
+
+  /// Callback to report an object, if it is still local, to
+  /// the location directory. Used for generator objects where
+  /// the owner may drop the initial location notification
+  /// because it doesn't yet know the dynamically created
+  /// ObjectRefs.
+  std::function<void(const ray::ObjectID &)> report_local_object_to_directory_;
 
   /// Used to decide spilling protocol.
   /// If it is "filesystem", it restores spilled objects only from an owner node.

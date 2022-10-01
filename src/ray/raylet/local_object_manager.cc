@@ -89,7 +89,11 @@ bool LocalObjectManager::CommitGeneratorObjects(const ObjectID &generator_id) {
     // could be batched together.
     WaitForObjectFree(object_id, it->second.owner_address);
     ReportObjectSpilledIfNeeded(object_id);
-    // TODO(swang): Object directory should also re-report object location.
+    // Report object location to the directory. This is needed for generator
+    // objects where the initial notification that was sent when the object was
+    // first added may have been dropped by the owner because they didn't know
+    // about the dynamically created ObjectRef yet.
+    report_local_object_to_directory_(object_id);
   }
 
   pending_generator_objects_.erase(generator_it);
