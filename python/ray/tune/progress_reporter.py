@@ -755,7 +755,7 @@ def _memory_debug_str() -> str:
     if np.isnan(used_gb):
         return message
     else:
-        return f"Memory usage on this node: {used_gb}/{total_gb} GiB{message}"
+        return f"Memory usage on this node: {used_gb}/{total_gb} GiB {message or ''}"
 
 
 def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
