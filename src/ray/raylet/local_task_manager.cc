@@ -66,8 +66,8 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
   auto object_ids = task.GetTaskSpecification().GetDependencies();
   bool can_dispatch = true;
   if (object_ids.size() > 0) {
-    bool args_ready =
-        task_dependency_manager_.RequestTaskDependencies(task_id, task.GetDependencies());
+    bool args_ready = task_dependency_manager_.RequestTaskDependencies(
+        task_id, task.GetDependencies(), task.GetTaskSpecification().GetName());
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << task_id;
       tasks_to_dispatch_[scheduling_key].push_back(work);
