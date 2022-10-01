@@ -1,5 +1,6 @@
 class RLModule:
     """Base class for RLlib modules."""
+
     def __call__(self, batch, inference=False, **kwargs):
         if inference:
             return self.forward_inference(batch, **kwargs)
