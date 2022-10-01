@@ -355,10 +355,13 @@ class PullManager {
       // For a request to go from active to unpullable, it must be
       // deactivated first.
       RAY_CHECK_EQ(active_requests.count(request_id), 0u);
-      inactive_requests.erase(request_id);
-      auto task_name = map_find_or_die(requests, request_id).task_name;
-      inactive_by_name.Decrement(task_name);
-      RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
+      auto it = inactive_requests.find(request_id);
+      if (it != inactive_requests.end()) {
+        inactive_requests.erase(it);
+        auto task_name = map_find_or_die(requests, request_id).task_name;
+        inactive_by_name.Decrement(task_name);
+        RAY_CHECK_EQ(inactive_requests.size(), inactive_by_name.Total());
+      }
     }
 
     void RemoveBundlePullRequest(uint64_t request_id) {
