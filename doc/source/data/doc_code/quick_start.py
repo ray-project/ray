@@ -134,7 +134,7 @@ class Worker:
 workers = [Worker.remote(i) for i in range(4)]
 # -> [Actor(Worker, ...), Actor(Worker, ...), ...]
 
-shards = ds.split(n=4)
+shards = ds.split(n=4, locality_hints=workers)
 # -> [
 #       Dataset(num_blocks=3, num_rows=45,
 #               schema={sepal.length: double, sepal.width: double,
