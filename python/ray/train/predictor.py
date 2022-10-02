@@ -10,6 +10,7 @@ from ray.air.util.data_batch_conversion import (
     BatchFormat,
     convert_batch_type_to_pandas,
     convert_pandas_to_batch_type,
+    _convert_batch_type_to_numpy,
 )
 from ray.data import Preprocessor
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -158,6 +159,8 @@ class Predictor(abc.ABC):
         if batch_format == BatchFormat.NUMPY:
             if self._preprocessor:
                 data = self._preprocessor.transform_batch(data)
+            # In case preprocessor is pandas only
+            data = _convert_batch_type_to_numpy(data)
             return self._predict_numpy(data, **kwargs)
 
         elif batch_format == BatchFormat.PANDAS:
