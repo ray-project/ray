@@ -1,3 +1,4 @@
+import threading
 import time
 
 from ray import tune
@@ -28,19 +29,22 @@ def _report_progress(
         reporter.report(trials, done, sched_debug_str, "")
 
 
-def tune_loop(tune_controller: TuneController):
+def tune_loop(tune_controller: TuneController, stop_event: threading.Event) -> float:
     progress_reporter = _detect_reporter()
+    start_time = time.time()
     progress_reporter.setup(
-        start_time=time.time(),
+        start_time=start_time,
         total_samples=tune_controller._searcher.total_samples,
         metric=None,
         mode=None,
     )
-    while not tune_controller.is_finished():
+    while not tune_controller.is_finished() and not stop_event.is_set():
         tune_controller.step()
         _report_progress(tune_controller, progress_reporter)
 
     _report_progress(tune_controller, progress_reporter, done=True)
+    time_taken = time.time() - start_time
+    return time_taken
 
 
 def tune_run(

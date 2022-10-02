@@ -6,9 +6,21 @@ import sys
 import threading
 import time
 import warnings
-from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Mapping,
+    Optional,
+    Sequence,
+    Type,
+    Union,
+)
 
 import ray
+from ray.air.execution.impl.tune.progress_loop import tune_loop
+from ray.air.execution.impl.tune.tune_controller import TuneController
+from ray.air.execution.resources.placement_group import PlacementGroupResourceManager
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -123,6 +135,39 @@ def _report_progress(
         sched_debug_str = runner.scheduler_alg.debug_string()
         executor_debug_str = runner.trial_executor.debug_string()
         reporter.report(trials, done, sched_debug_str, executor_debug_str)
+
+
+def _setup_signal_catching() -> threading.Event:
+    original_handler = signal.getsignal(signal.SIGINT)
+    stop_event = threading.Event()
+
+    def signal_interrupt_tune_run(sig: int, frame):
+        logger.warning(
+            "Stop signal received (e.g. via SIGINT/Ctrl+C), ending Ray Tune run. "
+            "This will try to checkpoint the experiment state one last time. "
+            "Press CTRL+C (or send SIGINT/SIGKILL/SIGTERM) "
+            "to skip. "
+        )
+        stop_event.set()
+        # Restore original signal handler to react to future SIGINT signals
+        signal.signal(signal.SIGINT, original_handler)
+
+    # We should only install the handler when it is safe to do so.
+    # When tune.run() is called from worker thread, signal.signal will
+    # fail.
+    allow_signal_catching = True
+    if threading.current_thread() != threading.main_thread():
+        allow_signal_catching = False
+
+    if allow_signal_catching:
+        if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
+            signal.signal(signal.SIGINT, signal_interrupt_tune_run)
+
+        # Always register SIGUSR1 if available (not available e.g. on Windows)
+        if hasattr(signal, "SIGUSR1"):
+            signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
+
+    return stop_event
 
 
 @PublicAPI
@@ -507,9 +552,6 @@ def run(
             "well as implementing `reset_config` for Trainable."
         )
 
-    trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors, result_buffer_length=result_buffer_length
-    )
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
     else:
@@ -628,42 +670,8 @@ def run(
         callbacks, sync_config, metric=metric, progress_metrics=progress_metrics
     )
 
-    runner = TrialRunner(
-        search_alg=search_alg,
-        scheduler=scheduler,
-        local_checkpoint_dir=experiments[0].checkpoint_dir,
-        remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
-        sync_config=sync_config,
-        stopper=experiments[0].stopper,
-        resume=resume,
-        server_port=server_port,
-        fail_fast=fail_fast,
-        trial_executor=trial_executor,
-        callbacks=callbacks,
-        metric=metric,
-        # Driver should only sync trial checkpoints if
-        # checkpoints are not synced to cloud
-        driver_sync_trial_checkpoints=not bool(sync_config.upload_dir),
-    )
-
-    if not runner.resumed:
-        for exp in experiments:
-            search_alg.add_configurations([exp])
-    else:
-        logger.info(
-            "TrialRunner resumed, ignoring new add_experiment but "
-            "updating trial resources."
-        )
-        if resources_per_trial:
-            runner.update_pending_trial_resources(resources_per_trial)
-
-    # Calls setup on callbacks
-    runner.setup_experiments(
-        experiments=experiments, total_num_samples=search_alg.total_samples
-    )
-
     # User Warning for GPUs
-    if trial_executor.has_gpus():
+    if ray.cluster_resources().get("GPU", 0):
         if _check_gpus_in_resources(resources=resources_per_trial):
             # "gpu" is manually set.
             pass
@@ -683,58 +691,96 @@ def run(
                 "Trainable API."
             )
 
-    original_handler = signal.getsignal(signal.SIGINT)
-    state = {"signal": None}
-
-    def signal_interrupt_tune_run(sig: int, frame):
-        logger.warning(
-            "Stop signal received (e.g. via SIGINT/Ctrl+C), ending Ray Tune run. "
-            "This will try to checkpoint the experiment state one last time. "
-            "Press CTRL+C (or send SIGINT/SIGKILL/SIGTERM) "
-            "to skip. "
-        )
-        state["signal"] = sig
-        # Restore original signal handler to react to future SIGINT signals
-        signal.signal(signal.SIGINT, original_handler)
-
-    # We should only install the handler when it is safe to do so.
-    # When tune.run() is called from worker thread, signal.signal will
-    # fail.
-    allow_signal_catching = True
-    if threading.current_thread() != threading.main_thread():
-        allow_signal_catching = False
-
-    if allow_signal_catching:
-        if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
-            signal.signal(signal.SIGINT, signal_interrupt_tune_run)
-
-        # Always register SIGUSR1 if available (not available e.g. on Windows)
-        if hasattr(signal, "SIGUSR1"):
-            signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
+    stop_event = _setup_signal_catching()
 
     progress_reporter = progress_reporter or _detect_reporter()
 
-    tune_start = time.time()
+    legacy_execution = os.environ.get("TUNE_EXECUTION_V2", "0") == "0"
 
-    progress_reporter.setup(
-        start_time=tune_start,
-        total_samples=search_alg.total_samples,
-        metric=metric,
-        mode=mode,
-    )
-    while not runner.is_finished() and not state["signal"]:
-        runner.step()
+    # ------ LEGACY RUN ------
+    if legacy_execution:
+        trial_executor = trial_executor or RayTrialExecutor(
+            reuse_actors=reuse_actors, result_buffer_length=result_buffer_length
+        )
+        runner = TrialRunner(
+            search_alg=search_alg,
+            scheduler=scheduler,
+            local_checkpoint_dir=experiments[0].checkpoint_dir,
+            remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
+            sync_config=sync_config,
+            stopper=experiments[0].stopper,
+            resume=resume,
+            server_port=server_port,
+            fail_fast=fail_fast,
+            trial_executor=trial_executor,
+            callbacks=callbacks,
+            metric=metric,
+            # Driver should only sync trial checkpoints if
+            # checkpoints are not synced to cloud
+            driver_sync_trial_checkpoints=not bool(sync_config.upload_dir),
+        )
+
+        if not runner.resumed:
+            for exp in experiments:
+                search_alg.add_configurations([exp])
+        else:
+            logger.info(
+                "TrialRunner resumed, ignoring new add_experiment but "
+                "updating trial resources."
+            )
+            if resources_per_trial:
+                runner.update_pending_trial_resources(resources_per_trial)
+
+        # Calls setup on callbacks
+        runner.setup_experiments(
+            experiments=experiments, total_num_samples=search_alg.total_samples
+        )
+
+        tune_start = time.time()
+
+        progress_reporter.setup(
+            start_time=tune_start,
+            total_samples=search_alg.total_samples,
+            metric=metric,
+            mode=mode,
+        )
+        while not runner.is_finished() and not stop_event.is_set():
+            runner.step()
+            if has_verbosity(Verbosity.V1_EXPERIMENT):
+                _report_progress(runner, progress_reporter)
+        tune_taken = time.time() - tune_start
+
+        try:
+            runner.checkpoint(force=True)
+        except Exception as e:
+            logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
+
         if has_verbosity(Verbosity.V1_EXPERIMENT):
-            _report_progress(runner, progress_reporter)
-    tune_taken = time.time() - tune_start
+            _report_progress(runner, progress_reporter, done=True)
 
-    try:
-        runner.checkpoint(force=True)
-    except Exception as e:
-        logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
+        all_trials = runner.get_trials()
+        experiment_checkpoint = runner.checkpoint_file
+    else:
+        # ------ NEW EXECUTION ENGINE RUN ------
 
-    if has_verbosity(Verbosity.V1_EXPERIMENT):
-        _report_progress(runner, progress_reporter, done=True)
+        if trial_executor is not None:
+            raise RuntimeError(
+                "You are using a custom RayTrialExecutor with the new execution mode. "
+                "The new execution mode does not support custom executors - "
+                "set the argument to None."
+            )
+
+        resource_manager = PlacementGroupResourceManager()
+
+        tune_controller = TuneController(
+            search_alg=search_alg,
+            scheduler=scheduler,
+            resource_manager=resource_manager,
+            callbacks=callbacks,
+        )
+        tune_taken = tune_loop(tune_controller=tune_controller, stop_event=stop_event)
+        all_trials = tune_controller.trials
+        experiment_checkpoint = "todo"
 
     # Wait for syncing to finish
     for callback in callbacks:
@@ -744,15 +790,17 @@ def run(
             except TuneError as e:
                 logger.error(e)
 
-    runner.cleanup()
+    # ------ LEGACY RUN ------
+    if legacy_execution:
+        runner.cleanup()
 
     incomplete_trials = []
-    for trial in runner.get_trials():
+    for trial in all_trials:
         if trial.status != Trial.TERMINATED:
             incomplete_trials += [trial]
 
     if incomplete_trials:
-        if raise_on_failed_trial and not state["signal"]:
+        if raise_on_failed_trial and not stop_event.is_set():
             raise TuneError("Trials did not complete", incomplete_trials)
         else:
             logger.error("Trials did not complete: %s", incomplete_trials)
@@ -764,17 +812,16 @@ def run(
             f"({tune_taken:.2f} seconds for the tuning loop)."
         )
 
-    if state["signal"]:
+    if stop_event.is_set():
         logger.warning(
             "Experiment has been interrupted, but the most recent state was "
             "saved. You can continue running this experiment by passing "
             "`resume=True` to `tune.run()`"
         )
 
-    trials = runner.get_trials()
     return ExperimentAnalysis(
-        runner.checkpoint_file,
-        trials=trials,
+        experiment_checkpoint,
+        trials=all_trials,
         default_metric=metric,
         default_mode=mode,
         sync_config=sync_config,
