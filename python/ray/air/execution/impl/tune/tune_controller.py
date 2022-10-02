@@ -10,7 +10,7 @@ from ray.air.execution.actor_request import ActorRequest, ActorInfo
 from ray.air.execution.controller import Controller
 
 # Legacy tune
-from ray.air.execution.impl.tune.legacy import LegacyTrialRunner
+from ray.air.execution.impl.tune.interface import LegacyTrialRunner
 from ray.air.execution.impl.tune.tune_result import (
     TuneTrainingEvent,
     TuneSavingEvent,
@@ -50,7 +50,7 @@ class TuneController(Controller):
             resource_manager=resource_manager or FixedResourceManager({"CPU": 8})
         )
 
-        self._legacy_wrapper = None  # LegacyTrialRunner(self)
+        self._interface = LegacyTrialRunner(self)  # LegacyTrialRunner(self)
 
         self._all_trials = []
         self._buffered_actor_requests = []
@@ -76,7 +76,7 @@ class TuneController(Controller):
 
     @property
     def scheduler_interface(self):
-        return self._legacy_wrapper or self
+        return self._interface
 
     def is_finished(self) -> bool:
         return (
@@ -321,18 +321,40 @@ class TuneController(Controller):
             actor=actor, future=actor.train.remote(), cls=TuneTrainingEvent
         )
 
-    def _schedule_save(self, actor: ray.actor.ActorHandle):
+    def _schedule_save(
+        self,
+        actor: ray.actor.ActorHandle,
+        storage: CheckpointStorage = CheckpointStorage.PERSISTENT,
+        _metrics: Optional[Dict] = None,
+    ) -> _TrackedCheckpoint:
         trial = self._live_actors[actor]
 
-        future = actor.save.remote()
-        trial.saving_to = _TrackedCheckpoint(
+        assert storage in [CheckpointStorage.PERSISTENT, CheckpointStorage.MEMORY]
+
+        if storage == CheckpointStorage.PERSISTENT:
+            future = actor.save.remote()
+        else:
+            future = actor.save_to_object.remote()
+
+        tracked_checkpoint = _TrackedCheckpoint(
             dir_or_data=future,
-            storage_mode=CheckpointStorage.PERSISTENT,
-            metrics=trial.last_result,
+            storage_mode=storage,
+            # Todo: Remove _metrics arg once legacy code path removed
+            metrics=_metrics or trial.last_result,
         )
-        self._actor_manager.track_future(
-            actor=actor, future=future, cls=TuneSavingEvent
-        )
+
+        if storage == CheckpointStorage.PERSISTENT:
+            # Disk checkpoints are resolved before they are tracked in the trial
+            trial.saving_to = tracked_checkpoint
+            self._actor_manager.track_future(
+                actor=actor, future=future, cls=TuneSavingEvent
+            )
+        else:
+            # Memory checkpoints are tracked immediately, and we don't wait until they
+            # are resolved.
+            trial.on_checkpoint(tracked_checkpoint)
+
+        return tracked_checkpoint
 
     def _schedule_fail(self, actor: ray.actor.ActorHandle, exception: Exception):
         self._actors_to_fail.add(actor)
@@ -351,6 +373,10 @@ class TuneController(Controller):
     def _handle_saving_result(self, result: TuneSavingEvent):
         actor = result.actor
         trial = self._live_actors[actor]
+
+        # We only resolve savings results for persistent checkpoints
+        assert trial.saving_to.storage_mode == CheckpointStorage.PERSISTENT
+
         trial.saving_to.dir_or_data = result.dir_or_data
         trial.on_checkpoint(trial.saving_to)
 
