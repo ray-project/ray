@@ -283,6 +283,8 @@ class BasicVariantGenerator(SearchAlgorithm):
 
     """
 
+    _max_pending_trials = None
+
     CKPT_FILE_TMPL = "basic-variant-state-{}.json"
 
     def __init__(

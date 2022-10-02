@@ -34,6 +34,8 @@ def tune_setup(
 
 
 class SimpleSearchAlgorithm(SearchAlgorithm):
+    _max_pending_trials = None
+
     def __init__(self):
         self._trials = deque()
 

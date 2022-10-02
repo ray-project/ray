@@ -1,26 +1,7 @@
 import pytest
-import ray
 from ray.air.execution.impl.tune.tests.common import tune_setup
-from ray.tune import PlacementGroupFactory, register_trainable
+from ray.tune import PlacementGroupFactory
 from ray.tune.experiment import Trial
-from ray.tune.trainable import wrap_function
-
-
-@pytest.fixture
-def ray_start_local():
-    address_info = ray.init(
-        local_mode=True, num_cpus=4, num_gpus=2, include_dashboard=False
-    )
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-def _empty_train_fn(config):
-    return 1
-
-
-_empty_train_class = wrap_function(_empty_train_fn)
 
 
 @pytest.mark.parametrize("max_pending_trials", [1, 2, 10])
@@ -38,12 +19,10 @@ def test_max_pending_trials(ray_start_local, max_pending_trials):
     resource_manager, search_alg, scheduler, trial_states, controller = tune_setup()
     controller._max_pending_trials = max_pending_trials
 
-    register_trainable("_empty_train_class", _empty_train_class)
-
     for i in range(10):
         search_alg.add_trial(
             Trial(
-                "_empty_train_class",
+                "_one_iter",
                 placement_group_factory=PlacementGroupFactory([{"CPU": 2}]),
             )
         )
@@ -66,12 +45,11 @@ def test_parallel_trials_extra_resources(ray_start_local):
     - Assert that maximum of parallel running trials is 2 (limited by GPU in extra)
     """
     resource_manager, search_alg, scheduler, trial_states, controller = tune_setup()
-    register_trainable("_empty_train_class", _empty_train_class)
 
     for i in range(10):
         search_alg.add_trial(
             Trial(
-                "_empty_train_class",
+                "_one_iter",
                 placement_group_factory=PlacementGroupFactory(
                     [{"CPU": 1}, {"CPU": 1, "GPU": 1}]
                 ),
@@ -100,12 +78,10 @@ def test_parallel_trials_custom_resources(ray_start_local):
 
     resource_manager._total_resources["a"] = 4
 
-    register_trainable("_empty_train_class", _empty_train_class)
-
     for i in range(10):
         search_alg.add_trial(
             Trial(
-                "_empty_train_class",
+                "_one_iter",
                 placement_group_factory=PlacementGroupFactory([{"CPU": 1}, {"a": 2}]),
             )
         )
@@ -129,12 +105,10 @@ def test_parallel_trials_fractional_gpus(ray_start_local):
     """
     resource_manager, search_alg, scheduler, trial_states, controller = tune_setup()
 
-    register_trainable("_empty_train_class", _empty_train_class)
-
     for i in range(10):
         search_alg.add_trial(
             Trial(
-                "_empty_train_class",
+                "_one_iter",
                 placement_group_factory=PlacementGroupFactory([{"CPU": 1, "GPU": 0.5}]),
             )
         )

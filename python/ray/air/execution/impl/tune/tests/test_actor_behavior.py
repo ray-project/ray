@@ -7,32 +7,6 @@ from ray.air.execution.impl.tune.tune_controller import TuneController
 from ray.tune import PlacementGroupFactory, register_trainable
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.trainable import wrap_function
-
-
-@pytest.fixture
-def ray_start_4_cpus_2_gpus():
-    address_info = ray.init(num_cpus=4, num_gpus=2)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
-def ray_start_local():
-    address_info = ray.init(
-        local_mode=True, num_cpus=4, num_gpus=2, include_dashboard=False
-    )
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-def _empty_train_fn(config):
-    return 1
-
-
-_empty_train_class = wrap_function(_empty_train_fn)
 
 
 def test_change_resources(ray_start_4_cpus_2_gpus):
@@ -54,9 +28,7 @@ def test_change_resources(ray_start_4_cpus_2_gpus):
                 {"resources": ray.get_runtime_context().get_assigned_resources()}
             )
 
-    register_trainable(
-        "_return_cluster_resources", wrap_function(_return_cluster_resources)
-    )
+    register_trainable("_return_cluster_resources", _return_cluster_resources)
 
     class _ChangeResourcesScheduler(FIFOScheduler):
         def __init__(self):

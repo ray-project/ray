@@ -2,7 +2,7 @@ import logging
 import os
 
 import ray
-from ray.tune.search import SearchAlgorithm, BasicVariantGenerator
+from ray.tune.search import SearchAlgorithm
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +11,7 @@ def get_max_pending_trials(search_alg: SearchAlgorithm) -> int:
     max_pending_trials = os.getenv("TUNE_MAX_PENDING_TRIALS_PG", "auto")
     if max_pending_trials == "auto":
         # Auto detect
-        if isinstance(search_alg, BasicVariantGenerator):
+        if search_alg._max_pending_trials is None:
             # Use a minimum of 16 to trigger fast autoscaling
             # Scale up to at most the number of available cluster CPUs
             cluster_cpus = ray.cluster_resources().get("CPU", 1.0)
@@ -30,7 +30,7 @@ def get_max_pending_trials(search_alg: SearchAlgorithm) -> int:
                     f"to the desired maximum number of concurrent trials."
                 )
         else:
-            max_pending_trials = 1
+            max_pending_trials = search_alg._max_pending_trials
     else:
         # Manual override
         max_pending_trials = int(max_pending_trials)

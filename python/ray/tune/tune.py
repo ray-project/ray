@@ -18,9 +18,6 @@ from typing import (
 )
 
 import ray
-from ray.air.execution.impl.tune.progress_loop import tune_loop
-from ray.air.execution.impl.tune.tune_controller import TuneController
-from ray.air.execution.resources.placement_group import PlacementGroupResourceManager
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -762,6 +759,11 @@ def run(
         experiment_checkpoint = runner.checkpoint_file
     else:
         # ------ NEW EXECUTION ENGINE RUN ------
+        from ray.air.execution.impl.tune.progress_loop import tune_loop
+        from ray.air.execution.impl.tune.tune_controller import TuneController
+        from ray.air.execution.resources.placement_group import (
+            PlacementGroupResourceManager,
+        )
 
         if trial_executor is not None:
             raise RuntimeError(

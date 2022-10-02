@@ -1,30 +1,11 @@
 import pytest
-import ray
 from ray.air.execution.impl.tune.tests.common import tune_setup
 from ray.rllib import _register_all
 from ray.tune.experiment import Trial
-from ray.tune.trainable import wrap_function
-
-
-@pytest.fixture
-def ray_start_local():
-    address_info = ray.init(
-        local_mode=True, num_cpus=4, num_gpus=2, include_dashboard=False
-    )
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-def _empty_train_fn(config):
-    return 1
-
-
-_empty_train_class = wrap_function(_empty_train_fn)
 
 
 def test_stopping_criterion(ray_start_local):
-    """Tests that we step multiple times
+    """Tests that we step multiple times.
 
     Legacy test: test_trial_runner::TrialRunnerTest::testMultiStepRun
     Legacy test: test_trial_runner::TrialRunnerTest::testMultiStepRun2
@@ -40,7 +21,7 @@ def test_stopping_criterion(ray_start_local):
     for i in range(4):
         search_alg.add_trial(
             Trial(
-                "__fake",
+                "_inf_iter",
                 stopping_criterion={"training_iteration": 5},
             )
         )
@@ -60,6 +41,39 @@ def test_stopping_criterion(ray_start_local):
     # test_trial_runner::TrialRunnerTest::testMultiStepRun2: Overstepping raises error
     with pytest.raises(RuntimeError):
         controller.step()
+
+
+def test_no_step(ray_start_local):
+    """If we have no trials we should raise an error on step().
+
+    Legacy test: test_trial_runner_2::TrialRunnerTest2::testThrowOnOverstep
+    """
+    resource_manager, search_alg, scheduler, trial_states, controller = tune_setup()
+    with pytest.raises(RuntimeError):
+        controller.step()
+
+
+def test_continue_experiment_on_trial_error(ray_start_local):
+    """If one trial fails, we should continue the rest of the trials still.
+
+    Legacy test: test_trial_runner_2::TrialRunnerTest2::testErrorHandling
+    """
+    resource_manager, search_alg, scheduler, trial_states, controller = tune_setup()
+    search_alg.add_trial(
+        Trial(
+            "_failing",
+        )
+    )
+    search_alg.add_trial(
+        Trial(
+            "_one_iter",
+        )
+    )
+
+    controller.step_until_finished()
+
+    assert controller.trials[0].status == Trial.ERROR
+    assert controller.trials[1].status == Trial.TERMINATED
 
 
 if __name__ == "__main__":
