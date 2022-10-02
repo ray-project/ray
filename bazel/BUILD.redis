@@ -27,6 +27,7 @@ make(
         "-DLUA_USE_MKSTEMP",
         "-Wno-pragmas",
         "-Wno-empty-body",
+        "-fPIC",
     ],
     visibility = ["//visibility:public"],
     lib_source = ":all_srcs",
