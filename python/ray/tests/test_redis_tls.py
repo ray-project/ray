@@ -1,4 +1,3 @@
-# coding: utf-8
 import pytest
 import subprocess
 import sys
@@ -9,7 +8,6 @@ from ray._private.test_utils import enable_external_redis
 @pytest.fixture
 def setup_tls(tmp_path, monkeypatch):
     shell_scripts = f"""
-#!/bin/bash
 mkdir -p {str(tmp_path)}/tls
 openssl genrsa -out {str(tmp_path)}/tls/ca.key 4096
 openssl req \
