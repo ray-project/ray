@@ -76,6 +76,30 @@ def test_continue_experiment_on_trial_error(ray_start_local):
     assert controller.trials[1].status == Trial.TERMINATED
 
 
+def test_max_failures(ray_start_local):
+    """If max failures are reached, we stop retries.
+
+    - Start a failing trial
+    - Set max_failures to `max_failures`
+    - Assert that we only get `max_failures` retries and then stop.
+
+    Legacy test: test_trial_runner_2::TrialRunnerTest2::testFailureRecoveryDisabled
+    """
+    resource_manager, search_alg, scheduler, trial_states, controller = tune_setup()
+    max_failures = 2
+    search_alg.add_trial(Trial("_failing", max_failures=max_failures))
+
+    controller.step_until_finished()
+
+    assert controller.trials[0].status == Trial.ERROR
+    # trial.max_failures is the number of failures, so the number of total tries
+    # is max_failures + 1
+    assert controller.trials[0].num_failures == max_failures + 1
+
+    assert len(search_alg.errored_trials) == 1
+    assert len(scheduler.errored_trials) == 1
+
+
 if __name__ == "__main__":
     import sys
 

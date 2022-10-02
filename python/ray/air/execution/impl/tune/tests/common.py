@@ -7,7 +7,7 @@ from ray.tune import Callback
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.search import SearchAlgorithm
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 
 def tune_setup(
@@ -20,7 +20,7 @@ def tune_setup(
         total_resources={"CPU": 4, "GPU": 2}
     )
     search_alg = search_alg or SimpleSearchAlgorithm()
-    scheduler = scheduler or FIFOScheduler()
+    scheduler = scheduler or SimpleScheduler()
     trial_states = TrialStateCallback()
     callbacks = callbacks or []
     controller = TuneController(
@@ -38,6 +38,7 @@ class SimpleSearchAlgorithm(SearchAlgorithm):
 
     def __init__(self):
         self._trials = deque()
+        self.errored_trials = set()
 
     def add_trial(self, trial: Trial):
         self._trials.append(trial)
@@ -48,6 +49,21 @@ class SimpleSearchAlgorithm(SearchAlgorithm):
 
     def is_finished(self) -> bool:
         return not self._trials
+
+    def on_trial_complete(
+        self, trial_id: str, result: Optional[Dict] = None, error: bool = False
+    ):
+        if error:
+            self.errored_trials.add(trial_id)
+
+
+class SimpleScheduler(FIFOScheduler):
+    def __init__(self):
+        super(SimpleScheduler, self).__init__()
+        self.errored_trials = set()
+
+    def on_trial_error(self, trial_runner, trial: Trial):
+        self.errored_trials.add(trial.trial_id)
 
 
 class TrialStateCallback(Callback):

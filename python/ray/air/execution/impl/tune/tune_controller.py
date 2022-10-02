@@ -38,6 +38,17 @@ from ray.tune.utils import warn_if_slow
 from ray.tune.utils.callback import _create_default_callbacks
 
 
+def _trial_actor_request(trial: Trial) -> ActorRequest:
+    return ActorRequest(
+        cls=trial.get_trainable_cls(),
+        kwargs={
+            "config": trial.config,
+            "remote_checkpoint_dir": trial.remote_checkpoint_dir,
+        },
+        resources=ResourceRequest(bundles=trial.placement_group_factory.bundles),
+    )
+
+
 class TuneController(Controller):
     def __init__(
         self,
@@ -45,6 +56,7 @@ class TuneController(Controller):
         scheduler: Optional[TrialScheduler] = None,
         resource_manager: Optional[ResourceManager] = None,
         callbacks: Optional[List[Callback]] = None,
+        max_failures: Optional[int] = None,
     ):
         self._actor_manager = ActorManager(
             resource_manager=resource_manager or FixedResourceManager({"CPU": 8})
@@ -59,7 +71,7 @@ class TuneController(Controller):
         self._actions = defaultdict(list)
         self._actors_to_pause = set()
         self._actors_to_terminate = set()
-        self._actors_to_fail = set()
+        self._actors_to_fail: Dict[ray.actor.ActorHandle, Exception] = {}
 
         self._searcher: SearchAlgorithm = search_alg
         self._stopper: Stopper = NoopStopper()
@@ -69,6 +81,7 @@ class TuneController(Controller):
         )
 
         self._max_pending_trials = get_max_pending_trials(self._searcher)
+        self._max_failures = max_failures
 
         self._iteration = 0
 
@@ -118,16 +131,7 @@ class TuneController(Controller):
             trial.set_status(Trial.PENDING)
             trial.init_logdir()
 
-            actor_request = ActorRequest(
-                cls=trial.get_trainable_cls(),
-                kwargs={
-                    "config": trial.config,
-                    "remote_checkpoint_dir": trial.remote_checkpoint_dir,
-                },
-                resources=ResourceRequest(
-                    bundles=trial.placement_group_factory.bundles
-                ),
-            )
+            actor_request = _trial_actor_request(trial)
             self._pending_actor_requests[actor_request] = trial
             self._all_trials.append(trial)
             self._actor_manager.add_actor(actor_request)
@@ -171,7 +175,7 @@ class TuneController(Controller):
         self._actors_to_pause.discard(actor)
         self._actors_to_terminate.discard(actor)
 
-        self._trial_failed(trial)
+        self._trial_failed(trial, exception=exception)
 
     def actor_stopped(self, actor: ray.actor.ActorHandle, actor_info: ActorInfo):
         trial = self._live_actors.pop(actor)
@@ -206,24 +210,44 @@ class TuneController(Controller):
                 iteration=0, trials=self._all_trials, trial=trial
             )
         elif actor in self._actors_to_fail:
-            self._trial_failed(trial)
+            exception = self._actors_to_fail.pop(actor)
+            self._trial_failed(trial, exception=exception)
 
-    def _trial_failed(self, trial: Trial):
+    def _trial_failed(self, trial: Trial, exception: Exception):
         trial.set_status(Trial.ERROR)
         # Todo: Let's get rid of trial.runner completely
         trial.set_runner(None)
 
-        self._scheduler.on_trial_error(self.scheduler_interface, trial)
-        self._searcher.on_trial_complete(trial.trial_id, error=True)
-        self._callbacks.on_trial_error(
-            iteration=0, trials=self._all_trials, trial=trial
-        )
+        # Write error log after recover check
+        if trial.should_recover():
+            trial.write_error_log(exc=exception)
+            self._recover_trial(trial)
+        else:
+            trial.write_error_log(exc=exception)
+            self._scheduler.on_trial_error(self.scheduler_interface, trial)
+            self._searcher.on_trial_complete(trial.trial_id, error=True)
+            self._callbacks.on_trial_error(
+                iteration=0, trials=self._all_trials, trial=trial
+            )
+
+    def _recover_trial(self, trial: Trial):
+        # Reset saving
+        if trial.is_saving:
+            trial.saving_to = None
+
+        # If restore was unsuccessful, try again without checkpoint.
+        if trial.is_restoring:
+            trial.clear_checkpoint()
+
+        actor_request = _trial_actor_request(trial)
+
+        # Re-schedule actor
+        self._pending_actor_requests[actor_request] = trial
+        self._buffered_actor_requests.append(actor_request)
 
     def future_result(self, result: FutureResult):
         if isinstance(result, FutureFailed):
-            trial = self._live_actors[result.actor]
             self._schedule_fail(actor=result.actor, exception=result.exception)
-            self._actors_to_fail.add(trial)
             return
 
         if isinstance(result, TuneTrainingEvent):
@@ -357,7 +381,7 @@ class TuneController(Controller):
         return tracked_checkpoint
 
     def _schedule_fail(self, actor: ray.actor.ActorHandle, exception: Exception):
-        self._actors_to_fail.add(actor)
+        self._actors_to_fail[actor] = exception
         self._actor_manager.remove_actor(
             actor=actor, resolve_futures=False, exception=exception
         )
