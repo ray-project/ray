@@ -89,6 +89,10 @@ class DLPredictor(Predictor):
         data: Union[np.ndarray, Dict[str, np.ndarray]],
         dtype: Union[TensorDtype, Dict[str, TensorDtype]],
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+        # Single column selection return numpy array so preprocessors can be
+        # reused in both trianing and prediction
+        if isinstance(data, dict) and len(data) == 1:
+            data = data[list(data.keys())[0]]
         model_input = self._arrays_to_tensors(data, dtype)
         model_output = self.call_model(model_input)
         # TODO (jiaodong): Investigate perf implication of this.

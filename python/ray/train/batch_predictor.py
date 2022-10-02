@@ -219,15 +219,9 @@ class BatchPredictor:
                     )
                 elif batch_format == BatchFormat.NUMPY:
                     if isinstance(batch_data, dict):
-                        if len(select_columns) == 1:
-                            # Single column selection return numpy array
-                            return batch_data[select_columns[0]]
-                        else:
-                            return {
-                                k: v
-                                for k, v in batch_data.items()
-                                if k in select_columns
-                            }
+                        return {
+                            k: v for k, v in batch_data.items() if k in select_columns
+                        }
                     elif isinstance(batch_data, np.ndarray):
                         return batch_data
                 elif batch_format == BatchFormat.PANDAS:
