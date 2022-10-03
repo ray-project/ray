@@ -1,4 +1,5 @@
 import time
+import warnings
 
 import pytest
 
@@ -255,7 +256,9 @@ def reset_log_once_with_str(str_to_append=None):
 def test_warn(fn):
     """Checks if calling train functions outside of session raises warning."""
 
-    with pytest.warns(UserWarning) as record:
+    with warnings.catch_warnings(record=True) as record:
+        # Ignore Deprecation warnings.
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
         fn()
 
     assert fn.__name__ in record[0].message.args[0]
@@ -266,7 +269,9 @@ def test_warn(fn):
 def test_warn_once():
     """Checks if session misuse warning is only shown once per function."""
 
-    with pytest.warns(UserWarning) as record:
+    with warnings.catch_warnings(record=True) as record:
+        # Ignore Deprecation warnings.
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
         assert not load_checkpoint()
         assert not load_checkpoint()
         assert not save_checkpoint(x=2)
