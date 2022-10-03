@@ -41,6 +41,7 @@ class LocalObjectManager {
       const NodeID &node_id,
       std::string self_node_address,
       int self_node_port,
+      instrumented_io_context &io_service;
       size_t free_objects_batch_size,
       int64_t free_objects_period_ms,
       IOWorkerPoolInterface &io_worker_pool,
@@ -56,6 +57,7 @@ class LocalObjectManager {
       : self_node_id_(node_id),
         self_node_address_(self_node_address),
         self_node_port_(self_node_port),
+        io_service_(io_service),
         free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
@@ -223,6 +225,7 @@ class LocalObjectManager {
   const std::string self_node_address_;
   const int self_node_port_;
 
+  /// The io_service/thread this class runs in.
   instrumented_io_context &io_service_;
 
   /// The period between attempts to eagerly evict objects from plasma.
