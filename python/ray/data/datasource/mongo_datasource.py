@@ -19,10 +19,6 @@ logger = logging.getLogger(__name__)
 class MongoDatasource(Datasource):
     """Datasource for reading from and writing to MongoDB.
 
-    Implementation wise, we will use pymongo to connect to MongoDB, and use pymongoarrow
-    to convert MongoDB documents to/from Arrow format, which is a supported block format
-    in Dataset.
-
     Examples:
         >>> import ray
         >>> from ray.data.datasource import MongoDatasource
