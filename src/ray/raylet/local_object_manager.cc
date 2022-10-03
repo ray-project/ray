@@ -578,8 +578,7 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> &urls_to_
             num_failed_deletion_requests_ += 1;
             RAY_LOG(ERROR) << "Failed to send delete spilled object request: "
                            << status.ToString()
-                           << ", retrying"
-                                  .
+                           << ", retrying...";
 
                               // retry failed requests.
                               io_service_.post(
