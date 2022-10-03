@@ -71,7 +71,6 @@ from ray.rllib.utils.typing import (
 from ray.util.annotations import PublicAPI
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
 from ray.util.iter import ParallelIteratorWorker
-from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa
@@ -1284,7 +1283,7 @@ class RolloutWorker(ParallelIteratorWorker):
         if connectors_enabled:
             policy = self.policy_map[policy_id]
             create_connectors_for_policy(policy, merged_config)
-            maybe_get_filters_for_syncing(self, policy, policy_id)
+            maybe_get_filters_for_syncing(self, policy_id)
         else:
             filter_shape = tree.map_structure(
                 lambda s: (
@@ -1869,9 +1868,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 )
 
             if connectors_enabled and name in self.policy_map:
-                policy = self.policy_map[name]
-                create_connectors_for_policy(policy, policy_config)
-                maybe_get_filters_for_syncing(self, policy, name)
+                create_connectors_for_policy(self.policy_map[name], policy_config)
+                maybe_get_filters_for_syncing(self, name)
 
             if name in self.policy_map:
                 self.callbacks.on_create_policy(
