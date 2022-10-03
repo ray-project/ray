@@ -100,9 +100,16 @@ def test_torch_get_device(
     ray.init(num_cpus=4, num_gpus=2)
 
     def train_fn():
+        # Make sure environment variable is being set correctly.
         if cuda_visible_devices:
-            # Make sure environment variable is being set correctly.
-            assert os.environ["CUDA_VISIBLE_DEVICES"] == cuda_visible_devices
+            if num_gpus_per_worker == 0.5:
+                assert os.environ["CUDA_VISIBLE_DEVICES"] == "1"
+            elif num_gpus_per_worker == 1:
+                assert os.environ["CUDA_VISIBLE_DEVICES"] == "1,2"
+            else:
+                raise ValueError(
+                    f"Untested paramater configuration: {num_gpus_per_worker}"
+                )
         return train.torch.get_device().index
 
     trainer = Trainer(
