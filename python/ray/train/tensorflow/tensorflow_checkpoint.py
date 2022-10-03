@@ -1,5 +1,5 @@
 import os
-from typing import TYPE_CHECKING, Callable, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Callable, Optional, Type, Union
 
 from enum import Enum
 from os import path
@@ -14,7 +14,6 @@ from ray.train.data_parallel_trainer import _load_checkpoint_dict, _load_checkpo
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    import ray
     from ray.data.preprocessor import Preprocessor
 
 
@@ -38,12 +37,10 @@ class TensorflowCheckpoint(Checkpoint):
 
     def __init__(
         self,
-        local_path: Optional[str] = None,
-        data_dict: Optional[dict] = None,
-        uri: Optional[str] = None,
-        obj_ref: Optional["ray.ObjectRef"] = None,
+        *args,
+        **kwargs,
     ):
-        super().__init__(local_path, data_dict, uri, obj_ref)
+        super().__init__(*args, **kwargs)
         self._flavor = None
 
     @classmethod
@@ -81,12 +78,13 @@ class TensorflowCheckpoint(Checkpoint):
         cls, file_path: str, *, preprocessor: Optional["Preprocessor"] = None
     ) -> "TensorflowCheckpoint":
         """Create a :py:class:`~ray.air.checkpoint.Checkpoint` that stores a Keras
-        model - from SavedModel format.
+        model - from H5 format.
 
-        The path must maintain valid even after this function returns.
+        The path must maintain validity even after this function returns.
 
         Args:
-            file_path: The same path as used by ``model.save(path)``.
+            file_path: The path to the .h5 file to load model from. This is the
+                same path that is used for ``model.save(path)``.
             preprocessor: A fitted preprocessor to be applied before inference.
 
         Returns:
@@ -127,9 +125,10 @@ class TensorflowCheckpoint(Checkpoint):
             ...     result_checkpoint, TensorflowPredictor)
             >>> batch_predictor.predict(ray.data.range(3))
         """
-        assert path.isfile(file_path) and file_path.endswith(
-            ".h5"
-        ), "Please supply a h5 file path to `TensorflowCheckpoint.from_h5()`."
+        if not path.isfile(file_path) or not file_path.endswith(".h5"):
+            raise ValueError(
+                "Please supply a h5 file path to `TensorflowCheckpoint.from_h5()`."
+            )
         dir_path = path.dirname(os.path.abspath(file_path))
         if preprocessor:
             save_preprocessor_to_dir(preprocessor, dir_path)
@@ -147,7 +146,8 @@ class TensorflowCheckpoint(Checkpoint):
         The path must maintain valid even after this function returns.
 
         Args:
-            path: The same path as used by ``model.save(path)``.
+            dir_path: The directory containing the saved model. This is the same
+                directory as used by ``model.save(dir_path)``.
             preprocessor: A fitted preprocessor to be applied before inference.
 
         Returns:
@@ -192,31 +192,33 @@ class TensorflowCheckpoint(Checkpoint):
         checkpoint._flavor = cls.Flavor.SAVED_MODEL
         return checkpoint
 
-    def get_model_and_preprocessor(
+    def get_model(
         self,
-        model_difinition: Optional[
+        model_definition: Optional[
             Union[Callable[[], tf.keras.Model], Type[tf.keras.Model]]
-        ],
-    ) -> Tuple[tf.keras.Model, Optional["Preprocessor"]]:
-        """Retrieve the model and preprocessor stored in this checkpoint.
+        ] = None,
+    ) -> tf.keras.Model:
+        """Retrieve the model stored in this checkpoint.
 
-        `model` arg is expected if and only if
-        the checkpoint's flavor is `MODEL_WEIGHTS`.
+        Args:
+            model_definition: This arg is expected if and only if
+                the checkpoint's flavor is `MODEL_WEIGHTS`.
 
+        Returns:
+            A Tensorflow Keras model.
         """
         if self._flavor is self.Flavor.MODEL_WEIGHTS:
-            assert model_difinition, (
-                "Expecting input of `model` argument when checkpoint's flavor "
-                "is `MODEL_WEIGHTS`."
-            )
-            model_weights, preprocessor = _load_checkpoint_dict(
-                self, "TensorflowTrainer"
-            )
-            model = model_difinition()
+            if not model_definition:
+                raise ValueError(
+                    "Expecting input of `model` argument when checkpoint's flavor "
+                    "is `MODEL_WEIGHTS`."
+                )
+            model_weights, _ = _load_checkpoint_dict(self, "TensorflowTrainer")
+            model = model_definition()
             model.set_weights(model_weights)
-            return model, preprocessor
+            return model
         else:
-            if model_difinition:
+            if model_definition:
                 warnings.warn(
                     "Ignoring `model argument` when checkpoint's"
                     " flavor is not `MODEL_WEIGHTS`."
@@ -231,17 +233,18 @@ class TensorflowCheckpoint(Checkpoint):
                     files = os.listdir(path)
                     for file in files:
                         if file.endswith(".h5"):
-                            assert not h5_path, (
-                                "There should be one and only one .h5 file "
-                                "to load model from within the directory."
-                            )
+                            if h5_path:
+                                raise ValueError(
+                                    "There should be one and only one .h5 file "
+                                    "to load model from within the directory."
+                                )
                             h5_path = file
-                    return keras.models.load_model(h5_path)
+                    return keras.models.load_model(os.path.join(path, h5_path))
 
             else:
 
                 def get_model(path: str):
                     return keras.models.load_model(path)
 
-            model, preprocessor = _load_checkpoint_dir(self, get_model)
-            return model, preprocessor
+            model, _ = _load_checkpoint_dir(self, get_model)
+            return model

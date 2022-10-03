@@ -1,3 +1,6 @@
+import os.path
+import tempfile
+
 import tensorflow as tf
 
 import ray
@@ -9,6 +12,58 @@ from ray.train.tensorflow import (
 )
 from ray.air import session
 from ray.air.config import ScalingConfig
+from ray.data import Preprocessor
+
+
+class DummyPreprocessor(Preprocessor):
+    def __init__(self, multiplier):
+        self.multiplier = multiplier
+
+    def transform_batch(self, df):
+        return df * self.multiplier
+
+
+def test_saved_model():
+    model = tf.keras.Sequential(
+        [
+            tf.keras.layers.InputLayer(input_shape=()),
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(10),
+            tf.keras.layers.Dense(1),
+        ]
+    )
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        model_dir_path = os.path.join(tmp_dir, "my_model")
+        model.save(model_dir_path)
+        checkpoint = TensorflowCheckpoint.from_saved_model(
+            model_dir_path, preprocessor=DummyPreprocessor(1)
+        )
+        loaded_model = checkpoint.get_model()
+        preprocessor = checkpoint.get_preprocessor()
+        assert model.get_config() == loaded_model.get_config()
+        assert preprocessor.multiplier == 1
+
+
+def test_h5_model():
+    model = tf.keras.Sequential(
+        [
+            tf.keras.layers.InputLayer(input_shape=()),
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(10),
+            tf.keras.layers.Dense(1),
+        ]
+    )
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        model_file_path = os.path.join(tmp_dir, "my_model.h5")
+        model.save(model_file_path)
+        checkpoint = TensorflowCheckpoint.from_h5(
+            model_file_path, preprocessor=DummyPreprocessor(1)
+        )
+        loaded_model = checkpoint.get_model()
+        preprocessor = checkpoint.get_preprocessor()
+        assert model.get_config() == loaded_model.get_config()
+        assert preprocessor.multiplier == 1
 
 
 def test_tensorflow_checkpoint_saved_model():

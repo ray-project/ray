@@ -23,9 +23,7 @@ class TensorflowPredictor(DLPredictor):
     """A predictor for TensorFlow models.
 
     Args:
-        model:
-        model_definition: A callable that returns a TensorFlow Keras model
-            to use for predictions.
+        model: A Tensorflow Keras model to use for predictions.
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
         model_weights: List of weights to use for the model.
@@ -97,7 +95,8 @@ class TensorflowPredictor(DLPredictor):
             use_gpu: Whether GPU should be used during prediction.
         """
         checkpoint = TensorflowCheckpoint.from_checkpoint(checkpoint)
-        model, preprocessor = checkpoint.get_model_and_preprocessor(model_definition)
+        model = checkpoint.get_model(model_definition)
+        preprocessor = checkpoint.get_preprocessor()
         return cls(
             model=model,
             preprocessor=preprocessor,
