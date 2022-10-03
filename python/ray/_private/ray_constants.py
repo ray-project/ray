@@ -354,9 +354,3 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Jobs within these namespaces should be hidden from users
 # and should not be considered user activity.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
-
-# After submitting a job, `SupervisorActor` will be launched
-# asynchronously, so it may be necessary to wait for `SupervisorActor`
-# to launch before knowing which node  `SupervisorActor`/`driver` is running on
-CLI_WAIT_FOR_SUPERVISOR_ACTOR_RUNNING_TIMEOUT = 60
-CLI_WAIT_LOG_ITER_INTERVAL_SECONDS = 0.5
