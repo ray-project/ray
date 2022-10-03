@@ -555,13 +555,13 @@ def test_auto_transfer_data_from_host_to_device(
 
 def test_auto_transfer_correct_device(ray_start_4_cpus_2_gpus):
     """Tests that auto_transfer uses the right device for the cuda stream."""
-    import nvidia_smi
+    import pynvml
 
-    nvidia_smi.nvmlInit()
+    pynvml.nvmlInit()
 
     def get_gpu_used_mem(i):
-        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(i)
-        info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+        handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+        info = pynvml.nvmlDeviceGetMemoryInfo(handle)
         return info.used
 
     start_gpu_memory = get_gpu_used_mem(1)

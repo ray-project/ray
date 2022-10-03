@@ -19,7 +19,7 @@
 namespace ray {
 namespace rpc {
 
-void DefaultStatsHandler::HandleAddProfileData(const AddProfileDataRequest &request,
+void DefaultStatsHandler::HandleAddProfileData(AddProfileDataRequest request,
                                                AddProfileDataReply *reply,
                                                SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.profile_data().component_id());
@@ -51,7 +51,7 @@ void DefaultStatsHandler::HandleAddProfileData(const AddProfileDataRequest &requ
 }
 
 void DefaultStatsHandler::HandleGetAllProfileInfo(
-    const rpc::GetAllProfileInfoRequest &request,
+    rpc::GetAllProfileInfoRequest request,
     rpc::GetAllProfileInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all profile info.";

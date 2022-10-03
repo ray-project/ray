@@ -98,7 +98,7 @@ void GcsHeartbeatManager::AddNodeInternal(const rpc::GcsNodeInfo &node_info,
 }
 
 void GcsHeartbeatManager::HandleReportHeartbeat(
-    const rpc::ReportHeartbeatRequest &request,
+    rpc::ReportHeartbeatRequest request,
     rpc::ReportHeartbeatReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.heartbeat().node_id());
@@ -114,7 +114,7 @@ void GcsHeartbeatManager::HandleReportHeartbeat(
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
-void GcsHeartbeatManager::HandleCheckAlive(const rpc::CheckAliveRequest &request,
+void GcsHeartbeatManager::HandleCheckAlive(rpc::CheckAliveRequest request,
                                            rpc::CheckAliveReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   reply->set_ray_version(kRayVersion);

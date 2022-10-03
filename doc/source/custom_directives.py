@@ -96,6 +96,7 @@ MOCK_MODULES = [
     "ray.core.generated.ray.protocol.Task",
     "ray.serve.generated",
     "ray.serve.generated.serve_pb2",
+    "ray.serve.generated.serve_pb2_grpc",
     "scipy.signal",
     "scipy.stats",
     "setproctitle",
@@ -295,7 +296,7 @@ def build_gallery(app):
                         gh_stars = (
                             f".. image:: https://img.shields.io/github/"
                             f"stars/{org}/{repo}?style=social)]\n"
-                            f"\t\t:target: {item['repo']})"
+                            f"\t\t:target: {item['repo']}"
                         )
                 except Exception:
                     pass
