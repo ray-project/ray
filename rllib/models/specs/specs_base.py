@@ -18,19 +18,19 @@ class TensorSpecs(abc.ABC):
 
     Args:
         shape: A string representing einops notation of the shape of the tensor.
-            For example, "B C" represents a tensor with two dimensions, the first
+            For example, "B, C" represents a tensor with two dimensions, the first
             of which has size B and the second of which has size C. shape should
             consist of unique dimension names. For example having "B B" is invalid.
         dtype: The dtype of the tensor. If None, the dtype is not checked during
             validation. Also during Sampling the dtype is set the default dtype of
             the backend.
         shape_vals: An optional dictionary mapping some dimension names to their
-            values. For example, if shape is "B C" and shape_vals is {"C": 3}, then
+            values. For example, if shape is "B, C" and shape_vals is {"C": 3}, then
             the shape of the tensor is (B, 3). B is to be determined during
             run-time but C is fixed to 3.
 
     Examples:
-        >>> spec = TensorSpec("b h", h=128, dtype=tf.float32)
+        >>> spec = TensorSpec("b,h", h=128, dtype=tf.float32)
         >>> spec.shape  # ('b', 128)
         >>> spec.validate(torch.rand(32, 128, dtype=torch.float32))  # passes
         >>> spec.validate(torch.rand(32, 64, dtype=torch.float32))   # raises ValueError
@@ -154,8 +154,8 @@ class TensorSpecs(abc.ABC):
         expected_shape = tuple()
 
         # check the validity of shape_vals and get a list of dimension names
-        d_names = shape.split(" ")
-        self._validate_shape_vals(shape, shape_vals)
+        d_names = shape.replace(" ", "").split(",")
+        self._validate_shape_vals(d_names, shape_vals)
 
         for d in d_names:
             d_value = shape_vals.get(d, None)
@@ -166,7 +166,7 @@ class TensorSpecs(abc.ABC):
         return expected_shape
 
     def _validate_shape_vals(
-        self, d_names: str, shape_vals: Dict[str, int]
+        self, d_names: List[str], shape_vals: Dict[str, int]
     ) -> List[str]:
         """Checks if the shape_vals is valid.
 
