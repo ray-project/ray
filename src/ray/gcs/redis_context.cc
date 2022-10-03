@@ -22,6 +22,7 @@
 extern "C" {
 #include "hiredis/async.h"
 #include "hiredis/hiredis.h"
+#include "hiredis/hiredis_ssl.h"
 }
 
 // TODO(pcm): Integrate into the C++ tree.
@@ -255,9 +256,55 @@ void RedisCallbackManager::RemoveCallback(int64_t callback_index) {
     return Status::RedisError(CONTEXT->errstr);               \
   }
 
+RedisContext::RedisContext(instrumented_io_context &io_service)
+    : io_service_(io_service), context_(nullptr), ssl_context_(nullptr) {
+  if (::RayConfig::instance().REDIS_ENABLE_SSL()) {
+    redisSSLContextError ssl_error;
+    redisInitOpenSSL();
+
+    const char *cacert = nullptr;
+    if (!::RayConfig::instance().REDIS_CA_CERT().empty()) {
+      cacert = ::RayConfig::instance().REDIS_CA_CERT().c_str();
+    }
+
+    const char *capath = nullptr;
+    if (!::RayConfig::instance().REDIS_CA_PATH().empty()) {
+      capath = ::RayConfig::instance().REDIS_CA_PATH().c_str();
+    }
+
+    const char *client_cert = nullptr;
+    if (!::RayConfig::instance().REDIS_CLIENT_CERT().empty()) {
+      client_cert = ::RayConfig::instance().REDIS_CLIENT_CERT().c_str();
+    }
+
+    const char *client_key = nullptr;
+    if (!::RayConfig::instance().REDIS_CLIENT_KEY().empty()) {
+      client_key = ::RayConfig::instance().REDIS_CLIENT_KEY().c_str();
+    }
+
+    const char *server_name = nullptr;
+    if (!::RayConfig::instance().REDIS_SERVER_NAME().empty()) {
+      server_name = ::RayConfig::instance().REDIS_SERVER_NAME().c_str();
+    }
+
+    ssl_error = REDIS_SSL_CTX_NONE;
+    ssl_context_ = redisCreateSSLContext(
+        cacert, capath, client_cert, client_key, server_name, &ssl_error);
+
+    RAY_CHECK(ssl_context_ != nullptr && ssl_error == REDIS_SSL_CTX_NONE)
+        << "Failed to construct a ssl context for redis client: "
+        << redisSSLContextGetError(ssl_error);
+  }
+}
+
 RedisContext::~RedisContext() {
   if (context_) {
     redisFree(context_);
+    context_ = nullptr;
+  }
+  if (ssl_context_) {
+    redisFreeSSLContext(ssl_context_);
+    ssl_context_ = nullptr;
   }
 }
 
@@ -377,6 +424,11 @@ Status RedisContext::Connect(const std::string &address,
   RAY_CHECK(!async_redis_subscribe_context_);
 
   RAY_CHECK_OK(ConnectWithRetries(address, port, redisConnect, &context_));
+  if (ssl_context_ != nullptr) {
+    RAY_CHECK(redisInitiateSSLWithContext(context_, ssl_context_) == REDIS_OK)
+        << "Failed to setup encrypted redis: " << context_->errstr;
+  }
+
   RAY_CHECK_OK(AuthenticateRedis(context_, password));
 
   redisReply *reply = reinterpret_cast<redisReply *>(
@@ -387,6 +439,10 @@ Status RedisContext::Connect(const std::string &address,
   // Connect to async context
   redisAsyncContext *async_context = nullptr;
   RAY_CHECK_OK(ConnectWithRetries(address, port, redisAsyncConnect, &async_context));
+  if (ssl_context_ != nullptr) {
+    RAY_CHECK(redisInitiateSSLWithContext(&async_context->c, ssl_context_) == REDIS_OK)
+        << "Failed to setup encrypted redis: " << context_->errstr;
+  }
   RAY_CHECK_OK(AuthenticateRedis(async_context, password));
   redis_async_context_.reset(new RedisAsyncContext(async_context));
   SetDisconnectCallback(redis_async_context_.get());
