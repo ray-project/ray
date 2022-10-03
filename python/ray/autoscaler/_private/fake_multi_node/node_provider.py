@@ -322,7 +322,7 @@ class FakeMultiNodeProvider(NodeProvider):
                     ray._private.services.get_node_ip_address()
                 ),
                 env_vars={
-                    "RAY_RAYLET_NODE_ID": next_id,
+                    "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
                     "RAY_OVERRIDE_RESOURCES": json.dumps(resources),
                 },
             )
@@ -472,7 +472,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
             host_client_port=self._host_client_port,
             resources=resources,
             env_vars={
-                "RAY_RAYLET_NODE_ID": node_id,
+                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": node_id,
                 "RAY_OVERRIDE_RESOURCES": resource_str,
                 **self.provider_config.get("env_vars", {}),
             },
