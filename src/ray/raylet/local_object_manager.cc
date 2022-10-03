@@ -575,6 +575,7 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> &urls_to_
                               const rpc::DeleteSpilledObjectsReply &reply) {
               io_worker_pool_.PushDeleteWorker(io_worker);
               if (!status.ok()) {
+                num_failed_deletion_requests_ += 1;
                 RAY_LOG(ERROR) << "Failed to send delete spilled object request: "
                                << status.ToString();
               }
@@ -625,6 +626,9 @@ void LocalObjectManager::RecordMetrics() const {
   ray::stats::STATS_object_store_memory.Record(
       spilled_bytes_current_,
       {{ray::stats::LocationKey.name(), ray::stats::kObjectLocSpilled}});
+
+  ray::stats::STATS_spill_manager_request_total.Record(num_failed_deletion_requests_,
+                                                       "FailedDeletion");
 }
 
 int64_t LocalObjectManager::GetPrimaryBytes() const {

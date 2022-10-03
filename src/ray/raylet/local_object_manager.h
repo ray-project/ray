@@ -372,6 +372,9 @@ class LocalObjectManager {
   /// The last time a restore log finished.
   int64_t last_restore_log_ns_ = 0;
 
+  /// The number of failed deletion requests.
+  std::atomic<int64_t> num_failed_deletion_requests_ = 0;
+
   friend class LocalObjectManagerTestWithMinSpillingSize;
   friend class LocalObjectManagerTest;
   friend class LocalObjectManagerFusedTest;
