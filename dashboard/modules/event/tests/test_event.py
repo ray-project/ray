@@ -16,7 +16,6 @@ import numpy as np
 import ray
 from ray._private.utils import binary_to_hex
 from ray._private.event.event_logger import get_event_logger, EventLoggerOption
-from ray._private.event.event_types import EventTypes
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.event import event_consts
 from ray.core.generated import event_pb2

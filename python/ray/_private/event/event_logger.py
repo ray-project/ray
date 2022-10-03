@@ -6,10 +6,14 @@ import string
 import socket
 import os
 
+from typing import Dict
 from dataclasses import dataclass
 from datetime import datetime
 
+from google.protobuf.json_format import MessageToDict
+
 from ray._private.event.event_types import EventTypes
+from ray.core.generated.event_pb2 import Event
 
 logger = logging.getLogger(__name__)
 
@@ -19,54 +23,54 @@ def get_event_id():
 
 
 class EventLoggerAdapter:
-    def __init__(self, source: str, logger: logging.Logger):
+    def __init__(self, source: Event.SourceType, logger: logging.Logger):
         """Adapter for the Python logger that's used to emit events."""
         self.logger = logger
         # Aligned with `event.proto`'s `message Event``
-        self.global_context = {
-            "source": source,
-            "source_hostname": socket.gethostname(),
-            "source_pid": os.getpid(),
-            "metadata": {},
-        }
+        self.source = source
+        self.source_hostname = socket.gethostname()
+        self.source_pid = os.getpid()
+        # {str -> str} typed dict
+        self.global_context = {}
 
-    def set_global_context(self, metadata: dict = None):
-        metadata = {} if not metadata else metadata
-        self.global_context["metadata"] = metadata
+    def set_global_context(self, global_context: Dict[str, str] = None):
+        """Set the global metadata.
+        
+        This method overwrites the global metadata if it is called more than once.
+        """
+        self.global_context = {} if not global_context else global_context
 
     def info(self, event_type: EventTypes, message: str, **kwargs):
-        self._emit("INFO", event_type, message, **kwargs)
-
-    def debug(self, event_type: EventTypes, message: str, **kwargs):
-        self._emit("DEBUG", event_type, message, **kwargs)
+        self._emit(Event.Severity.INFO, event_type, message, **kwargs)
 
     def warning(self, event_type: EventTypes, message: str, **kwargs):
-        self._emit("WARNING", event_type, message, **kwargs)
+        self._emit(Event.Severity.WARNING, event_type, message, **kwargs)
 
     def error(self, event_type: EventTypes, message: str, **kwargs):
-        self._emit("ERROR", event_type, message, **kwargs)
+        self._emit(Event.Severity.ERROR, event_type, message, **kwargs)
 
     def fatal(self, event_type: EventTypes, message: str, **kwargs):
-        self._emit("FATAL", event_type, message, **kwargs)
+        self._emit(Event.Severity.FATAL, event_type, message, **kwargs)
 
-    def _emit(self, severity: str, event_type: EventTypes, message: str, **kwargs):
-        allowed_severity = ["INFO", "WARNING", "ERROR", "DEBUG", "FATAL"]
-        if severity not in allowed_severity:
-            assert False, "Invalid severity {}.".format(severity)
+    def _emit(self, severity: Event.Severity, event_type: EventTypes, message: str, **kwargs):
+        event = Event()
+        event.event_id = get_event_id()
+        event.timestamp = datetime.now().timestamp()
+        event.message = message
+        event.severity = severity
+        event.label = event_type.value
+        event.source_type = self.source
+        event.source_hostname = self.source_hostname
+        event.source_pid = self.source_pid
+        custom_fields = event.custom_fields
+        for k, v in self.global_context.items():
+            custom_fields[k] = v
+        for k, v in self.kwargs.items():
+            custom_fields[k] = v
 
-        self.global_context["metadata"].update(**kwargs)
-
+        MessageToDict(event, including_default_value_fields=True, preserving_proto_field_name=True, use_integers_for_enums=True)
         self.logger.info(
-            json.dumps(
-                {
-                    "event_id": get_event_id(),
-                    "timestamp": datetime.now().timestamp(),
-                    "type": event_type.value,
-                    "message": message,
-                    "severity": severity,
-                    **self.global_context,
-                }
-            )
+            json.dumps(MessageToDict(event, including_default_value_fields=True, preserving_proto_field_name=True, use_integers_for_enums=True))
         )
         # Force flush so that we won't lose events
         self.logger.handlers[0].flush()
