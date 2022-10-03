@@ -260,7 +260,20 @@ class TestSAC(unittest.TestCase):
             if weights_dict is None:
                 # Start with the tf vars-dict.
                 assert fw in ["tf2", "tf", "tfe"]
-                weights_dict = policy.get_weights()
+                
+                weights_dict_list = (
+                    policy.model.variables() + policy.target_model.variables()
+                )
+                collector = ray.experimental.tf_utils.TensorFlowVariables(
+                    [], policy.get_session(), weights_dict_list, debug=True
+                )
+
+                weights_dict = collector.get_weights()
+
+                weights_dict = {v.name.split(":")[0]: v for v in weights_dict_list}
+                weights_dict2 = policy.get_weights()
+                breakpoint()
+
                 if fw == "tfe":
                     log_alpha = weights_dict[10]
                     weights_dict = self._translate_tfe_weights(weights_dict, map_)
@@ -589,6 +602,12 @@ class TestSAC(unittest.TestCase):
         target_model_out_tp1 = train_batch[SampleBatch.NEXT_OBS]
 
         # get_policy_output
+        print("model_out_t: ", model_out_t.shape)
+        print("weights[ks[1]]: ", weights[ks[1]].shape)
+        print("weights[ks[0]]: ", weights[ks[0]].shape)
+        print("weights[ks[9]]: ", weights[ks[9]].shape)
+        print("weights[ks[8]]: ", weights[ks[8]].shape)
+        # breakpoint()
         action_dist_t = cls(
             fc(
                 relu(fc(model_out_t, weights[ks[1]], weights[ks[0]], framework=fw)),

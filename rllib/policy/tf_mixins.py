@@ -247,11 +247,23 @@ class TargetNetworkMixin:
     # Support both hard and soft sync.
     def update_target(self, tau: int = None) -> None:
         self._do_update(np.float32(tau or self.config.get("tau", 1.0)))
-
+    
+    # TODO: This method is coppied from the previous SAC implementation but it did not 
+    # respect the definition of variable() which should not have returned the target
+    # variables according to the appo tests
+    # (see test_appo.py::test_appo_model_variables). These issues will become 
+    # irrelevant once we finish merging our RLModule API.
     @override(TFPolicy)
     def variables(self) -> List[TensorType]:
-        return self.model.variables() + self.target_model.variables()
+        # old code
+        # return self.model.variables() + self.target_model.variables()
+        # new code
+        return self.model.variables()
 
+    @override(TFPolicy)
+    def set_weights(self, weights):
+        TFPolicy.set_weights(self, weights)
+        self.update_target(self.config.get("tau", 1.0))
 
 class ValueNetworkMixin:
     """Assigns the `_value()` method to a TFPolicy.
