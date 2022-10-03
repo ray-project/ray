@@ -223,6 +223,8 @@ class LocalObjectManager {
   const std::string self_node_address_;
   const int self_node_port_;
 
+  instrumented_io_context &io_service_;
+
   /// The period between attempts to eagerly evict objects from plasma.
   const int64_t free_objects_period_ms_;
 

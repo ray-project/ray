@@ -571,13 +571,18 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> &urls_to_
         }
         io_worker->rpc_client()->DeleteSpilledObjects(
             request,
-            [this, io_worker](const ray::Status &status,
+            [this, urls_to_delete = std::move(urls_to_delete), io_worker](const ray::Status &status,
                               const rpc::DeleteSpilledObjectsReply &reply) {
               io_worker_pool_.PushDeleteWorker(io_worker);
               if (!status.ok()) {
                 num_failed_deletion_requests_ += 1;
                 RAY_LOG(ERROR) << "Failed to send delete spilled object request: "
-                               << status.ToString();
+                               << status.ToString() << ", retrying".
+
+                // retry failed requests.
+                io_service_.post([this, urls_to_delete = std::move(urls_to_delete)](){
+                    DeleteSpilledObjects(urls_to_delete);
+                })
               }
             });
       });
