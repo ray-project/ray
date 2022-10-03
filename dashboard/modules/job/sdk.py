@@ -151,7 +151,6 @@ class JobSubmissionClient(SubmissionClient):
         r = self._do_request("POST", "/api/jobs/", json_data=dataclasses.asdict(req))
 
         if r.status_code == 200:
-            print(r.json())
             return JobSubmitResponse(**r.json()).submission_id
         else:
             self._raise_error(r)
