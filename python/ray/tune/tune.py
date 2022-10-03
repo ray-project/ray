@@ -759,9 +759,11 @@ def run(
         experiment_checkpoint = runner.checkpoint_file
     else:
         # ------ NEW EXECUTION ENGINE RUN ------
-        from ray.air.execution.impl.tune.progress_loop import tune_loop
-        from ray.air.execution.impl.tune.tune_controller import TuneController
-        from ray.air.execution.resources.placement_group import (
+        from ray.air.experimental.execution.impl.tune.progress_loop import tune_loop
+        from ray.air.experimental.execution.impl.tune.tune_controller import (
+            TuneController,
+        )
+        from ray.air.experimental.execution.resources.placement_group import (
             PlacementGroupResourceManager,
         )
 
