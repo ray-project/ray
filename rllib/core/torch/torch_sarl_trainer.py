@@ -20,14 +20,13 @@ class TorchSARLTrainer:
     def __init__(self, config):
         num_workers = config.get("num_gpus", 1) or 1
         use_gpu = bool(config.get("num_gpus", 0))
-        if not all(key in config for key in ["module_class", "module_config"]):
-            raise ValueError(
-                "You must specify a RL module_class and RL module_config in "
-                "order to use the TorchSARLTrainer"
-            )
+        # if not all(key in config for key in ["module_class", "module_config"]):
+        #     raise ValueError(
+        #         "You must specify a RL module_class and RL module_config in "
+        #         "order to use the TorchSARLTrainer"
+        #     )
         init_rl_module_fn = config.get("rl_module_init_fn", None)
         module_config = config.get("rl_module_config", {})
-        batch_size = config["batch_size"]
         """
         we can't use fractional gpus with this :(
 
@@ -42,7 +41,7 @@ class TorchSARLTrainer:
             use_gpu=use_gpu,
         )
         self.training_iterator = self._make_ray_train_trainer(
-            scaling_config, init_rl_module_fn, module_config, batch_size
+            scaling_config, init_rl_module_fn, module_config
         )
 
     def train(self, batch):
@@ -70,7 +69,7 @@ class TorchSARLTrainer:
         return self.curr_weights
 
     def _make_ray_train_trainer(
-        self, scaling_config, init_rl_module_fn, module_config, batch_size
+        self, scaling_config, init_rl_module_fn, module_config
     ):
         init_rl_module_fn = init_rl_module_fn or self.init_rl_module
         self.queues = [Queue(maxsize=1) for _ in range(scaling_config.num_workers)]
@@ -81,7 +80,6 @@ class TorchSARLTrainer:
             "init_optimizer_fn": self.init_optimizer,
             "compute_loss_and_update_fn": self.compute_loss_and_update,
             "queues": self.queues,
-            "batch_size": batch_size,
         }
         train_loop_per_worker = construct_train_func(
             self._training_func,
@@ -119,7 +117,6 @@ class TorchSARLTrainer:
         init_rl_module_fn = config["init_rl_module_fn"]
         init_optimizer_fn = config["init_optimizer_fn"]
         compute_loss_and_update_fn = config["compute_loss_and_update_fn"]
-        batch_size = config["batch_size"]
 
         rl_module = init_rl_module_fn(rl_module_config)
         queue = config["queues"][session.get_local_rank()]
