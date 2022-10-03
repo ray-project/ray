@@ -79,6 +79,7 @@ def test(num_tasks, smoke_test):
     api_caller = periodic_invoke_state_apis_with_actor(
         apis=[StateAPICallSpec(summarize_tasks, not_none)],
         call_interval_s=4,
+        print_result=True,
     )
 
     start_time = time.time()
