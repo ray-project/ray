@@ -90,7 +90,8 @@ class TaskExecutor {
       bool *is_retryable_error,
       bool *is_application_error,
       const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
-      const std::string name_of_concurrency_group_to_execute);
+      const std::string name_of_concurrency_group_to_execute,
+      bool is_reattempt);
 
   virtual ~TaskExecutor(){};
 

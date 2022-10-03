@@ -15,11 +15,23 @@ from ray.data.datasource import (
     PartitionStyle,
     PathPartitionEncoder,
     PathPartitionFilter,
+    Partitioning,
 )
 
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+def test_numpy_read_partitioning(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "country=us", "data.npy")
+    os.mkdir(os.path.dirname(path))
+    np.save(path, np.arange(4).reshape([2, 2]))
+
+    ds = ray.data.read_numpy(path, partitioning=Partitioning("hive"))
+
+    assert ds.schema().names == ["data", "country"]
+    assert [r["country"] for r in ds.take()] == ["us", "us"]
 
 
 @pytest.mark.parametrize("from_ref", [False, True])
