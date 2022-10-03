@@ -27,6 +27,8 @@ class TableBlockBuilder(BlockBuilder[T]):
     def __init__(self, block_type):
         # The set of uncompacted Python values buffered.
         self._columns = collections.defaultdict(list)
+        # The sorted columns names of uncompacted Python values buffered.
+        self._sorted_columns_names = None
         # The set of compacted tables we have built so far.
         self._tables: List[Any] = []
         self._tables_size_bytes = 0
@@ -46,6 +48,20 @@ class TableBlockBuilder(BlockBuilder[T]):
                 "Returned elements of an TableBlock must be of type `dict`, "
                 "got {} (type {}).".format(item, type(item))
             )
+
+        item_columns_names = sorted(list(item.keys()))
+        if self._sorted_columns_names:
+            # Check all added rows have same columns.
+            if item_columns_names != self._sorted_columns_names:
+                raise ValueError(
+                    "Current row has different columns compared to previous rows. "
+                    f"Columns of current row: {item_columns_names}, "
+                    f"Columns of previous rows: {self._sorted_columns_names}."
+                )
+        else:
+            # Initialize columns names with the first added row.
+            self._sorted_columns_names = item_columns_names
+
         for key, value in item.items():
             self._columns[key].append(value)
         self._num_rows += 1

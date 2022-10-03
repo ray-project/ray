@@ -2825,6 +2825,28 @@ def test_map_batches_block_bundling_skewed_auto(
     assert ds.num_blocks() == num_out_blocks
 
 
+def test_map_with_mismatched_columns(ray_start_regular_shared):
+    def bad_fn(row):
+        if row > 5:
+            return {"a": "hello1"}
+        else:
+            return {"b": "hello1"}
+
+    def good_fn(row):
+        if row > 5:
+            return {"a": "hello1", "b": "hello2"}
+        else:
+            return {"b": "hello2", "a": "hello1"}
+
+    ds = ray.data.range(10, parallelism=1)
+    error_message = "Current row has different columns compared to previous rows."
+    with pytest.raises(ValueError) as e:
+        ds.map(bad_fn)
+    assert error_message in str(e.value)
+    ds_map = ds.map(good_fn)
+    assert ds_map.take() == [{"a": "hello1", "b": "hello2"} for _ in range(10)]
+
+
 def test_union(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
 
