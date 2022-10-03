@@ -2759,7 +2759,11 @@ class Dataset(Generic[T]):
         from ray.train.tensorflow import prepare_dataset_shard
 
         if self._dataset_format() == "simple":
-            raise NotImplementedError
+            raise NotImplementedError(
+                "`to_tf` doesn't support simple datasets. Call `map_batches` and "
+                "convert your data to a tabular format. Alternatively, call the more-"
+                "flexible `iter_batches` in place of `to_tf`."
+            )
 
         def get_columns_from_batch(
             batch: Dict[str, tf.Tensor], *, columns: Union[str, List[str]]

@@ -1,7 +1,6 @@
-from typing import Dict, List, Optional, Union, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Union, Tuple
 
 import numpy as np
-import pandas as pd
 import pyarrow
 import tensorflow as tf
 
