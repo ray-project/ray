@@ -35,15 +35,24 @@ def raw_metrics(info):
 
 
 def tasks_by_state(info) -> dict:
+    return tasks_breakdown(info, lambda s: s.labels["State"])
+
+
+def tasks_by_name_and_state(info) -> dict:
+    return tasks_breakdown(info, lambda s: (s.labels["Name"], s.labels["State"]))
+
+
+def tasks_breakdown(info, key_fn) -> dict:
     res = raw_metrics(info)
     if "ray_tasks" in res:
-        states = defaultdict(int)
+        breakdown = defaultdict(int)
         for sample in res["ray_tasks"]:
-            states[sample.labels["State"]] += sample.value
-            if states[sample.labels["State"]] == 0:
-                del states[sample.labels["State"]]
-        print("Tasks by state: {}".format(states))
-        return states
+            key = key_fn(sample)
+            breakdown[key] += sample.value
+            if breakdown[key] == 0:
+                del breakdown[key]
+        print("Task label breakdown: {}".format(breakdown))
+        return breakdown
     else:
         return {}
 
@@ -90,6 +99,10 @@ ray.get(a)
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
+    assert tasks_by_name_and_state(info) == {
+        ("f", "RUNNING"): 2.0,
+        ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
+    }
     proc.kill()
 
 
@@ -158,6 +171,11 @@ ray.get(w)
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
     )
+    assert tasks_by_name_and_state(info) == {
+        ("wrapper", "RUNNING_IN_RAY_GET"): 1.0,
+        ("f", "RUNNING"): 2.0,
+        ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
+    }
     proc.kill()
 
 
@@ -191,6 +209,11 @@ ray.get(w)
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=2000
     )
+    assert tasks_by_name_and_state(info) == {
+        ("wrapper", "RUNNING_IN_RAY_WAIT"): 1.0,
+        ("f", "RUNNING"): 2.0,
+        ("f", "PENDING_NODE_ASSIGNMENT"): 8.0,
+    }
     proc.kill()
 
 
@@ -223,6 +246,10 @@ ray.get(a)
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
+    assert tasks_by_name_and_state(info) == {
+        ("f", "RUNNING"): 1.0,
+        ("g", "PENDING_ARGS_AVAIL"): 5.0,
+    }
     proc.kill()
 
 
@@ -258,6 +285,12 @@ ray.get(z)
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
+    assert tasks_by_name_and_state(info) == {
+        ("F.__init__", "FINISHED"): 1.0,
+        ("F.g", "FINISHED"): 10.0,
+        ("F.f", "RUNNING"): 1.0,
+        ("F.g", "SUBMITTED_TO_WORKER"): 9.0,
+    }
     proc.kill()
 
 
@@ -290,6 +323,10 @@ time.sleep(999)
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
+    assert tasks_by_name_and_state(info) == {
+        ("g", "FINISHED"): 1.0,
+        ("f", "FINISHED"): 1.0,
+    }
     proc.kill()
 
 
@@ -414,6 +451,11 @@ ray.get([f.remote(x) for x in buf])"""
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
+    assert tasks_by_name_and_state(info) == {
+        ("f", "RUNNING"): 2.0,
+        ("f", "PENDING_ARGS_FETCH"): 7.0,
+        ("f", "PENDING_OBJ_STORE_MEM_AVAIL"): 91.0,
+    }
     proc.kill()
 
 
