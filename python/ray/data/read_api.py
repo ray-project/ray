@@ -347,7 +347,7 @@ def read_mongo(
     - Pipeline: https://www.mongodb.com/docs/manual/core/aggregation-pipeline/
 
     To read the MongoDB in parallel, the execution of the pipeline is sharded, with a
-    Ray read task to handle a partition of the results. The number of partition is
+    Ray read task to handle a partition of the results. The number of partitions is
     determined by ``parallelism`` which can be requested from this interface or
     automatically chosen if unspecified. The sharding is automatically determined
     in an attempt to evenly distribute the documents into the specified number of

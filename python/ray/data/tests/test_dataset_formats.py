@@ -434,7 +434,7 @@ def test_read_write_mongo(ray_start_regular_shared):
     )
     assert str(ds) == "Dataset(num_blocks=0, num_rows=None, schema=Unknown schema)"
 
-    # 5 test docs.
+    # Inject 5 test docs.
     docs = [{"title": "test read_mongo()", "numeric_field": val} for val in range(5)]
     df = pd.DataFrame(docs).astype({"numeric_field": "int32"})
     foo.insert_many(docs)
@@ -511,7 +511,7 @@ def test_read_write_mongo(ray_start_regular_shared):
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Add a column and then write back to MongoDB.
-    # 2 more test docs.
+    # Inject 2 more test docs.
     new_docs = [
         {"title": "test read_mongo()", "numeric_field": val} for val in range(5, 7)
     ]
@@ -528,7 +528,7 @@ def test_read_write_mongo(ray_start_regular_shared):
     )
     ds3.drop_columns(["_id"]).to_pandas().equals(expected_ds.to_pandas())
 
-    # list is not supported (yet) in pymongoarrow.
+    # List is not supported (yet) in pymongoarrow.
     with pytest.raises(ValueError):
         ray.data.range(10).write_mongo(
             uri=mongo_url, database=foo_db, collection=foo_collection
@@ -563,7 +563,7 @@ def test_mongo_datasource(ray_start_regular_shared):
     ).fully_executed()
     assert str(ds) == "Dataset(num_blocks=0, num_rows=None, schema=Unknown schema)"
 
-    # 5 test docs.
+    # Inject 5 test docs.
     docs = [{"title": "test read_datasource", "numeric_field": key} for key in range(5)]
     df = pd.DataFrame(docs).astype({"numeric_field": "int32"})
     foo.insert_many(docs)
