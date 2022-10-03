@@ -154,6 +154,16 @@ class LocalResourceManager : public syncer::ReporterInterface {
   void RecordMetrics() const;
 
  private:
+  struct ResourceUsage {
+    double avail;
+    double used;
+    // TODO(sang): Add PG avail & PG used.
+  };
+
+  /// Return the resource usage map for each resource.
+  absl::flat_hash_map<std::string, LocalResourceManager::ResourceUsage>
+  GetResourceUsageMap() const;
+
   /// Notify the subscriber that the local resouces has changed.
   void OnResourceChanged();
 
@@ -272,7 +282,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
 
   friend class LocalResourceManagerTest;
-  FRIEND_TEST(LocalResourceManagerTest, BasicMetricsTest);
+  FRIEND_TEST(LocalResourceManagerTest, BasicGetResourceUsageMapTest);
 };
 
 }  // end namespace ray

@@ -1,5 +1,4 @@
 from collections import defaultdict
-import sys
 import os
 
 import pytest
@@ -18,6 +17,7 @@ METRIC_CONFIG = {
         "metrics_report_interval_ms": 100,
     }
 }
+
 
 def raw_metrics(info):
     metrics_page = "localhost:{}".format(info["metrics_export_port"])

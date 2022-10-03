@@ -108,11 +108,6 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const BundleSpecification &bundle_spec);
 
-/// Return whether a formatted resource is a bundle of the given index.
-bool IsBundleIndex(const std::string &resource,
-                   const PlacementGroupID &group_id,
-                   const int bundle_index);
-
 /// Return the original resource name of the placement group resource.
 std::string GetOriginalResourceName(const std::string &resource);
 
@@ -124,10 +119,15 @@ std::string GetOriginalResourceNameFromWildcardResource(const std::string &resou
 /// Parse the given resource and get the pg related information.
 ///
 /// \param resource name of the resource.
+/// \param for_wildcard_resource if true, it parses wildcard pg resources.
+/// E.g., [resource]_group_[pg_id]
+/// \param for_indexed_resource if true, it parses indexed pg resources.
+/// E.g., [resource]_group_[index]_[pg_id]
 /// \return nullopt if it is not a pg resource. Otherwise, it returns the
 /// struct with pg information parsed from the resource.
+/// If a returned bundle index is -1, it means the resource is the wildcard resource.
 std::optional<PgFormattedResourceData> ParsePgFormattedResource(
-    const std::string &resource);
+    const std::string &resource, bool for_wildcard_resource, bool for_indexed_resource);
 
 /// Generate debug information of given bundles.
 std::string GetDebugStringForBundles(

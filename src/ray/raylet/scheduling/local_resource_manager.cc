@@ -447,13 +447,15 @@ bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) co
   return local_resources_.total.Has(resource_id);
 }
 
-void LocalResourceManager::RecordMetrics() const {
+absl::flat_hash_map<std::string, LocalResourceManager::ResourceUsage>
+LocalResourceManager::GetResourceUsageMap() const {
   const auto &local_resources = GetLocalResources();
   const auto &avail_map =
       local_resources.GetAvailableResourceInstances().ToResourceRequest().ToResourceMap();
   const auto &total_map =
       local_resources.GetTotalResourceInstances().ToResourceRequest().ToResourceMap();
 
+  absl::flat_hash_map<std::string, ResourceUsage> resource_usage_map;
   for (const auto &it : total_map) {
     const auto &resource = it.first;
     auto total = it.second;
@@ -469,14 +471,24 @@ void LocalResourceManager::RecordMetrics() const {
 
     // TODO(sang): Right now, we just skip pg resource.
     // Process pg resources properly.
-    const auto &data = ParsePgFormattedResource(resource);
+    const auto &data = ParsePgFormattedResource(
+        resource, /*for_wildcard_resource*/ true, /*for_indexed_resource*/ true);
     if (data) {
       continue;
     }
 
-    ray::stats::STATS_resources.Record(avail,
+    resource_usage_map[resource].avail = avail;
+    resource_usage_map[resource].used = total - avail;
+  }
+
+  return resource_usage_map;
+}
+
+void LocalResourceManager::RecordMetrics() const {
+  for (auto &[resource, resource_usage] : GetResourceUsageMap()) {
+    ray::stats::STATS_resources.Record(resource_usage.avail,
                                        {{"State", "AVAILABLE"}, {"Name", resource}});
-    ray::stats::STATS_resources.Record(total - avail,
+    ray::stats::STATS_resources.Record(resource_usage.used,
                                        {{"State", "USED"}, {"Name", resource}});
   }
 }
