@@ -312,7 +312,10 @@ def _mosaic_train_loop_per_worker(config):
 
     # convert ray dataset into iterable
     train_torch_iterable, eval_torch_iterable = process_datasets(
-        train_dataset, eval_dataset, config.pop("batch_size"), config.pop("labels")
+        train_dataset,
+        eval_dataset,
+        config.pop("batch_size", None),
+        config.pop("labels", None),
     )
 
     # resume from checkpoint if checkpoint exists
