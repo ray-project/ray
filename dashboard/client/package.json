@@ -36,6 +36,8 @@
     "use-debounce": "^3.4.3"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^5.16.5",
+    "@testing-library/react": "^12.1.5",
     "eslint-plugin-import": "2.20.1",
     "eslint-plugin-prefer-arrow": "1.1.7",
     "prettier": "2.3.0"
