@@ -18,6 +18,7 @@ from ray.rllib.connectors.agent.mean_std_filter import (
 )
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
@@ -131,3 +132,18 @@ def get_synced_filter_connector(ctx: ConnectorContext):
         return None
     else:
         raise Exception("Unknown observation_filter: " + str(filter_specifier))
+
+
+@DeveloperAPI
+def maybe_get_filters_for_syncing(rollout_worker, policy, name):
+    # As long as the historic filter synchronization mechanism is in
+    # place, we need to put filters into self.filters so that they get
+    # synchronized
+    filter_connectors = policy.agent_connectors[SyncedFilterAgentConnector]
+    # There can only be one filter at a time
+    if filter_connectors:
+        assert len(SyncedFilterAgentConnector) == 1, (
+            "ConnectorPipeline has two connectors of type "
+            "SyncedFilterAgentConnector but can only have one."
+        )
+        rollout_worker.filters[name] = filter_connectors[0].filter

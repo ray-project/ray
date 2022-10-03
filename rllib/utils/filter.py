@@ -9,11 +9,9 @@ from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import TensorStructType
 from ray.rllib.utils.serialization import _serialize_ndarray, _deserialize_ndarray
+from ray.rllib.utils.deprecation import deprecation_warning
 
 logger = logging.getLogger(__name__)
-
-
-# TODO(jungong) : Add Adapters to use these filters as agent connectors.
 
 
 @DeveloperAPI
@@ -330,6 +328,15 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
 
     def __init__(self, *args, **kwargs):
         super(ConcurrentMeanStdFilter, self).__init__(*args, **kwargs)
+        deprecation_warning(
+            old="ConcurrentMeanStdFilter",
+            error=False,
+            help="ConcurrentMeanStd filters are only used for testing and will "
+            "therefore be deprecated in the course of moving to the "
+            "Connetors API, where testing of filters will be done by other "
+            "means.",
+        )
+
         self._lock = threading.RLock()
 
         def lock_wrap(func):

@@ -24,7 +24,10 @@ from gym.spaces import Discrete, MultiDiscrete, Space
 import ray
 from ray import ObjectRef
 from ray import cloudpickle as pickle
-from ray.rllib.connectors.util import create_connectors_for_policy
+from ray.rllib.connectors.util import (
+    create_connectors_for_policy,
+    maybe_get_filters_for_syncing,
+)
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
@@ -1279,21 +1282,9 @@ class RolloutWorker(ParallelIteratorWorker):
         connectors_enabled = merged_config.get("enable_connectors", False)
 
         if connectors_enabled:
-            create_connectors_for_policy(self.policy_map[policy_id], merged_config)
-
-            # As long as the historic filter synchronization mechanism is in
-            # place, we need to put filters into self.filters so that they get
-            # synchronized
-            filter_connectors = self.policy_map[policy_id].agent_connectors[
-                SyncedFilterAgentConnector
-            ]
-            # There can only be one filter at a time
-            if filter_connectors:
-                assert len(SyncedFilterAgentConnector) == 1, (
-                    "ConnectorPipeline has two connectors of type "
-                    "SyncedFilterAgentConnector but can only have one."
-                )
-                self.filters[policy_id] = filter_connectors[0].filter
+            policy = self.policy_map[policy_id]
+            create_connectors_for_policy(policy, merged_config)
+            maybe_get_filters_for_syncing(self, policy, policy_id)
         else:
             filter_shape = tree.map_structure(
                 lambda s: (
@@ -1878,21 +1869,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 )
 
             if connectors_enabled and name in self.policy_map:
-                create_connectors_for_policy(self.policy_map[name], policy_config)
-
-                # As long as the historic filter synchronization mechanism is in
-                # place, we need to put filters into self.filters so that they get
-                # synchronized
-                filter_connectors = self.policy_map[name].agent_connectors[
-                    SyncedFilterAgentConnector
-                ]
-                # There can only be one filter at a time
-                if filter_connectors:
-                    assert len(SyncedFilterAgentConnector) == 1, (
-                        "ConnectorPipeline has two connectors of type "
-                        "SyncedFilterAgentConnector but can only have one."
-                    )
-                    self.filters[name] = filter_connectors[0].filter
+                policy = self.policy_map[name]
+                create_connectors_for_policy(policy, policy_config)
+                maybe_get_filters_for_syncing(self, policy, name)
 
             if name in self.policy_map:
                 self.callbacks.on_create_policy(
