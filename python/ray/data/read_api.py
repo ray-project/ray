@@ -349,7 +349,9 @@ def read_mongo(
     To read the MongoDB in parallel, the execution of the pipeline is sharded, with a
     Ray read task to handle a partition of the results. The number of partition is
     determined by ``parallelism`` which can be requested from this interface or
-    automatically chosen if unspecified.
+    automatically chosen if unspecified. The sharding is automatically determined
+    in an attempt to evenly distribute the documents into the specified number of
+    partitions.
 
     Examples:
         >>> import ray
