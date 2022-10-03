@@ -287,7 +287,7 @@ def test_stream_finite_window_nocache_prep(ray_start_4_cpus):
         stats = shard.stats()
         assert str(shard) == "DatasetPipeline(num_windows=inf, num_stages=1)", shard
         assert (
-            "Stage 1 read->randomize_block_order->map_batches: 5/5 blocks executed "
+            "Stage 1 read->randomize_block_order->map_batches: 1/1 blocks executed "
             in stats
         ), stats
 
