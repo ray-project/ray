@@ -15,11 +15,23 @@ from ray.data.datasource import (
     PartitionStyle,
     PathPartitionEncoder,
     PathPartitionFilter,
+    Partitioning,
 )
 
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+def test_numpy_read_partitioning(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "country=us", "data.npy")
+    os.mkdir(os.path.dirname(path))
+    np.save(path, np.arange(4).reshape([2, 2]))
+
+    ds = ray.data.read_numpy(path, partitioning=Partitioning("hive"))
+
+    assert ds.schema().names == ["data", "country"]
+    assert [r["country"] for r in ds.take()] == ["us", "us"]
 
 
 @pytest.mark.parametrize("from_ref", [False, True])
@@ -45,6 +57,21 @@ def test_from_numpy(ray_start_regular_shared, from_ref):
     np.testing.assert_array_equal(values, arr1)
     # Check that conversion task is included in stats.
     assert "from_numpy_refs" in ds.stats()
+
+
+def test_from_numpy_variable_shaped(ray_start_regular_shared):
+    arr = np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object)
+    ds = ray.data.from_numpy(arr)
+    values = np.array(ds.take(2), dtype=object)
+
+    def recursive_to_list(a):
+        if not isinstance(a, (list, np.ndarray)):
+            return a
+        return [recursive_to_list(e) for e in a]
+
+    # Convert to a nested Python list in order to circumvent failed comparisons on
+    # ndarray raggedness.
+    np.testing.assert_equal(recursive_to_list(values), recursive_to_list(arr))
 
 
 def test_to_numpy_refs(ray_start_regular_shared):
@@ -270,3 +297,9 @@ def test_numpy_write_block_path_provider(
     assert arr1.sum() == 10
     assert arr2.sum() == 35
     np.testing.assert_equal(ds.take(1), [np.array([0])])
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
