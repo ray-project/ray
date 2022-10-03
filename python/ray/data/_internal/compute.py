@@ -130,7 +130,7 @@ class TaskPoolStrategy(ComputeStrategy):
         in_block_owned_by_consumer = block_list._owned_by_consumer
         # Release input block references.
         if clear_input_blocks:
-            del binned_blocks
+            del block_bundles
             block_list.clear()
 
         # Common wait for non-data refs.
@@ -536,6 +536,7 @@ def _check_batch_size(
     for _, meta in blocks_and_meta:
         if meta.num_rows and meta.size_bytes:
             batch_size_bytes = math.ceil(batch_size * (meta.size_bytes / meta.num_rows))
+            break
     context = DatasetContext.get_current()
     if (
         batch_size_bytes is not None
