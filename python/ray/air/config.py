@@ -160,7 +160,25 @@ class ScalingConfig:
     @property
     def _trainer_resources_not_none(self):
         if self.trainer_resources is None:
-            return {"CPU": 1}
+            if self.num_workers:
+                # For Google Colab, don't allocate resources to the base Trainer.
+                # Colab only has 2 CPUs, and because of this resource scarcity,
+                # we have to be careful on where we allocate resources. Since Colab
+                # is not distributed, the concern about many parallel Ray Tune trials
+                # leading to all Trainers being scheduled on the head node if we set
+                # `trainer_resources` to 0 is no longer applicable.
+                try:
+                    import google.colab  # noqa: F401
+
+                    trainer_resources = 0
+                except ImportError:
+                    trainer_resources = 1
+            else:
+                # If there are no additional workers, then always reserve 1 CPU for
+                # the Trainer.
+                trainer_resources = 1
+
+            return {"CPU": trainer_resources}
         return {k: v for k, v in self.trainer_resources.items() if v != 0}
 
     @property

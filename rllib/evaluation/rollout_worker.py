@@ -1224,6 +1224,8 @@ class RolloutWorker(ParallelIteratorWorker):
             KeyError: If the given `policy_id` already exists in this worker's
                 PolicyMap.
         """
+        merged_config = merge_dicts(self.policy_config, config or {})
+
         if policy_id in self.policy_map:
             raise KeyError(
                 f"Policy ID '{policy_id}' already exists in policy map! "
@@ -1285,7 +1287,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # Only if connectors are enables and we created the new policy from scratch
         # (it was not provided to us via the `policy` arg.
         if policy is None and self.policy_config.get("enable_connectors"):
-            create_connectors_for_policy(new_policy, self.policy_config)
+            create_connectors_for_policy(new_policy, merged_config)
 
         self.set_policy_mapping_fn(policy_mapping_fn)
         if policies_to_train is not None:
@@ -1634,7 +1636,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> worker.set_weights(weights, {"timestep": 42}) # doctest: +SKIP
         """
         # Only update our weights, if no seq no given OR given seq no is different
-        # from ours
+        # from ours.
         if weights_seq_no is None or weights_seq_no != self.weights_seq_no:
             # If per-policy weights are object refs, `ray.get()` them first.
             if weights and isinstance(next(iter(weights.values())), ObjectRef):
