@@ -467,6 +467,9 @@ class Checkpoint:
             >>> model = checkpoint.get_model()  # doctest: +SKIP
             Linear(in_features=1, out_features=1, bias=True)
         """
+        if type(other) is cls:
+            return other
+
         return cls(
             local_path=other._local_path,
             data_dict=other._data_dict,
