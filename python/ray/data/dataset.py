@@ -2304,8 +2304,10 @@ class Dataset(Generic[T]):
           types will fail on type checking. See all the supported types at:
           https://mongo-arrow.readthedocs.io/en/latest/supported_types.html.
         - The records will be inserted into MongoDB as new documents. If a record has
-          the _id field, this _id must be non-existent in MongoDB. It's fine to not
-          have _id field in record (MongoDB will auto generate one at insertion).
+          the _id field, this _id must be non-existent in MongoDB, otherwise the write
+          will be rejected and fail (hence preexisting documents are protected from
+          being mutated). It's fine to not have _id field in record and MongoDB will
+          auto generate one at insertion.
 
         Examples:
             >>> import ray
