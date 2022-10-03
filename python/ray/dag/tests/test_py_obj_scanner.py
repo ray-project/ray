@@ -25,7 +25,7 @@ def test_simple_replace():
     from ray.dag.py_obj_scanner import _local
 
     # test the resources are GCed correctly
-    assert not hasattr(_local, "scanner")
+    assert not _local.stack
 
 
 class NotSerializable:
@@ -57,11 +57,24 @@ def test_scanner_multi_thread():
             list(pool.map(_worker, [inputs] * 100))
 
 
-def test_no_nested():
-    with PyObjScanner([Source()], source_type=Source):
-        with pytest.raises(RuntimeError):
-            with PyObjScanner([Source()], source_type=Source):
-                pass
+def test_nested():
+    with PyObjScanner(
+        [Source(), [Source(), {"key": Source()}]], source_type=Source
+    ) as scanner:
+        with PyObjScanner(
+            [Source(), {"key": Source()}], source_type=Source
+        ) as scanner_2:
+            assert scanner_2.found_objects == 2
+            scanner_2.replace_with_dict({obj: 1 for obj in scanner.found_objects})
+            assert scanner_2.reconstruct() == [1, {"key": 1}]
+        assert scanner.found_objects == 3
+        scanner.replace_with_dict({obj: 1 for obj in scanner.found_objects})
+        assert scanner.reconstruct() == [1, [1, {"key": 1}]]
+
+    from ray.dag.py_obj_scanner import _local
+
+    # test the resources are GCed correctly
+    assert not _local.stack
 
 
 if __name__ == "__main__":

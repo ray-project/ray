@@ -7,6 +7,8 @@ from ray.dag.base import DAGNodeBase
 from ray.cloudpickle.compat import pickle
 
 _local = threading.local()
+# for nested use case
+_local.stack = []
 
 # Generic types for the scanner to transform from and to.
 SourceType = TypeVar("SourceType")
@@ -19,7 +21,7 @@ def _get_object(index: int) -> SourceType:
     Note: This function should be static and globally importable,
     otherwise the serialization overhead would be very significant.
     """
-    return _local.found_objects[index]
+    return _local.stack[-1].found_objects[index]
 
 
 def _get_unrelated_object(index: int) -> Any:
@@ -28,11 +30,11 @@ def _get_unrelated_object(index: int) -> Any:
     Note: This function should be static and globally importable,
     otherwise the serialization overhead would be very significant.
     """
-    return _local.scanner.unrelated_objects[index]
+    return _local.stack[-1].unrelated_objects[index]
 
 
-def _in_context() -> bool:
-    return hasattr(_local, "scanner")
+def _in_context(scanner: "PyObjScanner") -> bool:
+    return _local.stack and _local.stack[-1] is scanner
 
 
 class PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, TransformedType]):
@@ -61,14 +63,13 @@ class PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, Transformed
         super().__init__(self._buf)
 
     def __enter__(self):
-        if _in_context():
-            raise RuntimeError("Cannot use object scanner in a nested way.")
-        _local.scanner = self
+        _local.stack.append(self)
         self.dump(self._obj)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        del _local.scanner  # cleanup
+        scanner = _local.stack.pop()  # cleanup
+        assert scanner is self
 
     def reducer_override(self, obj):
         """Hook for reducing objects.
@@ -95,7 +96,7 @@ class PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, Transformed
         Args:
             replace_list: The list to replace the found objects.
         """
-        if not _in_context():
+        if not _in_context(self):
             raise RuntimeError("PyObjScanner must be used under 'with' context.")
         if len(replace_list) != len(self.found_objects):
             raise ValueError(
@@ -116,7 +117,7 @@ class PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, Transformed
             cache_inputs: If True, the function would apply to the same objects
                 only once.
         """
-        if not _in_context():
+        if not _in_context(self):
             raise RuntimeError("PyObjScanner must be used under 'with' context.")
         if cache_inputs:
             replace_list = []
@@ -140,7 +141,7 @@ class PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, Transformed
     def reconstruct(self):
         """Reconstruct the object. If objects in 'found_objects' are replaced,
         these objects would reveal in the reconstructed object."""
-        if not _in_context():
+        if not _in_context(self):
             raise RuntimeError("PyObjScanner must be used under 'with' context.")
         self._buf.seek(0)
         return pickle.load(self._buf)
