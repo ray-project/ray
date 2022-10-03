@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 import ray
 from ray.air import Checkpoint, session
 from ray.cluster_utils import Cluster
+from ray import tune
 
 import ray.train as train
 from ray.air.config import ScalingConfig
@@ -87,7 +88,12 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
     def train_fn():
         session.report(dict(devices=train.torch.get_device().index))
 
-    trainer = TorchTrainer(
+    class TorchTrainerPatched(TorchTrainer):
+        def _report(self, training_iterator) -> None:
+            for results in training_iterator:
+                tune.report(results=results)
+
+    trainer = TorchTrainerPatched(
         train_fn,
         scaling_config=ScalingConfig(
             num_workers=2,
@@ -96,7 +102,7 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
         ),
     )
     results = trainer.fit()
-    devices = results.metrics["devices"]
+    devices = [result["devices"] for result in results.metrics["results"]]
 
     if num_gpus_per_worker == 0.5:
         assert devices == [0, 0]
@@ -115,7 +121,12 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
     def train_fn():
         session.report(dict(devices=train.torch.get_device().index))
 
-    trainer = TorchTrainer(
+    class TorchTrainerPatched(TorchTrainer):
+        def _report(self, training_iterator) -> None:
+            for results in training_iterator:
+                tune.report(results=results)
+
+    trainer = TorchTrainerPatched(
         train_fn,
         # use gloo instead of nccl, since nccl is not supported
         # on this virtual gpu ray environment
@@ -127,7 +138,7 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
         ),
     )
     results = trainer.fit()
-    devices = results.metrics["devices"]
+    devices = [result["devices"] for result in results.metrics["results"]]
 
     count = Counter(devices)
     # cluster setups: 2 nodes, 2 gpus per node

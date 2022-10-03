@@ -247,14 +247,6 @@ py_test(
 )
 
 py_test(
-    name = "test_results_preprocessors",
-    size = "small",
-    srcs = ["tests/test_results_preprocessors.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
-)
-
-py_test(
     name = "test_rl_trainer",
     size = "medium",
     srcs = ["tests/test_rl_trainer.py"],
