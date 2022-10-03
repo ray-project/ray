@@ -49,7 +49,7 @@ genrule(
     ],
     cmd = """
     mkdir tmp-redis-bin
-    cp $(locations :redis) ./tmp-redis-bin/ -rf
+    cp -rf $(locations :redis) ./tmp-redis-bin/
     cp tmp-redis-bin/redis-server $(location redis-server)
     chmod +x $(location redis-server)
     cp tmp-redis-bin/redis-cli $(location redis-cli)
