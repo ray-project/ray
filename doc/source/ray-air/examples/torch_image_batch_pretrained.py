@@ -1,3 +1,4 @@
+from typing import Dict
 import numpy as np
 
 import torch
@@ -11,7 +12,7 @@ from ray.data.preprocessors import BatchMapper
 from ray.data.datasource import ImageFolderDatasource
 
 
-def preprocess(image_batch: np.ndarray) -> np.ndarray:
+def preprocess(image_batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     """
     User Pytorch code to transform user image with outer dimension of batch size.
     """
@@ -23,8 +24,9 @@ def preprocess(image_batch: np.ndarray) -> np.ndarray:
         ]
     )
     # Outer dimension is batch size such as (8, 256, 256, 3) -> (8, 3, 256, 256)
-    transposed_torch_tensor = torch.Tensor(image_batch.transpose(0, 3, 1, 2))
-    return preprocess(transposed_torch_tensor).numpy()
+    transposed_torch_tensor = torch.Tensor(image_batch["image"].transpose(0, 3, 1, 2))
+    image_batch["image"] = preprocess(transposed_torch_tensor).numpy()
+    return image_batch
 
 
 data_url = "s3://anonymous@air-example-data-2/1G-image-data-synthetic-raw"
