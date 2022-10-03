@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 from functools import partial
@@ -23,6 +24,22 @@ from ray.data.tests.util import Counter
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+def test_json_read_partitioning(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "country=us")
+    os.mkdir(path)
+    with open(os.path.join(path, "file1.json"), "w") as file:
+        json.dump({"number": 0, "string": "foo"}, file)
+    with open(os.path.join(path, "file2.json"), "w") as file:
+        json.dump({"number": 1, "string": "bar"}, file)
+
+    ds = ray.data.read_json(path)
+
+    assert ds.take() == [
+        {"number": 0, "string": "foo", "country": "us"},
+        {"number": 1, "string": "bar", "country": "us"},
+    ]
 
 
 @pytest.mark.parametrize(

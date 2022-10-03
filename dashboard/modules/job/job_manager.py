@@ -29,7 +29,7 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.utils import file_tail_iterator
 from ray.exceptions import RuntimeEnvSetupError
 from ray.job_submission import JobStatus
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
 
 logger = logging.getLogger(__name__)
 
@@ -249,10 +249,6 @@ class JobSupervisor:
 
     def _get_driver_env_vars(self) -> Dict[str, str]:
         """Returns environment variables that should be set in the driver."""
-        ray_addr = ray._private.services.canonicalize_bootstrap_address_or_die(
-            "auto", ray.worker._global_node._ray_params.temp_dir
-        )
-        assert ray_addr is not None
         return {
             # Set JobConfig for the child process (runtime_env, metadata).
             RAY_JOB_CONFIG_JSON_ENV_VAR: json.dumps(
@@ -261,12 +257,12 @@ class JobSupervisor:
                     "metadata": self._metadata,
                 }
             ),
-            # Always set RAY_ADDRESS as find_bootstrap_address address for
-            # job submission. In case of local development, prevent user from
-            # re-using http://{address}:{dashboard_port} to interact with
-            # jobs SDK.
-            # TODO:(mwtian) Check why "auto" does not work in entrypoint script
-            ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE: ray_addr,
+            # When using jobs RAY_ADDRESS may be set to the dashboard url, but
+            # ray.init() also uses RAY_ADDRESS, and the dashboard url is not a
+            # valid cluster address for ray.init().
+            # As a workaround, we override RAY_ADDRESS for the driver script's
+            # ray.init() until #22221 is fixed.
+            ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE: "auto",
             # Set PYTHONUNBUFFERED=1 to stream logs during the job instead of
             # only streaming them upon completion of the job.
             "PYTHONUNBUFFERED": "1",
@@ -309,7 +305,21 @@ class JobSupervisor:
             # Block in PENDING state until start signal received.
             await _start_signal_actor.wait.remote()
 
-        await self._job_info_client.put_status(self._job_id, JobStatus.RUNNING)
+        driver_agent_http_address = (
+            "http://"
+            f"{ray.worker.global_worker.node.node_ip_address}:"
+            f"{ray.worker.global_worker.node.dashboard_agent_listen_port}"
+        )
+        driver_node_id = ray.worker.global_worker.current_node_id.hex()
+
+        await self._job_info_client.put_status(
+            self._job_id,
+            JobStatus.RUNNING,
+            jobinfo_replace_kwargs={
+                "driver_agent_http_address": driver_agent_http_address,
+                "driver_node_id": driver_node_id,
+            },
+        )
 
         try:
             # Configure environment variables for the child process. These
@@ -525,7 +535,6 @@ class JobManager:
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
-        _driver_on_current_node: bool = True,
     ) -> str:
         """
         Job execution happens asynchronously.
@@ -550,8 +559,6 @@ class JobManager:
             _start_signal_actor: Used in testing only to capture state
                 transitions between PENDING -> RUNNING. Regular user shouldn't
                 need this.
-            _driver_on_current_node: whether force driver run on current node,
-                the default value is True.
 
         Returns:
             job_id: Generated uuid for further job management. Only valid
@@ -576,19 +583,11 @@ class JobManager:
         # returns immediately and we can catch errors with the actor starting
         # up.
         try:
-            scheduling_strategy = "DEFAULT"
-            if _driver_on_current_node:
-                # If JobManager is created by dashboard server
-                # running on headnode, same for job supervisor actors scheduled
-                scheduling_strategy = NodeAffinitySchedulingStrategy(
-                    node_id=ray.get_runtime_context().node_id,
-                    soft=False,
-                )
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=0,
-                scheduling_strategy=scheduling_strategy,
+                scheduling_strategy="DEFAULT",
                 runtime_env=self._get_supervisor_runtime_env(runtime_env),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
             ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)
@@ -619,6 +618,9 @@ class JobManager:
             return True
         else:
             return False
+
+    def job_info_client(self) -> JobInfoStorageClient:
+        return self._job_info_client
 
     async def get_job_status(self, job_id: str) -> Optional[JobStatus]:
         """Get latest status of a job."""
