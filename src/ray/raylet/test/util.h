@@ -124,6 +124,10 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return ActorID::Nil();
   }
+  const const std::string GetIdAsDebugString() const override {
+    RAY_CHECK(false) << "Method unused";
+    return "";
+  }
   void MarkDetachedActor() override { is_detached_actor_ = true; }
   bool IsDetachedActor() const override { return is_detached_actor_; }
   const std::shared_ptr<ClientConnection> Connection() const override {

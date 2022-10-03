@@ -71,6 +71,8 @@ class WorkerInterface {
   virtual int GetRuntimeEnvHash() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
+  // Returns the ID of the task / actor as debug string.
+  virtual const std::string GetIdAsDebugString() const = 0;
   virtual void MarkDetachedActor() = 0;
   virtual bool IsDetachedActor() const = 0;
   virtual const std::shared_ptr<ClientConnection> Connection() const = 0;
@@ -171,6 +173,7 @@ class Worker : public WorkerInterface {
   int GetRuntimeEnvHash() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
+  const std::string GetIdAsDebugString() const;
   void MarkDetachedActor();
   bool IsDetachedActor() const;
   const std::shared_ptr<ClientConnection> Connection() const;
