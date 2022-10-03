@@ -252,6 +252,7 @@ parts:
           - file: ray-core/examples/plot_pong_example
           - file: ray-core/examples/highly_parallel
           - file: ray-core/examples/batch_prediction
+          - file: ray-core/examples/batch_training
       - file: ray-core/package-ref
 
   - caption: Ray Clusters
