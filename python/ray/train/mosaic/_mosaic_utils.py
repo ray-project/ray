@@ -1,13 +1,13 @@
 import math
-from typing import Any, Dict, Tuple, Union, Iterable
+from typing import Any, Dict, Tuple, Iterable, Optional
 import torch
 import os
 from ray.air import session
 from ray.data.dataset import Dataset
 from ray.train.mosaic.mosaic_checkpoint import MosaicCheckpoint
+from ray.tune.syncer import _DefaultSyncer
 
 from composer.loggers import Logger
-from composer.loggers.logger import LogLevel
 from composer.loggers.logger_destination import LoggerDestination
 from composer.core.state import State
 from composer.callbacks.checkpoint_saver import CheckpointSaver
@@ -87,6 +87,43 @@ def process_datasets(
     return train_torch_iterable, eval_torch_iterable
 
 
+def get_load_path_if_exists(checkpoint, load_path, remote_dir, load_from_remote):
+    _load_path = None
+    cwd = os.getcwd()
+    if checkpoint:
+        load_dir = None
+        checkpoint_dict = checkpoint.to_dict()
+        if load_from_remote:
+            if checkpoint_dict["remote_dir"] is None:
+                raise KeyError(
+                    "the checkpoint to resume from does not have a \
+                    remote directory"
+                )
+            syncer = _DefaultSyncer()
+            syncer.sync_down(checkpoint_dict["remote_dir"], cwd)
+            syncer.wait_or_retry()
+            load_dir = cwd
+        else:
+            load_dir = checkpoint_dict["working_directory"]
+        checkpoint_file = (
+            load_path if load_path else checkpoint_dict["all_checkpoints"][-1]
+        )
+        _load_path = os.path.join(load_dir, checkpoint_file)
+    elif load_from_remote:
+        assert (
+            remote_dir is not None
+        ), "Loading from remote, but `remote_dir` is not \
+            provided in `trainer_init_config`"
+        assert load_path is not None, "Loading from saved data but no path is given"
+        syncer = _DefaultSyncer()
+        syncer.sync_down(remote_dir, cwd)
+        _load_path = os.path.join(cwd, load_path)
+        syncer.wait_or_retry()
+    elif load_path:
+        _load_path = load_path
+    return _load_path
+
+
 class RayLogger(LoggerDestination):
     """A logger to relay information logged by composer models to ray.
 
@@ -112,19 +149,14 @@ class RayLogger(LoggerDestination):
         log_level: the granuality to log data. The default value is ``LogLevel.BATCH``
     """
 
-    def __init__(
-        self, log_level: Union[str, int, LogLevel] = LogLevel.BATCH, keys=list()
-    ) -> None:
-        self.log_level = LogLevel(log_level)
+    def __init__(self, keys=None) -> None:
         self.data = {}
-        for key in keys:
-            self.data[key] = None
+        if keys:
+            for key in keys:
+                self.data[key] = None
 
-    def log_data(self, state: State, log_level: LogLevel, data: Dict[str, Any]):
-        if log_level > self.log_level:
-            # the logged metric is more verbose than what we want to record.
-            return
-        self.data.update(data.items())
+    def log_metrics(self, metrics: Dict[str, Any], step: Optional[int] = None) -> None:
+        self.data.update(metrics.items())
         for key, val in self.data.items():
             if isinstance(val, torch.Tensor):
                 self.data[key] = val.item()
@@ -180,10 +212,12 @@ class RayTrainReportCallback(Callback):
         in_memory_logger,
         ray_logger,
         checkpoint_savers: CheckpointSaver,
+        remote_dir: str = None,
     ):
         self.in_memory_logger = in_memory_logger
         self.ray_logger = ray_logger
         self.checkpoint_savers = checkpoint_savers
+        self.remote_dir = remote_dir
 
     def close(self, state: State, logger: Logger) -> None:
         del logger  # unused
@@ -196,7 +230,13 @@ class RayTrainReportCallback(Callback):
                 "working_directory": os.getcwd(),
                 "in_memory_logger": self.in_memory_logger,
                 "all_checkpoints": all_checkpoints,
+                "remote_dir": self.remote_dir,
             }
         )
+
+        if self.remote_dir:
+            syncer = _DefaultSyncer()
+            syncer.sync_up(os.getcwd(), self.remote_dir)
+            syncer.wait_or_retry()
 
         session.report(metrics=self.ray_logger.data, checkpoint=checkpoint)

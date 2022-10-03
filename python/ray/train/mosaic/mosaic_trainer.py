@@ -14,6 +14,7 @@ from ray.train.mosaic._mosaic_utils import (
     process_datasets,
     RayLogger,
     RayTrainReportCallback,
+    get_load_path_if_exists,
 )
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
@@ -247,7 +248,7 @@ class MosaicTrainer(TorchTrainer):
         self,
         trainer_init_per_worker: Callable[[Optional[Dict]], composer.trainer.Trainer],
         *,
-        datasets: Optional[Dict[str, GenDataset]] = dict(),
+        datasets: Optional[Dict[str, GenDataset]] = None,
         trainer_init_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
@@ -308,6 +309,7 @@ def _mosaic_train_loop_per_worker(config):
     """Per-worker training loop for Mosaic Composers."""
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
     fit_config = config.pop("fit_config", {})
+    remote_dir = config.pop("remote_dir", None)
 
     os.environ["RANK"] = str(session.get_world_rank())
     os.environ["WORLD_SIZE"] = str(session.get_world_size())
@@ -328,13 +330,12 @@ def _mosaic_train_loop_per_worker(config):
 
     # resume from checkpoint if checkpoint exists
     checkpoint = session.get_checkpoint()
-    # use the last checkpoint as the load_path if load_path is not already defined
-    if checkpoint and "load_path" not in config:
-        checkpoint_dict = checkpoint.to_dict()
-        load_path = os.path.join(
-            checkpoint_dict["working_directory"], checkpoint_dict["all_checkpoints"][-1]
-        )
-        config["load_path"] = load_path
+    config["load_path"] = get_load_path_if_exists(
+        checkpoint,
+        config.pop("load_path", None),
+        remote_dir,
+        config.pop("load_from_remote", False),
+    )
 
     # add RayLogger to Composer trainer loggers
     ray_logger = RayLogger(keys=config.pop("log_keys", []))
@@ -374,6 +375,7 @@ def _mosaic_train_loop_per_worker(config):
             in_memory_logger=in_memory_logger,
             ray_logger=ray_logger,
             checkpoint_savers=checkpoint_savers,
+            remote_dir=remote_dir,
         )
     )
     # call the trainer
