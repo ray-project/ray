@@ -4,6 +4,8 @@ from collections import Counter
 
 from unittest.mock import patch
 import pytest
+from ray.air.constants import MODEL_KEY
+from ray.train.torch.torch_checkpoint import TorchCheckpoint
 import torch
 import torchvision
 from torch.nn.parallel import DistributedDataParallel
@@ -14,7 +16,6 @@ from ray.air import Checkpoint, session
 from ray.cluster_utils import Cluster
 
 import ray.train as train
-from ray.train import Trainer, TrainingCallback
 from ray.air.config import ScalingConfig
 from ray.train.constants import TRAINING_ITERATION, DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train.examples.horovod.horovod_example import (
@@ -81,21 +82,21 @@ class NonTensorDataset(LinearDataset):
         return {"x": self.x[index, None], "y": 2}
 
 
-# TODO: Refactor as a backend test.
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
 def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
     def train_fn():
-        return train.torch.get_device().index
+        session.report(dict(devices=train.torch.get_device().index))
 
-    trainer = Trainer(
-        "torch",
-        num_workers=2,
-        use_gpu=True,
-        resources_per_worker={"GPU": num_gpus_per_worker},
+    trainer = TorchTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(
+            num_workers=2,
+            use_gpu=True,
+            resources_per_worker={"GPU": num_gpus_per_worker},
+        ),
     )
-    trainer.start()
-    devices = trainer.run(train_fn)
-    trainer.shutdown()
+    results = trainer.fit()
+    devices = results.metrics["devices"]
 
     if num_gpus_per_worker == 0.5:
         assert devices == [0, 0]
@@ -108,23 +109,25 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
         )
 
 
-# TODO: Refactor as a backend test.
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
 def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
     @patch("torch.cuda.is_available", lambda: True)
     def train_fn():
-        return train.torch.get_device().index
+        session.report(dict(devices=train.torch.get_device().index))
 
-    trainer = Trainer(
-        TorchConfig(backend="gloo"),  # use gloo instead of nccl,
-        # since nccl is not supported on this virtual gpu ray environment
-        num_workers=int(4 / num_gpus_per_worker),
-        use_gpu=True,
-        resources_per_worker={"GPU": num_gpus_per_worker},
+    trainer = TorchTrainer(
+        train_fn,
+        # use gloo instead of nccl, since nccl is not supported
+        # on this virtual gpu ray environment
+        torch_config=TorchConfig(backend="gloo"),
+        scaling_config=ScalingConfig(
+            num_workers=int(4 / num_gpus_per_worker),
+            use_gpu=True,
+            resources_per_worker={"GPU": num_gpus_per_worker},
+        ),
     )
-    trainer.start()
-    devices = trainer.run(train_fn)
-    trainer.shutdown()
+    results = trainer.fit()
+    devices = results.metrics["devices"]
 
     count = Counter(devices)
     # cluster setups: 2 nodes, 2 gpus per node
@@ -155,7 +158,6 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
         )
 
 
-# TODO: Refactor as a backend test.
 def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
     """Tests if ``prepare_model`` correctly wraps in DDP."""
 
@@ -171,13 +173,13 @@ def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
         # Make sure model is on cuda.
         assert next(model.parameters()).is_cuda
 
-    trainer = Trainer("torch", num_workers=2, use_gpu=True)
-    trainer.start()
-    trainer.run(train_fn)
-    trainer.shutdown()
+    trainer = TorchTrainer(
+        train_fn, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+    )
+    results = trainer.fit()
+    assert not results.error
 
 
-# TODO: Refactor as a backend test.
 @pytest.mark.parametrize(
     "dataset", (LinearDataset, LinearDatasetDict, NonTensorDataset)
 )
@@ -212,13 +214,13 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus, dataset):
                     # Make sure the data is on the correct device.
                     assert x.is_cuda and y == 2
 
-    trainer = Trainer("torch", num_workers=2, use_gpu=True)
-    trainer.start()
-    trainer.run(train_fn)
-    trainer.shutdown()
+    trainer = TorchTrainer(
+        train_fn, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+    )
+    results = trainer.fit()
+    assert not results.error
 
 
-# TODO: Refactor as a backend test.
 @pytest.mark.parametrize("use_gpu", (False, True))
 def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
     # NOTE: Reproducible results aren't guaranteed between seeded executions, even with
@@ -254,18 +256,21 @@ def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
                 loss.backward()
                 optimizer.step()
 
-        return loss.item()
+        session.report(dict(loss=loss.item()))
 
-    trainer = Trainer("torch", num_workers=2, use_gpu=use_gpu)
-    trainer.start()
-    result1 = trainer.run(train_func)
-    result2 = trainer.run(train_func)
-    trainer.shutdown()
+    trainer = TorchTrainer(
+        train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+    )
+    result1 = trainer.fit()
 
-    assert result1 == result2
+    trainer = TorchTrainer(
+        train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+    )
+    result2 = trainer.fit()
+
+    assert result1.metrics["loss"] == result2.metrics["loss"]
 
 
-# TODO: Refactor as a backend test.
 def test_torch_amp_performance(ray_start_4_cpus_2_gpus):
     def train_func(config):
         train.torch.accelerate(amp=config["amp"])
@@ -296,19 +301,20 @@ def test_torch_amp_performance(ray_start_4_cpus_2_gpus):
                 optimizer.step()
 
     def latency(amp: bool) -> float:
-        trainer = Trainer("torch", num_workers=2, use_gpu=True)
-        trainer.start()
+        trainer = TorchTrainer(
+            train_func,
+            train_loop_config={"amp": amp},
+            scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
+        )
         start_time = timer()
-        trainer.run(train_func, {"amp": amp})
+        trainer.fit()
         end_time = timer()
-        trainer.shutdown()
         return end_time - start_time
 
     # Training should be at least 5% faster with AMP.
     assert 1.05 * latency(amp=True) < latency(amp=False)
 
 
-# TODO: Refactor as a backend test.
 def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
     """Test that model with AMP is serializable."""
 
@@ -318,12 +324,14 @@ def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
         model = torchvision.models.resnet101()
         model = train.torch.prepare_model(model)
 
-        train.save_checkpoint(model=model)
+        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
 
-    trainer = Trainer("torch", num_workers=1, use_gpu=True)
-    trainer.start()
-    trainer.run(train_func)
-    trainer.shutdown()
+    trainer = TorchTrainer(
+        train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+    )
+    results = trainer.fit()
+    assert not results.error
+    assert results.checkpoint
 
 
 @pytest.mark.parametrize("nccl_socket_ifname", ["", "ens3"])
@@ -347,20 +355,11 @@ def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_gpus, nccl_socket_i
     worker_group.execute(assert_env_var_set)
 
 
-# TODO: Refactor as a backend test.
+@patch.dict(os.environ, {"CUDA_VISIBLE_DEVICES": ""})
 def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
     """Tests if GPU tensors are auto converted to CPU on driver."""
 
-    # Disable GPU on the driver.
-    os.environ["CUDA_VISIBLE_DEVICES"] = ""
-
     num_workers = 2
-
-    class ValidateCPUCallback(TrainingCallback):
-        def handle_result(self, results, **info):
-            for result in results:
-                model = result["model"]
-                assert not next(model.parameters()).is_cuda
 
     def train_func():
         model = torch.nn.Linear(1, 1)
@@ -370,24 +369,18 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
 
         assert next(model.parameters()).is_cuda
 
-        ray.train.save_checkpoint(model=model)
-        ray.train.report(model=model)
+        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
 
-    trainer = Trainer("torch", num_workers=num_workers, use_gpu=True)
-    trainer.start()
-    trainer.run(train_func, callbacks=[ValidateCPUCallback()])
-    model = trainer.latest_checkpoint["model"]
+    trainer = TorchTrainer(
+        train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True)
+    )
+    results = trainer.fit()
+    assert not results.error
+
+    model = results.checkpoint.get_model()
     assert not next(model.parameters()).is_cuda
-    trainer.shutdown()
 
     # Test the same thing for state dict.
-
-    class ValidateCPUStateDictCallback(TrainingCallback):
-        def handle_result(self, results, **info):
-            for result in results:
-                state_dict = result["state_dict"]
-                for tensor in state_dict.values():
-                    assert not tensor.is_cuda
 
     def train_func():
         model = torch.nn.Linear(1, 1)
@@ -402,20 +395,22 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
         for tensor in state_dict.values():
             assert tensor.is_cuda
 
-        ray.train.save_checkpoint(state_dict=state_dict)
-        ray.train.report(state_dict=state_dict)
+        session.report({}, checkpoint=TorchCheckpoint.from_state_dict(state_dict))
 
-    trainer = Trainer("torch", num_workers=num_workers, use_gpu=True)
-    trainer.start()
-    trainer.run(train_func, callbacks=[ValidateCPUStateDictCallback()])
+        # No longer supported.
+        # ray.train.report(state_dict=state_dict)
+
+    trainer = TorchTrainer(
+        train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True)
+    )
+    results = trainer.fit()
+    assert not results.error
+
+    state_dict = results.checkpoint.to_dict()[MODEL_KEY]
 
     state_dict = trainer.latest_checkpoint["state_dict"]
     for tensor in state_dict.values():
         assert not tensor.is_cuda
-    trainer.shutdown()
-
-    # Reset the env var.
-    os.environ.pop("CUDA_VISIBLE_DEVICES")
 
 
 def test_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
@@ -500,7 +495,6 @@ def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
     assert train_regression(num_workers=2, use_gpu=True)
 
 
-# TODO: Refactor as a backend test.
 @pytest.mark.parametrize(
     ("device_choice", "auto_transfer"),
     [

@@ -1,15 +1,21 @@
+import time
+from unittest.mock import patch
 import pytest
+import os
 
 import ray
 from ray import tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
-from ray.train.constants import PREPROCESSOR_KEY
+from ray.train._internal.backend_executor import BackendExecutor
+from ray.train._internal.worker_group import WorkerGroup
+from ray.train.constants import PREPROCESSOR_KEY, TRAIN_ENABLE_WORKER_SPREAD_ENV
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.air.config import ScalingConfig
+from ray.air.config import CheckpointConfig, RunConfig, ScalingConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
+from ray.tune.callback import Callback
 
 
 @pytest.fixture
@@ -18,6 +24,53 @@ def ray_start_4_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_4_cpus_4_gpus_4_extra():
+    address_info = ray.init(num_cpus=4, num_gpus=4, resources={"extra": 4})
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+def gen_execute_single_async_special(special_f):
+    def execute_single_async_special(self, i, f, *args, **kwargs):
+        assert len(self.workers) == 2
+        if i == 0 and hasattr(self, "should_fail") and self.should_fail:
+            kwargs["train_func"] = special_f
+        return self.workers[i].actor._RayTrainWorker__execute.remote(f, *args, **kwargs)
+
+    return execute_single_async_special
+
+
+def gen_new_backend_executor(special_f):
+    """Returns a BackendExecutor that runs special_f on worker 0 once."""
+
+    class TestBackendExecutor(BackendExecutor):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._has_failed = False
+
+        def start_training(self, *args, **kwargs):
+            special_execute = gen_execute_single_async_special(special_f)
+            if not self._has_failed:
+                self.worker_group.should_fail = True
+                self._has_failed = True
+            else:
+                self.worker_group.should_fail = False
+            with patch.object(WorkerGroup, "execute_single_async", special_execute):
+                super().start_training(*args, **kwargs)
+
+    return TestBackendExecutor
+
+
+class CaptureReportCallback(Callback):
+    def __init__(self):
+        self.result_list = []
+
+    def on_trial_result(self, iteration, trials, trial, result, **info):
+        self.result_list.append(result)
 
 
 scale_config = ScalingConfig(num_workers=2)
@@ -191,6 +244,132 @@ def test_tune(ray_start_4_cpus):
 
     # Make sure original Trainer is not affected.
     assert trainer._train_loop_config["x"] == 100
+
+
+def test_env_var(ray_start_4_cpus):
+    """Tests if Train env vars are propagated to the BackendExecutor."""
+    os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV] = "1"
+
+    class EnvBackendExecutor(BackendExecutor):
+        def __init__(self, *args, **kwargs):
+            assert (
+                TRAIN_ENABLE_WORKER_SPREAD_ENV in os.environ
+                and os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV] == "1"
+            )
+            super().__init__(*args, **kwargs)
+
+    class DataParallelTrainerPatched(DataParallelTrainer):
+        _backend_executor_cls = EnvBackendExecutor
+
+    try:
+        trainer = DataParallelTrainerPatched(
+            lambda: 1, scaling_config=ScalingConfig(num_workers=1)
+        )
+        trainer.fit()
+    finally:
+        del os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV]
+
+
+def test_fast_slow(ray_start_4_cpus):
+    def train_func():
+        for i in range(2):
+            session.report(dict(index=i), checkpoint=Checkpoint.from_dict({"epoch": i}))
+
+    def train_slow():
+        for i in range(2):
+            session.report(dict(index=i), checkpoint=Checkpoint.from_dict({"epoch": i}))
+            time.sleep(5)
+
+    new_backend_executor_cls = gen_new_backend_executor(train_slow)
+    callback = CaptureReportCallback()
+
+    class DataParallelTrainerPatched(DataParallelTrainer):
+        _backend_executor_cls = new_backend_executor_cls
+
+    trainer = DataParallelTrainerPatched(
+        train_func,
+        scaling_config=scale_config,
+        run_config=RunConfig(callbacks=[callback]),
+    )
+    results = trainer.fit()
+
+    assert results.checkpoint.to_dict()["epoch"] == 1
+
+    result_list = callback.result_list
+    assert len(result_list) == 2
+
+
+def test_mismatch_report(ray_start_4_cpus):
+    def train_func():
+        for _ in range(2):
+            session.report(dict(loss=1))
+
+    def train_mismatch():
+        session.report(dict(loss=1))
+
+    new_backend_executor_cls = gen_new_backend_executor(train_mismatch)
+
+    class DataParallelTrainerPatched(DataParallelTrainer):
+        _backend_executor_cls = new_backend_executor_cls
+
+    trainer = DataParallelTrainerPatched(
+        train_func,
+        scaling_config=scale_config,
+    )
+    with pytest.raises(RuntimeError):
+        trainer.fit()
+
+
+def test_checkpoint_config(ray_start_4_cpus):
+    def train_func():
+        session.report(
+            dict(loss=float("nan")), checkpoint=Checkpoint.from_dict({"idx": 0})
+        )  # nan, deleted
+        session.report(
+            dict(loss=3), checkpoint=Checkpoint.from_dict({"idx": 1})
+        )  # best
+        session.report(
+            dict(loss=7), checkpoint=Checkpoint.from_dict({"idx": 2})
+        )  # worst, deleted
+        session.report(dict(loss=5), checkpoint=Checkpoint.from_dict({"idx": 3}))
+
+    checkpoint_config = CheckpointConfig(
+        num_to_keep=2, checkpoint_score_attribute="loss", checkpoint_score_order="min"
+    )
+
+    trainer = DataParallelTrainer(
+        train_func,
+        scaling_config=scale_config,
+        run_config=RunConfig(checkpoint_config=checkpoint_config),
+    )
+    results = trainer.fit()
+    assert results.checkpoint.to_dict()["idx"] == 3
+    assert len(results.best_checkpoints) == 2
+    assert results.best_checkpoints[0][0].to_dict()["idx"] == 3
+    assert results.best_checkpoints[1][0].to_dict()["idx"] == 1
+    assert results.best_checkpoints[0][1]["loss"] == 5
+    assert results.best_checkpoints[1][1]["loss"] == 3
+
+
+def test_world_rank(ray_start_4_cpus):
+    def train_func():
+        session.report(dict(world_rank=session.get_world_rank()))
+
+    class DataParallelTrainerPatched(DataParallelTrainer):
+        def _report(self, training_iterator) -> None:
+            for results in training_iterator:
+                tune.report(results=results)
+
+    trainer = DataParallelTrainerPatched(
+        train_func,
+        scaling_config=scale_config,
+    )
+    results = trainer.fit()
+
+    assert set((result["world_rank"] for result in results.metrics["results"])) == {
+        0,
+        1,
+    }
 
 
 if __name__ == "__main__":
