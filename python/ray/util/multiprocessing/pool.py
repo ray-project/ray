@@ -576,6 +576,8 @@ class Pool:
         ray_address: Optional[str] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
+        ray._private.usage.usage_lib.record_library_usage("util.multiprocessing.Pool")
+
         self._closed = False
         self._initializer = initializer
         self._initargs = initargs
