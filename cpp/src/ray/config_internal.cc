@@ -220,8 +220,9 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
 };
 
 void ConfigInternal::SetBootstrapAddress(std::string_view address) {
-  if address
-    == "auto" { return; }
+  if (address == "auto") {
+    return;
+  }
   auto pos = address.find(':');
   RAY_CHECK(pos != std::string::npos);
   bootstrap_ip = address.substr(0, pos);
