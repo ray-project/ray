@@ -32,6 +32,8 @@ virtualenv>=20.0.24
 dm_tree
 flask
 pygame
+gym>=0.21.0,<0.24.1; python_version >= '3.7'
+gym==0.19.0; python_version < '3.7'
 lz4
 scikit-image
 pandas>=1.0.5; python_version < '3.7'
