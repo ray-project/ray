@@ -68,9 +68,7 @@ class TorchSARLTrainer:
         # We need to get the weights from the trainer to the workers
         return self.curr_weights
 
-    def _make_ray_train_trainer(
-        self, scaling_config, init_rl_module_fn, module_config
-    ):
+    def _make_ray_train_trainer(self, scaling_config, init_rl_module_fn, module_config):
         init_rl_module_fn = init_rl_module_fn or self.init_rl_module
         self.queues = [Queue(maxsize=1) for _ in range(scaling_config.num_workers)]
         backend_config = TorchConfig()

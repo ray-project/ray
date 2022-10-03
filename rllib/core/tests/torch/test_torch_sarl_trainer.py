@@ -13,14 +13,14 @@ from ray.rllib.core.torch.torch_sarl_trainer import TorchSARLTrainer
 
 
 def error_message_fn(model, name_value_being_checked):
-        msg = (
-            f"model {model}, inside of the DummyCompositionRLModule being "
-            "optimized by TorchDummyCompositionModuleTrainer should have the "
-            f"same {name_value_being_checked} computed on each of their workers "
-            "after each update but they DON'T. Something is probably wrong with "
-            "the TorchSARLTrainer or torch DDP."
-        )
-        return msg
+    msg = (
+        f"model {model}, inside of the DummyCompositionRLModule being "
+        "optimized by TorchDummyCompositionModuleTrainer should have the "
+        f"same {name_value_being_checked} computed on each of their workers "
+        "after each update but they DON'T. Something is probably wrong with "
+        "the TorchSARLTrainer or torch DDP."
+    )
+    return msg
 
 
 def model_grad_norm(model):
@@ -57,12 +57,8 @@ def test_2_torch_sarl_trainer(trainer_class_fn):
 
     batch_size = 10
     x, y = make_dataset()
-    trainer = trainer_class_fn(
-        {"num_gpus": 1, "module_config": {}}
-    )
-    trainer2 = trainer_class_fn(
-        {"num_gpus": 1, "module_config": {}}
-    )
+    trainer = trainer_class_fn({"num_gpus": 1, "module_config": {}})
+    trainer2 = trainer_class_fn({"num_gpus": 1, "module_config": {}})
 
     for i in range(2):
         batch = SampleBatch(
@@ -273,9 +269,6 @@ class TorchDummyCompositionModuleTrainer(TorchSARLTrainer):
 
 
 if __name__ == "__main__":
-    # for trainer_class in [TorchIndependentModulesTrainer]:
-    #     test_1_torch_sarl_trainer(trainer_class)
-    #     test_2_torch_sarl_trainer(trainer_class)
-    module = DummyRLModule({})
-    for name, module in module.named_children():
-        print(name, module)
+    for trainer_class in [TorchIndependentModulesTrainer]:
+        test_1_torch_sarl_trainer(trainer_class)
+        test_2_torch_sarl_trainer(trainer_class)
