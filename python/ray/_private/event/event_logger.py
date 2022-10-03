@@ -8,14 +8,11 @@ import os
 import threading
 
 from typing import Dict
-from dataclasses import dataclass
 from datetime import datetime
 
 from google.protobuf.json_format import MessageToDict
 
 from ray.core.generated.event_pb2 import Event
-
-logger = logging.getLogger(__name__)
 
 
 def get_event_id():
@@ -75,9 +72,11 @@ class EventLoggerAdapter:
         custom_fields = event.custom_fields
         with self.lock:
             for k, v in self.global_context.items():
-                custom_fields[k] = v
+                if v is not None and k is not None:
+                    custom_fields[k] = v
         for k, v in kwargs.items():
-            custom_fields[k] = v
+            if v is not None and k is not None:
+                custom_fields[k] = v
 
         self.logger.info(
             json.dumps(
@@ -94,17 +93,10 @@ class EventLoggerAdapter:
         self.logger.handlers[0].flush()
 
 
-@dataclass
-class EventLoggerOption:
-    sink_dir: str
-    type: str = "file"
-
-
-def _build_event_file_logger(source: Event.SourceType, option: EventLoggerOption):
-    # TODO(sang): Support different logger setup based on the env var.
+def _build_event_file_logger(source: Event.SourceType, sink_dir: str):
     logger = logging.getLogger("_ray_event_logger")
     logger.setLevel(logging.INFO)
-    dir_path = pathlib.Path(option.sink_dir) / "events"
+    dir_path = pathlib.Path(sink_dir) / "events"
     filepath = dir_path / f"event_{source}.log"
     dir_path.mkdir(exist_ok=True)
     filepath.touch(exist_ok=True)
@@ -113,6 +105,7 @@ def _build_event_file_logger(source: Event.SourceType, option: EventLoggerOption
     formatter = logging.Formatter("%(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+    logger.propagate = False
     return logger
 
 
@@ -121,16 +114,24 @@ _event_logger_lock = threading.Lock()
 _event_logger = {}
 
 
-def get_event_logger(source: Event.SourceType, option: EventLoggerOption):
+def get_event_logger(source: Event.SourceType, sink_dir: str):
     """Get the event logger of the current process.
 
-    There's only 1 event logger per process.
+    There's only 1 event logger per (process, source).
+
+    TODO(sang): Support more impl than file-based logging.
+                Currently, the interface also ties to the
+                file-based logging impl.
+
+    Args:
+        source: The source of the event.
+        sink_dir: The directory to sink event logs.
     """
     with _event_logger_lock:
         global _event_logger
         source_name = Event.SourceType.Name(source)
         if source_name not in _event_logger:
-            logger = _build_event_file_logger(source_name, option)
+            logger = _build_event_file_logger(source_name, sink_dir)
             _event_logger[source_name] = EventLoggerAdapter(source, logger)
 
         return _event_logger[source_name]

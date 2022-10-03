@@ -29,6 +29,8 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.utils import file_tail_iterator
 from ray.exceptions import RuntimeEnvSetupError
 from ray.job_submission import JobStatus
+from ray._private.event.event_logger import get_event_logger
+from ray.core.generated.event_pb2 import Event
 
 
 logger = logging.getLogger(__name__)
@@ -395,12 +397,13 @@ class JobManager:
     LOG_TAIL_SLEEP_S = 1
     JOB_MONITOR_LOOP_PERIOD_S = 1
 
-    def __init__(self, gcs_aio_client: GcsAioClient):
+    def __init__(self, gcs_aio_client: GcsAioClient, log_dir: str):
         self._gcs_aio_client = gcs_aio_client
         self._job_info_client = JobInfoStorageClient(gcs_aio_client)
         self._gcs_address = gcs_aio_client._channel._gcs_address
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
+        self.event_logger = get_event_logger(Event.SourceType.JOBS, log_dir)
 
         create_task(self._recover_running_jobs())
 
@@ -455,8 +458,15 @@ class JobManager:
                 if job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
-                    pass
+                    self.event_logger.info(
+                        f"Completed a ray job {job_id} with a status {job_status}",
+                        job_id=job_id,
+                        status=str(job_status),
+                    )
                 elif isinstance(e, RuntimeEnvSetupError):
+                    self.event_logger.info(
+                        "Failed to set up runtime_env for job.", job_id=job_id
+                    )
                     logger.info(f"Failed to set up runtime_env for job {job_id}.")
                     await self._job_info_client.put_status(
                         job_id,
@@ -464,6 +474,9 @@ class JobManager:
                         message=f"runtime_env setup failed: {e}",
                     )
                 else:
+                    self.event_logger.warning(
+                        f"Job failed unexpectedly. {e}", job_id=job_id
+                    )
                     logger.warning(
                         f"Job supervisor for job {job_id} failed unexpectedly: {e}."
                     )
@@ -595,12 +608,18 @@ class JobManager:
 
             # Monitor the job in the background so we can detect errors without
             # requiring a client to poll.
+            self.event_logger.info(
+                f"Started a ray job {submission_id}.", submission_id=submission_id
+            )
             create_task(self._monitor_job(submission_id, job_supervisor=supervisor))
         except Exception as e:
             await self._job_info_client.put_status(
                 submission_id,
                 JobStatus.FAILED,
                 message=f"Failed to start job supervisor: {e}.",
+            )
+            self.event_logger.error(
+                f"Failed to start the job. {e}", submission_id=submission_id
             )
 
         return submission_id

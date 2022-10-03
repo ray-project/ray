@@ -1319,8 +1319,8 @@ def start_api_server(
             )
             command.append(f"--logging-format={logging_format}")
             # Inherit stdout/stderr streams.
-            # stdout_file = None
-            # stderr_file = None
+            stdout_file = None
+            stderr_file = None
         if minimal:
             command.append("--minimal")
 

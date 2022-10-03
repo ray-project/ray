@@ -41,7 +41,6 @@ from ray.experimental.state.state_manager import (
 )
 from ray.runtime_env import RuntimeEnv
 from ray.experimental.state.util import convert_string_to_type
-from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
 
@@ -600,20 +599,22 @@ class StateAPIManager:
 
     async def list_cluster_events(self, *, option: ListApiOptions) -> ListApiResponse:
         result = []
-        for _, events in DataSource.events.items():
+        all_events = await self._client.get_all_cluster_events()
+        for _, events in all_events.items():
             for _, event in events.items():
                 event["time"] = str(datetime.utcfromtimestamp(int(event["timestamp"])))
                 result.append(event)
 
         num_after_truncation = len(result)
         result.sort(key=lambda entry: entry["timestamp"])
+        total = len(result)
         result = self._filter(result, option.filters, ClusterEventState, option.detail)
         num_filtered = len(result)
         # Sort to make the output deterministic.
         result = list(islice(result, option.limit))
         return ListApiResponse(
             result=result,
-            total=len(result),
+            total=total,
             num_after_truncation=num_after_truncation,
             num_filtered=num_filtered,
         )

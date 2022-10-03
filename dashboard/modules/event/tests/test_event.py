@@ -15,7 +15,7 @@ import numpy as np
 
 import ray
 from ray._private.utils import binary_to_hex
-from ray._private.event.event_logger import get_event_logger, EventLoggerOption
+from ray._private.event.event_logger import get_event_logger
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.event import event_consts
 from ray.core.generated import event_pb2
@@ -28,6 +28,7 @@ from ray.dashboard.modules.event.event_utils import (
     monitor_events,
 )
 from ray.experimental.state.api import list_cluster_events
+from ray.job_submission import JobSubmissionClient
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +71,7 @@ def _test_logger(name, log_file, max_bytes, backup_count):
 
 
 def test_python_global_event_logger(tmp_path):
-    logger = get_event_logger(
-        event_pb2.Event.SourceType.GCS, EventLoggerOption(sink_dir=str(tmp_path))
-    )
+    logger = get_event_logger(event_pb2.Event.SourceType.GCS, str(tmp_path))
     logger.set_global_context({"test_meta": "1"})
     logger.info("message", a="a", b="b")
     logger.error("message", a="a", b="b")
@@ -291,7 +290,7 @@ async def test_monitor_events():
         assert len(os.listdir(temp_dir)) > 1, "Event log should have rollovers."
 
 
-def test_cluster_events(shutdown_only):
+def test_autoscaler_cluster_events(shutdown_only):
     ray.init()
 
     @ray.remote(num_gpus=1)
@@ -300,7 +299,26 @@ def test_cluster_events(shutdown_only):
 
     f.remote()
 
-    wait_for_condition(lambda: len(list_cluster_events()) == 2)
+    wait_for_condition(lambda: len(list_cluster_events()) == 1)
+    infeasible_event = list_cluster_events()[0]
+    assert infeasible_event["source_type"] == "AUTOSCALER"
+
+
+def test_jobs_cluster_events(shutdown_only):
+    ray.init()
+    address = ray._private.worker._global_node.webui_url
+    address = format_web_url(address)
+    client = JobSubmissionClient(address)
+    client.submit_job(entrypoint="ls")
+
+    def verify():
+        assert len(list_cluster_events()) == 5
+        for e in list_cluster_events():
+            e["source_type"] = "JOBS"
+        return True
+
+    wait_for_condition(verify)
+    print(list_cluster_events())
 
 
 if __name__ == "__main__":
