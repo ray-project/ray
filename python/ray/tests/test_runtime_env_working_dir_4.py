@@ -17,6 +17,7 @@ from ray.exceptions import GetTimeoutError
 # If you find that confusing, take it up with @jiaodong...
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 
+
 # TODO(architkulkarni): Deflake and reenable this test.
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on Mac. Issue #27562")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
