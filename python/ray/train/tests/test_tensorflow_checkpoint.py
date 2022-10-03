@@ -120,3 +120,11 @@ def test_tensorflow_checkpoint_h5():
         result_checkpoint, TensorflowPredictor
     )
     batch_predictor.predict(ray.data.range(3))
+
+
+if __name__ == "__main__":
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
