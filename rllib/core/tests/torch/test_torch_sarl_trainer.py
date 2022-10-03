@@ -7,12 +7,13 @@ from ray import train
 from ray.rllib import SampleBatch
 from ray.rllib.core.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.torch.torch_sarl_trainer import TorchSARLTrainer
+from ray.rllib.utils.test_utils import check
 
 
 # ==================== Testing Helpers ==================== #
 
 
-def error_message_fn(model, name_value_being_checked):
+def error_message_fn_1(model, name_value_being_checked):
     msg = (
         f"model {model}, inside of the DummyCompositionRLModule being "
         "optimized by TorchDummyCompositionModuleTrainer should have the "
@@ -49,33 +50,7 @@ def make_dataset():
     return x, y
 
 
-def test_2_torch_sarl_trainer(trainer_class_fn):
-    """Testing to see that 2 trainers can be created in
-    the same session
-    """
-    ray.init()
-
-    batch_size = 10
-    x, y = make_dataset()
-    trainer = trainer_class_fn({"num_gpus": 1, "module_config": {}})
-    trainer2 = trainer_class_fn({"num_gpus": 1, "module_config": {}})
-
-    for i in range(2):
-        batch = SampleBatch(
-            {
-                "x": x[i * batch_size : (i + 1) * batch_size],
-                "y": y[i * batch_size : (i + 1) * batch_size],
-            }
-        )
-        trainer.train(batch)
-        trainer2.train(batch)
-
-    del trainer
-    del trainer2
-    ray.shutdown()
-
-
-def test_1_torch_sarl_trainer(trainer_class_fn):
+def test_1_torch_sarl_trainer_2_gpu(trainer_class_fn):
     ray.init()
 
     x, y = make_dataset()
@@ -100,18 +75,62 @@ def test_1_torch_sarl_trainer(trainer_class_fn):
         results_worker_2 = results_worker_2["training_results"]
         assert (
             results_worker_1["a_norm"] == results_worker_2["a_norm"]
-        ), error_message_fn("a", "parameter norm")
+        ), error_message_fn_1("a", "parameter norm")
         assert results_worker_1["b_norm"] == results_worker_2["b_norm"], (
-            error_message_fn
+            error_message_fn_1
         )("b", "parameter norm")
         assert results_worker_1["a_grad_norm"] == results_worker_2["a_grad_norm"], (
-            error_message_fn
+            error_message_fn_1
         )("a", "gradient norm")
         assert results_worker_1["b_grad_norm"] == results_worker_2["b_grad_norm"], (
-            error_message_fn
+            error_message_fn_1
         )("b", "gradient norm")
     del trainer
     ray.shutdown()
+
+
+def test_gradients_params_same_on_all_configurations(trainer_class_fn):
+    results = []
+    for num_gpus in [0, 1, 2]:
+        ray.init()
+        x, y = make_dataset()
+        batch_size = 10
+        trainer = trainer_class_fn({"num_gpus": num_gpus})
+
+        for i in range(3):
+            batch = SampleBatch(
+                {
+                    "x": x[i * batch_size : (i + 1) * batch_size],
+                    "y": y[i * batch_size : (i + 1) * batch_size],
+                }
+            )
+            result = trainer.train(batch)
+        results.append(result)
+        ray.shutdown()
+    # flatten results
+    # IMPORTANT:
+    # results[0] is from cpu, results[1] is from 1 gpu, results[2] is from 2
+    # gpus first gpu worker, results[3] is from 2 gpus second gpu worker
+    results = [r["training_results"] for result in results for r in result]
+    a_norms = [r["a_norm"] for r in results]
+    b_norms = [r["b_norm"] for r in results]
+    a_grad_norms = [r["a_grad_norm"] for r in results]
+    b_grad_norms = [r["b_grad_norm"] for r in results]
+    for a_norm in a_norms:
+        check(a_norms[0], a_norm)
+    for b_norm in b_norms:
+        check(b_norms[0], b_norm)
+    for a_grad_norm in a_grad_norms:
+        check(a_grad_norms[0], a_grad_norm)
+    for b_grad_norm in b_grad_norms:
+        check(b_grad_norms[0], b_grad_norm)
+
+    # in TorchIndependentModulesTrainer the a and b networks are both the same
+    # so check that a and b params and grads are the same as well
+
+    if trainer_class_fn == TorchIndependentModulesTrainer:
+        assert all(a_norms[0] == b_norm for b_norm in b_norms)
+        assert all(b_norms[0] == a_norm for a_norm in a_norms)
 
 
 # ============= TestModule that has multiple independent models ============= #
@@ -124,7 +143,6 @@ class DummyRLModule(TorchRLModule):
         self.config = config
         self.a = torch.nn.Linear(1, 1)
         self.b = torch.nn.Linear(1, 1)
-        self.not_nn = torch.nn.BatchNorm1d(100)
 
     def forward_train(self, batch):
         return self.a(batch), self.b(batch)
@@ -148,10 +166,12 @@ class TorchIndependentModulesTrainer(TorchSARLTrainer):
 
         loss_a = torch.nn.functional.mse_loss(out_a, y)
         loss_b = torch.nn.functional.mse_loss(out_b, y)
-        loss = loss_a + loss_b
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        optimizer[0].zero_grad()
+        optimizer[1].zero_grad()
+        loss_a.backward()
+        loss_b.backward()
+        optimizer[0].step()
+        optimizer[1].step()
 
         a_norm = model_norm(unwrapped_module.a)
         b_norm = model_norm(unwrapped_module.b)
@@ -181,15 +201,16 @@ class TorchIndependentModulesTrainer(TorchSARLTrainer):
     def init_optimizer(module, optimizer_config):
         del optimizer_config
         unwrapped_module = module.module
-        optimizer = torch.optim.SGD(
-            [
-                {"params": unwrapped_module.a.parameters()},
-                {"params": unwrapped_module.b.parameters(), "lr": 1e-3},
-            ],
+        optimizer_a = torch.optim.SGD(
+            unwrapped_module.a.parameters(),
+            lr=1e-2,
+        )
+        optimizer_b = torch.optim.SGD(
+            unwrapped_module.b.parameters(),
             lr=1e-2,
         )
 
-        return optimizer
+        return optimizer_a, optimizer_b
 
 
 # ==================== TestModule that has model composition ==================== #
@@ -221,11 +242,14 @@ class TorchDummyCompositionModuleTrainer(TorchSARLTrainer):
         x = torch.reshape(torch.Tensor(batch["x"]), (-1, 1)).to(device)
         y = torch.reshape(torch.Tensor(batch["y"]), (-1, 1)).to(device)
         out = module(x)
-        optimizer.zero_grad()
-        loss = torch.abs(out - y).mean()
+        unwrapped_module = module.module
+
+        loss = torch.nn.functional.mse_loss(out, y)
+        optimizer[0].zero_grad()
+        optimizer[1].zero_grad()
         loss.backward()
-        optimizer.step()
-        loss.item()
+        optimizer[0].step()
+        optimizer[1].step()
 
         unwrapped_module = module.module
 
@@ -244,6 +268,9 @@ class TorchDummyCompositionModuleTrainer(TorchSARLTrainer):
     @staticmethod
     def init_rl_module(module_config):
         # fixing the weights for this test
+        # torch.use_deterministic_algorithms(True)
+        torch.manual_seed(0)
+
         def init_weights(m):
             if isinstance(m, torch.nn.Linear):
                 m.weight.data.fill_(0.01)
@@ -255,20 +282,24 @@ class TorchDummyCompositionModuleTrainer(TorchSARLTrainer):
 
     @staticmethod
     def init_optimizer(module, optimizer_config):
+        del optimizer_config
         unwrapped_module = module.module
-        optimizer = torch.optim.SGD(
-            [
-                {"params": unwrapped_module.a.parameters()},
-                {"params": unwrapped_module.b.parameters(), "lr": 1e-3},
-            ],
+        optimizer_a = torch.optim.SGD(
+            unwrapped_module.a.parameters(),
+            lr=1e-2,
+        )
+        optimizer_b = torch.optim.SGD(
+            unwrapped_module.b.parameters(),
             lr=1e-2,
         )
 
-        del optimizer_config
-        return optimizer
+        return optimizer_a, optimizer_b
 
 
 if __name__ == "__main__":
-    for trainer_class in [TorchIndependentModulesTrainer]:
-        test_1_torch_sarl_trainer(trainer_class)
-        test_2_torch_sarl_trainer(trainer_class)
+    for trainer_class in [
+        TorchIndependentModulesTrainer,
+        TorchDummyCompositionModuleTrainer,
+    ]:
+        test_1_torch_sarl_trainer_2_gpu(trainer_class)
+        test_gradients_params_same_on_all_configurations(trainer_class)

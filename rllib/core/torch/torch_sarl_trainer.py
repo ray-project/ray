@@ -18,7 +18,7 @@ from ray.util.queue import Queue
 
 class TorchSARLTrainer:
     def __init__(self, config):
-        num_workers = config.get("num_gpus", 1) or 1
+        num_workers = config.get("num_gpus", 0) or 1
         use_gpu = bool(config.get("num_gpus", 0))
         # if not all(key in config for key in ["module_class", "module_config"]):
         #     raise ValueError(
