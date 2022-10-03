@@ -253,16 +253,16 @@ class BatchPredictor:
                     return prediction_output_batch
 
             def __call__(self, input_batch: DataBatchType) -> DataBatchType:
-                prediction_batch = self._select_columns_from_input_batch(
+                prediction_batch: DataBatchType = self._select_columns_from_input_batch(
                     input_batch, select_columns=feature_columns
                 )
-                prediction_output_batch: Union[
-                    np.ndarray, Dict[str, np.ndarray]
-                ] = self._predictor.predict(
+                prediction_output_batch: DataBatchType = self._predictor.predict(
                     prediction_batch, batch_format=batch_format, **predict_kwargs
                 )
-                prediction_output_batch = self._keep_columns_from_input_batch(
-                    input_batch, prediction_output_batch, keep_columns=keep_columns
+                prediction_output_batch: DataBatchType = (
+                    self._keep_columns_from_input_batch(
+                        input_batch, prediction_output_batch, keep_columns=keep_columns
+                    )
                 )
 
                 if batch_format == BatchFormat.NUMPY:
