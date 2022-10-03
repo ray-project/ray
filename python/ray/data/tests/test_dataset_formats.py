@@ -414,6 +414,7 @@ def test_read_write_mongo(ray_start_regular_shared):
     import subprocess
     import pymongo
     from pymongoarrow.api import Schema
+    from pymongo.errors import ServerSelectionTimeoutError
 
     # Setup mongodb.
     subprocess.run(["sudo", "rm", "/var/lib/mongodb/mongod.lock"])
@@ -425,6 +426,28 @@ def test_read_write_mongo(ray_start_regular_shared):
     foo_collection = "foo-collection"
     foo = client[foo_db][foo_collection]
     foo.delete_many({})
+
+    # Read nonexistent URI.
+    with pytest.raises(ServerSelectionTimeoutError):
+        ds = ray.data.read_mongo(
+            uri="nonexistent-uri",
+            database=foo_db,
+            collection=foo_collection,
+        )
+    # Read nonexistent database.
+    with pytest.raises(ValueError):
+        ds = ray.data.read_mongo(
+            uri=mongo_url,
+            database="nonexistent-db",
+            collection=foo_collection,
+        )
+    # Read nonexistent collection.
+    with pytest.raises(ValueError):
+        ds = ray.data.read_mongo(
+            uri=mongo_url,
+            database=foo_db,
+            collection="nonexistent-collection",
+        )
 
     # Read an empty database.
     ds = ray.data.read_mongo(

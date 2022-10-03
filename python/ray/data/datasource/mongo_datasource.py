@@ -10,6 +10,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
 
+import pymongo
 from pymongoarrow.api import Schema
 
 logger = logging.getLogger(__name__)
@@ -44,19 +45,11 @@ class MongoDatasource(Datasource):
         database: str,
         collection: str,
     ) -> List[ObjectRef[WriteResult]]:
-        import pymongo
-
-        # Validate the destination database and collection exist.
-        client = pymongo.MongoClient(uri)
-        all_dbs = client.list_database_names()
-        if database not in all_dbs:
-            raise ValueError(f"The destination database {database} doesn't exist.")
-        all_collections = client[database].list_collection_names()
-        if not collection in all_collections:
-            raise ValueError(f"The destination collection {collection} doesn't exist.")
+        _validate_database_collection_exist(
+            pymongo.MongoClient(uri), database, collection
+        )
 
         def write_block(uri: str, database: str, collection: str, block: Block):
-            import pymongo
             from pymongoarrow.api import write
 
             client = pymongo.MongoClient(uri)
@@ -93,6 +86,9 @@ class _MongoDatasourceReader(Reader):
         if not pipeline:
             self._pipeline = [{"$match": {"_id": {"$exists": "true"}}}]
 
+        self._client = pymongo.MongoClient(uri)
+        _validate_database_collection_exist(self._client, database, collection)
+
     def estimate_inmemory_data_size(self) -> Optional[int]:
         # TODO(jian): Add memory size estimation to improve auto-tune of parallelism.
         return None
@@ -105,8 +101,7 @@ class _MongoDatasourceReader(Reader):
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         import pymongo
 
-        client = pymongo.MongoClient(self._uri)
-        coll = client[self._database][self._collection]
+        coll = self._client[self._database][self._collection]
         match_query = self._get_match_query(self._pipeline)
         partitions_ids = list(
             coll.aggregate(
@@ -129,7 +124,6 @@ class _MongoDatasourceReader(Reader):
             schema: Schema,
             kwargs: dict,
         ) -> Block:
-            import pymongo
             from pymongoarrow.api import aggregate_arrow_all
 
             match = [
@@ -179,3 +173,12 @@ class _MongoDatasourceReader(Reader):
             read_tasks.append(read_task)
 
         return read_tasks
+
+
+def _validate_database_collection_exist(client, database: str, collection: str):
+    db_names = client.list_database_names()
+    if database not in db_names:
+        raise ValueError(f"The destination database {database} doesn't exist.")
+    collection_names = client[database].list_collection_names()
+    if collection not in collection_names:
+        raise ValueError(f"The destination collection {collection} doesn't exist.")
