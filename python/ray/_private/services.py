@@ -25,7 +25,7 @@ import psutil
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import GcsClient
-from ray._raylet import GcsClientOptions, Config
+from ray._raylet import GcsClientOptions
 from ray.core.generated.common_pb2 import Language
 
 resource = None
@@ -1107,36 +1107,11 @@ def _start_redis_instance(
         if " " in password:
             raise ValueError("Spaces not permitted in redis password.")
         command += ["--requirepass", password]
-
-    if not Config.REDIS_ENABLE_SSL():
-        command += ["--port", str(port), "--loglevel", "warning"]
-    else:
-        import socket
-
-        with socket.socket() as s:
-            s.bind(("", 0))
-            free_port = s.getsockname()[1]
-        command += [
-            "--tls-port",
-            str(port),
-            "--loglevel",
-            "warning",
-            "--port",
-            str(free_port),
-        ]
-
+    command += ["--port", str(port), "--loglevel", "warning"]
     if listen_to_localhost_only:
         command += ["--bind", "127.0.0.1"]
     pidfile = os.path.join(session_dir_path, "redis-" + uuid.uuid4().hex + ".pid")
     command += ["--pidfile", pidfile]
-    if Config.REDIS_ENABLE_SSL():
-        if Config.REDIS_CA_CERT():
-            command += ["--tls-ca-cert-file", Config.REDIS_CA_CERT()]
-        if Config.REDIS_CLIENT_CERT():
-            command += ["--tls-cert-file", Config.REDIS_CLIENT_CERT()]
-        if Config.REDIS_CLIENT_KEY():
-            command += ["--tls-key-file", Config.REDIS_CLIENT_KEY()]
-        command += ["--tls-replication", "yes"]
     if sys.platform != "win32":
         command += ["--save", "", "--appendonly", "no"]
     process_info = start_ray_process(
