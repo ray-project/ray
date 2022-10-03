@@ -6,8 +6,8 @@ from ray.rllib.utils.typing import TensorType
 
 _INVALID_INPUT_DUP_DIM = "Duplicate dimension names in shape ({})"
 _INVALID_INPUT_Unknown_DIM = "Unknown dimension name {} in shape ({})"
-_INVALID_INPUT_NON_POSITIVE = "Dimension {} in ({}) has non-positive size"
-_INVALID_INPUT_NONINT_DIM = "Dimension {} in ({}) cannot be non-integer, got {}"
+_INVALID_INPUT_POSITIVE = "Dimension {} in ({}) must be positive, got {}"
+_INVALID_INPUT_INT_DIM = "Dimension {} in ({}) must be integer, got {}"
 _INVALID_SHAPE = "Expected shape {} but found {}"
 _INVALID_DTYPE = "Expected dtype {} but found {}"
 
@@ -112,8 +112,8 @@ class TensorSpecs(abc.ABC):
         raise NotImplementedError
 
     @DeveloperAPI
-    def sample(self, fill_value: Union[float, int] = 0) -> TensorType:
-        """Samples a tensor with the specified value that is matches the specs.
+    def fill(self, fill_value: Union[float, int] = 0) -> TensorType:
+        """Creates a tensor filled with `fill_value` that matches the specs.
 
         Args:
             fill_value: The value to fill the tensor with.
@@ -121,14 +121,13 @@ class TensorSpecs(abc.ABC):
         Returns:
             A tensor with the specified value that matches the specs.
         """
-        sampled_shape = self._sample_shape()
-        return self._sample(sampled_shape, fill_value)
+        full_shape = self._full_shape()
+        return self._full(full_shape, fill_value)
 
     @abc.abstractmethod
-    def _sample(
-        self, shape: Tuple[int], fill_value: Union[float, int] = 0
-    ) -> TensorType:
-        """Returns a sample tensor with the given shape.
+    def _full(self, shape: Tuple[int], fill_value: Union[float, int] = 0) -> TensorType:
+        """Creates a tensor with the given shape filled with `fill_value`. The tensor
+        dtype is inferred from `fill_value`.
 
         Args:
             shape: The shape of the tensor to be sampled.
@@ -139,9 +138,9 @@ class TensorSpecs(abc.ABC):
         """
         raise NotImplementedError
 
-    def _sample_shape(self) -> Tuple[int]:
-        """Converts the expected shape to a sample shape by replacing TBD dimensions
-        with size of 1."""
+    def _full_shape(self) -> Tuple[int]:
+        """Converts the expected shape to a shape by replacing the unknown dimension
+        sizes with a value of 1."""
         sampled_shape = tuple()
         for d in self._expected_shape:
             if isinstance(d, int):
@@ -155,7 +154,8 @@ class TensorSpecs(abc.ABC):
         expected_shape = tuple()
 
         # check the validity of shape_vals and get a list of dimension names
-        d_names = self._validate_shape_vals(shape, shape_vals)
+        d_names = shape.split(" ")
+        self._validate_shape_vals(shape, shape_vals)
 
         for d in d_names:
             d_value = shape_vals.get(d, None)
@@ -165,14 +165,15 @@ class TensorSpecs(abc.ABC):
 
         return expected_shape
 
-    def _validate_shape_vals(self, shape: str, shape_vals: Dict[str, int]) -> List[str]:
-        """Checks if the shape_vals is valid and returns a list of dimension names.
+    def _validate_shape_vals(
+        self, d_names: str, shape_vals: Dict[str, int]
+    ) -> List[str]:
+        """Checks if the shape_vals is valid.
 
         Valid means that shape consist of unique dimension names and shape_vals only
         consists of keys that are in shape. Also shape_vals can only contain postive
         integers.
         """
-        d_names = shape.split(" ")
         d_names_set = set(d_names)
         if len(d_names_set) != len(d_names):
             raise ValueError(_INVALID_INPUT_DUP_DIM.format(",".join(d_names)))
@@ -187,14 +188,16 @@ class TensorSpecs(abc.ABC):
             if d_value is not None:
                 if not isinstance(d_value, int):
                     raise ValueError(
-                        _INVALID_INPUT_NONINT_DIM.format(d_name, shape, type(d_value))
+                        _INVALID_INPUT_INT_DIM.format(
+                            d_name, ",".join(d_names), type(d_value)
+                        )
                     )
                 if d_value <= 0:
                     raise ValueError(
-                        _INVALID_INPUT_NON_POSITIVE.format(d_name, ",".join(d_names))
+                        _INVALID_INPUT_POSITIVE.format(
+                            d_name, ",".join(d_names), d_value
+                        )
                     )
-
-        return d_names
 
     def __repr__(self) -> str:
         return f"TensorSpec(shape={tuple(self.shape)}, dtype={self.dtype})"

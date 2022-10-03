@@ -28,24 +28,24 @@ class TestSpecs(unittest.TestCase):
     def setUpClass(cls) -> None:
         pass
 
-    def test_sampling(self):
+    def test_fill(self):
 
         for fw in SPEC_CLASSES.keys():
             spec_class = SPEC_CLASSES[fw]
             double_type = DOUBLE_TYPE[fw]
 
             # if un-specified dims should be 1, dtype is not important
-            x = spec_class("b h").sample(float(2.0))
+            x = spec_class("b h").fill(float(2.0))
 
             # check the shape
             self.assertEqual(x.shape, (1, 1))
             # check the value
             check(x, np.array([[2.0]]))
 
-            x = spec_class("b h", b=2, h=3).sample(float(2.0))
+            x = spec_class("b h", b=2, h=3).fill(2.0)
             self.assertEqual(x.shape, (2, 3))
 
-            x = spec_class("b h1 h2 h3", h1=2, h2=3, h3=3, dtype=double_type).sample(2)
+            x = spec_class("b h1 h2 h3", h1=2, h2=3, h3=3, dtype=double_type).fill(2)
             self.assertEqual(x.shape, (1, 2, 3, 3))
             self.assertEqual(x.dtype, double_type)
 
@@ -58,7 +58,7 @@ class TestSpecs(unittest.TestCase):
             double_type = DOUBLE_TYPE[fw]
             float_type = FLOAT_TYPE[fw]
 
-            tensor_2d = spec_class("b h", b=b, h=h, dtype=double_type).sample()
+            tensor_2d = spec_class("b h", b=b, h=h, dtype=double_type).fill()
 
             matching_specs = [
                 spec_class("b h"),

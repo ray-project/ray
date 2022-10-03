@@ -13,7 +13,5 @@ class NPSpecs(TensorSpecs):
     def get_dtype(self, tensor: np.ndarray) -> Any:
         return tensor.dtype
 
-    def _sample(
-        self, shape: Tuple[int], fill_value: Union[float, int] = 0
-    ) -> np.ndarray:
+    def _full(self, shape: Tuple[int], fill_value: Union[float, int] = 0) -> np.ndarray:
         return np.full(shape, fill_value, dtype=self.dtype)

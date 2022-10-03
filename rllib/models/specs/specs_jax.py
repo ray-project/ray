@@ -18,7 +18,7 @@ class JAXSpecs(TensorSpecs):
     def get_dtype(self, tensor: jnp.ndarray) -> Any:
         return tensor.dtype
 
-    def _sample(
+    def _full(
         self, shape: Tuple[int], fill_value: Union[float, int] = 0
     ) -> jnp.ndarray:
         return jnp.full(shape, fill_value, dtype=self.dtype)

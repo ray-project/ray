@@ -15,9 +15,7 @@ class TFSpecs(TensorSpecs):
     def get_dtype(self, tensor: tf.Tensor) -> Any:
         return tensor.dtype
 
-    def _sample(
-        self, shape: Tuple[int], fill_value: Union[float, int] = 0
-    ) -> tf.Tensor:
+    def _full(self, shape: Tuple[int], fill_value: Union[float, int] = 0) -> tf.Tensor:
         if self.dtype:
             return tf.ones(shape, dtype=self.dtype) * fill_value
         return tf.fill(shape, fill_value)
