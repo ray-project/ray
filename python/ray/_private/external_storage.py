@@ -334,7 +334,7 @@ class FileSystemStorage(ExternalStorage):
             try:
                 os.remove(path)
             except FileNotFoundError:
-                # Occurs when the urls are retries during worker crash/failure.
+                # Occurs when the urls are retried during worker crash/failure.
                 pass
 
     def destroy_external_storage(self):
@@ -425,7 +425,7 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
             try:
                 self._fs.delete_file(path)
             except FileNotFoundError:
-                # Occurs when the urls are retries during worker crash/failure.
+                # Occurs when the urls are retried during worker crash/failure.
                 pass
 
     def destroy_external_storage(self):
