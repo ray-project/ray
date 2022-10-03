@@ -2938,7 +2938,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           high_memory_eviction_target_ = worker_to_kill;
 
           /// TODO: (clarng) expose these strings in the frontend python error as well.
-          std::string oom_kill_title =
+          static std::string oom_kill_title =
               "Task was killed due to the node running low on memory. ";
           std::string oom_kill_details = this->CreateOomKillMessageDetails(
               worker_to_kill, this->self_node_id_, system_memory, usage_threshold);
