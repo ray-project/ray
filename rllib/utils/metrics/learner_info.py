@@ -92,8 +92,8 @@ class LearnerInfoBuilder:
 
 def _all_tower_reduce(path, *tower_data):
     """Reduces stats across towers based on their stats-dict paths."""
-    # TD-errors: Need to stay per batch item in order to be able to update each
-    # item's weight in a prioritized replay buffer.
+    # TD-errors: Need to stay per batch item in order to be able to update
+    # each item's weight in a prioritized replay buffer.
     if len(path) == 1 and path[0] == "td_error":
         return np.concatenate(tower_data, axis=0)
     elif tower_data[0] is None:
