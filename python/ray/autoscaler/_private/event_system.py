@@ -4,6 +4,8 @@ from typing import Any, Callable, Dict, List, Optional, Union
 # from ray._private.event.event_logger import get_event_logger
 from ray.autoscaler._private.cli_logger import cli_logger
 
+# from ray.core.generated.event_pb2 import Event
+
 
 class CreateClusterEvent(Enum):
     """Events to track in ray.autoscaler.sdk.create_or_update_cluster.
@@ -50,7 +52,7 @@ class _EventSystem:
     def __init__(self):
         self.callback_map = {}
         # SANG-TODO
-        # self.event_logger = EventLogger("MONITOR", "/tmp/ray/")
+        # self.event_logger = get_event_logger(Event.SourceType.CLUSTER_LIFECYCLE, )
 
     def add_callback_handler(
         self,

@@ -449,7 +449,6 @@ class WorkerState(StateSchema):
 class ClusterEventState(StateSchema):
     severity: str = state_column(filterable=True)
     time: int = state_column(filterable=False)
-    type: str = state_column(filterable=True)
     message: str = state_column(filterable=False)
     event_id: int = state_column(filterable=True)
 

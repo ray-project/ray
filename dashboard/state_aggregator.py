@@ -602,7 +602,7 @@ class StateAPIManager:
         result = []
         for _, events in DataSource.events.items():
             for _, event in events.items():
-                event["time"] = str(datetime.utcfromtimestamp(event["timestamp"]))
+                event["time"] = str(datetime.utcfromtimestamp(int(event["timestamp"])))
                 result.append(event)
 
         num_after_truncation = len(result)

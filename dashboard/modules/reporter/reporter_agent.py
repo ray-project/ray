@@ -247,8 +247,6 @@ class ReporterAgent(
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
         )
-        # SANG-TODO
-        # self.event_logger = get_event_logger("MONITOR", "/tmp/ray/")
 
     async def GetProfilingStats(self, request, context):
         pid = request.pid

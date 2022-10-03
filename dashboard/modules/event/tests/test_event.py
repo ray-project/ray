@@ -27,6 +27,7 @@ from ray._private.test_utils import (
 from ray.dashboard.modules.event.event_utils import (
     monitor_events,
 )
+from ray.experimental.state.api import list_cluster_events
 
 logger = logging.getLogger(__name__)
 
@@ -69,32 +70,34 @@ def _test_logger(name, log_file, max_bytes, backup_count):
 
 
 def test_python_global_event_logger(tmp_path):
-    logger = get_event_logger(EventLoggerOption(sink_dir=str(tmp_path), source="TEST"))
+    logger = get_event_logger(
+        event_pb2.Event.SourceType.GCS, EventLoggerOption(sink_dir=str(tmp_path))
+    )
     logger.set_global_context({"test_meta": "1"})
-    logger.info(EventTypes.TEST, "message", a="a", b="b")
-    logger.debug(EventTypes.TEST, "message", a="a", b="b")
-    logger.error(EventTypes.TEST, "message", a="a", b="b")
-    logger.warning(EventTypes.TEST, "message", a="a", b="b")
-    logger.fatal(EventTypes.TEST, "message", a="a", b="b")
+    logger.info("message", a="a", b="b")
+    logger.error("message", a="a", b="b")
+    logger.warning("message", a="a", b="b")
+    logger.fatal("message", a="a", b="b")
     event_dir = tmp_path / "events"
     assert event_dir.exists()
-    event_file = event_dir / "event_TEST.log"
+    event_file = event_dir / "event_GCS.log"
     assert event_file.exists()
 
-    line_severities = ["INFO", "DEBUG", "ERROR", "WARNING", "FATAL"]
+    line_severities = ["INFO", "ERROR", "WARNING", "FATAL"]
 
     with event_file.open() as f:
         for line, severity in zip(f.readlines(), line_severities):
             data = json.loads(line)
             assert data["severity"] == severity
-            assert data["type"] == EventTypes.TEST.value
+            assert data["label"] == ""
             assert "timestamp" in data
             assert len(data["event_id"]) == 36
             assert data["message"] == "message"
+            assert data["source_type"] == "GCS"
             assert data["source_hostname"] == socket.gethostname()
             assert data["source_pid"] == os.getpid()
-            assert data["metadata"]["a"] == "a"
-            assert data["metadata"]["b"] == "b"
+            assert data["custom_fields"]["a"] == "a"
+            assert data["custom_fields"]["b"] == "b"
 
 
 def test_event_basic(disable_aiohttp_cache, ray_start_with_dashboard):
@@ -286,6 +289,18 @@ async def test_monitor_events():
         assert monitor_task.done()
 
         assert len(os.listdir(temp_dir)) > 1, "Event log should have rollovers."
+
+
+def test_cluster_events(shutdown_only):
+    ray.init()
+
+    @ray.remote(num_gpus=1)
+    def f():
+        pass
+
+    f.remote()
+
+    wait_for_condition(lambda: len(list_cluster_events()) == 2)
 
 
 if __name__ == "__main__":
