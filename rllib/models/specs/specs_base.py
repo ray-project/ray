@@ -5,7 +5,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import TensorType
 
 _INVALID_INPUT_DUP_DIM = "Duplicate dimension names in shape ({})"
-_INVALID_INPUT_Unknown_DIM = "Unknown dimension name {} in shape ({})"
+_INVALID_INPUT_UNKNOWN_DIM = "Unknown dimension name {} in shape ({})"
 _INVALID_INPUT_POSITIVE = "Dimension {} in ({}) must be positive, got {}"
 _INVALID_INPUT_INT_DIM = "Dimension {} in ({}) must be integer, got {}"
 _INVALID_SHAPE = "Expected shape {} but found {}"
@@ -151,17 +151,13 @@ class TensorSpecs(abc.ABC):
 
     def _parse_expected_shape(self, shape: str, shape_vals: Dict[str, int]) -> tuple:
         """Converts the input shape to a tuple of integers and strings."""
-        expected_shape = tuple()
 
         # check the validity of shape_vals and get a list of dimension names
         d_names = shape.replace(" ", "").split(",")
         self._validate_shape_vals(d_names, shape_vals)
 
-        for d in d_names:
-            d_value = shape_vals.get(d, None)
-            if d_value is None:
-                d_value = d
-            expected_shape += (d if d_value is None else d_value,)
+        expected_shape = tuple(shape_vals.get(d, d) for d in d_names)
+        print(shape, expected_shape)
 
         return expected_shape
 
@@ -181,7 +177,7 @@ class TensorSpecs(abc.ABC):
         for d_name in shape_vals:
             if d_name not in d_names_set:
                 raise ValueError(
-                    _INVALID_INPUT_Unknown_DIM.format(d_name, ",".join(d_names))
+                    _INVALID_INPUT_UNKNOWN_DIM.format(d_name, ",".join(d_names))
                 )
 
             d_value = shape_vals.get(d_name, None)
