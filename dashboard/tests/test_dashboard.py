@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import time
+import warnings
 
 import numpy as np
 import pytest
@@ -1010,6 +1011,21 @@ def test_dashboard_module_load(tmpdir):
     loaded_modules = head._load_modules()
     loaded_modules_actual = {type(m).__name__ for m in loaded_modules}
     assert loaded_modules_actual == loaded_modules_expected
+
+
+def test_dashboard_module_no_warnings(enable_test_module):
+    # Disable log_once so we will get all warnings
+    from ray.util import debug
+
+    old_val = debug._logged
+    debug._logged = set()
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            dashboard_utils.get_all_modules(dashboard_utils.DashboardHeadModule)
+            dashboard_utils.get_all_modules(dashboard_utils.DashboardAgentModule)
+    finally:
+        debug._disabled = old_val
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ click >= 7.0, <= 8.0.4
 cloudpickle
 filelock
 frozenlist
-gpustat == 1.0.0b1
+gpustat >= 1.0.0
 grpcio >= 1.32.0; python_version < '3.10'
 grpcio >= 1.42.0; python_version >= '3.10'
 jsonschema
