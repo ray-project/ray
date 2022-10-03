@@ -410,6 +410,134 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
     assert list(df["bytes_list"]) == [[b"abc", b"1234"]]
 
 
+def test_read_write_mongo(ray_start_regular_shared):
+    import subprocess
+    import pymongo
+    from pymongoarrow.api import Schema
+
+    # Setup mongodb.
+    subprocess.run(["sudo", "rm", "/var/lib/mongodb/mongod.lock"])
+    subprocess.run(["sudo", "service", "mongodb", " start"])
+
+    mongo_url = "mongodb://localhost:27017"
+    client = pymongo.MongoClient(mongo_url)
+    foo_db = "foo-db"
+    foo_collection = "foo-collection"
+    foo = client[foo_db][foo_collection]
+    foo.delete_many({})
+
+    # Read an empty database.
+    ds = ray.data.read_mongo(
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
+    )
+    assert str(ds) == "Dataset(num_blocks=0, num_rows=None, schema=Unknown schema)"
+
+    # 5 test docs.
+    docs = [{"title": "test read_mongo()", "numeric_field": val} for val in range(5)]
+    df = pd.DataFrame(docs).astype({"numeric_field": "int32"})
+    foo.insert_many(docs)
+
+    # Read a non-empty database, with schema specified.
+    schema = Schema({"title": pa.string(), "numeric_field": pa.int32()})
+    ds = ray.data.read_mongo(
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
+        schema=schema,
+        parallelism=2,
+    )
+    assert ds._block_num_rows() == [3, 2]
+    assert str(ds) == (
+        "Dataset(num_blocks=2, num_rows=5, "
+        "schema={title: string, numeric_field: int32})"
+    )
+    assert df.equals(ds.to_pandas())
+
+    # Read with schema inference, which will read all columns (including the auto
+    # generated internal column "_id").
+    ds = ray.data.read_mongo(
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
+        parallelism=2,
+    )
+    assert ds._block_num_rows() == [3, 2]
+    assert str(ds) == (
+        "Dataset(num_blocks=2, num_rows=5, schema={_id: fixed_size_binary[12], "
+        "title: string, numeric_field: int32})"
+    )
+    assert df.equals(ds.drop_columns(["_id"]).to_pandas())
+
+    # Read a subset of the collection.
+    ds = ray.data.read_mongo(
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
+        pipeline=[{"$match": {"numeric_field": {"$gte": 0, "$lt": 3}}}],
+        parallelism=2,
+    )
+    assert ds._block_num_rows() == [2, 1]
+    assert str(ds) == (
+        "Dataset(num_blocks=2, num_rows=3, schema={_id: fixed_size_binary[12], "
+        "title: string, numeric_field: int32})"
+    )
+    df[df["numeric_field"] < 3].equals(ds.drop_columns(["_id"]).to_pandas())
+
+    # Read with auto-tuned parallelism.
+    ds = ray.data.read_mongo(
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
+    )
+    assert str(ds) == (
+        "Dataset(num_blocks=5, num_rows=5, schema={_id: fixed_size_binary[12], "
+        "title: string, numeric_field: int32})"
+    )
+    assert df.equals(ds.drop_columns(["_id"]).to_pandas())
+
+    # Read with a parallelism larger than number of rows.
+    ds = ray.data.read_mongo(
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
+        parallelism=1000,
+    )
+    assert str(ds) == (
+        "Dataset(num_blocks=5, num_rows=5, schema={_id: fixed_size_binary[12], "
+        "title: string, numeric_field: int32})"
+    )
+    assert df.equals(ds.drop_columns(["_id"]).to_pandas())
+
+    # Add a column and then write back to MongoDB.
+    # 2 more test docs.
+    new_docs = [
+        {"title": "test read_mongo()", "numeric_field": val} for val in range(5, 7)
+    ]
+    new_df = pd.DataFrame(new_docs).astype({"numeric_field": "int32"})
+    ds2 = ray.data.from_pandas(new_df)
+    ds2.write_mongo(uri=mongo_url, database=foo_db, collection=foo_collection)
+
+    # Read again to verify the content.
+    expected_ds = ds.drop_columns(["_id"]).union(ds2)
+    ds3 = ray.data.read_mongo(
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
+    )
+    ds3.drop_columns(["_id"]).to_pandas().equals(expected_ds.to_pandas())
+
+    # list is not supported (yet) in pymongoarrow.
+    with pytest.raises(ValueError):
+        ray.data.range(10).write_mongo(
+            uri=mongo_url, database=foo_db, collection=foo_collection
+        )
+
+    # Stop the mongodb service.
+    subprocess.run(["sudo", "service", "mongodb", " stop"])
+
+
 def test_mongo_datasource(ray_start_regular_shared):
     import subprocess
     import pymongo
@@ -418,6 +546,7 @@ def test_mongo_datasource(ray_start_regular_shared):
     # Setup mongodb.
     subprocess.run(["sudo", "rm", "/var/lib/mongodb/mongod.lock"])
     subprocess.run(["sudo", "service", "mongodb", " start"])
+
     mongo_url = "mongodb://localhost:27017"
     client = pymongo.MongoClient(mongo_url)
     foo_db = "foo-db"
@@ -425,81 +554,95 @@ def test_mongo_datasource(ray_start_regular_shared):
     foo = client[foo_db][foo_collection]
     foo.delete_many({})
 
-    # Test docs.
-    docs = [
-        {"title": "MongoDB Datasource test", "partition_key": key} for key in range(4)
-    ]
-    df = pd.DataFrame(docs)
+    # Read empty source.
+    ds = ray.data.read_datasource(
+        MongoDatasource(),
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
+    ).fully_executed()
+    assert str(ds) == "Dataset(num_blocks=0, num_rows=None, schema=Unknown schema)"
+
+    # 5 test docs.
+    docs = [{"title": "test read_datasource", "numeric_field": key} for key in range(5)]
+    df = pd.DataFrame(docs).astype({"numeric_field": "int32"})
     foo.insert_many(docs)
 
-    def formulate_query(x, y):
-        # Range query for [x, y) on partition_key field.
-        return [{"$match": {"partition_key": {"$gte": x, "$lt": y}}}]
-
-    # Create two queries, i.e. two blocks for Dataset.
-    queries = [formulate_query(0, 2), formulate_query(2, 4)]
+    # Read non-empty datasource with a specified schema.
+    schema = Schema({"title": pa.string(), "numeric_field": pa.int32()})
+    ds = ray.data.read_datasource(
+        MongoDatasource(),
+        parallelism=2,
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
+        schema=schema,
+    ).fully_executed()
+    assert ds._block_num_rows() == [3, 2]
+    assert str(ds) == (
+        "Dataset(num_blocks=2, num_rows=5, "
+        "schema={title: string, numeric_field: int32})"
+    )
+    assert df.equals(ds.to_pandas())
 
     # Read with schema inference, which will read all columns (including the auto
     # generated internal column "_id").
     ds = ray.data.read_datasource(
         MongoDatasource(),
+        parallelism=2,
         uri=mongo_url,
         database=foo_db,
         collection=foo_collection,
-        pipelines=queries,
-        schema=None,
-        kwargs={},
     ).fully_executed()
-    assert ds._block_num_rows() == [2, 2]
+    assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
-        "Dataset(num_blocks=2, num_rows=4, "
-        "schema={_id: fixed_size_binary[12], title: string, partition_key: int32})"
+        "Dataset(num_blocks=2, num_rows=5, "
+        "schema={_id: fixed_size_binary[12], title: string, numeric_field: int32})"
     )
+    assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
-    # Read with a specified schema.
-    schema = Schema({"title": pa.string(), "partition_key": pa.int64()})
+    # Read with auto-tuned parallelism.
     ds = ray.data.read_datasource(
         MongoDatasource(),
         uri=mongo_url,
         database=foo_db,
         collection=foo_collection,
-        pipelines=queries,
-        schema=schema,
-        kwargs={},
     ).fully_executed()
-    assert ds._block_num_rows() == [2, 2]
     assert str(ds) == (
-        "Dataset(num_blocks=2, num_rows=4, "
-        "schema={title: string, partition_key: int64})"
+        "Dataset(num_blocks=5, num_rows=5, schema={_id: fixed_size_binary[12], "
+        "title: string, numeric_field: int32})"
     )
-    assert df.equals(ds.to_pandas())
+    assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
-    # Add a column and then write back to MongoDB.
-    ds2 = ds.add_column("new_col", lambda df: 2 * df["partition_key"])
-    ds2.write_mongo(uri=mongo_url, database=foo_db, collection=foo_collection)
-
-    # Read again to verify the content.
-    ds3 = ray.data.read_datasource(
+    # Read with a parallelism larger than number of rows.
+    ds = ray.data.read_datasource(
         MongoDatasource(),
+        parallelism=1000,
         uri=mongo_url,
         database=foo_db,
         collection=foo_collection,
-        pipelines=queries,
-        schema=None,
-        kwargs={},
     )
-    assert str(ds3) == (
-        "Dataset(num_blocks=2, num_rows=None, "
-        "schema={_id: fixed_size_binary[12], title: string, partition_key: int32, "
-        "new_col: int32})"
+    assert str(ds) == (
+        "Dataset(num_blocks=5, num_rows=5, schema={_id: fixed_size_binary[12], "
+        "title: string, numeric_field: int32})"
     )
-    ds3.to_pandas().equals(ds2.to_pandas)
+    assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
-    # list is not supported (yet) in pymongoarrow.
-    with pytest.raises(ValueError):
-        ray.data.range(10).write_mongo(
-            uri=mongo_url, database=foo_db, collection=foo_collection
-        )
+    # Read a subset of the collection.
+    ds = ray.data.read_datasource(
+        MongoDatasource(),
+        parallelism=2,
+        uri=mongo_url,
+        database=foo_db,
+        collection=foo_collection,
+        pipeline=[{"$match": {"numeric_field": {"$gte": 0, "$lt": 3}}}],
+    )
+    assert ds._block_num_rows() == [2, 1]
+    assert str(ds) == (
+        "Dataset(num_blocks=2, num_rows=3, schema={_id: fixed_size_binary[12], "
+        "title: string, numeric_field: int32})"
+    )
+    df[df["numeric_field"] < 3].equals(ds.drop_columns(["_id"]).to_pandas())
 
     subprocess.run(["sudo", "service", "mongodb", " stop"])
 

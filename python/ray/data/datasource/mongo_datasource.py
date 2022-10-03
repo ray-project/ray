@@ -10,6 +10,8 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
 
+from pymongoarrow.api import Schema
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,21 +48,17 @@ class MongoDatasource(Datasource):
         ... )
     """
 
-    def create_reader(
-        self, uri, database, collection, pipelines, schema, kwargs
-    ) -> Reader:
-        return _MongoDatasourceReader(
-            uri, database, collection, pipelines, schema, kwargs
-        )
+    def create_reader(self, **kwargs) -> Reader:
+        return _MongoDatasourceReader(**kwargs)
 
     def do_write(
         self,
         blocks: List[ObjectRef[Block]],
         metadata: List[BlockMetadata],
         ray_remote_args: Optional[Dict[str, Any]],
-        uri,
-        database,
-        collection,
+        uri: str,
+        database: str,
+        collection: str,
     ) -> List[ObjectRef[Any]]:
         def write_block(uri, database, collection, block: Block):
             import pymongo
@@ -81,41 +79,108 @@ class MongoDatasource(Datasource):
 
 
 class _MongoDatasourceReader(Reader):
-    def __init__(self, uri, database, collection, pipelines, schema, kwargs):
+    def __init__(
+        self,
+        uri: str,
+        database: str,
+        collection: str,
+        pipeline: List[Dict] = None,
+        schema: Schema = None,
+        **mongo_args
+    ):
         self._uri = uri
         self._database = database
         self._collection = collection
-        self._pipelines = pipelines
+        self._pipeline = pipeline
         self._schema = schema
-        self._kwargs = kwargs
+        self._mongo_args = mongo_args
+        # If pipeline is unspecified, read the entire collection.
+        if not pipeline:
+            self._pipeline = [{"$match": {"_id": {"$exists": "true"}}}]
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
+        # TODO(jian): Add memory size estimation to improve auto-tune of parallelism.
         return None
 
+    def _get_match_query(self, pipeline: List[Dict]) -> Dict:
+        if len(pipeline) == 0 or "$match" not in pipeline[0]:
+            return {}
+        return pipeline[0]["$match"]
+
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
-        def make_block(uri, database, collection, pipeline, schema, kwargs) -> Block:
+        import pymongo
+
+        client = pymongo.MongoClient(self._uri)
+        coll = client[self._database][self._collection]
+        match_query = self._get_match_query(self._pipeline)
+        partitions_ids = list(
+            coll.aggregate(
+                [
+                    {"$match": match_query},
+                    {"$bucketAuto": {"groupBy": "$_id", "buckets": parallelism}},
+                ],
+                allowDiskUse=True,
+            )
+        )
+
+        def make_block(
+            uri,
+            database,
+            collection,
+            pipeline,
+            min_id,
+            max_id,
+            right_closed,
+            schema,
+            kwargs,
+        ) -> Block:
             import pymongo
             from pymongoarrow.api import aggregate_arrow_all
 
+            match = [
+                {
+                    "$match": {
+                        "_id": {
+                            "$gte": min_id,
+                            "$lte" if right_closed else "$lt": max_id,
+                        }
+                    }
+                }
+            ]
             client = pymongo.MongoClient(uri)
             return aggregate_arrow_all(
-                client[database][collection], pipeline, schema=schema, **kwargs
+                client[database][collection], match + pipeline, schema=schema, **kwargs
             )
 
         read_tasks: List[ReadTask] = []
-        for pipeline in self._pipelines:
+
+        for i, partition in enumerate(partitions_ids):
             metadata = BlockMetadata(
-                num_rows=None,
+                num_rows=partition["count"],
                 size_bytes=None,
                 schema=None,
                 input_files=None,
                 exec_stats=None,
             )
+            min_id = partition["_id"]["min"]
+            max_id = partition["_id"]["max"]
+            right_closed = i == len(partitions_ids) - 1
             read_task = ReadTask(
-                lambda uri=self._uri, database=self._database, collection=self._collection, pipeline=pipeline, schema=self._schema, kwargs=self._kwargs: [  # noqa: E501
-                    make_block(uri, database, collection, pipeline, schema, kwargs)
+                lambda uri=self._uri, database=self._database, collection=self._collection, pipeline=self._pipeline, min_id=min_id, max_id=max_id, right_closed=right_closed, schema=self._schema, kwargs=self._mongo_args: [  # noqa: E501
+                    make_block(
+                        uri,
+                        database,
+                        collection,
+                        pipeline,
+                        min_id,
+                        max_id,
+                        right_closed,
+                        schema,
+                        kwargs,
+                    )
                 ],
                 metadata,
             )
             read_tasks.append(read_task)
+
         return read_tasks

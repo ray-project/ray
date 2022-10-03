@@ -328,42 +328,28 @@ def read_mongo(
     uri: str,
     database: str,
     collection: str,
-    pipelines: List[List[Dict]],
-    schema: Schema,
-    **kwargs,
+    *,
+    pipeline: List[Dict] = None,
+    schema: Schema = None,
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+    **mongo_args,
 ) -> Dataset[ArrowRow]:
-    """Create an Arrow dataset from MongoDB for the given pipelines.
+    """Create an Arrow dataset from MongoDB for the given pipeline.
 
-    A MongoDB is described by three elements: URI, database and collection.
+    The data to read from is specified via the ``uri``, ``database`` and ``collection``
+    of the MongoDB. The pipeline is executed against the specified collection. The
+    execution results are converted into Arrow format and then used to create a dataset.
 
-    The URI points to an MongoDB instance, for example, a local instance would be
-    "mongodb://localhost:27017", or a hosted instance would be
-    "mongodb+srv://USERNAME:PASSWORD@CLUSTERID.azure.mongodb.net/sample_weatherdata?retryWrites=true&w=majority".
-    For more details, see
-    https://www.mongodb.com/docs/manual/reference/connection-string/.
+    You can check out more details here about these MongoDB concepts:
+    - URI: https://www.mongodb.com/docs/manual/reference/connection-string/
+    - Database and Collection: https://www.mongodb.com/docs/manual/core/databases-and-collections/
+    - Pipeline: https://www.mongodb.com/docs/manual/core/aggregation-pipeline/
 
-    The database is similar to the database concept in SQL, and the collection is
-    similar to the table concept in a SQL database.
-
-    To read the MongoDB in parallel, users should provide a list of MongoDB
-    pipelines, with each corresponding to a block to be created for Dataset. Those
-    pipelines are usually formulated as disjoint range queries over a specific field (
-    i.e. partition field). Each pipeline is composed of a series of MongoDB queries,
-    for example, the following is a pipeline which contains 3 steps:
-        pipeline = [
-            {
-                "$match": {"partition_field": {"$gte": 0, "$lt": 100}}
-            }, {
-                "$sort": "sort_field"
-            }, {
-                "$limit": 10
-            }
-        ]
-    Note that a pipeline can contain just a single query.
-
-    Implementation wise, we will use pymongo to connect to MongoDB, and use pymongoarrow
-    to convert MongoDB documents to/from Arrow format, which is a supported block format
-    in Dataset.
+    To read the MongoDB in parallel, the execution of the pipeline is sharded, with a
+    Ray read task to handle a partition of the results. The number of partition is
+    determined by ``parallelism`` which can be requested from this interface or
+    automatically chosen if unspecified.
 
     Examples:
         >>> import ray
@@ -372,8 +358,9 @@ def read_mongo(
         ...     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501
         ...     database="my_db",
         ...     collection="my_collection",
-        ...     pipelines=[[{"$match": {"col2": {"$gte": 0, "$lt": 100}}}]],
+        ...     pipeline=[{"$match": {"col2": {"$gte": 0, "$lt": 100}}}, {"$sort": "sort_field"}], # noqa: E501
         ...     schema=Schema({"col1": pa.string(), "col2": pa.int64()}),
+        ...     parallelism=10,
         ... )
 
     Args:
@@ -382,24 +369,32 @@ def read_mongo(
             https://www.mongodb.com/docs/manual/reference/connection-string/.
         database: The name of the database hosted in the MongoDB.
         collection: The name of the collection in the database.
-        pipelines: A list of pipelines that are used to create blocks, with each
-            corresponding to a block. Each pipeline is a list of MongoDB queries (
-            typed as List[Dict]).
-        schema: The schema used to read the collection.
+        pipeline: A MongoDB pipeline, which will be executed on the given collection
+            with results used to create Dataset. If None, the entire collection will
+            be read.
+        schema: The schema used to read the collection. If None, it'll be inferred from
+            the results of pipeline.
+        parallelism: The requested parallelism of the read. If -1, it will be
+            automatically chosen based on the available cluster resources and estimated
+            in-memory data size.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        mong_args: kwargs passed to aggregate_arrow_all() in pymongoarrow in producing
+            Arrow-formatted results.
 
     Returns:
-        Dataset holding Arrow records read with give pipelines from the specified
-        MongoDB collection.
+        Dataset holding Arrow records from the results of executing the pipeline on the
+        specified MongoDB collection.
     """
     return read_datasource(
         MongoDatasource(),
-        parallelism=len(pipelines),
+        parallelism=parallelism,
         uri=uri,
         database=database,
         collection=collection,
-        pipelines=pipelines,
+        pipeline=pipeline,
         schema=schema,
-        kwargs=kwargs,
+        ray_remote_args=ray_remote_args,
+        **mongo_args,
     )
 
 
