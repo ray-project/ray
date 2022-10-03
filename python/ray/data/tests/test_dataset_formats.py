@@ -533,6 +533,16 @@ def test_read_write_mongo(ray_start_regular_shared):
         ray.data.range(10).write_mongo(
             uri=mongo_url, database=foo_db, collection=foo_collection
         )
+    # Destination database doesn't exist.
+    with pytest.raises(ValueError):
+        ray.data.range(10).write_mongo(
+            uri=mongo_url, database="nonexistent-db", collection=foo_collection
+        )
+    # Destination collection doesn't exist.
+    with pytest.raises(ValueError):
+        ray.data.range(10).write_mongo(
+            uri=mongo_url, database=foo_db, collection="nonexistent-collection"
+        )
 
     # Stop the mongodb service.
     subprocess.run(["sudo", "service", "mongodb", " stop"])

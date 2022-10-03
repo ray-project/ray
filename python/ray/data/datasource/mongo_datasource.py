@@ -44,6 +44,17 @@ class MongoDatasource(Datasource):
         database: str,
         collection: str,
     ) -> List[ObjectRef[Any]]:
+        import pymongo
+
+        # Validate the destination database and collection exist.
+        client = pymongo.MongoClient(uri)
+        all_dbs = client.list_database_names()
+        if database not in all_dbs:
+            raise ValueError(f"The destination database {database} doesn't exist.")
+        all_collections = client[database].list_collection_names()
+        if not collection in all_collections:
+            raise ValueError(f"The destination collection {collection} doesn't exist.")
+
         def write_block(uri, database, collection, block: Block):
             import pymongo
             from pymongoarrow.api import write
