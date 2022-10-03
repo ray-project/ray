@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Union, Tuple
+from typing import Dict, List, Optional, Union, Tuple
 
 import numpy as np
 import pyarrow
@@ -91,7 +91,7 @@ def get_type_spec(
         return tf.TensorSpec(get_shape(dtype), dtype=get_dtype(dtype), name=name)
 
     return {
-        tf.TensorSpec(get_shape(dtype), dtype=get_dtype(dtype), name=name)
-        for name, dtype in dtypes
+        name: tf.TensorSpec(get_shape(dtype), dtype=get_dtype(dtype), name=name)
+        for name, dtype in dtypes.items()
         if name in columns
     }
