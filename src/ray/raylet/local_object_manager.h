@@ -219,10 +219,10 @@ class LocalObjectManager {
   /// Delete spilled objects stored in given urls.
   ///
   /// \param urls_to_delete List of urls to delete from external storages.
-  /// \param num_retries_count Num of retries allowed in case of failure, zero or negative
-  /// value means don't retry.
+  /// \param num_retries Num of retries allowed in case of failure, zero or negative
+  /// means don't retry.
   void DeleteSpilledObjects(std::vector<std::string> &urls_to_delete,
-                            int64_t num_retries_count = 3);
+                            int64_t num_retries = 3);
 
   const NodeID self_node_id_;
   const std::string self_node_address_;
