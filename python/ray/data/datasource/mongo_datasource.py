@@ -19,18 +19,6 @@ logger = logging.getLogger(__name__)
 class MongoDatasource(Datasource):
     """Datasource for reading from and writing to MongoDB.
 
-    A MongoDB is described by three elements: URI, database and collection.
-    The URI points to an MongoDB instance. For the format of URI, see
-    https://www.mongodb.com/docs/manual/reference/connection-string/.
-    The database is similar to the database concept in SQL, and the collection is
-    similar to the table concept in a SQL database. The MongoDatasource is for reading
-    and writing collections.
-
-    To read the MongoDB in parallel, users should provide a list of MongoDB
-    pipelines, with each corresponding to a block to be created for Dataset. Those
-    pipelines are usually formulated as disjoint range queries over a specific field (
-    i.e. partition field).
-
     Implementation wise, we will use pymongo to connect to MongoDB, and use pymongoarrow
     to convert MongoDB documents to/from Arrow format, which is a supported block format
     in Dataset.
