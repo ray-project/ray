@@ -99,7 +99,7 @@ class _MongoDatasourceReader(Reader):
         return pipeline[0]["$match"]
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
-        import pymongo
+        from bson.objectid import ObjectId
 
         coll = self._client[self._database][self._collection]
         match_query = self._get_match_query(self._pipeline)
@@ -118,14 +118,15 @@ class _MongoDatasourceReader(Reader):
             database: str,
             collection: str,
             pipeline: List[Dict],
-            min_id: int,
-            max_id: int,
+            min_id: ObjectId,
+            max_id: ObjectId,
             right_closed: bool,
             schema: Schema,
             kwargs: dict,
         ) -> Block:
             from pymongoarrow.api import aggregate_arrow_all
 
+            # A range query over the partition.
             match = [
                 {
                     "$match": {

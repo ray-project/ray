@@ -369,8 +369,10 @@ def read_mongo(
         uri: The URI of the source MongoDB where the dataset will be
             read from. For the URI format, see details in
             https://www.mongodb.com/docs/manual/reference/connection-string/.
-        database: The name of the database hosted in the MongoDB.
-        collection: The name of the collection in the database.
+        database: The name of the database hosted in the MongoDB. This database
+            must exist otherwise ValueError will be raised.
+        collection: The name of the collection in the database. This collection
+            must exist otherwise ValueError will be raised.
         pipeline: A MongoDB pipeline, which will be executed on the given collection
             with results used to create Dataset. If None, the entire collection will
             be read.

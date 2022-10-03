@@ -2325,8 +2325,10 @@ class Dataset(Generic[T]):
             uri: The URI to the destination MongoDB where the dataset will be
                 written to. For the URI format, see details in
                 https://www.mongodb.com/docs/manual/reference/connection-string/.
-            database: The name of the database.
-            collection: The name of the collection in the database.
+            database: The name of the database. This database must exist otherwise
+                ValueError will be raised.
+            collection: The name of the collection in the database. This collection
+                must exist otherwise ValueError will be raised.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
         self.write_datasource(
