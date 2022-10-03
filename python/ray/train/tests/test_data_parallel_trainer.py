@@ -366,7 +366,7 @@ def test_world_rank(ray_start_4_cpus):
     )
     results = trainer.fit()
 
-    assert set((result["world_rank"] for result in results.metrics["results"])) == {
+    assert {result["world_rank"] for result in results.metrics["results"]} == {
         0,
         1,
     }
