@@ -1613,7 +1613,6 @@ def test_tensors_in_tables_to_torch_variable_shaped(
         np.testing.assert_array_equal(df["label"].to_numpy(), labels)
 
 
-@pytest.mark.parametrize("pipelined", [False, True])
 def test_empty_shuffle(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=100)
     ds = ds.filter(lambda x: x)
