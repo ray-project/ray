@@ -395,7 +395,12 @@ def _copy_array_buffers_if_needed(
         new_children = []
         for child in children:
             new_children.append(_copy_array_if_needed(child))
-    elif pa.types.is_string(type_) or pa.types.is_large_string(type_):
+    elif (
+        pa.types.is_string(type_)
+        or pa.types.is_large_string(type_)
+        or pa.types.is_binary(type_)
+        or pa.types.is_large_binary(type_)
+    ):
         # Dedicated path for StringArrays.
         assert len(buffers) == 1
         # StringArray buffer scheme: [bitmap, value_offsets, data]

@@ -126,6 +126,8 @@ def test_copy_bitpacked_buffer_if_needed():
         (pa.array([True, False] * 50), 0.9),
         # String array
         (pa.array(["foo", "bar", "bz", None, "quux"] * 20), 0.5),
+        # Binary array
+        (pa.array([b"foo", b"bar", b"bz", None, b"quux"] * 20), 0.5),
         # List array with nulls
         (pa.array([None] + [list(range(9)) + [None]] * 9), 0.5),
         # Fixed size list array
