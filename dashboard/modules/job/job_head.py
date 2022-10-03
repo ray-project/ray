@@ -257,10 +257,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             return result
         else:
             submit_request = result
-        self.event_logger.info(
-            f"Ray job {submit_request.submission_id} was submitted",
-            submission_id=submit_request.submission_id,
-        )
+
         try:
             job_agent_client = await asyncio.wait_for(
                 self.choose_agent(),
@@ -294,10 +291,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
-
-        self.event_logger.info(
-            "Succeeded to submit a job.", submission_id=submit_request.submission_id
-        )
 
         return Response(
             text=json.dumps(dataclasses.asdict(resp)),

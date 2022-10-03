@@ -312,7 +312,7 @@ def test_jobs_cluster_events(shutdown_only):
     client.submit_job(entrypoint="ls")
 
     def verify():
-        assert len(list_cluster_events()) == 5
+        assert len(list_cluster_events()) == 3
         for e in list_cluster_events():
             e["source_type"] = "JOBS"
         return True
