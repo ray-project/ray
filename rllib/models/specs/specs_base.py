@@ -157,7 +157,6 @@ class TensorSpecs(abc.ABC):
         self._validate_shape_vals(d_names, shape_vals)
 
         expected_shape = tuple(shape_vals.get(d, d) for d in d_names)
-        print(shape, expected_shape)
 
         return expected_shape
 
