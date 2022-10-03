@@ -39,6 +39,25 @@ class TestNoopRecurrentModel(unittest.TestCase):
             (TensorDict(), TensorDict()),
         )
 
+    def test_hooks(self):
+        class MyException(Exception):
+            pass
+
+        def exc(a, b):
+            raise MyException()
+
+        m = NoopRecurrentModelImpl()
+        m._check_inputs_and_prev_state = exc
+
+        with self.assertRaises(MyException):
+            m.unroll(TensorDict(), TensorDict())
+
+        m = NoopRecurrentModelImpl()
+        m._check_outputs_and_next_state = exc
+
+        with self.assertRaises(MyException):
+            m.unroll(TensorDict(), TensorDict())
+
 
 class TestNoopModel(unittest.TestCase):
     def test_unroll(self):

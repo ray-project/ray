@@ -8,7 +8,7 @@ and the desired tensor shapes must be defined in input_spec, output_spec,
 prev_state_spec, and next_state_spec.
 
 The `unroll` function gets the model inputs and previous recurrent state, and outputs
-the model outputs and next recurrent state. Note all ins/outs must match the specs. 
+the model outputs and next recurrent state. Note all ins/outs must match the specs.
 Users should override `_unroll` rather than `unroll`.
 
 `initial_state` returns the "next" state for the first recurrent iteration. Again,
