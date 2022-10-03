@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from ray.data.datasource.datasource import Datasource, Reader, ReadTask
+from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.data.block import (
     Block,
     BlockMetadata,
@@ -43,7 +43,7 @@ class MongoDatasource(Datasource):
         uri: str,
         database: str,
         collection: str,
-    ) -> List[ObjectRef[Any]]:
+    ) -> List[ObjectRef[WriteResult]]:
         import pymongo
 
         # Validate the destination database and collection exist.
@@ -55,7 +55,7 @@ class MongoDatasource(Datasource):
         if not collection in all_collections:
             raise ValueError(f"The destination collection {collection} doesn't exist.")
 
-        def write_block(uri, database, collection, block: Block):
+        def write_block(uri: str, database: str, collection: str, block: Block):
             import pymongo
             from pymongoarrow.api import write
 
@@ -81,7 +81,7 @@ class _MongoDatasourceReader(Reader):
         collection: str,
         pipeline: List[Dict] = None,
         schema: Schema = None,
-        **mongo_args
+        **mongo_args,
     ):
         self._uri = uri
         self._database = database
@@ -119,15 +119,15 @@ class _MongoDatasourceReader(Reader):
         )
 
         def make_block(
-            uri,
-            database,
-            collection,
-            pipeline,
-            min_id,
-            max_id,
-            right_closed,
-            schema,
-            kwargs,
+            uri: str,
+            database: str,
+            collection: str,
+            pipeline: List[Dict],
+            min_id: int,
+            max_id: int,
+            right_closed: bool,
+            schema: Schema,
+            kwargs: dict,
         ) -> Block:
             import pymongo
             from pymongoarrow.api import aggregate_arrow_all
