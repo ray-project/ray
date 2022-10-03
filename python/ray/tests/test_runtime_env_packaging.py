@@ -47,12 +47,6 @@ def random_string(size: int = 10):
     return "".join(random.choice(string.ascii_uppercase) for _ in range(size))
 
 
-def add_macos_dir(path: Path):
-    macos_dir = path / MAC_OS_ZIP_HIDDEN_DIR_NAME
-    macos_dir.mkdir()
-    (macos_dir / "test.txt").touch()
-
-
 @pytest.fixture
 def random_dir(tmp_path) -> Path:
     subdir = tmp_path / "subdir"
