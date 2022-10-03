@@ -382,7 +382,7 @@ install_pip_packages() {
 
   # Additional dependency for statsforecast.
   # This cannot be included in requirements_tune.txt as it has conflicting
-  # dependencies with Modin.
+  # dependencies.
   if [ "${INSTALL_STATSFORECAST-}" = 1 ]; then
     pip install -U "statsforecast==1.1.0"
   fi
