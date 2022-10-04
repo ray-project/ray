@@ -426,6 +426,8 @@
 
 - label: ":steam_locomotive: :octopus: Train + Tune tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
+  agents:
+    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
