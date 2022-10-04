@@ -374,8 +374,8 @@ class Trial:
         # Checkpoint config
         self.checkpoint_config = checkpoint_config or CheckpointConfig()
         self.checkpoint_manager = _CheckpointManager(
-            checkpoint_config.num_to_keep,
-            checkpoint_config.checkpoint_score_attribute,
+            self.checkpoint_config.num_to_keep,
+            self.checkpoint_config.checkpoint_score_attribute,
             delete_fn=_CheckpointDeleter(self._trainable_name(), self.runner),
         )
 
