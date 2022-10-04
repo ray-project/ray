@@ -6,12 +6,9 @@ metadata:
     app: redis
 data:
   redis.conf: |-
-    dir /data
     port 6379
     bind 0.0.0.0
-    appendonly yes
     protected-mode no
-    pidfile /data/redis-6379.pid
 ---
 apiVersion: v1
 kind: Service
