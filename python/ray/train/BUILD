@@ -343,6 +343,14 @@ py_test(
 )
 
 py_test(
+    name = "test_training_iterator",
+    size = "small",
+    srcs = ["tests/test_training_iterator.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_tune",
     size = "large",
     srcs = ["tests/test_tune.py"],
