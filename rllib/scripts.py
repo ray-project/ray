@@ -1,15 +1,90 @@
 #!/usr/bin/env python
 import typer
 from ray.rllib import train
-from ray.rllib import evaluate
+from ray.rllib.common import CLIArguments as cli
 
 # Main Typer CLI app
 app = typer.Typer()
 
-# Register all subcommands.
+# Register all "train" sub-commands
 app.add_typer(train.train_app, name="train")
-app.add_typer(evaluate.eval_app, name="evaluate")
-app.add_typer(evaluate.eval_app, name="rollout")
+
+
+@app.command()
+def evaluate(
+    checkpoint: str = cli.Checkpoint,
+    run: str = cli.Run,
+    env: str = cli.Env,
+    local_mode: bool = cli.LocalMode,
+    render: bool = cli.Render,
+    steps: int = cli.Steps,
+    episodes: int = cli.Episodes,
+    out: str = cli.Out,
+    config: str = cli.Config,
+    save_info: bool = cli.SaveInfo,
+    use_shelve: bool = cli.UseShelve,
+    track_progress: bool = cli.TrackProgress,
+):
+    """Roll out a reinforcement learning agent given a checkpoint argument.
+    You have to provide an environment ("--env") an an RLlib algorithm ("--run") to
+    evaluate your checkpoint.
+
+    Example usage:\n\n
+
+        rllib evaluate /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN --env CartPole-v1
+        --steps 1000000 --out rollouts.pkl
+    """
+    from ray.rllib import evaluate
+
+    evaluate.run(
+        checkpoint=checkpoint,
+        run=run,
+        env=env,
+        local_mode=local_mode,
+        render=render,
+        steps=steps,
+        episodes=episodes,
+        out=out,
+        config=config,
+        save_info=save_info,
+        use_shelve=use_shelve,
+        track_progress=track_progress,
+    )
+
+
+@app.command()
+def rollout(
+    checkpoint: str = cli.Checkpoint,
+    run: str = cli.Run,
+    env: str = cli.Env,
+    local_mode: bool = cli.LocalMode,
+    render: bool = cli.Render,
+    steps: int = cli.Steps,
+    episodes: int = cli.Episodes,
+    out: str = cli.Out,
+    config: str = cli.Config,
+    save_info: bool = cli.SaveInfo,
+    use_shelve: bool = cli.UseShelve,
+    track_progress: bool = cli.TrackProgress,
+):
+    from ray.rllib.utils.deprecation import deprecation_warning
+
+    deprecation_warning(old="rllib rollout", new="rllib evaluate", error=False)
+
+    return evaluate(
+        checkpoint=checkpoint,
+        run=run,
+        env=env,
+        local_mode=local_mode,
+        render=render,
+        steps=steps,
+        episodes=episodes,
+        out=out,
+        config=config,
+        save_info=save_info,
+        use_shelve=use_shelve,
+        track_progress=track_progress,
+    )
 
 
 @app.callback()

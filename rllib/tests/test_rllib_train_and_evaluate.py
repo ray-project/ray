@@ -11,6 +11,9 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import framework_iterator
 
 
+rllib_dir = str(Path(__file__).parent.parent.absolute())
+
+
 def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
     extra_config = ""
     if algo == "ARS":
@@ -29,7 +32,6 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
 
         print("Saving results to {}".format(tmp_dir))
 
-        rllib_dir = str(Path(__file__).parent.parent.absolute())
         print("RLlib dir = {}\nexists={}".format(rllib_dir, os.path.exists(rllib_dir)))
 
         os.system(
@@ -51,12 +53,13 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
             sys.exit(1)
         print(f"Checkpoint path {checkpoint_path} (exists)")
 
-        # Test rolling out n steps.
+        # Test rolling out 10 steps.
+        out = f"{tmp_dir}/rollouts_10steps.pkl"
         os.popen(
             f'python {rllib_dir}/evaluate.py "{checkpoint_path}" --run={algo} '
-            f'--steps=10 --out="{tmp_dir}/rollouts_10steps.pkl"'
+            f'--steps=10 --out="{out}"'
         ).read()
-        if not os.path.exists(tmp_dir + "/rollouts_10steps.pkl"):
+        if not os.path.exists(out):
             sys.exit(1)
         print("evaluate output (10 steps) exists!")
 
@@ -269,6 +272,20 @@ class TestTrainAndEvaluate(unittest.TestCase):
 
     def test_ppo_multi_agent_train_then_rollout(self):
         learn_test_multi_agent_plus_evaluate("PPO")
+
+
+class TestCLISmokeTests(unittest.TestCase):
+    def test_help(self):
+        assert os.popen(f"python {rllib_dir}/scripts.py --help").read()
+        assert os.popen(f"python {rllib_dir}/train.py --help").read()
+        assert os.popen(f"python {rllib_dir}/train.py file --help").read()
+        assert os.popen(f"python {rllib_dir}/evaluate.py --help").read()
+
+    def test_file_based_training(self):
+        os.popen(
+            f"python {rllib_dir}/scripts.py train file "
+            f"{rllib_dir}/tuned_examples/ppo/cartpole-ppo.yaml"
+        ).read()
 
 
 if __name__ == "__main__":

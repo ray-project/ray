@@ -32,6 +32,7 @@ def get_help(key: str) -> str:
 
 class FrameworkEnum(str, Enum):
     """Supported frameworks for RLlib, used for CLI argument validation."""
+
     tf = "tf"
     tf2 = "tf2"
     tfe = "tfe"
@@ -40,22 +41,21 @@ class FrameworkEnum(str, Enum):
 
 train_help = dict(
     env="The environment specifier to use. This could be an openAI gym "
-        "specifier (e.g. `CartPole-v1`) or a full class-path (e.g. "
-        "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).",
-    config_file="If specified, use config options from this file. Note that this "
-                "overrides any trial-specific options set via other flags.",
+    "specifier (e.g. `CartPole-v1`) or a full class-path (e.g. "
+    "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).",
+    config_file="Use the algorithm configuration from this file.",
     experiment_name="Name of the subdirectory under `local_dir` to put results in.",
     framework="The identifier of the deep learning framework you want to use."
-              "Choose between TensorFlow 1.x ('tf'), TensorFlow 2.x ('tf2'), "
-              "TensorFlow 1.x in eager mode ('tfe'), and PyTorch ('torch').",
+    "Choose between TensorFlow 1.x ('tf'), TensorFlow 2.x ('tf2'), "
+    "TensorFlow 1.x in eager mode ('tfe'), and PyTorch ('torch').",
     v="Whether to use INFO level logging.",
     vv="Whether to use DEBUG level logging.",
     resume="Whether to attempt to resume from previous experiments.",
     local_dir=f"Local dir to save training results to. "
-              f"Defaults to '{DEFAULT_RESULTS_DIR}'.",
+    f"Defaults to '{DEFAULT_RESULTS_DIR}'.",
     local_mode="Run Ray in local mode for easier debugging.",
     ray_address="Connect to an existing Ray cluster at this address instead "
-                "of starting a new one.",
+    "of starting a new one.",
     ray_ui="Whether to enable the Ray web UI.",
     ray_num_cpus="The '--num-cpus' argument to use if starting a new cluster.",
     ray_num_gpus="The '--num-gpus' argument to use if starting a new cluster.",
@@ -64,44 +64,44 @@ train_help = dict(
     upload_dir="Optional URI to sync training results to (e.g. s3://bucket).",
     trace="Whether to attempt to enable tracing for eager mode.",
     torch="Whether to use PyTorch (instead of tf) as the DL framework. "
-          "This argument is deprecated, please use --framework to select 'torch'"
-          "as backend.",
+    "This argument is deprecated, please use --framework to select 'torch'"
+    "as backend.",
     eager="Whether to attempt to enable TensorFlow eager execution. "
-          "This argument is deprecated, please choose between 'tfe' and 'tf2' in "
-          "--framework to run select eager mode.",
+    "This argument is deprecated, please choose between 'tfe' and 'tf2' in "
+    "--framework to run select eager mode.",
 )
 
 
 eval_help = dict(
     checkpoint="Optional checkpoint from which to roll out. If none provided, we will "
-               "evaluate an untrained algorithm.",
+    "evaluate an untrained algorithm.",
     run="The algorithm or model to train. This may refer to the name of a built-in "
-        "Algorithm (e.g. RLlib's `DQN` or `PPO`), or a user-defined trainable "
-        "function or class registered in the Tune registry.",
+    "Algorithm (e.g. RLlib's `DQN` or `PPO`), or a user-defined trainable "
+    "function or class registered in the Tune registry.",
     env="The environment specifier to use. This could be an openAI gym "
-        "specifier (e.g. `CartPole-v1`) or a full class-path (e.g. "
-        "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).",
+    "specifier (e.g. `CartPole-v1`) or a full class-path (e.g. "
+    "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).",
     local_mode="Run Ray in local mode for easier debugging.",
     render="Render the environment while evaluating. Off by default",
     video_dir="Specifies the directory into which videos of all episode"
-              "rollouts will be stored.",
+    "rollouts will be stored.",
     steps="Number of time-steps to roll out. The evaluation will also stop if "
-          "`--episodes` limit is reached first. A value of 0 means no "
-          "limitation on the number of time-steps run.",
+    "`--episodes` limit is reached first. A value of 0 means no "
+    "limitation on the number of time-steps run.",
     episodes="Number of complete episodes to roll out. The evaluation will also stop "
-             "if `--steps` (time-steps) limit is reached first. A value of 0 means "
-             "no limitation on the number of episodes run.",
+    "if `--steps` (time-steps) limit is reached first. A value of 0 means "
+    "no limitation on the number of episodes run.",
     out="Output filename",
     config="Algorithm-specific configuration (e.g. `env`, `framework` etc.). "
-           "Gets merged with loaded configuration from checkpoint file and "
-           "`evaluation_config` settings therein.",
+    "Gets merged with loaded configuration from checkpoint file and "
+    "`evaluation_config` settings therein.",
     save_info="Save the info field generated by the step() method, "
-              "as well as the action, observations, rewards and done fields.",
+    "as well as the action, observations, rewards and done fields.",
     use_shelve="Save rollouts into a Python shelf file (will save each episode "
-               "as it is generated). An output filename must be set using --out.",
+    "as it is generated). An output filename must be set using --out.",
     track_progress="Write progress to a temporary file (updated "
-                   "after each episode). An output filename must be set using --out; "
-                   "the progress file will live in the same folder.",
+    "after each episode). An output filename must be set using --out; "
+    "the progress file will live in the same folder.",
 )
 
 
@@ -109,6 +109,7 @@ eval_help = dict(
 class CLIArguments:
     """Dataclass for CLI arguments and options. We use this class to keep track
     of common arguments, like "run" or "env" that would otherwise be duplicated."""
+
     # Common arguments
     Run = typer.Option(None, "--algo", "--run", "-a", "-r", help=get_help("run"))
     RunRequired = typer.Option(..., "--algo", "--run", "-a", "-r", help=get_help("run"))
@@ -116,9 +117,10 @@ class CLIArguments:
     EnvRequired = typer.Option(..., "--env", "-e", help=train_help.get("env"))
     Config = typer.Option("{}", "--config", "-c", help=get_help("config"))
     ConfigRequired = typer.Option(..., "--config", "-c", help=get_help("config"))
+
     # Train arguments
-    ConfigFile = typer.Option(
-        None, "--config-file", "-f", help=train_help.get("config_file")
+    ConfigFile = typer.Argument(  # config file is now mandatory for "file" subcommand
+        ..., help=train_help.get("config_file")
     )
     Stop = typer.Option("{}", "--stop", "-s", help=get_help("stop"))
     ExperimentName = typer.Option(
@@ -130,15 +132,11 @@ class CLIArguments:
     NumSamples = typer.Option(1, help=get_help("num_samples"))
     CheckpointFreq = typer.Option(0, help=get_help("checkpoint_freq"))
     CheckpointAtEnd = typer.Option(False, help=get_help("checkpoint_at_end"))
-    LocalDir = typer.Option(
-        DEFAULT_RESULTS_DIR, help=train_help.get("local_dir")
-    ),
+    LocalDir = (typer.Option(DEFAULT_RESULTS_DIR, help=train_help.get("local_dir")),)
     Restore = typer.Option(None, help=get_help("restore"))
     Framework = typer.Option(None, help=train_help.get("framework"))
     ResourcesPerTrial = typer.Option(None, help=get_help("resources_per_trial"))
-    KeepCheckpointsNum = typer.Option(
-        None, help=get_help("keep_checkpoints_num")
-    )
+    KeepCheckpointsNum = typer.Option(None, help=get_help("keep_checkpoints_num"))
     CheckpointScoreAttr = typer.Option(
         "training_iteration", help=get_help("sync_on_checkpoint")
     )
@@ -165,4 +163,3 @@ class CLIArguments:
     SaveInfo = typer.Option(False, help=eval_help.get("save_info"))
     UseShelve = typer.Option(False, help=eval_help.get("use_shelve"))
     TrackProgress = typer.Option(False, help=eval_help.get("track_progress"))
-

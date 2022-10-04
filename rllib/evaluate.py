@@ -156,9 +156,8 @@ class RolloutSaver:
         self._total_steps += 1
 
 
-@eval_app.callback(invoke_without_command=True)
+@eval_app.command()
 def run(
-    ctx: typer.Context,
     checkpoint: str = cli.Checkpoint,
     run: str = cli.Run,
     env: str = cli.Env,
@@ -172,108 +171,98 @@ def run(
     use_shelve: bool = cli.UseShelve,
     track_progress: bool = cli.TrackProgress,
 ):
-    """Roll out a reinforcement learning agent given a checkpoint argument.
-    You have to provide an environment ("--env") an an RLlib algorithm ("--run") to
-    evaluate your checkpoint.
 
-    Example usage:\n\n
-
-        rllib evaluate /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN --env CartPole-v1
-        --steps 1000000 --out rollouts.pkl
-    """
-    if ctx.invoked_subcommand is None:
-
-        if use_shelve and not out:
-            raise ValueError(
-                "If you set --use-shelve, you must provide an output file via "
-                "--out as well!"
-            )
-        if track_progress and not out:
-            raise ValueError(
-                "If you set --track-progress, you must provide an output file via "
-                "--out as well!"
-            )
-        # Load configuration from checkpoint file.
-        config_args = json.loads(config)
-        config_path = ""
-        if checkpoint:
-            config_dir = os.path.dirname(checkpoint)
-            config_path = os.path.join(config_dir, "params.pkl")
-            # Try parent directory.
-            if not os.path.exists(config_path):
-                config_path = os.path.join(config_dir, "../params.pkl")
-
-        # Load the config from pickled.
-        if os.path.exists(config_path):
-            with open(config_path, "rb") as f:
-                config = cloudpickle.load(f)
-        # If no pkl file found, require command line `--config`.
-        else:
-            # If no config in given checkpoint -> Error.
-            if checkpoint:
-                raise ValueError(
-                    "Could not find params.pkl in either the checkpoint dir or "
-                    "its parent directory AND no `--config` given on command "
-                    "line!"
-                )
-            # Use default config for given agent.
-            _, config = get_algorithm_class(run, return_config=True)
-
-        # Make sure worker 0 has an Env.
-        config["create_env_on_driver"] = True
-
-        # Merge with `evaluation_config` (first try from command line, then from
-        # pkl file).
-        evaluation_config = copy.deepcopy(
-            config_args.get("evaluation_config", config.get("evaluation_config", {}))
+    if use_shelve and not out:
+        raise ValueError(
+            "If you set --use-shelve, you must provide an output file via "
+            "--out as well!"
         )
-        config = merge_dicts(config, evaluation_config)
-        # Merge with command line `--config` settings (if not already the same anyways).
-        config = merge_dicts(config, config_args)
-        if not env:
-            if not config.get("env"):
-                raise ValueError(
-                    "You either need to provide an --env argument or pass"
-                    "an `env` key with a valid environment to your `config`"
-                    "argument."
-                )
-            env = config.get("env")
+    if track_progress and not out:
+        raise ValueError(
+            "If you set --track-progress, you must provide an output file via "
+            "--out as well!"
+        )
+    # Load configuration from checkpoint file.
+    config_args = json.loads(config)
+    config_path = ""
+    if checkpoint:
+        config_dir = os.path.dirname(checkpoint)
+        config_path = os.path.join(config_dir, "params.pkl")
+        # Try parent directory.
+        if not os.path.exists(config_path):
+            config_path = os.path.join(config_dir, "../params.pkl")
 
-        # Make sure we have evaluation workers.
-        if not config.get("evaluation_num_workers"):
-            config["evaluation_num_workers"] = config.get("num_workers", 0)
-        if not config.get("evaluation_duration"):
-            config["evaluation_duration"] = 1
-
-        # Hard-override this as it raises a warning by Trainer otherwise.
-        # Makes no sense anyways, to have it set to None as we don't call
-        # `Trainer.train()` here.
-        config["evaluation_interval"] = 1
-
-        # Rendering settings.
-        config["render_env"] = render
-
-        ray.init(local_mode=local_mode)
-
-        # Create the Trainer from config.
-        cls = get_trainable_cls(run)
-        agent = cls(env=env, config=config)
-
-        # Load state from checkpoint, if provided.
+    # Load the config from pickled.
+    if os.path.exists(config_path):
+        with open(config_path, "rb") as f:
+            config = cloudpickle.load(f)
+    # If no pkl file found, require command line `--config`.
+    else:
+        # If no config in given checkpoint -> Error.
         if checkpoint:
-            agent.restore(checkpoint)
+            raise ValueError(
+                "Could not find params.pkl in either the checkpoint dir or "
+                "its parent directory AND no `--config` given on command "
+                "line!"
+            )
+        # Use default config for given agent.
+        _, config = get_algorithm_class(run, return_config=True)
 
-        # Do the actual rollout.
-        with RolloutSaver(
-            outfile=out,
-            use_shelve=use_shelve,
-            write_update_file=track_progress,
-            target_steps=steps,
-            target_episodes=episodes,
-            save_info=save_info,
-        ) as saver:
-            rollout(agent, env, steps, episodes, saver, not render)
-        agent.stop()
+    # Make sure worker 0 has an Env.
+    config["create_env_on_driver"] = True
+
+    # Merge with `evaluation_config` (first try from command line, then from
+    # pkl file).
+    evaluation_config = copy.deepcopy(
+        config_args.get("evaluation_config", config.get("evaluation_config", {}))
+    )
+    config = merge_dicts(config, evaluation_config)
+    # Merge with command line `--config` settings (if not already the same anyways).
+    config = merge_dicts(config, config_args)
+    if not env:
+        if not config.get("env"):
+            raise ValueError(
+                "You either need to provide an --env argument or pass"
+                "an `env` key with a valid environment to your `config`"
+                "argument."
+            )
+        env = config.get("env")
+
+    # Make sure we have evaluation workers.
+    if not config.get("evaluation_num_workers"):
+        config["evaluation_num_workers"] = config.get("num_workers", 0)
+    if not config.get("evaluation_duration"):
+        config["evaluation_duration"] = 1
+
+    # Hard-override this as it raises a warning by Trainer otherwise.
+    # Makes no sense anyways, to have it set to None as we don't call
+    # `Trainer.train()` here.
+    config["evaluation_interval"] = 1
+
+    # Rendering settings.
+    config["render_env"] = render
+
+    ray.init(local_mode=local_mode)
+
+    # Create the Trainer from config.
+    cls = get_trainable_cls(run)
+    algorithm = cls(env=env, config=config)
+
+    # Load state from checkpoint, if provided.
+    if checkpoint:
+        algorithm.restore(checkpoint)
+
+    # Do the actual rollout.
+    with RolloutSaver(
+        outfile=out,
+        use_shelve=use_shelve,
+        write_update_file=track_progress,
+        target_steps=steps,
+        target_episodes=episodes,
+        save_info=save_info,
+    ) as saver:
+        rollout(algorithm, steps, episodes, saver, not render)
+    algorithm.stop()
 
 
 class DefaultMapping(collections.defaultdict):
@@ -298,7 +287,6 @@ def keep_going(steps: int, num_steps: int, episodes: int, num_episodes: int) -> 
 
 def rollout(
     agent,
-    env_name,  # unused
     num_steps,
     num_episodes=0,
     saver=None,
@@ -319,7 +307,7 @@ def rollout(
         while keep_going(steps, num_steps, episodes, num_episodes):
             saver.begin_rollout()
             eval_result = agent.evaluate()["evaluation"]
-            # Increase timestep and episode counters.
+            # Increase time-step and episode counters.
             eps = agent.config["evaluation_duration"]
             episodes += eps
             steps += eps * eval_result["episode_len_mean"]
