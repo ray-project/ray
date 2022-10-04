@@ -132,7 +132,7 @@ class CLIArguments:
     NumSamples = typer.Option(1, help=get_help("num_samples"))
     CheckpointFreq = typer.Option(0, help=get_help("checkpoint_freq"))
     CheckpointAtEnd = typer.Option(False, help=get_help("checkpoint_at_end"))
-    LocalDir = (typer.Option(DEFAULT_RESULTS_DIR, help=train_help.get("local_dir")),)
+    LocalDir = typer.Option(DEFAULT_RESULTS_DIR, help=train_help.get("local_dir"))
     Restore = typer.Option(None, help=get_help("restore"))
     Framework = typer.Option(None, help=train_help.get("framework"))
     ResourcesPerTrial = typer.Option(None, help=get_help("resources_per_trial"))
@@ -163,3 +163,31 @@ class CLIArguments:
     SaveInfo = typer.Option(False, help=eval_help.get("save_info"))
     UseShelve = typer.Option(False, help=eval_help.get("use_shelve"))
     TrackProgress = typer.Option(False, help=eval_help.get("track_progress"))
+
+
+# TODO: write a unit test that asserts that these files exist!!!
+EXAMPLES = {
+    # A2C
+    "atari-a2c": {
+        "file": "tuned_examples/a2c/atari-a2c.yaml",
+        "description": "Runs grid search over several Atari games on A2C.",
+    },
+    "cartpole-a2c": {
+        "file": "tuned_examples/a2c/cartpole-a2c.yaml",
+        "description": "Runs A2C on the CartPole-v1 environment.",
+    },
+    "cartpole-a2c-micro": {
+        "file": "tuned_examples/a2c/cartpole-a2c-microbatch.yaml",
+        "description": "Runs A2C on the CartPole-v1 environment, using micro-batches.",
+    },
+    # A3C
+    "cartpole-a3c": {
+        "file": "tuned_examples/a3c/cartpole-a3c.yaml",
+        "description": "Runs A3C on the CartPole-v1 environment.",
+    },
+    "pong-a3c": {
+        "file": "tuned_examples/a3c/pong-a3c.yaml",
+        "description": "Runs A3C on the PongDeterministic-v4 environment.",
+    },
+}
+

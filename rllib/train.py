@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import yaml
 import typer
+from typing import Optional
 
 import ray
 from ray.tune.resources import resources_to_json, json_to_resources
@@ -66,15 +67,15 @@ def file(
     trace: bool = cli.Trace,
     # Ray cluster options.
     local_mode: bool = cli.LocalMode,
-    ray_address: str = cli.RayAddress,
+    ray_address: Optional[str] = cli.RayAddress,
     ray_ui: bool = cli.RayUi,
-    ray_num_cpus: int = cli.RayNumCpus,
-    ray_num_gpus: int = cli.RayNumGpus,
-    ray_num_nodes: int = cli.RayNumNodes,
-    ray_object_store_memory: int = cli.RayObjectStoreMemory,
+    ray_num_cpus: Optional[int] = cli.RayNumCpus,
+    ray_num_gpus: Optional[int] = cli.RayNumGpus,
+    ray_num_nodes: Optional[int] = cli.RayNumNodes,
+    ray_object_store_memory: Optional[int] = cli.RayObjectStoreMemory,
     # Ray scheduling options.
     resume: bool = cli.Resume,
-    scheduler: str = cli.Scheduler,
+    scheduler: Optional[str] = cli.Scheduler,
     scheduler_config: str = cli.SchedulerConfig,
 ):
     """Train a reinforcement learning agent from file.

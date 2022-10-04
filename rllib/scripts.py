@@ -1,13 +1,61 @@
 #!/usr/bin/env python
 import typer
-from ray.rllib import train
+from ray.rllib import train as train_module
 from ray.rllib.common import CLIArguments as cli
+from ray.rllib.common import EXAMPLES, FrameworkEnum
 
 # Main Typer CLI app
 app = typer.Typer()
+examples_app = typer.Typer()
 
-# Register all "train" sub-commands
-app.add_typer(train.train_app, name="train")
+
+@examples_app.command()
+def list():
+    from rich.console import Console
+    from rich.table import Table
+
+    table = Table(title="RLlib Examples")
+    table.add_column("Example ID", justify="right", style="cyan", no_wrap=True)
+    table.add_column("Description", justify="right", style="magenta")
+
+    for name, value in EXAMPLES.items():
+        table.add_row(name, value["description"])
+
+    console = Console()
+    console.print(table)
+    console.print("Run any RLlib example as using 'rllib examples run <Example ID>'."
+                  "See 'rllib examples run --help' for more information.")
+
+
+@examples_app.command()
+def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
+    if example_id not in EXAMPLES.keys():
+        raise ValueError(
+            f"Example {example_id} not found. Use `rllib examples list` "
+            f"to see available examples.")
+    train_module.file(
+        config_file=EXAMPLES[example_id]["file"],
+        framework=FrameworkEnum.tf2,
+        v=True,
+        vv=False,
+        trace=False,
+        local_mode=False,
+        ray_address=None,
+        ray_ui=False,
+        ray_num_cpus=None,
+        ray_num_gpus=None,
+        ray_num_nodes=None,
+        ray_object_store_memory=None,
+        resume=False,
+        scheduler="FIFO",
+        scheduler_config="{}"
+    )
+
+
+# Register all subcommands
+app.add_typer(examples_app, name="examples")
+app.add_typer(train_module.train_app, name="train")
+# TODO: print (a list of) checkpoints available after training.
 
 
 @app.command()
@@ -34,9 +82,9 @@ def evaluate(
         rllib evaluate /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN --env CartPole-v1
         --steps 1000000 --out rollouts.pkl
     """
-    from ray.rllib import evaluate
+    from ray.rllib import evaluate as evaluate_module
 
-    evaluate.run(
+    evaluate_module.run(
         checkpoint=checkpoint,
         run=run,
         env=env,
