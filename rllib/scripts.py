@@ -23,8 +23,10 @@ def list():
 
     console = Console()
     console.print(table)
-    console.print("Run any RLlib example as using 'rllib examples run <Example ID>'."
-                  "See 'rllib examples run --help' for more information.")
+    console.print(
+        "Run any RLlib example as using 'rllib examples run <Example ID>'."
+        "See 'rllib examples run --help' for more information."
+    )
 
 
 @examples_app.command()
@@ -32,7 +34,8 @@ def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
     if example_id not in EXAMPLES.keys():
         raise ValueError(
             f"Example {example_id} not found. Use `rllib examples list` "
-            f"to see available examples.")
+            f"to see available examples."
+        )
     train_module.file(
         config_file=EXAMPLES[example_id]["file"],
         framework=FrameworkEnum.tf2,
@@ -48,7 +51,7 @@ def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
         ray_object_store_memory=None,
         resume=False,
         scheduler="FIFO",
-        scheduler_config="{}"
+        scheduler_config="{}",
     )
 
 
