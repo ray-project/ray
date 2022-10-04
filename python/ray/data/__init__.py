@@ -1,5 +1,3 @@
-import ray
-from ray.data._internal.arrow_serialization import _register_custom_serializers
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data.dataset import Dataset
@@ -32,19 +30,6 @@ from ray.data.read_api import (  # noqa: F401
     read_parquet_bulk,
     read_text,
     read_tfrecords,
-)
-
-
-def _register_custom_serializers_on_worker(_):
-    # Acquire function actor manager lock to prevent concurrent imports between import
-    # thread and deserialization, which can cause a deadlock.
-    with ray._private.worker.global_worker.function_actor_manager.lock:
-        _register_custom_serializers()
-
-
-# Register custom serializers needed for Datasets.
-ray._private.worker.global_worker.run_function_on_all_workers(
-    _register_custom_serializers_on_worker
 )
 
 __all__ = [

@@ -213,6 +213,7 @@ for arr, cap in pytest_custom_serialization_arrays:
 
 @pytest.mark.parametrize("data,cap_mult", pytest_custom_serialization_data)
 def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
+    ray._private.worker.global_worker.get_serialization_context()
     data.validate()
     buf_size = data.get_total_buffer_size()
     # Create a zero-copy slice view of data.
@@ -245,6 +246,7 @@ def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
 def test_custom_arrow_data_serializer_parquet_roundtrip(
     ray_start_regular_shared, tmp_path
 ):
+    ray._private.worker.global_worker.get_serialization_context()
     t = pa.table({"a": list(range(10000000))})
     pq.write_table(t, f"{tmp_path}/test.parquet")
     t2 = pq.read_table(f"{tmp_path}/test.parquet")
@@ -258,7 +260,6 @@ def test_custom_arrow_data_serializer_parquet_roundtrip(
 
 def test_custom_arrow_data_serializer_disable(shutdown_only):
     ray.shutdown()
-    ray.worker._post_init_hooks = []
     context = ray.worker.global_worker.get_serialization_context()
     for array_type in _get_arrow_array_types():
         context._unregister_cloudpickle_reducer(array_type)

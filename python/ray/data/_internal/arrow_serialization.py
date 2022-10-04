@@ -34,18 +34,22 @@ def _is_in_test():
     return _in_test
 
 
-def _register_custom_serializers():
+def _register_custom_datasets_serializers(serialization_context):
+    try:
+        import pyarrow as pa  # noqa: F401
+    except ModuleNotFoundError:
+        # No pyarrow installed so not using Arrow, so no need for custom serializers.
+        return
+
     # Register all custom serializers required by Datasets.
-    _register_arrow_data_serializer()
-    _register_arrow_json_readoptions_serializer()
-    _register_arrow_json_parseoptions_serializer()
+    _register_arrow_data_serializer(serialization_context)
+    _register_arrow_json_readoptions_serializer(serialization_context)
+    _register_arrow_json_parseoptions_serializer(serialization_context)
 
 
 # Register custom Arrow JSON ReadOptions serializer to workaround it not being picklable
 # in Arrow < 8.0.0.
-def _register_arrow_json_readoptions_serializer():
-    import ray
-
+def _register_arrow_json_readoptions_serializer(serialization_context):
     if (
         os.environ.get(
             RAY_DISABLE_CUSTOM_ARROW_JSON_OPTIONS_SERIALIZATION,
@@ -59,21 +63,16 @@ def _register_arrow_json_readoptions_serializer():
         logger.info("Disabling custom Arrow JSON ReadOptions serialization.")
         return
 
-    try:
-        import pyarrow.json as pajson
-    except ModuleNotFoundError:
-        return
+    import pyarrow.json as pajson
 
-    ray.util.register_serializer(
+    serialization_context._register_cloudpickle_serializer(
         pajson.ReadOptions,
-        serializer=lambda opts: (opts.use_threads, opts.block_size),
-        deserializer=lambda args: pajson.ReadOptions(*args),
+        custom_serializer=lambda opts: (opts.use_threads, opts.block_size),
+        custom_deserializer=lambda args: pajson.ReadOptions(*args),
     )
 
 
-def _register_arrow_json_parseoptions_serializer():
-    import ray
-
+def _register_arrow_json_parseoptions_serializer(serialization_context):
     if (
         os.environ.get(
             RAY_DISABLE_CUSTOM_ARROW_JSON_OPTIONS_SERIALIZATION,
@@ -87,25 +86,22 @@ def _register_arrow_json_parseoptions_serializer():
         logger.info("Disabling custom Arrow JSON ParseOptions serialization.")
         return
 
-    try:
-        import pyarrow.json as pajson
-    except ModuleNotFoundError:
-        return
+    import pyarrow.json as pajson
 
-    ray.util.register_serializer(
+    serialization_context._register_cloudpickle_serializer(
         pajson.ParseOptions,
-        serializer=lambda opts: (
+        custom_serializer=lambda opts: (
             opts.explicit_schema,
             opts.newlines_in_values,
             opts.unexpected_field_behavior,
         ),
-        deserializer=lambda args: pajson.ParseOptions(*args),
+        custom_deserializer=lambda args: pajson.ParseOptions(*args),
     )
 
 
 # Register custom Arrow data serializer to work around zero-copy slice pickling bug.
 # See https://issues.apache.org/jira/browse/ARROW-10739.
-def _register_arrow_data_serializer():
+def _register_arrow_data_serializer(serialization_context):
     """Custom reducer for Arrow data that works around a zero-copy slicing pickling
     bug by using the Arrow IPC format for the underlying serialization.
 
@@ -122,7 +118,6 @@ def _register_arrow_data_serializer():
 
     See https://issues.apache.org/jira/browse/ARROW-10739.
     """
-    import ray
     import pyarrow as pa
 
     if os.environ.get(RAY_DISABLE_CUSTOM_ARROW_DATA_SERIALIZATION) == "1":
@@ -135,27 +130,27 @@ def _register_arrow_data_serializer():
         )
         return
 
-    context = ray._private.worker.global_worker.get_serialization_context()
     # Register custom reducer for Arrow Arrays.
     array_types = _get_arrow_array_types()
     for array_type in array_types:
-        context._register_cloudpickle_reducer(array_type, _arrow_array_reduce)
+        serialization_context._register_cloudpickle_reducer(
+            array_type, _arrow_array_reduce
+        )
     # Register custom reducer for Arrow ChunkedArrays.
-    context._register_cloudpickle_reducer(pa.ChunkedArray, _arrow_chunkedarray_reduce)
+    serialization_context._register_cloudpickle_reducer(
+        pa.ChunkedArray, _arrow_chunkedarray_reduce
+    )
     # Register custom reducer for Arrow RecordBatches.
-    context._register_cloudpickle_reducer(pa.RecordBatch, _arrow_recordbatch_reduce)
+    serialization_context._register_cloudpickle_reducer(
+        pa.RecordBatch, _arrow_recordbatch_reduce
+    )
     # Register custom reducer for Arrow Tables.
-    context._register_cloudpickle_reducer(pa.Table, _arrow_table_reduce)
+    serialization_context._register_cloudpickle_reducer(pa.Table, _arrow_table_reduce)
 
 
 def _get_arrow_array_types() -> List[type]:
     """Get all Arrow array types that we want to register a custom serializer for."""
-    try:
-        import pyarrow as pa
-    except ModuleNotFoundError:
-        # No pyarrow installed so not using Arrow, so no need for custom serializer.
-        return []
-
+    import pyarrow as pa
     from ray.data.extensions import ArrowTensorArray, ArrowVariableShapedTensorArray
 
     array_types = [
