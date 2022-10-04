@@ -1230,8 +1230,6 @@ class RolloutWorker(ParallelIteratorWorker):
             KeyError: If the given `policy_id` already exists in this worker's
                 PolicyMap.
         """
-        merged_config = merge_dicts(self.policy_config, config or {})
-
         if policy_id in self.policy_map:
             raise KeyError(
                 f"Policy ID '{policy_id}' already exists in policy map! "
@@ -1277,26 +1275,6 @@ class RolloutWorker(ParallelIteratorWorker):
         # Set the state of the newly created policy.
         if policy_state:
             new_policy.set_state(policy_state)
-
-        connectors_enabled = merged_config.get("enable_connectors", False)
-
-        if connectors_enabled:
-            policy = self.policy_map[policy_id]
-            create_connectors_for_policy(policy, merged_config)
-            maybe_get_filters_for_syncing(self, policy_id)
-        else:
-            filter_shape = tree.map_structure(
-                lambda s: (
-                    None
-                    if isinstance(s, (Discrete, MultiDiscrete))  # noqa
-                    else np.array(s.shape)
-                ),
-                new_policy.observation_space_struct,
-            )
-
-            self.filters[policy_id] = get_filter(
-                (config or {}).get("observation_filter", "NoFilter"), filter_shape
-            )
 
         self.set_policy_mapping_fn(policy_mapping_fn)
         if policies_to_train is not None:
@@ -1867,9 +1845,24 @@ class RolloutWorker(ParallelIteratorWorker):
                     merged_conf,
                 )
 
-            if connectors_enabled and name in self.policy_map:
-                create_connectors_for_policy(self.policy_map[name], policy_config)
+            new_policy = self.policy_map[name]
+            if connectors_enabled:
+                create_connectors_for_policy(new_policy, merged_conf)
                 maybe_get_filters_for_syncing(self, name)
+            else:
+                filter_shape = tree.map_structure(
+                    lambda s: (
+                        None
+                        if isinstance(s, (Discrete, MultiDiscrete))  # noqa
+                        else np.array(s.shape)
+                    ),
+                    new_policy.observation_space_struct,
+                )
+
+                self.filters[name] = get_filter(
+                    (merged_conf or {}).get("observation_filter", "NoFilter"),
+                    filter_shape,
+                )
 
             if name in self.policy_map:
                 self.callbacks.on_create_policy(
