@@ -78,10 +78,10 @@ def train_func(config):
     results = []
     for _ in range(epochs):
         train_epoch(train_loader, model, loss_fn, optimizer)
-        model, loss = validate_epoch(validation_loader, model, loss_fn)
+        state_dict, loss = validate_epoch(validation_loader, model, loss_fn)
         result = dict(loss=loss)
         results.append(result)
-        session.report(result, checkpoint=TorchCheckpoint.from_state_dict(model))
+        session.report(result, checkpoint=TorchCheckpoint.from_state_dict(state_dict))
 
     # return required for backwards compatibility with the old API
     # TODO(team-ml) clean up and remove return
