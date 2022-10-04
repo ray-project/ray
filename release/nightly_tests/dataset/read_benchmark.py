@@ -8,18 +8,8 @@ from PIL import Image
 
 import ray
 from ray.data.dataset import Dataset
-from ray.data.datasource import ImageFolderDatasource
 
 from benchmark import Benchmark
-
-
-def read_images(
-    root: str, size: Optional[Tuple[int, int]] = None, mode: Optional[str] = None
-) -> Dataset:
-
-    return ray.data.read_datasource(
-        ImageFolderDatasource(), root=root, size=size, mode=mode
-    )
 
 
 def generate_images(
@@ -76,8 +66,8 @@ def run_images_benchmark(benchmark: Benchmark):
         ),
     ]
 
-    benchmark.run("images-100-256-rbg-jpg", read_images, root=test_input[0])
-    benchmark.run("images-100-2048-rbg-jpg", read_images, root=test_input[1])
+    benchmark.run("images-100-256-rbg-jpg", read_images, paths=test_input[0])
+    benchmark.run("images-100-2048-rbg-jpg", read_images, paths=test_input[1])
     benchmark.run(
         "images-100-2048-to-256-rbg-jpg",
         read_images,

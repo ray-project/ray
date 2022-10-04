@@ -166,7 +166,7 @@ class _ImageDatasourceReader(_FileBasedDatasourceReader):
         if size is not None and mode is not None:
             # Use image size and mode to calculate data size for all images,
             # because all images are homogeneous with same size after resizing.
-            # Resizing is enforced when reading every image in ImageFolderDatasource
+            # Resizing is enforced when reading every image in `ImageDatasource`
             # when `size` argument is provided.
             if mode in ["1", "L", "P"]:
                 dimension = 1

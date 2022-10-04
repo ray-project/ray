@@ -169,7 +169,7 @@ Built-in Datasources
 .. autoclass:: ray.data.datasource.FileBasedDatasource
     :members:
 
-.. autoclass:: ray.data.datasource.ImageFolderDatasource
+.. autoclass:: ray.data.datasource.ImageDatasource
     :members:
 
 .. autoclass:: ray.data.datasource.JSONDatasource

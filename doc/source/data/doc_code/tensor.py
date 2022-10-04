@@ -194,7 +194,7 @@ print(ds.schema())
 ds.fully_executed()
 
 # __create_images_begin__
-ds = ray.data.read_images("example://image-folders/simple")
+ds = ray.data.read_images("example://image-datasets/simple")
 # -> Dataset(num_blocks=3, num_rows=3, 
 #            schema={__value__: ArrowTensorType(shape=(32, 32, 3), dtype=uint8)})
 
