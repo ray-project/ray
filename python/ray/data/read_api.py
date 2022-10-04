@@ -625,7 +625,7 @@ def read_csv(
         By default, ``read_csv`` reads all files from file paths. If you want to filter
         files by file extensions, set the ``partition_filter`` parameter.
 
-        >>> # Read only "*.csv" files from multiple directories.
+        >>> # Read only *.csv files from multiple directories.
         >>> from ray.data.datasource import FileExtensionFilter
         >>> ray.data.read_csv( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"],

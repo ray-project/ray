@@ -669,15 +669,49 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
     assert ds.to_pandas().equals(expected_df)
 
 
-def test_csv_read_filter_no_file(shutdown_only, tmp_path):
+def test_csv_read_filter_non_csv_file(shutdown_only, tmp_path):
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    table = pa.Table.from_pandas(df)
-    path = os.path.join(str(tmp_path), "test.parquet")
-    pq.write_table(table, path)
 
+    # Non-CSV file in Parquet format.
+    table = pa.Table.from_pandas(df)
+    path1 = os.path.join(tmp_path, "test1.parquet")
+    pq.write_table(table, path1)
+
+    # CSV file with .csv extension.
+    path2 = os.path.join(tmp_path, "test2.csv")
+    df.to_csv(path2, index=False)
+
+    # CSV file without .csv extension.
+    path3 = os.path.join(tmp_path, "test3")
+    df.to_csv(path3, index=False)
+
+    # Single non-CSV file.
+    error_message = "Failed to read CSV file"
+    with pytest.raises(pa.lib.ArrowInvalid, match=error_message):
+        ray.data.read_csv(path1)
+
+    # Single non-CSV file with filter.
     error_message = "No input files found to read"
     with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path, partition_filter=FileExtensionFilter("csv"))
+        ray.data.read_csv(path1, partition_filter=FileExtensionFilter("csv"))
+
+    # Single CSV file without extension.
+    ds = ray.data.read_csv(path3)
+    assert ds.to_pandas().equals(df)
+
+    # Single CSV file without extension with filter.
+    error_message = "No input files found to read"
+    with pytest.raises(ValueError, match=error_message):
+        ray.data.read_csv(path3, partition_filter=FileExtensionFilter("csv"))
+
+    # Directory of CSV and non-CSV files.
+    error_message = "Failed to read CSV file"
+    with pytest.raises(pa.lib.ArrowInvalid, match=error_message):
+        ray.data.read_csv(tmp_path)
+
+    # Directory of CSV and non-CSV files with filter.
+    ds = ray.data.read_csv(tmp_path, partition_filter=FileExtensionFilter("csv"))
+    assert ds.to_pandas().equals(df)
 
 
 @pytest.mark.skipif(

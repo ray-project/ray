@@ -40,19 +40,27 @@ class CSVDatasource(FileBasedDatasource):
         if hasattr(parse_options, "invalid_row_handler"):
             parse_options.invalid_row_handler = parse_options.invalid_row_handler
 
-        reader = csv.open_csv(
-            f, read_options=read_options, parse_options=parse_options, **reader_args
-        )
-        schema = None
-        while True:
-            try:
-                batch = reader.read_next_batch()
-                table = pyarrow.Table.from_batches([batch], schema=schema)
-                if schema is None:
-                    schema = table.schema
-                yield table
-            except StopIteration:
-                return
+        try:
+            reader = csv.open_csv(
+                f, read_options=read_options, parse_options=parse_options, **reader_args
+            )
+            schema = None
+            while True:
+                try:
+                    batch = reader.read_next_batch()
+                    table = pyarrow.Table.from_batches([batch], schema=schema)
+                    if schema is None:
+                        schema = table.schema
+                    yield table
+                except StopIteration:
+                    return
+        except Exception as e:
+            raise type(e)(
+                f"{e}. Failed to read CSV file: {path}. "
+                "Please check the file has correct format, or filter out file with "
+                "'partition_filter' field. See read_csv() documentation for more "
+                "details."
+            )
 
     def _write_block(
         self,
