@@ -4,9 +4,11 @@
 # __read_single_partition_start__
 from ray.data.block import Block
 
-# This connects to MongoDB, executes the pipeline against it, converts the result into
-# Arrow format and returns the result as a Block.
-def _read_single_partition(uri, database, collection, pipeline, schema, kwargs) -> Block:
+# This connects to MongoDB, executes the pipeline against it, converts the result
+# into Arrow format and returns the result as a Block.
+def _read_single_partition(
+    uri, database, collection, pipeline, schema, kwargs
+) -> Block:
     import pymongo
     from pymongoarrow.api import aggregate_arrow_all
 
@@ -36,7 +38,7 @@ class _MongoDatasourceReader(Reader):
 
     # Create a list of ``ReadTask``, one for each pipeline (i.e. a partition of
     # the MongoDB collection). Those tasks will be executed in parallel.
-    # The ``parallelism`` which is supposed to indicate how many ``ReadTask`` to
+    # Note: The ``parallelism`` which is supposed to indicate how many ``ReadTask`` to
     # return will have no effect here, since we map each query into a ``ReadTask``.
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         read_tasks: List[ReadTask] = []
@@ -67,7 +69,7 @@ class _MongoDatasourceReader(Reader):
 # __write_single_block_start__
 # This connects to MongoDB and writes a block into it.
 # Note this is an insertion, i.e. each record in the block are treated as
-# new document to the MongoDB.
+# new document to the MongoDB (so no mutation of existing documents).
 def _write_single_block(uri, database, collection, block: Block):
     import pymongo
     from pymongoarrow.api import write
@@ -83,8 +85,8 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.types import ObjectRef
 from ray.data.datasource.datasource import WriteResult
 
-# This writes a list of blocks into MongoDB. Each block is handled by a task and tasks
-# are executed in parallel.
+# This writes a list of blocks into MongoDB. Each block is handled by a task and
+# tasks are executed in parallel.
 def _write_multiple_blocks(
     blocks: List[ObjectRef[Block]],
     metadata: List[BlockMetadata],

@@ -9,12 +9,11 @@ allowing you to easily ingest data of common formats from popular sources. Howev
 datasource you want to read from is not in the built-in list, don't worry, you can implement 
 a custom one for your use case. In this guide, we will walk you through how to build 
 your own custom datasource, using MongoDB as an example. By the end of the guide, you will have a
-datasource that you can use as follows:
+``MongoDatasource`` that you can use to create dataset as follows:
 
 .. code-block:: python
 
-    # Read from custom MongoDB datasource.
-    # The args are passed to MongoDatasource.create_reader().
+    # Read from custom MongoDB datasource to create a dataset.
     ds = ray.data.read_datasource(
         MongoDatasource(),
         uri=MY_URI,
@@ -23,11 +22,18 @@ datasource that you can use as follows:
         pipelines=MY_PIPELINES
     )
 
-    # Write to custom MongoDB datasource.
-    # The args are passed to MongoDatasource.do_write().
+    # Write the dataset to custom MongoDB datasource.
     ds.write_datasource(
         MongoDatasource(), uri=MY_URI, database=MY_DATABASE, collection=MY_COLLECTION
     )
+
+.. tip::
+
+    There are a few MongoDB concepts involved here. The `URI <https://www.mongodb.com/docs/manual/reference/connection-string/>`__ points to
+    a MongoDB instance, which hosts `Databases and Collections <https://www.mongodb.com/docs/manual/reference/connection-string/>`__. A collection
+    is similar to a table in SQL database. MongoDB also has a `pipeline <https://www.mongodb.com/docs/manual/core/aggregation-pipeline/>`__ concept,
+    which expresses document processing in a series of stages, similar to a SQL query. The execution results of the pipelines are used to create
+    dataset.
 
 A custom datasource is an implementation of :class:`~ray.data.Datasource`. In the 
 example here, let's call it ``MongoDatasource``. At a high level, it will have two 
@@ -39,43 +45,38 @@ core parts to build out:
 Here are the key design choices we will make in this guide:
 
 -  **MongoDB connector**: We use `PyMongo <https://pymongo.readthedocs.io/en/stable/>`__ to connect to MongoDB.
--  **MongoDB to Arrow conversion**: We use `PyMongoArrow <https://mongo-arrow.readthedocs.io/en/latest/>`__ to convert query results into Arrow tables, which Datasets supports as a data format.
+-  **MongoDB to Arrow conversion**: We use `PyMongoArrow <https://mongo-arrow.readthedocs.io/en/latest/>`__ to convert MongoDB execution results into Arrow tables, which Datasets supports as a data format.
 -  **Parallel execution**: We ask the user to provide a list of MongoDB pipelines, with each corresponding to a partition of the MongoDB collection, which will be executed in parallel with :class:`~ray.data.ReadTask`.
 
-For example, suppose you have a MongoDB collection with 4 documents, which has ``_id`` field 0, 1, 2, 3. You can compose two MongoDB pipelines as follows to read the collection in parallel:
+For example, suppose you have a MongoDB collection with 4 documents, which have a ``partition_field`` with values 0, 1, 2, 3. You can compose two MongoDB pipelines as follows to read the collection in parallel:
 
 .. code-block:: python
-  [
-      # The first pipeline: reading partition range [0, 2)
-      [
-        {
-          "$match": {
-              "_id": {
-                  "$gte": 0
-                  "$lt": 2
-              }
+
+    [
+        # The first pipeline: reading partition range [0, 2)
+        [
+          {
+            "$match": {
+                "partition_field": {
+                    "$gte": 0
+                    "$lt": 2
+                }
+            }
           }
-        }
-      ],
-      # The second pipeline: reading partition range [2, 4)
-      [
-        {
-          "$match": {
-              "_id": {
-                  "$gte": 2
-                  "$lt": 4 
-              }
+        ],
+        # The second pipeline: reading partition range [2, 4)
+        [
+          {
+            "$match": {
+                "partition_field": {
+                    "$gte": 2
+                    "$lt": 4 
+                }
   
+            }
           }
-        }
-      ],
-  ]
-
-
-For the MongoDB concepts involved, you can find more details:
- - URI: https://www.mongodb.com/docs/manual/reference/connection-string/
- - Database and Collection: https://www.mongodb.com/docs/manual/core/databases-and-collections/
- - Pipeline: https://www.mongodb.com/docs/manual/core/aggregation-pipeline/
+        ],
+    ]
 
 ------------
 Read support
@@ -89,7 +90,7 @@ each :class:`~ray.data.ReadTask` is executed in remote workers to parallelize th
 You can find documentation about :ref:`Ray Datasets block concept here <dataset_concept>` and the :ref:`blocks APIs here <block-api>`.
 
 First, let's handle a single MongoDB pipeline, which is the unit of execution in
-:class:`~ray.data.ReadTask`. We need to connect to MongoDB, execute the query against it,
+:class:`~ray.data.ReadTask`. We need to connect to MongoDB, execute the pipeline against it,
 and then convert results into Arrow format. We use ``PyMongo`` and  ``PyMongoArrow``
 to achieve this.
 
@@ -105,7 +106,7 @@ pipelines. In particular, below, we construct a `_MongoDatasourceReader` by subc
 :class:`~ray.data.Datasource.Reader`, and implement the ``__init__`` and ``get_read_tasks``.
 
 In ``__init__``, we pass in a couple arguments that will be eventually used in
-constructing the MongoDB pipeline in ``_read_single_query``.
+constructing the MongoDB pipeline in ``_read_single_partition``.
 
 In ``get_read_tasks``, we construct a :class:`~ray.data.ReadTask` object for each ``pipeline`` object.
 A list of :class:`~ray.data.ReadTask` objects are returned at the end of the function call, and these
