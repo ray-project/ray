@@ -180,7 +180,7 @@ class Experiment:
                     "and register checkpoints within "
                     "your trainable function."
                 )
-            if checkpoint_config.checkpoint_at_end:
+            if checkpoint_config.checkpoint_frequency:
                 raise ValueError(
                     "'checkpoint_freq' cannot be used with a "
                     "checkpointable function. You can specify checkpoints "
