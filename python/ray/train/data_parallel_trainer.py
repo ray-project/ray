@@ -8,7 +8,6 @@ from tabulate import tabulate
 import ray
 from ray import tune
 from ray.air import session
-from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
@@ -512,25 +511,4 @@ def _load_checkpoint_dict(
             f"checkpoint in ``{trainer_name}``."
         )
     model = checkpoint_dict[MODEL_KEY]
-    return model, preprocessor
-
-
-def _load_checkpoint_dir(
-    checkpoint: Checkpoint, get_model_func: Callable
-) -> Tuple[Any, Optional["Preprocessor"]]:
-    """Load a Ray Train Checkpoint (dir based).
-
-    This is a private API.
-
-    Args:
-        checkpoint: The checkpoint to load the model and
-            preprocessor from.
-        get_model_func: Callable to get model from.
-
-    Returns:
-        The model or weights and AIR preprocessor contained within.
-    """
-    with checkpoint.as_directory() as ckpt_path:
-        model = get_model_func(ckpt_path)
-        preprocessor = load_preprocessor_from_dir(ckpt_path)
     return model, preprocessor

@@ -10,7 +10,7 @@ import warnings
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
-from ray.train.data_parallel_trainer import _load_checkpoint_dict, _load_checkpoint_dir
+from ray.train.data_parallel_trainer import _load_checkpoint_dict
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -26,7 +26,7 @@ class TensorflowCheckpoint(Checkpoint):
     ``TensorflowCheckpoint.from_checkpoint(ckpt)``.
     """
 
-    _SERIALIZED_ATTRS = ("_flavor",)
+    _SERIALIZED_ATTRS = ("_flavor", "_h5_file_path")
 
     class Flavor(Enum):
         # Various flavors with which TensorflowCheckpoint is generated.
@@ -42,6 +42,8 @@ class TensorflowCheckpoint(Checkpoint):
     ):
         super().__init__(*args, **kwargs)
         self._flavor = None
+        # Will only be set when `self._flavor` is `H5`.
+        self._h5_file_path = None
 
     @classmethod
     def from_model(
@@ -78,7 +80,7 @@ class TensorflowCheckpoint(Checkpoint):
         cls, file_path: str, *, preprocessor: Optional["Preprocessor"] = None
     ) -> "TensorflowCheckpoint":
         """Create a :py:class:`~ray.air.checkpoint.Checkpoint` that stores a Keras
-        model - from H5 format.
+        model from H5 format.
 
         The path must maintain validity even after this function returns.
 
@@ -134,6 +136,7 @@ class TensorflowCheckpoint(Checkpoint):
             save_preprocessor_to_dir(preprocessor, dir_path)
         checkpoint = cls.from_directory(dir_path)
         checkpoint._flavor = cls.Flavor.H5
+        checkpoint._h5_file_path = os.path.basename(file_path)
         return checkpoint
 
     @classmethod
@@ -141,9 +144,9 @@ class TensorflowCheckpoint(Checkpoint):
         cls, dir_path: str, *, preprocessor: Optional["Preprocessor"] = None
     ) -> "TensorflowCheckpoint":
         """Create a :py:class:`~ray.air.checkpoint.Checkpoint` that stores a Keras
-        model - from SavedModel format.
+        model from SavedModel format.
 
-        The path must maintain valid even after this function returns.
+        The path must maintain validity even after this function returns.
 
         Args:
             dir_path: The directory containing the saved model. This is the same
@@ -201,17 +204,17 @@ class TensorflowCheckpoint(Checkpoint):
         """Retrieve the model stored in this checkpoint.
 
         Args:
-            model_definition: This arg is expected if and only if
-                the checkpoint's flavor is `MODEL_WEIGHTS`.
+            model_definition: This arg is expected only if the original checkpoint
+                was created via `TensorflowCheckpoint.from_model`.
 
         Returns:
-            A Tensorflow Keras model.
+            The Tensorflow Keras model stored in the checkpoint.
         """
         if self._flavor is self.Flavor.MODEL_WEIGHTS:
             if not model_definition:
                 raise ValueError(
-                    "Expecting input of `model` argument when checkpoint's flavor "
-                    "is `MODEL_WEIGHTS`."
+                    "Expecting `model_definition` argument when checkpoint is "
+                    "saved through `TensorflowCheckpoint.from_model()`."
                 )
             model_weights, _ = _load_checkpoint_dict(self, "TensorflowTrainer")
             model = model_definition()
@@ -220,31 +223,16 @@ class TensorflowCheckpoint(Checkpoint):
         else:
             if model_definition:
                 warnings.warn(
-                    "Ignoring `model argument` when checkpoint's"
-                    " flavor is not `MODEL_WEIGHTS`."
+                    "Ignoring `model_definition` when checkpoint was created from "
+                    "`TensorflowCheckpoint.from_saved_model` or "
+                    "`TensorflowCheckpoint.from_h5`."
                 )
-            get_model = None
-            if self._flavor == self.Flavor.H5:
-
-                def get_model(path: str):
-                    # Walk the directory to find an .h5 path
-                    # There should be one and only one that is .h5.
-                    h5_path = None
-                    files = os.listdir(path)
-                    for file in files:
-                        if file.endswith(".h5"):
-                            if h5_path:
-                                raise ValueError(
-                                    "There should be one and only one .h5 file "
-                                    "to load model from within the directory."
-                                )
-                            h5_path = file
-                    return keras.models.load_model(os.path.join(path, h5_path))
-
-            else:
-
-                def get_model(path: str):
-                    return keras.models.load_model(path)
-
-            model, _ = _load_checkpoint_dir(self, get_model)
-            return model
+            with self.as_directory() as checkpoint_dir:
+                if self._flavor == self.Flavor.H5:
+                    return keras.models.load_model(
+                        os.path.join(checkpoint_dir, self._h5_file_path)
+                    )
+                elif self._flavor == self.Flavor.SAVED_MODEL:
+                    return keras.models.load_model(checkpoint_dir)
+                else:
+                    raise RuntimeError("Unexpected `self._flavor`.")

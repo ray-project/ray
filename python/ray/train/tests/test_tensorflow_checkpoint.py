@@ -1,7 +1,9 @@
+from numpy import ndarray
 import os.path
 import tempfile
-
 import tensorflow as tf
+from typing import List
+import unittest
 
 import ray
 from ray.train.batch_predictor import BatchPredictor
@@ -23,8 +25,8 @@ class DummyPreprocessor(Preprocessor):
         return df * self.multiplier
 
 
-def test_saved_model():
-    model = tf.keras.Sequential(
+def get_model():
+    return tf.keras.Sequential(
         [
             tf.keras.layers.InputLayer(input_shape=()),
             tf.keras.layers.Flatten(),
@@ -33,37 +35,64 @@ def test_saved_model():
         ]
     )
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        model_dir_path = os.path.join(tmp_dir, "my_model")
-        model.save(model_dir_path)
-        checkpoint = TensorflowCheckpoint.from_saved_model(
-            model_dir_path, preprocessor=DummyPreprocessor(1)
-        )
-        loaded_model = checkpoint.get_model()
-        preprocessor = checkpoint.get_preprocessor()
-        assert model.get_config() == loaded_model.get_config()
-        assert preprocessor.multiplier == 1
+
+def compare_weights(w1: List[ndarray], w2: List[ndarray]) -> bool:
+    if not len(w1) == len(w2):
+        return False
+    size = len(w1)
+    for i in range(size):
+        comparison = w1[i] == w2[i]
+        if not comparison.all():
+            return False
+
+    return True
 
 
-def test_h5_model():
-    model = tf.keras.Sequential(
-        [
-            tf.keras.layers.InputLayer(input_shape=()),
-            tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(10),
-            tf.keras.layers.Dense(1),
-        ]
-    )
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        model_file_path = os.path.join(tmp_dir, "my_model.h5")
-        model.save(model_file_path)
-        checkpoint = TensorflowCheckpoint.from_h5(
-            model_file_path, preprocessor=DummyPreprocessor(1)
+class TestFromModel(unittest.TestCase):
+    def setUp(self):
+        self.model = get_model()
+        self.preprocessor = DummyPreprocessor(1)
+
+    def test_from_model(self):
+        checkpoint = TensorflowCheckpoint.from_model(
+            self.model, preprocessor=DummyPreprocessor(1)
         )
-        loaded_model = checkpoint.get_model()
+        loaded_model = checkpoint.get_model(model_definition=get_model)
         preprocessor = checkpoint.get_preprocessor()
-        assert model.get_config() == loaded_model.get_config()
+
+        assert compare_weights(loaded_model.get_weights(), self.model.get_weights())
         assert preprocessor.multiplier == 1
+
+    def test_from_model_no_definition(self):
+        checkpoint = TensorflowCheckpoint.from_model(
+            self.model, preprocessor=self.preprocessor
+        )
+        with self.assertRaises(ValueError):
+            checkpoint.get_model()
+
+    def test_from_saved_model(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model_dir_path = os.path.join(tmp_dir, "my_model")
+            self.model.save(model_dir_path)
+            checkpoint = TensorflowCheckpoint.from_saved_model(
+                model_dir_path, preprocessor=DummyPreprocessor(1)
+            )
+            loaded_model = checkpoint.get_model()
+            preprocessor = checkpoint.get_preprocessor()
+            assert compare_weights(self.model.get_weights(), loaded_model.get_weights())
+            assert preprocessor.multiplier == 1
+
+    def test_from_h5_model(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model_file_path = os.path.join(tmp_dir, "my_model.h5")
+            self.model.save(model_file_path)
+            checkpoint = TensorflowCheckpoint.from_h5(
+                model_file_path, preprocessor=DummyPreprocessor(1)
+            )
+            loaded_model = checkpoint.get_model()
+            preprocessor = checkpoint.get_preprocessor()
+            assert compare_weights(self.model.get_weights(), loaded_model.get_weights())
+            assert preprocessor.multiplier == 1
 
 
 def test_tensorflow_checkpoint_saved_model():
