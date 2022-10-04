@@ -386,6 +386,10 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
             # Convert deployment's keys
             config["deployments"][idx] = dict_keys_snake_to_camel_case(deployment)
 
+        # Convert top-level runtime_env
+        if isinstance(config.get("runtime_env"), dict):
+            config["runtime_env"] = json.dumps(config["runtime_env"])
+
         # Convert top-level option's keys
         config = dict_keys_snake_to_camel_case(config)
 
