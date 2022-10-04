@@ -108,10 +108,7 @@ def test_torch_get_device(
                 visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
                 # Sort the cuda visible devices to have exact match with
                 # expected result.
-                sorted_devices = [
-                    ",".join(sorted(device_id.split(",")))
-                    for device_id in visible_devices
-                ]
+                sorted_devices = ",".join(sorted(visible_devices.split(",")))
                 assert sorted_devices == "1,2"
 
             else:
