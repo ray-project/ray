@@ -1806,6 +1806,12 @@ py_test(
     size = "small",
     srcs = ["models/tests/test_base_model.py"]
 )
+py_test(
+    name = "test_torch_models",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/tests/test_torch_model.py"]
+)
 
 # --------------------------------------------------------------------
 # Offline
