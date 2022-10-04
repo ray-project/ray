@@ -3673,6 +3673,27 @@
         num_nodes: 5
       script: python stress_tests/test_many_tasks.py --num-nodes=4 --smoke-test
 
+
+- name: stress_test_parallel_tasks_memory_pressure
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: stress_test_parallel_tasks_memory_pressure
+    test_suite: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: stress_tests/stress_test_memory_pressure_app.yaml
+    cluster_compute: stress_tests/stress_test_memory_pressure_compute.yaml
+
+  run:
+    timeout: 1000
+    script: python stress_tests/test_parallel_tasks_memory_pressure.py --test-args="--mem-pct-per-task 0.7  --num-tasks=25 --parallelism 3"
+
+    type: sdk_command
+    file_manager: sdk
+
 - name: stress_test_dead_actors
   group: core-daily-test
   working_dir: nightly_tests
