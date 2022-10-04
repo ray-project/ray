@@ -5,6 +5,7 @@ import json
 import logging
 import numpy as np
 import os
+from packaging import version
 import platform
 import tree  # pip install dm_tree
 from typing import (
@@ -217,20 +218,47 @@ class Policy(metaclass=ABCMeta):
         # Algorithm checkpoint: Extract one or more policies from it and return them
         # in a dict (mapping PolicyID to Policy instances).
         if checkpoint_info["type"] == "Algorithm":
+            from ray.rllib.algorithms.algorithm import Algorithm
+
             policies = {}
-            for policy_id in checkpoint_info["policy_ids"]:
-                if policy_ids is None or policy_id in policy_ids:
-                    policy_checkpoint_info = get_checkpoint_info(
-                        os.path.join(
-                            checkpoint_info["checkpoint_dir"],
-                            "policies",
-                            policy_id,
-                        )
+
+            # Old Algorithm checkpoints: State must be completely retrieved from:
+            # algo state file -> worker -> "state".
+            if checkpoint_info["checkpoint_version"] < version.Version("1.0"):
+                with open(checkpoint_info["state_file"], "rb") as f:
+                    state = pickle.load(f)
+                # In older checkpoint versions, the policy states are stored under
+                # "state" within the worker state (which is pickled in itself).
+                worker_state = pickle.loads(state["worker"])
+                policy_states = worker_state["state"]
+                for pid, policy_state in policy_states.items():
+                    # Get spec and config, merge config with
+                    serialized_policy_spec = worker_state["policy_specs"][pid]
+                    policy_config = Algorithm.merge_trainer_configs(
+                        worker_state["policy_config"], serialized_policy_spec["config"]
                     )
-                    assert policy_checkpoint_info["type"] == "Policy"
-                    with open(policy_checkpoint_info["state_file"], "rb") as f:
-                        policy_state = pickle.load(f)
-                    policies[policy_id] = Policy.from_state(policy_state)
+                    serialized_policy_spec.update({"config": policy_config})
+                    policy_state.update(
+                        {
+                            "policy_spec": serialized_policy_spec,
+                        }
+                    )
+                    policies[pid] = Policy.from_state(policy_state)
+            # Newer versions: Get policy states from "policies/" sub-dirs.
+            else:
+                for policy_id in checkpoint_info["policy_ids"]:
+                    if policy_ids is None or policy_id in policy_ids:
+                        policy_checkpoint_info = get_checkpoint_info(
+                            os.path.join(
+                                checkpoint_info["checkpoint_dir"],
+                                "policies",
+                                policy_id,
+                            )
+                        )
+                        assert policy_checkpoint_info["type"] == "Policy"
+                        with open(policy_checkpoint_info["state_file"], "rb") as f:
+                            policy_state = pickle.load(f)
+                        policies[policy_id] = Policy.from_state(policy_state)
             return policies
 
         # Policy checkpoint: Return a single Policy instance.
