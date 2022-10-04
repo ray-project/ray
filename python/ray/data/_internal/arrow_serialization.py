@@ -106,13 +106,24 @@ def _register_arrow_json_parseoptions_serializer():
 # Register custom Arrow data serializer to work around zero-copy slice pickling bug.
 # See https://issues.apache.org/jira/browse/ARROW-10739.
 def _register_arrow_data_serializer():
-    import ray
+    """Custom reducer for Arrow data that works around a zero-copy slicing pickling
+    bug by using the Arrow IPC format for the underlying serialization.
 
-    try:
-        import pyarrow as pa
-    except ModuleNotFoundError:
-        # No pyarrow installed so not using Arrow, so no need for custom serializer.
-        return
+    Background:
+        Arrow has both array-level slicing and buffer-level slicing; both are zero-copy,
+        but the former has a serialization bug where the entire buffer is serialized
+        instead of just the slice, while the latter's serialization works as expected
+        and only serializes the slice of the buffer. I.e., array-level slicing doesn't
+        propagate the slice down to the buffer when serializing the array.
+
+        All that these copy methods do is, at serialization time, take the array-level
+        slicing and translate them to buffer-level slicing, so only the buffer slice is
+        sent over the wire instead of the entire buffer.
+
+    See https://issues.apache.org/jira/browse/ARROW-10739.
+    """
+    import ray
+    import pyarrow as pa
 
     if os.environ.get(RAY_DISABLE_CUSTOM_ARROW_DATA_SERIALIZATION) == "1":
         import logging
@@ -195,20 +206,7 @@ def _get_arrow_array_types() -> List[type]:
 
 def _arrow_array_reduce(a: "pyarrow.Array"):
     """Custom reducer for Arrow arrays that works around a zero-copy slicing pickling
-    bug.
-
-    Background:
-        Arrow has both array-level slicing and buffer-level slicing; both are zero-copy,
-        but the former has a serialization bug where the entire buffer is serialized
-        instead of just the slice, while the latter's serialization works as expected
-        and only serializes the slice of the buffer. I.e., array-level slicing doesn't
-        propagate the slice down to the buffer when serializing the array.
-
-        All that these copy methods do is, at serialization time, take the array-level
-        slicing and translate them to buffer-level slicing, so only the buffer slice is
-        sent over the wire instead of the entire buffer.
-
-    See https://issues.apache.org/jira/browse/ARROW-10739.
+    bug by using the Arrow IPC format for the underlying serialization.
     """
     from pyarrow.ipc import RecordBatchStreamWriter
     from pyarrow.lib import RecordBatch, BufferOutputStream
@@ -229,20 +227,7 @@ def _restore_array(buf: bytes) -> "pyarrow.Array":
 
 def _arrow_chunkedarray_reduce(a: "pyarrow.ChunkedArray"):
     """Custom reducer for Arrow ChunkedArrays that works around a zero-copy slicing
-    pickling bug.
-
-    Background:
-        Arrow has both array-level slicing and buffer-level slicing; both are zero-copy,
-        but the former has a serialization bug where the entire buffer is serialized
-        instead of just the slice, while the latter's serialization works as expected
-        and only serializes the slice of the buffer. I.e., array-level slicing doesn't
-        propagate the slice down to the buffer when serializing the array.
-
-        All that these copy methods do is, at serialization time, take the array-level
-        slicing and translate them to buffer-level slicing, so only the buffer slice is
-        sent over the wire instead of the entire buffer.
-
-    See https://issues.apache.org/jira/browse/ARROW-10739.
+    pickling bug by using the Arrow IPC format for the underlying serialization.
     """
     import pyarrow as pa
     from pyarrow.ipc import RecordBatchStreamWriter
@@ -276,20 +261,7 @@ def _restore_chunked_array(buf: bytes) -> "pyarrow.ChunkedArray":
 
 def _arrow_recordbatch_reduce(batch: "pyarrow.RecordBatch"):
     """Custom reducer for Arrow RecordBatch that works around a zero-copy slicing
-    pickling bug.
-
-    Background:
-        Arrow has both array-level slicing and buffer-level slicing; both are zero-copy,
-        but the former has a serialization bug where the entire buffer is serialized
-        instead of just the slice, while the latter's serialization works as expected
-        and only serializes the slice of the buffer. I.e., array-level slicing doesn't
-        propagate the slice down to the buffer when serializing the array.
-
-        All that these copy methods do is, at serialization time, take the array-level
-        slicing and translate them to buffer-level slicing, so only the buffer slice is
-        sent over the wire instead of the entire buffer.
-
-    See https://issues.apache.org/jira/browse/ARROW-10739.
+    pickling bug by using the Arrow IPC format for the underlying serialization.
     """
     from pyarrow.ipc import RecordBatchStreamWriter
     from pyarrow.lib import BufferOutputStream
@@ -309,20 +281,7 @@ def _restore_recordbatch(buf: bytes) -> "pyarrow.RecordBatch":
 
 def _arrow_table_reduce(table: "pyarrow.Table"):
     """Custom reducer for Arrow Table that works around a zero-copy slicing pickling
-    bug.
-
-    Background:
-        Arrow has both array-level slicing and buffer-level slicing; both are zero-copy,
-        but the former has a serialization bug where the entire buffer is serialized
-        instead of just the slice, while the latter's serialization works as expected
-        and only serializes the slice of the buffer. I.e., array-level slicing doesn't
-        propagate the slice down to the buffer when serializing the array.
-
-        All that these copy methods do is, at serialization time, take the array-level
-        slicing and translate them to buffer-level slicing, so only the buffer slice is
-        sent over the wire instead of the entire buffer.
-
-    See https://issues.apache.org/jira/browse/ARROW-10739.
+    bug by using the Arrow IPC format for the underlying serialization.
     """
     from pyarrow.ipc import RecordBatchStreamWriter
     from pyarrow.lib import BufferOutputStream

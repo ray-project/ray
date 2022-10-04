@@ -1,3 +1,4 @@
+import itertools
 import os
 
 import pytest
@@ -15,171 +16,235 @@ from ray.data.extensions.tensor_extension import (
 )
 
 
-@pytest.mark.parametrize(
-    "arr,cap_mult",
-    [
-        # Null array
-        (pa.array([]), 1.0),
-        # Int array
-        (pa.array(list(range(1000))), 0.1),
-        # Array with nulls
-        (pa.array((list(range(9)) + [None]) * 100), 0.1),
-        # Float array
-        (pa.array([float(i) for i in range(1000)]), 0.1),
-        # Boolean array
-        # Due to bit-packing, most of the pickle bytes are metadata.
-        (pa.array([True, False] * 500), 0.8),
-        # String array
-        (pa.array(["foo", "bar", "bz", None, "quux"] * 200), 0.1),
-        # Binary array
-        (pa.array([b"foo", b"bar", b"bz", None, b"quux"] * 200), 0.1),
-        # List array with nulls
-        (pa.array(([None] + [list(range(9)) + [None]] * 9) * 100), 0.1),
-        # Large list array with nulls
-        (
-            pa.array(
-                ([None] + [list(range(9)) + [None]] * 9) * 100,
-                type=pa.large_list(pa.int64()),
-            ),
-            0.1,
+pytest_custom_serialization_arrays = [
+    # Null array
+    (pa.array([]), 1.0),
+    # Int array
+    (pa.array(list(range(1000))), 0.1),
+    # Array with nulls
+    (pa.array((list(range(9)) + [None]) * 100), 0.1),
+    # Float array
+    (pa.array([float(i) for i in range(1000)]), 0.1),
+    # Boolean array
+    # Due to bit-packing, most of the pickle bytes are metadata.
+    (pa.array([True, False] * 500), 0.8),
+    # String array
+    (pa.array(["foo", "bar", "bz", None, "quux"] * 200), 0.1),
+    # Binary array
+    (pa.array([b"foo", b"bar", b"bz", None, b"quux"] * 200), 0.1),
+    # List array with nulls
+    (pa.array(([None] + [list(range(9)) + [None]] * 9) * 100), 0.1),
+    # Large list array with nulls
+    (
+        pa.array(
+            ([None] + [list(range(9)) + [None]] * 9) * 100,
+            type=pa.large_list(pa.int64()),
         ),
-        # Fixed size list array
-        (
-            pa.FixedSizeListArray.from_arrays(
-                pa.array(([None] + [list(range(9)) + [None]] * 9) * 100), 1000
-            ),
-            0.1,
+        0.1,
+    ),
+    # Fixed size list array
+    (
+        pa.FixedSizeListArray.from_arrays(
+            pa.array((list(range(9)) + [None]) * 1000), 10
         ),
-        # Map array
-        (
-            pa.array(
+        0.1,
+    ),
+    # Map array
+    (
+        pa.array(
+            [
+                [(key, item) for key, item in zip("abcdefghij", range(10))]
+                for _ in range(1000)
+            ],
+            type=pa.map_(pa.string(), pa.int64()),
+        ),
+        0.1,
+    ),
+    # Struct array
+    (pa.array({"a": i} for i in range(1000)), 0.1),
+    # Union array (sparse)
+    (
+        pa.UnionArray.from_sparse(
+            pa.array([0, 1] * 500, type=pa.int8()),
+            [pa.array(list(range(1000))), pa.array([True, False] * 500)],
+        ),
+        0.1,
+    ),
+    # TODO(Clark): Support dense union arrays.
+    # # Union array (dense)
+    # (
+    #     pa.UnionArray.from_dense(
+    #         pa.array([0, 1] * 50, type=pa.int8()),
+    #         pa.array([
+    #             i if i % 2 == 0 else (i % 3) % 2
+    #             for i in range(100)
+    #         ], type=pa.int32()),
+    #         [pa.array(list(range(100))), pa.array([True, False])],
+    #     ),
+    #     0.5,
+    # ),
+    # Dictionary array
+    (
+        pa.DictionaryArray.from_arrays(
+            pa.array((list(range(9)) + [None]) * 100),
+            pa.array(["a", "b", "c", "d", "e", "f", "g", "h", "i"]),
+        ),
+        0.1,
+    ),
+    # Tensor extension array
+    (
+        ArrowTensorArray.from_numpy(np.arange(1000 * 4 * 4).reshape((1000, 4, 4))),
+        0.1,
+    ),
+    # Boolean tensor extension array
+    (
+        ArrowTensorArray.from_numpy(
+            np.array(
+                [True, False, False, True, False, False, True, True] * 2 * 1000
+            ).reshape((1000, 4, 4))
+        ),
+        0.25,
+    ),
+    # Variable-shaped tensor extension array
+    (
+        ArrowVariableShapedTensorArray.from_numpy(
+            np.array(
                 [
-                    [(key, item) for key, item in zip("abcdefghij", range(10))]
-                    for _ in range(1000)
-                ],
-                type=pa.map_(pa.string(), pa.int64()),
+                    np.arange(4).reshape((2, 2)),
+                    np.arange(4, 13).reshape((3, 3)),
+                ]
+                * 500,
+                dtype=object,
             ),
-            0.1,
         ),
-        # Struct array
-        (pa.array({"a": i} for i in range(1000)), 0.1),
-        # Union array (sparse)
-        (
-            pa.UnionArray.from_sparse(
-                pa.array([0, 1] * 500, type=pa.int8()),
-                [pa.array(list(range(1000))), pa.array([True, False] * 500)],
-            ),
-            0.1,
-        ),
-        # TODO(Clark): Support dense union arrays.
-        # # Union array (dense)
-        # (
-        #     pa.UnionArray.from_dense(
-        #         pa.array([0, 1] * 50, type=pa.int8()),
-        #         pa.array([
-        #             i if i % 2 == 0 else (i % 3) % 2
-        #             for i in range(100)
-        #         ], type=pa.int32()),
-        #         [pa.array(list(range(100))), pa.array([True, False])],
-        #     ),
-        #     0.5,
-        # ),
-        # Dictionary array
-        (
-            pa.DictionaryArray.from_arrays(
-                pa.array((list(range(9)) + [None]) * 100),
-                pa.array(["a", "b", "c", "d", "e", "f", "g", "h", "i"]),
-            ),
-            0.1,
-        ),
-        # Tensor extension array
-        (
-            ArrowTensorArray.from_numpy(np.arange(1000 * 4 * 4).reshape((1000, 4, 4))),
-            0.1,
-        ),
-        # Boolean tensor extension array
-        (
-            ArrowTensorArray.from_numpy(
-                np.array(
-                    [True, False, False, True, False, False, True, True] * 2 * 1000
-                ).reshape((1000, 4, 4))
-            ),
-            0.25,
-        ),
-        # Variable-shaped tensor extension array
-        (
-            ArrowVariableShapedTensorArray.from_numpy(
-                np.array(
-                    [
-                        np.arange(4).reshape((2, 2)),
-                        np.arange(4, 13).reshape((3, 3)),
-                    ]
-                    * 500,
-                    dtype=object,
-                ),
-            ),
-            0.1,
-        ),
-        # Boolean variable-shaped tensor extension array
-        (
-            ArrowVariableShapedTensorArray.from_numpy(
-                np.array(
-                    [
-                        np.array([[True, False], [False, True]]),
-                        np.array(
-                            [
-                                [False, True, False],
-                                [True, True, False],
-                                [False, False, False],
-                            ],
-                        ),
-                    ]
-                    * 500,
-                    dtype=object,
-                )
-            ),
-            0.25,
-        ),
-        # Complex nested array
-        (
-            pa.UnionArray.from_sparse(
-                pa.array([0, 1] * 500, type=pa.int8()),
+        0.1,
+    ),
+    # Boolean variable-shaped tensor extension array
+    (
+        ArrowVariableShapedTensorArray.from_numpy(
+            np.array(
                 [
-                    pa.array(
+                    np.array([[True, False], [False, True]]),
+                    np.array(
                         [
-                            {
-                                "a": i % 2 == 0,
-                                "b": i,
-                                "c": "bar",
-                            }
-                            for i in range(1000)
-                        ]
-                    ),
-                    pa.array(
-                        [
-                            [(key, item) for key, item in zip("abcdefghij", range(10))]
-                            for _ in range(1000)
+                            [False, True, False],
+                            [True, True, False],
+                            [False, False, False],
                         ],
-                        type=pa.map_(pa.string(), pa.int64()),
+                    ),
+                ]
+                * 500,
+                dtype=object,
+            )
+        ),
+        0.25,
+    ),
+    # Complex nested array
+    (
+        pa.UnionArray.from_sparse(
+            pa.array([0, 1] * 500, type=pa.int8()),
+            [
+                pa.array(
+                    [
+                        {
+                            "a": i % 2 == 0,
+                            "b": i,
+                            "c": "bar",
+                        }
+                        for i in range(1000)
+                    ]
+                ),
+                pa.array(
+                    [
+                        [(key, item) for key, item in zip("abcdefghij", range(10))]
+                        for _ in range(1000)
+                    ],
+                    type=pa.map_(pa.string(), pa.int64()),
+                ),
+            ],
+        ),
+        0.1,
+    ),
+]
+
+pytest_custom_serialization_data = []
+for arr, cap in pytest_custom_serialization_arrays:
+    if len(arr) == 0:
+        pytest_custom_serialization_data.append((arr, cap))
+    else:
+        pytest_custom_serialization_data.extend(
+            zip(
+                [
+                    arr,
+                    pa.chunked_array(
+                        [
+                            arr.slice(i * (len(arr) // 10), (i + 1) * (len(arr) // 10))
+                            for i in range(10)
+                        ],
+                        type=arr.type,
+                    ),
+                    pa.record_batch(
+                        [arr, arr, pa.array(range(len(arr)), type=pa.int32())],
+                        schema=pa.schema(
+                            [
+                                pa.field("arr1", arr.type),
+                                pa.field("arr2", arr.type),
+                                pa.field("arr3", pa.int32()),
+                            ],
+                            metadata={b"foo": b"bar"},
+                        ),
+                    ),
+                    pa.Table.from_arrays(
+                        [arr, arr, pa.array(range(1000), type=pa.int32())],
+                        schema=pa.schema(
+                            [
+                                pa.field("arr1", arr.type),
+                                pa.field("arr2", arr.type),
+                                pa.field("arr3", pa.int32()),
+                            ],
+                            metadata={b"foo": b"bar"},
+                        ),
                     ),
                 ],
-            ),
-            0.1,
-        ),
-    ],
-)
-def test_custom_arrow_array_serializer(ray_start_regular, arr, cap_mult):
-    # Create a zero-copy slice view of arr.
-    view = arr.slice(10, 10)
-    s_arr = pickle.dumps(arr)
+                itertools.repeat(cap),
+            )
+        )
+
+
+@pytest.mark.parametrize("data,cap_mult", pytest_custom_serialization_data)
+def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
+    data.validate()
+    buf_size = data.get_total_buffer_size()
+    # Create a zero-copy slice view of data.
+    view = data.slice(10, 10)
+    s_arr = pickle.dumps(data)
     s_view = pickle.dumps(view)
-    # Check that the slice view is at least cap_mult the size of the full array.
+    # Check that the slice view was truncated upon serialization.
     assert len(s_view) <= cap_mult * len(s_arr)
+    post_slice = pickle.loads(s_view)
+    post_slice.validate()
     # Check for round-trip equality.
-    assert view.equals(pickle.loads(s_view)), pickle.loads(s_view)
+    assert view.equals(post_slice), post_slice
+    # Check that offset was reset on slice.
+    if isinstance(post_slice, pa.RecordBatch):
+        for column in post_slice.columns:
+            assert column.offset == 0
+    elif isinstance(post_slice, pa.Table):
+        for column in post_slice.columns:
+            assert column.chunk(0).offset == 0
+    elif isinstance(post_slice, pa.ChunkedArray):
+        assert post_slice.chunk(0).offset == 0
+    else:
+        assert post_slice.offset == 0
+    # Check that slice buffer only contains slice data.
+    slice_buf_size = post_slice.get_total_buffer_size()
+    if buf_size > 0:
+        assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
 
 
-def test_custom_arrow_array_serializer_parquet_roundtrip(ray_start_regular, tmp_path):
+def test_custom_arrow_data_serializer_parquet_roundtrip(
+    ray_start_regular_shared, tmp_path
+):
     t = pa.table({"a": list(range(10000000))})
     pq.write_table(t, f"{tmp_path}/test.parquet")
     t2 = pq.read_table(f"{tmp_path}/test.parquet")
@@ -191,7 +256,7 @@ def test_custom_arrow_array_serializer_parquet_roundtrip(ray_start_regular, tmp_
     assert t2.equals(pickle.loads(s_t2))
 
 
-def test_custom_arrow_array_serializer_disable(shutdown_only):
+def test_custom_arrow_data_serializer_disable(shutdown_only):
     ray.shutdown()
     ray.worker._post_init_hooks = []
     context = ray.worker.global_worker.get_serialization_context()
