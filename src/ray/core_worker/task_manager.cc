@@ -100,8 +100,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   {
     absl::MutexLock lock(&mu_);
     auto inserted = submissible_tasks_.try_emplace(
-        spec.TaskId(),
-        spec, max_retries, num_returns, task_counter_, max_oom_retries);
+        spec.TaskId(), spec, max_retries, num_returns, task_counter_, max_oom_retries);
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
   }

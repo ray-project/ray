@@ -302,13 +302,14 @@ time.sleep(999)
 
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
-        "FINISHED": 2.0,
+        "FAILED": 1.0,
+        "FINISHED": 1.0,
     }
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
     assert tasks_by_name_and_state(info) == {
-        ("g", "FINISHED"): 1.0,
+        ("g", "FAILED"): 1.0,
         ("f", "FINISHED"): 1.0,
     }
     proc.kill()
@@ -333,7 +334,7 @@ time.sleep(999)
 
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
-        "FINISHED": 1.0,  # Only recorded as finished once.
+        "FAILED": 1.0,  # Only recorded as finished once.
     }
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
