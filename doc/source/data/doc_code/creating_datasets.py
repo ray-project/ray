@@ -163,6 +163,7 @@ ds.take(1)
 #            [168, 151,  81],
 #            [167, 149,  83],
 #            [166, 148,  82]]], dtype=uint8)]
+# __read_images_end__
 # fmt: on
 
 # fmt: off
