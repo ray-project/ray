@@ -649,8 +649,8 @@ async def download_and_unpack_package(
                         "long upload time or a problem with Ray. Try setting the "
                         "environment variable "
                         f"{RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR} "
-                        " to a value larger than the upload time in seconds (default 30). "
-                        "If this fails, try re-running "
+                        " to a value larger than the upload time in seconds "
+                        "(the default is 30). If this fails, try re-running "
                         "after making any change to a file in the file package."
                     )
                 code = code or b""
