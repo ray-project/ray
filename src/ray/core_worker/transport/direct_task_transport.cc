@@ -49,8 +49,10 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
               // Copy the actor's reply to the GCS for ref counting purposes.
               rpc::PushTaskReply push_task_reply;
               push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
-              task_finisher_->CompletePendingTask(
-                  task_id, push_task_reply, reply.actor_address(), false);
+              task_finisher_->CompletePendingTask(task_id,
+                                                  push_task_reply,
+                                                  reply.actor_address(),
+                                                  /*is_application_error=*/false);
             } else {
               rpc::RayErrorInfo ray_error_info;
               if (status.IsSchedulingCancelled()) {
