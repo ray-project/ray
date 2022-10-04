@@ -12,6 +12,14 @@ def ray_start_1_cpu_1_gpu():
     ray.shutdown()
 
 
+@pytest.fixture
+def ray_start_4_cpus_2_gpus():
+    address_info = ray.init(num_cpus=4, num_gpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 @pytest.mark.parametrize(
     ("device_choice", "auto_transfer"),
     [
