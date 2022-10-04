@@ -16,9 +16,12 @@ torch, _ = try_import_torch()
 
 def save_test(alg_name, framework="tf", multi_agent=False):
     cls, config = get_algorithm_class(alg_name, return_config=True)
+
     config["framework"] = framework
+
     # Switch on saving native DL-framework (tf, torch) model files.
     config["export_native_model_files"] = True
+
     if "DDPG" in alg_name or "SAC" in alg_name:
         algo = cls(config=config, env="Pendulum-v1")
         test_obs = np.array([[0.1, 0.2, 0.3]])

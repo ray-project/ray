@@ -1016,7 +1016,7 @@ class Policy(metaclass=ABCMeta):
             json.dump(
                 {
                     "type": "Policy",
-                    "checkpoint_version": policy_state["checkpoint_version"],
+                    "checkpoint_version": str(policy_state["checkpoint_version"]),
                     "ray_version": ray.__version__,
                     "ray_commit": ray.__commit__,
                 },

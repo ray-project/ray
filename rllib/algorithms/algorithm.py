@@ -259,7 +259,12 @@ class Algorithm(Trainable):
                 " your checkpoint dir or AIR Checkpoint object."
             )
 
-        assert checkpoint_info["checkpoint_version"] == version.Version("1.0")
+        if checkpoint_info["checkpoint_version"] < version.Version("1.0"):
+           raise ValueError(
+               "`checkpoint_info['checkpoint_version']` in `Algorithm.from_checkpoint"
+               "()` must be 1.0 or later! You are using a checkpoint with "
+               f"version v{checkpoint_info['checkpoint_version']}."
+           )
 
         state = Algorithm._checkpoint_info_to_algorithm_state(
             checkpoint_info=checkpoint_info,
@@ -1928,10 +1933,9 @@ class Algorithm(Trainable):
 
         # Extract policy states from worker state (Policies get their own
         # checkpoint sub-dirs).
-        # TODO: "state" key inside "worker" should be renamed to "policy_states".
         policy_states = {}
-        if "worker" in state and "state" in state["worker"]:
-            policy_states = state["worker"].pop("state", {})
+        if "worker" in state and "policy_states" in state["worker"]:
+            policy_states = state["worker"].pop("policy_states", {})
 
         # Add RLlib checkpoint version.
         state["checkpoint_version"] = CHECKPOINT_VERSION
@@ -1946,7 +1950,7 @@ class Algorithm(Trainable):
             json.dump(
                 {
                     "type": "Algorithm",
-                    "checkpoint_version": state["checkpoint_version"],
+                    "checkpoint_version": str(state["checkpoint_version"]),
                     "ray_version": ray.__version__,
                     "ray_commit": ray.__commit__,
                 },

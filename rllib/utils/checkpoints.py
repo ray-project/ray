@@ -14,7 +14,10 @@ from ray.air.checkpoint import Checkpoint
 #  DL frameworks.
 
 # 1.0: Ray >=2.1.0
-# TODO:
+#  An algorithm_state.pkl file for the state of the Algorithm (excluding
+#  individual policy states).
+#  One sub-dir inside the "policies" sub-dir for each policy with a
+#  dedicated policy_state.pkl in it for the policy state.
 CHECKPOINT_VERSION = version.Version("1.0")
 
 
