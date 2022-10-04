@@ -24,7 +24,10 @@ from gym.spaces import Discrete, MultiDiscrete, Space
 import ray
 from ray import ObjectRef
 from ray import cloudpickle as pickle
-from ray.rllib.connectors.util import create_connectors_for_policy
+from ray.rllib.connectors.util import (
+    create_connectors_for_policy,
+    maybe_get_filters_for_syncing,
+)
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
@@ -224,7 +227,6 @@ class RolloutWorker(ParallelIteratorWorker):
         compress_observations: bool = False,
         num_envs: int = 1,
         observation_fn: Optional["ObservationFunction"] = None,
-        observation_filter: str = "NoFilter",
         clip_rewards: Optional[Union[bool, float]] = None,
         normalize_actions: bool = True,
         clip_actions: bool = False,
@@ -307,7 +309,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 and vectorize the computation of actions. This has no effect if
                 if the env already implements VectorEnv.
             observation_fn: Optional multi-agent observation function.
-            observation_filter: Name of observation filter to use.
             clip_rewards: True for clipping rewards to [-1.0, 1.0] prior
                 to experience postprocessing. None: Clip for Atari only.
                 float: Clip to [-clip_rewards; +clip_rewards].
@@ -457,7 +458,6 @@ class RolloutWorker(ParallelIteratorWorker):
         self.preprocessing_enabled: bool = not policy_config.get(
             "_disable_preprocessor_api"
         )
-        self.observation_filter = observation_filter
         self.last_batch: Optional[SampleBatchType] = None
         self.global_vars: Optional[dict] = None
         self.fake_sampler: bool = fake_sampler
@@ -640,15 +640,21 @@ class RolloutWorker(ParallelIteratorWorker):
         # TODO(jungong) : clean up after non-connector env_runner is fully deprecated.
         self.filters: Dict[PolicyID, Filter] = {}
         for (policy_id, policy) in self.policy_map.items():
-            filter_shape = tree.map_structure(
-                lambda s: (
-                    None
-                    if isinstance(s, (Discrete, MultiDiscrete))  # noqa
-                    else np.array(s.shape)
-                ),
-                policy.observation_space_struct,
-            )
-            self.filters[policy_id] = get_filter(self.observation_filter, filter_shape)
+            if not policy_config.get("enable_connectors"):
+                filter_shape = tree.map_structure(
+                    lambda s: (
+                        None
+                        if isinstance(s, (Discrete, MultiDiscrete))  # noqa
+                        else np.array(s.shape)
+                    ),
+                    policy.observation_space_struct,
+                )
+                self.filters[policy_id] = get_filter(
+                    self.policy_map[policy_id].config.get(
+                        "observation_filter", "NoFilter"
+                    ),
+                    filter_shape,
+                )
 
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))
@@ -1013,7 +1019,7 @@ class RolloutWorker(ParallelIteratorWorker):
         if log_once("compute_gradients"):
             logger.info("Compute gradients on:\n\n{}\n".format(summarize(samples)))
 
-        # Backward compatiblity for A2C: Single-agent only (ComputeGradients execution
+        # Backward compatibility for A2C: Single-agent only (ComputeGradients execution
         # op must not return multi-agent dict b/c of A2C's `.batch()` in the execution
         # plan; this would "batch" over the "default_policy" keys instead of the data).
         if single_agent is True:
@@ -1224,6 +1230,8 @@ class RolloutWorker(ParallelIteratorWorker):
             KeyError: If the given `policy_id` already exists in this worker's
                 PolicyMap.
         """
+        merged_config = merge_dicts(self.policy_config, config or {})
+
         if policy_id in self.policy_map:
             raise KeyError(
                 f"Policy ID '{policy_id}' already exists in policy map! "
@@ -1270,22 +1278,25 @@ class RolloutWorker(ParallelIteratorWorker):
         if policy_state:
             new_policy.set_state(policy_state)
 
-        filter_shape = tree.map_structure(
-            lambda s: (
-                None
-                if isinstance(s, (Discrete, MultiDiscrete))  # noqa
-                else np.array(s.shape)
-            ),
-            new_policy.observation_space_struct,
-        )
+        connectors_enabled = merged_config.get("enable_connectors", False)
 
-        self.filters[policy_id] = get_filter(self.observation_filter, filter_shape)
+        if connectors_enabled:
+            policy = self.policy_map[policy_id]
+            create_connectors_for_policy(policy, merged_config)
+            maybe_get_filters_for_syncing(self, policy_id)
+        else:
+            filter_shape = tree.map_structure(
+                lambda s: (
+                    None
+                    if isinstance(s, (Discrete, MultiDiscrete))  # noqa
+                    else np.array(s.shape)
+                ),
+                new_policy.observation_space_struct,
+            )
 
-        # Create connectors for the new policy, if necessary.
-        # Only if connectors are enables and we created the new policy from scratch
-        # (it was not provided to us via the `policy` arg.
-        if policy is None and self.policy_config.get("enable_connectors"):
-            create_connectors_for_policy(new_policy, self.policy_config)
+            self.filters[policy_id] = get_filter(
+                (config or {}).get("observation_filter", "NoFilter"), filter_shape
+            )
 
         self.set_policy_mapping_fn(policy_mapping_fn)
         if policies_to_train is not None:
@@ -1634,7 +1645,7 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> worker.set_weights(weights, {"timestep": 42}) # doctest: +SKIP
         """
         # Only update our weights, if no seq no given OR given seq no is different
-        # from ours
+        # from ours.
         if weights_seq_no is None or weights_seq_no != self.weights_seq_no:
             # If per-policy weights are object refs, `ray.get()` them first.
             if weights and isinstance(next(iter(weights.values())), ObjectRef):
@@ -1858,6 +1869,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
             if connectors_enabled and name in self.policy_map:
                 create_connectors_for_policy(self.policy_map[name], policy_config)
+                maybe_get_filters_for_syncing(self, name)
 
             if name in self.policy_map:
                 self.callbacks.on_create_policy(
@@ -1960,7 +1972,7 @@ class RolloutWorker(ParallelIteratorWorker):
     ):
         self.policy_map[policy_id].export_checkpoint(export_dir, filename_prefix)
 
-    @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=False)
+    @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=True)
     def foreach_trainable_policy(self, func, **kwargs):
         return self.foreach_policy_to_train(func, **kwargs)
 

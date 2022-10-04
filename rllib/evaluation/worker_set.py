@@ -902,7 +902,6 @@ class WorkerSet:
             compress_observations=config["compress_observations"],
             num_envs=config["num_envs_per_worker"],
             observation_fn=config["multiagent"]["observation_fn"],
-            observation_filter=config["observation_filter"],
             clip_rewards=config["clip_rewards"],
             normalize_actions=config["normalize_actions"],
             clip_actions=config["clip_actions"],
@@ -978,11 +977,11 @@ class WorkerSet:
                 )
         return False
 
-    @Deprecated(new="WorkerSet.foreach_policy_to_train", error=False)
+    @Deprecated(new="WorkerSet.foreach_policy_to_train", error=True)
     def foreach_trainable_policy(self, func):
         return self.foreach_policy_to_train(func)
 
-    @Deprecated(new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=False)
+    @Deprecated(new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=True)
     def trainable_policies(self):
         local_worker = self.local_worker()
         if local_worker is not None:

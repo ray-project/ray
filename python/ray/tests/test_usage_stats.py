@@ -566,6 +566,27 @@ from ray import serve
 
 serve.start()
 serve.shutdown()
+
+class Actor:
+    def get_actor_metadata(self):
+        return "metadata"
+
+from ray.util.actor_group import ActorGroup
+actor_group = ActorGroup(Actor)
+
+actor_pool = ray.util.actor_pool.ActorPool([])
+
+from ray.util.multiprocessing import Pool
+pool = Pool()
+
+from ray.util.queue import Queue
+queue = Queue()
+
+import joblib
+from ray.util.joblib import register_ray
+register_ray()
+with joblib.parallel_backend("ray"):
+    pass
 """.format(
         "ray://127.0.0.1:10001" if ray_client else address
     )
@@ -583,6 +604,11 @@ serve.shutdown()
         "dataset",
         "workflow",
         "serve",
+        "util.ActorGroup",
+        "util.ActorPool",
+        "util.multiprocessing.Pool",
+        "util.Queue",
+        "util.joblib",
     }
     assert set(library_usages) == expected
     if not ray_client:
@@ -719,9 +745,11 @@ available_node_types:
     assert cluster_config_to_report.min_workers == 1
     assert cluster_config_to_report.max_workers is None
     assert cluster_config_to_report.head_node_instance_type == "m5.large"
-    assert cluster_config_to_report.worker_node_instance_types == list(
-        {"m3.large", "Standard_D2s_v3", "n1-standard-2"}
-    )
+    assert set(cluster_config_to_report.worker_node_instance_types) == {
+        "m3.large",
+        "Standard_D2s_v3",
+        "n1-standard-2",
+    }
 
     cluster_config_file_path.write_text(
         """

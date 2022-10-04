@@ -782,13 +782,6 @@ py_test(
 )
 
 py_test(
-    name = "test_worker_failures",
-    tags = ["team:rllib", "tests_dir", "tests_dir_W"],
-    size = "large",
-    srcs = ["tests/test_worker_failures.py"]
-)
-
-py_test(
     name = "test_node_failure",
     tags = ["team:rllib", "tests_dir", "tests_dir_N", "exclusive"],
     size = "large",
@@ -800,6 +793,13 @@ py_test(
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "small",
     srcs = ["algorithms/tests/test_registry.py"],
+)
+
+py_test(
+    name = "test_worker_failures",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "large",
+    srcs = ["algorithms/tests/test_worker_failures.py"]
 )
 
 # Specific Algorithms
@@ -1340,7 +1340,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"num_steps_sampled_before_learning_starts\": 0, \"off_policy_estimation_methods\": {\"wis\": {\"type\": \"wis\"}, \"is\": {\"type\": \"is\"}}, \"exploration_config\": {\"type\": \"SoftQ\"}}'"
+        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"num_steps_sampled_before_learning_starts\": 0, \"off_policy_estimation_methods\": {\"wis\": {\"type\": \"ray.rllib.offline.estimators.weighted_importance_sampling.WeightedImportanceSampling\"}, \"is\": {\"type\": \"ray.rllib.offline.estimators.importance_sampling.ImportanceSampling\"}}, \"exploration_config\": {\"type\": \"SoftQ\"}}'"
         ]
 )
 
@@ -1499,21 +1499,21 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_connector",
+    name = "connectors/tests/test_connector",
     tags = ["team:rllib", "connector"],
     size = "small",
     srcs = ["connectors/tests/test_connector.py"]
 )
 
 py_test(
-    name = "test_action",
+    name = "connectors/tests/test_action",
     tags = ["team:rllib", "connector"],
     size = "small",
     srcs = ["connectors/tests/test_action.py"]
 )
 
 py_test(
-    name = "test_agent",
+    name = "connectors/tests/test_agent",
     tags = ["team:rllib", "connector"],
     size = "small",
     srcs = ["connectors/tests/test_agent.py"]
@@ -1792,6 +1792,14 @@ py_test(
     srcs = ["models/tests/test_preprocessors.py"]
 )
 
+# test Tensor specs
+py_test(
+    name = "test_tensor_specs",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/specs/tests/test_specs.py"]
+)
+
 # --------------------------------------------------------------------
 # Offline
 # rllib/offline/
@@ -1814,7 +1822,7 @@ py_test(
     name = "test_feature_importance",
     tags = ["team:rllib", "offline", "torch_only"],
     size = "medium",
-    srcs = ["offline/estimators/tests/test_feature_importance.py"]
+    srcs = ["offline/tests/test_feature_importance.py"]
 )
 
 py_test(
@@ -1831,6 +1839,13 @@ py_test(
     size = "medium",
     srcs = ["offline/estimators/tests/test_ope.py"],
     data = ["tests/data/cartpole/small.json"],
+)
+
+py_test(
+    name = "test_ope_math",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/estimators/tests/test_ope_math.py"]
 )
 
 py_test(

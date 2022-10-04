@@ -25,6 +25,7 @@ from typing import (
     Type,
     Union,
 )
+import tree
 
 import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -387,7 +388,7 @@ class Algorithm(Trainable):
                 '["off_policy_estimation_methods"]={}'.format(
                     ope_dict,
                 ),
-                error=False,
+                error=True,
                 help="Running OPE during training is not recommended.",
             )
             self.config["off_policy_estimation_methods"] = ope_dict
@@ -578,7 +579,7 @@ class Algorithm(Trainable):
                 deprecation_warning(
                     old=method_type,
                     new=str(ope_types[method_type]),
-                    error=False,
+                    error=True,
                 )
                 method_type = ope_types[method_type]
             elif isinstance(method_type, str):
@@ -910,6 +911,8 @@ class Algorithm(Trainable):
                             _agent_steps if self._by_agent_steps else _env_steps
                         )
                     if self.reward_estimators:
+                        # TODO: (kourosh) This approach will cause an OOM issue when
+                        # the dataset gets huge (should be ok for now).
                         all_batches.extend(batches)
 
                     agent_steps_this_iter += _agent_steps
@@ -933,19 +936,34 @@ class Algorithm(Trainable):
             # TODO: Remove this key at some point. Here for backward compatibility.
             metrics["timesteps_this_iter"] = env_steps_this_iter
 
-            if self.reward_estimators:
-                # Compute off-policy estimates
+            # Compute off-policy estimates
+            estimates = defaultdict(list)
+            # for each batch run the estimator's fwd pass
+            for name, estimator in self.reward_estimators.items():
+                for batch in all_batches:
+                    estimate_result = estimator.estimate(
+                        batch,
+                        split_batch_by_episode=self.config[
+                            "ope_split_batch_by_episode"
+                        ],
+                    )
+                    estimates[name].append(estimate_result)
+
+            # collate estimates from all batches
+            if estimates:
                 metrics["off_policy_estimator"] = {}
-                total_batch = concat_samples(all_batches)
-                for name, estimator in self.reward_estimators.items():
-                    estimates = estimator.estimate(total_batch)
-                    metrics["off_policy_estimator"][name] = estimates
+                for name, estimate_list in estimates.items():
+                    avg_estimate = tree.map_structure(
+                        lambda *x: np.mean(x, axis=0), *estimate_list
+                    )
+                    metrics["off_policy_estimator"][name] = avg_estimate
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on trainer, so it can be attached to
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
 
+        # Trigger `on_evaluate_end` callback.
         self.callbacks.on_evaluate_end(
             algorithm=self, evaluation_metrics=self.evaluation_metrics
         )
@@ -1147,6 +1165,11 @@ class Algorithm(Trainable):
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
 
+        # Trigger `on_evaluate_end` callback.
+        self.callbacks.on_evaluate_end(
+            algorithm=self, evaluation_metrics=self.evaluation_metrics
+        )
+
         # Return evaluation results.
         return self.evaluation_metrics
 
@@ -1284,14 +1307,14 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="Trainer.compute_single_action(`clip_actions`=...)",
                 new="Trainer.compute_single_action(`clip_action`=...)",
-                error=False,
+                error=True,
             )
             clip_action = clip_actions
         if unsquash_actions != DEPRECATED_VALUE:
             deprecation_warning(
                 old="Trainer.compute_single_action(`unsquash_actions`=...)",
                 new="Trainer.compute_single_action(`unsquash_action`=...)",
-                error=False,
+                error=True,
             )
             unsquash_action = unsquash_actions
 
@@ -1435,7 +1458,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="Trainer.compute_actions(`normalize_actions`=...)",
                 new="Trainer.compute_actions(`unsquash_actions`=...)",
-                error=False,
+                error=True,
             )
             unsquash_actions = normalize_actions
 
@@ -2218,7 +2241,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 "model.lstm_use_prev_action_reward",
                 "model.lstm_use_prev_action and model.lstm_use_prev_reward",
-                error=False,
+                error=True,
             )
             model_config["lstm_use_prev_action"] = prev_a_r
             model_config["lstm_use_prev_reward"] = prev_a_r
@@ -2243,7 +2266,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="metrics_smoothing_episodes",
                 new="metrics_num_episodes_for_smoothing",
-                error=False,
+                error=True,
             )
             config["metrics_num_episodes_for_smoothing"] = config[
                 "metrics_smoothing_episodes"
@@ -2252,7 +2275,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="min_iter_time_s",
                 new="min_time_s_per_iteration",
-                error=False,
+                error=True,
             )
             config["min_time_s_per_iteration"] = config["min_iter_time_s"] or 0
 
@@ -2260,7 +2283,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="min_time_s_per_reporting",
                 new="min_time_s_per_iteration",
-                error=False,
+                error=True,
             )
             config["min_time_s_per_iteration"] = config["min_time_s_per_reporting"] or 0
 
@@ -2271,7 +2294,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="min_sample_timesteps_per_reporting",
                 new="min_sample_timesteps_per_iteration",
-                error=False,
+                error=True,
             )
             config["min_sample_timesteps_per_iteration"] = (
                 config["min_sample_timesteps_per_reporting"] or 0
@@ -2284,7 +2307,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="min_train_timesteps_per_reporting",
                 new="min_train_timesteps_per_iteration",
-                error=False,
+                error=True,
             )
             config["min_train_timesteps_per_iteration"] = (
                 config["min_train_timesteps_per_reporting"] or 0
@@ -2306,7 +2329,7 @@ class Algorithm(Trainable):
                 old="timesteps_per_iteration",
                 new="`min_sample_timesteps_per_iteration` OR "
                 "`min_train_timesteps_per_iteration`",
-                error=False,
+                error=True,
             )
             config["min_sample_timesteps_per_iteration"] = (
                 config["timesteps_per_iteration"] or 0
@@ -2320,7 +2343,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="evaluation_num_episodes",
                 new="`evaluation_duration` and `evaluation_duration_unit=episodes`",
-                error=False,
+                error=True,
             )
             config["evaluation_duration"] = config["evaluation_num_episodes"]
             config["evaluation_duration_unit"] = "episodes"
@@ -2654,7 +2677,6 @@ class Algorithm(Trainable):
                 "episode_reward_mean": np.nan,
             }
         }
-        eval_results["evaluation"]["num_recreated_workers"] = 0
 
         eval_func_to_use = (
             self._evaluate_async
@@ -2694,6 +2716,10 @@ class Algorithm(Trainable):
                     "recreate_failed_workers"
                 ),
             )
+        # `self._evaluate_async` handles its own worker failures and already adds
+        # this metric, but `self.evaluate` doesn't.
+        if "num_recreated_workers" not in eval_results["evaluation"]:
+            eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         # Add number of healthy evaluation workers after this iteration.
         eval_results["evaluation"]["num_healthy_workers"] = (
@@ -2701,7 +2727,6 @@ class Algorithm(Trainable):
             if self.evaluation_workers is not None
             else 0
         )
-        eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         return eval_results
 
@@ -2866,13 +2891,9 @@ class Algorithm(Trainable):
             alg = "USER_DEFINED"
         record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
 
-    @Deprecated(new="Algorithm.compute_single_action()", error=False)
+    @Deprecated(new="Algorithm.compute_single_action()", error=True)
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
-
-    @Deprecated(new="logic moved into `self.step()`", error=True)
-    def step_attempt(self):
-        pass
 
     @Deprecated(new="construct WorkerSet(...) instance directly", error=False)
     def _make_workers(
@@ -2896,7 +2917,7 @@ class Algorithm(Trainable):
         )
 
     @staticmethod
-    @Deprecated(new="Algorithm.validate_config()", error=False)
+    @Deprecated(new="Algorithm.validate_config()", error=True)
     def _validate_config(config, trainer_or_none):
         assert trainer_or_none is not None
         return trainer_or_none.validate_config(config)
