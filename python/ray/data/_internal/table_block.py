@@ -49,7 +49,7 @@ class TableBlockBuilder(BlockBuilder[T]):
                 "got {} (type {}).".format(item, type(item))
             )
 
-        item_columns_names = sorted(list(item.keys()))
+        item_columns_names = sorted(item.keys())
         if self._sorted_columns_names:
             # Check all added rows have same columns.
             if item_columns_names != self._sorted_columns_names:
