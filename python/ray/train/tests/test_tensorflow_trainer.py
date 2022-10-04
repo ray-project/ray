@@ -5,7 +5,6 @@ import pytest
 
 import ray
 from ray.air import session
-from ray.air.checkpoint import Checkpoint
 from ray.air.examples.tf.tensorflow_regression_example import (
     get_dataset,
     train_func as tensorflow_linear_train_func,
