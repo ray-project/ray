@@ -1,7 +1,6 @@
 import time
 from unittest.mock import patch
 import pytest
-import os
 
 import ray
 from ray import tune
@@ -10,7 +9,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.worker_group import WorkerGroup
-from ray.train.constants import PREPROCESSOR_KEY, TRAIN_ENABLE_WORKER_SPREAD_ENV
+from ray.train.constants import PREPROCESSOR_KEY
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.air.config import CheckpointConfig, RunConfig, ScalingConfig
 from ray.tune.tune_config import TuneConfig
@@ -244,30 +243,6 @@ def test_tune(ray_start_4_cpus):
 
     # Make sure original Trainer is not affected.
     assert trainer._train_loop_config["x"] == 100
-
-
-def test_env_var(ray_start_4_cpus):
-    """Tests if Train env vars are propagated to the BackendExecutor."""
-    os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV] = "1"
-
-    class EnvBackendExecutor(BackendExecutor):
-        def __init__(self, *args, **kwargs):
-            assert (
-                TRAIN_ENABLE_WORKER_SPREAD_ENV in os.environ
-                and os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV] == "1"
-            )
-            super().__init__(*args, **kwargs)
-
-    class DataParallelTrainerPatched(DataParallelTrainer):
-        _backend_executor_cls = EnvBackendExecutor
-
-    try:
-        trainer = DataParallelTrainerPatched(
-            lambda: 1, scaling_config=ScalingConfig(num_workers=1)
-        )
-        trainer.fit()
-    finally:
-        del os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV]
 
 
 def test_fast_slow(ray_start_4_cpus):
