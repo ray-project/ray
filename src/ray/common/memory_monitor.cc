@@ -26,10 +26,12 @@ namespace ray {
 MemoryMonitor::MemoryMonitor(
     instrumented_io_context &io_service,
     float usage_threshold,
+    int64_t max_overhead_bytes,
     uint64_t monitor_interval_ms,
     MemoryUsageRefreshCallback monitor_callback,
     ObjectStoreMemoryUsageFetcher object_store_memory_usage_fetcher)
     : usage_threshold_(usage_threshold),
+      max_overhead_bytes_(max_overhead_bytes),
       monitor_callback_(monitor_callback),
       object_store_memory_usage_fetcher_(object_store_memory_usage_fetcher),
       runner_(io_service) {
@@ -63,8 +65,8 @@ MemoryMonitor::MemoryMonitor(
 }
 
 bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory) {
+  int64_t threshold_bytes = GetMemoryThreshold(system_memory.total_bytes, usage_threshold_, max_overhead_bytes_);
   int64_t heap_used_memory_bytes = system_memory.heap_used_bytes;
-  int64_t object_store_used_memory_bytes = system_memory.object_store_used_bytes;
   int64_t total_memory_bytes = system_memory.total_bytes;
   if (total_memory_bytes == kNull || heap_used_memory_bytes == kNull) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
@@ -72,16 +74,13 @@ bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory) {
         << "to detect memory usage above threshold.";
     return false;
   }
-  float usage_fraction =
-      static_cast<float>(system_memory.GetTotalUsedBytes()) / total_memory_bytes;
-  bool is_usage_above_threshold = usage_fraction >= usage_threshold_;
+  bool is_usage_above_threshold = system_memory.GetTotalUsedBytes() > threshold_bytes;
   if (is_usage_above_threshold) {
-    RAY_LOG(INFO) << "Node memory usage above threshold, used: " << heap_used_memory_bytes
-                  << ", object store used: " << object_store_used_memory_bytes
+    RAY_LOG(INFO) << "Node memory usage above threshold, heap used: " << system_memory.heap_used_bytes
+                  << ", object store used: " << system_memory.object_store_used_bytes
                   << ", total used: " << system_memory.GetTotalUsedBytes()
-                  << ", total: " << total_memory_bytes
-                  << ", usage fraction: " << usage_fraction
-                  << ", threshold: " << usage_threshold_;
+                  << ", threshold: " << threshold_bytes
+                  << ", system total: " << system_memory.total_bytes;
   }
   return is_usage_above_threshold;
 }
@@ -123,48 +122,6 @@ int64_t MemoryMonitor::GetCGroupMemoryLimitBytes() {
   return total_bytes;
 }
 
-std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
-  int64_t total_bytes = kNull;
-  if (std::filesystem::exists(kCgroupsV2MemoryMaxPath)) {
-    std::ifstream mem_file(kCgroupsV2MemoryMaxPath, std::ios::in | std::ios::binary);
-    mem_file >> total_bytes;
-  } else if (std::filesystem::exists(kCgroupsV1MemoryMaxPath)) {
-    std::ifstream mem_file(kCgroupsV1MemoryMaxPath, std::ios::in | std::ios::binary);
-    mem_file >> total_bytes;
-  }
-
-  int64_t used_bytes = kNull;
-  if (std::filesystem::exists(kCgroupsV2MemoryUsagePath)) {
-    std::ifstream mem_file(kCgroupsV2MemoryUsagePath, std::ios::in | std::ios::binary);
-    mem_file >> used_bytes;
-  } else if (std::filesystem::exists(kCgroupsV1MemoryUsagePath)) {
-    std::ifstream mem_file(kCgroupsV1MemoryUsagePath, std::ios::in | std::ios::binary);
-    mem_file >> used_bytes;
-  }
-  /// This can be zero if the memory limit is not set for cgroup v2.
-  if (total_bytes == 0) {
-    total_bytes = kNull;
-  }
-
-  if (used_bytes < 0) {
-    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-        << "Got negative used memory for cgroup " << used_bytes << ", setting it to zero";
-    used_bytes = 0;
-  }
-  if (total_bytes != kNull) {
-    if (used_bytes >= total_bytes) {
-      RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
-          << " Used memory is greater than or equal to total memory used. This can "
-             "happen if the memory limit is set and the container is "
-             "using a lot of memory. Used "
-          << used_bytes << ", total " << total_bytes
-          << ", setting used to be equal to total";
-      used_bytes = total_bytes;
-    }
-  }
-
-  return {used_bytes, total_bytes};
-}
 
 std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
   std::string meminfo_path = "/proc/meminfo";
@@ -288,6 +245,23 @@ int64_t MemoryMonitor::NullableMin(int64_t left, int64_t right) {
     return left;
   } else {
     return std::min(left, right);
+  }
+}
+
+int64_t MemoryMonitor::GetMemoryThreshold(int64_t total_memory_bytes, float usage_threshold_, int64_t max_overhead_bytes) {
+  RAY_CHECK_GE(total_memory_bytes, kNull);
+  RAY_CHECK_GE(max_overhead_bytes, kNull);
+  RAY_CHECK_GE(usage_threshold_, 0);
+  RAY_CHECK_LE(usage_threshold_, 1);
+
+  int64_t threshold_fraction = (int64_t) (total_memory_bytes * usage_threshold_);
+
+  if (max_overhead_bytes > kNull) {
+    int64_t threshold_absolute = total_memory_bytes - max_overhead_bytes;
+    RAY_CHECK_GE(threshold_absolute, 0);
+    return std::max(threshold_fraction, threshold_absolute);
+  } else {
+    return threshold_fraction;
   }
 }
 

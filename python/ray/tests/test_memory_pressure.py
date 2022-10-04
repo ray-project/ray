@@ -160,7 +160,7 @@ def test_restartable_actor_killed_by_memory_monitor_with_actor_error(
         timeout=10,
         retry_interval_ms=100,
         tag="MemoryManager.ActorEviction.Total",
-        value=1.0,  # TODO(clarng): This should be 2. Look at why restart doesn't work
+        value=2.0,
     )
 
 
@@ -413,7 +413,6 @@ def test_filled_object_store_lowers_available_heap_for_oom_trigger(ray_with_memo
             allocate_memory.options(max_retries=0).remote(
                 allocate_bytes=bytes_to_alloc, post_allocate_sleep_s=100
             ),
-            timeout=30,
         )
 
     entries = int(object_store_memory / 8)
@@ -426,7 +425,6 @@ def test_filled_object_store_lowers_available_heap_for_oom_trigger(ray_with_memo
                 allocate_bytes=bytes_to_alloc - object_store_memory,
                 post_allocate_sleep_s=100,
             ),
-            timeout=30,
         )
 
 

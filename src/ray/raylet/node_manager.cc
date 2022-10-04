@@ -337,6 +337,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       memory_monitor_(std::make_unique<MemoryMonitor>(
           io_service,
           RayConfig::instance().memory_usage_threshold_fraction(),
+          RayConfig::instance().max_overhead_bytes(),
           RayConfig::instance().memory_monitor_interval_ms(),
           CreateMemoryUsageRefreshCallback(),
           [this]() { return this->object_manager_.GetUsedMemory(); })) {
@@ -2992,7 +2993,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           /// since we print the process memory in the message. Destroy should be called
           /// as soon as possible to free up memory.
           DestroyWorker(high_memory_eviction_target_,
-                        rpc::WorkerExitType::USER_ERROR,
+                        rpc::WorkerExitType::SYSTEM_ERROR,
                         worker_exit_message,
                         true /* force */);
 

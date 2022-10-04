@@ -78,7 +78,17 @@ RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 
 /// Threshold when the node is beyond the memory capacity.
 /// Ranging from [0, 1]
-RAY_CONFIG(float, memory_usage_threshold_fraction, 0.9)
+///
+/// The memory threshold is calculcated as
+/// Memory usage threshold = max(node_memory * memory_usage_threshold_fraction, node_memory - max_overhead_bytes)
+RAY_CONFIG(float, memory_usage_threshold_fraction, 0.95)
+
+/// The maximum amount of memory overhead to keep before we consider the node running low on memory.
+/// Disabled if it is -1.
+///
+/// The memory threshold is calculcated as
+/// Threshold = max(node_memory * memory_usage_threshold_fraction, node_memory - max_overhead_bytes)
+RAY_CONFIG(int64_t, max_overhead_bytes, (int64_t) 2 * 1024 * 1024 * 1024)
 
 /// The interval between runs of the memory usage monitor.
 /// Monitor is disabled when this value is 0.

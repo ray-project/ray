@@ -62,12 +62,14 @@ class MemoryMonitor {
   ///
   /// \param io_service the event loop.
   /// \param usage_threshold a value in [0-1] to indicate the max usage.
+  /// \param max_overhead_bytes the maximum amount of free space to retain before killing.
   /// \param monitor_interval_ms the frequency to update the usage. 0 disables the
   /// the monitor and callbacks won't fire.
   /// \param monitor_callback function to execute on a dedicated thread owned by this
   /// monitor when the usage is refreshed.
   MemoryMonitor(instrumented_io_context &io_service,
                 float usage_threshold,
+                int64_t max_overhead_bytes,
                 uint64_t monitor_interval_ms,
                 MemoryUsageRefreshCallback monitor_callback,
                 ObjectStoreMemoryUsageFetcher object_store_memory_usage_fetcher);
@@ -95,9 +97,7 @@ class MemoryMonitor {
   /// \return the used and total memory in bytes.
   std::tuple<int64_t, int64_t> GetMemoryBytes();
 
-  /// \return the used and total memory in bytes from Cgroup.
-  std::tuple<int64_t, int64_t> GetCGroupMemoryBytes();
-
+  /// \return memory limit in bytes from Cgroup or kNull if it is not in cgroup or no limit is set.
   int64_t GetCGroupMemoryLimitBytes();
 
   /// \return the used and total memory in bytes for linux OS.
@@ -112,6 +112,12 @@ class MemoryMonitor {
   /// or one of the values if the other is kNull.
   static int64_t NullableMin(int64_t left, int64_t right);
 
+  /// Computes the memory threshold, where
+  /// Memory usage threshold = max(total_memory * usage_threshold_, total_memory - max_overhead_bytes)
+  ///
+  /// \return the memory threshold.
+  static int64_t GetMemoryThreshold(int64_t total_memory_bytes, float usage_threshold_, int64_t max_overhead_bytes);
+
  private:
   FRIEND_TEST(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold);
   FRIEND_TEST(MemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold);
@@ -120,11 +126,16 @@ class MemoryMonitor {
   FRIEND_TEST(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
 
   /// Memory usage fraction between [0, 1]
-  const double usage_threshold_;
+  const float usage_threshold_;
+
+  /// Indicates the maximum amount of overhead to retain before consider it to be crossing the threshold.
+  const int64_t max_overhead_bytes_;
+
   /// Callback function that executes at each monitoring interval,
   /// on a dedicated thread managed by this class.
   const MemoryUsageRefreshCallback monitor_callback_;
 
+  /// Fetches the current object store memory usage in bytes.
   const ObjectStoreMemoryUsageFetcher object_store_memory_usage_fetcher_;
   PeriodicalRunner runner_;
 };
