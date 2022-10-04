@@ -417,9 +417,11 @@
 - label: ":steam_locomotive: Train tests and examples"
   parallelism: 2
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
+  agents:
+    aws:instance-type: m5.2xlarge
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TRAIN_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+    - TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - >-
       set -x;
@@ -431,7 +433,7 @@
     - cat test_shard.txt
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=-gpu_only,-minimal,-tune,-ray_air
+      --test_tag_filters=-gpu,-gpu_only,-minimal,-tune
       $(cat test_shard.txt)
 
 - label: ":steam_locomotive: :octopus: Train + Tune tests and examples"
