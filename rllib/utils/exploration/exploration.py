@@ -217,6 +217,6 @@ class Exploration:
         """
         pass
 
-    @Deprecated(new="get_state", error=False)
+    @Deprecated(new="get_state", error=True)
     def get_info(self, sess: Optional["tf.Session"] = None):
-        return self.get_state(sess)
+        pass

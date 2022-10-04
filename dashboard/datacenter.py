@@ -54,6 +54,10 @@ class DataSource:
     # {node ip (str): error entries by pid
     # (dict from pid to list of latest err entries)}
     ip_and_pid_to_errors = Dict()
+    # The current scheduling stats (e.g., pending actor creation tasks)
+    # of gcs.
+    # {task type(str): task list}
+    gcs_scheduling_stats = Dict()
 
 
 class DataOrganizer:
@@ -221,6 +225,18 @@ class DataOrganizer:
         ]
 
     @classmethod
+    async def get_all_agent_infos(cls):
+        agent_infos = dict()
+        for node_id, (http_port, grpc_port) in DataSource.agents.items():
+            agent_infos[node_id] = dict(
+                ipAddress=DataSource.node_id_to_ip[node_id],
+                httpPort=int(http_port),
+                grpcPort=int(grpc_port),
+                httpAddress=f"{DataSource.node_id_to_ip[node_id]}:{http_port}",
+            )
+        return agent_infos
+
+    @classmethod
     async def get_all_actors(cls):
         result = {}
         for index, (actor_id, actor) in enumerate(DataSource.actors.items()):
@@ -275,12 +291,17 @@ class DataOrganizer:
 
     @classmethod
     async def get_actor_creation_tasks(cls):
+        # Collect infeasible tasks in worker nodes.
         infeasible_tasks = sum(
             (
                 list(node_stats.get("infeasibleTasks", []))
                 for node_stats in DataSource.node_stats.values()
             ),
             [],
+        )
+        # Collect infeasible actor creation tasks in gcs.
+        infeasible_tasks.extend(
+            list(DataSource.gcs_scheduling_stats.get("infeasibleTasks", []))
         )
         new_infeasible_tasks = []
         for task in infeasible_tasks:
@@ -289,12 +310,17 @@ class DataOrganizer:
             task["state"] = "INFEASIBLE"
             new_infeasible_tasks.append(task)
 
+        # Collect pending tasks in worker nodes.
         resource_pending_tasks = sum(
             (
                 list(data.get("readyTasks", []))
                 for data in DataSource.node_stats.values()
             ),
             [],
+        )
+        # Collect pending actor creation tasks in gcs.
+        resource_pending_tasks.extend(
+            list(DataSource.gcs_scheduling_stats.get("readyTasks", []))
         )
         new_resource_pending_tasks = []
         for task in resource_pending_tasks:

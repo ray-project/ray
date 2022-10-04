@@ -29,6 +29,7 @@ class ApexDDPGConfig(DDPGConfig):
     Example:
         >>> from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPGConfig
         >>> from ray import tune
+        >>> import ray.air as air
         >>> config = ApexDDPGConfig()
         >>> # Print out some default values.
         >>> print(config.lr) # doctest: +SKIP
@@ -39,11 +40,11 @@ class ApexDDPGConfig(DDPGConfig):
         >>> config.environment(env="Pendulum-v1")
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
-        >>> tune.run(
+        >>> tune.Tuner(
         ...     "APEX_DDPG",
-        ...     stop={"episode_reward_mean": 200},
-        ...     config=config.to_dict(),
-        ... )
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):
@@ -200,11 +201,10 @@ class ApexDDPG(DDPG, ApexDQN):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
-        if self.config["_disable_execution_plan_api"]:
-            self._sampling_actor_manager.remove_workers(
-                removed_workers, remove_in_flight_requests=True
-            )
-            self._sampling_actor_manager.add_workers(new_workers)
+        self._sampling_actor_manager.remove_workers(
+            removed_workers, remove_in_flight_requests=True
+        )
+        self._sampling_actor_manager.add_workers(new_workers)
 
     @staticmethod
     @override(DDPG)
@@ -223,7 +223,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.algorithms.ddpg.apex.APEX_DDPG_DEFAULT_CONFIG",
         new="ray.rllib.algorithms.apex_ddpg.apex_ddpg::ApexDDPGConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

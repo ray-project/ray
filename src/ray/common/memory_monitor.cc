@@ -23,17 +23,13 @@
 
 namespace ray {
 
-MemoryMonitor::MemoryMonitor(float usage_threshold,
+MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
+                             float usage_threshold,
                              uint64_t monitor_interval_ms,
                              MemoryUsageRefreshCallback monitor_callback)
     : usage_threshold_(usage_threshold),
       monitor_callback_(monitor_callback),
-      io_context_(),
-      monitor_thread_([this] {
-        boost::asio::io_service::work io_service_work_(io_context_);
-        io_context_.run();
-      }),
-      runner_(io_context_) {
+      runner_(io_service) {
   RAY_CHECK(monitor_callback_ != nullptr);
   RAY_CHECK_GE(usage_threshold_, 0);
   RAY_CHECK_LE(usage_threshold_, 1);
@@ -117,12 +113,26 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
     std::ifstream mem_file(kCgroupsV1MemoryUsagePath, std::ios::in | std::ios::binary);
     mem_file >> used_bytes;
   }
+  /// This can be zero if the memory limit is not set for cgroup v2.
+  if (total_bytes == 0) {
+    total_bytes = kNull;
+  }
 
-  RAY_CHECK((total_bytes == kNull && used_bytes == kNull) ||
-            (total_bytes != kNull && used_bytes != kNull));
+  if (used_bytes < 0) {
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+        << "Got negative used memory for cgroup " << used_bytes << ", setting it to zero";
+    used_bytes = 0;
+  }
   if (total_bytes != kNull) {
-    RAY_CHECK_GT(used_bytes, 0);
-    RAY_CHECK_GT(total_bytes, used_bytes);
+    if (used_bytes >= total_bytes) {
+      RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+          << " Used memory is greater than or equal to total memory used. This can "
+             "happen if the memory limit is set and the container is "
+             "using a lot of memory. Used "
+          << used_bytes << ", total " << total_bytes
+          << ", setting used to be equal to total";
+      used_bytes = total_bytes;
+    }
   }
 
   return {used_bytes, total_bytes};
@@ -187,11 +197,16 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
         << "Total bytes less than available bytes. Will return null";
     return {kNull, kNull};
   }
-  auto used_bytes = mem_total_bytes - available_bytes;
+  int64_t used_bytes = mem_total_bytes - available_bytes;
+  if (used_bytes < 0) {
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+        << "Got negative used memory for linux " << used_bytes << ", setting it to zero";
+    used_bytes = 0;
+  }
   return {used_bytes, mem_total_bytes};
 }
 
-int64_t MemoryMonitor::GetProcessMemoryBytes(int64_t process_id) {
+int64_t MemoryMonitor::GetProcessMemoryBytes(int64_t process_id) const {
   std::stringstream smap_path;
   smap_path << "/proc/" << std::to_string(process_id) << "/smaps_rollup";
   return GetLinuxProcessMemoryBytesFromSmap(smap_path.str());
@@ -245,13 +260,6 @@ int64_t MemoryMonitor::NullableMin(int64_t left, int64_t right) {
     return left;
   } else {
     return std::min(left, right);
-  }
-}
-
-MemoryMonitor::~MemoryMonitor() {
-  io_context_.stop();
-  if (monitor_thread_.joinable()) {
-    monitor_thread_.join();
   }
 }
 

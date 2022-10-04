@@ -14,7 +14,37 @@ from ray.serve._private.utils import (
     get_deployment_import_path,
     override_runtime_envs_except_env_vars,
     serve_encoders,
+    merge_dict,
+    msgpack_serialize,
+    msgpack_deserialize,
 )
+
+
+def test_serialize():
+    data = msgpack_serialize(5)
+    obj = msgpack_deserialize(data)
+    assert 5 == obj
+
+
+def test_merge_dict():
+    dict1 = {"pending": 1, "running": 1, "finished": 1}
+    dict2 = {"pending": 4, "finished": 1}
+    merge = merge_dict(dict1, dict2)
+    assert merge["pending"] == 5
+    assert merge["running"] == 1
+    assert merge["finished"] == 2
+    dict1 = None
+    merge = merge_dict(dict1, dict2)
+    assert merge["pending"] == 4
+    assert merge["finished"] == 1
+    try:
+        assert merge["running"] == 1
+        assert False
+    except KeyError:
+        assert True
+    dict2 = None
+    merge = merge_dict(dict1, dict2)
+    assert merge is None
 
 
 def test_bytes_encoder():

@@ -32,7 +32,7 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_FORCE_TRIAL_CLEANUP_S**: By default, Ray Tune will gracefully terminate trials,
   letting them finish the current training step and any user-defined cleanup.
   Setting this variable to a non-zero, positive integer will cause trials to be forcefully
-  terminated after a grace period of that many seconds. Defaults to ``0``.
+  terminated after a grace period of that many seconds. Defaults to ``600`` (seconds).
 * **TUNE_GET_EXECUTOR_EVENT_WAIT_S**: The time that TrialRunner waits for the
   next ExecutorEvent in a blocking fashion. Defaults to ``5``.
 * **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
