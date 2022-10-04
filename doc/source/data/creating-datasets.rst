@@ -164,7 +164,19 @@ Supported File Formats
 
 .. tabbed:: Images (experimental)
 
-  TODO
+  Call :func:`~ray.data.read_images` to read images into a :class:`~ray.data.Dataset`. 
+
+  This function stores image data in single-column
+  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
+  blocks using our 
+  :class:`tensor extension type <ray.data.extensions.tensor_extension.ArrowTensorType>`.
+  For more information on working with tensors in Datasets, read the 
+  :ref:`tensor data guide <datasets_tensor_support>`.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __read_images_begin__
+    :end-before: __read_images_end__
 
 .. tabbed:: Binary
 
