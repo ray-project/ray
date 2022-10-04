@@ -46,7 +46,7 @@ def validate_policy_id(policy_id: str, error: bool = False) -> None:
     """
     if (
         len(policy_id) == 0
-        or re.search("[<>:\"/\\\\|?]", policy_id)
+        or re.search('[<>:"/\\\\|?]', policy_id)
         or policy_id[-1] in (" ", ".")
     ):
         msg = (

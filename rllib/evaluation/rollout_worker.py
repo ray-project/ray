@@ -1571,8 +1571,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # Support older checkpoint versions (< 1.0), in which the policy_map
         # was stored under the "state" key, not "policy_states".
         policy_states = (
-            state["policy_states"] if "policy_states" in state
-            else state["state"]
+            state["policy_states"] if "policy_states" in state else state["state"]
         )
         for pid, policy_state in policy_states.items():
             # If - for some reason - we have an invalid PolicyID in the state,

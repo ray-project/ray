@@ -260,11 +260,11 @@ class Algorithm(Trainable):
             )
 
         if checkpoint_info["checkpoint_version"] < version.Version("1.0"):
-           raise ValueError(
-               "`checkpoint_info['checkpoint_version']` in `Algorithm.from_checkpoint"
-               "()` must be 1.0 or later! You are using a checkpoint with "
-               f"version v{checkpoint_info['checkpoint_version']}."
-           )
+            raise ValueError(
+                "`checkpoint_info['checkpoint_version']` in `Algorithm.from_checkpoint"
+                "()` must be 1.0 or later! You are using a checkpoint with "
+                f"version v{checkpoint_info['checkpoint_version']}."
+            )
 
         state = Algorithm._checkpoint_info_to_algorithm_state(
             checkpoint_info=checkpoint_info,
