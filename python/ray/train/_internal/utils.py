@@ -62,7 +62,7 @@ def check_for_failure(
                 # If exception is raised in the serialization module,
                 # we guide the user to look for that
                 if "serialization.py" in traceback.format_exc():
-                    print(
+                    logger.error(
                         "An exception raised here from the serialization module "
                         "is most likely caused by an issue with deserialization "
                         "(eg. with Torch models or tensors). "
