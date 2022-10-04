@@ -205,17 +205,18 @@ def _cast_ndarray_columns_to_tensor_extension(df: pd.DataFrame) -> pd.DataFrame:
     """
     Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray.
     """
-    from ray.air.util.tensor_extensions.pandas import (
-        TensorArray,
-        column_needs_tensor_extension,
-    )
+    from ray.air.util.tensor_extensions.pandas import TensorArray
 
     # Try to convert any ndarray columns to TensorArray columns.
     # TODO(Clark): Once Pandas supports registering extension types for type
     # inference on construction, implement as much for NumPy ndarrays and remove
     # this. See https://github.com/pandas-dev/pandas/issues/41848
     for col_name, col in df.items():
-        if column_needs_tensor_extension(col):
+        if (
+            col.dtype.type is np.object_
+            and not col.empty
+            and isinstance(col.iloc[0], np.ndarray)
+        ):
             try:
                 df.loc[:, col_name] = TensorArray(col)
             except Exception as e:
