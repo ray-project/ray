@@ -413,6 +413,11 @@ def read_images(
 ):
     """Read images from the specified paths.
 
+    .. warning::
+        If your dataset contains images of varying sizes and you don't specify
+        ``size``, this function will error. To prevent errors, specify ``size``
+        or :ref:`disable tensor extension casting <disable_tensor_extension_casting>`.
+
     Examples:
         >>> import ray
         >>> path = "s3://air-example-data-2/movie-image-small-filesize-1GB"
