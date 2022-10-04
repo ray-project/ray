@@ -110,7 +110,11 @@ In ``__init__``, we pass in a couple arguments that will be eventually used in
 constructing the MongoDB pipeline in ``_read_single_partition``.
 
 In ``get_read_tasks``, we construct a :class:`~ray.data.ReadTask` object for each ``pipeline`` object.
-A list of :class:`~ray.data.ReadTask` objects are returned at the end of the function call, and these
+This will need to provide a :class:`~ray.data.block.BlockMetadata` and a no-arg read function as arguments.
+The :class:`~ray.data.block.BlockMetadata` contains metadata like number of rows, size in bytes and schema
+that we know about the block prior to actually executing the read task; the no-arg read function is just
+a wrapper of ``_read_single_partition`` 
+A list of :class:`~ray.data.ReadTask` objects are returned by ``get_read_tasks``, and these
 tasks are executed on remote workers. You can find more details about `Dataset read execution here <https://docs.ray.io/en/master/data/key-concepts.html#reading-data>`__.
 
 .. literalinclude:: ./doc_code/custom_datasource.py

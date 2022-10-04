@@ -43,6 +43,8 @@ class _MongoDatasourceReader(Reader):
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         read_tasks: List[ReadTask] = []
         for pipeline in self._pipelines:
+            # The metadata about the block that we know prior to actually executing
+            # the read task.
             metadata = BlockMetadata(
                 num_rows=None,
                 size_bytes=None,
@@ -50,6 +52,8 @@ class _MongoDatasourceReader(Reader):
                 input_files=pipeline,
                 exec_stats=None,
             )
+            # Supply a no-arg read function (which returns a block) and pre-read
+            # block metadata.
             read_task = ReadTask(
                 lambda uri=self._uri, database=self._database,
                        collection=self._collection, pipeline=pipeline,
