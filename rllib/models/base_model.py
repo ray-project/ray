@@ -12,26 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Model base classes.
-
-RLlib models all inherit from the recurrent base class, which can be chained together
-with other models.
-
-The models input and output TensorDicts. Which keys the models read/write to
-and the desired tensor shapes must be defined in input_spec, output_spec,
-prev_state_spec, and next_state_spec.
-
-The `unroll` function gets the model inputs and previous recurrent state, and outputs
-the model outputs and next recurrent state. Note all ins/outs must match the specs.
-Users should override `_unroll` rather than `unroll`.
-
-`initial_state` returns the "next" state for the first recurrent iteration. Again,
-users should override `_initial_state` instead.
-
-For non-recurrent models, users may instead override `_forward` which does not
-make use of recurrent states.
-"""
-
 
 import abc
 from typing import Optional, Tuple
@@ -45,6 +25,23 @@ UnrollOutputType = Tuple[TensorDict, TensorDict]
 
 class RecurrentModel(abc.ABC):
     """The base model all other models are based on.
+
+    RLlib models all inherit from the recurrent base class, which can be chained
+    together with other models.
+
+    The models input and output TensorDicts. Which keys the models read/write to
+    and the desired tensor shapes must be defined in input_spec, output_spec,
+    prev_state_spec, and next_state_spec.
+
+    The `unroll` function gets the model inputs and previous recurrent state, and
+    outputs the model outputs and next recurrent state. Note all ins/outs must match
+    the specs. Users should override `_unroll` rather than `unroll`.
+
+    `initial_state` returns the "next" state for the first recurrent iteration. Again,
+    users should override `_initial_state` instead.
+
+    For non-recurrent models, users may instead override `_forward` which does not
+    make use of recurrent states.
 
     Args:
         name: An optional name for the module
@@ -196,6 +193,9 @@ class RecurrentModel(abc.ABC):
 class Model(RecurrentModel):
     """A RecurrentModel made non-recurrent by ignoring
     the input/output states.
+
+    As a convienience, users may override _forward instead of _unroll,
+    which hides model states.
 
     Args:
         name: An optional name for the module
