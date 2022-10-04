@@ -105,7 +105,7 @@ def get_checkpoint_info(checkpoint) -> Dict[str, Any]:
         policies_dir = os.path.join(checkpoint, "policies")
         if os.path.isdir(policies_dir):
             policy_ids = set()
-            for policy_id in os.listdir():
+            for policy_id in os.listdir(policies_dir):
                 policy_ids.add(policy_id)
             info.update({"policy_ids": policy_ids})
 
