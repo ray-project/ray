@@ -341,6 +341,12 @@ class Dataset(Generic[T]):
             consider using :class:`~ray.data.preprocessors.BatchMapper`. It's more
             performant and easier to use.
 
+        .. tip::
+
+            For some standard operations like imputing, encoding or normalization,
+            one may find directly using :py:class:`~ray.data.preprocessors.Preprocessor` to be
+            more convenient.
+
         Examples:
 
             >>> import pandas as pd
