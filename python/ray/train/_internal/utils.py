@@ -66,9 +66,12 @@ def check_for_failure(
                         "An exception raised here from the serialization module "
                         "is most likely caused by an issue with deserialization "
                         "(eg. with Torch models or tensors). "
-                        "Ensure that you are reporting a Checkpoint specific to "
-                        "the framework you are using which can properly deserialize "
-                        "the data. No special handling logic is applied for objects "
+                        "Ensure that you are reporting a Checkpoint type specific "
+                        "to the framework you are using (eg. `TorchCheckpoint` if "
+                        "checkpointing a Torch model). Those Checkpoint types "
+                        "contain special serialization/deserialization logic "
+                        "that helps avoid deserialization exceptions. "
+                        "No special handling logic is applied for objects "
                         "passed in the `metrics` dict in the `report()` method!"
                     )
                 raise StartTraceback from exc
