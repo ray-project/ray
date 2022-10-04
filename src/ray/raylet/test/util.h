@@ -124,7 +124,7 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return ActorID::Nil();
   }
-  const const std::string GetIdAsDebugString() const override {
+  const std::string GetIdAsDebugString() const override {
     RAY_CHECK(false) << "Method unused";
     return "";
   }
