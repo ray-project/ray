@@ -683,6 +683,7 @@ class Worker:
             debugger_breakpoint,
         )
 
+    @Deprecated
     def run_function_on_all_workers(self, function: callable):
         """Run arbitrary code on all of the workers.
 
