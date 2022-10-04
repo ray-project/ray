@@ -11,6 +11,8 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 
+from ray._private.utils import split_address
+
 from ray.dashboard.modules.dashboard_sdk import (
     ClusterInfo,
     DEFAULT_DASHBOARD_ADDRESS,
@@ -140,6 +142,20 @@ def test_temporary_uri_reference(monkeypatch, expiration_s):
             else:
                 wait_for_condition(check_internal_kv_gced)
                 print("Internal KV was GC'ed at time ", time.time() - start)
+
+
+def test_split_address():
+    assert split_address("ray://my_cluster") == ("ray", "my_cluster")
+    assert split_address("ray://my_cluster:1234") == ("ray", "my_cluster:1234")
+    assert split_address("ray://") == ("ray", "")
+    assert split_address("ray://:1234") == ("ray", ":1234")
+    assert split_address("ray://my_cluster:1234?foo=bar") == (
+        "ray",
+        "my_cluster:1234?foo=bar",
+    )
+    assert split_address("http://localhost:10001") == ("http", "localhost:10001")
+    with pytest.raises(ValueError):
+        split_address("localhost:10001")
 
 
 if __name__ == "__main__":

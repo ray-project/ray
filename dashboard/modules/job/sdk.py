@@ -2,6 +2,8 @@ import dataclasses
 import logging
 from typing import Any, Dict, Iterator, List, Optional
 
+from ray.dashboard.utils import get_address_for_submission_client
+
 try:
     import aiohttp
     import requests
@@ -35,6 +37,25 @@ class JobSubmissionClient(SubmissionClient):
     """A local client for submitting and interacting with jobs on a remote cluster.
 
     Submits requests over HTTP to the job server on the cluster using the REST API.
+
+
+    Args:
+        address: Either (1) the address of the Ray cluster, or (2) the HTTP address
+            of the dashboard server on the head node, e.g. "http://<head-node-ip>:8265".
+            In case (1) it must be specified as an address that can be passed to
+            ray.init(), e.g. a Ray Client address (ray://<head_node_host>:10001),
+            or "auto", or "localhost:<port>". If unspecified, will try to connect to
+            a running local Ray cluster. This argument is always overridden by the
+            RAY_ADDRESS environment variable.
+        create_cluster_if_needed: Indicates whether the cluster at the specified
+            address needs to already be running. Ray doesn't start a cluster
+            before interacting with jobs, but third-party job managers may do so.
+        cookies: Cookies to use when sending requests to the HTTP job server.
+        metadata: Arbitrary metadata to store along with all jobs.  New metadata
+            specified per job will be merged with the global metadata provided here
+            via a simple dict update.
+        headers: Headers to use when sending requests to the HTTP job server, used
+            for cases like authentication to a remote cluster.
     """
 
     def __init__(
@@ -45,28 +66,32 @@ class JobSubmissionClient(SubmissionClient):
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
     ):
-        """Initialize a JobSubmissionClient and check the connection to the cluster.
-
-        Args:
-            address: The IP address and port of the head node. Defaults to
-                http://localhost:8265.
-            create_cluster_if_needed: Indicates whether the cluster at the specified
-                address needs to already be running. Ray doesn't start a cluster
-                before interacting with jobs, but external job managers may do so.
-            cookies: Cookies to use when sending requests to the HTTP job server.
-            metadata: Arbitrary metadata to store along with all jobs.  New metadata
-                specified per job will be merged with the global metadata provided here
-                via a simple dict update.
-            headers: Headers to use when sending requests to the HTTP job server, used
-                for cases like authentication to a remote cluster.
-        """
+        """Initialize a JobSubmissionClient and check the connection to the cluster."""
         if requests is None:
             raise RuntimeError(
                 "The Ray jobs CLI & SDK require the ray[default] "
                 "installation: `pip install 'ray[default']``"
             )
+
+        # Check types of arguments
+        if address is not None and not isinstance(address, str):
+            raise TypeError(f"address must be a string, got {type(address)}")
+        if not isinstance(create_cluster_if_needed, bool):
+            raise TypeError(
+                f"create_cluster_if_needed must be a bool, got"
+                f" {type(create_cluster_if_needed)}"
+            )
+        if cookies is not None and not isinstance(cookies, dict):
+            raise TypeError(f"cookies must be a dict, got {type(cookies)}")
+        if metadata is not None and not isinstance(metadata, dict):
+            raise TypeError(f"metadata must be a dict, got {type(metadata)}")
+        if headers is not None and not isinstance(headers, dict):
+            raise TypeError(f"headers must be a dict, got {type(headers)}")
+
+        api_server_url = get_address_for_submission_client(address)
+
         super().__init__(
-            address=address,
+            address=api_server_url,
             create_cluster_if_needed=create_cluster_if_needed,
             cookies=cookies,
             metadata=metadata,

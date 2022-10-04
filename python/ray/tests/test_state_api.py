@@ -84,9 +84,9 @@ from ray.experimental.state.common import (
     TaskState,
     WorkerState,
     StateSchema,
-    ray_address_to_api_server_url,
     state_column,
 )
+from ray.dashboard.utils import ray_address_to_api_server_url
 from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.experimental.state.state_cli import (
     AvailableFormat,
