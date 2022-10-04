@@ -2,6 +2,7 @@ import pytest
 import torch
 
 import ray
+import ray.train.torch.train_loop_utils
 
 
 @pytest.fixture
