@@ -526,7 +526,9 @@ class TrialRunnerTest3(unittest.TestCase):
             Trial(
                 "__fake",
                 trial_id="checkpoint",
-                checkpoint_at_end=True,
+                checkpoint_config=CheckpointConfig(
+                    checkpoint_at_end=True,
+                ),
                 stopping_criterion={"training_iteration": 2},
             )
         )
@@ -649,7 +651,9 @@ class TrialRunnerTest3(unittest.TestCase):
 
         trial = Trial(
             "__fake",
-            checkpoint_at_end=True,
+            checkpoint_config=CheckpointConfig(
+                checkpoint_at_end=True,
+            ),
             stopping_criterion={"training_iteration": 4},
         )
         observer = TrialResultObserver()
