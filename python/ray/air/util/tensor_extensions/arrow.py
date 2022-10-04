@@ -6,7 +6,6 @@ import pyarrow as pa
 
 from ray.air.util.tensor_extensions.utils import _is_ndarray_variable_shaped_tensor
 from ray.util.annotations import PublicAPI
-from ray.data._internal.arrow_serialization import _copy_array_if_needed
 
 
 @PublicAPI(stability="beta")
@@ -632,31 +631,3 @@ def _pairwise(iterable):
     a, b = itertools.tee(iterable)
     next(b, None)
     return zip(a, b)
-
-
-def _copy_tensor_array_if_needed(a: "ArrowTensorArray") -> "ArrowTensorArray":
-    """Copy tensor array if it's a zero-copy slice. This is to circumvent an Arrow
-    serialization bug, where a zero-copy slice serializes the entire underlying array
-    buffer.
-    """
-    # Offset is propagated to storage array, and the storage array items align with the
-    # tensor elements, so we only need to do the straightforward copy of the storage
-    # array.
-    storage = _copy_array_if_needed(a.storage)
-    type_ = ArrowTensorType(a.type.shape, storage.type.value_type)
-    return pa.ExtensionArray.from_storage(type_, storage)
-
-
-def _copy_variable_shaped_tensor_array_if_needed(
-    a: "ArrowVariableShapedTensorArray",
-) -> "ArrowVariableShapedTensorArray":
-    """Copy variable-shaped tensor array if it's a zero-copy slice. This is to
-    circumvent an Arrow serialization bug, where a zero-copy slice serializes the entire
-    underlying array buffer.
-    """
-    # Offset is propagated to storage struct array, and both the data and shape fields
-    # items align with tensor elements, so we only need to do the straightforward copy
-    # of the storage array.
-    storage = _copy_array_if_needed(a.storage)
-    type_ = ArrowVariableShapedTensorType(storage.field("data").type.value_type)
-    return pa.ExtensionArray.from_storage(type_, storage)
