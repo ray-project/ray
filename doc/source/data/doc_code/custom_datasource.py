@@ -30,6 +30,7 @@ class _MongoDatasourceReader(Reader):
         self._uri = uri
         self._database = database
         self._collection = collection
+        # Note: In this example, "pipeline" is used synonymously with "query"
         self._pipelines = pipelines
         self._schema = schema
         self._kwargs = kwargs
@@ -83,7 +84,6 @@ from ray.types import ObjectRef
 # This writes a list of blocks into MongoDB. Each block is handled by a task and tasks
 # are executed in parallel.
 def _write_multiple_blocks(
-    self,
     blocks: List[ObjectRef[Block]],
     metadata: List[BlockMetadata],
     ray_remote_args: Optional[Dict[str, Any]],
