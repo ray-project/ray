@@ -6,7 +6,7 @@ import torch.nn as nn
 
 import ray.train as train
 from ray.air import session
-from ray.train.torch import TorchTrainer
+from ray.train.torch import TorchTrainer, TorchCheckpoint
 from ray.air.config import ScalingConfig
 
 
@@ -49,8 +49,7 @@ def validate_epoch(dataloader, model, loss_fn):
     import copy
 
     model_copy = copy.deepcopy(model)
-    result = {"model": model_copy.cpu().state_dict(), "loss": loss}
-    return result
+    return model_copy.cpu().state_dict(), loss
 
 
 def train_func(config):
@@ -79,9 +78,10 @@ def train_func(config):
     results = []
     for _ in range(epochs):
         train_epoch(train_loader, model, loss_fn, optimizer)
-        result = validate_epoch(validation_loader, model, loss_fn)
+        model, loss = validate_epoch(validation_loader, model, loss_fn)
+        result = dict(loss=loss)
         results.append(result)
-        session.report(result)
+        session.report(result, checkpoint=TorchCheckpoint.from_state_dict(model))
 
     # return required for backwards compatibility with the old API
     # TODO(team-ml) clean up and remove return

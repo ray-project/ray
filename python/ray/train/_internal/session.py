@@ -12,7 +12,6 @@ from typing import Callable, Dict, Optional, Type, Union
 import warnings
 
 import ray
-from ray.air._internal.torch_utils import contains_tensor
 from ray.air._internal.util import StartTraceback, RunnerThread
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import _RESULT_FETCH_TIMEOUT, _ERROR_FETCH_TIMEOUT
@@ -253,15 +252,18 @@ class _TrainSession:
             return
 
         # Special case: early fail for Torch tensors
-        if "torch" in sys.modules and contains_tensor(kwargs):
-            raise ValueError(
-                "Passing objects containg Torch tensors as metrics "
-                "is not supported as it will throw an exception on "
-                "deserialization. You can either convert the tensors "
-                "to Python objects or use a `TorchCheckpoint` as the "
-                "`checkpoint` argument of `ray.air.session.report` to "
-                "store your Torch objects."
-            )
+        if "torch" in sys.modules:
+            from ray.air._internal.torch_utils import contains_tensor
+
+            if contains_tensor(kwargs):
+                raise ValueError(
+                    "Passing objects containg Torch tensors as metrics "
+                    "is not supported as it will throw an exception on "
+                    "deserialization. You can either convert the tensors "
+                    "to Python objects or use a `TorchCheckpoint` as the "
+                    "`checkpoint` argument of `ray.air.session.report` to "
+                    "store your Torch objects."
+                )
 
         kwargs = self._auto_fill_metrics(kwargs)
         encoded = False
