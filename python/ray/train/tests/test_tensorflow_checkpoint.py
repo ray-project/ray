@@ -1,5 +1,6 @@
 from numpy import ndarray
 import os.path
+import pytest
 import tempfile
 import tensorflow as tf
 from typing import List
@@ -82,6 +83,20 @@ class TestFromModel(unittest.TestCase):
             assert compare_weights(self.model.get_weights(), loaded_model.get_weights())
             assert preprocessor.multiplier == 1
 
+    def test_from_saved_model_warning_with_model_definition(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model_dir_path = os.path.join(tmp_dir, "my_model")
+            self.model.save(model_dir_path)
+            checkpoint = TensorflowCheckpoint.from_saved_model(
+                model_dir_path,
+                preprocessor=DummyPreprocessor(1),
+            )
+            with pytest.warns(None):
+                loaded_model = checkpoint.get_model(model_definition=get_model)
+            preprocessor = checkpoint.get_preprocessor()
+            assert compare_weights(self.model.get_weights(), loaded_model.get_weights())
+            assert preprocessor.multiplier == 1
+
     def test_from_h5_model(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             model_file_path = os.path.join(tmp_dir, "my_model.h5")
@@ -153,7 +168,5 @@ def test_tensorflow_checkpoint_h5():
 
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

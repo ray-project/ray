@@ -223,9 +223,16 @@ class TensorflowCheckpoint(Checkpoint):
         else:
             if model_definition:
                 warnings.warn(
-                    "Ignoring `model_definition` when checkpoint was created from "
-                    "`TensorflowCheckpoint.from_saved_model` or "
-                    "`TensorflowCheckpoint.from_h5`."
+                    "TensorflowCheckpoint was created from "
+                    "TensorflowCheckpoint.from_saved_model` or "
+                    "`TensorflowCheckpoint.from_h5`, which already contains all the "
+                    "information needed. This means: "
+                    "If you are using BatchPredictor, you should do "
+                    "`BatchPredictor.from_checkpoint(checkpoint, TensorflowPredictor)`"
+                    " by removing kwargs `model_definition=`. "
+                    "If you are using TensorflowPredictor directly, you should do "
+                    "`TensorflowPredictor.from_checkpoint(checkpoint)` by "
+                    "removing kwargs `model_definition=`."
                 )
             with self.as_directory() as checkpoint_dir:
                 if self._flavor == self.Flavor.H5:

@@ -91,8 +91,7 @@ def test_init():
         checkpoint, model_definition=build_raw_model
     )
 
-    assert checkpoint_predictor.model_definition == predictor.model_definition
-    assert checkpoint_predictor.model_weights == predictor.model_weights
+    assert checkpoint_predictor._model.get_weights() == predictor._model.get_weights()
     assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
 
 
