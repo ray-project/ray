@@ -62,6 +62,10 @@ def dcgan_train(config):
         last_step = checkpoint_dict["step"]
         step = last_step + 1
 
+        # NOTE: It's important to set the optimizer learning rates
+        # again, since we want to explore the parameters passed in by PBT.
+        # Without this, we would continue using the exact same
+        # configuration as the trial whose checkpoint we are exploiting.
         if "netD_lr" in config:
             for param_group in optimizerD.param_groups:
                 param_group["lr"] = config["netD_lr"]
