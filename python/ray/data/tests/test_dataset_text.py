@@ -11,11 +11,26 @@ from ray.data.datasource import (
     PartitionStyle,
     PathPartitionEncoder,
     PathPartitionFilter,
+    Partitioning,
 )
 
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+def test_read_text_partitioning(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "country=us")
+    os.mkdir(path)
+    with open(os.path.join(path, "file.txt"), "w") as f:
+        f.write("foo\nbar\nbaz")
+
+    ds = ray.data.read_text(path, partitioning=Partitioning("hive"))
+
+    df = ds.to_pandas()
+    assert list(df.columns) == ["text", "country"]
+    assert sorted(df["text"]) == ["bar", "baz", "foo"]
+    assert list(df["country"]) == ["us", "us", "us"]
 
 
 def test_read_text(ray_start_regular_shared, tmp_path):

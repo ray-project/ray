@@ -1799,6 +1799,14 @@ py_test(
     srcs = ["models/tests/test_preprocessors.py"]
 )
 
+# test Tensor specs
+py_test(
+    name = "test_tensor_specs",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/specs/tests/test_specs.py"]
+)
+
 # --------------------------------------------------------------------
 # Offline
 # rllib/offline/

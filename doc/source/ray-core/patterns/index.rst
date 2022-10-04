@@ -17,3 +17,4 @@ This section is a collection of common design patterns and anti-patterns for wri
     too-fine-grained-tasks
     redefine-task-actor-loop
     pass-large-arg-by-value
+    closure-capture-large-objects
