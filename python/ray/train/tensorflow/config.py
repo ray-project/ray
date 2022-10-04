@@ -59,7 +59,7 @@ class _TensorflowBackend(Backend):
         ray.get(setup_futures)
 
     @staticmethod
-    def get_checkpoint_class(data_dict: dict) -> Type[TensorflowCheckpoint]:
+    def _get_checkpoint_class(data_dict: dict) -> Type[TensorflowCheckpoint]:
         """Get Ray AIR Checkpoint class to use with the legacy Train API.
 
         This is temporary until ``ray.train.save_checkpoint`` is

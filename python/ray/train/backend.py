@@ -58,7 +58,7 @@ class Backend(metaclass=Singleton):
         pass
 
     @staticmethod
-    def get_checkpoint_class(data_dict: Dict) -> Type[Checkpoint]:
+    def _get_checkpoint_class(data_dict: Dict) -> Type[Checkpoint]:
         """Get Ray AIR Checkpoint class to use with the legacy Train API.
 
         This is temporary until ``ray.train.save_checkpoint`` is

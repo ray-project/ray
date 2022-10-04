@@ -134,7 +134,7 @@ class _HorovodBackend(Backend):
         worker_group.execute(update_env_vars, coordinator_envs)
 
     @staticmethod
-    def get_checkpoint_class(data_dict: Dict) -> Type[Checkpoint]:
+    def _get_checkpoint_class(data_dict: Dict) -> Type[Checkpoint]:
         """Get Ray AIR Checkpoint class to use with the legacy Train API.
 
         This is temporary until ``ray.train.save_checkpoint`` is

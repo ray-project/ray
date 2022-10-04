@@ -361,7 +361,7 @@ class BackendExecutor:
                     dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
-                    get_checkpoint_class_fn=self._backend.get_checkpoint_class,
+                    get_checkpoint_class_fn=self._backend._get_checkpoint_class,
                 )
             )
 
