@@ -53,7 +53,7 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
 
         # Test rolling out n steps.
         os.popen(
-            f'python {rllib_dir}/evaluate.py --run={algo} "{checkpoint_path}" '
+            f'python {rllib_dir}/evaluate.py "{checkpoint_path}" --run={algo} '
             f'--steps=10 --out="{tmp_dir}/rollouts_10steps.pkl"'
         ).read()
         if not os.path.exists(tmp_dir + "/rollouts_10steps.pkl"):
@@ -63,7 +63,7 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
         # Test rolling out 1 episode.
         if test_episode_rollout:
             os.popen(
-                f'python {rllib_dir}/evaluate.py --run={algo} "{checkpoint_path}" '
+                f'python {rllib_dir}/evaluate.py "{checkpoint_path}" --run={algo} '
                 f'--episodes=1 --out="{tmp_dir}/rollouts_1episode.pkl"'
             ).read()
             if not os.path.exists(tmp_dir + "/rollouts_1episode.pkl"):

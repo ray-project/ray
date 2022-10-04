@@ -1,22 +1,25 @@
 #!/usr/bin/env python
-
 import json
 import os
 from pathlib import Path
 import yaml
 import typer
-from typing import Optional
 
 import ray
-from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json, json_to_resources
 from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.common import CLIArguments as cli
+from ray.rllib.common import FrameworkEnum
+
 
 # Try to import both backends for flag checking/warnings.
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
+
+# Create the "train" Typer app
+train_app = typer.Typer()
 
 
 def _patch_path(path: str):
@@ -157,100 +160,127 @@ def init_ray_from_config(
         )
 
 
+@train_app.command()
+def file(file_name: str = typer.Option("foo")):
+    print(f"Reading file: {file_name}")
+
+
+@train_app.callback(invoke_without_command=True)
 def run(
-    # Config-based arguments.
-    run: str = typer.Option(...),
-    env: str = typer.Option(None),
-    config: str = typer.Option("{}"),
-    stop: str = typer.Option("{}"),
-    experiment_name: str = typer.Option("default"),
-    num_samples: int = typer.Option(1),
-    checkpoint_freq: int = typer.Option(0),
-    checkpoint_at_end: bool = typer.Option(False),
-    local_dir: str = typer.Option(DEFAULT_RESULTS_DIR),
-    restore: str = typer.Option(None),
-    resources_per_trial: str = typer.Option(None),
-    keep_checkpoints_num: int = typer.Option(None),
-    checkpoint_score_attr: str = typer.Option("training_iteration"),
-    upload_dir: str = typer.Option(""),
+    # Context object for subcommands
+    ctx: typer.Context,
     # File-based arguments.
-    config_file: str = typer.Option(None),
+    config_file: str = cli.ConfigFile,
+    # Config-based arguments.
+    run: str = cli.Run,
+    env: str = cli.Env,
+    config: str = cli.Config,
+    stop: str = cli.Stop,
+    experiment_name: str = cli.ExperimentName,
+    num_samples: int = cli.NumSamples,
+    checkpoint_freq: int = cli.CheckpointFreq,
+    checkpoint_at_end: bool = cli.CheckpointAtEnd,
+    local_dir: str = cli.LocalDir,
+    restore: str = cli.Restore,
+    resources_per_trial: str = cli.ResourcesPerTrial,
+    keep_checkpoints_num: int = cli.KeepCheckpointsNum,
+    checkpoint_score_attr: str = cli.CheckpointScoreAttr,
+    upload_dir: str = cli.UploadDir,
     # Additional config arguments used for overriding.
-    v: bool = typer.Option(False),
-    vv: bool = typer.Option(False),
-    framework: str = typer.Option(None),
-    trace: bool = typer.Option(False),
+    v: bool = cli.V,
+    vv: bool = cli.VV,
+    framework: FrameworkEnum = cli.Framework,
+    trace: bool = cli.Trace,
     # Ray cluster options.
-    local_mode: bool = typer.Option(False),
-    ray_address: str = typer.Option(None),
-    ray_ui: bool = typer.Option(False),
-    ray_num_cpus: int = typer.Option(None),
-    ray_num_gpus: int = typer.Option(None),
-    ray_num_nodes: int = typer.Option(None),
-    ray_object_store_memory: int = typer.Option(None),
+    local_mode: bool = cli.LocalMode,
+    ray_address: str = cli.RayAddress,
+    ray_ui: bool = cli.RayUi,
+    ray_num_cpus: int = cli.RayNumCpus,
+    ray_num_gpus: int = cli.RayNumGpus,
+    ray_num_nodes: int = cli.RayNumNodes,
+    ray_object_store_memory: int = cli.RayObjectStoreMemory,
     # Ray scheduling options.
-    resume: bool = typer.Option(False),
-    scheduler: str = typer.Option("FIFO"),
-    scheduler_config: str = typer.Option("{}"),
+    resume: bool = cli.Resume,
+    scheduler: str = cli.Scheduler,
+    scheduler_config: str = cli.SchedulerConfig,
 ):
-    # Either load experiments from file, or create a single experiment from
-    # the command line arguments passed in.
-    if config_file:
-        experiments = load_experiments_from_file(config_file)
-    else:
-        experiments = load_single_experiment_from_config(
-            run=run,
-            env=env,
-            config=config,
-            stop=stop,
-            experiment_name=experiment_name,
-            num_samples=num_samples,
-            checkpoint_freq=checkpoint_freq,
-            checkpoint_at_end=checkpoint_at_end,
-            local_dir=local_dir,
-            restore=restore,
-            resources_per_trial=resources_per_trial,
-            keep_checkpoints_num=keep_checkpoints_num,
-            checkpoint_score_attr=checkpoint_score_attr,
-            upload_dir=upload_dir,
+    """Train a reinforcement learning agent.
+
+    Training example via RLlib CLI:\n
+        rllib train --run DQN --env CartPole-v1\n\n
+
+    Grid search example via RLlib CLI:\n
+        rllib train -f tuned_examples/ppo/cartpole-ppo.yaml\n\n
+
+    Grid search example via executable:\n
+        ./train.py -f tuned_examples/ppo/cartpole-ppo.yaml\n\n
+
+    Note that -f overrides all other trial-specific command-line options.
+    """
+    # If no subcommand is specified, simply run the following lines as the
+    # "rllib train" main command.
+    if ctx.invoked_subcommand is None:
+
+        framework = framework.value if framework else None
+
+        # Either load experiments from file, or create a single experiment from
+        # the command line arguments passed in.
+        if config_file:
+            experiments = load_experiments_from_file(config_file)
+        else:
+            experiments = load_single_experiment_from_config(
+                run=run,
+                env=env,
+                config=config,
+                stop=stop,
+                experiment_name=experiment_name,
+                num_samples=num_samples,
+                checkpoint_freq=checkpoint_freq,
+                checkpoint_at_end=checkpoint_at_end,
+                local_dir=local_dir,
+                restore=restore,
+                resources_per_trial=resources_per_trial,
+                keep_checkpoints_num=keep_checkpoints_num,
+                checkpoint_score_attr=checkpoint_score_attr,
+                upload_dir=upload_dir,
+            )
+
+        # Override experiment data with command line arguments.
+        experiments, verbose = override_experiments_with_config(
+            experiments=experiments,
+            v=v,
+            vv=vv,
+            framework=framework,
+            trace=trace,
         )
 
-    # Override experiment data with command line arguments.
-    experiments, verbose = override_experiments_with_config(
-        experiments=experiments,
-        v=v,
-        vv=vv,
-        framework=framework,
-        trace=trace,
-    )
+        # Initialize the Ray cluster with the specified options.
+        init_ray_from_config(
+            ray_num_nodes=ray_num_nodes,
+            ray_num_cpus=ray_num_cpus,
+            ray_num_gpus=ray_num_gpus,
+            ray_object_store_memory=ray_object_store_memory,
+            ray_ui=ray_ui,
+            ray_address=ray_address,
+            local_mode=local_mode,
+        )
 
-    # Initialize the Ray cluster with the specified options.
-    init_ray_from_config(
-        ray_num_nodes=ray_num_nodes,
-        ray_num_cpus=ray_num_cpus,
-        ray_num_gpus=ray_num_gpus,
-        ray_object_store_memory=ray_object_store_memory,
-        ray_ui=ray_ui,
-        ray_address=ray_address,
-        local_mode=local_mode,
-    )
-
-    # Run the Tune experiment and return the trials.
-    scheduler_config = json.loads(scheduler_config)
-    trials = run_experiments(
-        experiments,
-        scheduler=create_scheduler(scheduler, **scheduler_config),
-        resume=resume,
-        verbose=verbose,
-        concurrent=True,
-    )
-    ray.shutdown()
-    return trials
+        # Run the Tune experiment and return the trials.
+        scheduler_config = json.loads(scheduler_config)
+        trials = run_experiments(
+            experiments,
+            scheduler=create_scheduler(scheduler, **scheduler_config),
+            resume=resume,
+            verbose=verbose,
+            concurrent=True,
+        )
+        ray.shutdown()
+        return trials
 
 
 def main():
     """Run the CLI."""
-    typer.run(run)
+    train_app()
 
 
 if __name__ == "__main__":
