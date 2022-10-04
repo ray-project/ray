@@ -1,20 +1,18 @@
 import argparse
-from pickletools import optimize
 
-import numpy as np
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-from torchvision.models import resnet18
 from filelock import FileLock
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import CIFAR10
+from torchvision.models import resnet18
 
 import ray
 import ray.train as train
 from ray import tune
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
 from ray.air.config import FailureConfig, RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 from ray.tune.schedulers import PopulationBasedTraining
@@ -75,10 +73,7 @@ def train_func(config):
         "lr": config.get("lr"),
         "momentum": config.get("momentum"),
     }
-    optimizer = torch.optim.SGD(
-        model.parameters(),
-        **optimizer_config
-    )
+    optimizer = torch.optim.SGD(model.parameters(), **optimizer_config)
 
     epoch = 0
     if session.get_checkpoint():
@@ -95,10 +90,6 @@ def train_func(config):
         # Optimizer configs (`lr`, `momentum`) are being mutated by PBT and passed in
         # through config, so we need to update the optimizer loaded from the checkpoint
         update_optimizer_config(optimizer, optimizer_config)
-
-        print(f"[DEBUGGING] Loading trial {session.get_trial_id()}...")
-        print("[DEBUGGING] optimizer lr = ", optimizer_state["param_groups"][0]["lr"])
-        print("[DEBUGGING] optimizer momentum = ", optimizer_state["param_groups"][0]["momentum"])
 
         # The current epoch increments the loaded epoch by 1
         checkpoint_epoch = checkpoint_dict["epoch"]
@@ -157,10 +148,6 @@ def train_func(config):
                 "optimizer_state_dict": optimizer.state_dict(),
             }
         )
-        print(f"[DEBUGGING] Checkpointing trial {session.get_trial_id()}...")
-        print("[DEBUGGING] optimizer lr = ", optimizer.state_dict()["param_groups"][0]["lr"])
-        print("[DEBUGGING] optimizer momentum = ", optimizer.state_dict()["param_groups"][0]["momentum"])
-        print("[DEBUGGING] epoch = ", epoch)
 
         session.report(result, checkpoint=checkpoint)
         epoch += 1

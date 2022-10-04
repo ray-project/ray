@@ -99,7 +99,7 @@ parts:
                 title: "Working with Checkpoints"
               - file: tune/tutorials/tune-metrics
                 title: "Using Callbacks and Metrics"
-              - file: tune/tutorials/tune-advanced-tutorial
+              - file: tune/examples/pbt_guide
                 title: "Using Population-Based Training"
               - file: tune/tutorials/tune-distributed
                 title: "Deploying Tune in the Cloud"

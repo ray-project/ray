@@ -123,7 +123,7 @@ def run_tune_pbt():
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_score_attribute="mean_accuracy",
                 num_to_keep=5,
-            )
+            ),
         ),
         tune_config=tune.TuneConfig(
             scheduler=pbt,
