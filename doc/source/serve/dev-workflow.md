@@ -88,7 +88,7 @@ When making the transition from your local machine to a remote cluster, you'll n
 Let's see a simple example that just packages the code. Run the following command on your local machine, with your remote cluster head node IP address substituted for `<head-node-ip-address>` in the command:
 
 ```bash
-serve run  --address=ray://<head-node-ip-address>:10001 --working_dir="./project/src" local_dev:HelloDeployment
+serve run  --address=ray://<head-node-ip-address>:10001 --working_dir="./project/src" local_dev:graph
 ```
 
 This will connect to the remote cluster via Ray Client, upload the `working_dir` directory, and run your serve application.  Here, the local directory specified by `working_dir` must contain `local_dev.py` so that it can be uploaded to the cluster and imported by Ray Serve.
@@ -103,7 +103,7 @@ curl -X PUT http://<head-node-ip-address>:8000/?name=Ray
 For more complex dependencies, including files outside the working directory, environment variables, and Python packages, you can use {ref}`Runtime Environments<runtime-environments>`. Here is an example using the --runtime-env-json argument:
 
 ```bash
-serve run  --address=ray://<head-node-ip-address>:10001 --runtime-env-json='{"env_vars": {"MY_ENV_VAR": "my-value"}, "working_dir": "./project/src", "pip": ["requests", "chess"]}' local_dev:HelloDeployment
+serve run  --address=ray://<head-node-ip-address>:10001 --runtime-env-json='{"env_vars": {"MY_ENV_VAR": "my-value"}, "working_dir": "./project/src", "pip": ["requests", "chess"]}' local_dev:graph
 ```
 
 You can also specify the `runtime_env` via a YAML file; see [serve run](serve_cli.html#serve-run) for details.
