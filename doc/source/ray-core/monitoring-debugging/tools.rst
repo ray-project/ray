@@ -9,25 +9,8 @@ Application Logging
 -------------------
 By default, all stdout and stderr of tasks and actors are streamed to the Ray driver (the entrypoint script that calls ``ray.init``).
 
-.. code-block:: python
-
-    import ray
-    # Initiate a driver.
-    ray.init()
-
-    @ray.remote
-    def task():
-        print("task")
-
-    ray.get(task.remote())
-
-    @ray.remote
-    class Actor:
-        def ready(self):
-            print("actor")
-    
-    actor = Actor.remote()
-    ray.get(actor.ready.remote())
+.. literalinclude:: ../doc_code/app_logging.py
+  :language: python
 
 All stdout emitted from the ``print`` method is printed to the driver with a ``(the task or actor repr, the process ID, IP address)`` prefix.
 

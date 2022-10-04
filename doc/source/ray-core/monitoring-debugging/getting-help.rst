@@ -10,9 +10,9 @@ Getting Help from the Documentation
 If you are stuck, navigate through the ray documentation. It is structured to answer a wide range of questions.
 
 - :ref:`Key Concepts <core-key-concepts>` explains key concepts of Ray.
-- :ref:`Deployment Guide <ref-deployment-guide>` explains you how to deploy Ray clusters and submit code to them.
+- :ref:`Ray Clusters Overview <cluster-index>` explains you how to deploy Ray clusters and submit code to them.
 - :ref:`Ray Core User Guide <core-use-guide>` explains how to use Ray task, actor, object, placement groups, and dependencies.
-- :ref:`Task Design Pattern <task-patterns>`, :ref:`Actor Design Pattern <actor-patterns>`, and :ref:`Ray Common Gotchas <gotchas>` explains best practice, anti-pattern, and common gotchas of Ray.
+- :ref:`Task Design Pattern <task-patterns>`, :ref:`Actor Design Pattern <actor-patterns>`, :ref:`Design Patterns & Anti-patterns<core-patterns>`, and :ref:`Ray Common Gotchas <gotchas>` explains best practice, anti-pattern, and common gotchas of Ray.
 - :ref:`Ray Core Examples <ray-core-examples-tutorial>` shows examples of using Ray (from building ML libraries to running simple yet highly embarrassingly parallel workloads).
 - :ref:`White Paper <whitepaper>` explains internal details of Ray.
 

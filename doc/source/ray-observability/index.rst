@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-.. _ray-observability-ref:
-=======
 .. _observability:
->>>>>>> master
 
 Observability
 =============
