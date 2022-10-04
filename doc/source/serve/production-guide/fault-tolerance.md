@@ -63,7 +63,7 @@ In this section, you'll learn how to add fault tolerance to Ray's Global Control
 By default the Ray head node is a single point of failure: if it crashes, the entire Ray cluster crashes and must be restarted. When running on Kubernetes, the `RayService` controller health-checks the Ray cluster and restarts it if this occurs, but this introduces some downtime.
 
 In Ray 2.0, KubeRay has added experimental support for [Global Control Store (GCS) fault tolerance](https://ray-project.github.io/kuberay/guidance/gcs-ft/#ray-gcs-fault-tolerancegcs-ft-experimental), preventing the Ray cluster from crashing if the head node goes down.
-While the head node is recovering, Serve applications can still handle traffic but cannot be updated or recover from other failures (e.g. actors or worker nodes crashing).
+While the head node is recovering, Serve applications can still handle traffic via worker nodes but cannot be updated or recover from other failures (e.g. actors or worker nodes crashing).
 Once the GCS is recovered, the cluster will return to normal behavior.
 
 You can enable GCS fault tolerance on KubeRay by adding an external Redis server and modifying your `RayService` Kubernetes object.
