@@ -124,7 +124,7 @@ def test_memory_pressure_kill_actor(ray_with_memory_monitor):
     ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold_fraction + 0.1
+        memory_usage_threshold_fraction + 1
     )
     with pytest.raises(ray.exceptions.RayActorError) as _:
         ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))

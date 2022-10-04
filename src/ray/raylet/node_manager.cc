@@ -3001,7 +3001,7 @@ const std::string NodeManager::CreateOomKillMessageDetails(
       << ") where the task (" << worker->GetIdAsDebugString() << ") was running was "
       << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
       << "), which exceeds the memory usage threshold of " << usage_threshold
-      << ". Ray killed this worker (ID: " << worker->WorkerId() << ")"
+      << ". Ray killed this worker (ID: " << worker->WorkerId() << ") to free up memory."
       << is_retriable_ss.str()
       << " See documentation for more details about the worker killing policy under "
          "memory pressure. To see more information about memory usage on this node, use "
@@ -3016,7 +3016,13 @@ const std::string NodeManager::CreateOomKillMessageSuggestions(
     const std::shared_ptr<WorkerInterface> &worker) const {
   std::stringstream not_retriable_recommendation_ss;
   if (!worker->GetAssignedTask().GetTaskSpecification().IsRetriable()) {
-    not_retriable_recommendation_ss << "Make the task retriable if possible. ";
+    not_retriable_recommendation_ss << "Set ";
+    if (worker->GetAssignedTask().GetTaskSpecification().IsNormalTask()) {
+      not_retriable_recommendation_ss << "max_retries";
+    } else {
+      not_retriable_recommendation_ss << "max_restarts and max_task_retries";
+    }
+    not_retriable_recommendation_ss << " to increase restart counts. ";
   }
   std::stringstream oom_kill_suggestions_ss;
   oom_kill_suggestions_ss
