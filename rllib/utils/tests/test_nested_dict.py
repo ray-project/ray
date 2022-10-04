@@ -81,12 +81,12 @@ class TestNestedDict(unittest.TestCase):
                 (("bar", "a"), 110),
             ]
         )
-        dict2 = NestedDict([("foo", NestedDict(dict(a=11)))])
+        dict2 = NestedDict([("foo", NestedDict(dict(a=33)))])
         dict3 = NestedDict(
-            [("foo", NestedDict(dict(a=100))), ("bar", NestedDict(dict(d=11)))]
+            [("foo", NestedDict(dict(a=None))), ("bar", NestedDict(dict(d=None)))]
         )
         dict4 = NestedDict(
-            [("foo", NestedDict(dict(a=100))), ("bar", NestedDict(dict(c=11)))]
+            [("foo", NestedDict(dict(a=None))), ("bar", NestedDict(dict(c=None)))]
         )
 
         self.assertEqual(dict1.filter(dict2).asdict(), {"foo": {"a": 10}})
