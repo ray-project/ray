@@ -1,3 +1,17 @@
+# Copyright 2021 DeepMind Technologies Limited.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Model base classes.
 
 RLlib models all inherit from the recurrent base class, which can be chained together
@@ -20,36 +34,8 @@ make use of recurrent states.
 
 
 import abc
-from typing import Optional, Tuple, Any
-
-
-# TODO: Remove once TensorDict is in master
-class TensorDict:
-    def __init__(self, *args, **kwargs):
-        self.args = args
-        self.kwargs = kwargs
-
-    def filter(self, specs):
-        return {k for k in self.kwargs if k in specs.kwargs}
-
-    def __eq__(self, other: "TensorDict"):
-        return True
-
-
-# TODO: Remove once SpecDict is in master
-class SpecDict:
-    def __init__(self, *args, **kwargs):
-        self.args = args
-        self.kwargs = kwargs
-        pass
-
-    def validate(self, spec: Any) -> bool:
-        return True
-
-
-# TODO: Remove once ModelConfig is in master
-class ModelConfig:
-    pass
+from typing import Optional, Tuple
+from ray.rllib.models.temp_spec_classes import TensorDict, SpecDict, ModelConfig
 
 
 ForwardOutputType = TensorDict
@@ -58,18 +44,24 @@ UnrollOutputType = Tuple[TensorDict, TensorDict]
 
 
 class RecurrentModel(abc.ABC):
-    """The base model all other models are based on."""
+    """The base model all other models are based on.
+
+    Args:
+        name: An optional name for the module
+
+    Examples:
+        >>> named_class = NamedClass() # Inherits from RecurrentModel
+        >>> named_class.get_name() # NamedClass
+    """
 
     def __init__(self, name: Optional[str] = None):
         self._name = name or self.__class__.__name__
 
     @property
     def name(self) -> str:
+        """Returns the name of this module."""
         return self._name
 
-    # TODO: Should these be properties or functions? How do we know the
-    # input_spec before init? Won't our model change shapes depending
-    # on arguments passed to init?
     @property
     @abc.abstractmethod
     def input_spec(self) -> SpecDict:
@@ -99,7 +91,7 @@ class RecurrentModel(abc.ABC):
         adds additional checks.
 
         Returns:
-          A TensorDict containing the state before the first step.
+            A TensorDict containing the state before the first step.
         """
 
     def initial_state(self) -> TensorDict:
@@ -108,7 +100,11 @@ class RecurrentModel(abc.ABC):
         this function provides the initial state.
 
         Returns:
-          A TensorDict containing the state before the first step.
+            A TensorDict containing the state before the first step.
+
+        Examples:
+            >>> state = model.initial_state()
+            >>> state # TensorDict(...)
         """
         initial_state = self._initial_state()
         self.next_state_spec.validate(initial_state)
@@ -123,13 +119,14 @@ class RecurrentModel(abc.ABC):
         adds additional checks.
 
         Args:
-          inputs: A TensorDict of inputs
-          prev_state: A TensorDict containing the next_state of the last
-            timestep of the previous unroll.
+            inputs: A TensorDict of inputs
+            prev_state: A TensorDict containing the next_state of the last
+                timestep of the previous unroll.
+
         Returns:
-          outputs: A TensorDict of outputs
-          next_state: A dict containing the state to be passed
-            as the first state of the next rollout.
+            outputs: A TensorDict of outputs
+            next_state: A dict containing the state to be passed
+                as the first state of the next rollout.
         """
 
     def unroll(
@@ -138,13 +135,20 @@ class RecurrentModel(abc.ABC):
         """Computes the output of the module over unroll_len timesteps.
 
         Args:
-          inputs: A TensorDict containing inputs to the model
-          prev_state: A TensorDict containing containing the
-            next_state of the last timestep of the previous unroll.
+            inputs: A TensorDict containing inputs to the model
+            prev_state: A TensorDict containing containing the
+                next_state of the last timestep of the previous unroll.
+
         Returns:
-          outputs: A TensorDict containing model outputs
-          next_state: A TensorDict containing the
-            state to be passed as the first state of the next rollout.
+            outputs: A TensorDict containing model outputs
+            next_state: A TensorDict containing the
+                state to be passed as the first state of the next rollout.
+
+        Examples:
+            >>> output, state = model.unroll(TensorDict(...), TensorDict(...))
+            >>> output # TensorDict(...)
+            >>> state # TensorDict(...)
+
         """
         self.input_spec.validate(inputs)
         self.prev_state_spec.validate(prev_state)
@@ -161,22 +165,44 @@ class RecurrentModel(abc.ABC):
     def _check_inputs_and_prev_state(
         self, inputs: TensorDict, prev_state: TensorDict
     ) -> Tuple[TensorDict, TensorDict]:
-        """Override this function to add additional checks on inputs."""
+        """Override this function to add additional checks on inputs.
+
+        Args:
+            inputs: TensorDict containing inputs to the model
+            prev_state: The previous recurrent state
+
+        Returns:
+            inputs: Potentially modified inputs
+            prev_state: Potentially modified recurrent state
+        """
         return inputs, prev_state
 
     def _check_outputs_and_next_state(
         self, outputs: TensorDict, next_state: TensorDict
     ) -> Tuple[TensorDict, TensorDict]:
-        """Override this function to add additional checks on outputs."""
+        """Override this function to add additional checks on outputs.
+
+        Args:
+            outputs: TensorDict output by the model
+            next_state: Recurrent state output by the model
+
+        Returns:
+            outputs: Potentially modified TensorDict output by the model
+            next_state: Potentially modified recurrent state output by the model
+        """
         return outputs, next_state
 
 
 class Model(RecurrentModel):
-    """A Component which is not using the unroll dimension.
-    This is a helper module to write simpler components.
-    Such a component computes a function _forward such that
-    unroll(x)[t] = _forward(x[t]) where t=0..unroll_len-1.
-    Such a module must be stateless.
+    """A RecurrentModel made non-recurrent by ignoring
+    the input/output states.
+
+    Args:
+        name: An optional name for the module
+
+    Examples:
+        >>> named_class = NamedClass() # Inherits from Model
+        >>> named_class.get_name() # NamedClass
     """
 
     @property
@@ -197,7 +223,14 @@ class Model(RecurrentModel):
         return inputs, prev_state
 
     def _check_inputs(self, inputs: TensorDict) -> TensorDict:
-        """Override this function to add additional checks on inputs."""
+        """Override this function to add additional checks on inputs.
+
+        Args:
+            inputs: TensorDict containing inputs to the model
+
+        Returns:
+            inputs: Potentially modified inputs
+        """
         return inputs
 
     def _check_outputs_and_next_state(
@@ -207,7 +240,14 @@ class Model(RecurrentModel):
         return outputs, next_state
 
     def _check_outputs(self, outputs: TensorDict) -> TensorDict:
-        """Override this function to add additional checks on outputs."""
+        """Override this function to add additional checks on outputs.
+
+        Args:
+            outputs: TensorDict output by the model
+
+        Returns:
+            outputs: Potentially modified TensorDict output by the model
+        """
         return outputs
 
     def _unroll(
@@ -220,14 +260,27 @@ class Model(RecurrentModel):
     @abc.abstractmethod
     def _forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
         """Computes the output of this module for each timestep.
+
         Args:
-          inputs: A TensorDict.
+            inputs: A TensorDict containing model inputs
+
         Returns:
-          outputs: A TensorDict.
+            outputs: A TensorDict containing model outputs
+
+        Examples:
+            # This is abstract, see the torch/tf/jax implementations
+            >>> out = model._forward(TensorDict({"in": np.arange(10)}))
+            >>> out # TensorDict(...)
         """
 
 
 class ModelIO(abc.ABC):
+    """Abstract class defining how to save and load model weights
+
+    Args:
+        config: The ModelConfig passed to the underlying model
+    """
+
     def __init__(self, config: ModelConfig) -> None:
         self._config = config
 
@@ -237,8 +290,24 @@ class ModelIO(abc.ABC):
 
     @abc.abstractmethod
     def save(self, path: str) -> None:
+        """Save model weights to a path
+
+        Args:
+            path: The path on disk where weights are to be saved
+
+        Examples:
+            model.save("/tmp/model_path.cpt")
+        """
         raise NotImplementedError
 
     @abc.abstractmethod
     def load(self, path: str) -> RecurrentModel:
+        """Load model weights from a path
+
+        Args:
+            path: The path on disk where to load weights from
+
+        Examples:
+            model.load("/tmp/model_path.cpt")
+        """
         raise NotImplementedError
