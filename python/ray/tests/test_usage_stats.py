@@ -566,6 +566,27 @@ from ray import serve
 
 serve.start()
 serve.shutdown()
+
+class Actor:
+    def get_actor_metadata(self):
+        return "metadata"
+
+from ray.util.actor_group import ActorGroup
+actor_group = ActorGroup(Actor)
+
+actor_pool = ray.util.actor_pool.ActorPool([])
+
+from ray.util.multiprocessing import Pool
+pool = Pool()
+
+from ray.util.queue import Queue
+queue = Queue()
+
+import joblib
+from ray.util.joblib import register_ray
+register_ray()
+with joblib.parallel_backend("ray"):
+    pass
 """.format(
         "ray://127.0.0.1:10001" if ray_client else address
     )
@@ -583,6 +604,11 @@ serve.shutdown()
         "dataset",
         "workflow",
         "serve",
+        "util.ActorGroup",
+        "util.ActorPool",
+        "util.multiprocessing.Pool",
+        "util.Queue",
+        "util.joblib",
     }
     assert set(library_usages) == expected
     if not ray_client:

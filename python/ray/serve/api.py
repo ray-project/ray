@@ -268,6 +268,7 @@ def deployment(
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+    is_driver_deployment: Optional[bool] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     pass
 
@@ -289,6 +290,7 @@ def deployment(
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
     health_check_period_s: Default[float] = DEFAULT.VALUE,
     health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+    is_driver_deployment: Optional[bool] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
@@ -331,6 +333,8 @@ def deployment(
         max_concurrent_queries (Default[int]): The maximum number of queries
             that will be sent to a replica of this deployment without receiving
             a response. Defaults to 100.
+        is_driver_deployment (Optional[bool]): [Experiment] when set it as True, serve
+            will deploy exact one deployment to every node.
 
     Example:
     >>> from ray import serve
@@ -376,6 +380,9 @@ def deployment(
             "Explicitly specifying version will raise an error in the future!"
         )
 
+    if is_driver_deployment is DEFAULT.VALUE:
+        is_driver_deployment = False
+
     config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
@@ -401,6 +408,7 @@ def deployment(
                 ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
             ),
             _internal=True,
+            is_driver_deployment=is_driver_deployment,
         )
 
     # This handles both parametrized and non-parametrized usage of the
@@ -522,6 +530,7 @@ def run(
             "version": deployment._version,
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
+            "is_driver_deployment": deployment._is_driver_deployment,
         }
         parameter_group.append(deployment_parameters)
     client.deploy_group(
