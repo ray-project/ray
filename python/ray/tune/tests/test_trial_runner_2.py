@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 import ray
+from ray.air import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.rllib import _register_all
 
@@ -81,7 +82,7 @@ class TrialRunnerTest2(unittest.TestCase):
         runner = TrialRunner(searchalg, scheduler=scheduler)
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
-            "checkpoint_freq": 1,
+            "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
             "max_failures": 0,
             "config": {
                 "mock_error": True,
@@ -107,7 +108,7 @@ class TrialRunnerTest2(unittest.TestCase):
         kwargs = {
             "stopping_criterion": {"training_iteration": 2},
             "resources": Resources(cpu=1, gpu=1),
-            "checkpoint_freq": 1,
+            "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
             "max_failures": 1,
             "config": {
                 "mock_error": True,
@@ -131,7 +132,7 @@ class TrialRunnerTest2(unittest.TestCase):
         runner = TrialRunner()
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
-            "checkpoint_freq": 1,
+            "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
             "max_failures": 2,
             "config": {
                 "mock_error": True,
@@ -151,7 +152,7 @@ class TrialRunnerTest2(unittest.TestCase):
         runner = TrialRunner(fail_fast=True)
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
-            "checkpoint_freq": 1,
+            "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
             "max_failures": 0,
             "config": {
                 "mock_error": True,
@@ -175,7 +176,7 @@ class TrialRunnerTest2(unittest.TestCase):
         runner = TrialRunner(fail_fast=TrialRunner.RAISE)
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
-            "checkpoint_freq": 1,
+            "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
             "max_failures": 0,
             "config": {
                 "mock_error": True,
@@ -201,7 +202,7 @@ class TrialRunnerTest2(unittest.TestCase):
         kwargs = {
             "stopping_criterion": {"training_iteration": 1},
             "resources": Resources(cpu=1, gpu=1),
-            "checkpoint_freq": 1,
+            "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
@@ -234,7 +235,7 @@ class TrialRunnerTest2(unittest.TestCase):
         kwargs = {
             "stopping_criterion": {"training_iteration": 2},
             "resources": Resources(cpu=1, gpu=1),
-            "checkpoint_freq": 1,
+            "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
@@ -246,7 +247,7 @@ class TrialRunnerTest2(unittest.TestCase):
 
         kwargs["restore_path"] = trials[0].checkpoint.dir_or_data
         kwargs.pop("stopping_criterion")
-        kwargs.pop("checkpoint_freq")  # No checkpointing for next trial
+        kwargs.pop("checkpoint_config")  # No checkpointing for next trial
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
@@ -270,7 +271,7 @@ class TrialRunnerTest2(unittest.TestCase):
         runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {"training_iteration": 2},
-            "checkpoint_at_end": True,
+            "checkpoint_config": CheckpointConfig(checkpoint_at_end=True),
             "resources": Resources(cpu=1, gpu=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))

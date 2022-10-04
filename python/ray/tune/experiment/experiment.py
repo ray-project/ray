@@ -134,8 +134,8 @@ class Experiment:
         num_samples: int = 1,
         local_dir: Optional[str] = None,
         _experiment_checkpoint_dir: Optional[str] = None,
-        sync_config: Optional[SyncConfig] = None,
-        checkpoint_config: Optional[CheckpointConfig] = None,
+        sync_config: Optional[Union[SyncConfig, dict]] = None,
+        checkpoint_config: Optional[Union[CheckpointConfig, dict]] = None,
         trial_name_creator: Optional[Callable[["Trial"], str]] = None,
         trial_dirname_creator: Optional[Callable[["Trial"], str]] = None,
         log_to_file: bool = False,
@@ -157,8 +157,17 @@ class Experiment:
             self.dir_name = os.path.relpath(_experiment_checkpoint_dir, local_dir)
 
         config = config or {}
-        sync_config = sync_config or SyncConfig()
-        checkpoint_config = checkpoint_config or CheckpointConfig()
+
+        if isinstance(sync_config, dict):
+            sync_config = SyncConfig(**sync_config)
+        else:
+            sync_config = sync_config or SyncConfig()
+
+        if isinstance(checkpoint_config, dict):
+            checkpoint_config = CheckpointConfig(**checkpoint_config)
+        else:
+            checkpoint_config = checkpoint_config or CheckpointConfig()
+
         if (
             callable(run)
             and not inspect.isclass(run)
