@@ -118,6 +118,9 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
   if (event_stats_print_interval_ms > 0 && RayConfig::instance().event_stats()) {
     PrintAndRecordDebugDump();
   }
+  if (RayConfig::instance().metrics_report_interval_ms() > 0) {
+    RecordMetrics();
+  }
 }
 
 // TODO(pcm): Get rid of this destructor by using RAII to clean up data.
@@ -545,7 +548,6 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
 
 void PlasmaStore::PrintAndRecordDebugDump() const {
   absl::MutexLock lock(&mutex_);
-  RecordMetrics();
   RAY_LOG(INFO) << GetDebugDump();
   stats_timer_ = execute_after(
       io_context_,
@@ -554,8 +556,15 @@ void PlasmaStore::PrintAndRecordDebugDump() const {
 }
 
 void PlasmaStore::RecordMetrics() const {
-  // TODO(sang): Add metrics.
+  absl::MutexLock lock(&mutex_);
+  RAY_LOG(DEBUG) << "Exporting plasma store metrics.";
   object_lifecycle_mgr_.RecordMetrics();
+
+  // Schedule the next metric export callback
+  metrics_timer_ = execute_after(
+      io_context_,
+      [this]() { RecordMetrics(); },
+      RayConfig::instance().metrics_report_interval_ms());
 }
 
 std::string PlasmaStore::GetDebugDump() const {

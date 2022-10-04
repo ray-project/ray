@@ -281,6 +281,9 @@ class PlasmaStore {
   /// Timer for printing debug information.
   mutable std::shared_ptr<boost::asio::deadline_timer> stats_timer_ GUARDED_BY(mutex_);
 
+  /// Timer for metric exporting.
+  mutable std::shared_ptr<boost::asio::deadline_timer> metrics_timer_ GUARDED_BY(mutex_);
+
   /// Queue of object creation requests.
   CreateRequestQueue create_request_queue_ GUARDED_BY(mutex_);
 

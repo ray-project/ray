@@ -728,3 +728,13 @@ message NamedActorInfo {
   string ray_namespace = 1;
   string name = 2;
 }
+
+// Info about an object's location.
+// Currently used for metric exporting only.
+enum ObjectLocation {
+  // TODO(rickyx): seperate fallback memory from this enum
+  // Shared memory allocated + fallback memory allocated
+  IN_MEMORY = 0;
+  // Spilled to external storage
+  SPILLED = 1;
+}

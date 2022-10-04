@@ -26,6 +26,9 @@ void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
   const auto kSource = obj.GetSource();
 
   num_bytes_created_total_ += kObjectSize;
+  // TODO(rickyx):
+  // Add fallback memory accounting here.
+  num_bytes_in_memory_ += kObjectSize;
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_created_by_worker_++;
@@ -70,6 +73,8 @@ void ObjectStatsCollector::OnObjectSealed(const LocalObject &obj) {
 void ObjectStatsCollector::OnObjectDeleting(const LocalObject &obj) {
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
+
+  num_bytes_in_memory_ -= kObjectSize;
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_created_by_worker_--;
@@ -169,7 +174,12 @@ void ObjectStatsCollector::OnObjectRefDecreased(const LocalObject &obj) {
 }
 
 void ObjectStatsCollector::RecordMetrics() const {
-  // TODO(rickyx): Add metrics.
+  ray::stats::STATS_object_store_memory.Record(
+      num_bytes_in_memory_,
+      {{"Location", rpc::ObjectLocation_Name(rpc::ObjectLocation::IN_MEMORY)}});
+
+  // TODO(rickyx):
+  // Add fallback memory recording here.
 }
 
 void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {

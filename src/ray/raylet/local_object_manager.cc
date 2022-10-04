@@ -609,6 +609,7 @@ void LocalObjectManager::RecordMetrics() const {
   ray::stats::STATS_spill_manager_objects_bytes.Record(spilled_bytes_total_, "Spilled");
   ray::stats::STATS_spill_manager_objects_bytes.Record(restored_objects_total_,
                                                        "Restored");
+
   ray::stats::STATS_spill_manager_request_total.Record(spilled_objects_total_, "Spilled");
   ray::stats::STATS_spill_manager_request_total.Record(restored_objects_total_,
                                                        "Restored");
