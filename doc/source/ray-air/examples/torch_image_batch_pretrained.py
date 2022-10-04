@@ -39,4 +39,4 @@ preprocessor = BatchMapper(preprocess)
 ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
 
 predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
-predictor.predict(dataset, feature_columns=["image"])
+predictor.predict(dataset, feature_columns=["image"], batch_size=80)
