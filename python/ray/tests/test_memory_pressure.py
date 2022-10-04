@@ -403,7 +403,7 @@ def test_newer_task_not_retriable_kill_older_retriable_task_first(
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_filled_object_store_lowers_killing_threshold(ray_with_memory_monitor):
+def test_filled_object_store_lowers_available_heap_for_oom_trigger(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold_fraction + 0.05
     )
