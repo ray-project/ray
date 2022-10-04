@@ -8,8 +8,8 @@ Ray Datasets supports multiple ways to :ref:`create a dataset <creating_datasets
 allowing you to easily ingest data of common formats from popular sources. However, if the 
 datasource you want to read from is not in the built-in list, don't worry, you can implement 
 a custom one for your use case. In this guide, we will walk you through how to build 
-your own custom datasource, using MongoDB as an example. By the end of the guide, you will have a datasource
-that you can use as follows:
+your own custom datasource, using MongoDB as an example. By the end of the guide, you will have a
+datasource that you can use as follows:
 
 .. code-block:: python
 
@@ -17,8 +17,10 @@ that you can use as follows:
     # The args are passed to MongoDatasource.create_reader().
     ds = ray.data.read_datasource(
         MongoDatasource(),
-        uri=MY_URI, database=MY_DATABASE,
-        collection=MY_COLLECTION, pipelines=MY_QUERIES
+        uri=MY_URI,
+        database=MY_DATABASE,
+        collection=MY_COLLECTION,
+        pipelines=MY_QUERIES
     )
 
     # Write to custom MongoDB datasource.
@@ -27,13 +29,12 @@ that you can use as follows:
         MongoDatasource(), uri=MY_URI, database=MY_DATABASE, collection=MY_COLLECTION
     )
 
-
 A custom datasource is an implementation of :class:`~ray.data.Datasource`. In the 
 example here, let's call it ``MongoDatasource``. At a high level, it will have two 
 core parts to build out:
 
-* read support with :meth:`create_reader() <ray.data.Datasource.create_reader>`
-* write support with :meth:`do_write() <ray.data.Datasource.do_write>`.
+* Read support with :meth:`create_reader() <ray.data.Datasource.create_reader>`
+* Write support with :meth:`do_write() <ray.data.Datasource.do_write>`.
 
 Here are the key design choices we will make in this guide:
 
@@ -45,7 +46,7 @@ Here are the key design choices we will make in this guide:
 Read support
 ------------
 
-To support reading, we implement :meth:`create_reader() <ray.data.Datasource.create_reader>`, returning a :class:`~ray.data.Datasource.Reader` implementation for 
+To support reading, we implement :meth:`create_reader() <ray.data.Datasource.create_reader>`, returning a :class:`~ray.data.datasource.Reader` implementation for
 MongoDB. This ``Reader`` creates a list of :class:`~ray.data.ReadTask` for the given 
 list of MongoDB queries. Each :class:`~ray.data.ReadTask` returns a list of blocks when called, and
 each :class:`~ray.data.ReadTask` is executed in remote workers to parallelize the execution.
@@ -57,7 +58,7 @@ First, let's handle a single MongoDB query, which is the unit of execution in
 and then convert results into Arrow format. We use ``PyMongo`` and  ``PyMongoArrow``
 to achieve this.
 
-Read more about `the PyMongoArrow function here <https://mongo-arrow.readthedocs.io/en/stable/api/api.html#pymongoarrow.api.aggregate_arrow_all>`__.
+Read more about the `PyMongoArrow function here <https://mongo-arrow.readthedocs.io/en/stable/api/api.html#pymongoarrow.api.aggregate_arrow_all>`__.
 
 .. literalinclude:: ./doc_code/custom_datasource.py
     :language: python
@@ -66,13 +67,13 @@ Read more about `the PyMongoArrow function here <https://mongo-arrow.readthedocs
 
 Once we have this building block, we can just apply it for each of the provided MongoDB 
 queries. In particular, below, we construct a `_MongoDatasourceReader` by subclassing
-a :class:`~ray.data.Datasource.Reader`, and we implement `__init__` and `get_read_tasks`.
+a :class:`~ray.data.Datasource.Reader`, and we implement ``__init__`` and ``get_read_tasks``.
 
-In `__init__`, we pass in a couple arguments that will be eventually used in
-constructing the MongoDB query in `_read_single_query`.
+In ``__init__``, we pass in a couple arguments that will be eventually used in
+constructing the MongoDB query in ``_read_single_query``.
 
-In `get_read_tasks`, we construct a `ReadTask` object for each `query` ("pipeline") object.
-A list of `ReadTask` objects are returned at the end of the function call, and these
+In ``get_read_tasks``, we construct a :class:`~ray.data.ReadTask` object for each ``query`` ("pipeline") object.
+A list of :class:`~ray.data.ReadTask` objects are returned at the end of the function call, and these
 tasks are executed on remote workers by the Datasets execution engine (not shown).
 
 .. literalinclude:: ./doc_code/custom_datasource.py
