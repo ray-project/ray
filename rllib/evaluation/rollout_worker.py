@@ -1,3 +1,4 @@
+from collections import defaultdict
 import copy
 import logging
 import os
@@ -41,6 +42,7 @@ from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
+from ray.rllib.utils.filter import NoFilter
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list, merge_dicts
@@ -610,6 +612,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 f"is ignored."
             )
 
+        self.filters: Dict[PolicyID, Filter] = defaultdict(NoFilter)
+
         self._build_policy_map(
             self.policy_dict,
             policy_config,
@@ -635,25 +639,6 @@ class RolloutWorker(ParallelIteratorWorker):
                     f"Have multiple policies {self.policy_map}, but the "
                     f"env {self.env} is not a subclass of BaseEnv, "
                     f"MultiAgentEnv, ActorHandle, or ExternalMultiAgentEnv!"
-                )
-
-        # TODO(jungong) : clean up after non-connector env_runner is fully deprecated.
-        self.filters: Dict[PolicyID, Filter] = {}
-        for (policy_id, policy) in self.policy_map.items():
-            if not policy_config.get("enable_connectors"):
-                filter_shape = tree.map_structure(
-                    lambda s: (
-                        None
-                        if isinstance(s, (Discrete, MultiDiscrete))  # noqa
-                        else np.array(s.shape)
-                    ),
-                    policy.observation_space_struct,
-                )
-                self.filters[policy_id] = get_filter(
-                    self.policy_map[policy_id].config.get(
-                        "observation_filter", "NoFilter"
-                    ),
-                    filter_shape,
                 )
 
         if self.worker_index == 0:
