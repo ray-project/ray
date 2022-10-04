@@ -2507,7 +2507,7 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
 }
 
 void NodeManager::HandleCommitGeneratorObjects(
-    const rpc::CommitGeneratorObjectsRequest &request,
+    rpc::CommitGeneratorObjectsRequest request,
     rpc::CommitGeneratorObjectsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const auto generator_id = ObjectID::FromBinary(request.generator_id());
@@ -2517,7 +2517,7 @@ void NodeManager::HandleCommitGeneratorObjects(
 }
 
 void NodeManager::HandleAbortGeneratorObjects(
-    const rpc::AbortGeneratorObjectsRequest &request,
+    rpc::AbortGeneratorObjectsRequest request,
     rpc::AbortGeneratorObjectsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const auto generator_id = ObjectID::FromBinary(request.generator_id());

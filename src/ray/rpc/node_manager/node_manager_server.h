@@ -125,11 +125,11 @@ class NodeManagerServiceHandler {
                                   PinObjectIDsReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleCommitGeneratorObjects(const CommitGeneratorObjectsRequest &request,
+  virtual void HandleCommitGeneratorObjects(CommitGeneratorObjectsRequest request,
                                             CommitGeneratorObjectsReply *reply,
                                             SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleAbortGeneratorObjects(const AbortGeneratorObjectsRequest &request,
+  virtual void HandleAbortGeneratorObjects(AbortGeneratorObjectsRequest request,
                                            AbortGeneratorObjectsReply *reply,
                                            SendReplyCallback send_reply_callback) = 0;
 

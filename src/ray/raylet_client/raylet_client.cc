@@ -512,7 +512,7 @@ void raylet::RayletClient::CommitOrAbortGeneratorObjects(
     request.set_generator_id(generator_id.Binary());
     grpc_client_->CommitGeneratorObjects(
         request,
-        [this, callback](Status status, const rpc::CommitGeneratorObjectsReply &reply) {
+        [callback](Status status, const rpc::CommitGeneratorObjectsReply &reply) {
           callback(reply.success());
         });
   } else {
@@ -520,7 +520,7 @@ void raylet::RayletClient::CommitOrAbortGeneratorObjects(
     request.set_generator_id(generator_id.Binary());
     grpc_client_->AbortGeneratorObjects(
         request,
-        [this, callback](Status status, const rpc::AbortGeneratorObjectsReply &reply) {
+        [callback](Status status, const rpc::AbortGeneratorObjectsReply &reply) {
           // Abort requests should always succeed because either
           // the raylet is dead or it succeeded in erasing the
           // objects.
