@@ -233,13 +233,13 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
         other: Union[Sequence[StreamType], "NestedDict"],
         ignore_missing: bool = False,
     ) -> "NestedDict":
-        """Returns a NestedDict with only entries present in `other`. 
+        """Returns a NestedDict with only entries present in `other`.
         The values in the `other` NestedDict are ignored. Only the keys are used.
 
         Args:
             other: a NestedDict or a sequence of keys to filter by.
             ignore_missing: if True, ignore missing keys in `other`.
-        
+
         Returns:
             A NestedDict with only keys present in `other`.
         """
