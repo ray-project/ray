@@ -30,10 +30,12 @@ class WorkerKillerTest : public ::testing::Test {
   MemoryMonitor memory_monitor_ = {
       io_context_,
       0 /*usage_threshold*/,
+      0 /*max_overhead_bytes*/,
       0 /*refresh_interval_ms*/,
       [](bool is_usage_above_threshold,
          MemorySnapshot system_memory,
-         float usage_threshold) { FAIL() << "Monitor should not be running"; }};
+         float usage_threshold) { FAIL() << "Monitor should not be running"; },
+      []() { return 0; }};
   int32_t port_ = 2389;
   RetriableLIFOWorkerKillingPolicy worker_killing_policy_;
 
