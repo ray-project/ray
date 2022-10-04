@@ -387,9 +387,17 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, durable):
     )
 
     exp1_args = base_dict
-    exp2_args = dict(base_dict.items(), local_dir=dirpath, checkpoint_freq=1)
+    exp2_args = dict(
+        base_dict.items(),
+        local_dir=dirpath,
+        checkpoint_config=dict(checkpoint_frequency=1),
+    )
     exp3_args = dict(base_dict.items(), config=dict(mock_error=True))
-    exp4_args = dict(base_dict.items(), config=dict(mock_error=True), checkpoint_freq=1)
+    exp4_args = dict(
+        base_dict.items(),
+        config=dict(mock_error=True),
+        checkpoint_config=dict(checkpoint_frequency=1),
+    )
 
     all_experiments = {
         "exp1": exp1_args,

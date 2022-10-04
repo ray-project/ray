@@ -296,6 +296,9 @@ class Experiment:
         if "sync_config" in spec and isinstance(spec["sync_config"], dict):
             spec["sync_config"] = SyncConfig(**spec["sync_config"])
 
+        if "checkpoint_config" in spec and isinstance(spec["checkpoint_config"], dict):
+            spec["checkpoint_config"] = CheckpointConfig(**spec["checkpoint_config"])
+
         spec = copy.deepcopy(spec)
 
         run_value = spec.pop("run")
