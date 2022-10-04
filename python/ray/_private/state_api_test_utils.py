@@ -152,7 +152,7 @@ def aggregate_perf_results(state_stats: StateAPIStats = GLOBAL_STATE_STATS):
     return perf_result
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class StateAPIGeneratorActor:
     def __init__(
         self,
