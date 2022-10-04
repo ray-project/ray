@@ -15,7 +15,13 @@
 
 import abc
 from typing import Optional, Tuple
+
 from ray.rllib.models.temp_spec_classes import TensorDict, SpecDict, ModelConfig
+from ray.rllib.utils.annotations import (
+    DeveloperAPI,
+    OverrideToImplementCustomLogic,
+    PublicAPI,
+)
 
 
 ForwardOutputType = TensorDict
@@ -55,30 +61,41 @@ class RecurrentModel(abc.ABC):
         self._name = name or self.__class__.__name__
 
     @property
+    @PublicAPI
+    @OverrideToImplementCustomLogic
     def name(self) -> str:
         """Returns the name of this module."""
         return self._name
 
     @property
+    @PublicAPI
+    @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def input_spec(self) -> SpecDict:
         """Returns the spec of the input of this module."""
 
     @property
+    @PublicAPI
+    @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def prev_state_spec(self) -> SpecDict:
         """Returns the spec of the prev_state of this module."""
 
     @property
+    @PublicAPI
+    @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def output_spec(self) -> SpecDict:
         """Returns the spec of the output of this module."""
 
     @property
+    @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def next_state_spec(self) -> SpecDict:
         """Returns the spec of the next_state of this module."""
 
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def _initial_state(self) -> TensorDict:
         """Initial state of the component.
@@ -91,6 +108,7 @@ class RecurrentModel(abc.ABC):
             A TensorDict containing the state before the first step.
         """
 
+    @PublicAPI
     def initial_state(self) -> TensorDict:
         """Initial state of the component.
         If this component returns a next_state in its unroll function, then
@@ -107,6 +125,8 @@ class RecurrentModel(abc.ABC):
         self.next_state_spec.validate(initial_state)
         return initial_state
 
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def _unroll(
         self, inputs: TensorDict, prev_state: TensorDict, **kwargs
@@ -119,6 +139,7 @@ class RecurrentModel(abc.ABC):
             inputs: A TensorDict of inputs
             prev_state: A TensorDict containing the next_state of the last
                 timestep of the previous unroll.
+            kwargs: For forwards compatibility
 
         Returns:
             outputs: A TensorDict of outputs
@@ -126,6 +147,7 @@ class RecurrentModel(abc.ABC):
                 as the first state of the next rollout.
         """
 
+    @PublicAPI
     def unroll(
         self, inputs: TensorDict, prev_state: TensorDict, **kwargs
     ) -> UnrollOutputType:
@@ -135,6 +157,7 @@ class RecurrentModel(abc.ABC):
             inputs: A TensorDict containing inputs to the model
             prev_state: A TensorDict containing containing the
                 next_state of the last timestep of the previous unroll.
+            kwargs: For forwards compatibility
 
         Returns:
             outputs: A TensorDict containing model outputs
@@ -159,6 +182,8 @@ class RecurrentModel(abc.ABC):
         outputs, next_state = self._check_outputs_and_next_state(outputs, next_state)
         return outputs, next_state
 
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
     def _check_inputs_and_prev_state(
         self, inputs: TensorDict, prev_state: TensorDict
     ) -> Tuple[TensorDict, TensorDict]:
@@ -174,6 +199,8 @@ class RecurrentModel(abc.ABC):
         """
         return inputs, prev_state
 
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
     def _check_outputs_and_next_state(
         self, outputs: TensorDict, next_state: TensorDict
     ) -> Tuple[TensorDict, TensorDict]:
@@ -222,6 +249,8 @@ class Model(RecurrentModel):
         inputs = self._check_inputs(inputs)
         return inputs, prev_state
 
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
     def _check_inputs(self, inputs: TensorDict) -> TensorDict:
         """Override this function to add additional checks on inputs.
 
@@ -239,6 +268,8 @@ class Model(RecurrentModel):
         outputs = self._check_outputs(outputs)
         return outputs, next_state
 
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
     def _check_outputs(self, outputs: TensorDict) -> TensorDict:
         """Override this function to add additional checks on outputs.
 
@@ -257,12 +288,15 @@ class Model(RecurrentModel):
         outputs = self._forward(inputs, **kwargs)
         return outputs, TensorDict()
 
+    @DeveloperAPI
+    @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def _forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
         """Computes the output of this module for each timestep.
 
         Args:
             inputs: A TensorDict containing model inputs
+            kwargs: For forwards compatibility
 
         Returns:
             outputs: A TensorDict containing model outputs
@@ -284,10 +318,12 @@ class ModelIO(abc.ABC):
     def __init__(self, config: ModelConfig) -> None:
         self._config = config
 
+    @DeveloperAPI
     @property
     def config(self) -> ModelConfig:
         return self._config
 
+    @PublicAPI
     @abc.abstractmethod
     def save(self, path: str) -> None:
         """Save model weights to a path
@@ -300,6 +336,7 @@ class ModelIO(abc.ABC):
         """
         raise NotImplementedError
 
+    @PublicAPI
     @abc.abstractmethod
     def load(self, path: str) -> RecurrentModel:
         """Load model weights from a path
