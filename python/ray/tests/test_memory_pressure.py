@@ -12,6 +12,7 @@ from ray._private.test_utils import get_node_stats, wait_for_condition
 
 
 memory_usage_threshold_fraction = 0.65
+max_overhead_bytes = -1
 task_oom_retries = 1
 memory_monitor_interval_ms = 100
 object_store_memory = 3 * 1024 * 1024 * 1024
@@ -27,6 +28,7 @@ def ray_with_memory_monitor(shutdown_only):
         object_store_memory=object_store_memory,
         _system_config={
             "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
+            "max_overhead_bytes": -1,
             "memory_monitor_interval_ms": memory_monitor_interval_ms,
             "metrics_report_interval_ms": 100,
             "task_failure_entry_ttl_ms": 2 * 60 * 1000,
@@ -403,7 +405,9 @@ def test_newer_task_not_retriable_kill_older_retriable_task_first(
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_filled_object_store_lowers_available_heap_for_oom_trigger(ray_with_memory_monitor):
+def test_filled_object_store_lowers_available_heap_for_oom_trigger(
+    ray_with_memory_monitor,
+):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold_fraction + 0.05
     )

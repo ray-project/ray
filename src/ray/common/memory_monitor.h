@@ -66,7 +66,8 @@ class MemoryMonitor {
   /// \param monitor_interval_ms the frequency to update the usage. 0 disables the
   /// the monitor and callbacks won't fire.
   /// \param monitor_callback function to execute on a dedicated thread owned by this
-  /// monitor when the usage is refreshed.
+  /// \param object_store_memory_usage_fetcher function read the current object store
+  /// memory usage. monitor when the usage is refreshed.
   MemoryMonitor(instrumented_io_context &io_service,
                 float usage_threshold,
                 int64_t max_overhead_bytes,
@@ -97,7 +98,8 @@ class MemoryMonitor {
   /// \return the used and total memory in bytes.
   std::tuple<int64_t, int64_t> GetMemoryBytes();
 
-  /// \return memory limit in bytes from Cgroup or kNull if it is not in cgroup or no limit is set.
+  /// \return memory limit in bytes from Cgroup or kNull if it is not in cgroup or no
+  /// limit is set.
   int64_t GetCGroupMemoryLimitBytes();
 
   /// \return the used and total memory in bytes for linux OS.
@@ -113,10 +115,16 @@ class MemoryMonitor {
   static int64_t NullableMin(int64_t left, int64_t right);
 
   /// Computes the memory threshold, where
-  /// Memory usage threshold = max(total_memory * usage_threshold_, total_memory - max_overhead_bytes)
+  /// Memory usage threshold = max(total_memory * usage_threshold_, total_memory -
+  /// max_overhead_bytes)
+  /// \param total_memory_bytes the total amount of memory available in the system.
+  /// \param usage_threshold a value in [0-1] to indicate the max usage.
+  /// \param max_overhead_bytes the maximum amount of free space to retain before killing.
   ///
   /// \return the memory threshold.
-  static int64_t GetMemoryThreshold(int64_t total_memory_bytes, float usage_threshold_, int64_t max_overhead_bytes);
+  static int64_t GetMemoryThreshold(int64_t total_memory_bytes,
+                                    float usage_threshold,
+                                    int64_t max_overhead_bytes);
 
  private:
   FRIEND_TEST(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold);
@@ -124,11 +132,15 @@ class MemoryMonitor {
   FRIEND_TEST(MemoryMonitorTest, TestUsageAtThresholdReportsTrue);
   FRIEND_TEST(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive);
   FRIEND_TEST(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
+  FRIEND_TEST(MemoryMonitorTest, TestZeroMaxOverheadMeansThresholdIsMax);
+  FRIEND_TEST(MemoryMonitorTest, TestMonitorPeriodSetCallbackExecuted);
+  FRIEND_TEST(MemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues);
 
   /// Memory usage fraction between [0, 1]
   const float usage_threshold_;
 
-  /// Indicates the maximum amount of overhead to retain before consider it to be crossing the threshold.
+  /// Indicates the maximum amount of overhead to retain before consider it to be crossing
+  /// the threshold.
   const int64_t max_overhead_bytes_;
 
   /// Callback function that executes at each monitoring interval,

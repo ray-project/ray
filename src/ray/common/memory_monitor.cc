@@ -65,7 +65,8 @@ MemoryMonitor::MemoryMonitor(
 }
 
 bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory) {
-  int64_t threshold_bytes = GetMemoryThreshold(system_memory.total_bytes, usage_threshold_, max_overhead_bytes_);
+  int64_t threshold_bytes = GetMemoryThreshold(
+      system_memory.total_bytes, usage_threshold_, max_overhead_bytes_);
   int64_t heap_used_memory_bytes = system_memory.heap_used_bytes;
   int64_t total_memory_bytes = system_memory.total_bytes;
   if (total_memory_bytes == kNull || heap_used_memory_bytes == kNull) {
@@ -74,9 +75,10 @@ bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory) {
         << "to detect memory usage above threshold.";
     return false;
   }
-  bool is_usage_above_threshold = system_memory.GetTotalUsedBytes() > threshold_bytes;
+  bool is_usage_above_threshold = system_memory.GetTotalUsedBytes() >= threshold_bytes;
   if (is_usage_above_threshold) {
-    RAY_LOG(INFO) << "Node memory usage above threshold, heap used: " << system_memory.heap_used_bytes
+    RAY_LOG(INFO) << "Node memory usage above threshold, heap used: "
+                  << system_memory.heap_used_bytes
                   << ", object store used: " << system_memory.object_store_used_bytes
                   << ", total used: " << system_memory.GetTotalUsedBytes()
                   << ", threshold: " << threshold_bytes
@@ -96,11 +98,10 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   /// limit. TODO(clarng): find a better way to detect cgroup memory limit is used.
   system_total_bytes = NullableMin(system_total_bytes, cgroup_total_bytes);
 
-  // We always take the used memory from system, which excludes cached and buffers.
-  // Cgroup used memory includes cached and buffers and it does not accurately represent
-  // when the OS OOM killer triggers, which ignores cached and buffers. We could
-  // calculcate Cgroup used memory from memory.stats but those numbers are the same
-  // as meminfo, which is what GetLinuxMemoryBytes() uses.
+  // We always take the used memory from system, which excludes page cache and buffers.
+  // Cgroup used memory includes page cache and buffers and it does not accurately
+  // represent what the OS OOM killer sees. We could calculcate Cgroup used memory from
+  // memory.stats but those numbers are the same as meminfo, so we just use that here.
   return std::tuple(system_used_bytes, system_total_bytes);
 }
 
@@ -121,7 +122,6 @@ int64_t MemoryMonitor::GetCGroupMemoryLimitBytes() {
 
   return total_bytes;
 }
-
 
 std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
   std::string meminfo_path = "/proc/meminfo";
@@ -248,13 +248,15 @@ int64_t MemoryMonitor::NullableMin(int64_t left, int64_t right) {
   }
 }
 
-int64_t MemoryMonitor::GetMemoryThreshold(int64_t total_memory_bytes, float usage_threshold_, int64_t max_overhead_bytes) {
+int64_t MemoryMonitor::GetMemoryThreshold(int64_t total_memory_bytes,
+                                          float usage_threshold,
+                                          int64_t max_overhead_bytes) {
   RAY_CHECK_GE(total_memory_bytes, kNull);
   RAY_CHECK_GE(max_overhead_bytes, kNull);
-  RAY_CHECK_GE(usage_threshold_, 0);
-  RAY_CHECK_LE(usage_threshold_, 1);
+  RAY_CHECK_GE(usage_threshold, 0);
+  RAY_CHECK_LE(usage_threshold, 1);
 
-  int64_t threshold_fraction = (int64_t) (total_memory_bytes * usage_threshold_);
+  int64_t threshold_fraction = (int64_t)(total_memory_bytes * usage_threshold);
 
   if (max_overhead_bytes > kNull) {
     int64_t threshold_absolute = total_memory_bytes - max_overhead_bytes;
