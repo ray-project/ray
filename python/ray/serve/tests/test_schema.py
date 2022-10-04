@@ -204,27 +204,7 @@ class TestDeploymentSchema:
     def get_minimal_deployment_schema(self):
         # Generate a DeploymentSchema with the fewest possible attributes set
 
-        return {
-            "name": "deep",
-            "num_replicas": None,
-            "route_prefix": None,
-            "max_concurrent_queries": None,
-            "user_config": None,
-            "autoscaling_config": None,
-            "graceful_shutdown_wait_loop_s": None,
-            "graceful_shutdown_timeout_s": None,
-            "health_check_period_s": None,
-            "health_check_timeout_s": None,
-            "ray_actor_options": {
-                "runtime_env": {},
-                "num_cpus": None,
-                "num_gpus": None,
-                "memory": None,
-                "object_store_memory": None,
-                "resources": {},
-                "accelerator_type": None,
-            },
-        }
+        return {"name": "deep"}
 
     def test_valid_deployment_schema(self):
         # Ensure a valid DeploymentSchema can be generated
@@ -362,6 +342,33 @@ class TestDeploymentSchema:
         with pytest.raises(ValidationError):
             DeploymentSchema.parse_obj(deployment_schema)
 
+    @pytest.mark.parametrize(
+        "option",
+        [
+            "num_replicas",
+            "route_prefix",
+            "autoscaling_config",
+            "user_config",
+        ],
+    )
+    def test_nullable_options(self, option: str):
+        """Check that nullable options can be set to None."""
+
+        deployment_options = {"name": "test", option: None}
+
+        # One of "num_replicas" or "autoscaling_config" must be provided.
+        if option == "num_replicas":
+            deployment_options["autoscaling_config"] = {
+                "min_replicas": 1,
+                "max_replicas": 5,
+                "target_num_ongoing_requests_per_replica": 5,
+            }
+        elif option == "autoscaling_config":
+            deployment_options["num_replicas"] = 5
+
+        # Schema should be created without error.
+        DeploymentSchema.parse_obj(deployment_options)
+
 
 class TestServeApplicationSchema:
     def get_valid_serve_application_schema(self):
@@ -403,24 +410,6 @@ class TestServeApplicationSchema:
                 },
                 {
                     "name": "deep",
-                    "num_replicas": None,
-                    "route_prefix": None,
-                    "max_concurrent_queries": None,
-                    "user_config": None,
-                    "autoscaling_config": None,
-                    "graceful_shutdown_wait_loop_s": None,
-                    "graceful_shutdown_timeout_s": None,
-                    "health_check_period_s": None,
-                    "health_check_timeout_s": None,
-                    "ray_actor_options": {
-                        "runtime_env": {},
-                        "num_cpus": None,
-                        "num_gpus": None,
-                        "memory": None,
-                        "object_store_memory": None,
-                        "resources": {},
-                        "accelerator_type": None,
-                    },
                 },
             ],
         }

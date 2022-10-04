@@ -138,3 +138,9 @@ class TestReadImages:
         ), "encoding ratio is out of expected bound"
         data_size = reader.estimate_inmemory_data_size()
         assert data_size >= 0, "estimated data size is out of expected bound"
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
