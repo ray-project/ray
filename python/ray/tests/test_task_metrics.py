@@ -351,22 +351,23 @@ import os
 
 ray.init("auto")
 
-@ray.remote(num_retries=0)
+@ray.remote
 def f():
     print("RUNNING FAILING TASK")
     os._exit(1)
 
-@ray.remote(num_retries=0)
-def g(x):
-    pass
+@ray.remote
+def g():
+    assert False
 
-g.remote(f.remote())
+f.remote()
+g.remote()
 time.sleep(999)
 """
 
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
-        "FINISHED": 1.0,  # Only recorded as finished once.
+        "FAILED": 2.0,
     }
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
