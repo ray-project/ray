@@ -1,20 +1,20 @@
 # flake8: noqa
 
 # fmt: off
-# __read_single_query_start__
+# __read_single_partition_start__
 from ray.data.block import Block
 
-# This connects to MongoDB, executes the query against it, converts the result into
+# This connects to MongoDB, executes the pipeline against it, converts the result into
 # Arrow format and returns the result as a Block.
-def _read_single_query(uri, database, collection, query, schema, kwargs) -> Block:
+def _read_single_partition(uri, database, collection, pipeline, schema, kwargs) -> Block:
     import pymongo
     from pymongoarrow.api import aggregate_arrow_all
 
     client = pymongo.MongoClient(uri)
     return aggregate_arrow_all(
-        client[database][collection], query, schema=schema, **kwargs
+        client[database][collection], pipeline, schema=schema, **kwargs
     )
-# __read_single_query_end__
+# __read_single_partition_end__
 # fmt: on
 
 # fmt: off
@@ -30,13 +30,12 @@ class _MongoDatasourceReader(Reader):
         self._uri = uri
         self._database = database
         self._collection = collection
-        # Note: In this example, "pipeline" is used synonymously with "query"
         self._pipelines = pipelines
         self._schema = schema
         self._kwargs = kwargs
 
-    # Create a list of ``ReadTask``, one for each query (i.e. pipeline in MongoDB's
-    # specific context). Those tasks will be executed in parallel.
+    # Create a list of ``ReadTask``, one for each pipeline (i.e. a partition of
+    # the MongoDB collection). Those tasks will be executed in parallel.
     # The ``parallelism`` which is supposed to indicate how many ``ReadTask`` to
     # return will have no effect here, since we map each query into a ``ReadTask``.
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
@@ -53,7 +52,7 @@ class _MongoDatasourceReader(Reader):
                 lambda uri=self._uri, database=self._database,
                        collection=self._collection, pipeline=pipeline,
                        schema=self._schema, kwargs=self._kwargs: [
-                    _read_single_query(
+                    _read_single_partition(
                         uri, database, collection, pipeline, schema, kwargs
                     )
                 ],
@@ -67,7 +66,7 @@ class _MongoDatasourceReader(Reader):
 # fmt: off
 # __write_single_block_start__
 # This connects to MongoDB and writes a block into it.
-# Note this is an insertion, that is each record in the block are treated as
+# Note this is an insertion, i.e. each record in the block are treated as
 # new document to the MongoDB.
 def _write_single_block(uri, database, collection, block: Block):
     import pymongo

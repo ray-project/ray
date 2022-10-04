@@ -20,7 +20,7 @@ datasource that you can use as follows:
         uri=MY_URI,
         database=MY_DATABASE,
         collection=MY_COLLECTION,
-        pipelines=MY_QUERIES
+        pipelines=MY_PIPELINES
     )
 
     # Write to custom MongoDB datasource.
@@ -39,8 +39,43 @@ core parts to build out:
 Here are the key design choices we will make in this guide:
 
 -  **MongoDB connector**: We use `PyMongo <https://pymongo.readthedocs.io/en/stable/>`__ to connect to MongoDB.
--  **MongoDB to Arrow conversion**: We use `PyMongoArrow <https://mongo-arrow.readthedocs.io/en/latest/>`__ to convert query results into Arrow tables, which Datasets supports as a block format.
--  **Parallel execution**: We ask the user to provide a list of MongoDB queries, with each corresponding to a read task (i.e. a :class:`~ray.data.ReadTask`) that Datasets will execute in parallel.
+-  **MongoDB to Arrow conversion**: We use `PyMongoArrow <https://mongo-arrow.readthedocs.io/en/latest/>`__ to convert query results into Arrow tables, which Datasets supports as a data format.
+-  **Parallel execution**: We ask the user to provide a list of MongoDB pipelines, with each corresponding to a partition of the MongoDB collection, which will be executed in parallel with :class:`~ray.data.ReadTask`.
+
+For example, suppose you have a MongoDB collection with 4 documents, which has ``_id`` field 0, 1, 2, 3. You can compose two MongoDB pipelines as follows to read the collection in parallel:
+
+.. code-block:: python
+  [
+      # The first pipeline: reading partition range [0, 2)
+      [
+        {
+          "$match": {
+              "_id": {
+                  "$gte": 0
+                  "$lt": 2
+              }
+          }
+        }
+      ],
+      # The second pipeline: reading partition range [2, 4)
+      [
+        {
+          "$match": {
+              "_id": {
+                  "$gte": 2
+                  "$lt": 4 
+              }
+  
+          }
+        }
+      ],
+  ]
+
+
+For the MongoDB concepts involved, you can find more details:
+ - URI: https://www.mongodb.com/docs/manual/reference/connection-string/
+ - Database and Collection: https://www.mongodb.com/docs/manual/core/databases-and-collections/
+ - Pipeline: https://www.mongodb.com/docs/manual/core/aggregation-pipeline/
 
 ------------
 Read support
@@ -48,31 +83,31 @@ Read support
 
 To support reading, we implement :meth:`create_reader() <ray.data.Datasource.create_reader>`, returning a :class:`~ray.data.datasource.Reader` implementation for
 MongoDB. This ``Reader`` creates a list of :class:`~ray.data.ReadTask` for the given 
-list of MongoDB queries. Each :class:`~ray.data.ReadTask` returns a list of blocks when called, and
+list of MongoDB pipelines. Each :class:`~ray.data.ReadTask` returns a list of blocks when called, and
 each :class:`~ray.data.ReadTask` is executed in remote workers to parallelize the execution.
 
 You can find documentation about :ref:`Ray Datasets block concept here <dataset_concept>` and the :ref:`blocks APIs here <block-api>`.
 
-First, let's handle a single MongoDB query, which is the unit of execution in
+First, let's handle a single MongoDB pipeline, which is the unit of execution in
 :class:`~ray.data.ReadTask`. We need to connect to MongoDB, execute the query against it,
 and then convert results into Arrow format. We use ``PyMongo`` and  ``PyMongoArrow``
 to achieve this.
 
-Read more about the `PyMongoArrow function here <https://mongo-arrow.readthedocs.io/en/stable/api/api.html#pymongoarrow.api.aggregate_arrow_all>`__.
+Read more about the `PyMongoArrow read function here <https://mongo-arrow.readthedocs.io/en/stable/api/api.html#pymongoarrow.api.aggregate_arrow_all>`__.
 
 .. literalinclude:: ./doc_code/custom_datasource.py
     :language: python
-    :start-after: __read_single_query_start__
-    :end-before: __read_single_query_end__
+    :start-after: __read_single_partition_start__ 
+    :end-before: __read_single_partition_end__
 
 Once we have this building block, we can just apply it for each of the provided MongoDB 
-queries. In particular, below, we construct a `_MongoDatasourceReader` by subclassing
-a :class:`~ray.data.Datasource.Reader`, and we implement ``__init__`` and ``get_read_tasks``.
+pipelines. In particular, below, we construct a `_MongoDatasourceReader` by subclassing
+:class:`~ray.data.Datasource.Reader`, and implement the ``__init__`` and ``get_read_tasks``.
 
 In ``__init__``, we pass in a couple arguments that will be eventually used in
-constructing the MongoDB query in ``_read_single_query``.
+constructing the MongoDB pipeline in ``_read_single_query``.
 
-In ``get_read_tasks``, we construct a :class:`~ray.data.ReadTask` object for each ``query`` ("pipeline") object.
+In ``get_read_tasks``, we construct a :class:`~ray.data.ReadTask` object for each ``pipeline`` object.
 A list of :class:`~ray.data.ReadTask` objects are returned at the end of the function call, and these
 tasks are executed on remote workers by the Datasets execution engine (not shown).
 
@@ -91,7 +126,7 @@ Write support
 Similar to read support, we start with handling a single block. Again 
 the ``PyMongo`` and  ``PyMongoArrow`` are used for MongoDB interactions.
 
-Read more about the `PyMongoArrow function call <https://mongo-arrow.readthedocs.io/en/stable/api/api.html#pymongoarrow.api.write>`__.
+Read more about the `PyMongoArrow write function here <https://mongo-arrow.readthedocs.io/en/stable/api/api.html#pymongoarrow.api.write>`__.
 
 .. literalinclude:: ./doc_code/custom_datasource.py
     :language: python
@@ -135,8 +170,10 @@ any other datasource!
     # The args are passed to MongoDatasource.create_reader().
     ds = ray.data.read_datasource(
         MongoDatasource(),
-        uri=MY_URI, database=MY_DATABASE,
-        collection=MY_COLLECTION, pipelines=MY_QUERIES
+        uri=MY_URI,
+        database="my_db",
+        collection=="my_collection",
+        pipelines=[[{"$match": {"_id": {"$gte": 0, "$lt": 2}}}], [{"$match": {"_id": {"$gte": 2, "$lt": 4}}}]]
     )
 
     # Data processing with Dataset APIs
@@ -145,5 +182,5 @@ any other datasource!
     # Write to MongoDB datasource.
     # The args are passed to MongoDatasource.do_write().
     ds.write_datasource(
-        MongoDatasource(), uri=MY_URI, database=MY_DATABASE, collection=MY_COLLECTION
+        MongoDatasource(), uri=MY_URI, database="my_db", collection="my_collection"
     )
