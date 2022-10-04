@@ -286,6 +286,7 @@ def test_torch_amp_performance(ray_start_4_cpus_2_gpus):
     def train_func(config):
         train.torch.accelerate(amp=config["amp"])
 
+        start_time = timer()
         model = torchvision.models.resnet101()
         model = train.torch.prepare_model(model)
 
@@ -310,6 +311,8 @@ def test_torch_amp_performance(ray_start_4_cpus_2_gpus):
 
                 train.torch.backward(loss)
                 optimizer.step()
+        end_time = timer()
+        session.report({"latency": end_time - start_time})
 
     def latency(amp: bool) -> float:
         trainer = TorchTrainer(
@@ -317,10 +320,8 @@ def test_torch_amp_performance(ray_start_4_cpus_2_gpus):
             train_loop_config={"amp": amp},
             scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
         )
-        start_time = timer()
-        trainer.fit()
-        end_time = timer()
-        return end_time - start_time
+        results = trainer.fit()
+        return results.metrics["latency"]
 
     # Training should be at least 5% faster with AMP.
     assert 1.05 * latency(amp=True) < latency(amp=False)
