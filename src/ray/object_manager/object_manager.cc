@@ -239,9 +239,10 @@ void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
 }
 
 uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_refs,
-                             BundlePriority prio) {
+                             BundlePriority prio,
+                             const std::string &task_name) {
   std::vector<rpc::ObjectReference> objects_to_locate;
-  auto request_id = pull_manager_->Pull(object_refs, prio, &objects_to_locate);
+  auto request_id = pull_manager_->Pull(object_refs, prio, task_name, &objects_to_locate);
 
   const auto &callback = [this](const ObjectID &object_id,
                                 const std::unordered_set<NodeID> &client_ids,
@@ -292,16 +293,17 @@ void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &cli
               pull_request,
               [object_id, client_id](const Status &status, const rpc::PullReply &reply) {
                 if (!status.ok()) {
-                  RAY_LOG(WARNING) << "Send pull " << object_id << " request to client "
-                                   << client_id << " failed due to" << status.message();
+                  RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
+                      << "Send pull " << object_id << " request to client " << client_id
+                      << " failed due to" << status.message();
                 }
               });
         },
         "ObjectManager.SendPull");
   } else {
-    RAY_LOG(ERROR) << "Couldn't send pull request from " << self_node_id_ << " to "
-                   << client_id << " of object " << object_id
-                   << " , setup rpc connection failed.";
+    RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
+        << "Couldn't send pull request from " << self_node_id_ << " to " << client_id
+        << " of object " << object_id << " , setup rpc connection failed.";
   }
 }
 
