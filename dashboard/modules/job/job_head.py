@@ -41,8 +41,6 @@ from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,
 )
-from ray._private.event.event_logger import get_event_logger
-from ray.core.generated.event_pb2 import Event
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -141,9 +139,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         # from it unless `JobAgentSubmissionClient` is no
         # longer available (the corresponding agent process is dead)
         self._agents = dict()
-        self.event_logger = get_event_logger(
-            Event.SourceType.JOBS, self._dashboard_head.log_dir
-        )
 
     async def choose_agent(self) -> Optional[JobAgentSubmissionClient]:
         """
@@ -265,28 +260,16 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             )
             resp = await job_agent_client.submit_job_internal(submit_request)
         except asyncio.TimeoutError:
-            self.event_logger.error(
-                f"No Available agent to submit job. {resp.text()}",
-                submission_id=submit_request.submission_id,
-            )
             return Response(
                 text="Not Available agent to submit job!",
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
         except (TypeError, ValueError):
-            self.event_logger.error(
-                f"Failed to submit a job. {traceback.format_exc()}",
-                submission_id=submit_request.submission_id,
-            )
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
         except Exception:
-            self.event_logger.error(
-                f"Failed to submit a job. {traceback.format_exc()}",
-                submission_id=submit_request.submission_id,
-            )
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code,

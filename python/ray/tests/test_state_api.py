@@ -1851,32 +1851,33 @@ def test_list_get_workers(shutdown_only):
     print(list_workers())
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Failed on Windows",
-)
-def test_list_cluster_events(shutdown_only):
-    ray.init()
+# TODO(sang): Enable the test.
+# @pytest.mark.skipif(
+#     sys.platform == "win32",
+#     reason="Failed on Windows",
+# )
+# def test_list_cluster_events(shutdown_only):
+#     ray.init()
 
-    @ray.remote(num_gpus=1)
-    def f():
-        pass
+#     @ray.remote(num_gpus=1)
+#     def f():
+#         pass
 
-    f.remote()
+#     f.remote()
 
-    def verify():
-        events = list_cluster_events()
-        assert len(events) == 1
-        assert (
-            "event_summary:Error: No available node types can fulfill "
-            "resource request {'GPU': 1.0, 'CPU': 1.0}."
-        ) in events[0]["message"]
-        return True
+#     def verify():
+#         events = list_cluster_events()
+#         assert len(events) == 1
+#         assert (
+#             "event_summary:Error: No available node types can fulfill "
+#             "resource request {'GPU': 1.0, 'CPU': 1.0}."
+#         ) in events[0]["message"]
+#         return True
 
-    wait_for_condition(verify)
-    print(list_cluster_events())
+#     wait_for_condition(verify)
+#     print(list_cluster_events())
 
-    # TODO(sang): Support get_cluster_events
+#     # TODO(sang): Support get_cluster_events
 
 
 def test_list_get_tasks(shutdown_only):

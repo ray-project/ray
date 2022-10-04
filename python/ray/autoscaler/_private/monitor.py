@@ -15,7 +15,6 @@ from typing import Any, Callable, Dict, Optional, Union
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
-from ray._private.event.event_logger import get_event_logger
 from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.gcs_utils import GcsClient
 from ray._private.ray_logging import setup_component_logger
@@ -31,7 +30,6 @@ from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.util import format_readonly_node_type
 from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
-from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_del,
@@ -138,7 +136,6 @@ class Monitor:
         self,
         address: str,
         autoscaling_config: Union[str, Callable[[], Dict[str, Any]]],
-        logs_dir: str,
         redis_password: Optional[str] = None,
         prefix_cluster_info: bool = False,
         monitor_ip: Optional[str] = None,
@@ -187,7 +184,6 @@ class Monitor:
         # If set, we are in a manually created cluster (non-autoscaling) and
         # simply mirroring what the GCS tells us the cluster node types are.
         self.readonly_config = None
-        self.event_logger = get_event_logger(RayEvent.SourceType.AUTOSCALER, logs_dir)
 
         self.prom_metrics = AutoscalerPrometheusMetrics()
         if monitor_ip and prometheus_client:
@@ -387,11 +383,6 @@ class Monitor:
                                 "{}{}".format(
                                     ray_constants.LOG_PREFIX_EVENT_SUMMARY, line
                                 )
-                            )
-                            self.event_logger.info(
-                                "{}{}".format(
-                                    ray_constants.LOG_PREFIX_EVENT_SUMMARY, line
-                                ),
                             )
 
                     self.event_summarizer.clear()
