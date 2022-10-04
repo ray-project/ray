@@ -130,6 +130,13 @@ def test_copy_bitpacked_buffer_if_needed():
         (pa.array([b"foo", b"bar", b"bz", None, b"quux"] * 20), 0.5),
         # List array with nulls
         (pa.array([None] + [list(range(9)) + [None]] * 9), 0.5),
+        # Large list array with nulls
+        (
+            pa.array(
+                [None] + [list(range(9)) + [None]] * 9, type=pa.large_list(pa.int64())
+            ),
+            0.5,
+        ),
         # Fixed size list array
         (
             pa.FixedSizeListArray.from_arrays(
