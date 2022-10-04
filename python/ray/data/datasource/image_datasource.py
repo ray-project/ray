@@ -13,12 +13,12 @@ from ray.data.datasource.file_based_datasource import (
     _FileBasedDatasourceReader,
     FileBasedDatasource,
 )
+from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data.datasource.file_meta_provider import DefaultFileMetadataProvider
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    import pandas as pd
     import pyarrow
     from ray.data.block import T
 
@@ -38,6 +38,7 @@ IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 class ImageDatasource(BinaryDatasource):
     """A datasource that lets you read images."""
 
+    _COLUMN_NAME = "image"
     _FILE_EXTENSION = ["png", "jpg", "jpeg", "tiff", "bmp", "gif"]
 
     def create_reader(
@@ -62,14 +63,12 @@ class ImageDatasource(BinaryDatasource):
         return _ImageDatasourceReader(self, size=size, mode=mode, **kwargs)
 
     def _convert_block_to_tabular_block(
-        self, block: List[np.ndarray]
-    ) -> "pd.DataFrame":
-        import pandas as pd
-
-        assert len(block) == 1
-        image = block[0]
-
-        return pd.DataFrame({"image": [image]})
+        self, block: "pyarrow.Table", column_name: Optional[str] = None
+    ) -> "pyarrow.Table":
+        # The input block has one column named `TENSOR_COLUMN_NAME`. We don't want to
+        # leak `TENSOR_COLUMN_NAME`, so we rename the column to a more human-readable
+        # name.
+        return block.rename_columns([self._COLUMN_NAME])
 
     def _read_file(
         self,
@@ -77,7 +76,7 @@ class ImageDatasource(BinaryDatasource):
         path: str,
         size: Optional[Tuple[int, int]],
         mode: Optional[str],
-    ) -> List[np.ndarray]:
+    ) -> "pyarrow.Table":
         from PIL import Image
 
         records = super()._read_file(f, path, include_paths=False)
@@ -91,7 +90,11 @@ class ImageDatasource(BinaryDatasource):
         if mode is not None:
             image = image.convert(mode)
 
-        return [np.array(image)]
+        builder = ArrowBlockBuilder()
+        builder.add(np.array(image))
+        block = builder.build()
+
+        return block
 
 
 class _ImageFileMetadataProvider(DefaultFileMetadataProvider):

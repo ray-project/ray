@@ -1,4 +1,4 @@
-import numpy as np
+import pyarrow as pa
 import pytest
 from ray.data.datasource.image_datasource import (
     _ImageDatasourceReader,
@@ -7,8 +7,9 @@ from ray.data.datasource.image_datasource import (
 from fsspec.implementations.local import LocalFileSystem
 
 import ray
+from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.data.extensions import ArrowTensorType
 from ray.data.datasource import Partitioning
-from ray.data.extensions import TensorDtype
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -20,7 +21,9 @@ class TestReadImages:
         The folder "simple" contains three 32x32 RGB images.
         """
         ds = ray.data.read_images("example://image-datasets/simple")
-        assert ds.schema() is np.ndarray
+        assert ds.schema().names == [TENSOR_COLUMN_NAME]
+        column_type = ds.schema().types[0]
+        assert isinstance(column_type, ArrowTensorType)
         assert all(array.shape == (32, 32, 3) for array in ds.take())
 
     def test_filtering(self, ray_start_regular_shared):
@@ -73,15 +76,12 @@ class TestReadImages:
         assert ds.schema().names == ["image", "label"]
 
         image_type, label_type = ds.schema().types
-        if enable_automatic_tensor_extension_cast:
-            assert isinstance(image_type, TensorDtype)
-        else:
-            assert image_type == object
-        assert label_type == object
+        assert isinstance(image_type, ArrowTensorType)
+        assert pa.types.is_string(label_type)
 
         df = ds.to_pandas()
         assert sorted(df["label"]) == ["cat", "cat", "dog"]
-        assert all(array.shape == (32, 32, 3) for array in df["image"])
+        assert all(tensor.numpy_shape == (32, 32, 3) for tensor in df["image"])
 
     def test_e2e_prediction(self, ray_start_regular_shared):
         from ray.train.torch import TorchCheckpoint, TorchPredictor

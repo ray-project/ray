@@ -413,15 +413,10 @@ def read_images(
 ):
     """Read images from the specified paths.
 
-    .. warning::
-        If your dataset contains images of varying sizes and you don't specify
-        ``size``, this function will error. To prevent errors, specify ``size``
-        or :ref:`disable tensor extension casting <disable_tensor_extension_casting>`.
-
     Examples:
         >>> import ray
         >>> path = "s3://air-example-data-2/movie-image-small-filesize-1GB"
-        >>> ds = ray.data.read_images(path, size=(224, 224))
+        >>> ds = ray.data.read_images(path)
         >>> ds
         Dataset(num_blocks=200, num_rows=41979, schema=<class 'numpy.ndarray'>)
 
@@ -456,7 +451,7 @@ def read_images(
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
-            By default, this fidslters out any file paths whose file extension does not
+            By default, this filters out any file paths whose file extension does not
             match ``*.png``, ``*.jpg``, ``*.jpeg``, ``*.tiff``, ``*.bmp``, or ``*.gif``.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to ``None``.
@@ -464,7 +459,7 @@ def read_images(
             retain their original shape.
         mode: A `Pillow mode <https://pillow.readthedocs.io/en/stable/handbook/concepts.html#modes>`_
             describing the desired type and depth of pixels. If unspecified, image
-            modes are by
+            modes are inferred by
             `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
 
     Returns:
