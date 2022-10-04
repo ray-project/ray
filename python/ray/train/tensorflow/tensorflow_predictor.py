@@ -191,8 +191,7 @@ class TensorflowPredictor(DLPredictor):
             ...     )
             >>>
             >>> weights = [np.array([[2.0]]), np.array([0.0])]
-            >>> predictor = TensorflowPredictor(
-            ...     model_definition=build_model, model_weights=weights)
+            >>> predictor = TensorflowPredictor(model=build_model())
             >>>
             >>> data = np.asarray([1, 2, 3])
             >>> predictions = predictor.predict(data) # doctest: +SKIP
@@ -209,7 +208,7 @@ class TensorflowPredictor(DLPredictor):
             ...     return tf.keras.models.Model(
             ...         inputs=[input1, input2], outputs=output)
             >>>
-            >>> predictor = TensorflowPredictor(model_definition=build_model)
+            >>> predictor = TensorflowPredictor(model=build_model())
             >>>
             >>> # Pandas dataframe.
             >>> data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])

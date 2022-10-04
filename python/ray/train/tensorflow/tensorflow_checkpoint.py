@@ -121,11 +121,11 @@ class TensorflowCheckpoint(Checkpoint):
             ...     train_loop_per_worker=train_func,
             ...     scaling_config=ScalingConfig(num_workers=2))
 
-            >>> result_checkpoint = trainer.fit().checkpoint
+            >>> result_checkpoint = trainer.fit().checkpoint  # doctest: +SKIP
 
             >>> batch_predictor = BatchPredictor.from_checkpoint(
             ...     result_checkpoint, TensorflowPredictor)
-            >>> batch_predictor.predict(ray.data.range(3))
+            >>> batch_predictor.predict(ray.data.range(3))  # doctest: +SKIP
         """
         if not path.isfile(file_path) or not file_path.endswith(".h5"):
             raise ValueError(
@@ -183,11 +183,11 @@ class TensorflowCheckpoint(Checkpoint):
             ...     train_loop_per_worker=train_fn,
             ...     scaling_config=ScalingConfig(num_workers=2))
 
-            >>> result_checkpoint = trainer.fit().checkpoint
+            >>> result_checkpoint = trainer.fit().checkpoint  # doctest: +SKIP
 
             >>> batch_predictor = BatchPredictor.from_checkpoint(
             ...     result_checkpoint, TensorflowPredictor)
-            >>> batch_predictor.predict(ray.data.range(3))
+            >>> batch_predictor.predict(ray.data.range(3))  # doctest: +SKIP
         """
         if preprocessor:
             save_preprocessor_to_dir(preprocessor, dir_path)
