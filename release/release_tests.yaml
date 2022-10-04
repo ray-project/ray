@@ -149,7 +149,7 @@
     frequency: disabled
 
     run:
-      timeout: 1800
+      timeout: 3600
 
   alert: default
 
@@ -1755,7 +1755,7 @@
     test_name: actor_deaths
     test_suite: long_running_tests
 
-  frequency: nightly
+  frequency: weekly
   team: core
   cluster:
     cluster_env: app_config.yaml
@@ -1770,7 +1770,7 @@
     file_manager: sdk
 
   smoke_test:
-    frequency: disabled
+    frequency: nightly
 
     run:
       timeout: 3600
@@ -1784,7 +1784,7 @@
     test_name: apex
     test_suite: long_running_tests
 
-  frequency: nightly
+  frequency: weekly
   team: ml
   env: staging
   cluster:
@@ -1802,7 +1802,7 @@
     file_manager: sdk
 
   smoke_test:
-    frequency: disabled
+    frequency: nightly
 
     run:
       timeout: 3600
@@ -1816,7 +1816,7 @@
     test_name: impala
     test_suite: long_running_tests
 
-  frequency: nightly
+  frequency: weekly
   team: ml
   env: staging
   cluster:
@@ -1831,7 +1831,7 @@
     file_manager: sdk
 
   smoke_test:
-    frequency: disabled
+    frequency: nightly
 
     run:
       timeout: 3600
@@ -1845,7 +1845,7 @@
     test_name: many_actor_tasks
     test_suite: long_running_tests
 
-  frequency: nightly
+  frequency: weekly
   team: core
   cluster:
     cluster_env: app_config.yaml
@@ -1860,7 +1860,7 @@
     file_manager: sdk
 
   smoke_test:
-    frequency: disabled
+    frequency: nightly
 
     run:
       timeout: 3600
@@ -1874,7 +1874,7 @@
     test_name: many_drivers
     test_suite: long_running_tests
 
-  frequency: nightly
+  frequency: weekly
   team: core
   cluster:
     cluster_env: app_config.yaml
@@ -1889,7 +1889,7 @@
     file_manager: sdk
 
   smoke_test:
-    frequency: disabled
+    frequency: nightly
 
     run:
       timeout: 3600
@@ -1905,7 +1905,7 @@
 
   stable: false
 
-  frequency: nightly
+  frequency: weekly
   team: ml
   env: staging
   cluster:
@@ -1923,7 +1923,7 @@
     file_manager: sdk
 
   smoke_test:
-    frequency: disabled
+    frequency: nightly
 
     run:
       timeout: 3600
@@ -1937,7 +1937,7 @@
     test_name: many_tasks
     test_suite: long_running_tests
 
-  frequency: nightly
+  frequency: weekly
   team: core
   cluster:
     cluster_env: app_config.yaml
@@ -1952,7 +1952,7 @@
     file_manager: sdk
 
   smoke_test:
-    frequency: disabled
+    frequency: nightly
 
     run:
       timeout: 3600
@@ -1966,7 +1966,7 @@
     test_name: many_tasks_serialized_ids
     test_suite: long_running_tests
 
-  frequency: nightly
+  frequency: weekly
   team: core
   cluster:
     cluster_env: app_config.yaml
@@ -1981,7 +1981,7 @@
     file_manager: sdk
 
   smoke_test:
-    frequency: disabled
+    frequency: nightly
 
     run:
       timeout: 3600
@@ -1995,7 +1995,7 @@
     test_name: node_failures
     test_suite: long_running_tests
 
-  frequency: nightly
+  frequency: weekly
   team: core
   cluster:
     cluster_env: app_config.yaml
@@ -2010,7 +2010,7 @@
     file_manager: sdk
 
   smoke_test:
-    frequency: disabled
+    frequency: nightly
 
     run:
       timeout: 3600
@@ -2024,7 +2024,7 @@
     test_name: pbt
     test_suite: long_running_tests
 
-  frequency: nightly
+  frequency: weekly
   team: ml
   env: staging
   cluster:
@@ -2040,7 +2040,7 @@
     file_manager: sdk
 
   smoke_test:
-    frequency: disabled
+    frequency: nightly
 
     run:
       timeout: 3600
@@ -2054,7 +2054,7 @@
     test_name: serve
     test_suite: long_running_tests
 
-  frequency: nightly
+  frequency: weekly
   team: serve
   cluster:
     cluster_env: app_config.yaml
@@ -2069,7 +2069,7 @@
     file_manager: job
 
   smoke_test:
-    frequency: disabled
+    frequency: nightly
 
     run:
       timeout: 3600
@@ -2086,7 +2086,7 @@
     test_name: serve_failure
     test_suite: long_running_tests
 
-  frequency: nightly
+  frequency: weekly
   team: serve
   cluster:
     cluster_env: app_config.yaml
@@ -2101,7 +2101,7 @@
     file_manager: job
 
   smoke_test:
-    frequency: disabled
+    frequency: nightly
 
     run:
       timeout: 600
