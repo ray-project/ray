@@ -670,6 +670,51 @@ class Dataset(Generic[T]):
             lambda batch: batch.drop(columns=cols), compute=compute, **ray_remote_args
         )
 
+    def select_columns(
+        self,
+        columns: List[str],
+        *,
+        compute: Union[str, ComputeStrategy] = None,
+        **ray_remote_args,
+    ) -> "Dataset[T]":
+        """Select one or more columns from the dataset.
+
+        This is a blocking operation.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range_table(100)
+            >>> # Add a new column equal to value * 2.
+            >>> ds = ds.add_column(
+            ...     "new_col", lambda df: df["value"] * 2)
+            >>> # Select only the "new_col" column.
+            >>> ds = ds.select_columns(["new_col"])
+            >>> ds
+            Dataset(num_blocks=17, num_rows=100, schema={new_col: int64})
+
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            columns: Names of the columns to select. Columns not included in this
+                will be filtered out.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+            ray_remote_args: Additional resource requirements to request from
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+        """
+        if ray_remote_args.get("batch_format") == "numpy":
+            raise TypeError(
+                "Unable to create a block accessor for block type `numpy`. "
+                "Remove `batch_format` or change it to `default`.")
+
+        # dedup since Arrow/PandasBlock's `select` does not handle dup columns
+        unique_columns = list(set(columns))
+        return self.map_batches(
+                lambda batch: BlockAccessor.for_block(batch).select(columns=unique_columns),
+                compute=compute, **ray_remote_args
+            )
+
     def flat_map(
         self,
         fn: RowUDF[T, U],
