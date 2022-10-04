@@ -68,7 +68,6 @@ from ray.experimental.state.api import (
     list_runtime_envs,
     list_tasks,
     list_workers,
-    list_cluster_events,
     summarize_tasks,
     StateApiClient,
 )
@@ -1546,11 +1545,12 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     wait_for_condition(
         lambda: verify_output(ray_list, ["actors"], ["Stats:", "Table:", "ACTOR_ID"])
     )
-    wait_for_condition(
-        lambda: verify_output(
-            ray_list, ["cluster-events"], ["Stats:", "Table:", "EVENT_ID"]
-        )
-    )
+    # TODO(sang): Enable it.
+    # wait_for_condition(
+    #     lambda: verify_output(
+    #         ray_list, ["cluster-events"], ["Stats:", "Table:", "EVENT_ID"]
+    #     )
+    # )
     wait_for_condition(
         lambda: verify_output(ray_list, ["workers"], ["Stats:", "Table:", "WORKER_ID"])
     )
