@@ -47,6 +47,16 @@ class OtherStubCheckpoint(Checkpoint):
     pass
 
 
+def test_from_checkpoint():
+    checkpoint = Checkpoint.from_dict({"spam": "ham"})
+    assert type(StubCheckpoint.from_checkpoint(checkpoint)) is StubCheckpoint
+
+    # Check that attributes persist if same checkpoint type.
+    checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+    checkpoint.foo = "bar"
+    assert StubCheckpoint.from_checkpoint(checkpoint).foo == "bar"
+
+
 class TestCheckpointTypeCasting:
     def test_dict(self):
         data = StubCheckpoint.from_dict({"foo": "bar"}).to_dict()
