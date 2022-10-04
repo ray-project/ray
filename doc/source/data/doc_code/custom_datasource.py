@@ -13,6 +13,8 @@ def _read_single_partition(
     from pymongoarrow.api import aggregate_arrow_all
 
     client = pymongo.MongoClient(uri)
+    # Read more about this API here:
+    # https://mongo-arrow.readthedocs.io/en/stable/api/api.html#pymongoarrow.api.aggregate_arrow_all
     return aggregate_arrow_all(
         client[database][collection], pipeline, schema=schema, **kwargs
     )
@@ -49,7 +51,7 @@ class _MongoDatasourceReader(Reader):
                 num_rows=None,
                 size_bytes=None,
                 schema=self._schema,
-                input_files=pipeline,
+                input_files=None,
                 exec_stats=None,
             )
             # Supply a no-arg read function (which returns a block) and pre-read
@@ -79,6 +81,8 @@ def _write_single_block(uri, database, collection, block: Block):
     from pymongoarrow.api import write
 
     client = pymongo.MongoClient(uri)
+    # Read more about this API here:
+    # https://mongo-arrow.readthedocs.io/en/stable/api/api.html#pymongoarrow.api.write
     write(client[database][collection], block)
 # __write_single_block_end__
 # fmt: on

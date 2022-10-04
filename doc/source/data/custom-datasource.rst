@@ -48,11 +48,12 @@ Here are the key design choices we will make in this guide:
 -  **MongoDB to Arrow conversion**: We use `PyMongoArrow <https://mongo-arrow.readthedocs.io/en/latest/>`__ to convert MongoDB execution results into Arrow tables, which Datasets supports as a data format.
 -  **Parallel execution**: We ask the user to provide a list of MongoDB pipelines, with each corresponding to a partition of the MongoDB collection, which will be executed in parallel with :class:`~ray.data.ReadTask`.
 
-For example, suppose you have a MongoDB collection with 4 documents, which have a ``partition_field`` with values 0, 1, 2, 3. You can compose two MongoDB pipelines as follows to read the collection in parallel:
+For example, suppose you have a MongoDB collection with 4 documents, which have a ``partition_field`` with values 0, 1, 2, 3.
+You can compose two MongoDB pipelines (each handled by a :class:`~ray.data.ReadTask`) as follows to read the collection in parallel:
 
 .. code-block:: python
 
-    # A list of pipelines. Each pipeline is a List[Dict].
+    # A list of pipelines. Each pipeline is a series of stages, typed as List[Dict].
     my_pipelines = [
         # The first pipeline: match documents in partition range [0, 2)
         [
@@ -95,8 +96,6 @@ First, let's handle a single MongoDB pipeline, which is the unit of execution in
 and then convert results into Arrow format. We use ``PyMongo`` and  ``PyMongoArrow``
 to achieve this.
 
-Read more about the `PyMongoArrow read function here <https://mongo-arrow.readthedocs.io/en/stable/api/api.html#pymongoarrow.api.aggregate_arrow_all>`__.
-
 .. literalinclude:: ./doc_code/custom_datasource.py
     :language: python
     :start-after: __read_single_partition_start__ 
@@ -113,7 +112,7 @@ In ``get_read_tasks``, we construct a :class:`~ray.data.ReadTask` object for eac
 This will need to provide a :class:`~ray.data.block.BlockMetadata` and a no-arg read function as arguments.
 The :class:`~ray.data.block.BlockMetadata` contains metadata like number of rows, size in bytes and schema
 that we know about the block prior to actually executing the read task; the no-arg read function is just
-a wrapper of ``_read_single_partition`` 
+a wrapper of ``_read_single_partition``.
 A list of :class:`~ray.data.ReadTask` objects are returned by ``get_read_tasks``, and these
 tasks are executed on remote workers. You can find more details about `Dataset read execution here <https://docs.ray.io/en/master/data/key-concepts.html#reading-data>`__.
 
@@ -131,8 +130,6 @@ Write support
 
 Similar to read support, we start with handling a single block. Again 
 the ``PyMongo`` and  ``PyMongoArrow`` are used for MongoDB interactions.
-
-Read more about the `PyMongoArrow write function here <https://mongo-arrow.readthedocs.io/en/stable/api/api.html#pymongoarrow.api.write>`__.
 
 .. literalinclude:: ./doc_code/custom_datasource.py
     :language: python
