@@ -528,8 +528,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     return env
 
             elif (
-                is_atari(self.env)
-                and not model_config.get("custom_preprocessor")
+                not model_config.get("custom_preprocessor")
                 and preprocessor_pref is None
             ):
                 # Only turn off preprocessing
