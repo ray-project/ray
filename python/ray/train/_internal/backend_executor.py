@@ -56,8 +56,9 @@ class BackendExecutor:
             Dictionary specifying the extra resources that will be
             requested for each worker in addition to ``num_cpus_per_worker``
             and ``num_gpus_per_worker``.
-        max_retries: Number of retries when Ray actors fail.
-            Defaults to 3. Set to -1 for unlimited retries.
+        max_retries: DEPRECATED. Fault tolerance is no longer supported
+            in ``BackendExecutor`` since Ray 2.1 and is handled by Ray AIR instead.
+            Setting this to any value other than None or 0 will raise an exception.
     """
 
     def __init__(
@@ -69,7 +70,7 @@ class BackendExecutor:
         num_cpus_per_worker: float = 1,
         num_gpus_per_worker: float = 0,
         additional_resources_per_worker: Optional[Dict[str, float]] = None,
-        max_retries: int = 3,
+        max_retries: Optional[int] = None,
     ):
         self._backend_config = backend_config
         self._backend = backend_config.backend_cls()
@@ -77,7 +78,14 @@ class BackendExecutor:
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
         self._additional_resources_per_worker = additional_resources_per_worker
-        self._max_failures = max_retries
+        if max_retries:
+            raise DeprecationWarning(
+                "Fault tolerance is no longer supported in ``BackendExecutor`` "
+                "since Ray 2.1 and is handled by Ray AIR instead. "
+                "Set the value of ``max_retries`` argument to "
+                "None."
+            )
+        self._max_failures = max_retries or 0
         if self._max_failures < 0:
             self._max_failures = float("inf")
         self._num_failures = 0
