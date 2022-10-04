@@ -170,6 +170,8 @@ class GcsServer {
   /// Get or connect to a redis server
   std::shared_ptr<RedisClient> GetOrConnectRedis();
 
+  void TryGlobalGC();
+
   /// Gcs server configuration.
   const GcsServerConfig config_;
   // Type of storage to use.
