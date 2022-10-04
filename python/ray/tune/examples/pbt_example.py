@@ -107,9 +107,10 @@ if __name__ == "__main__":
     else:
         ray.init()
 
+    perturbation_interval = 5
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
-        perturbation_interval=20,
+        perturbation_interval=perturbation_interval,
         hyperparam_mutations={
             # distribution for resampling
             "lr": lambda: random.uniform(0.0001, 0.02),
@@ -121,13 +122,24 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         PBTBenchmarkExample,
         run_config=air.RunConfig(
-            name="pbt_test",
+            name="pbt_class_api_example",
+            # Stop when done = True or at 1000 train steps (whichever comes first)
             stop={
-                "training_iteration": 200,
+                "done": True,
+                "training_iteration": 1000,
             },
             verbose=0,
+            # We recommend matching `perturbation_interval` and `checkpoint_interval`
+            # (e.g. checkpoint every 4 steps, and perturb on those same steps)
+            # or making `perturbation_interval` a multiple of `checkpoint_interval`
+            # (e.g. checkpoint every 2 steps, and perturb every 4 steps).
+            # This is to ensure that the lastest checkpoints are being used by PBT
+            # when trials decide to exploit. If checkpointing and perturbing are not
+            # aligned, then PBT may use a stale checkpoint to resume from.
             checkpoint_config=air.CheckpointConfig(
-                checkpoint_frequency=20,
+                checkpoint_frequency=perturbation_interval,
+                checkpoint_score_attribute="mean_accuracy",
+                num_to_keep=5,
             ),
         ),
         tune_config=tune.TuneConfig(
@@ -147,3 +159,4 @@ if __name__ == "__main__":
     results = tuner.fit()
 
     print("Best hyperparameters found were: ", results.get_best_result().config)
+    import ipdb; ipdb.set_trace()

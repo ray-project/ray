@@ -110,7 +110,7 @@ def run_tune_pbt():
     tuner = tune.Tuner(
         pbt_function,
         run_config=air.RunConfig(
-            name="pbt_test",
+            name="pbt_function_api_example",
             verbose=False,
             stop={
                 # Stop when done = True or at 1000 train steps (whichever comes first)
