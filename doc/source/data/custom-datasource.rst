@@ -51,7 +51,7 @@ MongoDB. This ``Reader`` creates a list of :class:`~ray.data.ReadTask` for the g
 list of MongoDB queries. Each :class:`~ray.data.ReadTask` returns a list of blocks when called, and
 each :class:`~ray.data.ReadTask` is executed in remote workers to parallelize the execution.
 
-You can find documentation about :ref:`Ray Data blocks here <block-api>`.
+You can find documentation about :ref:`Ray Datasets block concept here <dataset_concept>` and the :ref:`blocks APIs here <block-api>`.
 
 First, let's handle a single MongoDB query, which is the unit of execution in
 :class:`~ray.data.ReadTask`. We need to connect to MongoDB, execute the query against it,
@@ -91,7 +91,7 @@ Write support
 Similar to read support, we start with handling a single block. Again 
 the ``PyMongo`` and  ``PyMongoArrow`` are used for MongoDB interactions.
 
-Read more about the `PyMongoArrow function call <https://mongo-arrow.readthedocs.io/en/stable/api/api.html#pymongoarrow.api.write>`.
+Read more about the `PyMongoArrow function call <https://mongo-arrow.readthedocs.io/en/stable/api/api.html#pymongoarrow.api.write>`__.
 
 .. literalinclude:: ./doc_code/custom_datasource.py
     :language: python

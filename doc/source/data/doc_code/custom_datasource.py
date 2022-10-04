@@ -67,6 +67,8 @@ class _MongoDatasourceReader(Reader):
 # fmt: off
 # __write_single_block_start__
 # This connects to MongoDB and writes a block into it.
+# Note this is an insertion, that is each record in the block are treated as
+# new document to the MongoDB.
 def _write_single_block(uri, database, collection, block: Block):
     import pymongo
     from pymongoarrow.api import write
@@ -80,6 +82,7 @@ def _write_single_block(uri, database, collection, block: Block):
 # __write_multiple_blocks_start__
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.types import ObjectRef
+from ray.data.datasource.datasource import WriteResult
 
 # This writes a list of blocks into MongoDB. Each block is handled by a task and tasks
 # are executed in parallel.
@@ -90,10 +93,13 @@ def _write_multiple_blocks(
     uri,
     database,
     collection,
-) -> List[ObjectRef[Any]]:
+) -> List[ObjectRef[WriteResult]]:
+    # The ``cached_remote_fn`` turns the ``_write_single_block`` into a Ray
+    # remote function.
     write_block = cached_remote_fn(_write_single_block).options(**ray_remote_args)
     write_tasks = []
     for block in blocks:
+        # Create a Ray remote function for each block.
         write_task = write_block.remote(uri, database, collection, block)
         write_tasks.append(write_task)
     return write_tasks
@@ -119,7 +125,7 @@ class MongoDatasource(Datasource):
         uri,
         database,
         collection,
-    ) -> List[ObjectRef[Any]]:
+    ) -> List[ObjectRef[WriteResult]]:
         return _write_multiple_blocks(
             blocks, metadata, ray_remote_args, uri, database, collection
         )
