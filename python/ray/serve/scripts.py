@@ -474,13 +474,17 @@ def build(
 
     app = build_app(node)
     schema = ServeApplicationSchema(
-        deployments=[deployment_to_schema(d) for d in app.deployments.values()]
+        import_path=import_path,
+        runtime_env={},
+        host="0.0.0.0",
+        port=8000,
+        deployments=[deployment_to_schema(d) for d in app.deployments.values()],
     )
 
     if kubernetes_format:
-        config = schema.kubernetes_dict(exclude_defaults=True)
+        config = schema.kubernetes_dict(exclude_unset=True)
     else:
-        config = schema.dict(exclude_defaults=True)
+        config = schema.dict(exclude_unset=True)
 
     config_str = (
         "# This file was generated using the `serve build` command "
