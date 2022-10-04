@@ -1017,7 +1017,7 @@ Status PlacementGroupInfoAccessor::SyncWaitUntilReady(
   rpc::WaitPlacementGroupUntilReadyReply reply;
   request.set_placement_group_id(placement_group_id.Binary());
   auto status = client_impl_->GetGcsRpcClient().SyncWaitPlacementGroupUntilReady(
-      request, &reply, timeout_seconds);
+      request, &reply, absl::ToInt64Milliseconds(absl::Seconds(timeout_seconds)));
   RAY_LOG(DEBUG) << "Finished waiting placement group until ready, placement group id = "
                  << placement_group_id;
   return status;

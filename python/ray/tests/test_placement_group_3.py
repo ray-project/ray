@@ -117,7 +117,9 @@ def test_placement_group_wait_api_timeout(shutdown_only):
     """
     ray.init(num_cpus=1)
     pg = ray.util.placement_group(bundles=[{"CPU": 2}])
-    assert not pg.wait(1)
+    start = time.time()
+    assert not pg.wait(5)
+    assert 5 <= time.time() - start
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
