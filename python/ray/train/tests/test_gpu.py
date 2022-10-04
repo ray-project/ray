@@ -419,7 +419,6 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
 
     state_dict = results.checkpoint.to_dict()[MODEL_KEY]
 
-    state_dict = trainer.latest_checkpoint["state_dict"]
     for tensor in state_dict.values():
         assert not tensor.is_cuda
 
