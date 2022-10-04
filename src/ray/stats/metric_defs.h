@@ -81,7 +81,10 @@ DECLARE_stats(scheduler_failed_worker_startup_total);
 DECLARE_stats(scheduler_tasks);
 DECLARE_stats(scheduler_unscheduleable_tasks);
 
-/// Spill Manager
+/// TODO(rickyx): migrate legacy metrics
+/// Local Object Manager
+DECLARE_stats(spill_manager_objects);
+DECLARE_stats(spill_manager_objects_bytes);
 DECLARE_stats(spill_manager_request_total);
 DECLARE_stats(spill_manager_throughput_mb);
 
@@ -90,8 +93,7 @@ DECLARE_stats(gcs_storage_operation_latency_ms);
 DECLARE_stats(gcs_storage_operation_count);
 
 /// Object Store
-DECLARE_stats(object_store_memory_bytes);
-DECLARE_stats(object_store_memory_count);
+DECLARE_stats(object_store_memory);
 
 /// Placement Group
 DECLARE_stats(gcs_placement_group_creation_latency_ms);

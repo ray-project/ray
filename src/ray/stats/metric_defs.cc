@@ -162,6 +162,17 @@ DEFINE_stats(scheduler_failed_worker_startup_total,
              ray::stats::GAUGE);
 
 /// Local Object Manager
+DEFINE_stats(
+    spill_manager_objects,
+    "Number of local objects broken per state {Pinned, PendingRestore, PendingSpill}.",
+    ("State"),
+    (),
+    ray::stats::GAUGE);
+DEFINE_stats(spill_manager_objects_bytes,
+             "Byte size of local objects broken per state {Pinned, PendingSpill}.",
+             ("State"),
+             (),
+             ray::stats::GAUGE);
 DEFINE_stats(spill_manager_request_total,
              "Number of {spill, restore} requests.",
              ("Type"),
@@ -186,39 +197,14 @@ DEFINE_stats(gcs_storage_operation_count,
              ray::stats::COUNT);
 
 /// Object store
-/// Local object store memory of different types reported from multiple
-/// components. Reported metric from different subtypes, e.g. Location
-/// and Type could overlap. Reported metric within the same type might
-/// also overlap.
-DEFINE_stats(object_store_memory_bytes,
+// TODO:
+DEFINE_stats(object_store_memory,
              "Object store memory by various sub-kinds on this node",
              /// Location:
-             ///    - InMemory: currently in memory (ObjectManager)
-             ///    TODO(rickyx): current spilled
-             ///    - Spilled: spilled to disk (LocalObjectManager)
-             ///    - Fallback: fallback allocated (ObjectManager)
-             /// Type:
-             ///     reported from LocalObjectManager
-             ///    - PrimaryCopy: pinned by local raylet and pending spills
-             ///    - PendingSpill: still in memory but to be spilled
-             ///    - PendingRestore: to be restored from spill
-             ///
-             ///     reported from ObjectManager(plasma store)
-             ///    - PendingCreation: unsealed memory created
-             ///    - Spillable: spillable objects
-             ///    - InUse: objects currently in use with positive ref counts
-             ///    - Evictable: objects with 0 ref counts
-             /// Creator:
-             ///    - Worker: created by core worker, e.g. through ray.put
-             ///    - RemoteRaylet: received from other raylets
-             ///    - RestoredStorage: restored from spilled storage
-             ///    - Error: used as errors by the raylet
-             ("Location", "Type", "Creator"),
-             (),
-             ray::stats::GAUGE);
-DEFINE_stats(object_store_memory_count,
-             "Number of objects by various sub-kinds on this node",
-             ("Type", "Creator"),
+             ///    - InMemory: currently in shared memory(e.g. /dev/shm)
+             ///    - Spilled: spilled to external storage
+             ///    - Fallback: fallback allocated
+             ("Location"),
              (),
              ray::stats::GAUGE);
 
