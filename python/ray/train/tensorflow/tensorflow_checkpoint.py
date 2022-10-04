@@ -124,7 +124,7 @@ class TensorflowCheckpoint(Checkpoint):
             >>> result_checkpoint = trainer.fit().checkpoint  # doctest: +SKIP
 
             >>> batch_predictor = BatchPredictor.from_checkpoint(
-            ...     result_checkpoint, TensorflowPredictor)
+            ...     result_checkpoint, TensorflowPredictor)  # doctest: +SKIP
             >>> batch_predictor.predict(ray.data.range(3))  # doctest: +SKIP
         """
         if not path.isfile(file_path) or not file_path.endswith(".h5"):
@@ -186,7 +186,7 @@ class TensorflowCheckpoint(Checkpoint):
             >>> result_checkpoint = trainer.fit().checkpoint  # doctest: +SKIP
 
             >>> batch_predictor = BatchPredictor.from_checkpoint(
-            ...     result_checkpoint, TensorflowPredictor)
+            ...     result_checkpoint, TensorflowPredictor)  # doctest: +SKIP
             >>> batch_predictor.predict(ray.data.range(3))  # doctest: +SKIP
         """
         if preprocessor:
