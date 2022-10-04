@@ -26,7 +26,6 @@ from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private import api as _private_api
-from ray.serve._private.utils import dict_keys_snake_to_camel_case
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -474,36 +473,14 @@ def build(
         )
 
     app = build_app(node)
-
-    config = {
-        "import_path": import_path,
-        "runtime_env": {},
-        "host": "0.0.0.0",
-        "port": 8000,
-    }
-    config.update(
-        ServeApplicationSchema(
-            deployments=[deployment_to_schema(d) for d in app.deployments.values()]
-        ).dict(exclude_defaults=True)
+    schema = ServeApplicationSchema(
+        deployments=[deployment_to_schema(d) for d in app.deployments.values()]
     )
 
     if kubernetes_format:
-        print(
-            "NOTE: Kubernetes requires the following fields to be "
-            "strings: user_config, runtime_env (in ray_actor_options), "
-            "and resources (in ray_actor_options). You must manually convert "
-            "these to strings by adding pipe characters to each line.\n"
-        )
-
-        # Convert ray_actor_options keys, deployment keys, and top-level
-        # config keys to camel case
-        for idx, deployment in enumerate(config["deployments"]):
-            if isinstance(deployment["ray_actor_options"], dict):
-                deployment["ray_actor_options"] = dict_keys_snake_to_camel_case(
-                    deployment["ray_actor_options"]
-                )
-            config["deployments"][idx] = dict_keys_snake_to_camel_case(deployment)
-        config = dict_keys_snake_to_camel_case(config)
+        config = schema.kubernetes_dict(exclude_defaults=True)
+    else:
+        config = schema.dict(exclude_defaults=True)
 
     config_str = (
         "# This file was generated using the `serve build` command "
