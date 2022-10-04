@@ -11,7 +11,7 @@ click >= 7.0, <= 8.0.4
 cloudpickle
 filelock
 frozenlist
-gpustat == 1.0.0b1
+gpustat >= 1.0.0
 grpcio >= 1.32.0; python_version < '3.10'
 grpcio >= 1.42.0; python_version >= '3.10'
 jsonschema
@@ -32,7 +32,7 @@ virtualenv>=20.0.24
 dm_tree
 flask
 pygame
-gym>=0.21.0,<0.24.0; python_version >= '3.7'
+gym>=0.21.0,<0.24.1; python_version >= '3.7'
 gym==0.19.0; python_version < '3.7'
 lz4
 scikit-image
@@ -53,7 +53,6 @@ gradio; platform_system != "Windows"
 async-exit-stack
 async-generator
 asyncmock
-autorom[accept-rom-license]
 azure-cli-core==2.29.1
 azure-identity==1.7.0
 azure-mgmt-compute==23.1.0
@@ -69,7 +68,6 @@ feather-format
 google-api-python-client
 google-cloud-storage
 gym-minigrid==1.0.3
-gym[atari]
 kubernetes
 # higher version of llvmlite breaks windows
 llvmlite==0.34.0
