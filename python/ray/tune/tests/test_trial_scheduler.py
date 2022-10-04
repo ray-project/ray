@@ -1247,41 +1247,59 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 seen.add(fn()["v"])
             self.assertEqual(seen, values)
 
+        def explore_fn(
+            config, mutations, resample_probability, custom_explore_fn=lambda x: x
+        ):
+            new_config, _ = _explore(
+                config,
+                mutations,
+                resample_probability,
+                perturbation_factors=(1.2, 0.8),
+                custom_explore_fn=custom_explore_fn,
+            )
+            return new_config
+
         # Categorical case
+        assertProduces(lambda: explore_fn({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0), {3, 8})
+        assertProduces(lambda: explore_fn({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0), {3, 4})
         assertProduces(
-            lambda: _explore({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 8}
+            lambda: explore_fn({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0), {8, 10}
         )
         assertProduces(
-            lambda: _explore({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 4}
-        )
-        assertProduces(
-            lambda: _explore({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {8, 10}
-        )
-        assertProduces(
-            lambda: _explore({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
+            lambda: explore_fn({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0),
             {3, 4, 8, 10},
         )
         assertProduces(
-            lambda: _explore({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0, lambda x: x),
+            lambda: explore_fn({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0),
             {3, 4, 8, 10},
         )
 
+        # Check that tuple also works
+        assertProduces(lambda: explore_fn({"v": 4}, {"v": (3, 4, 8, 10)}, 0.0), {3, 8})
+        assertProduces(lambda: explore_fn({"v": 3}, {"v": (3, 4, 8, 10)}, 0.0), {3, 4})
+
+        # Passing in an invalid types should raise an error
+        with self.assertRaises(ValueError):
+            explore_fn({"v": 4}, {"v": {3, 4, 8, 10}}, 0.0)
+        with self.assertRaises(ValueError):
+            explore_fn({"v": 4}, {"v": "invalid"}, 0.0)
+
         # Continuous case
         assertProduces(
-            lambda: _explore(
-                {"v": 100}, {"v": lambda: random.choice([10, 100])}, 0.0, lambda x: x
+            lambda: explore_fn(
+                {"v": 100}, {"v": lambda: random.choice([10, 100])}, 0.0
             ),
             {80, 120},
         )
         assertProduces(
-            lambda: _explore(
-                {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 0.0, lambda x: x
+            lambda: explore_fn(
+                {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 0.0
             ),
             {80.0, 120.0},
         )
         assertProduces(
-            lambda: _explore(
-                {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 1.0, lambda x: x
+            lambda: explore_fn(
+                {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 1.0
             ),
             {10.0, 100.0},
         )
@@ -1309,7 +1327,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Nested mutation and spec
         assertNestedProduces(
-            lambda: _explore(
+            lambda: explore_fn(
                 {
                     "a": {"b": 4},
                     "1": {"2": {"3": 100}},
@@ -1319,7 +1337,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                     "1": {"2": {"3": lambda: random.choice([10, 100])}},
                 },
                 0.0,
-                lambda x: x,
             ),
             {
                 "a": {"b": {3, 8}},
@@ -1331,7 +1348,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Nested mutation and spec
         assertNestedProduces(
-            lambda: _explore(
+            lambda: explore_fn(
                 {
                     "a": {"b": 4},
                     "1": {"2": {"3": 100}},
@@ -1341,7 +1358,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                     "1": {"2": {"3": lambda: random.choice([10, 100])}},
                 },
                 0.0,
-                custom_explore_fn,
+                custom_explore_fn=custom_explore_fn,
             ),
             {
                 "a": {"b": {3, 8}},
@@ -1862,7 +1879,9 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         for i, trial in enumerate(trials):
             trial.local_dir = tmpdir
             trial.last_result = {}
-        self.on_trial_result(pbt, runner, trials[0], result(1, 10))
+        self.on_trial_result(
+            pbt, runner, trials[1], result(1, 10), TrialScheduler.CONTINUE
+        )
         self.on_trial_result(
             pbt, runner, trials[2], result(1, 200), TrialScheduler.CONTINUE
         )
