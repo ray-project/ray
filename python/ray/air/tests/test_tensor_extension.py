@@ -53,14 +53,14 @@ def test_tensor_array_array_protocol():
 
 
 def test_tensor_array_dataframe_repr():
-    outer_dim = 3
-    inner_shape = (2, 2)
-    shape = (outer_dim,) + inner_shape
-    num_items = np.prod(np.array(shape))
-    arr = np.arange(num_items).reshape(shape)
+outer_dim = 3
+inner_shape = (2, 2)
+shape = (outer_dim,) + inner_shape
+num_items = np.prod(np.array(shape))
+arr = np.arange(num_items).reshape(shape)
 
-    t_arr = TensorArray(arr)
-    df = pd.DataFrame({"a": t_arr})
+t_arr = TensorArray(arr)
+df = pd.DataFrame({"a": t_arr})
 
     expected_repr = """                      a
 0  [[ 0,  1], [ 2,  3]]

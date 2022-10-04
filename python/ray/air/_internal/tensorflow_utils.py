@@ -77,13 +77,15 @@ def get_type_spec(
     def get_dtype(dtype: Union[np.dtype, pa.DataType]) -> tf.dtypes.DType:
         if isinstance(dtype, pa.DataType):
             dtype = dtype.to_pandas_dtype()
-        elif isinstance(dtype, (TensorDtype, ArrowTensorType)):
-            dtype = dtype.dtype
+        if isinstance(dtype, TensorDtype):
+            dtype = dtype.element_dtype
         return tf.dtypes.as_dtype(dtype)
 
     def get_shape(dtype: Union[np.dtype, pa.DataType]) -> Tuple[int, ...]:
-        if isinstance(dtype, (TensorDtype, ArrowTensorType)):
-            return (None,) + dtype.shape
+        if isinstance(dtype, ArrowTensorType):
+            dtype = dtype.to_pandas_dtype()
+        if isinstance(dtype, TensorDtype):
+            return (None,) + dtype.element_shape
         return (None,)
 
     if isinstance(columns, str):

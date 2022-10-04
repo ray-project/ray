@@ -26,25 +26,6 @@ def create_keras_model(input_features):
     )
 
 
-def to_tf_dataset(dataset, num_features, batch_size):
-    def to_tensor_iterator():
-        data_iterator = dataset.iter_tf_batches(
-            batch_size=batch_size, dtypes=tf.float32
-        )
-        for d in data_iterator:
-            # "concat_out" is the output column of the Concatenator.
-            yield d["concat_out"], d["target"]
-
-    output_signature = (
-        tf.TensorSpec(shape=(None, num_features), dtype=tf.float32),
-        tf.TensorSpec(shape=(None), dtype=tf.float32),
-    )
-    tf_dataset = tf.data.Dataset.from_generator(
-        to_tensor_iterator, output_signature=output_signature
-    )
-    return prepare_dataset_shard(tf_dataset)
-
-
 def keras_train_loop(config):
     lr = config["lr"]
     epochs = config["epochs"]
@@ -73,9 +54,7 @@ def keras_train_loop(config):
         )
 
     for _ in range(epochs):
-        tf_dataset = to_tf_dataset(
-            dataset=dataset, num_features=num_features, batch_size=batch_size
-        )
+        tf_dataset = dataset.to_tf(feature_columns="concat_out", label_columns="target", batch_size=batch_size)
         multi_worker_model.fit(
             tf_dataset,
             callbacks=[

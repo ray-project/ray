@@ -1,5 +1,3 @@
-from re import S
-import pandas as pd
 import pytest
 import tensorflow as tf
 import numpy as np
