@@ -5,6 +5,7 @@ from ray.dashboard.modules.dashboard_sdk import (
     parse_runtime_env_args,
     parse_cluster_info,
 )
+from ray.dashboard.utils import get_address_for_submission_client
 
 
 class TestParseRuntimeEnvArgs:

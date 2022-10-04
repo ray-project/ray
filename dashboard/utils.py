@@ -602,3 +602,4 @@ def get_address_for_submission_client(address: Optional[str]) -> str:
         # User specified a non-Ray-Client Ray cluster address.
         address = ray_address_to_api_server_url(address)
     logger.debug(f"Using API server address {address}.")
+    return address

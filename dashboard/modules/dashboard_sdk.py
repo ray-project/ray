@@ -145,6 +145,9 @@ def parse_cluster_info(
             )
             address = DEFAULT_DASHBOARD_ADDRESS
 
+    if address == "auto":
+        raise ValueError("Internal error: unexpected address 'auto'.")
+
     if "://" not in address:
         # Default to HTTP.
         logger.info(
@@ -155,6 +158,8 @@ def parse_cluster_info(
 
     module_string, inner_address = split_address(address)
 
+    if module_string == "ray":
+        raise ValueError(f"Internal error: unexpected Ray Client address {address}.")
     # If user passes http(s)://, go through normal parsing.
     if module_string in {"http", "https"}:
         return get_job_submission_client_cluster_info(
