@@ -167,6 +167,14 @@ py_test(
 )
 
 py_test(
+    name = "test_gpu_auto_transfer",
+    size = "large",
+    srcs = ["tests/test_gpu_auto_transfer.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_torch_fsdp",
     size = "large",
     srcs = ["tests/test_torch_fsdp.py"],
