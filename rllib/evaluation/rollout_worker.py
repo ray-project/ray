@@ -50,6 +50,7 @@ from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import Filter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
 from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
@@ -1230,6 +1231,8 @@ class RolloutWorker(ParallelIteratorWorker):
             KeyError: If the given `policy_id` already exists in this worker's
                 PolicyMap.
         """
+        validate_policy_id(policy_id, error=False)
+
         merged_config = merge_dicts(self.policy_config, config or {})
 
         if policy_id in self.policy_map:
@@ -1523,12 +1526,20 @@ class RolloutWorker(ParallelIteratorWorker):
         for pid in self.policy_map:
             policy_states[pid] = self.policy_map[pid].get_state()
         return {
-            "filters": filters,
-            # TODO: Rename this into "policy_states" for clarity.
-            "state": policy_states,
+            # List all known policy IDs here for convenience. When an Algorithm gets
+            # restored from a checkpoint, it will not have access to the list of
+            # possible IDs as each policy is stored in its own sub-dir
+            # (see "policy_states").
+            "policy_ids": list(self.policy_map.keys()),
+            # Note that this field will not be stored in the algorithm checkpoint's
+            # state file, but each policy will get its own state file generated in
+            # a sub-dir within the algo's checkpoint dir.
+            "policy_states": policy_states,
             # Also store current mapping fn and which policies to train.
             "policy_mapping_fn": self.policy_mapping_fn,
             "is_policy_to_train": self.is_policy_to_train,
+            # TODO: Filters will be replaced by connectors.
+            "filters": filters,
         }
 
     @DeveloperAPI
@@ -1556,7 +1567,15 @@ class RolloutWorker(ParallelIteratorWorker):
         self.sync_filters(state["filters"])
 
         connector_enabled = self.policy_config.get("enable_connectors", False)
-        for pid, policy_state in state["state"].items():
+
+        # Support older checkpoint versions (< 1.0), in which the policy_map
+        # was stored under the "state" key, not "policy_states".
+        policy_states = state.get("state", state["policy_states"])
+        for pid, policy_state in policy_states.items():
+            # If - for some reason - we have an invalid PolicyID in the state,
+            # this might be from an older checkpoint (pre v1.0). Just warn here.
+            validate_policy_id(pid, error=False)
+
             if pid not in self.policy_map:
                 spec = policy_state.get("policy_spec", None)
                 if spec is None:

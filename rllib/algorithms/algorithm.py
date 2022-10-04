@@ -93,6 +93,7 @@ from ray.rllib.utils.metrics import (
     TRAINING_ITERATION_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.utils.spaces import space_utils
@@ -247,9 +248,9 @@ class Algorithm(Trainable):
         """
         checkpoint_info = get_checkpoint_info(checkpoint)
 
-        # Not possible for "v0" (algo class and config information missing
+        # Not possible for (v0.1) (algo class and config information missing
         # or very hard to retrieve).
-        if checkpoint_info["checkpoint_version"] == "v0":
+        if checkpoint_info["checkpoint_version"] == version.Version("0.1"):
             raise ValueError(
                 "Cannot restore a v0 checkpoint using `Algorithm.from_checkpoint()`!"
                 "In this case, do the following:\n"
@@ -258,7 +259,7 @@ class Algorithm(Trainable):
                 " your checkpoint dir or AIR Checkpoint object."
             )
 
-        assert checkpoint_info["checkpoint_version"] == "v1"
+        assert checkpoint_info["checkpoint_version"] == version.Version("1.0")
 
         state = Algorithm._checkpoint_info_to_algorithm_state(
             checkpoint_info=checkpoint_info,
@@ -1680,6 +1681,9 @@ class Algorithm(Trainable):
 
         Args:
             policy_id: ID of the policy to add.
+                IMPORTANT: Must not contain characters that
+                are also not allowed in Unix/Win filesystems, such as: `<>:"/\|?*`
+                or a dot `.` or space ` ` at the end of the ID.
             policy_cls: The Policy class to use for constructing the new Policy.
                 Note: Only one of `policy_cls` or `policy` must be provided.
             policy: The Policy instance to add to this algorithm. If not None, the
@@ -1714,6 +1718,8 @@ class Algorithm(Trainable):
             The newly added policy (the copy that got added to the local
             worker). If `workers` was provided, None is returned.
         """
+        validate_policy_id(policy_id, error=True)
+
         # Worker list is explicitly provided -> Use only those workers (local or remote)
         # specified.
         if workers is not None:
@@ -1837,7 +1843,7 @@ class Algorithm(Trainable):
         export_dir: str,
         filename_prefix=DEPRECATED_VALUE,  # deprecated arg, do not use anymore
         policy_id: PolicyID = DEFAULT_POLICY_ID,
-    ) -> Checkpoint:
+    ) -> None:
         """Exports Policy checkpoint to a local directory and returns an AIR Checkpoint.
 
         Args:
@@ -1846,9 +1852,6 @@ class Algorithm(Trainable):
             policy_id: Optional policy ID to export. If not provided, will export
                 "default_policy". If `policy_id` does not exist in this Algorithm,
                 will raise a KeyError.
-
-        Returns:
-            The Policy AIR Checkpoint object created.
 
         Raises:
             KeyError if `policy_id` cannot be found in this Algorithm.
@@ -1872,7 +1875,7 @@ class Algorithm(Trainable):
         policy = self.get_policy(policy_id)
         if policy is None:
             raise KeyError(f"Policy with ID {policy_id} not found in Algorithm!")
-        return policy.export_checkpoint(export_dir)
+        policy.export_checkpoint(export_dir)
 
     @DeveloperAPI
     def import_policy_model_from_h5(
@@ -1911,7 +1914,7 @@ class Algorithm(Trainable):
             rllib_checkpoint.json
             algorithm_state.pkl
 
-        Note: `rllib_checkpoint.json` contains a "version" key (e.g. with value "v0")
+        Note: `rllib_checkpoint.json` contains a "version" key (e.g. with value 0.1)
         helping RLlib to remain backward compatible wrt. restoring from checkpoints from
         Ray 2.0 onwards.
 
@@ -1944,12 +1947,16 @@ class Algorithm(Trainable):
                 {
                     "type": "Algorithm",
                     "checkpoint_version": state["checkpoint_version"],
+                    "ray_version": ray.__version__,
+                    "ray_commit": ray.__commit__,
                 },
                 f,
             )
 
         # Write individual policies to disk, each in their own sub-directory.
         for pid, policy_state in policy_states.items():
+            # From here on, disallow policyIDs that would not work as directory names.
+            validate_policy_id(pid, error=True)
             policy_dir = os.path.join(checkpoint_dir, "policies", pid)
             os.makedirs(policy_dir, exist_ok=True)
             policy = self.get_policy(pid)
@@ -2818,14 +2825,14 @@ class Algorithm(Trainable):
         # Note: Algorithms like ES/ARS don't have a WorkerSet, so we just return
         # the plain state here.
         if (
-            checkpoint_info["checkpoint_version"] != "v0"
+            checkpoint_info["checkpoint_version"] > version.Version("0.1")
             and state.get("worker") is not None
         ):
             worker_state = state["worker"]
 
-            # TODO: Remove filters once they are part of policies (via connectors).
+            # Retrieve the set of all required policy IDs.
             policy_ids = set(
-                policy_ids if policy_ids is not None else worker_state["filters"].keys()
+                policy_ids if policy_ids is not None else worker_state["policy_ids"]
             )
 
             # Remove those policies entirely from filters that are not in
@@ -2844,7 +2851,7 @@ class Algorithm(Trainable):
 
             # Prepare local `worker` state to add policies' states into it,
             # read from separate policy checkpoint files.
-            state["worker"]["state"] = {}
+            worker_state["policy_states"] = {}
             for pid in policy_ids:
                 policy_state_file = os.path.join(
                     checkpoint_info["checkpoint_dir"],
@@ -2860,7 +2867,7 @@ class Algorithm(Trainable):
                     )
 
                 with open(policy_state_file, "rb") as f:
-                    state["worker"]["state"][pid] = pickle.load(f)
+                    worker_state["policy_states"][pid] = pickle.load(f)
 
             if policy_mapping_fn is not None:
                 worker_state["policy_mapping_fn"] = policy_mapping_fn

@@ -1,4 +1,5 @@
 import os
+from packaging import version
 import tempfile
 import re
 from typing import Any, Dict
@@ -7,14 +8,14 @@ from ray.air.checkpoint import Checkpoint
 
 # The current checkpoint version used by RLlib for Algorithm and Policy checkpoints.
 # History:
-# v0: Ray 2.0.0
+# 0.1: Ray 2.0.0
 #  A single `checkpoint-[iter num]` file for Algorithm checkpoints
 #  within the checkpoint directory. Policy checkpoints not supported across all
 #  DL frameworks.
 
-# v1: Ray >=2.1.0
+# 1.0: Ray >=2.1.0
 # TODO:
-CHECKPOINT_VERSION = "v1"
+CHECKPOINT_VERSION = version.Version("1.0")
 
 
 def get_checkpoint_info(checkpoint) -> Dict[str, Any]:
@@ -26,7 +27,7 @@ def get_checkpoint_info(checkpoint) -> Dict[str, Any]:
     Returns:
         A dict containing the keys:
         "type": One of "Policy" or "Algorithm".
-        "checkpoint_version": A version string, e.g. "v1", indicating the checkpoint
+        "checkpoint_version": A version tuple, e.g. v1.0, indicating the checkpoint
         version. This will help RLlib to remain backward compatible wrt. future
         Ray and checkpoint versions.
         "checkpoint_dir": The directory with all the checkpoint files in it. This might
@@ -39,7 +40,7 @@ def get_checkpoint_info(checkpoint) -> Dict[str, Any]:
     # Default checkpoint info.
     info = {
         "type": "Algorithm",
-        "checkpoint_version": "v1",
+        "checkpoint_version": version.Version("1.0"),
         "checkpoint_dir": None,
         "state_file": None,
         "policy_ids": None,
@@ -61,7 +62,7 @@ def get_checkpoint_info(checkpoint) -> Dict[str, Any]:
                 if re.match("checkpoint-\\d+", file):
                     info.update(
                         {
-                            "checkpoint_version": "v0",
+                            "checkpoint_version": version.Version("0.1"),
                             "checkpoint_dir": checkpoint,
                             "state_file": path_file,
                         }
@@ -75,7 +76,7 @@ def get_checkpoint_info(checkpoint) -> Dict[str, Any]:
             info.update(
                 {
                     "type": "Policy",
-                    "checkpoint_version": "v1",
+                    "checkpoint_version": version.Version("1.0"),
                     "checkpoint_dir": checkpoint,
                     "state_file": os.path.join(checkpoint, "policy_state.pkl"),
                 }
@@ -89,24 +90,28 @@ def get_checkpoint_info(checkpoint) -> Dict[str, Any]:
                 "Given checkpoint does not seem to be valid! No file "
                 "with the name `algorithm_state.pkl` (or `checkpoint-[0-9]+`) found."
             )
-        # Collect all policy IDs in the sub-dir "policies/".
-        policy_ids = set()
-        for policy_id in os.listdir(os.path.join(checkpoint, "policies")):
-            policy_ids.add(policy_id)
+
         info.update(
             {
                 "checkpoint_dir": checkpoint,
                 "state_file": state_file,
-                "policy_ids": policy_ids,
             }
         )
+
+        # Collect all policy IDs in the sub-dir "policies/".
+        policies_dir = os.path.join(checkpoint, "policies")
+        if os.path.isdir(policies_dir):
+            policy_ids = set()
+            for policy_id in os.listdir():
+                policy_ids.add(policy_id)
+            info.update({"policy_ids": policy_ids})
 
     # Checkpoint is a file: Use as-is (interpreting it as old Algorithm checkpoint
     # version).
     elif os.path.isfile(checkpoint):
         info.update(
             {
-                "checkpoint_version": "v0",
+                "checkpoint_version": version.Version("0.1"),
                 "checkpoint_dir": os.path.dirname(checkpoint),
                 "state_file": checkpoint,
             }

@@ -1017,6 +1017,8 @@ class Policy(metaclass=ABCMeta):
                 {
                     "type": "Policy",
                     "checkpoint_version": policy_state["checkpoint_version"],
+                    "ray_version": ray.__version__,
+                    "ray_commit": ray.__commit__,
                 },
                 f,
             )

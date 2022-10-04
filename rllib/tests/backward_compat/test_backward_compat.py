@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from packaging import version
 import unittest
 
 import ray
@@ -26,14 +27,14 @@ class TestBackwardCompatibility(unittest.TestCase):
         rllib_dir = Path(__file__).parent.parent.parent
         print(f"rllib dir={rllib_dir} exists={os.path.isdir(rllib_dir)}")
 
-        for version in ["v0", "v1"]:
+        for v in [version.Version("0.1"), version.Version("1.0")]:
             for fw in framework_iterator(with_eager_tracing=True):
                 path_to_checkpoint = os.path.join(
                     rllib_dir,
                     "tests",
                     "backward_compat",
                     "checkpoints",
-                    version,
+                    "v" + str(v),
                     "ppo_frozenlake_" + fw,
                 )
 
@@ -43,16 +44,16 @@ class TestBackwardCompatibility(unittest.TestCase):
                 )
 
                 checkpoint_info = get_checkpoint_info(path_to_checkpoint)
-                # v0: Need to create algo first, then restore.
-                if checkpoint_info["checkpoint_version"] == "v0":
-                    # For checkpoints <= v0, we need to magically know the original
+                # v0.1: Need to create algo first, then restore.
+                if checkpoint_info["checkpoint_version"] == version.Version("0.1"):
+                    # For checkpoints <= v0.1, we need to magically know the original
                     # config used as well as the algo class.
                     with open(checkpoint_info["state_file"], "rb") as f:
                         state = pickle.load(f)
                     worker_state = pickle.loads(state["worker"])
                     algo = PPO(config=worker_state["policy_config"])
                     algo.restore(path_to_checkpoint)
-                # >v0: Simply use new `Algorithm.from_checkpoint()` staticmethod.
+                # > v0.1: Simply use new `Algorithm.from_checkpoint()` staticmethod.
                 else:
                     algo = Algorithm.from_checkpoint(path_to_checkpoint)
 

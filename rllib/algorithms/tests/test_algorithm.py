@@ -167,7 +167,7 @@ class TestAlgorithm(unittest.TestCase):
 
                     test2 = pg.PG.from_checkpoint(
                         checkpoint=checkpoint,
-                        policies=["p0", "p2"],
+                        policy_ids=["p0", "p2"],
                         policy_mapping_fn=new_mapping_fn,
                         policies_to_train=["p0"],
                     )
