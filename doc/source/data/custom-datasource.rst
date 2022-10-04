@@ -8,8 +8,8 @@ Ray Datasets supports multiple ways to :ref:`create a dataset <creating_datasets
 allowing you to easily ingest data of common formats from popular sources. However, if the 
 datasource you want to read from is not in the built-in list, don't worry, you can implement 
 a custom one for your use case. In this guide, we will walk you through how to build 
-your own custom datasource, using MongoDB as an example. By the end of the guide, you will have a
-``MongoDatasource`` that you can use to create dataset as follows:
+your own custom datasource, using `MongoDB <https://www.mongodb.com/docs/manual/introduction/>`__ as an example.
+By the end of the guide, you will have a ``MongoDatasource`` that you can use to create dataset as follows:
 
 .. code-block:: python
 
@@ -31,9 +31,9 @@ your own custom datasource, using MongoDB as an example. By the end of the guide
 
     There are a few MongoDB concepts involved here. The `URI <https://www.mongodb.com/docs/manual/reference/connection-string/>`__ points to
     a MongoDB instance, which hosts `Databases and Collections <https://www.mongodb.com/docs/manual/reference/connection-string/>`__. A collection
-    is similar to a table in SQL database. MongoDB also has a `pipeline <https://www.mongodb.com/docs/manual/core/aggregation-pipeline/>`__ concept,
-    which expresses document processing in a series of stages, similar to a SQL query. The execution results of the pipelines are used to create
-    dataset.
+    is analogous to a table in SQL databases. MongoDB also has a `pipeline <https://www.mongodb.com/docs/manual/core/aggregation-pipeline/>`__ concept,
+    which expresses document processing in a series of stages (e.g. match documents with a predicate, sort results, and then select a few fields).
+    The execution results of the pipelines are used to create dataset.
 
 A custom datasource is an implementation of :class:`~ray.data.Datasource`. In the 
 example here, let's call it ``MongoDatasource``. At a high level, it will have two 
@@ -52,8 +52,9 @@ For example, suppose you have a MongoDB collection with 4 documents, which have 
 
 .. code-block:: python
 
-    [
-        # The first pipeline: reading partition range [0, 2)
+    # A list of pipelines. Each pipeline is a List[Dict].
+    my_pipelines = [
+        # The first pipeline: match documents in partition range [0, 2)
         [
           {
             "$match": {
@@ -64,7 +65,7 @@ For example, suppose you have a MongoDB collection with 4 documents, which have 
             }
           }
         ],
-        # The second pipeline: reading partition range [2, 4)
+        # The second pipeline: match documents in partition range [2, 4)
         [
           {
             "$match": {
@@ -87,7 +88,7 @@ MongoDB. This ``Reader`` creates a list of :class:`~ray.data.ReadTask` for the g
 list of MongoDB pipelines. Each :class:`~ray.data.ReadTask` returns a list of blocks when called, and
 each :class:`~ray.data.ReadTask` is executed in remote workers to parallelize the execution.
 
-You can find documentation about :ref:`Ray Datasets block concept here <dataset_concept>` and the :ref:`blocks APIs here <block-api>`.
+You can find documentation about Ray Datasets :ref:`block concept here <dataset_concept>` and :ref:`block APIs here <block-api>`.
 
 First, let's handle a single MongoDB pipeline, which is the unit of execution in
 :class:`~ray.data.ReadTask`. We need to connect to MongoDB, execute the pipeline against it,
@@ -110,7 +111,7 @@ constructing the MongoDB pipeline in ``_read_single_partition``.
 
 In ``get_read_tasks``, we construct a :class:`~ray.data.ReadTask` object for each ``pipeline`` object.
 A list of :class:`~ray.data.ReadTask` objects are returned at the end of the function call, and these
-tasks are executed on remote workers by the Datasets execution engine (not shown).
+tasks are executed on remote workers. You can find more details about `Dataset read execution here <https://docs.ray.io/en/master/data/key-concepts.html#reading-data>`__.
 
 .. literalinclude:: ./doc_code/custom_datasource.py
     :language: python
@@ -167,21 +168,24 @@ any other datasource!
 
 .. code-block:: python
 
-    # Read from MongoDB datasource.
+    # Read from MongoDB datasource and create a dataset.
     # The args are passed to MongoDatasource.create_reader().
     ds = ray.data.read_datasource(
         MongoDatasource(),
-        uri=MY_URI,
+        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
         database="my_db",
         collection=="my_collection",
-        pipelines=[[{"$match": {"_id": {"$gte": 0, "$lt": 2}}}], [{"$match": {"_id": {"$gte": 2, "$lt": 4}}}]]
+        pipelines=my_pipelines, # See the example definition of ``my_pipelines`` above
     )
 
-    # Data processing with Dataset APIs
-    # ....
+    # Data preprocessing with Dataset APIs here
+    # ...
 
-    # Write to MongoDB datasource.
+    # Write the dataset back to MongoDB datasource.
     # The args are passed to MongoDatasource.do_write().
     ds.write_datasource(
-        MongoDatasource(), uri=MY_URI, database="my_db", collection="my_collection"
+        MongoDatasource(),
+        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+        database="my_db",
+        collection="my_collection"
     )
