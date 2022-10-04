@@ -50,4 +50,4 @@ class SpecDict:
 
 # TODO: Remove once ModelConfig is in master
 class ModelConfig:
-    pass
+    name = "Bork"

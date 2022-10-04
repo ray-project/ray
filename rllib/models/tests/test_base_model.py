@@ -11,10 +11,10 @@ from ray.rllib.models.temp_spec_classes import TensorDict, SpecDict
 
 
 class NpRecurrentModelImpl(RecurrentModel):
-    input_spec = SpecDict({"in": "b t h"}, h=3)
-    output_spec = SpecDict({"out": "b t o"}, o=2)
-    next_state_spec = SpecDict({"out": "b i"}, i=4)
-    prev_state_spec = SpecDict({"in": "b o"}, o=1)
+    input_spec = SpecDict({"in": "h"}, h=3)
+    output_spec = SpecDict({"out": "o"}, o=2)
+    next_state_spec = SpecDict({"out": "i"}, i=4)
+    prev_state_spec = SpecDict({"in": "o"}, o=1)
 
     def __init__(self, input_check=None, output_check=None):
         self.input_check = input_check
@@ -40,8 +40,8 @@ class NpRecurrentModelImpl(RecurrentModel):
 
 
 class NpModelImpl(Model):
-    input_spec = SpecDict({"in": "b t h"}, h=3)
-    output_spec = SpecDict({"out": "b t o"}, o=2)
+    input_spec = SpecDict({"in": "h"}, h=3)
+    output_spec = SpecDict({"out": "o"}, o=2)
 
     def __init__(self, input_check=None, output_check=None):
         self.input_check = input_check
