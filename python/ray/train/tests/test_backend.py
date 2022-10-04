@@ -1,6 +1,5 @@
 import math
 import os
-from unittest.mock import patch
 
 import pytest
 import time
@@ -17,7 +16,6 @@ from ray.train._internal.backend_executor import (
     BackendExecutor,
     InactiveWorkerGroupError,
     TrainBackendError,
-    TrainingWorkerError,
 )
 from ray.train._internal.dataset_spec import RayDatasetSpec
 from ray.train._internal.worker_group import WorkerGroup
