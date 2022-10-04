@@ -74,7 +74,7 @@ def pbt_function(config):
         checkpoint = None
         if step % checkpoint_interval == 0:
             # Checkpoint every `checkpoint_interval` steps
-            # NOTE: if we initialized `start=0` above, our checkpointing and perturbing
+            # NOTE: if we initialized `step=0` above, our checkpointing and perturbing
             # would be out of sync by 1 step.
             # Ex: if `checkpoint_interval` = `perturbation_interval` = 3
             # step:                0 (checkpoint)  1     2            3 (checkpoint)
