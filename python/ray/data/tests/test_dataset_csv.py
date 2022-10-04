@@ -23,7 +23,10 @@ from ray.data.datasource import (
     PathPartitionEncoder,
     PathPartitionFilter,
 )
-from ray.data.datasource.file_based_datasource import _unwrap_protocol
+from ray.data.datasource.file_based_datasource import (
+    FileExtensionFilter,
+    _unwrap_protocol,
+)
 
 
 def df_to_csv(dataframe, path, **kwargs):
@@ -196,7 +199,12 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         storage_options=storage_options,
     )
 
-    ds = ray.data.read_csv(path, filesystem=fs, partitioning=None)
+    ds = ray.data.read_csv(
+        path,
+        filesystem=fs,
+        partition_filter=FileExtensionFilter("csv"),
+        partitioning=None,
+    )
     assert ds.num_blocks() == 2
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas()
@@ -669,7 +677,7 @@ def test_csv_read_filter_no_file(shutdown_only, tmp_path):
 
     error_message = "No input files found to read"
     with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path)
+        ray.data.read_csv(path, partition_filter=FileExtensionFilter("csv"))
 
 
 @pytest.mark.skipif(
