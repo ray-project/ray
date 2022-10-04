@@ -95,7 +95,7 @@ def pbt_function(config):
 
 
 def run_tune_pbt():
-    perturbation_interval = 4
+    perturbation_interval = 5
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
         perturbation_interval=perturbation_interval,
@@ -122,7 +122,7 @@ def run_tune_pbt():
             ),
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_score_attribute="mean_accuracy",
-                num_to_keep=5,
+                num_to_keep=2,
             ),
         ),
         tune_config=tune.TuneConfig(

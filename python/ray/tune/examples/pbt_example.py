@@ -139,7 +139,7 @@ if __name__ == "__main__":
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=perturbation_interval,
                 checkpoint_score_attribute="mean_accuracy",
-                num_to_keep=5,
+                num_to_keep=2,
             ),
         ),
         tune_config=tune.TuneConfig(
@@ -159,4 +159,3 @@ if __name__ == "__main__":
     results = tuner.fit()
 
     print("Best hyperparameters found were: ", results.get_best_result().config)
-    import ipdb; ipdb.set_trace()
