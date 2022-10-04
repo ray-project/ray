@@ -156,23 +156,13 @@ ds = ray.data.read_images("example://image-datasets/simple")
 #            schema={__value__: ArrowTensorType(shape=(32, 32, 3), dtype=uint8)})
 
 ds.take(1)
-# -> [{'image':
-#         array([[[ 92,  71,  57],
-#                 [107,  87,  72],
-#                 ...,
-#                 [141, 161, 185],
-#                 [139, 158, 184]],
-#
-#                ...,
-#
-#                [[135, 135, 109],
-#                 [135, 135, 108],
-#                 ...,
-#                 [167, 150,  89],
-#                 [165, 146,  90]]], dtype=uint8),
-#      'label': 'cat',
-#     }]
-# __read_images_end__
+# -> [array([[[ 88,  70,  68],
+#            [103,  88,  85],
+#            [112,  96,  97],
+#            ...,
+#            [168, 151,  81],
+#            [167, 149,  83],
+#            [166, 148,  82]]], dtype=uint8)]
 # fmt: on
 
 # fmt: off

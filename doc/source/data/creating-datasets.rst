@@ -168,7 +168,7 @@ Supported File Formats
 
   This function stores image data in single-column
   `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  blocks using our 
+  blocks using the 
   :class:`tensor extension type <ray.data.extensions.tensor_extension.ArrowTensorType>`.
   For more information on working with tensors in Datasets, read the 
   :ref:`tensor data guide <datasets_tensor_support>`.

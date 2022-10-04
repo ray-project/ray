@@ -423,7 +423,7 @@ def read_images(
         >>> path = "s3://air-example-data-2/movie-image-small-filesize-1GB"
         >>> ds = ray.data.read_images(path)
         >>> ds
-        Dataset(num_blocks=200, num_rows=41979, schema=<class 'numpy.ndarray'>)
+        Dataset(num_blocks=200, num_rows=41979, schema={__value__: ArrowTensorType(shape=(386, 256, 3), dtype=uint8)})
 
         If your images are arranged like:
 
@@ -468,8 +468,9 @@ def read_images(
             `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
 
     Returns:
-        A :class:`~ray.data.Dataset` containing ``np.ndarray`` objects constructed from
-        the images at the specified paths.
+        A :class:`~ray.data.Dataset` containing tensors that represent the images at
+        the specified paths. For information on working with tensors, read the
+        :ref:`tensor data guide <datasets_tensor_support>`.
 
     Raises:
         ValueError: if ``size`` contains non-positive numbers.
