@@ -105,7 +105,15 @@ def test_torch_get_device(
             if num_gpus_per_worker == 0.5:
                 assert os.environ["CUDA_VISIBLE_DEVICES"] == "1"
             elif num_gpus_per_worker == 1:
-                assert os.environ["CUDA_VISIBLE_DEVICES"] == "1,2"
+                visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+                # Sort the cuda visible devices to have exact match with
+                # expected result.
+                sorted_devices = [
+                    ",".join(sorted(device_id.split(",")))
+                    for device_id in visible_devices
+                ]
+                assert sorted_devices == "1,2"
+
             else:
                 raise ValueError(
                     f"Untested paramater configuration: {num_gpus_per_worker}"
@@ -125,7 +133,7 @@ def test_torch_get_device(
     if num_gpus_per_worker == 0.5:
         assert devices == [0, 0]
     elif num_gpus_per_worker == 1:
-        assert devices == [0, 1]
+        assert set(devices) == {0, 1}
     else:
         raise RuntimeError(
             "New parameter for this test has been added without checking that the "
@@ -170,9 +178,10 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
     elif num_gpus_per_worker == 2:
         # worker gpu topology:
         # 1 workers on node 1, 1 workers on node 2
-        # `ray.get_gpu_ids()` returns [0, 1] on node 1 and [0, 1] on node 2
-        # and `device_id` returns the first index
-        assert count[0] == 2
+        # `ray.get_gpu_ids()` returns {0, 1} on node 1 and {0, 1} on node 2
+        # and `device_id` returns the one index from each set.
+        # So total count of devices should be 2.
+        assert sum(count.values()) == 2
     else:
         raise RuntimeError(
             "New parameter for this test has been added without checking that the "
