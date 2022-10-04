@@ -421,8 +421,8 @@ def read_images(
     Examples:
         >>> import ray
         >>> path = "s3://air-example-data-2/movie-image-small-filesize-1GB"
-        >>> ds = ray.data.read_images(path)
-        >>> ds
+        >>> ds = ray.data.read_images(path)  # doctest: +SKIP
+        >>> ds  # doctest: +SKIP
         Dataset(num_blocks=200, num_rows=41979, schema={__value__: ArrowTensorType(shape=(386, 256, 3), dtype=uint8)})
 
         If your images are arranged like:
