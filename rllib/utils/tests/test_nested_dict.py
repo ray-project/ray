@@ -94,6 +94,9 @@ class TestNestedDict(unittest.TestCase):
             dict1.filter(dict4).asdict(), {"bar": {"c": 11}, "foo": {"a": 10}}
         )
         self.assertRaises(KeyError, lambda: dict1.filter(dict3).asdict())
+        self.assertEqual(
+            dict1.filter(dict3, ignore_missing=True).asdict(), {"foo": {"a": 10}}
+        )
 
 
 if __name__ == "__main__":

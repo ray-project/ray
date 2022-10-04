@@ -36,6 +36,10 @@ _IndexType = Union[StreamType, Sequence[StreamType]]
 _NestedDictType = Dict[str, Any]
 _NestedMappingType = Mapping[_IndexType, Any]
 
+NestedDictInputType = Union[
+    Iterable[Tuple[StreamType, Any]], _NestedMappingType, "NestedDict"
+]
+
 
 def _flatten_index(index: _IndexType) -> Sequence[str]:
     if isinstance(index, str):
@@ -45,8 +49,8 @@ def _flatten_index(index: _IndexType) -> Sequence[str]:
 
 
 class StrKey(str):
-    """A str StreamType which can be compared to Sequence[str] StreamType.
-    This is needed for the tree functions to work.
+    """A string that can be compared to a string or sequence of strings representing a
+    StreamType. This is needed for the tree functions to work.
     """
 
     def __lt__(self, other: StreamType):
@@ -63,15 +67,21 @@ class StrKey(str):
 
 
 class NestedDict(MutableMapping[str, "NestedDict"]):
-    """A nested dict with convenience functions.
-    * The nested dict function gives access to nested elements as a sequence of
-    strings.
-    * These nested dicts can also be used to filter a superset into a subset of
-    nested elements with the filter function.
-    * This can be instantiated with any mapping of strings, or an iterable of
-    key value tuples where the values can themselves be recursively the values
-    that a nested dict can take.
-    Note that the type of values T should not be an instance of Mapping.
+    """A nested dict type:
+        * The nested dict gives access to nested elements as a sequence of
+        strings.
+        * These nested dicts can also be used to filter a superset into a subset of
+        nested elements with the filter function.
+        * This can be instantiated with any mapping of strings, or an iterable of
+        key value tuples where the values can themselves be recursively the values
+        that a nested dict can take.
+
+    Args:
+        x: a representation of a nested dict: it can be an iterable of `StreamType`
+        to values. e.g. `[(("a", "b") , 1), ("b", 2)]` or a mapping of flattened
+        keys to values. e.g. `{("a", "b"): 1, ("b",): 2}` or any nested mapping,
+        e.g. `{"a": {"b": 1}, "b": 2}`.
+
     Example:
         Basic usage:
             >>> foo_dict = NestedDict()
@@ -110,9 +120,7 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
 
     def __init__(
         self,
-        x: Union[
-            Iterable[Tuple[StreamType, Any]], _NestedMappingType, "NestedDict", None
-        ] = None,
+        x: Optional[NestedDictInputType] = None,
     ):
         self._data = dict()  # type: Dict[str, Any]
         x = x or {}
@@ -136,7 +144,22 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
                 return False
 
     def get(self, k: _IndexType, *, default: Optional[Any] = None) -> Any:
-        """Returns self[k], partial indexing allowed."""
+        """Returns `self[k]`, with partial indexing allowed.
+        If `k` is not in the `NestedDict`, returns default. If default is `None`,
+        and `k` is not in the `NestedDict`, a `KeyError` is raised.
+
+        Args:
+            k: the key to get. This can be a string or a sequence of strings.
+            default: the default value to return if `k` is not in the `NestedDict`. If
+                default is `None`, and `k` is not in the `NestedDict`, a `KeyError` is
+                raised.
+
+        Returns:
+            The value of `self[k]`.
+
+        Raises:
+            KeyError: if `k` is not in the `NestedDict` and default is None.
+        """
         if k not in self:
             if default is not None:
                 return default
@@ -210,7 +233,16 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
         other: Union[Sequence[StreamType], "NestedDict"],
         ignore_missing: bool = False,
     ) -> "NestedDict":
-        """Returns a NestedDict with only entries present in `other`."""
+        """Returns a NestedDict with only entries present in `other`. 
+        The values in the `other` NestedDict are ignored. Only the keys are used.
+
+        Args:
+            other: a NestedDict or a sequence of keys to filter by.
+            ignore_missing: if True, ignore missing keys in `other`.
+        
+        Returns:
+            A NestedDict with only keys present in `other`.
+        """
         output = NestedDict()
         if isinstance(other, Sequence):
             keys = other
@@ -225,6 +257,7 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
         return output
 
     def asdict(self) -> _NestedDictType:
+        """Returns a dictionary representation of the NestedDict."""
         output = dict()
         for k, v in self._data.items():
             if isinstance(v, NestedDict):
@@ -243,4 +276,5 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
         return self.copy()
 
     def shallow_keys(self) -> AbstractSet[str]:
+        """Returns a set of the keys at the top level of the NestedDict."""
         return self._data.keys()
