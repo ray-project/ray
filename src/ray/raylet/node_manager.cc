@@ -338,7 +338,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           io_service,
           RayConfig::instance().memory_usage_threshold_fraction(),
           RayConfig::instance().memory_monitor_interval_ms(),
-          CreateMemoryUsageRefreshCallback())) {
+          CreateMemoryUsageRefreshCallback(),
+          [this]() { return this->object_manager_.GetUsedMemory(); })) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
@@ -2937,10 +2938,14 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
         } else {
           high_memory_eviction_target_ = worker_to_kill;
 
-          float usage_fraction =
-              static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
-          std::string used_bytes_gb = FormatFloat(
-              static_cast<float>(system_memory.used_bytes) / 1024 / 1024 / 1024, 2);
+          float usage_fraction = static_cast<float>(system_memory.GetTotalUsedBytes()) /
+                                 system_memory.total_bytes;
+          std::string heap_used_bytes_gb = FormatFloat(
+              static_cast<float>(system_memory.heap_used_bytes) / 1024 / 1024 / 1024, 2);
+          std::string object_store_used_bytes_gb =
+              FormatFloat(static_cast<float>(system_memory.object_store_used_bytes) /
+                              1024 / 1024 / 1024,
+                          2);
           std::string total_bytes_gb = FormatFloat(
               static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024, 2);
           std::stringstream id_ss;
@@ -2955,8 +2960,10 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           worker_exit_message_ss
               << "Task was killed due to the node running low on memory.\n\n"
               << "Memory on the node (IP: " << worker_to_kill->IpAddress()
-              << ", ID: " << this->self_node_id_ << ") where the task was running was "
-              << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
+              << ", ID: " << this->self_node_id_
+              << ") where the task was running was (heap: " << heap_used_bytes_gb
+              << "GB, object store: " << object_store_used_bytes_gb << "GB) / "
+              << total_bytes_gb << "GB (" << usage_fraction
               << "), which exceeds the memory usage threshold of " << usage_threshold
               << ". Ray killed this worker (ID: " << worker_to_kill->WorkerId()
               << ") because it was the most recently scheduled task; to see more "

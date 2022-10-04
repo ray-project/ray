@@ -1,6 +1,7 @@
 from math import ceil
 import sys
 import time
+import numpy as np
 
 import psutil
 import pytest
@@ -13,6 +14,7 @@ from ray._private.test_utils import get_node_stats, wait_for_condition
 memory_usage_threshold_fraction = 0.65
 task_oom_retries = 1
 memory_monitor_interval_ms = 100
+object_store_memory = 3 * 1024 * 1024 * 1024
 expected_worker_eviction_message = (
     "Task was killed due to the node running low on memory"
 )
@@ -22,7 +24,7 @@ expected_worker_eviction_message = (
 def ray_with_memory_monitor(shutdown_only):
     with ray.init(
         num_cpus=1,
-        object_store_memory=100 * 1024 * 1024,
+        object_store_memory=object_store_memory,
         _system_config={
             "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
             "memory_monitor_interval_ms": memory_monitor_interval_ms,
@@ -395,6 +397,37 @@ def test_newer_task_not_retriable_kill_older_retriable_task_first(
     ray.get(non_retriable_actor_ref)
     with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
         ray.get(retriable_task_ref)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_filled_object_store_lowers_killing_threshold(ray_with_memory_monitor):
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
+        memory_usage_threshold_fraction + 0.05
+    )
+
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+        ray.get(
+            allocate_memory.options(max_retries=0).remote(
+                allocate_bytes=bytes_to_alloc, post_allocate_sleep_s=100
+            ),
+            timeout=30,
+        )
+
+    entries = int(object_store_memory / 8)
+    obj_ref = ray.put(np.random.rand(entries))
+    ray.get(obj_ref)
+
+    with pytest.raises(ray.exceptions.OutOfMemoryError) as _:
+        ray.get(
+            allocate_memory.options(max_retries=0).remote(
+                allocate_bytes=bytes_to_alloc - object_store_memory,
+                post_allocate_sleep_s=100,
+            ),
+            timeout=30,
+        )
 
 
 if __name__ == "__main__":

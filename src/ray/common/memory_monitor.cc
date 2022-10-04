@@ -23,12 +23,15 @@
 
 namespace ray {
 
-MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
-                             float usage_threshold,
-                             uint64_t monitor_interval_ms,
-                             MemoryUsageRefreshCallback monitor_callback)
+MemoryMonitor::MemoryMonitor(
+    instrumented_io_context &io_service,
+    float usage_threshold,
+    uint64_t monitor_interval_ms,
+    MemoryUsageRefreshCallback monitor_callback,
+    ObjectStoreMemoryUsageFetcher object_store_memory_usage_fetcher)
     : usage_threshold_(usage_threshold),
       monitor_callback_(monitor_callback),
+      object_store_memory_usage_fetcher_(object_store_memory_usage_fetcher),
       runner_(io_service) {
   RAY_CHECK(monitor_callback_ != nullptr);
   RAY_CHECK_GE(usage_threshold_, 0);
@@ -39,7 +42,8 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
         [this] {
           auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
           MemorySnapshot system_memory;
-          system_memory.used_bytes = used_memory_bytes;
+          system_memory.heap_used_bytes = used_memory_bytes;
+          system_memory.object_store_used_bytes = object_store_memory_usage_fetcher_();
           system_memory.total_bytes = total_memory_bytes;
 
           bool is_usage_above_threshold = IsUsageAboveThreshold(system_memory);
@@ -59,27 +63,31 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
 }
 
 bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory) {
-  int64_t used_memory_bytes = system_memory.used_bytes;
+  int64_t heap_used_memory_bytes = system_memory.heap_used_bytes;
+  int64_t object_store_used_memory_bytes = system_memory.object_store_used_bytes;
   int64_t total_memory_bytes = system_memory.total_bytes;
-  if (total_memory_bytes == kNull || used_memory_bytes == kNull) {
+  if (total_memory_bytes == kNull || heap_used_memory_bytes == kNull) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
         << "Unable to capture node memory. Monitor will not be able "
         << "to detect memory usage above threshold.";
     return false;
   }
-  float usage_fraction = static_cast<float>(used_memory_bytes) / total_memory_bytes;
+  float usage_fraction =
+      static_cast<float>(system_memory.GetTotalUsedBytes()) / total_memory_bytes;
   bool is_usage_above_threshold = usage_fraction >= usage_threshold_;
   if (is_usage_above_threshold) {
-    RAY_LOG_EVERY_MS(INFO, kLogIntervalMs)
-        << "Node memory usage above threshold, used: " << used_memory_bytes
-        << ", total: " << total_memory_bytes << ", usage fraction: " << usage_fraction
-        << ", threshold: " << usage_threshold_;
+    RAY_LOG(INFO) << "Node memory usage above threshold, used: " << heap_used_memory_bytes
+                  << ", object store used: " << object_store_used_memory_bytes
+                  << ", total used: " << system_memory.GetTotalUsedBytes()
+                  << ", total: " << total_memory_bytes
+                  << ", usage fraction: " << usage_fraction
+                  << ", threshold: " << usage_threshold_;
   }
   return is_usage_above_threshold;
 }
 
 std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
-  auto [cgroup_used_bytes, cgroup_total_bytes] = GetCGroupMemoryBytes();
+  int64_t cgroup_total_bytes = GetCGroupMemoryLimitBytes();
 #ifndef __linux__
   RAY_CHECK(false) << "Memory monitor currently supports only linux";
 #endif
@@ -88,11 +96,31 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   /// not used. We take its value only when it is less than or equal to system memory
   /// limit. TODO(clarng): find a better way to detect cgroup memory limit is used.
   system_total_bytes = NullableMin(system_total_bytes, cgroup_total_bytes);
-  /// This assumes cgroup total bytes will look different than system (meminfo)
-  if (system_total_bytes == cgroup_total_bytes) {
-    system_used_bytes = cgroup_used_bytes;
-  }
+
+  // We always take the used memory from system, which excludes cached and buffers.
+  // Cgroup used memory includes cached and buffers and it does not accurately represent
+  // when the OS OOM killer triggers, which ignores cached and buffers. We could
+  // calculcate Cgroup used memory from memory.stats but those numbers are the same
+  // as meminfo, which is what GetLinuxMemoryBytes() uses.
   return std::tuple(system_used_bytes, system_total_bytes);
+}
+
+int64_t MemoryMonitor::GetCGroupMemoryLimitBytes() {
+  int64_t total_bytes = kNull;
+  if (std::filesystem::exists(kCgroupsV2MemoryMaxPath)) {
+    std::ifstream mem_file(kCgroupsV2MemoryMaxPath, std::ios::in | std::ios::binary);
+    mem_file >> total_bytes;
+  } else if (std::filesystem::exists(kCgroupsV1MemoryMaxPath)) {
+    std::ifstream mem_file(kCgroupsV1MemoryMaxPath, std::ios::in | std::ios::binary);
+    mem_file >> total_bytes;
+  }
+
+  /// This can be zero if the memory limit is not set for cgroup v2.
+  if (total_bytes == 0) {
+    total_bytes = kNull;
+  }
+
+  return total_bytes;
 }
 
 std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
@@ -264,7 +292,8 @@ int64_t MemoryMonitor::NullableMin(int64_t left, int64_t right) {
 }
 
 std::ostream &operator<<(std::ostream &os, const MemorySnapshot &memory_snapshot) {
-  os << "Used bytes: " << memory_snapshot.used_bytes
+  os << "Heap used bytes: " << memory_snapshot.heap_used_bytes
+     << "Object store used bytes: " << memory_snapshot.object_store_used_bytes
      << ", Total bytes: " << memory_snapshot.total_bytes;
   return os;
 }

@@ -23,11 +23,17 @@ namespace ray {
 
 /// A snapshot of memory information.
 struct MemorySnapshot {
-  /// The memory used.
-  int64_t used_bytes;
+  /// The heap memory used.
+  int64_t heap_used_bytes;
 
-  /// The total memory that can be used. >= used_bytes;
+  /// The object store memory used.
+  int64_t object_store_used_bytes;
+
+  /// The total memory that can be used. >= total used bytes;
   int64_t total_bytes;
+
+  /// Returns the total amount of used bytes, including heap and object store usage.
+  int64_t GetTotalUsedBytes() { return heap_used_bytes + object_store_used_bytes; }
 
   friend std::ostream &operator<<(std::ostream &os,
                                   const MemorySnapshot &memory_snapshot);
@@ -41,6 +47,11 @@ struct MemorySnapshot {
 /// threshold at this instant.
 using MemoryUsageRefreshCallback = std::function<void(
     bool is_usage_above_threshold, MemorySnapshot system_memory, float usage_threshold)>;
+
+/// Reads the object store memory usage.
+///
+/// \return the current object store memory usage in bytes.
+using ObjectStoreMemoryUsageFetcher = std::function<int64_t()>;
 
 /// Monitors the memory usage of the node.
 /// It checks the memory usage p
@@ -58,7 +69,8 @@ class MemoryMonitor {
   MemoryMonitor(instrumented_io_context &io_service,
                 float usage_threshold,
                 uint64_t monitor_interval_ms,
-                MemoryUsageRefreshCallback monitor_callback);
+                MemoryUsageRefreshCallback monitor_callback,
+                ObjectStoreMemoryUsageFetcher object_store_memory_usage_fetcher);
 
  public:
   /// \param process_id the process id
@@ -86,6 +98,8 @@ class MemoryMonitor {
   /// \return the used and total memory in bytes from Cgroup.
   std::tuple<int64_t, int64_t> GetCGroupMemoryBytes();
 
+  int64_t GetCGroupMemoryLimitBytes();
+
   /// \return the used and total memory in bytes for linux OS.
   std::tuple<int64_t, int64_t> GetLinuxMemoryBytes();
 
@@ -110,6 +124,8 @@ class MemoryMonitor {
   /// Callback function that executes at each monitoring interval,
   /// on a dedicated thread managed by this class.
   const MemoryUsageRefreshCallback monitor_callback_;
+
+  const ObjectStoreMemoryUsageFetcher object_store_memory_usage_fetcher_;
   PeriodicalRunner runner_;
 };
 
