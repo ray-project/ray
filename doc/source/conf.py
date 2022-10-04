@@ -183,7 +183,7 @@ linkcheck_ignore = [
     r"https://www.meetup.com/*",  # seems to be flaky
     r"https://www.pettingzoo.ml/*",  # seems to be flaky
     r"http://localhost[:/].*",  # Ignore localhost links
-    r"http://<.*",  # Ignore docstrings examples, eg. http://<head-node-ip>:8265
+    r"http:/",  # Ignore incomplete links
 ]
 
 # -- Options for HTML output ----------------------------------------------
