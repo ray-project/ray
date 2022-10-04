@@ -147,9 +147,8 @@ def _format_batch(batch: Block, batch_format: str) -> BatchType:
         batch = BlockAccessor.for_block(batch).to_numpy()
     else:
         raise ValueError(
-            f"The given batch format: {batch_format} "
-            f"is invalid. Supported batch type: "
-            f"{'default', 'pandas', 'pyarrow', 'numpy'}"
+            f"The given batch format '{batch_format}' is invalid. Supported "
+            f"`batch_format` values: {'default', 'pandas', 'pyarrow', 'numpy'}."
         )
     return batch
 
