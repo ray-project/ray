@@ -2991,11 +2991,9 @@ const std::string NodeManager::CreateOomKillMessageDetails(
   std::string total_bytes_gb =
       FormatFloat(static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024, 2);
   std::stringstream is_retriable_ss;
-  if (worker->GetAssignedTask().GetTaskSpecification().IsRetriable()) {
-    is_retriable_ss << " that is retriable";
-  } else {
-    is_retriable_ss << " that is not retriable - there are no more "
-                       "retriable tasks to kill";
+  if (!worker->GetAssignedTask().GetTaskSpecification().IsRetriable()) {
+    is_retriable_ss
+        << " The task/actor is not retriable, which can fail the application.";
   }
   std::stringstream oom_kill_details_ss;
   oom_kill_details_ss
@@ -3003,11 +3001,11 @@ const std::string NodeManager::CreateOomKillMessageDetails(
       << ") where the task (" << worker->GetIdAsDebugString() << ") was running was "
       << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
       << "), which exceeds the memory usage threshold of " << usage_threshold
-      << ". Ray killed this worker (ID: " << worker->WorkerId() << ") because it was "
-      << "the most recently scheduled task" << is_retriable_ss.str()
-      << "; to see more "
-         "information about memory usage on this node, use `ray logs raylet.out "
-         "-ip "
+      << ". Ray killed this worker (ID: " << worker->WorkerId() << ")"
+      << is_retriable_ss.str()
+      << " See documentation for more details about the worker killing policy under "
+         "memory pressure. To see more information about memory usage on this node, use "
+         "`ray logs raylet.out -ip "
       << worker->IpAddress() << "`. To see the logs of the worker, use `ray logs worker-"
       << worker->WorkerId() << "*out -ip " << worker->IpAddress() << "`. ";
   /// TODO: (clarng) add a link to the oom killer / memory manager documentation

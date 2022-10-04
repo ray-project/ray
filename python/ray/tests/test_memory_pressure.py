@@ -373,6 +373,7 @@ def test_task_oom_only_uses_oom_retry(
         value=task_oom_retries + 1,
     )
 
+
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
@@ -382,10 +383,12 @@ def test_actor_oom_only_uses_oom_retry(
 ):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1.1)
 
-    actor_ref = Leaker.options(name="actor", max_restarts=3, max_task_retries=3).remote()
+    actor_ref = Leaker.options(
+        name="actor", max_restarts=3, max_task_retries=3
+    ).remote()
     with pytest.raises(ray.exceptions.RayActorError) as _:
         ray.get(actor_ref.allocate.remote(bytes_to_alloc))
-            
+
     wait_for_condition(
         has_metric_tagged_with_value,
         timeout=10,
