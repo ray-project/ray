@@ -1,7 +1,6 @@
 import numpy as np
 import pytest
 from ray.data.datasource.image_datasource import (
-    IMAGE_EXTENSIONS,
     _ImageDatasourceReader,
     ImageDatasource,
 )
