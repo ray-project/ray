@@ -18,5 +18,16 @@ In this case, you can use the ``memory`` resource to limit the number of concurr
 Code example
 ------------
 
+**Without limit:**
+
 .. literalinclude:: ../doc_code/limit_running_tasks.py
     :language: python
+    :start-after: __without_limit_start__
+    :end-before: __without_limit_end__
+
+**With limit:**
+
+.. literalinclude:: ../doc_code/limit_running_tasks.py
+    :language: python
+    :start-after: __with_limit_start__
+    :end-before: __with_limit_end__
