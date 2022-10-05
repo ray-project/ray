@@ -44,7 +44,8 @@ class TorchRecurrentModel(RecurrentModel, nn.Module, TorchModelIO):
     """The base class for recurrent pytorch models.
 
     If implementing a custom recurrent model, you likely want to inherit
-    from this model.
+    from this model. You should make sure to call super().__init__(config)
+    in your __init__.
 
     Args:
         config: The config used to construct the model
@@ -68,6 +69,15 @@ class TorchRecurrentModel(RecurrentModel, nn.Module, TorchModelIO):
         # the returned TensorDict must match the prev_state_spec
         _initial_state(self) -> TensorDict
 
+        # Additional checks on the input and recurrent state before `_unroll`
+        _check_inputs_and_prev_state(inputs: TensorDict, prev_state: TensorDict)
+            -> Tuple[TensorDict, TensorDict]
+
+        # Additional checks on the output and the output recurrent state
+        # after `_unroll`
+        _check_outputs_and_next_state(outputs: TensorDict, next_state: TensorDict)
+            -> Tuple[TensorDict, TensorDict]
+
         # Save model weights to path
         save(self, path: str) -> None
 
@@ -76,24 +86,38 @@ class TorchRecurrentModel(RecurrentModel, nn.Module, TorchModelIO):
 
     Examples:
         >>> class MyCustomModel(TorchRecurrentModel):
-        ...     def __init__(self, input_size, output_size, recurrent_size):
-        ...         self.input_spec = SpecDict(
-        ...             {"obs": "batch, time, hidden"}, hidden=input_size
-        ...        )
-        ...         self.output_spec = SpecDict(
-        ...             {"logits": "batch, time, logits"}, logits=output_size
-        ...         )
-        ...         self.prev_state_spec = SpecDict(
-        ...             {"input_state": "batch, recur"}, recur=recurrent_size
-        ...         )
-        ...         self.next_state_spec = SpecDict(
-        ...             {"output_state": "batch, recur"}, recur=recurrent_size
-        ...         )
+        ...     def __init__(self, config):
+        ...         super().__init__(config)
         ...
         ...         self.lstm = nn.LSTM(
         ...             input_size, recurrent_size, batch_first=True
         ...         )
         ...         self.project = nn.Linear(recurrent_size, output_size)
+        ...
+        ...     @property
+        ...     def input_spec(self):
+        ...         return SpecDict(
+        ...             {"obs": "batch time hidden"}, hidden=self.config.input_size
+        ...         )
+        ...
+        ...     @property
+        ...     def output_spec(self):
+        ...         return SpecDict(
+        ...             {"logits": "batch time logits"}, logits=self.config.output_size
+        ...         )
+        ...
+        ...     @property
+        ...     def prev_state_spec(self):
+        ...         return SpecDict(
+        ...             {"input_state": "batch recur"}, recur=self.config.recurrent_size
+        ...         )
+        ...
+        ...     @property
+        ...     def next_state_spec(self):
+        ...         return SpecDict(
+        ...             {"output_state": "batch recur"},
+        ...             recur=self.config.recurrent_size
+        ...         )
         ...
         ...     def _unroll(self, inputs, prev_state, **kwargs):
         ...         output, state = self.lstm(inputs["obs"], prev_state["input_state"])
@@ -131,7 +155,8 @@ class TorchModel(Model, nn.Module, TorchModelIO):
     """The base class for non-recurrent pytorch models.
 
     If implementing a custom pytorch model, you likely want to
-    inherit from this class.
+    inherit from this class. You should make sure to call super().__init__(config)
+    in your __init__.
 
     Args:
         config: The config used to construct the model
@@ -147,6 +172,12 @@ class TorchModel(Model, nn.Module, TorchModelIO):
             -> TensorDict
 
     Optional Overrides:
+        # Additional checks on the input before `_forward`
+        _check_inputs(inputs: TensorDict) -> TensorDict
+
+        # Additional checks on the output after `_forward`
+        _check_outputs(outputs: TensorDict) -> TensorDict
+
         # Save model weights to path
         save(self, path: str) -> None
 
@@ -155,20 +186,26 @@ class TorchModel(Model, nn.Module, TorchModelIO):
 
     Examples:
         >>> class MyCustomModel(TorchModel):
-        ...     def __init__(self, input_size, hidden_size, output_size):
-        ...         self.input_spec = SpecDict(
-        ...             {"obs": "batch, time, hidden"}, hidden=input_size
-        ...         )
-        ...         self.output_spec = SpecDict(
-        ...         {"logits": "batch, time, logits"}, logits=output_size
-        ...         )
-        ...
+        ...     def __init__(self, config):
+        ...         super().__init__(config)
         ...         self.mlp = nn.Sequential(
         ...             nn.Linear(input_size, hidden_size),
         ...             nn.ReLU(),
         ...             nn.Linear(hidden_size, hidden_size),
         ...             nn.ReLU(),
         ...             nn.Linear(hidden_size, output_size)
+        ...         )
+        ...
+        ...     @property
+        ...     def input_spec(self):
+        ...         return SpecDict(
+        ...             {"obs": "batch time hidden"}, hidden=self.config.input_size
+        ...         )
+        ...
+        ...     @property
+        ...     def output_spec(self):
+        ...         return SpecDict(
+        ...             {"logits": "batch time logits"}, logits=self.config.output_size
         ...         )
         ...
         ...     def _forward(self, inputs, **kwargs):
