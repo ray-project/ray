@@ -321,9 +321,9 @@ def train_func(config):
     print(f"Device: {device}")
 
     # Setup data.
-    train_dataset_pipeline = session.get_dataset_shard("train_dataset")
+    train_dataset_pipeline = session.get_dataset_shard("train")
     train_dataset_epoch_iterator = train_dataset_pipeline.iter_epochs()
-    test_dataset = session.get_dataset_shard("test_dataset")
+    test_dataset = session.get_dataset_shard("test")
     test_torch_dataset = test_dataset.to_torch(
         label_column="label", batch_size=batch_size
     )
@@ -567,7 +567,7 @@ if __name__ == "__main__":
             f.write(json.dumps({"time": total_time, "success": 1}))
         exit()
 
-    datasets = {"train_dataset": train_dataset, "test_dataset": test_dataset}
+    datasets = {"train": train_dataset, "test": test_dataset}
 
     config = {
         "use_gpu": use_gpu,
