@@ -145,7 +145,7 @@ class MultiAgentEnv(gym.Env):
             for key, agent_obs in x.items():
                 if not self.observation_space[key].contains(agent_obs):
                     return False
-            if not all(k in self.observation_space for k in x):
+            if not all(k in self.observation_space.spaces for k in x):
                 if log_once("possibly_bad_multi_agent_dict_missing_agent_observations"):
                     logger.warning(
                         "You environment returns observations that are "
