@@ -105,3 +105,10 @@ class TestTorchModel(unittest.TestCase):
 
         for k in outputs.flatten().keys() | desired.flatten().keys():
             self.assertTrue(torch.all(outputs[k] == desired[k]))
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
