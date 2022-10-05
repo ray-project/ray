@@ -1,13 +1,12 @@
 import logging
 import warnings
-from typing import TypeVar, Dict
+from typing import Type, TypeVar, Dict
 
 from ray.air.checkpoint import Checkpoint
 from ray.train._internal.utils import Singleton
 from ray.train._internal.worker_group import WorkerGroup
 from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.widgets import make_table_html_repr
-from ray.util import log_once
 
 EncodedData = TypeVar("EncodedData")
 
@@ -23,17 +22,17 @@ _encode_decode_deprecation_message = (
 )
 
 
-def _warn_about_bad_checkpoint_type(recieved_checkpoint, expected_checkpoint):
-    if log_once(f"bad_checkpoint_type_{type(expected_checkpoint)}"):
-        warnings.warn(
-            f"You have reported a checkpoint with the `{Checkpoint}` "
-            "type, but the intended checkpoint type for the Trainer "
-            f"you are using is `{type(expected_checkpoint)}`. Not using "
-            "the intended checkpoint type may cause issues or "
-            "exceptions, especially during serialization and "
-            "deserialization. The checkpoint type will be changed "
-            "automatically. This behavior may change in the future."
-        )
+def _warn_about_bad_checkpoint_type(expected_checkpoint_cls: Type[Checkpoint]):
+    warnings.warn(
+        f"You have reported a checkpoint with the `{Checkpoint}` "
+        "type, but the intended checkpoint type for the Trainer "
+        f"you are using is `{expected_checkpoint_cls}`. "
+        "Not using the intended checkpoint type may cause "
+        "exceptions or other issues, especially during "
+        "serialization and deserialization. The checkpoint "
+        "type will be changed automatically. "
+        "This behavior may change in the future."
+    )
 
 
 @DeveloperAPI

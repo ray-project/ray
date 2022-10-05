@@ -63,6 +63,6 @@ class _TensorflowBackend(Backend):
     def _encode_data(cls, checkpoint: Checkpoint):
         checkpoint = super()._encode_data(checkpoint)
         if type(checkpoint) is Checkpoint:
-            _warn_about_bad_checkpoint_type(checkpoint, TensorflowCheckpoint)
+            _warn_about_bad_checkpoint_type(TensorflowCheckpoint)
             checkpoint = TensorflowCheckpoint.from_checkpoint(checkpoint)
         return checkpoint

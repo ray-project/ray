@@ -1,12 +1,14 @@
+from contextlib import redirect_stderr, redirect_stdout
 import pytest
-from ray.train.batch_predictor import BatchPredictor
 import torch
 import os
+import io
 
 import ray
 from ray.air.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
+from ray.train.batch_predictor import BatchPredictor
 from ray.train.torch import TorchPredictor, TorchTrainer
 from ray.tune import TuneError
 from ray.air.config import ScalingConfig
@@ -14,7 +16,7 @@ from ray.train.torch import TorchConfig
 import ray.train as train
 from unittest.mock import patch
 from ray.cluster_utils import Cluster
-from ray.air import session
+from ray.air import session, Checkpoint
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
 
@@ -171,6 +173,39 @@ def test_torch_session_errors(ray_start_4_cpus):
         scaling_config=scaling_config,
     )
     trainer.fit()
+
+
+def test_torch_bad_checkpoint_warning(ray_start_4_cpus):
+    """Test that a warning is printed if bad checkpoint type is used."""
+
+    def train_func():
+        model = torch.nn.Linear(1, 1).state_dict()
+        session.report({}, checkpoint=TorchCheckpoint.from_dict({"model": model}))
+
+    scaling_config = ScalingConfig(num_workers=2)
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=scaling_config,
+    )
+    output = io.StringIO()
+    with redirect_stdout(output), redirect_stderr(output):
+        trainer.fit()
+    output = output.getvalue()
+    assert "You have reported a checkpoint" not in output
+
+    def train_func():
+        model = torch.nn.Linear(1, 1).state_dict()
+        session.report({}, checkpoint=Checkpoint.from_dict({"model": model}))
+
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=scaling_config,
+    )
+    output = io.StringIO()
+    with redirect_stdout(output), redirect_stderr(output):
+        trainer.fit()
+    output = output.getvalue()
+    assert "You have reported a checkpoint" in output
 
 
 @pytest.mark.parametrize(
