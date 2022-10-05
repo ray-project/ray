@@ -28,8 +28,8 @@ class TestModel(unittest.TestCase):
 
         # test validation.
         tensor_1 = {
-            "out_tensor_1": torch.randn(2, h1),
-            "out_tensor_2": torch.randn(2, h2),
+            "out_tensor_1": np.random.randn(2, h1),
+            "out_tensor_2": np.random.randn(2, h2),
             "out_class_1": TypeClass1(),
         }
 
@@ -37,16 +37,16 @@ class TestModel(unittest.TestCase):
 
         # test missing key in specs
         tensor_2 = {
-            "out_tensor_1": torch.randn(2, h1),
-            "out_tensor_2": torch.randn(2, h2),
+            "out_tensor_1": np.random.randn(2, h1),
+            "out_tensor_2": np.random.randn(2, h2),
         }
 
         self.assertRaises(ValueError, lambda: spec_1.validate(tensor_2))
 
         # test missing key in data
         tensor_3 = {
-            "out_tensor_1": torch.randn(2, h1),
-            "out_tensor_2": torch.randn(2, h2),
+            "out_tensor_1": np.random.randn(2, h1),
+            "out_tensor_2": np.random.randn(2, h2),
             "out_class_1": TypeClass1(),
             "out_class_2": TypeClass1(),
         }
@@ -61,8 +61,8 @@ class TestModel(unittest.TestCase):
 
         # raise type mismatch
         tensor_4 = {
-            "out_tensor_1": torch.randn(2, h1),
-            "out_tensor_2": torch.randn(2, h2),
+            "out_tensor_1": np.random.randn(2, h1),
+            "out_tensor_2": np.random.randn(2, h2),
             "out_class_1": TypeClass2(),
         }
 
@@ -84,12 +84,12 @@ class TestModel(unittest.TestCase):
 
         tensor_5 = {
             "encoder": {
-                "input": torch.randn(2, h1),
-                "output": torch.randn(2, h2),
+                "input": np.random.randn(2, h1),
+                "output": np.random.randn(2, h2),
             },
             "decoder": {
-                "input": torch.randn(2, h2),
-                "output": torch.randn(2, h1),
+                "input": np.random.randn(2, h2),
+                "output": np.random.randn(2, h1),
             },
         }
 

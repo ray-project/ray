@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Optional, Dict, List, Tuple, Union
+from typing import Any, Optional, Dict, List, Tuple, Union, Type
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import TensorType
@@ -9,7 +9,7 @@ _INVALID_INPUT_UNKNOWN_DIM = "Unknown dimension name {} in shape ({})"
 _INVALID_INPUT_POSITIVE = "Dimension {} in ({}) must be positive, got {}"
 _INVALID_INPUT_INT_DIM = "Dimension {} in ({}) must be integer, got {}"
 _INVALID_SHAPE = "Expected shape {} but found {}"
-_INVALID_DTYPE = "Expected dtype {} but found {}"
+_INVALID_TYPE = "Expected tensor type {} but found {}"
 
 
 @DeveloperAPI
@@ -39,13 +39,14 @@ class TensorSpecs(abc.ABC):
     Public Methods:
         validate: Checks if the shape and dtype of the tensor matches the
             specification.
-        sample: Samples a tensor with the specified value that is an
+        fill: creates a tensor with the specified value that is an
             example of a tensor that matches the specification.
 
     Abstract Methods:
+        get_type: Returns the type of the tensor, e.g. tf.Tensor or torch.Tensor.
         get_shape: Returns the shape of the tensor depending on the backend.
         get_dtype: Returns the dtype of the tensor depending on the backend.
-        _sample: Samples a tensor with the specified value that
+        _full: Creates a tensor with the specified value that
             has values of fill_value, shape of shape, and dtype of self.dtype.
     """
 
@@ -53,12 +54,18 @@ class TensorSpecs(abc.ABC):
         self, shape: str, *, dtype: Optional[Any] = None, **shape_vals: Dict[str, int]
     ) -> None:
         self._expected_shape = self._parse_expected_shape(shape, shape_vals)
+        self._full_shape = self._get_full_shape()
         self._dtype = dtype
 
     @property
-    def shape(self) -> Tuple[int]:
-        """Returns a `tuple` specifying the tensor shape."""
+    def shape(self) -> Tuple[Union[int, str]]:
+        """Returns a `tuple` specifying the abstract tensor shape (int and str)."""
         return self._expected_shape
+
+    @property
+    def full_shape(self) -> Tuple[int]:
+        """Returns a `tuple` specifying the concrete tensor shape (only ints)."""
+        return self._full_shape
 
     @property
     def dtype(self) -> Any:
@@ -75,6 +82,13 @@ class TensorSpecs(abc.ABC):
         Raises:
             ValueError: If the shape or dtype of the tensor does not match the
         """
+
+        expected_type = self.get_type()
+        if not isinstance(tensor, expected_type):
+            raise ValueError(
+                _INVALID_TYPE.format(expected_type, type(tensor).__name__)
+            )
+
         shape = self.get_shape(tensor)
         if len(shape) != len(self._expected_shape):
             raise ValueError(_INVALID_SHAPE.format(self._expected_shape, shape))
@@ -85,7 +99,17 @@ class TensorSpecs(abc.ABC):
 
         dtype = self.get_dtype(tensor)
         if self.dtype and dtype != self.dtype:
-            raise ValueError(_INVALID_DTYPE.format(self.dtype, tensor.dtype))
+            raise ValueError(_INVALID_TYPE.format(self.dtype, tensor.dtype))
+
+    @classmethod
+    @abc.abstractmethod
+    def get_type(cls) -> Union[Type, Tuple[Type]]:
+        """Returns the type of a tensor e.g. torch.Tensor or tf.Tensor.
+        
+        Returns:
+            The type of a tensor. If the backend supports multiple tensor types, then a 
+            tuple of types is returned.
+        """
 
     @abc.abstractmethod
     def get_shape(self, tensor: TensorType) -> Tuple[int]:
@@ -97,7 +121,6 @@ class TensorSpecs(abc.ABC):
         Returns:
             A `tuple` specifying the shape of the tensor.
         """
-        raise NotImplementedError
 
     @abc.abstractmethod
     def get_dtype(self, tensor: TensorType) -> Any:
@@ -109,7 +132,6 @@ class TensorSpecs(abc.ABC):
         Returns:
             The data type of the tensor.
         """
-        raise NotImplementedError
 
     @DeveloperAPI
     def fill(self, fill_value: Union[float, int] = 0) -> TensorType:
@@ -121,13 +143,12 @@ class TensorSpecs(abc.ABC):
         Returns:
             A tensor with the specified value that matches the specs.
         """
-        full_shape = self._full_shape()
-        return self._full(full_shape, fill_value)
+        return self._full(self.full_shape, fill_value)
 
     @abc.abstractmethod
     def _full(self, shape: Tuple[int], fill_value: Union[float, int] = 0) -> TensorType:
         """Creates a tensor with the given shape filled with `fill_value`. The tensor
-        dtype is inferred from `fill_value`.
+        dtype is inferred from `fill_value`. This is equivalent to np.full(shape, val).
 
         Args:
             shape: The shape of the tensor to be sampled.
@@ -136,9 +157,8 @@ class TensorSpecs(abc.ABC):
         Returns:
             A tensor with the specified value that matches the specs.
         """
-        raise NotImplementedError
 
-    def _full_shape(self) -> Tuple[int]:
+    def _get_full_shape(self) -> Tuple[int]:
         """Converts the expected shape to a shape by replacing the unknown dimension
         sizes with a value of 1."""
         sampled_shape = tuple()
