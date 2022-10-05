@@ -1,6 +1,7 @@
 import logging
+import functools
 import os
-from typing import List, TYPE_CHECKING
+from typing import List, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pyarrow
@@ -203,21 +204,19 @@ def _arrow_array_reduce(a: "pyarrow.Array"):
     """Custom reducer for Arrow arrays that works around a zero-copy slicing pickling
     bug by using the Arrow IPC format for the underlying serialization.
     """
-    from pyarrow.ipc import RecordBatchStreamWriter
-    from pyarrow.lib import RecordBatch, BufferOutputStream
+    import pyarrow as pa
 
-    batch = RecordBatch.from_arrays([a], [""])
-    output_stream = BufferOutputStream()
-    with RecordBatchStreamWriter(output_stream, schema=batch.schema) as wr:
-        wr.write_batch(batch)
-    return _restore_array, (output_stream.getvalue(),)
+    batch = pa.RecordBatch.from_arrays([a], [""])
+    restore_recordbatch, serialized = _arrow_recordbatch_reduce(batch)
+
+    return functools.partial(_restore_array, restore_recordbatch), serialized
 
 
-def _restore_array(buf: bytes) -> "pyarrow.Array":
-    from pyarrow.ipc import RecordBatchStreamReader
-
-    with RecordBatchStreamReader(buf) as reader:
-        return reader.read_next_batch().column(0)
+def _restore_array(
+    restore_recordbatch: Callable[[bytes], "pyarrow.RecordBatch"], buf: bytes
+) -> "pyarrow.Array":
+    """Restore a serialized Arrow Array."""
+    return restore_recordbatch(buf).column(0)
 
 
 def _arrow_chunkedarray_reduce(a: "pyarrow.ChunkedArray"):
@@ -225,33 +224,17 @@ def _arrow_chunkedarray_reduce(a: "pyarrow.ChunkedArray"):
     pickling bug by using the Arrow IPC format for the underlying serialization.
     """
     import pyarrow as pa
-    from pyarrow.ipc import RecordBatchStreamWriter
-    from pyarrow.lib import RecordBatch, BufferOutputStream
 
-    # Convert chunked array to contiguous array.
-    if a.num_chunks == 0:
-        a = pa.array([], type=a.type)
-    elif isinstance(a.type, pa.ExtensionType):
-        chunk = a.chunk(0)
-        a = type(chunk).from_storage(
-            chunk.type, pa.concat_arrays([c.storage for c in a.chunks])
-        )
-    else:
-        a = a.combine_chunks()
-
-    batch = RecordBatch.from_arrays([a], [""])
-    output_stream = BufferOutputStream()
-    with RecordBatchStreamWriter(output_stream, schema=batch.schema) as wr:
-        wr.write_batch(batch)
-    return _restore_chunked_array, (output_stream.getvalue(),)
+    table = pa.Table.from_arrays([a], names=[""])
+    restore_table, serialized = _arrow_table_reduce(table)
+    return functools.partial(_restore_chunkedarray, restore_table), serialized
 
 
-def _restore_chunked_array(buf: bytes) -> "pyarrow.ChunkedArray":
-    import pyarrow as pa
-    from pyarrow.ipc import RecordBatchStreamReader
-
-    with RecordBatchStreamReader(buf) as reader:
-        return pa.chunked_array([reader.read_next_batch().column(0)])
+def _restore_chunkedarray(
+    restore_table: Callable[[bytes], "pyarrow.Table"], buf: bytes
+) -> "pyarrow.ChunkedArray":
+    """Restore a serialized Arrow ChunkedArray."""
+    return restore_table(buf).column(0)
 
 
 def _arrow_recordbatch_reduce(batch: "pyarrow.RecordBatch"):
@@ -268,6 +251,7 @@ def _arrow_recordbatch_reduce(batch: "pyarrow.RecordBatch"):
 
 
 def _restore_recordbatch(buf: bytes) -> "pyarrow.RecordBatch":
+    """Restore a serialized Arrow RecordBatch."""
     from pyarrow.ipc import RecordBatchStreamReader
 
     with RecordBatchStreamReader(buf) as reader:
@@ -288,6 +272,7 @@ def _arrow_table_reduce(table: "pyarrow.Table"):
 
 
 def _restore_table(buf: bytes) -> "pyarrow.Table":
+    """Restore a serialized Arrow Table."""
     from pyarrow.ipc import RecordBatchStreamReader
 
     with RecordBatchStreamReader(buf) as reader:
