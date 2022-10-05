@@ -2976,12 +2976,6 @@ void CoreWorker::AddSpilledObjectLocationOwner(
     // object is spilled before the reply from the task that created the
     // object. Add the dynamically created object to our ref counter so that we
     // know that it exists.
-    // NOTE(swang): We don't need to do this for in-plasma object locations because:
-    // 1) We will add the primary copy as a location when processing the task
-    // reply.
-    // 2) It is not possible to copy the object to a second location until
-    // after the owner has added the object to the ref count table (since no
-    // raylet can get the current location of the object until this happens).
     RAY_CHECK(!generator_id->IsNil());
     reference_counter_->AddDynamicReturn(object_id, *generator_id);
   }
