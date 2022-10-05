@@ -206,6 +206,8 @@ def run(
                 "line!"
             )
         # Use default config for given agent.
+        if not algo:
+            raise ValueError("Please provide an algorithm via `--algo`.")
         _, config = get_algorithm_class(algo, return_config=True)
 
     # Make sure worker 0 has an Env.

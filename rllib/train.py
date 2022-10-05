@@ -93,8 +93,10 @@ def file(
     framework = framework.value if framework else None
 
     experiments = load_experiments_from_file(config_file)
+    exp_name = list(experiments.keys())[0]
+    algo = experiments[exp_name]["run"]
 
-    return run_rllib_experiments(
+    run_rllib_experiments(
         experiments=experiments,
         v=v,
         vv=vv,
@@ -110,6 +112,7 @@ def file(
         resume=resume,
         scheduler=scheduler,
         scheduler_config=scheduler_config,
+        algo=algo,
     )
 
 
@@ -192,7 +195,7 @@ def run(
             }
         }
 
-        return run_rllib_experiments(
+        run_rllib_experiments(
             experiments=experiments,
             v=v,
             vv=vv,
@@ -208,6 +211,7 @@ def run(
             resume=resume,
             scheduler=scheduler,
             scheduler_config=scheduler_config,
+            algo=algo,
         )
 
 
@@ -227,6 +231,7 @@ def run_rllib_experiments(
     resume: cli.Resume,
     scheduler: cli.Scheduler,
     scheduler_config: cli.SchedulerConfig,
+    algo: cli.Algo,
 ):
 
     # Override experiment data with command line arguments.
@@ -292,7 +297,25 @@ def run_rllib_experiments(
         concurrent=True,
     )
     ray.shutdown()
-    return trials
+
+    checkpoints = []
+    for trial in trials:
+        if trial.checkpoint.dir_or_data:
+            checkpoints.append(trial.checkpoint.dir_or_data)
+
+    if checkpoints:
+        from rich import print
+        from rich.panel import Panel
+
+        print("\nYour training finished.")
+
+        print("Best available checkpoint for each trial:")
+        for cp in checkpoints:
+            print(f"  {cp}")
+
+        print("\nYou can now evaluate your trained algorithm from any "
+              "checkpoint, e.g. by running:")
+        print(Panel(f"[green]  rllib evaluate {checkpoints[0]} --algo {algo}"))
 
 
 def main():

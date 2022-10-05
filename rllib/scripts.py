@@ -102,7 +102,7 @@ def get(
 @example_app.command()
 def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
     """Run an RLlib example from the command line by simply providing its ID.\n\n
-    Example usage: `rllib example run pong-a3c`
+    Example usage: `rllib example run pong-impala`
     """
     if example_id not in EXAMPLES.keys():
         raise example_error(example_id)
