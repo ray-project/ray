@@ -428,7 +428,7 @@
       python ./ci/run/bazel-sharding.py
       --exclude_manual
       --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
-      --tag_filters "-gpu,-gpu_only,-minimal,-tune"
+      --tag_filters="-gpu,-gpu_only,-minimal,-tune"
       python/ray/train/...
       > test_shard.txt
     - cat test_shard.txt
