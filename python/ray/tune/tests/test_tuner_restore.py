@@ -91,12 +91,14 @@ def test_tuner_restore_num_trials(ray_start_4_cpus, tmpdir):
     """Number of trials after restoring a finished run should be the same"""
     tuner = Tuner(
         lambda config: 1,
-        tune_config=TuneConfig(num_samples=4),
+        tune_config=TuneConfig(num_samples=4, metric="_metric", mode="max"),
         run_config=RunConfig(
             name="test_tuner_restore_num_trials", local_dir=str(tmpdir)
         ),
     )
-    tuner.fit()
+    results = tuner.fit()
+    assert len(results) == 4
+    assert results.get_best_result().metrics["_metric"] == 1
 
     del tuner
     tuner = Tuner.restore(str(tmpdir / "test_tuner_restore_num_trials"))
@@ -104,9 +106,11 @@ def test_tuner_restore_num_trials(ray_start_4_cpus, tmpdir):
     # Check restored results
     results = tuner.get_results()
     assert len(results) == 4
+    assert results.get_best_result().metrics["_metric"] == 1
 
     results = tuner.fit()
     assert len(results) == 4
+    assert results.get_best_result().metrics["_metric"] == 1
 
 
 def test_tuner_restore_resume_errored(ray_start_4_cpus, tmpdir):
