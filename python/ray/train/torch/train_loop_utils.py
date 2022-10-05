@@ -564,7 +564,7 @@ class _TorchAccelerator(Accelerator):
             # GPU `ray.get_gpu_ids()` may return ints or may return strings.
             # We should always convert to strings.
             gpu_ids = [str(id) for id in ray.get_gpu_ids()]
-            loger.info("GPU ids", gpu_ids)
+            logger.info("GPU ids", gpu_ids)
 
             if len(gpu_ids) > 0:
                 # By default, there should only be one GPU ID if `use_gpu=True`.
