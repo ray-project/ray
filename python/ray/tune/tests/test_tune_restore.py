@@ -546,49 +546,6 @@ class TrainableCrashWithFailFast(unittest.TestCase):
             tune.run(f, fail_fast=TrialRunner.RAISE)
 
 
-# For some reason, different tests are coupled through tune.registry.
-# After running `ResourceExhaustedTest`, there is always a super huge `training_func` to
-# be put through GCS, which will fail subsequent tests.
-# tldr, make sure that this test is the last test in the file.
-class ResourceExhaustedTest(unittest.TestCase):
-    def test_resource_exhausted_info(self):
-        """This is to test if helpful information is displayed when
-        the objects captured in trainable/training function are too
-        large and RESOURCES_EXHAUSTED error of gRPC is triggered."""
-
-        # generate some random data to be captured implicitly in training func.
-        from sklearn.datasets import fetch_olivetti_faces
-
-        a_large_array = []
-        for i in range(50):
-            a_large_array.append(fetch_olivetti_faces())
-
-        def training_func(config):
-            for item in a_large_array:
-                assert item
-
-        with self.assertRaisesRegex(
-            TuneError,
-            "The Trainable/training function is too large for grpc resource limit.",
-        ):
-            tune.run(training_func)
-
-
-def test_stacktrace():
-    """Test proper stacktrace is printed for RayTaskError."""
-    CMD = """
-from ray import tune
-
-def train(config):
-    raise Exception("Inducing exception for testing purposes.")
-
-tune.run(train, num_samples=1)
-    """
-    with pytest.raises(subprocess.CalledProcessError) as exc_info:
-        run_string_as_driver(CMD)
-    assert "Inducing exception for testing purposes." in exc_info.value.output.decode()
-
-
 def test_retore_retry():
     """Test retrying restore on a trial level."""
 
@@ -649,6 +606,48 @@ def test_retore_retry():
                 checkpoint_freq=1,
                 max_failures=1,
             )
+
+# For some reason, different tests are coupled through tune.registry.
+# After running `ResourceExhaustedTest`, there is always a super huge `training_func` to
+# be put through GCS, which will fail subsequent tests.
+# tldr, make sure that this test is the last test in the file.
+class ResourceExhaustedTest(unittest.TestCase):
+    def test_resource_exhausted_info(self):
+        """This is to test if helpful information is displayed when
+        the objects captured in trainable/training function are too
+        large and RESOURCES_EXHAUSTED error of gRPC is triggered."""
+
+        # generate some random data to be captured implicitly in training func.
+        from sklearn.datasets import fetch_olivetti_faces
+
+        a_large_array = []
+        for i in range(50):
+            a_large_array.append(fetch_olivetti_faces())
+
+        def training_func(config):
+            for item in a_large_array:
+                assert item
+
+        with self.assertRaisesRegex(
+            TuneError,
+            "The Trainable/training function is too large for grpc resource limit.",
+        ):
+            tune.run(training_func)
+
+
+def test_stacktrace():
+    """Test proper stacktrace is printed for RayTaskError."""
+    CMD = """
+from ray import tune
+
+def train(config):
+    raise Exception("Inducing exception for testing purposes.")
+
+tune.run(train, num_samples=1)
+    """
+    with pytest.raises(subprocess.CalledProcessError) as exc_info:
+        run_string_as_driver(CMD)
+    assert "Inducing exception for testing purposes." in exc_info.value.output.decode()
 
 
 if __name__ == "__main__":
