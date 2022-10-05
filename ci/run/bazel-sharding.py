@@ -36,13 +36,24 @@ def quote_targets(targets):
     return (" ".join("'{}'".format(t) for t in targets)) if targets else ""
 
 
-def get_target_expansion_query(targets, tests_only, exclude_manual):
+def generate_regex_from_tags(tags):
+    return "|".join([f"(\\b{tag}\\b)" for tag in tags])
+
+
+def get_target_expansion_query(
+    targets, tests_only, exclude_manual, include_tags=None, exclude_tags=None
+):
     included_targets, excluded_targets = partition_targets(targets)
 
     included_targets = quote_targets(included_targets)
     excluded_targets = quote_targets(excluded_targets)
 
     query = "set({})".format(included_targets)
+
+    if include_tags:
+        tags_regex = generate_regex_from_tags(include_tags)
+        query = 'attr("tags", "{}", {})'.format(tags_regex, query)
+
     if tests_only:
         query = "tests({})".format(query)
 
@@ -55,6 +66,12 @@ def get_target_expansion_query(targets, tests_only, exclude_manual):
     if exclude_manual:
         query = '{} except tests(attr("tags", "\\bmanual\\b", set({})))'.format(
             query, included_targets
+        )
+
+    if exclude_tags:
+        tags_regex = generate_regex_from_tags(exclude_tags)
+        query = '{} except attr("tags", "{}", set({}))'.format(
+            query, tags_regex, included_targets
         )
 
     return query
@@ -82,6 +99,18 @@ def get_targets_for_shard(targets, index, count):
     return sorted(targets)[index::count]
 
 
+def split_tag_filters(tag_str):
+    split_tags = tag_str.split(",") if tag_str else []
+    include_tags = []
+    exclude_tags = []
+    for tag in split_tags:
+        if tag[0] == "-":
+            exclude_tags.append(tag[1:])
+        else:
+            include_tags.append(tag)
+    return include_tags, exclude_tags
+
+
 def main():
     parser = argparse.ArgumentParser(description="Expand and shard Bazel targets.")
     parser.add_argument("--debug", action="store_true")
@@ -93,6 +122,11 @@ def main():
     parser.add_argument(
         "--count", type=int, default=os.getenv("BUILDKITE_PARALLEL_JOB_COUNT", 1)
     )
+    parser.add_argument(
+        "--tag_filters",
+        type=str,
+        help="accepts the same string as in bazel test --test_tag_filters=",
+    )
     parser.add_argument("targets", nargs="+")
     args, extra_args = parser.parse_known_args()
     args.targets = list(args.targets) + list(extra_args)
@@ -100,8 +134,10 @@ def main():
     if args.index >= args.count:
         parser.error("--index must be between 0 and {}".format(args.count - 1))
 
+    include_tags, exclude_tags = split_tag_filters(args.tag_filters)
+
     query = get_target_expansion_query(
-        args.targets, args.tests_only, args.exclude_manual
+        args.targets, args.tests_only, args.exclude_manual, include_tags, exclude_tags
     )
     expanded_targets = run_bazel_query(query, args.debug)
     my_targets = get_targets_for_shard(expanded_targets, args.index, args.count)
