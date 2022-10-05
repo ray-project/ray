@@ -724,8 +724,9 @@ class PopulationBasedTraining(FIFOScheduler):
         """
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
+        class_name = self.__class__.__name__
         logger.info(
-            "\n\n[PBT] [Exploit] Cloning trial "
+            f"\n\n[{class_name}] [Exploit] Cloning trial "
             "{} (score = {:4f}) into trial {} (score = {:4f})\n".format(
                 trial_to_clone.trial_id,
                 new_state.last_score,
@@ -746,7 +747,7 @@ class PopulationBasedTraining(FIFOScheduler):
             k: v for k, v in new_config.items() if k in self._hyperparam_mutations
         }
         explore_info_str = (
-            "\n\n[PBT] [Explore] Perturbed the hyperparameter config of trial"
+            f"\n\n[{class_name}] [Explore] Perturbed the hyperparameter config of trial"
             f"{trial.trial_id}:\n"
         )
         explore_info_str += (
