@@ -27,7 +27,6 @@ from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
     ArrowTensorType,
     ArrowVariableShapedTensorArray,
-    ArrowVariableShapedTensorType,
     TensorArray,
     TensorDtype,
 )
@@ -510,371 +509,6 @@ def test_range_table(ray_start_regular_shared):
     assert ds.take() == [{"value": i} for i in range(10)]
 
 
-def test_tensor_array_validation():
-    # Test unknown input type raises TypeError.
-    with pytest.raises(TypeError):
-        TensorArray(object())
-
-    # Test non-primitive element raises TypeError.
-    with pytest.raises(TypeError):
-        TensorArray(np.array([object(), object()]))
-
-    with pytest.raises(TypeError):
-        TensorArray([object(), object()])
-
-
-def test_arrow_scalar_tensor_array_roundtrip():
-    arr = np.arange(10)
-    ata = ArrowTensorArray.from_numpy(arr)
-    assert isinstance(ata.type, pa.DataType)
-    assert len(ata) == len(arr)
-    out = ata.to_numpy()
-    np.testing.assert_array_equal(out, arr)
-
-
-def test_arrow_scalar_tensor_array_roundtrip_boolean():
-    arr = np.array([True, False, False, True])
-    ata = ArrowTensorArray.from_numpy(arr)
-    assert isinstance(ata.type, pa.DataType)
-    assert len(ata) == len(arr)
-    # Zero-copy is not possible since Arrow bitpacks boolean arrays while NumPy does
-    # not.
-    out = ata.to_numpy(zero_copy_only=False)
-    np.testing.assert_array_equal(out, arr)
-
-
-def test_scalar_tensor_array_roundtrip():
-    arr = np.arange(10)
-    ta = TensorArray(arr)
-    assert isinstance(ta.dtype, TensorDtype)
-    assert len(ta) == len(arr)
-    out = ta.to_numpy()
-    np.testing.assert_array_equal(out, arr)
-
-    # Check Arrow conversion.
-    ata = ta.__arrow_array__()
-    assert isinstance(ata.type, pa.DataType)
-    assert len(ata) == len(arr)
-    out = ata.to_numpy()
-    np.testing.assert_array_equal(out, arr)
-
-
-def test_arrow_variable_shaped_tensor_array_validation():
-    # Test homogeneous-typed tensor raises ValueError.
-    with pytest.raises(ValueError):
-        ArrowVariableShapedTensorArray.from_numpy(np.ones((3, 2, 2)))
-
-    # Test arbitrary object raises ValueError.
-    with pytest.raises(ValueError):
-        ArrowVariableShapedTensorArray.from_numpy(object())
-
-    # Test empty array raises ValueError.
-    with pytest.raises(ValueError):
-        ArrowVariableShapedTensorArray.from_numpy(np.array([]))
-
-    # Test deeply ragged tensor raises ValueError.
-    with pytest.raises(ValueError):
-        ArrowVariableShapedTensorArray.from_numpy(
-            np.array(
-                [
-                    np.array(
-                        [
-                            np.array([1, 2]),
-                            np.array([3, 4, 5]),
-                        ],
-                        dtype=object,
-                    ),
-                    np.array(
-                        [
-                            np.array([5, 6, 7, 8]),
-                        ],
-                        dtype=object,
-                    ),
-                    np.array(
-                        [
-                            np.array([5, 6, 7, 8]),
-                            np.array([5, 6, 7, 8]),
-                            np.array([5, 6, 7, 8]),
-                        ],
-                        dtype=object,
-                    ),
-                ],
-                dtype=object,
-            )
-        )
-
-
-def test_arrow_variable_shaped_tensor_array_roundtrip():
-    shapes = [(2, 2), (3, 3), (4, 4)]
-    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
-    arrs = [
-        np.arange(offset, offset + np.prod(shape)).reshape(shape)
-        for offset, shape in zip(cumsum_sizes, shapes)
-    ]
-    arr = np.array(arrs, dtype=object)
-    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
-    assert isinstance(ata.type, ArrowVariableShapedTensorType)
-    assert len(ata) == len(arr)
-    out = ata.to_numpy()
-    for o, a in zip(out, arr):
-        np.testing.assert_array_equal(o, a)
-
-
-def test_arrow_variable_shaped_tensor_array_roundtrip_boolean():
-    arr = np.array(
-        [[True, False], [False, False, True], [False], [True, True, False, True]],
-        dtype=object,
-    )
-    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
-    assert isinstance(ata.type, ArrowVariableShapedTensorType)
-    assert len(ata) == len(arr)
-    out = ata.to_numpy()
-    for o, a in zip(out, arr):
-        np.testing.assert_array_equal(o, a)
-
-
-def test_arrow_variable_shaped_tensor_array_roundtrip_contiguous_optimization():
-    # Test that a roundtrip on slices of an already-contiguous 1D base array does not
-    # create any unnecessary copies.
-    base = np.arange(6)
-    base_address = base.__array_interface__["data"][0]
-    arr = np.array([base[:2], base[2:]], dtype=object)
-    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
-    assert isinstance(ata.type, ArrowVariableShapedTensorType)
-    assert len(ata) == len(arr)
-    assert ata.storage.field("data").buffers()[3].address == base_address
-    out = ata.to_numpy()
-    for o, a in zip(out, arr):
-        assert o.base.address == base_address
-        np.testing.assert_array_equal(o, a)
-
-
-def test_arrow_variable_shaped_tensor_array_slice():
-    shapes = [(2, 2), (3, 3), (4, 4)]
-    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
-    arrs = [
-        np.arange(offset, offset + np.prod(shape)).reshape(shape)
-        for offset, shape in zip(cumsum_sizes, shapes)
-    ]
-    arr = np.array(arrs, dtype=object)
-    ata = ArrowVariableShapedTensorArray.from_numpy(arr)
-    assert isinstance(ata.type, ArrowVariableShapedTensorType)
-    assert len(ata) == len(arr)
-    indices = [0, 1, 2]
-    for i in indices:
-        np.testing.assert_array_equal(ata[i], arr[i])
-    slices = [
-        slice(0, 1),
-        slice(1, 2),
-        slice(2, 3),
-        slice(0, 2),
-        slice(1, 3),
-        slice(0, 3),
-    ]
-    for slice_ in slices:
-        for o, e in zip(ata[slice_], arr[slice_]):
-            np.testing.assert_array_equal(o, e)
-
-
-def test_variable_shaped_tensor_array_roundtrip():
-    shapes = [(2, 2), (3, 3), (4, 4)]
-    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
-    arrs = [
-        np.arange(offset, offset + np.prod(shape)).reshape(shape)
-        for offset, shape in zip(cumsum_sizes, shapes)
-    ]
-    arr = np.array(arrs, dtype=object)
-    ta = TensorArray(arr)
-    assert isinstance(ta.dtype, TensorDtype)
-    assert len(ta) == len(arr)
-    out = ta.to_numpy()
-    for o, a in zip(out, arr):
-        np.testing.assert_array_equal(o, a)
-
-    # Check Arrow conversion.
-    ata = ta.__arrow_array__()
-    assert isinstance(ata.type, ArrowVariableShapedTensorType)
-    assert len(ata) == len(arr)
-    out = ata.to_numpy()
-    for o, a in zip(out, arr):
-        np.testing.assert_array_equal(o, a)
-
-
-def test_variable_shaped_tensor_array_slice():
-    shapes = [(2, 2), (3, 3), (4, 4)]
-    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
-    arrs = [
-        np.arange(offset, offset + np.prod(shape)).reshape(shape)
-        for offset, shape in zip(cumsum_sizes, shapes)
-    ]
-    arr = np.array(arrs, dtype=object)
-    ta = TensorArray(arr)
-    assert isinstance(ta.dtype, TensorDtype)
-    assert len(ta) == len(arr)
-    indices = [0, 1, 2]
-    for i in indices:
-        np.testing.assert_array_equal(ta[i], arr[i])
-    slices = [
-        slice(0, 1),
-        slice(1, 2),
-        slice(2, 3),
-        slice(0, 2),
-        slice(1, 3),
-        slice(0, 3),
-    ]
-    for slice_ in slices:
-        for o, e in zip(ta[slice_], arr[slice_]):
-            np.testing.assert_array_equal(o, e)
-
-
-def test_tensor_array_block_slice():
-    # Test that ArrowBlock slicing works with tensor column extension type.
-    def check_for_copy(table1, table2, a, b, is_copy):
-        expected_slice = table1.slice(a, b - a)
-        assert table2.equals(expected_slice)
-        assert table2.schema == table1.schema
-        assert table1.num_columns == table2.num_columns
-        for col1, col2 in zip(table1.columns, table2.columns):
-            assert col1.num_chunks == col2.num_chunks
-            for chunk1, chunk2 in zip(col1.chunks, col2.chunks):
-                bufs1 = chunk1.buffers()
-                bufs2 = chunk2.buffers()
-                expected_offset = 0 if is_copy else a
-                assert chunk2.offset == expected_offset
-                assert len(chunk2) == b - a
-                if is_copy:
-                    assert bufs2[1].address != bufs1[1].address
-                else:
-                    assert bufs2[1].address == bufs1[1].address
-
-    n = 20
-    one_arr = np.arange(4 * n).reshape(n, 2, 2)
-    df = pd.DataFrame({"one": TensorArray(one_arr), "two": ["a"] * n})
-    table = pa.Table.from_pandas(df)
-    a, b = 5, 10
-    block_accessor = BlockAccessor.for_block(table)
-
-    # Test with copy.
-    table2 = block_accessor.slice(a, b, True)
-    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), one_arr[a:b, :, :])
-    check_for_copy(table, table2, a, b, is_copy=True)
-
-    # Test without copy.
-    table2 = block_accessor.slice(a, b, False)
-    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), one_arr[a:b, :, :])
-    check_for_copy(table, table2, a, b, is_copy=False)
-
-
-@pytest.mark.parametrize(
-    "test_data,a,b",
-    [
-        ([[False, True], [True, False], [True, True], [False, False]], 1, 3),
-        ([[False, True], [True, False], [True, True], [False, False]], 0, 1),
-        (
-            [
-                [False, True],
-                [True, False],
-                [True, True],
-                [False, False],
-                [True, False],
-                [False, False],
-                [False, True],
-                [True, True],
-                [False, False],
-                [True, True],
-                [False, True],
-                [True, False],
-            ],
-            3,
-            6,
-        ),
-        (
-            [
-                [False, True],
-                [True, False],
-                [True, True],
-                [False, False],
-                [True, False],
-                [False, False],
-                [False, True],
-                [True, True],
-                [False, False],
-                [True, True],
-                [False, True],
-                [True, False],
-            ],
-            7,
-            11,
-        ),
-        (
-            [
-                [False, True],
-                [True, False],
-                [True, True],
-                [False, False],
-                [True, False],
-                [False, False],
-                [False, True],
-                [True, True],
-                [False, False],
-                [True, True],
-                [False, True],
-                [True, False],
-            ],
-            9,
-            12,
-        ),
-        # Variable-shaped tensors.
-        (
-            [[False, True], [True, False, True], [False], [False, False, True, True]],
-            1,
-            3,
-        ),
-    ],
-)
-@pytest.mark.parametrize("init_with_pandas", [True, False])
-def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data, a, b):
-    is_variable_shaped = len({len(elem) for elem in test_data}) > 1
-    n = len(test_data)
-    test_arr = np.array(test_data)
-    df = pd.DataFrame({"one": TensorArray(test_arr), "two": ["a"] * n})
-    if init_with_pandas:
-        table = pa.Table.from_pandas(df)
-    else:
-        if is_variable_shaped:
-            col = ArrowVariableShapedTensorArray.from_numpy(test_arr)
-        else:
-            col = ArrowTensorArray.from_numpy(test_arr)
-        table = pa.table({"one": col, "two": ["a"] * n})
-    block_accessor = BlockAccessor.for_block(table)
-
-    # Test without copy.
-    table2 = block_accessor.slice(a, b, False)
-    out = table2["one"].chunk(0).to_numpy()
-    expected = test_arr[a:b]
-    if is_variable_shaped:
-        for o, e in zip(out, expected):
-            np.testing.assert_array_equal(o, e)
-    else:
-        np.testing.assert_array_equal(out, expected)
-    pd.testing.assert_frame_equal(
-        table2.to_pandas().reset_index(drop=True), df[a:b].reset_index(drop=True)
-    )
-
-    # Test with copy.
-    table2 = block_accessor.slice(a, b, True)
-    out = table2["one"].chunk(0).to_numpy()
-    expected = test_arr[a:b]
-    if is_variable_shaped:
-        for o, e in zip(out, expected):
-            np.testing.assert_array_equal(o, e)
-    else:
-        np.testing.assert_array_equal(out, expected)
-    pd.testing.assert_frame_equal(
-        table2.to_pandas().reset_index(drop=True), df[a:b].reset_index(drop=True)
-    )
-
-
 def test_tensors_basic(ray_start_regular_shared):
     # Create directly.
     tensor_shape = (3, 5)
@@ -1109,6 +743,154 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=16, "
         "schema={a: TensorDtype(shape=None, dtype=float64)})"
+    )
+
+
+def test_tensor_array_block_slice():
+    # Test that ArrowBlock slicing works with tensor column extension type.
+    def check_for_copy(table1, table2, a, b, is_copy):
+        expected_slice = table1.slice(a, b - a)
+        assert table2.equals(expected_slice)
+        assert table2.schema == table1.schema
+        assert table1.num_columns == table2.num_columns
+        for col1, col2 in zip(table1.columns, table2.columns):
+            assert col1.num_chunks == col2.num_chunks
+            for chunk1, chunk2 in zip(col1.chunks, col2.chunks):
+                bufs1 = chunk1.buffers()
+                bufs2 = chunk2.buffers()
+                expected_offset = 0 if is_copy else a
+                assert chunk2.offset == expected_offset
+                assert len(chunk2) == b - a
+                if is_copy:
+                    assert bufs2[1].address != bufs1[1].address
+                else:
+                    assert bufs2[1].address == bufs1[1].address
+
+    n = 20
+    one_arr = np.arange(4 * n).reshape(n, 2, 2)
+    df = pd.DataFrame({"one": TensorArray(one_arr), "two": ["a"] * n})
+    table = pa.Table.from_pandas(df)
+    a, b = 5, 10
+    block_accessor = BlockAccessor.for_block(table)
+
+    # Test with copy.
+    table2 = block_accessor.slice(a, b, True)
+    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), one_arr[a:b, :, :])
+    check_for_copy(table, table2, a, b, is_copy=True)
+
+    # Test without copy.
+    table2 = block_accessor.slice(a, b, False)
+    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), one_arr[a:b, :, :])
+    check_for_copy(table, table2, a, b, is_copy=False)
+
+
+@pytest.mark.parametrize(
+    "test_data,a,b",
+    [
+        ([[False, True], [True, False], [True, True], [False, False]], 1, 3),
+        ([[False, True], [True, False], [True, True], [False, False]], 0, 1),
+        (
+            [
+                [False, True],
+                [True, False],
+                [True, True],
+                [False, False],
+                [True, False],
+                [False, False],
+                [False, True],
+                [True, True],
+                [False, False],
+                [True, True],
+                [False, True],
+                [True, False],
+            ],
+            3,
+            6,
+        ),
+        (
+            [
+                [False, True],
+                [True, False],
+                [True, True],
+                [False, False],
+                [True, False],
+                [False, False],
+                [False, True],
+                [True, True],
+                [False, False],
+                [True, True],
+                [False, True],
+                [True, False],
+            ],
+            7,
+            11,
+        ),
+        (
+            [
+                [False, True],
+                [True, False],
+                [True, True],
+                [False, False],
+                [True, False],
+                [False, False],
+                [False, True],
+                [True, True],
+                [False, False],
+                [True, True],
+                [False, True],
+                [True, False],
+            ],
+            9,
+            12,
+        ),
+        # Variable-shaped tensors.
+        (
+            [[False, True], [True, False, True], [False], [False, False, True, True]],
+            1,
+            3,
+        ),
+    ],
+)
+@pytest.mark.parametrize("init_with_pandas", [True, False])
+def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data, a, b):
+    is_variable_shaped = len({len(elem) for elem in test_data}) > 1
+    n = len(test_data)
+    test_arr = np.array(test_data)
+    df = pd.DataFrame({"one": TensorArray(test_arr), "two": ["a"] * n})
+    if init_with_pandas:
+        table = pa.Table.from_pandas(df)
+    else:
+        if is_variable_shaped:
+            col = ArrowVariableShapedTensorArray.from_numpy(test_arr)
+        else:
+            col = ArrowTensorArray.from_numpy(test_arr)
+        table = pa.table({"one": col, "two": ["a"] * n})
+    block_accessor = BlockAccessor.for_block(table)
+
+    # Test without copy.
+    table2 = block_accessor.slice(a, b, False)
+    out = table2["one"].chunk(0).to_numpy()
+    expected = test_arr[a:b]
+    if is_variable_shaped:
+        for o, e in zip(out, expected):
+            np.testing.assert_array_equal(o, e)
+    else:
+        np.testing.assert_array_equal(out, expected)
+    pd.testing.assert_frame_equal(
+        table2.to_pandas().reset_index(drop=True), df[a:b].reset_index(drop=True)
+    )
+
+    # Test with copy.
+    table2 = block_accessor.slice(a, b, True)
+    out = table2["one"].chunk(0).to_numpy()
+    expected = test_arr[a:b]
+    if is_variable_shaped:
+        for o, e in zip(out, expected):
+            np.testing.assert_array_equal(o, e)
+    else:
+        np.testing.assert_array_equal(out, expected)
+    pd.testing.assert_frame_equal(
+        table2.to_pandas().reset_index(drop=True), df[a:b].reset_index(drop=True)
     )
 
 
