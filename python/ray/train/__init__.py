@@ -1,7 +1,5 @@
 from ray._private.usage import usage_lib
 from ray.train.backend import BackendConfig
-from ray.train.callbacks import TrainingCallback
-from ray.train.checkpoint import CheckpointStrategy
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.train_loop_utils import (
     get_dataset_shard,
@@ -25,10 +23,8 @@ __all__ = [
     "report",
     "save_checkpoint",
     "TrainingIterator",
-    "TrainingCallback",
     "Trainer",
     "world_rank",
     "world_size",
     "TRAIN_DATASET_KEY",
-    "CheckpointStrategy",
 ]
