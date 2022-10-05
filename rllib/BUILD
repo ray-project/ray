@@ -1806,13 +1806,6 @@ py_test(
     size = "small",
     srcs = ["models/tests/test_base_model.py"]
 
-py_test(
-    name = "test_torch_model",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/tests/test_torch_model.py"]
-)
-
 # Test torch base models
 py_test(
     name = "test_torch_models",
