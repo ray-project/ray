@@ -286,12 +286,12 @@ class RayInternalKvStore:
         ret = internal_kv._internal_kv_get(key)
         return ret
 
-    def delete(self, key: str) -> None:
+    def delete(self, key: str) -> int:
         key = self.__concat_key_with_prefixes(key)
         ret = internal_kv._internal_kv_del(key)
         return ret
 
-    def del_keys(self, keys: List[str]):
+    def del_keys(self, keys: List[str]) -> List[int]:
         results = []
         for key in keys:
             results.append(self.delete(key))
