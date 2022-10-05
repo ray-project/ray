@@ -34,7 +34,7 @@ Let's expose metrics through `ray start`.
 
 Now, you can scrape Ray's metrics using Prometheus.
 
-First, download Prometheus. `Download Link <https://prometheus.io/download/>`_
+First, `download Prometheus. <https://prometheus.io/download/>`_
 
 .. code-block:: bash
 
@@ -76,7 +76,7 @@ allows you to create custom dashboards with your favorite metrics. Ray exports s
 configurations which includes a default dashboard showing some of the most valuable metrics
 for debugging ray applications.
 
-First, download Grafana. `Download Link <https://grafana.com/grafana/download>`
+First, `download Grafana. <https://grafana.com/grafana/download>`_
 
 Then run grafana using the built in configuration found in `/tmp/ray/session_latest/metrics/grafana` folder.
 
