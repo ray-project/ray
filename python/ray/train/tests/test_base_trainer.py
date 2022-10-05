@@ -5,11 +5,13 @@ import time
 from contextlib import redirect_stderr
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 
 import ray
 from ray import tune
 from ray.air import session
+from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.data.preprocessor import Preprocessor
 from ray.tune.impl import tuner_internal
@@ -359,7 +361,7 @@ def test_trainable_name_is_overriden_gbdt_trainer(ray_start_4_cpus):
     _is_trainable_name_overriden(trainer)
 
 
-def test_repr():
+def test_repr(ray_start_4_cpus):
     def training_loop(self):
         pass
 
@@ -374,6 +376,19 @@ def test_repr():
 
     assert "DummyTrainer" in representation
     assert len(representation) < MAX_REPR_LENGTH
+
+
+def test_large_params(ray_start_4_cpus):
+    """Tests if large arguments are can be serialized by the Trainer."""
+    array_size = int(1e8)
+
+    def training_loop(self):
+        checkpoint = self.resume_from_checkpoint.to_dict()["ckpt"]
+        assert len(checkpoint) == array_size
+
+    checkpoint = Checkpoint.from_dict({"ckpt": np.zeros(shape=array_size)})
+    trainer = DummyTrainer(training_loop, resume_from_checkpoint=checkpoint)
+    trainer.fit()
 
 
 if __name__ == "__main__":

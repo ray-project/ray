@@ -4794,14 +4794,14 @@ def test_stats_actor_cap_num_stats(ray_start_cluster):
             num_stats - 1,
             num_stats - 1,
         )
-        actor.record_task.remote(uuid, task_idx, metadatas[-1])
+        actor.record_task.remote(uuid, task_idx, [metadatas[-1]])
         assert ray.get(actor._get_stats_dict_size.remote()) == (
             num_stats,
             num_stats,
             num_stats,
         )
     for uuid in range(3):
-        assert ray.get(actor.get.remote(uuid))[0][task_idx] == metadatas[uuid]
+        assert ray.get(actor.get.remote(uuid))[0][task_idx] == [metadatas[uuid]]
     # Add the fourth stats to exceed the limit.
     actor.record_start.remote(3)
     # The first stats (with uuid=0) should have been purged.

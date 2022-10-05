@@ -1,7 +1,7 @@
 import fnmatch
 import os
-from packaging import version
 import urllib.parse
+from pkg_resources import packaging
 from typing import List, Optional, Tuple
 
 from ray.air._internal.filelock import TempFileLock
@@ -119,7 +119,10 @@ def get_fs_and_path(
         try:
             import gcsfs
 
-            if version.parse(gcsfs.__version__) > version.parse("2022.7.1"):
+            # For minimal install that only needs python3-setuptools
+            if packaging.version.parse(gcsfs.__version__) > packaging.version.parse(
+                "2022.7.1"
+            ):
                 raise RuntimeError(
                     "`gcsfs` versions greater than '2022.7.1' are not "
                     f"compatible with pyarrow. You have gcsfs version "
