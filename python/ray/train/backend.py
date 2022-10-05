@@ -77,6 +77,8 @@ class Backend(metaclass=Singleton):
             warnings.warn(
                 _encode_decode_deprecation_message, DeprecationWarning, stacklevel=2
             )
+            # We wrap the return of encode_data in dict in case it is
+            # not a dict itself.
             checkpoint = checkpoint.from_dict(
                 {"encoded_data": cls.encode_data(checkpoint.to_dict())}
             )
@@ -89,8 +91,12 @@ class Backend(metaclass=Singleton):
             warnings.warn(
                 _encode_decode_deprecation_message, DeprecationWarning, stacklevel=2
             )
+            checkpoint_dict = checkpoint.to_dict()
+            # If "encoded_data" is not in the dict, then the data was
+            # not encoded, but the user may want to just do decoding
+            # anyway.
             checkpoint = checkpoint.from_dict(
-                cls.decode_data(checkpoint.to_dict()["encoded_data"])
+                cls.decode_data(checkpoint_dict.get("encoded_data", checkpoint_dict))
             )
         return checkpoint
 

@@ -99,7 +99,9 @@ def test_torch_e2e_state_dict(ray_start_4_cpus):
         TorchPredictor.from_checkpoint(result.checkpoint)
 
     predict_dataset = ray.data.range(3)
-    batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
+    batch_predictor = BatchPredictor.from_checkpoint(
+        result.checkpoint, TorchPredictor, model=torch.nn.Linear(1, 1)
+    )
     predictions = batch_predictor.predict(predict_dataset)
     assert predictions.count() == 3
 
