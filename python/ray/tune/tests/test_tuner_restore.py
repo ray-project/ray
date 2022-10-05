@@ -100,6 +100,11 @@ def test_tuner_restore_num_trials(ray_start_4_cpus, tmpdir):
 
     del tuner
     tuner = Tuner.restore(str(tmpdir / "test_tuner_restore_num_trials"))
+
+    # Check restored results
+    results = tuner.get_results()
+    assert len(results) == 4
+
     results = tuner.fit()
     assert len(results) == 4
 
@@ -137,7 +142,17 @@ def test_tuner_restore_resume_errored(ray_start_4_cpus, tmpdir):
     tuner = Tuner.restore(
         str(tmpdir / "test_tuner_restore_resume_errored"), resume_errored=True
     )
+
+    # Check restored results
+    results = tuner.get_results()
+    assert len(results) == 4
+    assert len(results.errors) == 2
+    # Second and third trial are at iter 1 because they failed after first report
+    assert [r.metrics["it"] for r in results] == [2, 1, 2, 1]
+
+    # Get new results
     results = tuner.fit()
+
     assert len(results) == 4
     assert len(results.errors) == 0
     # Since the errored trials are being resumed from previous state and then report
@@ -176,6 +191,14 @@ def test_tuner_restore_restart_errored(ray_start_4_cpus, tmpdir):
     tuner = Tuner.restore(
         str(tmpdir / "test_tuner_restore_restart_errored"), restart_errored=True
     )
+
+    # Check restored results
+    results = tuner.get_results()
+    assert len(results) == 4
+    assert len(results.errors) == 2
+    assert [r.metrics["it"] for r in results] == [2, 1, 2, 1]
+
+    # Get new results
     results = tuner.fit()
     assert len(results) == 4
     assert len(results.errors) == 0
