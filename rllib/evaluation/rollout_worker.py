@@ -498,6 +498,7 @@ class RolloutWorker(ParallelIteratorWorker):
             # algorithm trainer.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
+
             # We can't auto-wrap a BaseEnv.
             if isinstance(self.env, (BaseEnv, ray.actor.ActorHandle)):
 
@@ -510,7 +511,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 and not model_config.get("custom_preprocessor")
                 and preprocessor_pref == "deepmind"
             ):
-
                 # Deepmind wrappers already handle all preprocessing.
                 self.preprocessing_enabled = False
 
@@ -526,6 +526,16 @@ class RolloutWorker(ParallelIteratorWorker):
                     env = wrap_deepmind(
                         env, dim=model_config.get("dim"), framestack=use_framestack
                     )
+                    return env
+
+            elif (
+                not model_config.get("custom_preprocessor")
+                and preprocessor_pref is None
+            ):
+                # Only turn off preprocessing
+                self.preprocessing_enabled = False
+
+                def wrap(env):
                     return env
 
             else:
