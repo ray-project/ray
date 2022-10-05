@@ -35,7 +35,6 @@ class FrameworkEnum(str, Enum):
 
     tf = "tf"
     tf2 = "tf2"
-    tfe = "tfe"
     torch = "torch"
 
 
@@ -47,7 +46,7 @@ train_help = dict(
     experiment_name="Name of the subdirectory under `local_dir` to put results in.",
     framework="The identifier of the deep learning framework you want to use."
     "Choose between TensorFlow 1.x ('tf'), TensorFlow 2.x ('tf2'), "
-    "TensorFlow 1.x in eager mode ('tfe'), and PyTorch ('torch').",
+    "and PyTorch ('torch').",
     v="Whether to use INFO level logging.",
     vv="Whether to use DEBUG level logging.",
     resume="Whether to attempt to resume from previous experiments.",
@@ -67,7 +66,7 @@ train_help = dict(
     "This argument is deprecated, please use --framework to select 'torch'"
     "as backend.",
     eager="Whether to attempt to enable TensorFlow eager execution. "
-    "This argument is deprecated, please choose between 'tfe' and 'tf2' in "
+    "This argument is deprecated, please choose 'tf2' in "
     "--framework to run select eager mode.",
 )
 

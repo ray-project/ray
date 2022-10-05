@@ -248,7 +248,7 @@ def run_rllib_experiments(
         elif framework is not None:
             exp["config"]["framework"] = framework
         if trace:
-            if exp["config"]["framework"] not in ["tf2", "tfe"]:
+            if exp["config"]["framework"] not in ["tf2"]:
                 raise ValueError("Must enable --eager to enable tracing.")
             exp["config"]["eager_tracing"] = True
         if v:
