@@ -319,10 +319,10 @@ class TorchSharedEncoderAuxLossTrainer(TorchSharedEncoderTrainer):
 @pytest.mark.parametrize(
     "trainer_class_fn, networks",
     [
-        # (TorchIndependentModulesTrainer, ["a", "b"]),
-        # (TorchDummyCompositionModuleTrainer, ["a", "b"]),
-        # (TorchSharedEncoderTrainer, ["a", "b", "encoder"]),
-        (TorchSharedEncoderAuxLossTrainer, ["a", "b", "encoder"])
+        (TorchIndependentModulesTrainer, ["a", "b"]),
+        (TorchDummyCompositionModuleTrainer, ["a", "b"]),
+        (TorchSharedEncoderTrainer, ["a", "b", "encoder"]),
+        (TorchSharedEncoderAuxLossTrainer, ["a", "b", "encoder"]),
     ],
 )
 def test_1_torch_sarl_trainer_2_gpu(trainer_class_fn, networks):
@@ -364,10 +364,10 @@ def test_1_torch_sarl_trainer_2_gpu(trainer_class_fn, networks):
 @pytest.mark.parametrize(
     "trainer_class_fn, networks",
     [
-        # (TorchIndependentModulesTrainer, ["a", "b"]),
-        # (TorchDummyCompositionModuleTrainer, ["a", "b"]),
-        # (TorchSharedEncoderTrainer, ["a", "b", "encoder"]),
-        (TorchSharedEncoderAuxLossTrainer, ["a", "b", "encoder"])
+        (TorchIndependentModulesTrainer, ["a", "b"]),
+        (TorchDummyCompositionModuleTrainer, ["a", "b"]),
+        (TorchSharedEncoderTrainer, ["a", "b", "encoder"]),
+        (TorchSharedEncoderAuxLossTrainer, ["a", "b", "encoder"]),
     ],
 )
 def test_gradients_params_same_on_all_configurations(trainer_class_fn, networks):
