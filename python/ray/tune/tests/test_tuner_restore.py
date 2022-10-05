@@ -1,10 +1,14 @@
+import json
 import os
+from pathlib import Path
+import tempfile
 import time
 
 import pytest
 import ray
 from ray import tune
-from ray.air import RunConfig, Checkpoint, session, FailureConfig
+from ray.tune import Trainable
+from ray.air import RunConfig, Checkpoint, session, FailureConfig, CheckpointConfig
 from ray.air._internal.remote_storage import download_from_uri
 from ray.tune import Callback
 from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
@@ -350,6 +354,78 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir):
     # Overwriting should work
     tuner3 = Tuner.restore("memory:///test/restore/exp_dir")
     tuner3.fit()
+
+
+def test_retore_retry():
+    """Test retrying restore on a trial level."""
+
+    class MockTrainable(Trainable):
+        def setup(self, config):
+            self.idx = 0
+            self.tag_file_path = config["tag_file_path"]
+            self._is_restored = False
+
+        def step(self):
+            time.sleep(1)
+            if self.idx == 0 and self._is_restored:
+                raise RuntimeError(
+                    "===== Restored trial cannot start from scratch ====="
+                )
+            elif self.idx == 2 and not self._is_restored:
+                raise RuntimeError("===== First run fails at idx=2 =====")
+            self.idx += 1
+            return {"score": self.idx}
+
+        def save_checkpoint(self, checkpoint_dir):
+            path = os.path.join(checkpoint_dir, "checkpoint")
+            with open(path, "w") as f:
+                f.write(json.dumps({"idx": self.idx}))
+            return path
+
+        def load_checkpoint(self, checkpoint_path):
+            self._is_restored = True
+            if not os.path.exists(self.tag_file_path):
+                Path(self.tag_file_path).touch()
+                raise RuntimeError("===== Failing first restore =====")
+            # The following restore should pass!
+            with open(checkpoint_path) as f:
+                self.idx = json.loads(f.read())["idx"]
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        os.environ["TUNE_RESTORE_RETRY_NUM"] = "1"
+        tag_file = os.path.join(temp_dir, "tag")
+        tuner = Tuner(
+            MockTrainable,
+            run_config=RunConfig(
+                name="tryout_restore",
+                stop={"training_iteration": 5},
+                failure_config=FailureConfig(max_failures=1),
+                checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+            ),
+            param_space={"tag_file_path": tag_file},
+        )
+        # run through success.
+        results = tuner.fit()
+        [result] = list(results)
+        assert result.metrics["score"] == 5
+
+    # Without setting env var, the thing fails.
+    with tempfile.TemporaryDirectory() as temp_dir:
+        os.environ["TUNE_RESTORE_RETRY_NUM"] = "0"
+        tag_file = os.path.join(temp_dir, "tag")
+        tuner = Tuner(
+            MockTrainable,
+            run_config=RunConfig(
+                name="tryout_restore",
+                stop={"training_iteration": 5},
+                failure_config=FailureConfig(max_failures=1),
+                checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+            ),
+            param_space={"tag_file_path": tag_file},
+        )
+        results = tuner.fit()
+        [result] = list(results)
+        assert result.metrics["score"] == 2
 
 
 if __name__ == "__main__":

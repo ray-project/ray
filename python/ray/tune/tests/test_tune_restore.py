@@ -2,10 +2,9 @@
 import signal
 import subprocess
 from collections import Counter
-import json
 import multiprocessing
 import os
-from pathlib import Path
+
 import pytest
 import shutil
 import tempfile
@@ -19,7 +18,7 @@ from ray import tune
 from ray._private.test_utils import recursive_fnmatch, run_string_as_driver
 from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
-from ray.tune import TuneError, Trainable
+from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.search.basic_variant import BasicVariantGenerator
 from ray.tune.search import Searcher
@@ -545,67 +544,6 @@ class TrainableCrashWithFailFast(unittest.TestCase):
         with self.assertRaisesRegex(RayTaskError, "Error happens in trainable!!"):
             tune.run(f, fail_fast=TrialRunner.RAISE)
 
-
-def test_retore_retry():
-    """Test retrying restore on a trial level."""
-
-    class MockTrainable(Trainable):
-        def setup(self, config):
-            self.idx = 0
-            self.tag_file_path = config["tag_file_path"]
-            self._is_restored = False
-
-        def step(self):
-            time.sleep(1)
-            if self.idx == 0 and self._is_restored:
-                raise RuntimeError(
-                    "===== Restored trial cannot start from scratch ====="
-                )
-            elif self.idx == 2 and not self._is_restored:
-                raise RuntimeError("===== First run fails at idx=2 =====")
-            self.idx += 1
-            return {"score": 100}
-
-        def save_checkpoint(self, checkpoint_dir):
-            path = os.path.join(checkpoint_dir, "checkpoint")
-            with open(path, "w") as f:
-                f.write(json.dumps({"idx": self.idx}))
-            return path
-
-        def load_checkpoint(self, checkpoint_path):
-            self._is_restored = True
-            if not os.path.exists(self.tag_file_path):
-                Path(self.tag_file_path).touch()
-                raise RuntimeError("===== Failing first restore =====")
-            # The following restore should pass!
-            with open(checkpoint_path) as f:
-                self.idx = json.loads(f.read())["idx"]
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        os.environ["TUNE_RESTORE_RETRY_NUM"] = "1"
-        tag_file = os.path.join(temp_dir, "tag")
-        tune.run(
-            MockTrainable,
-            name="tryout_restore",
-            config={"tag_file_path": tag_file},
-            stop={"training_iteration": 5},
-            checkpoint_freq=1,
-            max_failures=1,
-        )
-
-    # Without setting env var, the thing fails.
-    with tempfile.TemporaryDirectory() as temp_dir:
-        os.environ["TUNE_RESTORE_RETRY_NUM"] = "0"
-        tag_file = os.path.join(temp_dir, "tag")
-        with pytest.raises(TuneError):
-            tune.run(
-                MockTrainable,
-                name="tryout_restore",
-                config={"tag_file_path": tag_file},
-                stop={"training_iteration": 5},
-                checkpoint_freq=1,
-                max_failures=1,
-            )
 
 # For some reason, different tests are coupled through tune.registry.
 # After running `ResourceExhaustedTest`, there is always a super huge `training_func` to
