@@ -262,8 +262,8 @@ EXAMPLES = {
     },
     # Bandits
     "recsys-bandits": {
-        "file": "tuned_examples/bandits/" +
-                "interest-evolution-recsim-env-bandit-linucb.yaml",
+        "file": "tuned_examples/bandits/"
+        + "interest-evolution-recsim-env-bandit-linucb.yaml",
         "description": "Runs BanditLinUCB on a Recommendation Simulation environment.",
     },
     # BC
@@ -335,7 +335,7 @@ EXAMPLES = {
     "atari-duel-ddqn": {
         "file": "tuned_examples/dqn/atari-duel-ddqn.yaml",
         "description": "Run grid search on Atari environments "
-                       "with duelling double DQN.",
+        "with duelling double DQN.",
     },
     "cartpole-dqn": {
         "file": "tuned_examples/dqn/rllib/tuned_examples/dqn/cartpole-dqn.yaml",
@@ -519,7 +519,7 @@ EXAMPLES = {
     "recsys-long-term-slateq": {
         "file": "tuned_examples/slateq/long-term-satisfaction-recsim-env-slateq.yaml",
         "description": "Run SlateQ on a recommendation system aimed at "
-                       "long-term satisfaction.",
+        "long-term satisfaction.",
     },
     "recsys-parametric-slateq": {
         "file": "tuned_examples/slateq/parametric-item-reco-env-slateq.yaml",
@@ -543,5 +543,3 @@ EXAMPLES = {
         "description": "Run TD3 on Pendulum-v1.",
     },
 }
-
-
