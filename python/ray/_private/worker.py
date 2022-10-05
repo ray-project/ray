@@ -683,8 +683,16 @@ class Worker:
             debugger_breakpoint,
         )
 
+    @Deprecated
     def run_function_on_all_workers(self, function: callable):
-        """Run arbitrary code on all of the workers.
+        """This function has been deprecated given the following issues:
+            - no guarantee that the function run before the remote function run.
+            - pubsub signal might be lost in some failure cases.
+
+        This API will be deleted once we move the working dir init away.
+        NO NEW CODE SHOULD USE THIS API.
+
+        Run arbitrary code on all of the workers.
 
         This function will first be run on the driver, and then it will be
         exported to all of the workers to be run. It will also be run on any
