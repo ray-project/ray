@@ -99,6 +99,7 @@ parts:
                 title: "Working with Checkpoints"
               - file: tune/tutorials/tune-metrics
                 title: "Using Callbacks and Metrics"
+              - file: tune/examples/tune_analyze_results
               - file: tune/tutorials/tune-advanced-tutorial
                 sections:
                   - file: tune/examples/pbt_visualization/pbt_visualization
