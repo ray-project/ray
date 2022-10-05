@@ -2826,8 +2826,6 @@ class Algorithm(Trainable):
             episodes_this_iter,
             self.config["keep_per_episode_custom_metrics"],
         )
-        # TODO: Don't dump sampler results into top-level.
-        results.update(results["sampler_results"])
 
         results["num_healthy_workers"] = len(self.workers.remote_workers())
 
