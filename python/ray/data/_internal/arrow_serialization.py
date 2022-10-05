@@ -15,25 +15,6 @@ RAY_DISABLE_CUSTOM_ARROW_DATA_SERIALIZATION = (
 
 logger = logging.getLogger(__name__)
 
-# Whether we have already warned the user about bloated fallback serialization.
-_serialization_fallback_set = set()
-
-# Whether we're currently running in a test, either local or CI.
-_in_test = None
-
-
-def _is_in_test():
-    global _in_test
-
-    if _in_test is None:
-        _in_test = any(
-            env_var in os.environ
-            # These environment variables are always set by pytest and Buildkite,
-            # respectively.
-            for env_var in ("PYTEST_CURRENT_TEST", "BUILDKITE")
-        )
-    return _in_test
-
 
 def _register_custom_datasets_serializers(serialization_context):
     try:
