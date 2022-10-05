@@ -52,7 +52,9 @@ class TestCheckpointUtils(unittest.TestCase):
             self.assertTrue(str(info["checkpoint_version"]) == "1.0")
             self.assertTrue(info["checkpoint_dir"] == checkpoint_dir)
             self.assertTrue(info["state_file"] == algo_state_file)
-            self.assertTrue("pol1" in info["policy_ids"] and "pol2" in info["policy_ids"])
+            self.assertTrue(
+                "pol1" in info["policy_ids"] and "pol2" in info["policy_ids"]
+            )
 
     def test_get_policy_checkpoint_info_v1_0(self):
         # Create a simple (dummy) v1.0 Policy checkpoint.

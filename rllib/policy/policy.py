@@ -238,6 +238,7 @@ class Policy(metaclass=ABCMeta):
                         worker_state["policy_config"], serialized_policy_spec["config"]
                     )
                     serialized_policy_spec.update({"config": policy_config})
+                    policy_state.update({"policy_spec": serialized_policy_spec})
                     policies[pid] = Policy.from_state(policy_state)
             # Newer versions: Get policy states from "policies/" sub-dirs.
             else:
