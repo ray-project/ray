@@ -719,8 +719,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 "`old_params` and `new_params` "
                 f"must both contain the key: '{param_name}'\n"
                 f"old_params.keys() = {old_params.keys()}\n"
-                f"new_params.keys() = {new_params.keys()}\n"
-                f"operations.keys() = {operations.keys()}\n"
+                f"new_params.keys() = {new_params.keys()}"
             )
             new_val = new_params[param_name]
             summary_str += f"{prefix}{param_name} : "

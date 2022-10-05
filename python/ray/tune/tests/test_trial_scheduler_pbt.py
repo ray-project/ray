@@ -751,14 +751,19 @@ class PopulationBasedTrainingLoggingTest(unittest.TestCase):
         scheduler._summarize_hyperparam_changes(
             {"a": 1, "b": {"c": 2}}, {"a": 1, "b": {"c": 2}}, {"a": "noop"}
         )
+        scheduler._summarize_hyperparam_changes(
+            {"a": 1, "b": {"c": 2}}, {"a": 1, "b": {"c": 2}}, {}
+        )
 
+        # Make sure that perturbation and logging work with extra keys that aren't
+        # included in hyperparam_mutations (both should ignore the keys)
         hyperparam_mutations = {
             "train_loop_config": {
                 "lr": tune.uniform(0, 1),
                 "momentum": tune.uniform(0, 1),
             }
         }
-        scheduler, new_config, operations = test_config(
+        test_config(
             hyperparam_mutations,
             {
                 "train_loop_config": {
