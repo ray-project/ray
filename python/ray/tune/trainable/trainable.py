@@ -601,6 +601,7 @@ class Trainable:
         )
         external_uri = os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir)
         local_dir = os.path.join(self.logdir, rel_checkpoint_dir)
+        path_existed_before = os.path.exists(local_dir)
 
         if self.custom_syncer:
             # Only keep for backwards compatibility
@@ -611,7 +612,7 @@ class Trainable:
         checkpoint = Checkpoint.from_uri(external_uri)
         if not retry_fn(
             lambda: checkpoint.to_directory(local_dir),
-            subprocess.CalledProcessError,
+            (subprocess.CalledProcessError, FileNotFoundError),
             num_retries=3,
             sleep_time=1,
             timeout=self.sync_timeout,
@@ -620,6 +621,10 @@ class Trainable:
                 f"Could not download checkpoint even after 3 retries: "
                 f"{external_uri}"
             )
+            # We may have created this dir when we tried to sync, so clean up
+            if not path_existed_before and os.path.exists(local_dir):
+                shutil.rmtree(local_dir)
+            return False
 
         return True
 
@@ -650,7 +655,7 @@ class Trainable:
         self,
         checkpoint_path: Union[str, Checkpoint],
         checkpoint_node_ip: Optional[str] = None,
-        recover_latest_on_failure: bool = False,
+        fallback_to_latest: bool = False,
     ):
         """Restores training state from a given model checkpoint.
 
@@ -681,7 +686,7 @@ class Trainable:
             checkpoint_node_ip: If given, try to restore
                 checkpoint from this node if it doesn't exist locally or
                 on cloud storage.
-            recover_latest_on_failure: If True, will try to recover the
+            fallback_to_latest: If True, will try to recover the
                 latest available checkpoint if the given ``checkpoint_path``
                 could not be found.
 
@@ -705,7 +710,7 @@ class Trainable:
                 checkpoint.to_directory(checkpoint_path)
 
         if not os.path.exists(checkpoint_path):
-            if recover_latest_on_failure:
+            if fallback_to_latest:
                 logger.info(
                     f"Checkpoint path was not available, trying to recover from latest "
                     f"available checkpoint instead. Unavailable checkpoint path: "
@@ -713,9 +718,7 @@ class Trainable:
                 )
                 checkpoint_path = self._get_latest_available_checkpoint()
                 if checkpoint_path:
-                    return self.restore(
-                        checkpoint_path, recover_latest_on_failure=False
-                    )
+                    return self.restore(checkpoint_path, fallback_to_latest=False)
 
             # Else, raise
             raise ValueError(
