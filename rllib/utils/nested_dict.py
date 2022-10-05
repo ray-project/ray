@@ -168,7 +168,6 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
             else:
                 raise KeyError(k)
 
-        k = _flatten_index(k)
         data_ptr = self._data
         for key in k:
             # This is to avoid the recursion on __getitem__
@@ -215,18 +214,22 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
                 yield tuple(k)
 
     def __delitem__(self, k: SeqStrType) -> None:
-        if k not in self:
-            raise KeyError(k)
+        ks, ns = [], []
+        data_ptr = self._data
+        for k in _flatten_index(k):
+            if isinstance(data_ptr, NestedDict):
+                data_ptr = data_ptr._data
+            if k not in data_ptr:
+                raise KeyError(str(ks + [k]))
+            ks.append(k)
+            ns.append(data_ptr)
+            data_ptr = data_ptr[k]
 
-        k = _flatten_index(k)
-        # for deletion we need backtracking. Recursion is much simpler to implement.
-        # we don't expect that much of deletion, so we can afford to do recursion.
-        if len(k) == 1:
-            del self._data[k[0]]
-        else:
-            del self._data[k[0]][k[1:]]
-            if not self._data[k[0]]:
-                del self._data[k[0]]
+        del ns[-1][ks[-1]]
+
+        for i in reversed(range(len(ks) - 1)):
+            if not ns[i + 1]:
+                del ns[i][ks[i]]
 
     def __len__(self) -> int:
         """Returns the number of leaf nodes in the `NestedDict` that
