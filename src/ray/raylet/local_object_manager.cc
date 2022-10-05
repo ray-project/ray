@@ -379,7 +379,6 @@ void LocalObjectManager::SpillObjectsInternal(
 
 void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids,
                                          const rpc::SpillObjectsReply &worker_reply) {
-  RAY_LOG(INFO) << "OnObjectSpilled: " << object_ids.size() << " objects";
   for (size_t i = 0; i < static_cast<size_t>(worker_reply.spilled_objects_url_size());
        ++i) {
     const ObjectID &object_id = object_ids[i];
