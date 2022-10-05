@@ -387,6 +387,8 @@ class Trial:
         self.restore_path = restore_path
         self.restoring_from = None
         self.num_failures = 0
+        # Reset after each successful restore.
+        self.num_restore_failures = 0
 
         # AutoML fields
         self.results = None
@@ -638,9 +640,14 @@ class Trial:
         self.experiment_tag = experiment_tag
         self.invalidate_json_state()
 
-    def write_error_log(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
+    def write_error_log(
+        self,
+        exc: Optional[Union[TuneError, RayTaskError]] = None,
+        should_increment_num_failures_counter: Optional[bool] = True,
+    ):
         if exc and self.logdir:
-            self.num_failures += 1
+            if should_increment_num_failures_counter:
+                self.num_failures += 1
             self.error_file = os.path.join(self.logdir, "error.txt")
             if exc and isinstance(exc, RayTaskError):
                 # Piping through the actual error to result grid.
@@ -708,6 +715,7 @@ class Trial:
         assert self.is_restoring
         self.last_result = self.restoring_from.metrics
         self.restoring_from = None
+        self.num_restore_failures = 0
         self.invalidate_json_state()
 
     def should_recover(self):
@@ -718,7 +726,15 @@ class Trial:
         `self.checkpoint_freq` is `0` or because the trial failed before
         a checkpoint has been made.
         """
-        return self.num_failures < self.max_failures or self.max_failures < 0
+        return (
+            self.num_failures < self.max_failures
+            or self.max_failures < 0
+            or (
+                self.num_failures == self.max_failures
+                and self.num_restore_failures
+                < int(os.environ.get("TUNE_RESTORE_RETRY_NUM", 0))
+            )
+        )
 
     def update_last_result(self, result):
         if self.experiment_tag:

@@ -81,6 +81,13 @@ These are the environment variables Ray Tune currently considers:
   repeatedly every this amount of seconds. Defaults to 60 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
 * **TUNE_SYNC_DISABLE_BOOTSTRAP**: Disable bootstrapping the autoscaler config for Docker syncing.
+* **TUNE_RESTORE_RETRY_NUM**: The number of retries that are done before a particular trial's restore is determined
+  unsuccessful. After that, the trial is not restored to its previous checkpoint but rather from scratch.
+  Default is 0.
+  This is an advanced setting. Consider the following scenario: Due to scheduling glitches, sometimes a restoring
+  trial may be scheduled onto a dying node. By setting this env var to a positive number, the trial can be restored
+  several times and hopefully one of the times it will not be put on a dying node. This retry behavior won't increment
+  the per trial failure number, which is compared against `max_failures`.
 
 
 There are some environment variables that are mostly relevant for integrated libraries:
