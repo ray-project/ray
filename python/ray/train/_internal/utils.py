@@ -61,8 +61,8 @@ def check_for_failure(
                 # Other (e.g. training) errors should be directly raised
                 # If exception is raised in the serialization module,
                 # we guide the user to look for that
-                # test_torch_trainer.py::test_torch_session_errors tests
-                # that this is being printed
+                # test_data_parallel_trainer.py::test_serialization_errors
+                # tests that this is being printed
                 if "serialization.py" in traceback.format_exc():
                     logger.error(
                         "An exception raised here from the serialization module "

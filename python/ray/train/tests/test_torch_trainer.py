@@ -1,8 +1,6 @@
-import io
 import pytest
 import torch
 import os
-from contextlib import redirect_stderr
 
 import ray
 from ray.air.examples.pytorch.torch_linear_example import (
@@ -18,7 +16,6 @@ from ray.cluster_utils import Cluster
 from ray.air import session
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
-from ray.exceptions import RayTaskError
 
 
 @pytest.fixture
@@ -175,10 +172,10 @@ def test_checkpoint_freq(ray_start_4_cpus):
 
 
 def test_torch_session_errors(ray_start_4_cpus):
+    """Test fail-fast behavior when reporting dicts with Torch tensors"""
+
     def train_func():
         model = torch.nn.Linear(1, 1).state_dict()
-        # Test fail-fast behavior when reporting
-        # dicts with Torch tensors
         with pytest.raises(ValueError):
             session.report(model)
 
@@ -188,29 +185,6 @@ def test_torch_session_errors(ray_start_4_cpus):
         scaling_config=scaling_config,
     )
     trainer.fit()
-
-    class CustomLinear(torch.nn.Linear):
-        def __getstate__(self):
-            # Simulate an error during deserialization
-            1 / 0
-
-    def train_func():
-        model = CustomLinear(1, 1)
-        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
-
-    scaling_config = ScalingConfig(num_workers=2)
-    trainer = TorchTrainer(
-        train_loop_per_worker=train_func,
-        scaling_config=scaling_config,
-    )
-    output = io.StringIO()
-    with redirect_stderr(output):
-        with pytest.raises(RayTaskError):
-            trainer.fit()
-    output = output.getvalue()
-    # Check if a helper message from check_for_failure
-    # is printed
-    assert "serialization module" in output
 
 
 @pytest.mark.parametrize(

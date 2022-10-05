@@ -1,3 +1,5 @@
+from contextlib import redirect_stderr
+import io
 import pytest
 
 import ray
@@ -10,6 +12,7 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.air.config import ScalingConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
+from ray.exceptions import RayTaskError
 
 
 @pytest.fixture
@@ -191,6 +194,34 @@ def test_tune(ray_start_4_cpus):
 
     # Make sure original Trainer is not affected.
     assert trainer._train_loop_config["x"] == 100
+
+
+def test_serialization_errors(ray_start_4_cpus):
+    class CustomModel:
+        def __getstate__(self):
+            return {}
+
+        def __setstate__(self, state):
+            # Simulate an error during deserialization
+            1 / 0
+
+    def train_func():
+        model = CustomModel()
+        session.report({}, checkpoint=Checkpoint.from_dict({"model": model}))
+
+    scaling_config = ScalingConfig(num_workers=2)
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=scaling_config,
+    )
+    output = io.StringIO()
+    with redirect_stderr(output):
+        with pytest.raises(RayTaskError):
+            trainer.fit()
+    output = output.getvalue()
+    # Check if a helper message from check_for_failure
+    # is printed
+    assert "serialization module" in output
 
 
 if __name__ == "__main__":

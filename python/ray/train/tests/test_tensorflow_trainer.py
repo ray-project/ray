@@ -1,6 +1,4 @@
 import os
-
-import numpy as np
 import pytest
 
 import ray
@@ -10,6 +8,7 @@ from ray.air.examples.tf.tensorflow_regression_example import (
     train_func as tensorflow_linear_train_func,
 )
 from ray.air.config import ScalingConfig
+from ray.train.batch_predictor import BatchPredictor
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.tensorflow import (
     TensorflowPredictor,
@@ -82,19 +81,12 @@ def test_tensorflow_e2e(ray_start_4_cpus):
     result = trainer.fit()
     assert isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
-    class TensorflowScorer:
-        def __init__(self):
-            self.pred = TensorflowPredictor.from_checkpoint(
-                result.checkpoint, build_model
-            )
-
-        def __call__(self, x):
-            return self.pred.predict(x, dtype=np.float)
+    batch_predictor = BatchPredictor.from_checkpoint(
+        result.checkpoint, TensorflowPredictor, model_definition=build_model
+    )
 
     predict_dataset = ray.data.range(3)
-    predictions = predict_dataset.map_batches(
-        TensorflowScorer, batch_format="pandas", compute="actors"
-    )
+    predictions = batch_predictor.predict(predict_dataset)
     assert predictions.count() == 3
 
 

@@ -75,7 +75,7 @@ class _TrainSession:
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         checkpoint: Optional[Union[Dict, Checkpoint]] = None,
         # Deprecated
-        encode_data_fn: Callable = None,
+        encode_data_fn: Optional[Callable] = None,
         # Temporary until train.save_checkpoint is hard-deprecated.
         get_checkpoint_class_fn: Callable = None,
         detailed_autofilled_metrics: bool = False,
@@ -271,7 +271,9 @@ class _TrainSession:
             kwargs = self._encode_data_fn(kwargs)
             encoded = True
 
-        result = TrainingResult(TrainingResultType.REPORT, kwargs, encoded=encoded)
+        result = TrainingResult(
+            type=TrainingResultType.REPORT, data=kwargs, encoded=encoded
+        )
 
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
@@ -339,9 +341,9 @@ class _TrainSession:
                 checkpoint.__class__ = intended_checkpoint_class
 
         result = TrainingResult(
-            TrainingResultType.CHECKPOINT,
-            checkpoint,
-            self._auto_fill_checkpoint_metrics({}),
+            type=TrainingResultType.CHECKPOINT,
+            data=checkpoint,
+            metadata=self._auto_fill_checkpoint_metrics({}),
             encoded=encoded,
         )
         # Add result to a thread-safe queue.
