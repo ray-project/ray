@@ -4,8 +4,12 @@ Pattern: Using resources to limit the number of concurrently running tasks
 In this pattern, we use :ref:`resources <resource-requirements>` to limit the number of concurrently running tasks.
 
 Running too many tasks at the same time might overload the cluster and cause issues like OOM.
-If that is the case, we can reduce the number of concurrently running tasks by increasing the amount of resources required by those tasks.
+If that is the case, we can reduce the number of concurrently running tasks by increasing the amount of resources requested by those tasks.
 This works because Ray makes sure that the sum of the resource requirements of all of the concurrently running tasks on a given node cannot exceed the node's total resources.
+
+.. note::
+
+   For actor tasks, the number of actors we create controls the number of concurrently running actor tasks we can have.
 
 Example use case
 ----------------
