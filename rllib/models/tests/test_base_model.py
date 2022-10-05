@@ -8,6 +8,7 @@ from ray.rllib.models.base_model import (
 )
 import numpy as np
 from ray.rllib.models.temp_spec_classes import TensorDict, SpecDict
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check
 
 
@@ -18,39 +19,48 @@ class NpRecurrentModelImpl(RecurrentModel):
     (3) unroll logic
     (4) spec checking"""
 
+    def __init__(self, input_check=None, output_check=None):
+        super().__init__()
+        self.input_check = input_check
+        self.output_check = output_check
+
     @property
+    @override(RecurrentModel)
     def input_spec(self):
         return SpecDict({"in": "h"}, h=3)
 
     @property
+    @override(RecurrentModel)
     def output_spec(self):
         return SpecDict({"out": "o"}, o=2)
 
     @property
+    @override(RecurrentModel)
     def next_state_spec(self):
         return SpecDict({"out": "i"}, i=4)
 
     @property
+    @override(RecurrentModel)
     def prev_state_spec(self):
         return SpecDict({"in": "o"}, o=1)
 
-    def __init__(self, input_check=None, output_check=None):
-        self.input_check = input_check
-        self.output_check = output_check
-
-    def _check_inputs_and_prev_state(self, inputs, states):
+    @override(RecurrentModel)
+    def _update_inputs_and_prev_state(self, inputs, states):
         if self.input_check:
             self.input_check(inputs, states)
         return inputs, states
 
-    def _check_outputs_and_next_state(self, outputs, states):
+    @override(RecurrentModel)
+    def _update_outputs_and_next_state(self, outputs, states):
         if self.output_check:
             self.output_check(outputs, states)
         return outputs, states
 
+    @override(RecurrentModel)
     def _initial_state(self):
         return TensorDict({"in": np.arange(1)})
 
+    @override(RecurrentModel)
     def _unroll(self, inputs: TensorDict, prev_state: TensorDict) -> UnrollOutputType:
         # Ensure unroll is passed the input/state as expected
         # and does not mutate/permute it in any way
@@ -67,28 +77,34 @@ class NpModelImpl(Model):
     (2) spec checking
     """
 
+    def __init__(self, input_check=None, output_check=None):
+        super().__init__()
+        self.input_check = input_check
+        self.output_check = output_check
+
     @property
+    @override(Model)
     def input_spec(self):
         return SpecDict({"in": "h"}, h=3)
 
     @property
+    @override(Model)
     def output_spec(self):
         return SpecDict({"out": "o"}, o=2)
 
-    def __init__(self, input_check=None, output_check=None):
-        self.input_check = input_check
-        self.output_check = output_check
-
-    def _check_inputs(self, inputs):
+    @override(Model)
+    def _update_inputs(self, inputs):
         if self.input_check:
             return self.input_check(inputs)
         return inputs
 
-    def _check_outputs(self, outputs):
+    @override(Model)
+    def _update_outputs(self, outputs):
         if self.output_check:
             self.output_check(outputs)
         return outputs
 
+    @override(Model)
     def _forward(self, inputs: TensorDict) -> ForwardOutputType:
         # Ensure _forward is passed the input from unroll as expected
         # and does not mutate/permute it in any way
@@ -136,7 +152,7 @@ class TestRecurrentModel(unittest.TestCase):
         )
 
     def test_hooks(self):
-        """Test that _check_inputs_and_prev_state and _check_outputs_and_prev_state
+        """Test that _update_inputs_and_prev_state and _update_outputs_and_prev_state
         are called during unroll"""
 
         class MyException(Exception):

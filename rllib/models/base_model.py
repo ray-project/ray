@@ -17,7 +17,12 @@ import abc
 from typing import Optional, Tuple
 
 from ray.rllib.models.temp_spec_classes import TensorDict, SpecDict, ModelConfig
-from ray.rllib.utils.annotations import DeveloperAPI, override, ExperimentalAPI
+from ray.rllib.utils.annotations import (
+    DeveloperAPI,
+    OverrideToImplementCustomLogic,
+    override,
+    ExperimentalAPI,
+)
 
 
 ForwardOutputType = TensorDict
@@ -111,7 +116,7 @@ class RecurrentModel(abc.ABC):
     def _unroll(
         self, inputs: TensorDict, prev_state: TensorDict, **kwargs
     ) -> UnrollOutputType:
-        """Computes the output of the module over unroll_len timesteps.
+        """Computes the output of the module over the timesteps within the batch.
         Subclasses should override this function instead of `unroll`, which
         adds additional checks.
 
@@ -131,7 +136,7 @@ class RecurrentModel(abc.ABC):
     def unroll(
         self, inputs: TensorDict, prev_state: TensorDict, **kwargs
     ) -> UnrollOutputType:
-        """Computes the output of the module over unroll_len timesteps.
+        """Computes the output of the module over the timesteps within the batch.
 
         Args:
             inputs: A TensorDict containing inputs to the model
@@ -155,17 +160,18 @@ class RecurrentModel(abc.ABC):
         # We hide inputs not specified in input_spec to prevent accidental use.
         inputs = inputs.filter(self.input_spec)
         prev_state = prev_state.filter(self.prev_state_spec)
-        inputs, prev_state = self._check_inputs_and_prev_state(inputs, prev_state)
+        inputs, prev_state = self._update_inputs_and_prev_state(inputs, prev_state)
         outputs, next_state = self._unroll(inputs, prev_state, **kwargs)
         self.output_spec.validate(outputs)
         self.next_state_spec.validate(next_state)
-        outputs, next_state = self._check_outputs_and_next_state(outputs, next_state)
+        outputs, next_state = self._update_outputs_and_next_state(outputs, next_state)
         return outputs, next_state
 
-    def _check_inputs_and_prev_state(
+    @OverrideToImplementCustomLogic
+    def _update_inputs_and_prev_state(
         self, inputs: TensorDict, prev_state: TensorDict
     ) -> Tuple[TensorDict, TensorDict]:
-        """Override this function to add additional checks on inputs.
+        """Override this function to add additional checks and optionally update inputs.
 
         Args:
             inputs: TensorDict containing inputs to the model
@@ -177,10 +183,12 @@ class RecurrentModel(abc.ABC):
         """
         return inputs, prev_state
 
-    def _check_outputs_and_next_state(
+    @OverrideToImplementCustomLogic
+    def _update_outputs_and_next_state(
         self, outputs: TensorDict, next_state: TensorDict
     ) -> Tuple[TensorDict, TensorDict]:
-        """Override this function to add additional checks on outputs.
+        """Override this function to add additional checks and optionally update
+        outputs.
 
         Args:
             outputs: TensorDict output by the model
@@ -219,14 +227,15 @@ class Model(RecurrentModel):
         return TensorDict()
 
     @override(RecurrentModel)
-    def _check_inputs_and_prev_state(
+    def _update_inputs_and_prev_state(
         self, inputs: TensorDict, prev_state: TensorDict
     ) -> Tuple[TensorDict, TensorDict]:
-        inputs = self._check_inputs(inputs)
+        inputs = self._update_inputs(inputs)
         return inputs, prev_state
 
-    def _check_inputs(self, inputs: TensorDict) -> TensorDict:
-        """Override this function to add additional checks on inputs.
+    @OverrideToImplementCustomLogic
+    def _update_inputs(self, inputs: TensorDict) -> TensorDict:
+        """Override this function to add additional checks and optionally update inputs.
 
         Args:
             inputs: TensorDict containing inputs to the model
@@ -237,14 +246,16 @@ class Model(RecurrentModel):
         return inputs
 
     @override(RecurrentModel)
-    def _check_outputs_and_next_state(
+    def _update_outputs_and_next_state(
         self, outputs: TensorDict, next_state: TensorDict
     ) -> Tuple[TensorDict, TensorDict]:
-        outputs = self._check_outputs(outputs)
+        outputs = self._update_outputs(outputs)
         return outputs, next_state
 
-    def _check_outputs(self, outputs: TensorDict) -> TensorDict:
-        """Override this function to add additional checks on outputs.
+    @OverrideToImplementCustomLogic
+    def _update_outputs(self, outputs: TensorDict) -> TensorDict:
+        """Override this function to add additional checks and optionally update
+        outputs.
 
         Args:
             outputs: TensorDict output by the model
