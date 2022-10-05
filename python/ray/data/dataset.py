@@ -638,9 +638,10 @@ class Dataset(Generic[T]):
         # dedup the input columns used for selection
         unique_columns = list(set(columns))
         return self.map_batches(
-                lambda batch: BlockAccessor.for_block(batch).select(columns=unique_columns),
-                compute=compute, **ray_remote_args
-            )
+            lambda batch: BlockAccessor.for_block(batch).select(columns=unique_columns),
+            compute=compute,
+            **ray_remote_args,
+        )
 
     def flat_map(
         self,

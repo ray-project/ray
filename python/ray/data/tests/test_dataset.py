@@ -2229,15 +2229,21 @@ def test_select_columns(ray_start_regular_shared):
     # Test pandas and base cases
     ds = ray.data.from_pandas(df)
     assert ds._dataset_format() == "pandas"
-    assert ds.select_columns(columns=["col1", "col2", "col3"]).take(1) == [{'col1': 1, 'col2': 2, "col3": 3}]
-    assert ds.select_columns(columns=["col1", "col2"]).take(1) == [{'col1': 1, 'col2': 2}]
+    assert ds.select_columns(columns=["col1", "col2", "col3"]).take(1) == [
+        {"col1": 1, "col2": 2, "col3": 3}
+    ]
+    assert ds.select_columns(columns=["col1", "col2"]).take(1) == [
+        {"col1": 1, "col2": 2}
+    ]
     assert ds.select_columns(columns=[]).take(1) == [{}]
-    assert ds.select_columns(columns=["col1", "col2", "col2"]).take(1) == [{'col1': 1, 'col2': 2}]
+    assert ds.select_columns(columns=["col1", "col2", "col2"]).take(1) == [
+        {"col1": 1, "col2": 2}
+    ]
 
     # Test arrow
     ds = ds.select_columns(columns=["col1", "col2"], batch_format="pyarrow")
     assert ds._dataset_format() == "arrow"
-    assert ds.take(1) == [{'col1': 1, 'col2': 2}]
+    assert ds.take(1) == [{"col1": 1, "col2": 2}]
 
 
 def test_map_batches_basic(ray_start_regular_shared, tmp_path):
