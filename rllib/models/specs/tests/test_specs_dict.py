@@ -1,5 +1,4 @@
 import unittest
-import torch
 import numpy as np
 
 from ray.rllib.models.specs.specs_np import NPSpecs
