@@ -7,7 +7,7 @@ import subprocess
 
 import ray
 from ray.air import session
-from ray.air.config import CheckpointConfig, ScalingConfig, RunConfig
+from ray.air.config import ScalingConfig, RunConfig
 from ray.tune.tune_config import TuneConfig
 import requests
 import torch
@@ -27,7 +27,7 @@ def load_mnist_data(train: bool, download: bool):
         [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
     )
 
-    with FileLock(".ray.lock"):
+    with FileLock("~/.ray.lock"):
         return MNIST(root="~/data", train=train, download=download, transform=transform)
 
 
@@ -120,9 +120,7 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
             num_samples=1,
         ),
         run_config=RunConfig(
-            stop={"training_iteration": 2},
             verbose=1,
-            checkpoint_config=CheckpointConfig(checkpoint_at_end=True),
         ),
     )
 
@@ -240,7 +238,7 @@ if __name__ == "__main__":
     if addr is not None and addr.startswith("anyscale://"):
         client = ray.init(address=addr, job_name=job_name)
     else:
-        client = ray.init(address="auto")
+        client = ray.init()
 
     num_workers = 2
     use_gpu = not args.smoke_test
@@ -250,7 +248,9 @@ if __name__ == "__main__":
 
     print("Retrieving best model.")
     best_checkpoint = result_grid.get_best_result().checkpoint
-    model = best_checkpoint.get_model()
+    model = resnet18()
+    model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=3, bias=False)
+    model = best_checkpoint.get_model(model)
 
     print("Setting up Serve.")
     setup_serve(model, use_gpu)
