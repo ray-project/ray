@@ -733,7 +733,7 @@ class PopulationBasedTraining(FIFOScheduler):
             else:
                 op = operations.get(param_name, None)
                 if not op:
-                    arrow = f"----->"
+                    arrow = "----->"
                 else:
                     arrow = f"--- ({op}) -->"
                 summary_str += f"{old_val} {arrow} {new_val}\n"
