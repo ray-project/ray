@@ -48,3 +48,9 @@ Tensor Column Extension API
 
 .. autoclass:: ray.data.extensions.tensor_extension.ArrowTensorArray
     :members:
+
+.. autoclass:: ray.data.extensions.tensor_extension.ArrowVariableShapedTensorType
+    :members:
+
+.. autoclass:: ray.data.extensions.tensor_extension.ArrowVariableShapedTensorArray
+    :members:
