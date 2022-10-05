@@ -1886,11 +1886,11 @@ cdef class CoreWorker:
 
     def wait_placement_group_ready(self,
                                    PlacementGroupID placement_group_id,
-                                   int32_t timeout_seconds):
+                                   int64_t timeout_seconds):
         cdef CRayStatus status
         cdef CPlacementGroupID cplacement_group_id = (
             CPlacementGroupID.FromBinary(placement_group_id.binary()))
-        cdef int ctimeout_seconds = timeout_seconds
+        cdef int64_t ctimeout_seconds = timeout_seconds
         with nogil:
             status = CCoreWorkerProcess.GetCoreWorker() \
                 .WaitPlacementGroupReady(cplacement_group_id, ctimeout_seconds)

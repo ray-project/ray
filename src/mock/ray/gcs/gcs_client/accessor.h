@@ -294,7 +294,7 @@ class MockPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
               (override));
   MOCK_METHOD(Status,
               SyncWaitUntilReady,
-              (const PlacementGroupID &placement_group_id),
+              (const PlacementGroupID &placement_group_id, int64_t timeout_seconds),
               (override));
 };
 

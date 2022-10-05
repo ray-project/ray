@@ -305,7 +305,7 @@ void AbstractRayRuntime::RemovePlacementGroup(const std::string &group_id) {
 }
 
 bool AbstractRayRuntime::WaitPlacementGroupReady(const std::string &group_id,
-                                                 int timeout_seconds) {
+                                                 int64_t timeout_seconds) {
   return task_submitter_->WaitPlacementGroupReady(group_id, timeout_seconds);
 }
 

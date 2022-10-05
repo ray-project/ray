@@ -162,7 +162,7 @@ ray::PlacementGroup LocalModeTaskSubmitter::CreatePlacementGroup(
   ray::PlacementGroup placement_group{
       PlacementGroupID::Of(local_mode_ray_tuntime_.GetCurrentJobID()).Binary(),
       create_options};
-  placement_group.SetWaitCallbak([this](const std::string &id, int timeout_seconds) {
+  placement_group.SetWaitCallbak([this](const std::string &id, int64_t timeout_seconds) {
     return WaitPlacementGroupReady(id, timeout_seconds);
   });
   placement_groups_.emplace(placement_group.GetID(), placement_group);
