@@ -1,21 +1,65 @@
 #!/usr/bin/env python
 
 import collections
+import os.path
+
+from rich.console import Console
+from rich.table import Table
+import tempfile
 import typer
 
 from ray.rllib import train as train_module
 from ray.rllib.common import CLIArguments as cli
-from ray.rllib.common import EXAMPLES, FrameworkEnum
+from ray.rllib.common import EXAMPLES, FrameworkEnum, example_help
 
 # Main Typer CLI app
 app = typer.Typer()
-examples_app = typer.Typer()
+example_app = typer.Typer()
 
 
-@examples_app.command()
-def list():
-    from rich.console import Console
-    from rich.table import Table
+def example_error(example_id: str):
+    return ValueError(
+        f"Example {example_id} not found. Use `rllib example list` "
+        f"to see available examples."
+    )
+
+
+def download_example_file(example_file: str):
+    """Download the example file from GitHub if it doesn't exist locally.
+    Not every user will have cloned our repo and cd'ed into this working directory
+    when using the CLI.
+    """
+    temp_file = None
+    if not os.path.exists(example_file):
+
+        print(f">>> Attempting to download example file {example_file} from GitHub...")
+        # We test the existing of the file in unit tests, so it must be on GitHub.
+        base_url = "https://raw.githubusercontent.com/ray-project/ray/master/rllib/"
+        example_url = base_url + example_file
+
+        temp_file = tempfile.NamedTemporaryFile()
+
+        import requests
+        r = requests.get(example_url)
+        with open(temp_file.name, "wb") as f:
+            print(r.content)
+            f.write(r.content)
+
+        if r.status_code == "200":
+            # only overwrite the file if the download was successful
+            example_file = temp_file.name
+
+    return example_file, temp_file
+
+
+@example_app.command()
+def list(
+    filter: str = typer.Option(None, "--filter", "-f", help=example_help.get("filter"))
+):
+    """List all available RLlib examples that can be run from the command line.
+    Note that many of these examples require specific hardware (e.g. a certain number
+    of GPUs) to work.
+    """
 
     table = Table(title="RLlib Examples")
     table.add_column("Example ID", justify="left", style="cyan", no_wrap=True)
@@ -24,7 +68,11 @@ def list():
     sorted_examples = collections.OrderedDict(sorted(EXAMPLES.items()))
 
     for name, value in sorted_examples.items():
-        table.add_row(name, value["description"])
+        if filter:
+            if filter.lower() in name:
+                table.add_row(name, value["description"])
+        else:
+            table.add_row(name, value["description"])
 
     console = Console()
     console.print(table)
@@ -34,15 +82,36 @@ def list():
     )
 
 
-@examples_app.command()
+@example_app.command()
+def get(
+    example_id: str = typer.Argument(..., help="The example ID of the example.")
+):
+    """Print the configuration of an example.\n\n
+    Example usage: `rllib example get atari-a2c`
+    """
+    if example_id not in EXAMPLES:
+        raise example_error(example_id)
+
+    example_file = EXAMPLES[example_id]["file"]
+    example_file, temp_file = download_example_file(example_file)
+    with open(example_file) as f:
+        console = Console()
+        console.print(f.read())
+
+
+@example_app.command()
 def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
+    """Run an RLlib example from the command line by simply providing its ID.\n\n
+    Example usage: `rllib example run pong-a3c`
+    """
     if example_id not in EXAMPLES.keys():
-        raise ValueError(
-            f"Example {example_id} not found. Use `rllib examples list` "
-            f"to see available examples."
-        )
+        raise example_error(example_id)
+
+    example_file = EXAMPLES[example_id]["file"]
+    example_file, temp_file = download_example_file(example_file)
+
     train_module.file(
-        config_file=EXAMPLES[example_id]["file"],
+        config_file=example_file,
         framework=FrameworkEnum.tf2,
         v=True,
         vv=False,
@@ -59,9 +128,12 @@ def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
         scheduler_config="{}",
     )
 
+    if temp_file:
+        temp_file.close()
+
 
 # Register all subcommands
-app.add_typer(examples_app, name="example")
+app.add_typer(example_app, name="example")
 app.add_typer(train_module.train_app, name="train")
 # TODO: print (a list of) checkpoints available after training.
 
@@ -69,7 +141,7 @@ app.add_typer(train_module.train_app, name="train")
 @app.command()
 def evaluate(
     checkpoint: str = cli.Checkpoint,
-    run: str = cli.Run,
+    algo: str = cli.Algo,
     env: str = cli.Env,
     local_mode: bool = cli.LocalMode,
     render: bool = cli.Render,
@@ -94,7 +166,7 @@ def evaluate(
 
     evaluate_module.run(
         checkpoint=checkpoint,
-        run=run,
+        algo=algo,
         env=env,
         local_mode=local_mode,
         render=render,
@@ -111,7 +183,7 @@ def evaluate(
 @app.command()
 def rollout(
     checkpoint: str = cli.Checkpoint,
-    run: str = cli.Run,
+    algo: str = cli.Algo,
     env: str = cli.Env,
     local_mode: bool = cli.LocalMode,
     render: bool = cli.Render,
@@ -129,7 +201,7 @@ def rollout(
 
     return evaluate(
         checkpoint=checkpoint,
-        run=run,
+        algo=algo,
         env=env,
         local_mode=local_mode,
         render=render,

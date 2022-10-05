@@ -38,6 +38,14 @@ class FrameworkEnum(str, Enum):
     torch = "torch"
 
 
+example_help = dict(
+    filter="Filter examples by exact substring match. For instance,"
+           " --filter=ppo will only show examples that"
+           " contain the substring 'ppo' in their ID. The same way, -f=recsys"
+           "will return all recommender system examples.",
+)
+
+
 train_help = dict(
     env="The environment specifier to use. This could be an openAI gym "
     "specifier (e.g. `CartPole-v1`) or a full class-path (e.g. "
@@ -74,7 +82,7 @@ train_help = dict(
 eval_help = dict(
     checkpoint="Optional checkpoint from which to roll out. If none provided, we will "
     "evaluate an untrained algorithm.",
-    run="The algorithm or model to train. This may refer to the name of a built-in "
+    algo="The algorithm or model to train. This may refer to the name of a built-in "
     "Algorithm (e.g. RLlib's `DQN` or `PPO`), or a user-defined trainable "
     "function or class registered in the Tune registry.",
     env="The environment specifier to use. This could be an openAI gym "
@@ -110,8 +118,10 @@ class CLIArguments:
     of common arguments, like "run" or "env" that would otherwise be duplicated."""
 
     # Common arguments
-    Run = typer.Option(None, "--algo", "--run", "-a", "-r", help=get_help("run"))
-    RunRequired = typer.Option(..., "--algo", "--run", "-a", "-r", help=get_help("run"))
+    Algo = typer.Option(None, "--algo", "--run", "-a", "-r", help=get_help("run"))
+    AlgoRequired = typer.Option(
+        ..., "--algo", "--run", "-a", "-r", help=get_help("run")
+    )
     Env = typer.Option(None, "--env", "-e", help=train_help.get("env"))
     EnvRequired = typer.Option(..., "--env", "-e", help=train_help.get("env"))
     Config = typer.Option("{}", "--config", "-c", help=get_help("config"))
@@ -164,10 +174,6 @@ class CLIArguments:
     TrackProgress = typer.Option(False, help=eval_help.get("track_progress"))
 
 
-# TODO: write a unit test that asserts that these files exist!!!
-# TODO: in the CLI, sort these entries first.
-# TODO: print the configuration of the agent (nicely)
-
 # Note that the IDs of these examples are lexicographically sorted by environment,
 # not by algorithm. This should be more natural for users, but could be changed easily.
 EXAMPLES = {
@@ -209,7 +215,7 @@ EXAMPLES = {
         "description": "Runs Apex DDPG on MountainCarContinuous-v0.",
     },
     "pendulum-apex-ddpg": {
-        "file": "tuned_examples/apex_ddpg/cpendulum-apex-ddpg.yaml",
+        "file": "tuned_examples/apex_ddpg/pendulum-apex-ddpg.yaml",
         "description": "Runs Apex DDPG on Pendulum-v1.",
     },
     # Apex DQN
@@ -337,7 +343,7 @@ EXAMPLES = {
         "with duelling double DQN.",
     },
     "cartpole-dqn": {
-        "file": "tuned_examples/dqn/rllib/tuned_examples/dqn/cartpole-dqn.yaml",
+        "file": "tuned_examples/dqn/cartpole-dqn.yaml",
         "description": "Run DQN on CartPole-v1.",
     },
     "pong-dqn": {
@@ -485,7 +491,7 @@ EXAMPLES = {
     },
     # R2D2
     "stateless-cartpole-r2d2": {
-        "file": "tuned_examples/r2d2/two-step-game-qmix.yaml",
+        "file": "tuned_examples/r2d2/stateless-cartpole-r2d2.yaml",
         "description": "Run R2D2 on a stateless cart pole environment.",
     },
     # SAC

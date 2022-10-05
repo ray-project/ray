@@ -159,7 +159,7 @@ class RolloutSaver:
 @eval_app.command()
 def run(
     checkpoint: str = cli.Checkpoint,
-    run: str = cli.Run,
+    algo: str = cli.Algo,
     env: str = cli.Env,
     local_mode: bool = cli.LocalMode,
     render: bool = cli.Render,
@@ -206,7 +206,7 @@ def run(
                 "line!"
             )
         # Use default config for given agent.
-        _, config = get_algorithm_class(run, return_config=True)
+        _, config = get_algorithm_class(algo, return_config=True)
 
     # Make sure worker 0 has an Env.
     config["create_env_on_driver"] = True
@@ -245,7 +245,7 @@ def run(
     ray.init(local_mode=local_mode)
 
     # Create the Algorithm from config.
-    cls = get_trainable_cls(run)
+    cls = get_trainable_cls(algo)
     algorithm = cls(env=env, config=config)
 
     # Load state from checkpoint, if provided.

@@ -275,17 +275,26 @@ class TestTrainAndEvaluate(unittest.TestCase):
 
 
 class TestCLISmokeTests(unittest.TestCase):
+
     def test_help(self):
         assert os.popen(f"python {rllib_dir}/scripts.py --help").read()
         assert os.popen(f"python {rllib_dir}/train.py --help").read()
         assert os.popen(f"python {rllib_dir}/train.py file --help").read()
         assert os.popen(f"python {rllib_dir}/evaluate.py --help").read()
+        assert os.popen(f"python {rllib_dir}/scripts.py example --help").read()
+        assert os.popen(f"python {rllib_dir}/scripts.py example list --help").read()
+        assert os.popen(f"python {rllib_dir}/scripts.py example run --help").read()
 
-    def test_file_based_training(self):
-        os.popen(
-            f"python {rllib_dir}/scripts.py train file "
-            f"{rllib_dir}/tuned_examples/ppo/cartpole-ppo.yaml"
-        ).read()
+    def test_simple_commands(self):
+        assert os.popen(f"python {rllib_dir}/scripts.py example list").read()
+        assert os.popen(f"python {rllib_dir}/scripts.py example list -f=ppo").read()
+        assert os.popen(f"python {rllib_dir}/scripts.py example get atari-a2c").read()
+
+    def test_all_example_files_exist(self):
+        from ray.rllib.common import EXAMPLES
+        for val in EXAMPLES.values():
+            file = val["file"]
+            assert os.path.exists(os.path.join(rllib_dir, file))
 
 
 if __name__ == "__main__":

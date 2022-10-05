@@ -118,7 +118,7 @@ def run(
     # Context object for subcommands
     ctx: typer.Context,
     # Config-based arguments.
-    run: str = cli.Run,
+    algo: str = cli.Algo,
     env: str = cli.Env,
     config: str = cli.Config,
     stop: str = cli.Stop,
@@ -151,10 +151,10 @@ def run(
     scheduler_config: str = cli.SchedulerConfig,
 ):
     """Train a reinforcement learning agent from command line options.
-    The options --env and --algo/--run are required to run this command.
+    The options --env and --algo are required to run this command.
 
     Training example via RLlib CLI:\n
-        rllib train --run DQN --env CartPole-v1\n\n
+        rllib train --algo DQN --env CartPole-v1\n\n
     """
 
     # If no subcommand is specified, simply run the following lines as the
@@ -173,7 +173,7 @@ def run(
         # Load a single experiment from configuration
         experiments = {
             experiment_name: {  # i.e. log to ~/ray_results/default
-                "run": run,
+                "run": algo,
                 "checkpoint_freq": checkpoint_freq,
                 "checkpoint_at_end": checkpoint_at_end,
                 "keep_checkpoints_num": keep_checkpoints_num,
@@ -241,8 +241,8 @@ def run_rllib_experiments(
 
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             raise ValueError(
-                "You either need to provide an --env argument or pass"
-                "an `env` key with a valid environment to your `config`"
+                "You either need to provide an --env argument (e.g. 'CartPole-v1') "
+                "or pass an `env` key with a valid environment to your `config`"
                 "argument."
             )
         elif framework is not None:
