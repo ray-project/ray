@@ -261,8 +261,9 @@ class Tuner:
     def get_results(self) -> ResultGrid:
         """Get results of a hyperparameter tuning run.
 
-        This method returns the same results as :meth:`fit` and can be used
-        to retrieve the results after restoring a tuner.
+        This method returns the same results as :meth:`fit() <ray.tune.tuner.Tuner.fit>`
+        and can be used to retrieve the results after restoring a tuner without
+        calling ``fit()`` again.
 
         If the tuner has not been fit before, an error will be raised.
 
