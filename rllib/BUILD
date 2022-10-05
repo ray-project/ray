@@ -1519,6 +1519,21 @@ py_test(
     srcs = ["connectors/tests/test_agent.py"]
 )
 
+
+# --------------------------------------------------------------------
+# Core tests
+# rllib/core/
+#
+# Tag: core
+# --------------------------------------------------------------------
+
+py_test(
+    name = "core/tests/test_torch_sarl_trainer",
+    tags = ["team:rllib", "multi_gpu"],
+    size = "medium",
+    srcs = ["core/tests/test_torch_sarl_trainer.py"]
+)
+
 # --------------------------------------------------------------------
 # Env tests
 # rllib/env/
