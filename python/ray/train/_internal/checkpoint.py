@@ -105,12 +105,7 @@ class CheckpointManager(CommonCheckpointManager):
         checkpoint_metadata = checkpoint_results[0].metadata or {}
 
         # TODO(ml-team): Remove once we remove Backend.decode_data
-        checkpoint_data = decode_checkpoint_fn(checkpoint_data)
-        checkpoint_data_dict = (
-            checkpoint_data.to_dict()
-            if checkpoint_data.get_internal_representation()[0] == "data_dict"
-            else {}
-        )
+        checkpoint_data = decode_checkpoint_fn(checkpoint_data).to_dict()
         # This is too risky for now (will be saved to a tmp dir)
         # if checkpoint_data.uri:
         #     # TODO: ensure that the dir is created in the proper place
@@ -121,7 +116,7 @@ class CheckpointManager(CommonCheckpointManager):
         if (
             self._checkpoint_strategy.num_to_keep != 0
             and score_attr not in checkpoint_metadata
-            and score_attr not in checkpoint_data_dict
+            and score_attr not in checkpoint_data
         ):
             raise ValueError(
                 f"Unable to persist checkpoint for "
@@ -137,7 +132,7 @@ class CheckpointManager(CommonCheckpointManager):
             storage_mode=CheckpointStorage.MEMORY,
             metrics={
                 score_attr: checkpoint_metadata.get(
-                    score_attr, checkpoint_data_dict.get(score_attr, 0.0)
+                    score_attr, checkpoint_data.get(score_attr, 0.0)
                 )
             },
         )

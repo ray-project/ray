@@ -333,8 +333,6 @@ class BackendExecutor:
 
         local_rank_map = self._create_local_rank_map()
 
-        encode_data_fn = self._backend._encode_data
-
         futures = []
         for index in range(len(self.worker_group)):
             futures.append(
@@ -348,7 +346,7 @@ class BackendExecutor:
                     train_func=train_func,
                     dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint,
-                    encode_data_fn=encode_data_fn,
+                    encode_data_fn=self._backend._encode_data,
                 )
             )
 
