@@ -149,12 +149,11 @@ def train_func(config):
             model, optimizer, train_sampler, train_loader, epoch, log_interval, use_cuda
         )
         if save_model_as_dict:
-            checkpoint_dict = dict(model=model.state_dict())
+            checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
         else:
-            checkpoint_dict = dict(model=model)
-        checkpoint_dict = TorchCheckpoint.from_dict(checkpoint_dict)
+            checkpoint = TorchCheckpoint.from_model(model)
         results.append(loss)
-        session.report(dict(loss=loss), checkpoint=checkpoint_dict)
+        session.report(dict(loss=loss), checkpoint=checkpoint)
 
     # Only used for testing.
     return results
