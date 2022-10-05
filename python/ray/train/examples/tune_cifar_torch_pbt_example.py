@@ -14,7 +14,7 @@ import ray
 import ray.train as train
 from ray import tune
 from ray.air.config import FailureConfig, RunConfig, ScalingConfig
-from ray.train.torch import TorchTrainer, TorchCheckpoint
+from ray.train.torch import TorchTrainer
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -61,6 +61,7 @@ def validate_epoch(dataloader, model, loss_fn):
 def train_func(config):
     epochs = config.pop("epochs", 3)
     model = resnet18()
+    model = train.torch.prepare_model(model)
 
     # Create optimizer.
     optimizer = torch.optim.SGD(
@@ -68,14 +69,6 @@ def train_func(config):
         lr=config.get("lr", 0.1),
         momentum=config.get("momentum", 0.9),
     )
-
-    checkpoint = session.get_checkpoint()
-    if checkpoint:
-        checkpoint_dict = checkpoint.to_dict()
-        model.load_state_dict(checkpoint_dict["model"])
-        optimizer.load_state_dict(checkpoint_dict["optimizer"])
-
-    model = train.torch.prepare_model(model)
 
     # Load in training and validation data.
     transform_train = transforms.Compose(
@@ -121,12 +114,7 @@ def train_func(config):
     for _ in range(epochs):
         train_epoch(train_loader, model, criterion, optimizer)
         result = validate_epoch(validation_loader, model, criterion)
-        session.report(
-            result,
-            checkpoint=TorchCheckpoint.from_dict(
-                {"model": model.state_dict(), "optimizer": optimizer.state_dict()}
-            ),
-        )
+        session.report(result)
         results.append(result)
 
     # return required for backwards compatibility with the old API
