@@ -3001,8 +3001,8 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
   }
 
   // For generator tasks where we haven't yet received the task reply, the
-  // internal ObjectRefs may not be added yet, don't find out about these until
-  // the task finishes.
+  // internal ObjectRefs may not be added yet, so we don't find out about these
+  // until the task finishes.
   const auto &maybe_generator_id = task_manager_->TaskGeneratorId(object_id.TaskId());
   if (!maybe_generator_id.IsNil()) {
     // The task is a generator and may not have finished yet. Add the internal
