@@ -236,9 +236,13 @@ class DatasetStats:
             ac = self.stats_actor
             # TODO(chengsu): this is a super hack, clean it up.
             stats_map, self.time_total_s = ray.get(ac.get.remote(self.stats_uuid))
-            self.stages["read"] = []
-            for _, blocks_metadata in sorted(stats_map.items()):
-                self.stages["read"] += blocks_metadata
+            if DatasetContext.get_current().block_splitting_enabled:
+                self.stages["read"] = []
+                for _, blocks_metadata in sorted(stats_map.items()):
+                    self.stages["read"] += blocks_metadata
+            else:
+                for i, metadata in stats_map.items():
+                    self.stages["read"][i] = metadata[0]
         out = ""
         if self.parents:
             for p in self.parents:

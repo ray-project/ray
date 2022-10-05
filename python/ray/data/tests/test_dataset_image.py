@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import pytest
 from ray.data.datasource.image_folder_datasource import (
@@ -205,6 +207,11 @@ def test_image_folder_dynamic_block_split(ray_start_regular_shared):
         ds.fully_executed()
         # Verify dynamic block splitting taking effect to generate more blocks.
         assert ds.num_blocks() == 3
+
+        # NOTE: Need to wait for 1 second before checking stats, because we report
+        # stats to stats actors asynchronously when returning the blocks metadata.
+        # TODO(chengsu): clean it up after refactoring lazy block list.
+        time.sleep(1)
         assert "3 blocks executed" in ds.stats()
 
         # Test union of same datasets
