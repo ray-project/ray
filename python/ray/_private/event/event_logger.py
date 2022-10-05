@@ -23,7 +23,7 @@ class EventLoggerAdapter:
     def __init__(self, source: Event.SourceType, logger: logging.Logger):
         """Adapter for the Python logger that's used to emit events.
 
-        This class is threas-safe.
+        This class is thread-safe.
         """
         self.logger = logger
         # Aligned with `event.proto`'s `message Event``
