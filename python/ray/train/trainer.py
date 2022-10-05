@@ -819,7 +819,7 @@ class TrainingIterator:
             # Process checkpoints and ignore other result types.
             if result_type is TrainingResultType.CHECKPOINT:
                 self._checkpoint_manager._process_checkpoint(
-                    results, decode_checkpoint_fn=self._decode_data_fn
+                    results, decode_checkpoint_fn=self._backend._decode_data
                 )
 
     def _finish_training(self):
