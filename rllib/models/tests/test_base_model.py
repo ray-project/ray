@@ -18,10 +18,21 @@ class NpRecurrentModelImpl(RecurrentModel):
     (3) unroll logic
     (4) spec checking"""
 
-    input_spec = SpecDict({"in": "h"}, h=3)
-    output_spec = SpecDict({"out": "o"}, o=2)
-    next_state_spec = SpecDict({"out": "i"}, i=4)
-    prev_state_spec = SpecDict({"in": "o"}, o=1)
+    @property
+    def input_spec(self):
+        return SpecDict({"in": "h"}, h=3)
+
+    @property
+    def output_spec(self):
+        return SpecDict({"out": "o"}, o=2)
+
+    @property
+    def next_state_spec(self):
+        return SpecDict({"out": "i"}, i=4)
+
+    @property
+    def prev_state_spec(self):
+        return SpecDict({"in": "o"}, o=1)
 
     def __init__(self, input_check=None, output_check=None):
         self.input_check = input_check
@@ -56,8 +67,13 @@ class NpModelImpl(Model):
     (2) spec checking
     """
 
-    input_spec = SpecDict({"in": "h"}, h=3)
-    output_spec = SpecDict({"out": "o"}, o=2)
+    @property
+    def input_spec(self):
+        return SpecDict({"in": "h"}, h=3)
+
+    @property
+    def output_spec(self):
+        return SpecDict({"out": "o"}, o=2)
 
     def __init__(self, input_check=None, output_check=None):
         self.input_check = input_check

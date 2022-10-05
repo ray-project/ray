@@ -17,7 +17,7 @@ import abc
 from typing import Optional, Tuple
 
 from ray.rllib.models.temp_spec_classes import TensorDict, SpecDict, ModelConfig
-from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.annotations import DeveloperAPI, override, ExperimentalAPI
 
 
 ForwardOutputType = TensorDict
@@ -25,6 +25,7 @@ ForwardOutputType = TensorDict
 UnrollOutputType = Tuple[TensorDict, TensorDict]
 
 
+@ExperimentalAPI
 class RecurrentModel(abc.ABC):
     """The base model all other models are based on.
 
@@ -47,10 +48,6 @@ class RecurrentModel(abc.ABC):
 
     Args:
         name: An optional name for the module
-
-    Examples:
-        >>> named_class = NamedClass() # Inherits from RecurrentModel
-        >>> named_class.get_name() # NamedClass
     """
 
     def __init__(self, name: Optional[str] = None):
@@ -205,10 +202,6 @@ class Model(RecurrentModel):
 
     Args:
         name: An optional name for the module
-
-    Examples:
-        >>> named_class = NamedClass() # Inherits from Model
-        >>> named_class.get_name() # NamedClass
     """
 
     @property
@@ -265,11 +258,9 @@ class Model(RecurrentModel):
     def _unroll(
         self, inputs: TensorDict, prev_state: TensorDict, **kwargs
     ) -> UnrollOutputType:
-        del prev_state
         outputs = self._forward(inputs, **kwargs)
         return outputs, TensorDict()
 
-    @DeveloperAPI
     @abc.abstractmethod
     def _forward(self, inputs: TensorDict, **kwargs) -> ForwardOutputType:
         """Computes the output of this module for each timestep.
@@ -288,6 +279,7 @@ class Model(RecurrentModel):
         """
 
 
+@ExperimentalAPI
 class ModelIO(abc.ABC):
     """Abstract class defining how to save and load model weights
 
