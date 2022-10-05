@@ -363,15 +363,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     rpc::TaskStatus status = rpc::TaskStatus::PENDING_ARGS_AVAIL;
   };
 
-
   /// Update nested ref count info and store the in-memory value for a task's
   /// return object. Returns true if the task's return object was returned
   /// directly by value.
   bool HandleTaskReturn(const ObjectID &object_id,
                         const rpc::ReturnObject &return_object,
                         const NodeID &worker_raylet_id,
-                        bool store_in_plasma)
-      LOCKS_EXCLUDED(mu_);
+                        bool store_in_plasma) LOCKS_EXCLUDED(mu_);
 
   /// Remove a lineage reference to this object ID. This should be called
   /// whenever a task that depended on this object ID can no longer be retried.
