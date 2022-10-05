@@ -70,12 +70,12 @@ class TorchRecurrentModel(RecurrentModel, nn.Module, TorchModelIO):
         _initial_state(self) -> TensorDict
 
         # Additional checks on the input and recurrent state before `_unroll`
-        _check_inputs_and_prev_state(inputs: TensorDict, prev_state: TensorDict)
+        _update_inputs_and_prev_state(inputs: TensorDict, prev_state: TensorDict)
             -> Tuple[TensorDict, TensorDict]
 
         # Additional checks on the output and the output recurrent state
         # after `_unroll`
-        _check_outputs_and_next_state(outputs: TensorDict, next_state: TensorDict)
+        _update_outputs_and_next_state(outputs: TensorDict, next_state: TensorDict)
             -> Tuple[TensorDict, TensorDict]
 
         # Save model weights to path
@@ -173,10 +173,10 @@ class TorchModel(Model, nn.Module, TorchModelIO):
 
     Optional Overrides:
         # Additional checks on the input before `_forward`
-        _check_inputs(inputs: TensorDict) -> TensorDict
+        _update_inputs(inputs: TensorDict) -> TensorDict
 
         # Additional checks on the output after `_forward`
-        _check_outputs(outputs: TensorDict) -> TensorDict
+        _update_outputs(outputs: TensorDict) -> TensorDict
 
         # Save model weights to path
         save(self, path: str) -> None
