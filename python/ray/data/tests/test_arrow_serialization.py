@@ -220,12 +220,12 @@ def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
     view = data.slice(10, 10)
     s_arr = pickle.dumps(data)
     s_view = pickle.dumps(view)
-    # Check that the slice view was truncated upon serialization.
-    assert len(s_view) <= cap_mult * len(s_arr)
     post_slice = pickle.loads(s_view)
     post_slice.validate()
     # Check for round-trip equality.
     assert view.equals(post_slice), post_slice
+    # Check that the slice view was truncated upon serialization.
+    assert len(s_view) <= cap_mult * len(s_arr)
     # Check that offset was reset on slice.
     if isinstance(post_slice, pa.RecordBatch):
         for column in post_slice.columns:
