@@ -345,16 +345,12 @@ class _TorchAccelerator(Accelerator):
             rank = train.local_rank()
 
         device = self.get_device()
-        logger.info("Prepare model get device", device)
 
         if torch.cuda.is_available():
             torch.cuda.set_device(device)
 
         if move_to_device:
-            if rank == 0:
-                logger.info(f"Moving model to device: {device}")
-            else:
-                logger.debug(f"Moving model to device: {device}")
+            logger.info(f"Moving model to device: {device}, rank: {train.world_rank()}")
             model = model.to(device)
 
         def model_get_state(self):
@@ -532,7 +528,9 @@ class _TorchAccelerator(Accelerator):
 
         if move_to_device:
             device = self.get_device()
-            logger.info("Prepare dataloader get device", device)
+            logger.info(
+                f"Moving dataloader to device: {device}, rank:" f" {train.world_rank()}"
+            )
             data_loader = _WrappedDataLoader(data_loader, device, auto_transfer)
 
         return data_loader
@@ -660,7 +658,6 @@ class _WrappedDataLoader(DataLoader):
         def try_move_device(i):
             try:
                 i = i.to(self.device, non_blocking=self._auto_transfer)
-                logger.info("Moving batch to device", self.device)
             except AttributeError:
                 logger.debug(f"Item {i} cannot be moved to device " f"{self.device}.")
             return i
