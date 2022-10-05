@@ -65,22 +65,36 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         path = f"{grafana_host}/{GRAFANA_HEALTHCHECK_PATH}"
         try:
             async with self._session.get(path) as resp:
-                if resp.status == 200:
-                    json = await resp.json()
-                    if json["database"] == "ok":
-                        return dashboard_optional_utils.rest_response(
-                            success=True,
-                            message="Grafana running",
-                            grafana_host=grafana_iframe_host,
-                        )
+                if resp.status != 200:
+                    return dashboard_optional_utils.rest_response(
+                        success=False,
+                        message="Grafana healtcheck failed",
+                        status=resp.status,
+                    )
+                json = await resp.json()
+                # Check if the required grafana services are running.
+                if json["database"] != "ok":
+                    return dashboard_optional_utils.rest_response(
+                        success=False,
+                        message="Grafana healtcheck failed. Database not ok.",
+                        status=resp.status,
+                        json=json,
+                    )
+
+                return dashboard_optional_utils.rest_response(
+                    success=True,
+                    message="Grafana running",
+                    grafana_host=grafana_iframe_host,
+                )
+
         except Exception as e:
             logger.warning(
                 "Error fetching grafana endpoint. Is grafana running?", exc_info=e
             )
 
-        return dashboard_optional_utils.rest_response(
-            success=False, message="Grafana healtcheck failed"
-        )
+            return dashboard_optional_utils.rest_response(
+                success=False, message="Grafana healtcheck failed", exception=str(e)
+            )
 
     @staticmethod
     def is_minimal_module():
