@@ -82,12 +82,12 @@ def evaluate(
     track_progress: bool = cli.TrackProgress,
 ):
     """Roll out a reinforcement learning agent given a checkpoint argument.
-    You have to provide an environment ("--env") an an RLlib algorithm ("--run") to
+    You have to provide an environment ("--env") an an RLlib algorithm ("--algo") to
     evaluate your checkpoint.
 
     Example usage:\n\n
 
-        rllib evaluate /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN --env CartPole-v1
+        rllib evaluate /tmp/ray/checkpoint_dir/checkpoint-0 --algo DQN --env CartPole-v1
         --steps 1000000 --out rollouts.pkl
     """
     from ray.rllib import evaluate as evaluate_module
@@ -163,10 +163,10 @@ def main_helper():
     .                                         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n
     .\n
         Example usage for training:\n
-            rllib train --run DQN --env CartPole-v1\n\n
+            rllib train --algo DQN --env CartPole-v1\n\n
 
         Example usage for evaluation:\n
-            rllib evaluate /trial_dir/checkpoint_000001/checkpoint-1 --run DQN
+            rllib evaluate /trial_dir/checkpoint_000001/checkpoint-1 --algo DQN
     --env CartPole-v1
     """
 

@@ -234,9 +234,9 @@ def run(
     if not config.get("evaluation_duration"):
         config["evaluation_duration"] = 1
 
-    # Hard-override this as it raises a warning by Trainer otherwise.
+    # Hard-override this as it raises a warning by Algorithm otherwise.
     # Makes no sense anyways, to have it set to None as we don't call
-    # `Trainer.train()` here.
+    # `Algorithm.train()` here.
     config["evaluation_interval"] = 1
 
     # Rendering settings.
@@ -244,7 +244,7 @@ def run(
 
     ray.init(local_mode=local_mode)
 
-    # Create the Trainer from config.
+    # Create the Algorithm from config.
     cls = get_trainable_cls(run)
     algorithm = cls(env=env, config=config)
 
