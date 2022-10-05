@@ -689,9 +689,9 @@ class PopulationBasedTrainingLoggingTest(unittest.TestCase):
                 print(summary)
             return scheduler, new_config, operations
 
-        # 1. Empty (no hyperparams mutated)
-        _, new_config, operations = test_config({}, {})
-        assert not new_config and not operations
+        # 1. Empty hyperparam_mutations (no hyperparams mutated) should raise an error
+        with self.assertRaises(tune.TuneError):
+            _, new_config, operations = test_config({}, {})
 
         # 2. No nesting
         hyperparam_mutations = {
