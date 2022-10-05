@@ -41,7 +41,7 @@ class LocalObjectManager {
       const NodeID &node_id,
       std::string self_node_address,
       int self_node_port,
-      instrumented_io_context &io_service;
+      instrumented_io_context &io_service,
       size_t free_objects_batch_size,
       int64_t free_objects_period_ms,
       IOWorkerPoolInterface &io_worker_pool,
@@ -221,7 +221,7 @@ class LocalObjectManager {
   /// \param urls_to_delete List of urls to delete from external storages.
   /// \param num_retries Num of retries allowed in case of failure, zero or negative
   /// means don't retry.
-  void DeleteSpilledObjects(std::vector<std::string> &urls_to_delete,
+  void DeleteSpilledObjects(std::vector<std::string> urls_to_delete,
                             int64_t num_retries = 3);
 
   const NodeID self_node_id_;
