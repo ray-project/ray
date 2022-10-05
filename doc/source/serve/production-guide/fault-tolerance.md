@@ -475,10 +475,12 @@ Table:
 
 You should still be able to query your deployments while the controller is recovering:
 
-```console
+```
 # If you're running KubeRay, you
 # can do this from inside the pod:
+
 $ python
+
 >>> import requests
 >>> requests.get("http://localhost:8000").json()
 347
