@@ -99,7 +99,7 @@ class StatsTest : public ::testing::Test {
 TEST_F(StatsTest, F) {
   for (size_t i = 0; i < 20; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    stats::LocalAvailableResource().Record(2345);
+    stats::TestMetrics().Record(2345);
   }
 }
 

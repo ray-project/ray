@@ -108,10 +108,10 @@ def test_report_and_load_using_ml_session(ray_start_4_cpus):
         else:
             model = build_model()
 
-        model.save("my_model", overwrite=True)
+        model.save("my_model")
         session.report(
             metrics={"iter": 1},
-            checkpoint=TensorflowCheckpoint.from_directory("my_model"),
+            checkpoint=TensorflowCheckpoint.from_saved_model("my_model"),
         )
 
     scaling_config = ScalingConfig(num_workers=2)

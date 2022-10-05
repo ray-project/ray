@@ -330,3 +330,4 @@ parts:
       - file: ray-core/configure
       - file: ray-observability/index
       - file: ray-contribute/whitepaper
+      - file: ray-use-cases/overview
