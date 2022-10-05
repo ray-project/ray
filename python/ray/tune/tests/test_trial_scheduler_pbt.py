@@ -711,10 +711,10 @@ class PopulationBasedTrainingLoggingTest(unittest.TestCase):
                 {"a": 1, "b": {}},
                 {"a": "noop", "b": {"c": "noop"}},
             )
-        with self.assertRaises(AssertionError):
-            scheduler._summarize_hyperparam_changes(
-                {"a": 1, "b": {"c": 2}}, {"a": 1, "b": {"c": 2}}, {"a": "noop"}
-            )
+        # It's ok to have missing operations (just fill in the ones that are present)
+        scheduler._summarize_hyperparam_changes(
+            {"a": 1, "b": {"c": 2}}, {"a": 1, "b": {"c": 2}}, {"a": "noop"}
+        )
 
 
 if __name__ == "__main__":

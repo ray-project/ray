@@ -63,12 +63,13 @@ def _explore(
             particular variable.
         perturbation_factors: Scaling factors to choose between when mutating
             a continuous hyperparameter.
-        custom_explore_fn: Custom explore fn applied after built-in
-            config perturbations are.
+        custom_explore_fn: Custom explore function applied after built-in
+            config perturbations.
 
     Returns:
         new_config: New hyperparameter configuration (after random mutations).
-        operations: Map of hyperparam -> string describing mutation operation performed
+        operations: Map of hyperparams -> strings describing mutation operations
+            performed
     """
     operations = {}
     new_config = copy.deepcopy(config)
@@ -645,7 +646,18 @@ class PopulationBasedTraining(FIFOScheduler):
             f.write(json.dumps(policy, cls=SafeFallbackEncoder) + "\n")
 
     def _get_new_config(self, trial: Trial, trial_to_clone: Trial) -> Tuple[Dict, Dict]:
-        """Gets new config for trial by exploring trial_to_clone's config."""
+        """Gets new config for trial by exploring trial_to_clone's config.
+
+        Args:
+            trial: The current trial that decided to exploit trial_to_clone.
+            trial_to_clone: The top-performing trial with a hyperparameter config
+                that the current trial will explore by perturbing.
+
+        Returns:
+            new_config: New hyperparameter configuration (after random mutations).
+            operations: Map of hyperparams -> strings describing mutation operations
+                performed
+        """
         return _explore(
             trial_to_clone.config,
             self._hyperparam_mutations,
@@ -675,9 +687,9 @@ class PopulationBasedTraining(FIFOScheduler):
             return summary_str
         for param_name in old_params:
             old_val = old_params[param_name]
-            assert param_name in new_params and param_name in operations, (
-                "`old_params`, `new_params`, and `operations` "
-                f"must all contain the key: '{param_name}'\n"
+            assert param_name in new_params, (
+                "`old_params` and `new_params` "
+                f"must both contain the key: '{param_name}'\n"
                 f"old_params.keys() = {old_params.keys()}\n"
                 f"new_params.keys() = {new_params.keys()}\n"
                 f"operations.keys() = {operations.keys()}\n"
@@ -687,12 +699,16 @@ class PopulationBasedTraining(FIFOScheduler):
             if isinstance(old_val, Dict):
                 # Handle nested hyperparameters by recursively summarizing
                 summary_str += "\n"
+                nested_operations = operations.get(param_name, {})
                 summary_str += self._summarize_hyperparam_changes(
-                    old_val, new_val, operations[param_name], prefix=prefix + " " * 4
+                    old_val, new_val, nested_operations, prefix=prefix + " " * 4
                 )
             else:
-                op = operations[param_name]
-                arrow = f"--- ({op}) -->"
+                op = operations.get(param_name, None)
+                if not op:
+                    arrow = f"----->"
+                else:
+                    arrow = f"--- ({op}) -->"
                 summary_str += f"{old_val} {arrow} {new_val}\n"
         return summary_str
 
