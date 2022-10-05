@@ -1,18 +1,28 @@
 from collections import defaultdict
 import pytest
-import ray
 from typing import Dict
+import numpy as np
 
+import ray
 from ray._private.test_utils import (
     raw_metrics,
     wait_for_condition,
 )
+from ray._private.worker import RayContext
 
 KiB = 1 << 10
 MiB = 1 << 20
 
+_SYSTEM_CONFIG = {
+    "automatic_object_spilling_enabled": True,
+    "max_io_workers": 100,
+    "min_spilling_size": 1,
+    "object_spilling_threshold": 0.99,  # to prevent premature spilling
+    "metrics_report_interval_ms": 100,
+}
 
-def objects_by_loc(info) -> Dict:
+
+def objects_by_loc(info: RayContext) -> Dict:
     res = raw_metrics(info)
     objects_info = defaultdict(int)
     if "ray_object_store_memory" in res:
@@ -24,6 +34,7 @@ def objects_by_loc(info) -> Dict:
 
 
 def approx_eq_dict_in(actual: Dict, expected: Dict, e: int) -> bool:
+    """Check if two dict are approximately similar (with error allowed)"""
     assert set(actual.keys()) == set(expected.keys()), "Unequal key sets."
 
     for k, actual_v in actual.items():
@@ -47,11 +58,13 @@ def test_all_shared_memory(shutdown_only):
     )
 
     # Allocate 80MiB data
-    objs = [ray.put(np.zeros(20 * MiB, dtype=np.uint8)) for _ in range(4)]
+    objs_in_use = ray.get(
+        [ray.put(np.zeros(20 * MiB, dtype=np.uint8)) for _ in range(4)]
+    )
 
     expected = {
-        "InMemory": 80 * MiB,
-        "Fallback": 0,
+        "IN_MEMORY": 80 * MiB,
+        "SPILLED": 0,
     }
 
     wait_for_condition(
@@ -62,11 +75,11 @@ def test_all_shared_memory(shutdown_only):
     )
 
     # Free all of them
-    del objs
+    del objs_in_use
 
     expected = {
-        "InMemory": 0,
-        "Fallback": 0,
+        "IN_MEMORY": 0,
+        "SPILLED": 0,
     }
 
     wait_for_condition(
@@ -77,51 +90,68 @@ def test_all_shared_memory(shutdown_only):
     )
 
 
-def test_fallback_memory(shutdown_only):
-    """Test some fallback allocated objects"""
-    import numpy as np
+def test_spilling(object_spilling_config, shutdown_only):
+    """Test metrics with object spilling occurred"""
 
-    expected_fallback = 5
-    expected_in_memory = 5
-    obj_size_mb = 20
-
-    # So expected_in_memory objects could fit in object store
-    delta_mb = 5
+    object_spilling_config, _ = object_spilling_config
+    delta = 5
     info = ray.init(
-        object_store_memory=expected_in_memory * obj_size_mb * MiB + delta_mb * MiB,
+        num_cpus=1,
+        object_store_memory=100 * MiB + delta * MiB,
         _system_config={
-            "metrics_report_interval_ms": 100,
+            **_SYSTEM_CONFIG,
+            **{"object_spilling_config": object_spilling_config},
         },
     )
-    obj_refs = [
-        ray.put(np.zeros(obj_size_mb * MiB, dtype=np.uint8))
-        for _ in range(expected_fallback + expected_in_memory)
-    ]
 
-    # Getting and using the objects to prevent spilling
-    in_use_objs = [ray.get(obj) for obj in obj_refs]
+    # Create and use 100MiB data, which should fit in memory
+    objs1 = [ray.put(np.zeros(50 * MiB, dtype=np.uint8)) for _ in range(2)]
 
     expected = {
-        "InMemory": expected_in_memory * obj_size_mb * MiB,
-        "Fallback": expected_fallback * obj_size_mb * MiB,
+        "IN_MEMORY": 100 * MiB,
+        "SPILLED": 0,
     }
 
     wait_for_condition(
-        # 2KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
+        # 1KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )
 
-    # Free all of them
-    del in_use_objs
-    del obj_refs
+    # Create additional 100MiB, so that it needs to be triggered
+    objs2 = [ray.put(np.zeros(50 * MiB, dtype=np.uint8)) for _ in range(2)]
 
     expected = {
-        "InMemory": 0,
-        "Fallback": 0,
+        "IN_MEMORY": 100 * MiB,
+        "SPILLED": 100 * MiB,
     }
+    wait_for_condition(
+        # 1KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
+        timeout=20,
+        retry_interval_ms=500,
+    )
 
+    # Delete spilled objects
+    del objs1
+    expected = {
+        "IN_MEMORY": 100 * MiB,
+        "SPILLED": 0,
+    }
+    wait_for_condition(
+        # 1KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
+        timeout=20,
+        retry_interval_ms=500,
+    )
+
+    # Delete all
+    del objs2
+    expected = {
+        "IN_MEMORY": 0,
+        "SPILLED": 0,
+    }
     wait_for_condition(
         # 1KiB for metadata difference
         lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),

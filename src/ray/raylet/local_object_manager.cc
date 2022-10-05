@@ -17,6 +17,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
+#include "src/ray/protobuf/common.pb.h"  // rpc::ObjectLocation
 
 namespace ray {
 
@@ -623,6 +624,10 @@ void LocalObjectManager::RecordMetrics() const {
   ray::stats::STATS_spill_manager_request_total.Record(spilled_objects_total_, "Spilled");
   ray::stats::STATS_spill_manager_request_total.Record(restored_objects_total_,
                                                        "Restored");
+
+  ray::stats::STATS_object_store_memory.Record(
+      spilled_bytes_current_,
+      {{"Location", ray::rpc::ObjectLocation_Name(ray::rpc::ObjectLocation::SPILLED)}});
 }
 
 size_t LocalObjectManager::GetCurrentSpilledCount() const {

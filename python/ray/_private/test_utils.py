@@ -24,6 +24,7 @@ import psutil  # We must import psutil after ray because we bundle it with ray.
 from ray._private import (
     ray_constants,
 )
+from ray._private.worker import RayContext
 import yaml
 from grpc._channel import _InactiveRpcError
 
