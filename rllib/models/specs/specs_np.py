@@ -7,7 +7,6 @@ from ray.rllib.models.specs.specs_base import TensorSpecs
 
 @DeveloperAPI
 class NPSpecs(TensorSpecs):
-
     @override(TensorSpecs)
     def get_type(cls) -> Type:
         return np.ndarray

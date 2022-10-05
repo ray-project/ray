@@ -9,7 +9,6 @@ _, tf, tfv = try_import_tf()
 
 @DeveloperAPI
 class TFSpecs(TensorSpecs):
-
     @override(TensorSpecs)
     def get_type(cls) -> Type:
         return tf.Tensor

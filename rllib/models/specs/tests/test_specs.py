@@ -114,7 +114,7 @@ class TestSpecs(unittest.TestCase):
             self.assertTrue(spec_eq_1 != spec_neq_2)
 
     def test_type_validation(self):
-        
+
         fw_keys = SPEC_CLASSES.keys()
         # check all combinations of spec fws with tensor fws
         for spec_fw, tensor_fw in itertools.product(fw_keys, fw_keys):

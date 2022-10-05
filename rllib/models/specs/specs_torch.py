@@ -10,7 +10,6 @@ torch, _ = try_import_torch()
 
 @DeveloperAPI
 class TorchSpecs(TensorSpecs):
-
     @override(TensorSpecs)
     def get_type(cls) -> Type:
         return torch.Tensor

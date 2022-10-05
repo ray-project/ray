@@ -85,9 +85,7 @@ class TensorSpecs(abc.ABC):
 
         expected_type = self.get_type()
         if not isinstance(tensor, expected_type):
-            raise ValueError(
-                _INVALID_TYPE.format(expected_type, type(tensor).__name__)
-            )
+            raise ValueError(_INVALID_TYPE.format(expected_type, type(tensor).__name__))
 
         shape = self.get_shape(tensor)
         if len(shape) != len(self._expected_shape):
@@ -105,9 +103,9 @@ class TensorSpecs(abc.ABC):
     @abc.abstractmethod
     def get_type(cls) -> Union[Type, Tuple[Type]]:
         """Returns the type of a tensor e.g. torch.Tensor or tf.Tensor.
-        
+
         Returns:
-            The type of a tensor. If the backend supports multiple tensor types, then a 
+            The type of a tensor. If the backend supports multiple tensor types, then a
             tuple of types is returned.
         """
 

@@ -12,7 +12,6 @@ if jax is not None:
 
 @DeveloperAPI
 class JAXSpecs(TensorSpecs):
-
     @override(TensorSpecs)
     def get_type(cls) -> Type:
         return jnp.ndarray
