@@ -245,7 +245,12 @@ class Preprocessor(abc.ABC):
                 "and 'arrow' Dataset formats are supported."
             )
 
-        return dataset.map_batches(self._transform_batch, batch_format=dataset_format)
+        if dataset_format == "pandas":
+            batch_format = "pandas"
+        elif dataset_format == "arrow":
+            batch_format = "pyarrow"
+
+        return dataset.map_batches(self._transform_batch, batch_format=batch_format)
 
     def _transform_batch(self, data: "DataBatchType") -> "DataBatchType":
         # For minimal install to locally import air modules
