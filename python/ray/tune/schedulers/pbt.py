@@ -168,6 +168,34 @@ def _fill_config(
             _fill_config(config[attr], k, v)
 
 
+def _filter_mutated_params_from_full_config(config, hyperparam_mutations):
+    """Filter out hyperparameters from a config so that only parameters specified
+    within hyperparam_mutations remain. This recursively filters nested configs.
+
+    Args:
+        config: The config dict that we want to filter.
+        hyperparam_mutations: A dict containing a subset of hyperparameters from
+            config, used to filter the config.
+
+    Returns:
+        mutated_params: A copy of config containing only params specified in
+            hyperparam_mutations
+    """
+    mutated_params = {}
+    for param_name in config:
+        if param_name not in hyperparam_mutations:
+            continue
+
+        if isinstance(config[param_name], dict):
+            nested_params = _filter_mutated_params_from_full_config(
+                config[param_name], hyperparam_mutations[param_name]
+            )
+            mutated_params[param_name] = nested_params
+        else:
+            mutated_params[param_name] = config[param_name]
+    return mutated_params
+
+
 @PublicAPI
 class PopulationBasedTraining(FIFOScheduler):
     """Implements the Population Based Training (PBT) algorithm.
@@ -738,14 +766,12 @@ class PopulationBasedTraining(FIFOScheduler):
         new_config, operations = self._get_new_config(trial, trial_to_clone)
 
         # Only log mutated hyperparameters and not entire config.
-        old_params = {
-            k: v
-            for k, v in trial_to_clone.config.items()
-            if k in self._hyperparam_mutations
-        }
-        new_params = {
-            k: v for k, v in new_config.items() if k in self._hyperparam_mutations
-        }
+        old_params = _filter_mutated_params_from_full_config(
+            trial_to_clone.config, self._hyperparam_mutations
+        )
+        new_params = _filter_mutated_params_from_full_config(
+            new_config, self._hyperparam_mutations
+        )
         explore_info_str = (
             f"\n\n[{class_name}] [Explore] Perturbed the hyperparameter config of trial"
             f"{trial.trial_id}:\n"
