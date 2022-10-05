@@ -1,3 +1,5 @@
+.. _core-patterns-limit-pending-tasks:
+
 Pattern: Using ray.wait to limit the number of pending tasks
 ============================================================
 
@@ -8,12 +10,14 @@ With ``ray.wait()``, we can apply backpressure and limit the number of pending t
 
 .. note::
 
-   If you submit a finite number of tasks, it's unlikely that you will hit the issue mentioned above since each task only uses a small amount of memory in the queue.
-   It's more likely to happen if you have an infinite stream of tasks to run.
+   If we submit a finite number of tasks, it's unlikely that we will hit the issue mentioned above since each task only uses a small amount of memory in the queue.
+   It's more likely to happen when we have an infinite stream of tasks to run.
 
 .. note::
-   This pattern shouldn't be used to limit the number of concurrently running tasks, which should be achieved by :doc:`limit-running-tasks` instead.
-   In fact, it's better to submit more tasks than the maximum number of concurrently running tasks so that we can overlap task execution with task scheduling.
+   While we can limit the number of concurrently running tasks with this pattern, it is not recommended.
+   Use :ref:`resources <core-patterns-limit-running-tasks>` to limit that instead
+   so that we can submit more tasks than concurrently running ones to overlap task execution with task scheduling.
+   Also resources based limitation can decide the parallelism automatically based on the node's resources.
 
 Example use case
 ----------------
