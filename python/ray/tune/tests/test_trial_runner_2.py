@@ -322,7 +322,7 @@ class TrialRunnerTest2(unittest.TestCase):
         tempdir = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tempdir)
 
-        trial = Trial("__fake", keep_checkpoints_num=2)
+        trial = Trial("__fake", checkpoint_config=CheckpointConfig(num_to_keep=2))
         trial.init_logdir()
         trial.checkpoint_manager.set_delete_fn(lambda cp: shutil.rmtree(cp.dir_or_data))
 
@@ -369,7 +369,7 @@ class TrialRunnerTest2(unittest.TestCase):
         result = write_checkpoint(trial, 3)
         runner._on_saving_result(trial, result)
 
-        # Expect 2 checkpoints because keep_checkpoints_num = 2
+        # Expect 2 checkpoints because num_to_keep = 2
         cp_dirs = get_checkpoint_dirs(trial)
         self.assertEqual(len(cp_dirs), 2, msg=f"Checkpoint dirs: {cp_dirs}")
 
@@ -385,7 +385,7 @@ class TrialRunnerTest2(unittest.TestCase):
         result = write_checkpoint(trial, 4)
         runner._on_saving_result(trial, result)
 
-        # Expect 2 checkpoints because keep_checkpoints_num = 2
+        # Expect 2 checkpoints because num_to_keep = 2
         cp_dirs = get_checkpoint_dirs(trial)
         self.assertEqual(len(cp_dirs), 2, msg=f"Checkpoint dirs: {cp_dirs}")
 
@@ -393,7 +393,7 @@ class TrialRunnerTest2(unittest.TestCase):
         result = write_checkpoint(trial, 5)
         runner._on_saving_result(trial, result)
 
-        # Expect 2 checkpoints because keep_checkpoints_num = 2
+        # Expect 2 checkpoints because num_to_keep = 2
         cp_dirs = get_checkpoint_dirs(trial)
         self.assertEqual(len(cp_dirs), 2, msg=f"Checkpoint dirs: {cp_dirs}")
 
