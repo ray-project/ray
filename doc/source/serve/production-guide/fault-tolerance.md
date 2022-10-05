@@ -46,7 +46,7 @@ See Serve's [Kubernetes production guide](serve-in-production-kubernetes) to lea
 
 By default, Serve can recover from certain failures, such as unhealthy actors. When [Serve runs on Kubernetes](serve-in-production-kubernetes) with [KubeRay], it can also recover from some cluster-level failures, such as dead worker or head nodes.
 
-When a worker node fails, the actors running on it also fail. Serve detects that the actors have failed, and it attempts to respawn the actors on the remaining, healthy nodes. Meanwhile, KubeRay detects that the node itself has failed, so it brings up a new healthy node to replace it. Serve can then respawn any pending actors on that node as well. The deployment replicas running on healthy nodes can continue serving traffic throughout the recovery period.
+When a worker node fails, the actors running on it also fail. Serve detects that the actors have failed, and it attempts to respawn the actors on the remaining, healthy nodes. Meanwhile, KubeRay detects that the node itself has failed, so it attempts to restart the worker pod on another running node, and it also brings up a new healthy node to replace it. Once the node comes up, if the pod is still pending, it can be restarted on that node. Similarly, Serve can also respawn any pending actors on that node as well. The deployment replicas running on healthy nodes can continue serving traffic throughout the recovery period.
 
 (serve-e2e-ft-guide-gcs)=
 ### Head node recovery: Ray GCS fault tolerance
@@ -276,9 +276,7 @@ $ kubectl apply -f config.yaml
 
 ### Worker node failure
 
-When a worker node fails, any actors running on the node also crash. Serve detects that the failed node's actors have crashed, and it attempts to relaunch the actors on the remaining nodes. Meanwhile, KubeRay detects that the node crashed, and it attempts to start a new node to replace it. Once KubeRay starts the new node, Serve can launch any pending actors on the new node as well.
-
-We can simulate a worker node failure in our working example. First, let's take a look at the nodes and pods running in our Kubernetes cluster:
+You can simulate a worker node failure in the working example. First, take a look at the nodes and pods running in your Kubernetes cluster:
 
 ```console
 $ kubectl get nodes
@@ -335,6 +333,10 @@ $ curl localhost:8000
 
 While the pod crashes and recovers, the live pod can continue serving traffic!
 
+:::{tip}
+Killing a node and waiting for it to recover usually takes longer than killing a pod and waiting for it to recover. For this type of debugging, it's quicker to simulate failures by killing at the pod level rather than at the node level.
+:::
+
 You can similarly kill a worker node and see that the other nodes can continue serving traffic:
 
 ```console
@@ -350,10 +352,48 @@ $ kubectl delete node gke-serve-demo-default-pool-ed597cce-m888
 node "gke-serve-demo-default-pool-ed597cce-m888" deleted
 
 $ curl localhost:8000
-6318
+385
 ```
 
 ### Head node failure
+
+You can simulate a head node failure by either killing the head pod or the head node. First, take a look at the running pods in your cluster:
+
+```console
+$ kubectl get pods -o wide
+
+NAME                                                      READY   STATUS    RESTARTS      AGE     IP           NODE                                        NOMINATED NODE   READINESS GATES
+ervice-sample-raycluster-thwmr-worker-small-group-6f2pk   1/1     Running   0             6m59s   10.68.2.64   gke-serve-demo-default-pool-ed597cce-nvm2   <none>           <none>
+ervice-sample-raycluster-thwmr-worker-small-group-bdv6q   1/1     Running   0             79m     10.68.2.62   gke-serve-demo-default-pool-ed597cce-nvm2   <none>           <none>
+rayservice-sample-raycluster-thwmr-head-28mdh             1/1     Running   1 (79m ago)   79m     10.68.0.45   gke-serve-demo-default-pool-ed597cce-pu2q   <none>           <none>
+redis-75c8b8b65d-4qgfz                                    1/1     Running   0             79m     10.68.2.60   gke-serve-demo-default-pool-ed597cce-nvm2   <none>           <none>
+```
+
+Port-forward to one of your worker pods. Make sure this pod is on a separate node from the head node, so you can kill the head node without crashing the worker:
+
+```console
+$ port-forward ervice-sample-raycluster-thwmr-worker-small-group-bdv6q
+Forwarding from 127.0.0.1:8000 -> 8000
+Forwarding from [::1]:8000 -> 8000
+```
+
+In a separate terminal, you can make requests to the Serve application:
+
+```console
+$ curl localhost:8000
+418
+```
+
+You can kill the head pod to simulate killing the Ray head node:
+
+```console
+$ kubectl delete pod rayservice-sample-raycluster-thwmr-head-28mdh
+pod "rayservice-sample-raycluster-thwmr-head-28mdh" deleted
+
+$ curl localhost:8000
+```
+
+If you have configured [GCS fault tolerance](serve-e2e-ft-guide-gcs) on your cluster, your worker pod can continue serving traffic without restarting when the head pod crashes and recovers. Without GCS fault tolerance, KubeRay restarts all worker pods when the head pod crashes, so you'll need to wait for the workers to restart and the deployments to reinitialize before you can port-forward and send more requests.
 
 ### Serve controller failure
 
