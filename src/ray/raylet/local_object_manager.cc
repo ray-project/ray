@@ -36,8 +36,8 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
       continue;
     }
 
-    const auto inserted =
-        local_objects_.emplace(object_id, LocalObjectInfo(owner_address, generator_id));
+    const auto inserted = local_objects_.emplace(
+        object_id, LocalObjectInfo(owner_address, generator_id, object->GetSize()));
     if (inserted.second) {
       // This is the first time we're pinning this object.
       RAY_LOG(DEBUG) << "Pinning object " << object_id;
@@ -217,8 +217,6 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
           auto now = absl::GetCurrentTimeNanos();
           RAY_LOG(DEBUG) << "Spilled " << bytes_to_spill << " bytes in "
                          << (now - start_time) / 1e6 << "ms";
-          spilled_bytes_total_ += bytes_to_spill;
-          spilled_objects_total_ += objects_to_spill.size();
           // Adjust throughput timing to account for concurrent spill operations.
           spill_time_total_s_ +=
               (now - std::max(start_time, last_spill_finish_ns_)) / 1e9;
@@ -380,6 +378,7 @@ void LocalObjectManager::SpillObjectsInternal(
 
 void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids,
                                          const rpc::SpillObjectsReply &worker_reply) {
+  RAY_LOG(INFO) << "OnObjectSpilled: " << object_ids.size() << " objects";
   for (size_t i = 0; i < static_cast<size_t>(worker_reply.spilled_objects_url_size());
        ++i) {
     const ObjectID &object_id = object_ids[i];
@@ -401,13 +400,19 @@ void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids
     }
 
     // Mark that the object is spilled and unpin the pending requests.
-    spilled_objects_url_.emplace(object_id, object_url);
     RAY_LOG(DEBUG) << "Unpinning pending spill object " << object_id;
     auto it = objects_pending_spill_.find(object_id);
     RAY_CHECK(it != objects_pending_spill_.end());
     const auto object_size = it->second->GetSize();
     num_bytes_pending_spill_ -= object_size;
     objects_pending_spill_.erase(it);
+
+    spilled_objects_url_.emplace(object_id, object_url);
+
+    // Update the internal spill metrics
+    spilled_bytes_total_ += object_size;
+    spilled_bytes_current_ += object_size;
+    spilled_objects_total_++;
 
     // Asynchronously Update the spilled URL.
     auto freed_it = local_objects_.find(object_id);
@@ -539,6 +544,11 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
         object_urls_to_delete.emplace_back(object_url);
       }
       spilled_objects_url_.erase(spilled_objects_url_it);
+
+      // Update current spilled objects metrics
+      RAY_CHECK(local_objects_.contains(object_id))
+          << "local objects might should contain the spilled object: " << object_id;
+      spilled_bytes_current_ -= local_objects_.at(object_id).object_size;
     } else {
       // If the object was not spilled, it gets pinned again. Unpin here to
       // prevent a memory leak.
@@ -615,12 +625,16 @@ void LocalObjectManager::RecordMetrics() const {
                                                        "Restored");
 }
 
-int64_t LocalObjectManager::GetPrimaryBytes() const {
-  return pinned_objects_size_ + num_bytes_pending_spill_;
+size_t LocalObjectManager::GetCurrentSpilledCount() const {
+  return spilled_objects_url_.size();
 }
 
-size_t LocalObjectManager::GetPrimaryCount() const {
-  return pinned_objects_.size() + objects_pending_spill_.size();
+int64_t LocalObjectManager::GetCurrentSpilledBytes() const {
+  return spilled_bytes_current_;
+}
+
+int64_t LocalObjectManager::GetPrimaryBytes() const {
+  return pinned_objects_size_ + num_bytes_pending_spill_;
 }
 
 bool LocalObjectManager::HasLocallySpilledObjects() const {
@@ -639,8 +653,6 @@ std::string LocalObjectManager::DebugString() const {
   result << "LocalObjectManager:\n";
   result << "- num pinned objects: " << pinned_objects_.size() << "\n";
   result << "- pinned objects size: " << pinned_objects_size_ << "\n";
-  result << "- num primary objects: " << GetPrimaryCount() << "\n";
-  result << "- primary objects size: " << GetPrimaryBytes() << "\n";
   result << "- num objects pending restore: " << objects_pending_restore_.size() << "\n";
   result << "- num objects pending spill: " << objects_pending_spill_.size() << "\n";
   result << "- num bytes pending spill: " << num_bytes_pending_spill_ << "\n";

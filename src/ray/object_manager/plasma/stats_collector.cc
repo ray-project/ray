@@ -18,6 +18,7 @@
 #include "ray/object_manager/plasma/stats_collector.h"
 
 #include "ray/stats/metric_defs.h"
+#include "src/ray/protobuf/common.pb.h"  // rpc::ObjectLocation
 
 namespace plasma {
 
@@ -176,7 +177,7 @@ void ObjectStatsCollector::OnObjectRefDecreased(const LocalObject &obj) {
 void ObjectStatsCollector::RecordMetrics() const {
   ray::stats::STATS_object_store_memory.Record(
       num_bytes_in_memory_,
-      {{"Location", rpc::ObjectLocation_Name(rpc::ObjectLocation::IN_MEMORY)}});
+      {{"Location", ray::rpc::ObjectLocation_Name(ray::rpc::ObjectLocation::IN_MEMORY)}});
 
   // TODO(rickyx):
   // Add fallback memory recording here.

@@ -168,17 +168,28 @@ class LocalObjectManager {
   /// filesystem.
   bool HasLocallySpilledObjects() const;
 
+  /// Get the current bytes spilled to the disk. This number excludes objects
+  /// that have been deleted on the external storage.
+  int64_t GetCurrentSpilledBytes() const;
+
+  // Get the current number of objects being spilled.
+  size_t GetCurrentSpilledCount() const;
+
   std::string DebugString() const;
 
  private:
   struct LocalObjectInfo {
-    LocalObjectInfo(const rpc::Address &owner_address, const ObjectID &generator_id)
+    LocalObjectInfo(const rpc::Address &owner_address,
+                    const ObjectID &generator_id,
+                    size_t object_size)
         : owner_address(owner_address),
           generator_id(generator_id.IsNil() ? std::nullopt
-                                            : std::optional<ObjectID>(generator_id)) {}
+                                            : std::optional<ObjectID>(generator_id)),
+          object_size(object_size) {}
     rpc::Address owner_address;
     bool is_freed = false;
     const std::optional<ObjectID> generator_id;
+    size_t object_size;
   };
 
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSizeZero);
@@ -344,6 +355,9 @@ class LocalObjectManager {
 
   /// The total wall time in seconds spent in spilling.
   double spill_time_total_s_ = 0;
+
+  /// The total number of bytes spilled currently.
+  int64_t spilled_bytes_current_ = 0;
 
   /// The total number of bytes spilled.
   int64_t spilled_bytes_total_ = 0;
