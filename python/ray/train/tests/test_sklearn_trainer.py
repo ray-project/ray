@@ -93,7 +93,7 @@ def test_no_auto_cpu_params(ray_start_4_cpus, tmpdir):
     result = trainer.fit()
 
     checkpoint = SklearnCheckpoint.from_checkpoint(result.checkpoint)
-    model = checkpoint.get_model()
+    model = checkpoint.get_estimator()
     assert model.n_jobs == 1
 
 
@@ -129,7 +129,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
 
     checkpoint = SklearnCheckpoint.from_checkpoint(resume_from)
 
-    model = checkpoint.get_model()
+    model = checkpoint.get_estimator()
     preprocessor = checkpoint.get_preprocessor()
     assert hasattr(model, "feature_importances_")
     assert preprocessor.is_same

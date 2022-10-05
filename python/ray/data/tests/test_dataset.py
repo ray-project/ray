@@ -2232,10 +2232,6 @@ def test_select_columns(ray_start_regular_shared):
     assert ds._dataset_format() == "arrow"
     assert ds.take(1) == [{'col1': 1, 'col2': 2}]
 
-    # Test `batch_format` validation
-    with pytest.raises(TypeError):
-        ds.select_columns(columns=["col1", "col2"], batch_format="numpy")
-
 
 def test_map_batches_basic(ray_start_regular_shared, tmp_path):
     # Test input validation
