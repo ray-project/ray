@@ -152,23 +152,20 @@ class _MongoDatasourceReader(Reader):
                 input_files=None,
                 exec_stats=None,
             )
-            min_id = partition["_id"]["min"]
-            max_id = partition["_id"]["max"]
             right_closed = i == len(partitions_ids) - 1
+            make_block_args = (
+                self._uri,
+                self._database,
+                self._collection,
+                self._pipeline,
+                partition["_id"]["min"],
+                partition["_id"]["max"],
+                right_closed,
+                self._schema,
+                self._mongo_args,
+            )
             read_task = ReadTask(
-                lambda uri=self._uri, database=self._database, collection=self._collection, pipeline=self._pipeline, min_id=min_id, max_id=max_id, right_closed=right_closed, schema=self._schema, kwargs=self._mongo_args: [  # noqa: E501
-                    make_block(
-                        uri,
-                        database,
-                        collection,
-                        pipeline,
-                        min_id,
-                        max_id,
-                        right_closed,
-                        schema,
-                        kwargs,
-                    )
-                ],
+                lambda args=make_block_args: [make_block(*args)],
                 metadata,
             )
             read_tasks.append(read_task)
