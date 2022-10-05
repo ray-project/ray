@@ -82,6 +82,7 @@ def validate_protobuf_enum(grpc_enum, custom_enum):
     # doesn't include any values in that case.
     if len(enum_vals) > 0:
         assert enum_vals == set(custom_enum)
+        pass
 
 
 # Do the enum validation here.

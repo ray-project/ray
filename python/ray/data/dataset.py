@@ -611,18 +611,18 @@ class Dataset(Generic[T]):
     ) -> "Dataset[T]":
         """Select one or more columns from the dataset.
 
-        This is a blocking operation.
+        Columns passed in will be de-duped since ArrowBlock and PandasBlock
+        `select` does not explicitly handle duplicated columns.
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range_table(100)
-            >>> # Add a new column equal to value * 2.
-            >>> ds = ds.add_column(
-            ...     "new_col", lambda df: df["value"] * 2)
-            >>> # Select only the "new_col" column.
-            >>> ds = ds.select_columns(["new_col"])
+            >>> # Create a dataset with 3 columns
+            >>> ds = ray.data.from_items([{"col1": i, "col2": i+1, "col3": i+2}
+            ...      for i in range(10)])
+            >>> # Select only "col1" and "col2" columns.
+            >>> ds = ds.select_columns(["col1", "col2"])
             >>> ds
-            Dataset(num_blocks=17, num_rows=100, schema={new_col: int64})
+            Dataset(num_blocks=10, num_rows=10, schema={col1: int64, col2: int64})
 
 
         Time complexity: O(dataset size / parallelism)
@@ -635,12 +635,7 @@ class Dataset(Generic[T]):
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        if ray_remote_args.get("batch_format") == "numpy":
-            raise TypeError(
-                "Unable to create a block accessor for block type `numpy`. "
-                "Remove `batch_format` or change it to `default`.")
-
-        # dedup since Arrow/PandasBlock's `select` does not handle dup columns
+        # dedup the input columns used for selection
         unique_columns = list(set(columns))
         return self.map_batches(
                 lambda batch: BlockAccessor.for_block(batch).select(columns=unique_columns),
