@@ -1,6 +1,8 @@
-COPTS = [] + select({
+COPTS = ["-DUSE_SSL=1"] + select({
     "@bazel_tools//src/conditions:windows": [
         "-D_CRT_DECLARE_NONSTDC_NAMES=0",  # don't define off_t, to avoid conflicts
+        "-DWIN32",
+        "-DWIN32_LEAN_AND_MEAN"
     ],
     "//conditions:default": [
     ],
@@ -32,7 +34,6 @@ cc_library(
         ],
         exclude =
         [
-            "ssl.c",
             "test.c",
         ],
     ),
@@ -44,6 +45,8 @@ cc_library(
     include_prefix = "hiredis",
     deps = [
         ":_hiredis",
+        "@boringssl//:ssl",
+        "@boringssl//:crypto"
     ],
     visibility = ["//visibility:public"],
 )
