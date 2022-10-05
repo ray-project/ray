@@ -8,9 +8,16 @@ from ray.rllib.models.base_model import (
 )
 import numpy as np
 from ray.rllib.models.temp_spec_classes import TensorDict, SpecDict
+from ray.rllib.utils.test_utils import check
 
 
 class NpRecurrentModelImpl(RecurrentModel):
+    """A numpy recurrent model for checking:
+    (1) initial states
+    (2) that model in/out is as expected
+    (3) unroll logic
+    (4) spec checking"""
+
     input_spec = SpecDict({"in": "h"}, h=3)
     output_spec = SpecDict({"out": "o"}, o=2)
     next_state_spec = SpecDict({"out": "i"}, i=4)
@@ -34,12 +41,21 @@ class NpRecurrentModelImpl(RecurrentModel):
         return TensorDict({"in": np.arange(1)})
 
     def _unroll(self, inputs: TensorDict, prev_state: TensorDict) -> UnrollOutputType:
-        assert np.all(inputs["in"] == np.arange(3))
-        assert np.all(prev_state["in"] == np.arange(1))
+        # Ensure unroll is passed the input/state as expected
+        # and does not mutate/permute it in any way
+        check(inputs["in"], np.arange(3))
+        check(prev_state["in"], np.arange(1))
         return TensorDict({"out": np.arange(2)}), TensorDict({"out": np.arange(4)})
 
 
 class NpModelImpl(Model):
+    """Non-recurrent extension of NPRecurrentModelImpl
+
+    For testing:
+    (1) rollout and forward_ logic
+    (2) spec checking
+    """
+
     input_spec = SpecDict({"in": "h"}, h=3)
     output_spec = SpecDict({"out": "o"}, o=2)
 
@@ -58,6 +74,9 @@ class NpModelImpl(Model):
         return outputs
 
     def _forward(self, inputs: TensorDict) -> ForwardOutputType:
+        # Ensure _forward is passed the input from unroll as expected
+        # and does not mutate/permute it in any way
+        check(inputs["in"], np.arange(3))
         return TensorDict({"out": np.arange(2)})
 
 
@@ -68,7 +87,7 @@ class TestRecurrentModel(unittest.TestCase):
         output = NpRecurrentModelImpl().initial_state()
         desired = TensorDict({"in": np.arange(1)})
         for k in output.flatten().keys() | desired.flatten().keys():
-            self.assertTrue(np.all(output[k] == desired[k]))
+            check(output[k], desired[k])
 
     def test_unroll(self):
         """Test that _unroll is correctly called by unroll and outputs are the
@@ -83,9 +102,9 @@ class TestRecurrentModel(unittest.TestCase):
         )
 
         for k in out.flatten().keys() | desired.flatten().keys():
-            self.assertTrue(np.all(out[k] == desired[k]))
+            check(out[k], desired[k])
         for k in out_state.flatten().keys() | desired_state.flatten().keys():
-            self.assertTrue(np.all(out_state[k] == desired_state[k]))
+            check(out_state[k], desired_state[k])
 
     def test_unroll_filter(self):
         """Test that unroll correctly filters unused data"""
@@ -94,7 +113,8 @@ class TestRecurrentModel(unittest.TestCase):
             assert "bork" not in inputs.keys() and "borkbork" not in states.keys()
             return inputs, states
 
-        out, state = NpRecurrentModelImpl(input_check=in_check).unroll(
+        m = NpRecurrentModelImpl(input_check=in_check)
+        out, state = m.unroll(
             inputs=TensorDict({"in": np.arange(3), "bork": np.zeros(1)}),
             prev_state=TensorDict({"in": np.arange(1), "borkbork": np.zeros(1)}),
         )
@@ -110,13 +130,15 @@ class TestRecurrentModel(unittest.TestCase):
             raise MyException()
 
         with self.assertRaises(MyException):
-            NpRecurrentModelImpl(input_check=exc).unroll(
+            m = NpRecurrentModelImpl(input_check=exc)
+            m.unroll(
                 inputs=TensorDict({"in": np.arange(3)}),
                 prev_state=TensorDict({"in": np.arange(1)}),
             )
 
         with self.assertRaises(MyException):
-            NpRecurrentModelImpl(output_check=exc).unroll(
+            m = NpRecurrentModelImpl(output_check=exc)
+            m.unroll(
                 inputs=TensorDict({"in": np.arange(3)}),
                 prev_state=TensorDict({"in": np.arange(1)}),
             )
@@ -124,16 +146,18 @@ class TestRecurrentModel(unittest.TestCase):
 
 class TestModel(unittest.TestCase):
     def test_unroll(self):
-        """Test that unroll correctly calls _forward"""
-        output, nullstate = NpModelImpl().unroll(
-            inputs=TensorDict(), prev_state=TensorDict()
+        """Test that unroll correctly calls _forward. The outputs
+        should be as expected."""
+        m = NpModelImpl()
+        output, nullstate = m.unroll(
+            inputs=TensorDict({"in": np.arange(3)}), prev_state=TensorDict()
         )
 
         self.assertEqual(
             nullstate,
             TensorDict(),
         )
-        self.assertTrue(np.all(output == np.arange(2)))
+        check(output["out"], np.arange(2))
 
     def test_hooks(self):
         """Test that unroll correctly calls the filter functions
