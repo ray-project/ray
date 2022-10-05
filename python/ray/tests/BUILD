@@ -34,7 +34,6 @@ py_test_module_list(
     "test_actor_pool.py",
     "test_async.py",
     "test_asyncio.py",
-    "test_actor_failures.py",
     "test_actor_resources.py",
     "test_actor_lifetime.py",
     "test_advanced.py",
@@ -132,6 +131,7 @@ py_test_module_list(
     "test_ray_init.py",
     "test_ray_init_2.py",
     "test_resource_demand_scheduler.py",
+    "test_resource_metrics.py",
     "test_runtime_context.py",
     "test_runtime_env_env_vars.py",
     "test_runtime_env_packaging.py",
@@ -187,6 +187,7 @@ py_test_module_list(
     "test_raylet_output.py",
     "test_scheduling_performance.py",
     "test_get_or_create_actor.py",
+    "test_redis_tls.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
@@ -254,6 +255,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
+    "test_actor_failures.py",
     "test_failure.py",
     "test_actor_advanced.py",
     "test_threaded_actor.py",

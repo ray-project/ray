@@ -234,7 +234,7 @@ if setup_spec.type == SetupType.RAY:
             "colorful",
             "py-spy >= 0.2.0",
             "requests",
-            "gpustat >= 1.0.0b1",  # for windows
+            "gpustat >= 1.0.0",  # for windows
             "opencensus",
             "pydantic",
             "prometheus_client >= 0.7.1, < 0.14.0",
@@ -292,14 +292,18 @@ if setup_spec.type == SetupType.RAY:
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
 # the change in the matching section of requirements/requirements.txt
+#
+# NOTE: if you add any unbounded dependency, please also update
+# install-core-prerelease-dependencies.sh so we can test
+# new releases candidates.
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
         "attrs",
         "click >= 7.0, <= 8.0.4",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "grpcio >= 1.32.0, <= 1.48.1; python_version < '3.10'",
-        "grpcio >= 1.42.0, <= 1.48.1; python_version >= '3.10'",
+        "grpcio >= 1.32.0; python_version < '3.10'",
+        "grpcio >= 1.42.0; python_version >= '3.10'",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",

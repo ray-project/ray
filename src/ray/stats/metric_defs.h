@@ -81,6 +81,9 @@ DECLARE_stats(scheduler_failed_worker_startup_total);
 DECLARE_stats(scheduler_tasks);
 DECLARE_stats(scheduler_unscheduleable_tasks);
 
+/// Raylet Resource Manager
+DECLARE_stats(resources);
+
 /// TODO(rickyx): migrate legacy metrics
 /// Local Object Manager
 DECLARE_stats(spill_manager_objects);
@@ -123,10 +126,10 @@ static Histogram GcsLatency("gcs_latency",
 ///
 
 /// Raylet Resource Manager
-static Gauge LocalAvailableResource("local_available_resource",
-                                    "The available resources on this node.",
-                                    "",
-                                    {ResourceNameKey});
+static Gauge TestMetrics("local_available_resource",
+                         "The available resources on this node.",
+                         "",
+                         {ResourceNameKey});
 
 static Gauge LocalTotalResource("local_total_resource",
                                 "The total resources on this node.",

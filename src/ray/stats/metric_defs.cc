@@ -31,12 +31,21 @@ namespace stats {
 /// NOTE: When adding a new metric, add the metric name to the _METRICS list in
 /// python/ray/tests/test_metrics_agent.py to ensure that its existence is tested.
 
-/// Scheduler
-DEFINE_stats(tasks,
-             "Current number of tasks currently in a particular state.",
-             ("State", "Source"),
-             (),
-             ray::stats::GAUGE);
+/// Tracks tasks by state, including pending, running, and finished tasks.
+/// This metric may be recorded from multiple components processing the task in Ray,
+/// including the submitting core worker, executor core worker, and pull manager.
+///
+/// To avoid metric collection conflicts between components reporting on the same task,
+/// we use the "Source" required label.
+DEFINE_stats(
+    tasks,
+    "Current number of tasks currently in a particular state.",
+    // State: the task state, as described by rpc::TaskState proto in common.proto.
+    // Name: the name of the function called.
+    // Source: component reporting, e.g., "core_worker", "executor", or "pull_manager".
+    ("State", "Name", "Source"),
+    (),
+    ray::stats::GAUGE);
 
 /// Event stats
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
@@ -158,6 +167,14 @@ DEFINE_stats(scheduler_failed_worker_startup_total,
              "available. Labels are broken per reason {JobConfigMissing, "
              "RegistrationTimedOut, RateLimited}",
              ("Reason"),
+             (),
+             ray::stats::GAUGE);
+
+/// Raylet Resource Manager
+DEFINE_stats(resources,
+             // TODO(sang): Support placement_group_reserved_available | used
+             "Logical Ray resources broken per state {AVAILABLE, USED}",
+             ("Name", "State"),
              (),
              ray::stats::GAUGE);
 
