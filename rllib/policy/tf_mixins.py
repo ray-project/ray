@@ -227,7 +227,7 @@ class TargetNetworkMixin:
         # Hard initial update.
         self._do_update = update_target_fn
         # TODO: The previous SAC implementation does an update(1.0) here.
-        # If this is changed to tau ~= 1.0 the sac_loss_function test fails. Why?
+        # If this is changed to tau != 1.0 the sac_loss_function test fails. Why?
         # Also the test is not very maintainable, we need to change that unittest
         # anyway.
         self.update_target(tau=1.0)  # self.config.get("tau", 1.0))
