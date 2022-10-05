@@ -440,12 +440,13 @@ class Dataset(Generic[T]):
                 ``"numpy"`` to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "default".
             allow_mutate_batch: Whether the ``fn`` UDF needs to be able to mutate the
-                input batch. If this is True, the batch will be writable, which may
-                require an extra copy. If this is False, the batch may be a zero-copy,
-                read-only view on data in Ray's object store, which can decrease memory
-                utilization and improve performance. If fn mutates its input, this will
-                need to be True in order to avoid "assignment destination is read-only"
-                or "buffer source array is read-only" errors. Default is True.
+                input batch. If this is ``True``, the batch will be writable, which may
+                require an extra copy. If this is ``False``, the batch may be a
+                zero-copy, read-only view on data in Ray's object store, which can
+                decrease memory utilization and improve performance. If ``fn`` mutates
+                its input, this will need to be ``True`` in order to avoid "assignment
+                destination is read-only" or "buffer source array is read-only" errors.
+                Default is ``True``.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
                 These arguments are top-level arguments to the underlying Ray task.
             fn_kwargs: Keyword arguments to pass to ``fn``. These arguments are
