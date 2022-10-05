@@ -96,7 +96,7 @@ RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 /// the retry counter of the task or actor is only used when it fails in other ways
 /// that is not related to running out of memory. Note infinite retry (-1) is not
 /// supported.
-RAY_CONFIG(uint64_t, task_oom_retries, 3)
+RAY_CONFIG(uint64_t, task_oom_retries, 15)
 
 /// If the raylet fails to get agent info, we will retry after this interval.
 RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
@@ -668,6 +668,16 @@ RAY_CONFIG(bool, USE_TLS, false)
 RAY_CONFIG(std::string, TLS_SERVER_CERT, "")
 RAY_CONFIG(std::string, TLS_SERVER_KEY, "")
 RAY_CONFIG(std::string, TLS_CA_CERT, "")
+
+/// Location of Redis TLS credentials
+/// https://github.com/redis/hiredis/blob/c78d0926bf169670d15cfc1214e4f5d21673396b/README.md#hiredis-openssl-wrappers
+RAY_CONFIG(bool, REDIS_ENABLE_SSL, false)
+RAY_CONFIG(std::string, REDIS_CA_CERT, "")
+RAY_CONFIG(std::string, REDIS_CA_PATH, "")
+
+RAY_CONFIG(std::string, REDIS_CLIENT_CERT, "")
+RAY_CONFIG(std::string, REDIS_CLIENT_KEY, "")
+RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 
 /// grpc delay testing flags
 ///  To use this, simply do
