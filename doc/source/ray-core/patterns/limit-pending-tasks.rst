@@ -5,7 +5,7 @@ Pattern: Using ray.wait to limit the number of pending tasks
 
 In this pattern, we use :ref:`ray.wait() <ray-wait-ref>` to limit the number of pending tasks.
 
-If we submit tasks faster than their process time, we will have tasks accumulated in the pending task queue, which will eventually cause OOM.
+If we continuously submit tasks faster than their process time, we will accumulate tasks in the pending task queue, which can eventually cause OOM.
 With ``ray.wait()``, we can apply backpressure and limit the number of pending tasks so that the pending task queue won't grow indefinitely and cause OOM.
 
 .. note::
@@ -14,10 +14,10 @@ With ``ray.wait()``, we can apply backpressure and limit the number of pending t
    It's more likely to happen when we have an infinite stream of tasks to run.
 
 .. note::
-   While we can limit the number of concurrently running tasks with this pattern, it is not recommended.
-   Use :ref:`resources <core-patterns-limit-running-tasks>` to limit that instead
-   so that we can submit more tasks than concurrently running ones to overlap task execution with task scheduling.
-   Also resources based limitation can decide the parallelism automatically based on the node's resources.
+
+   This method is meant primarily to limit how many tasks should be in flight at the same time.
+   It can also be used to limit how many tasks can run *concurrently*, but it is not recommended, as it can hurt scheduling performance.
+   Ray automatically decides task parallelism based on resource availability, so the recommended method for adjusting how many tasks can run concurrently is to :ref:`modify each task's resource requirements <core-patterns-limit-running-tasks>` instead.
 
 Example use case
 ----------------
