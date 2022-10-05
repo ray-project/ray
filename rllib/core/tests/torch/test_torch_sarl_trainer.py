@@ -2,7 +2,6 @@ import numpy as np
 import torch
 
 import ray
-from ray import train
 
 from ray.rllib import SampleBatch
 from ray.rllib.core.torch.torch_rl_module import TorchRLModule
@@ -50,7 +49,7 @@ def make_dataset():
     return x, y
 
 
-def test_1_torch_sarl_trainer_2_gpu(trainer_class_fn):
+def _test_1_torch_sarl_trainer_2_gpu(trainer_class_fn):
     ray.init()
 
     x, y = make_dataset()
@@ -89,7 +88,7 @@ def test_1_torch_sarl_trainer_2_gpu(trainer_class_fn):
     ray.shutdown()
 
 
-def test_gradients_params_same_on_all_configurations(trainer_class_fn):
+def _test_gradients_params_same_on_all_configurations(trainer_class_fn):
     results = []
     for num_gpus in [0, 1, 2]:
         ray.init()
@@ -144,8 +143,9 @@ class DummyRLModule(TorchRLModule):
         self.a = torch.nn.Linear(1, 1)
         self.b = torch.nn.Linear(1, 1)
 
-    def forward_train(self, batch):
-        return self.a(batch), self.b(batch)
+    def forward_train(self, batch, device=None):
+        x = torch.reshape(torch.Tensor(batch["x"]), (-1, 1)).to(device)
+        return self.a(x), self.b(x)
 
 
 class TorchIndependentModulesTrainer(TorchSARLTrainer):
@@ -154,29 +154,26 @@ class TorchIndependentModulesTrainer(TorchSARLTrainer):
         super().__init__(config)
 
     @staticmethod
-    def compute_loss_and_update(module, batch, optimizer):
-        # this dummy module is actually going to
-        # do supervised learning on the batch
-        # and return the loss
-        device = train.torch.get_device()
-        x = torch.reshape(torch.Tensor(batch["x"]), (-1, 1)).to(device)
+    def compute_loss(batch, fwd_out, device, **kwargs):
+        out_a, out_b = fwd_out
         y = torch.reshape(torch.Tensor(batch["y"]), (-1, 1)).to(device)
-        out_a, out_b = module(x)
-        unwrapped_module = module.module
-
         loss_a = torch.nn.functional.mse_loss(out_a, y)
         loss_b = torch.nn.functional.mse_loss(out_b, y)
-        optimizer[0].zero_grad()
-        optimizer[1].zero_grad()
-        loss_a.backward()
-        loss_b.backward()
-        optimizer[0].step()
-        optimizer[1].step()
+        return {"total_loss": loss_a + loss_b, "loss_a": loss_a, "loss_b": loss_b}
 
-        a_norm = model_norm(unwrapped_module.a)
-        b_norm = model_norm(unwrapped_module.b)
-        a_grad_norm = model_grad_norm(unwrapped_module.a)
-        b_grad_norm = model_grad_norm(unwrapped_module.b)
+    @staticmethod
+    def compile_results(
+        batch,
+        fwd_out,
+        loss_out,
+        compute_grads_and_apply_if_needed_info_dict,
+        rl_module,
+        **kwargs,
+    ):
+        a_norm = model_norm(rl_module.a)
+        b_norm = model_norm(rl_module.b)
+        a_grad_norm = model_grad_norm(rl_module.a)
+        b_grad_norm = model_grad_norm(rl_module.b)
 
         return {
             "a_norm": a_norm,
@@ -224,46 +221,15 @@ class DummyCompositionRLModule(TorchRLModule):
         self.a = torch.nn.Linear(1, 1)
         self.b = torch.nn.Linear(1, 1)
 
-    def forward_train(self, batch):
-        return self.a(self.b(batch))
+    def forward_train(self, batch, device=None):
+        x = torch.reshape(torch.Tensor(batch["x"]), (-1, 1)).to(device)
+        return self.a(self.b(x))
 
 
-class TorchDummyCompositionModuleTrainer(TorchSARLTrainer):
+class TorchDummyCompositionModuleTrainer(TorchIndependentModulesTrainer):
     def __init__(self, config):
         """Train networks a and b that are composed as a(b(x))."""
         super().__init__(config)
-
-    @staticmethod
-    def compute_loss_and_update(module, batch, optimizer):
-        # this dummy module is actually going to
-        # do supervised learning on the batch
-        # and return the loss
-        device = train.torch.get_device()
-        x = torch.reshape(torch.Tensor(batch["x"]), (-1, 1)).to(device)
-        y = torch.reshape(torch.Tensor(batch["y"]), (-1, 1)).to(device)
-        out = module(x)
-        unwrapped_module = module.module
-
-        loss = torch.nn.functional.mse_loss(out, y)
-        optimizer[0].zero_grad()
-        optimizer[1].zero_grad()
-        loss.backward()
-        optimizer[0].step()
-        optimizer[1].step()
-
-        unwrapped_module = module.module
-
-        a_norm = model_norm(unwrapped_module.a)
-        b_norm = model_norm(unwrapped_module.b)
-        a_grad_norm = model_grad_norm(unwrapped_module.a)
-        b_grad_norm = model_grad_norm(unwrapped_module.b)
-
-        return {
-            "a_norm": a_norm,
-            "b_norm": b_norm,
-            "a_grad_norm": a_grad_norm,
-            "b_grad_norm": b_grad_norm,
-        }
 
     @staticmethod
     def init_rl_module(module_config):
@@ -281,19 +247,11 @@ class TorchDummyCompositionModuleTrainer(TorchSARLTrainer):
         return module
 
     @staticmethod
-    def init_optimizer(module, optimizer_config):
-        del optimizer_config
-        unwrapped_module = module.module
-        optimizer_a = torch.optim.SGD(
-            unwrapped_module.a.parameters(),
-            lr=1e-2,
-        )
-        optimizer_b = torch.optim.SGD(
-            unwrapped_module.b.parameters(),
-            lr=1e-2,
-        )
-
-        return optimizer_a, optimizer_b
+    def compute_loss(batch, fwd_out, device, **kwargs):
+        out = fwd_out
+        y = torch.reshape(torch.Tensor(batch["y"]), (-1, 1)).to(device)
+        loss = torch.nn.functional.mse_loss(out, y)
+        return {"total_loss": loss}
 
 
 if __name__ == "__main__":
@@ -301,5 +259,5 @@ if __name__ == "__main__":
         TorchIndependentModulesTrainer,
         TorchDummyCompositionModuleTrainer,
     ]:
-        test_1_torch_sarl_trainer_2_gpu(trainer_class)
-        test_gradients_params_same_on_all_configurations(trainer_class)
+        _test_1_torch_sarl_trainer_2_gpu(trainer_class)
+        _test_gradients_params_same_on_all_configurations(trainer_class)

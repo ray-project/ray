@@ -1,30 +1,26 @@
 import numpy as np
 import torch
-import ray.train as train
-from ray.air import session
-
-from ray.air.config import ScalingConfig
-
 from torch.nn.parallel import DistributedDataParallel as DDP
 
+from ray.rllib.core.sarl_trainer import SARLTrainer
+
+from ray.util.queue import Queue
+
+import ray.train as train
+from ray.air import session
+from ray.air.config import ScalingConfig
 from ray.train._internal.utils import construct_train_func
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train.torch import TorchConfig
 from ray.train import TrainingIterator
 from ray.train._internal.checkpoint import CheckpointManager
 from ray.train._internal.dataset_spec import RayDatasetSpec
-from ray.util.queue import Queue
 
 
-class TorchSARLTrainer:
+class TorchSARLTrainer(SARLTrainer):
     def __init__(self, config):
         num_workers = config.get("num_gpus", 0) or 1
         use_gpu = bool(config.get("num_gpus", 0))
-        # if not all(key in config for key in ["module_class", "module_config"]):
-        #     raise ValueError(
-        #         "You must specify a RL module_class and RL module_config in "
-        #         "order to use the TorchSARLTrainer"
-        #     )
         init_rl_module_fn = config.get("rl_module_init_fn", None)
         module_config = config.get("rl_module_config", {})
         """
@@ -40,17 +36,9 @@ class TorchSARLTrainer:
             num_workers=num_workers,
             use_gpu=use_gpu,
         )
-        self.training_iterator = self._make_ray_train_trainer(
+        self.queues, self.training_iterator = self._make_ray_train_trainer(
             scaling_config, init_rl_module_fn, module_config
         )
-
-    def train(self, batch):
-        # this is the function is called by the user to train the model
-        for queue in self.queues:
-            queue.put(batch)
-        results = next(self.training_iterator)
-        self.curr_weights = results[0]["module_weights"]
-        return results
 
     @staticmethod
     def init_rl_module(module_config):
@@ -64,20 +52,58 @@ class TorchSARLTrainer:
     def compute_loss_and_update(module, batch, optimizer):
         raise NotImplementedError
 
+    @staticmethod
+    def compute_loss(batch, fwd_out, device, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def compute_grads_and_apply_if_needed(
+        batch, fwd_out, loss_out, rl_module, optimizer, device, **kwargs
+    ):
+        if not isinstance(optimizer, torch.optim.Optimizer):
+            for _opt in optimizer:
+                _opt.zero_grad()
+        else:
+            optimizer.zero_grad()
+        loss = loss_out["total_loss"]
+        loss.backward()
+        if not isinstance(optimizer, torch.optim.Optimizer):
+            for _opt in optimizer:
+                _opt.step()
+        else:
+            optimizer.step()
+
+        return {}
+
+    @staticmethod
+    def compile_results(
+        batch,
+        fwd_out,
+        loss_out,
+        compute_grads_and_apply_if_needed_info_dict,
+        rl_module,
+        **kwargs
+    ):
+        raise NotImplementedError
+
     def get_weights(self):
         # We need to get the weights from the trainer to the workers
         return self.curr_weights
 
     def _make_ray_train_trainer(self, scaling_config, init_rl_module_fn, module_config):
         init_rl_module_fn = init_rl_module_fn or self.init_rl_module
-        self.queues = [Queue(maxsize=1) for _ in range(scaling_config.num_workers)]
+        queues = [Queue(maxsize=1) for _ in range(scaling_config.num_workers)]
         backend_config = TorchConfig()
         config = {
             "rl_module_config": module_config,
             "init_rl_module_fn": init_rl_module_fn,
             "init_optimizer_fn": self.init_optimizer,
-            "compute_loss_and_update_fn": self.compute_loss_and_update,
-            "queues": self.queues,
+            "compute_grads_and_apply_if_needed_fn": (
+                self.compute_grads_and_apply_if_needed
+            ),
+            "compute_loss_fn": self.compute_loss,
+            "compile_results_fn": self.compile_results,
+            "queues": queues,
         }
         train_loop_per_worker = construct_train_func(
             self._training_func,
@@ -105,25 +131,27 @@ class TorchSARLTrainer:
             checkpoint=None,
             checkpoint_strategy=None,
         )
-        return training_iterator
+        return queues, training_iterator
 
     @staticmethod
     def _training_func(config):
-        if "rl_module_config" not in config:
-            raise ValueError("rl_module_config not in config")
         rl_module_config = config["rl_module_config"]
         init_rl_module_fn = config["init_rl_module_fn"]
         init_optimizer_fn = config["init_optimizer_fn"]
-        compute_loss_and_update_fn = config["compute_loss_and_update_fn"]
-
-        rl_module = init_rl_module_fn(rl_module_config)
+        compute_loss_fn = config["compute_loss_fn"]
+        compute_grads_and_apply_if_needed_fn = config[
+            "compute_grads_and_apply_if_needed_fn"
+        ]
+        compile_results_fn = config["compile_results_fn"]
         queue = config["queues"][session.get_local_rank()]
 
+        rl_module = init_rl_module_fn(rl_module_config)
         device = train.torch.get_device()
         rl_module.to(device)
         pg = torch.distributed.new_group(list(range(session.get_world_size())))
         device_id = [session.get_local_rank()] if str(device).startswith("cuda") else []
         ddp_rl_module = DDP(rl_module, device_ids=device_id, process_group=pg)
+        unwrapped_module = ddp_rl_module.module
         optimizer = init_optimizer_fn(ddp_rl_module, {})
         global_size = session.get_world_size()
         while 1:
@@ -132,8 +160,13 @@ class TorchSARLTrainer:
             start = batch_size * session.get_local_rank()
             end = min(start + batch_size, len(whole_batch))
             batch = whole_batch[int(start) : int(end)]
-            training_results = compute_loss_and_update_fn(
-                ddp_rl_module, batch, optimizer
+            fwd_out = ddp_rl_module(batch, device=device)
+            loss_dict = compute_loss_fn(batch, fwd_out, device=device)
+            info_dict = compute_grads_and_apply_if_needed_fn(
+                batch, fwd_out, loss_dict, unwrapped_module, optimizer, device
+            )
+            training_results = compile_results_fn(
+                batch, fwd_out, loss_dict, info_dict, unwrapped_module
             )
             results = {"module_weights": None, "training_results": training_results}
             session.report(results)

@@ -8,9 +8,9 @@ class TorchRLModule(torch.nn.Module, RLModule):
         super().__init__()
         self.config = config
 
-    def forward(self, batch, **kwargs):
+    def forward(self, batch, device=None, **kwargs):
         """a passthrough for forward train"""
-        return self.forward_train(batch, **kwargs)
+        return self.forward_train(batch, device=device, **kwargs)
 
 
 if __name__ == "__main__":
