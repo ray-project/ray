@@ -3,6 +3,8 @@
 Data Representations
 ====================
 
+.. _block-api:
+
 Block API
 ---------
 

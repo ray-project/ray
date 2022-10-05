@@ -151,6 +151,9 @@ Datasource API
 .. autoclass:: ray.data.ReadTask
     :members:
 
+.. autoclass:: ray.data.datasource.Reader
+    :members:
+
 
 Built-in Datasources
 ####################
