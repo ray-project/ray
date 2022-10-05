@@ -30,7 +30,7 @@ By the end of the guide, you will have a ``MongoDatasource`` that you can use to
 .. tip::
 
     There are a few MongoDB concepts involved here. The `URI <https://www.mongodb.com/docs/manual/reference/connection-string/>`__ points to
-    a MongoDB instance, which hosts `Databases and Collections <https://www.mongodb.com/docs/manual/reference/connection-string/>`__. A collection
+    a MongoDB instance, which hosts `Databases and Collections <https://www.mongodb.com/docs/manual/core/databases-and-collections/>`__. A collection
     is analogous to a table in SQL databases. MongoDB also has a `pipeline <https://www.mongodb.com/docs/manual/core/aggregation-pipeline/>`__ concept,
     which expresses document processing in a series of stages (e.g. match documents with a predicate, sort results, and then select a few fields).
     The execution results of the pipelines are used to create dataset.
