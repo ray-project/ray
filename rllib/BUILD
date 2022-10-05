@@ -1885,7 +1885,7 @@ py_test(
 
 py_test(
     name = "policy/tests/test_export_checkpoint_and_model",
-    tags = ["team:ml", "policy"],
+    tags = ["team:rllib", "policy"],
     size = "large",
     srcs = ["policy/tests/test_export_checkpoint_and_model.py"]
 )
