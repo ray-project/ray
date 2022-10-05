@@ -10,12 +10,15 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import tune
+from ray.air import Checkpoint
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.air.config import FailureConfig, RunConfig, CheckpointConfig
 from ray.tune import Trainable
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.tune_config import TuneConfig
 from ray._private.test_utils import object_memory_usage
 
 
@@ -263,6 +266,102 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
                 == 33
             )
         )
+
+    def testExploitWhileSavingTrial(self):
+        """Tests a synch PBT failure mode where a trial misses its `SAVING_RESULT` event
+        book-keeping due to being stopped by the PBT algorithm (to exploit another
+        trial).
+
+        Trials checkpoint ever N iterations, and the perturbation interval is every N
+        iterations. (N = 2 in the test.)
+
+        Raises a `TimeoutError` if hanging for a specified `timeout`.
+
+        1. Trial 0 comes in with training result
+        2. Trial 0 begins saving checkpoint (which may take a long time, 5s here)
+        3. Trial 1 comes in with result
+        4. Trial 1 forcefully stops Trial 0 via exploit, while trial_0.is_saving
+        5. Trial 0 should resume training properly with Trial 1's checkpoint
+        """
+
+        class MockTrainable(tune.Trainable):
+            def setup(self, config):
+                self.reset_config(config)
+
+            def step(self):
+                time.sleep(self.training_time)
+                return {"score": self.score}
+
+            def save_checkpoint(self, checkpoint_dir):
+                checkpoint = Checkpoint.from_dict({"a": self.a})
+                checkpoint_path = checkpoint.to_directory(path=checkpoint_dir)
+                time.sleep(self.saving_time)
+                return checkpoint_path
+
+            def load_checkpoint(self, checkpoint_dir):
+                checkpoint_dict = Checkpoint.from_directory(checkpoint_dir).to_dict()
+                self.a = checkpoint_dict["a"]
+
+            def reset_config(self, new_config):
+                self.a = new_config["a"]
+                self.score = new_config["score"]
+                self.training_time = new_config["training_time"]
+                self.saving_time = new_config["saving_time"]
+                return True
+
+        perturbation_interval = 2
+        scheduler = PopulationBasedTraining(
+            time_attr="training_iteration",
+            metric="score",
+            mode="max",
+            perturbation_interval=perturbation_interval,
+            hyperparam_mutations={
+                "a": tune.uniform(0, 1),
+            },
+            synch=True,
+        )
+
+        class TimeoutExceptionStopper(tune.stopper.TimeoutStopper):
+            def stop_all(self):
+                decision = super().stop_all()
+                if decision:
+                    raise TimeoutError("Trials are hanging! Timeout reached...")
+                return decision
+
+        timeout = 30.0
+        training_times = [0.1, 0.15]
+        saving_times = [5.0, 0.1]
+        tuner = tune.Tuner(
+            MockTrainable,
+            param_space={
+                "a": tune.uniform(0, 1),
+                "score": tune.grid_search([0, 1]),
+                "training_time": tune.sample_from(
+                    lambda spec: training_times[spec.config["score"]]
+                ),
+                "saving_time": tune.sample_from(
+                    lambda spec: saving_times[spec.config["score"]]
+                ),
+            },
+            tune_config=TuneConfig(
+                num_samples=1,
+                scheduler=scheduler,
+            ),
+            run_config=RunConfig(
+                stop=tune.stopper.CombinedStopper(
+                    tune.stopper.MaximumIterationStopper(5),
+                    TimeoutExceptionStopper(timeout),
+                ),
+                failure_config=FailureConfig(fail_fast=True),
+                checkpoint_config=CheckpointConfig(
+                    # Match `checkpoint_interval` with `perturbation_interval`
+                    checkpoint_frequency=perturbation_interval,
+                ),
+            ),
+        )
+        random.seed(100)
+        np.random.seed(1000)
+        tuner.fit()
 
 
 class PopulationBasedTrainingConfigTest(unittest.TestCase):
@@ -525,6 +624,97 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         scheduler.on_trial_add(runner, trial5)
         trial5.set_status(Trial.TERMINATED)
         self.assertTrue(scheduler.choose_trial_to_run(runner))
+
+
+class PopulationBasedTrainingLoggingTest(unittest.TestCase):
+    def testSummarizeHyperparamChanges(self):
+        class DummyTrial:
+            def __init__(self, config):
+                self.config = config
+
+        def test_config(
+            hyperparam_mutations,
+            old_config,
+            resample_probability=0.25,
+            print_summary=False,
+        ):
+            scheduler = PopulationBasedTraining(
+                time_attr="training_iteration",
+                hyperparam_mutations=hyperparam_mutations,
+                resample_probability=resample_probability,
+            )
+            new_config, operations = scheduler._get_new_config(
+                None, DummyTrial(old_config)
+            )
+            summary = scheduler._summarize_hyperparam_changes(
+                old_config, new_config, operations
+            )
+            if print_summary:
+                print(summary)
+            return scheduler, new_config, operations
+
+        # 1. Empty (no hyperparams mutated)
+        _, new_config, operations = test_config({}, {})
+        assert not new_config and not operations
+
+        # 2. No nesting
+        hyperparam_mutations = {
+            "a": tune.uniform(0, 1),
+            "b": list(range(5)),
+        }
+        scheduler, new_config, operations = test_config(
+            hyperparam_mutations, {"a": 0.5, "b": 2}
+        )
+        assert operations["a"] in [
+            f"* {factor}" for factor in scheduler._perturbation_factors
+        ] + ["resample"]
+        assert operations["b"] in ["shift left", "shift right", "resample"]
+
+        # 3. With nesting
+        hyperparam_mutations = {
+            "a": tune.uniform(0, 1),
+            "b": list(range(5)),
+            "c": {
+                "d": tune.uniform(2, 3),
+                "e": {"f": [-1, 0, 1]},
+            },
+        }
+        scheduler, new_config, operations = test_config(
+            hyperparam_mutations,
+            {
+                "a": 0.5,
+                "b": 2,
+                "c": {
+                    "d": 2.5,
+                    "e": {"f": 0},
+                },
+            },
+        )
+        assert isinstance(operations["c"], dict)
+        assert isinstance(operations["c"]["e"], dict)
+        assert operations["c"]["d"] in [
+            f"* {factor}" for factor in scheduler._perturbation_factors
+        ] + ["resample"]
+        assert operations["c"]["e"]["f"] in ["shift left", "shift right", "resample"]
+
+        # 4. Test shift that results in noop
+        hyperparam_mutations = {"a": [1]}
+        scheduler, new_config, operations = test_config(
+            hyperparam_mutations, {"a": 1}, resample_probability=0
+        )
+        assert operations["a"] in ["shift left (noop)", "shift right (noop)"]
+
+        # 5. Test that missing keys in inputs raises an error
+        with self.assertRaises(AssertionError):
+            scheduler._summarize_hyperparam_changes(
+                {"a": 1, "b": {"c": 2}},
+                {"a": 1, "b": {}},
+                {"a": "noop", "b": {"c": "noop"}},
+            )
+        with self.assertRaises(AssertionError):
+            scheduler._summarize_hyperparam_changes(
+                {"a": 1, "b": {"c": 2}}, {"a": 1, "b": {"c": 2}}, {"a": "noop"}
+            )
 
 
 if __name__ == "__main__":

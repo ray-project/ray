@@ -1,6 +1,7 @@
 import time
 import json
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from typing import List, Tuple
 from unittest.mock import MagicMock
@@ -83,9 +84,9 @@ from ray.experimental.state.common import (
     TaskState,
     WorkerState,
     StateSchema,
-    ray_address_to_api_server_url,
     state_column,
 )
+from ray.dashboard.utils import ray_address_to_api_server_url
 from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.experimental.state.state_cli import (
     AvailableFormat,
@@ -175,7 +176,7 @@ def generate_task_entry(
     id,
     name="class",
     func_or_class="class",
-    state=TaskStatus.SCHEDULED,
+    state=TaskStatus.PENDING_NODE_ASSIGNMENT,
     type=TaskType.NORMAL_TASK,
 ):
     return TaskInfoEntry(
@@ -188,7 +189,7 @@ def generate_task_entry(
 
 
 def generate_task_data(
-    id, name="class", func_or_class="class", state=TaskStatus.SCHEDULED
+    id, name="class", func_or_class="class", state=TaskStatus.PENDING_NODE_ASSIGNMENT
 ):
     return GetTasksInfoReply(
         owned_task_info_entries=[
@@ -204,7 +205,7 @@ def generate_object_info(
     obj_id,
     size_bytes=1,
     callsite="main.py",
-    task_state=TaskStatus.SCHEDULED,
+    task_state=TaskStatus.PENDING_NODE_ASSIGNMENT,
     local_ref_count=1,
     attempt_number=1,
     pid=1234,
@@ -693,7 +694,7 @@ async def test_api_manager_list_workers(state_api_manager):
 
 
 @pytest.mark.skipif(
-    sys.version_info <= (3, 7, 0),
+    sys.version_info < (3, 8, 0),
     reason=("Not passing in CI although it works locally. Will handle it later."),
 )
 @pytest.mark.asyncio
@@ -784,7 +785,7 @@ async def test_api_manager_list_tasks(state_api_manager):
 
 
 @pytest.mark.skipif(
-    sys.version_info <= (3, 7, 0),
+    sys.version_info < (3, 8, 0),
     reason=("Not passing in CI although it works locally. Will handle it later."),
 )
 @pytest.mark.asyncio
@@ -896,7 +897,7 @@ async def test_api_manager_list_objects(state_api_manager):
 
 
 @pytest.mark.skipif(
-    sys.version_info <= (3, 7, 0),
+    sys.version_info < (3, 8, 0),
     reason=("Not passing in CI although it works locally. Will handle it later."),
 )
 @pytest.mark.asyncio
@@ -1570,34 +1571,53 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_get_actors(shutdown_only):
-    ray.init()
+class TestListActors:
+    def test_list_get_actors(self, class_ray_instance):
+        @ray.remote
+        class A:
+            pass
 
-    @ray.remote
-    class A:
-        pass
+        a = A.remote()  # noqa
 
-    a = A.remote()  # noqa
+        def verify():
+            # Test list
+            actors = list_actors()
+            assert len(actors) == 1
+            assert actors[0]["state"] == "ALIVE"
+            assert is_hex(actors[0]["actor_id"])
+            assert a._actor_id.hex() == actors[0]["actor_id"]
 
-    def verify():
-        # Test list
+            # Test get
+            actors = list_actors(detail=True)
+            for actor in actors:
+                get_actor_data = get_actor(actor["actor_id"])
+                assert get_actor_data is not None
+                assert get_actor_data == actor
+
+            return True
+
+        wait_for_condition(verify)
+        print(list_actors())
+
+    def test_list_actors_namespace(self, class_ray_instance):
+        """Check that list_actors returns namespaces."""
+
+        @ray.remote
+        class A:
+            pass
+
+        A.options(namespace="x").remote()
+        A.options(namespace="y").remote()
+
         actors = list_actors()
-        assert len(actors) == 1
-        assert actors[0]["state"] == "ALIVE"
-        assert is_hex(actors[0]["actor_id"])
-        assert a._actor_id.hex() == actors[0]["actor_id"]
+        namespaces = Counter([actor["ray_namespace"] for actor in actors])
+        assert namespaces["x"] == 1
+        assert namespaces["y"] == 1
 
-        # Test get
-        actors = list_actors(detail=True)
-        for actor in actors:
-            get_actor_data = get_actor(actor["actor_id"])
-            assert get_actor_data is not None
-            assert get_actor_data == actor
-
-        return True
-
-    wait_for_condition(verify)
-    print(list_actors())
+        # Check that we can filter by namespace
+        x_actors = list_actors(filters=[("ray_namespace", "=", "x")])
+        assert len(x_actors) == 1
+        assert x_actors[0]["ray_namespace"] == "x"
 
 
 @pytest.mark.skipif(
@@ -1795,20 +1815,25 @@ def test_list_get_tasks(shutdown_only):
         waiting_for_execution = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "WAITING_FOR_EXECUTION",
+                    lambda task: task["scheduling_state"] == "SUBMITTED_TO_WORKER",
                     tasks,
                 )
             )
         )
         assert waiting_for_execution == 0
         scheduled = len(
-            list(filter(lambda task: task["scheduling_state"] == "SCHEDULED", tasks))
+            list(
+                filter(
+                    lambda task: task["scheduling_state"] == "PENDING_NODE_ASSIGNMENT",
+                    tasks,
+                )
+            )
         )
         assert scheduled == 2
         waiting_for_dep = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "WAITING_FOR_DEPENDENCIES",
+                    lambda task: task["scheduling_state"] == "PENDING_ARGS_AVAIL",
                     tasks,
                 )
             )
@@ -1858,8 +1883,7 @@ def test_list_actor_tasks(shutdown_only):
             len(
                 list(
                     filter(
-                        lambda task: task["scheduling_state"]
-                        == "WAITING_FOR_EXECUTION",
+                        lambda task: task["scheduling_state"] == "SUBMITTED_TO_WORKER",
                         tasks,
                     )
                 )
@@ -1869,7 +1893,11 @@ def test_list_actor_tasks(shutdown_only):
         assert (
             len(
                 list(
-                    filter(lambda task: task["scheduling_state"] == "SCHEDULED", tasks)
+                    filter(
+                        lambda task: task["scheduling_state"]
+                        == "PENDING_NODE_ASSIGNMENT",
+                        tasks,
+                    )
                 )
             )
             == 0
@@ -1878,8 +1906,7 @@ def test_list_actor_tasks(shutdown_only):
             len(
                 list(
                     filter(
-                        lambda task: task["scheduling_state"]
-                        == "WAITING_FOR_DEPENDENCIES",
+                        lambda task: task["scheduling_state"] == "PENDING_ARGS_AVAIL",
                         tasks,
                     )
                 )

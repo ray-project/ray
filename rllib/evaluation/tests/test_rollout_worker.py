@@ -1,4 +1,3 @@
-from collections import Counter
 import gym
 from gym.spaces import Box, Discrete
 import json
@@ -198,32 +197,6 @@ class TestRolloutWorker(unittest.TestCase):
                     },
                 ),
             )
-
-    def test_callbacks(self):
-        for fw in framework_iterator(frameworks=("torch", "tf")):
-            counts = Counter()
-            pg = PG(
-                env="CartPole-v0",
-                config={
-                    "num_workers": 0,
-                    "rollout_fragment_length": 50,
-                    "train_batch_size": 50,
-                    "callbacks": {
-                        "on_episode_start": lambda x: counts.update({"start": 1}),
-                        "on_episode_step": lambda x: counts.update({"step": 1}),
-                        "on_episode_end": lambda x: counts.update({"end": 1}),
-                        "on_sample_end": lambda x: counts.update({"sample": 1}),
-                    },
-                    "framework": fw,
-                },
-            )
-            pg.train()
-            pg.train()
-            self.assertGreater(counts["sample"], 0)
-            self.assertGreater(counts["start"], 0)
-            self.assertGreater(counts["end"], 0)
-            self.assertGreater(counts["step"], 0)
-            pg.stop()
 
     def test_query_evaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
@@ -801,13 +774,13 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=MockPolicy,
             sample_async=True,
-            observation_filter="ConcurrentMeanStdFilter",
+            policy_config={"observation_filter": "ConcurrentMeanStdFilter"},
         )
         time.sleep(2)
         ev.sample()
         filters = ev.get_filters(flush_after=True)
         obs_f = filters[DEFAULT_POLICY_ID]
-        self.assertNotEqual(obs_f.rs.n, 0)
+        self.assertNotEqual(obs_f.running_stats.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
         ev.stop()
 
@@ -816,7 +789,7 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=MockPolicy,
             sample_async=True,
-            observation_filter="ConcurrentMeanStdFilter",
+            policy_config={"observation_filter": "ConcurrentMeanStdFilter"},
         )
         self.sample_and_flush(ev)
         filters = ev.get_filters(flush_after=False)
@@ -824,7 +797,7 @@ class TestRolloutWorker(unittest.TestCase):
         filters2 = ev.get_filters(flush_after=False)
         obs_f = filters[DEFAULT_POLICY_ID]
         obs_f2 = filters2[DEFAULT_POLICY_ID]
-        self.assertGreaterEqual(obs_f2.rs.n, obs_f.rs.n)
+        self.assertGreaterEqual(obs_f2.running_stats.n, obs_f.running_stats.n)
         self.assertGreaterEqual(obs_f2.buffer.n, obs_f.buffer.n)
         ev.stop()
 
@@ -833,7 +806,7 @@ class TestRolloutWorker(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=MockPolicy,
             sample_async=True,
-            observation_filter="ConcurrentMeanStdFilter",
+            policy_config={"observation_filter": "ConcurrentMeanStdFilter"},
         )
         obs_f = self.sample_and_flush(ev)
 
@@ -844,11 +817,11 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertLessEqual(obs_f.buffer.n, 20)
 
         new_obsf = obs_f.copy()
-        new_obsf.rs._n = 100
+        new_obsf.running_stats.num_pushes = 100
         ev.sync_filters({DEFAULT_POLICY_ID: new_obsf})
         filters = ev.get_filters(flush_after=False)
         obs_f = filters[DEFAULT_POLICY_ID]
-        self.assertGreaterEqual(obs_f.rs.n, 100)
+        self.assertGreaterEqual(obs_f.running_stats.n, 100)
         self.assertLessEqual(obs_f.buffer.n, 20)
         ev.stop()
 
@@ -984,7 +957,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev.sample()
         filters = ev.get_filters(flush_after=True)
         obs_f = filters[DEFAULT_POLICY_ID]
-        self.assertNotEqual(obs_f.rs.n, 0)
+        self.assertNotEqual(obs_f.running_stats.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
         return obs_f
 

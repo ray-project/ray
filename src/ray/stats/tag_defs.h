@@ -41,3 +41,7 @@ extern const TagKeyType ResourceNameKey;
 extern const TagKeyType ActorIdKey;
 
 extern const TagKeyType WorkerIdKey;
+
+extern const TagKeyType JobIdKey;
+
+extern const TagKeyType NameKey;
