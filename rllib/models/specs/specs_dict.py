@@ -18,6 +18,7 @@ _TYPE_MISMATCH = (
     "{} (type: {}) is not of type {}."
 )
 
+
 class ModelSpecDict(NestedDict[Union[Type, TensorSpecs]]):
     """A NestedDict containing specs and class types."""
 
@@ -27,7 +28,7 @@ class ModelSpecDict(NestedDict[Union[Type, TensorSpecs]]):
         exact_match: bool = False,
     ) -> None:
         """Checks whether the data matches the spec.
-        
+
         Args:
             data: The data which should match the spec. It can also be a spec.
             exact_match: If true, the data and the spec must be exactly identical.
@@ -51,8 +52,12 @@ class ModelSpecDict(NestedDict[Union[Type, TensorSpecs]]):
                 spec.validate(data_to_validate)
             elif isinstance(spec, Type):
                 if not isinstance(data_to_validate, spec):
-                    raise ValueError(_TYPE_MISMATCH.format(data_to_validate, type(data_to_validate), spec))
-    
+                    raise ValueError(
+                        _TYPE_MISMATCH.format(
+                            data_to_validate, type(data_to_validate), spec
+                        )
+                    )
+
     @override(NestedDict)
     def __repr__(self) -> str:
         return f"ModelSpecDict({repr(self._data)})"
