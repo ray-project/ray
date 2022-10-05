@@ -79,7 +79,7 @@ async def json_resolver(request: starlette.requests.Request):
 
 
 @click.command()
-@click.option("--http-test", type=bool, default=False)
+@click.option("--http-test", is_flag=True, type=bool, default=False)
 @click.option(
     "--data-size",
     default="1",
