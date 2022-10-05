@@ -27,6 +27,7 @@ PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
 
 DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
+GRAFANA_HOST_DISABLED_VALUE = "DISABLED"
 GRAFANA_IFRAME_HOST_ENV_VAR = "RAY_GRAFANA_IFRAME_HOST"
 GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR = "RAY_METRICS_GRAFANA_DASHBOARD_OUTPUT_DIR"
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
@@ -51,6 +52,15 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         Endpoint that checks if grafana is running
         """
         grafana_host = os.environ.get(GRAFANA_HOST_ENV_VAR, DEFAULT_GRAFANA_HOST)
+
+        # If disabled, we don't want to show the metrics tab at all.
+        if grafana_host == GRAFANA_HOST_DISABLED_VALUE:
+            return dashboard_optional_utils.rest_response(
+                success=True,
+                message="Grafana disabled",
+                grafana_host=GRAFANA_HOST_DISABLED_VALUE,
+            )
+
         grafana_iframe_host = os.environ.get(GRAFANA_IFRAME_HOST_ENV_VAR, grafana_host)
         path = f"{grafana_host}/{GRAFANA_HEALTHCHECK_PATH}"
         try:
