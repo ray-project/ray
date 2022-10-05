@@ -718,6 +718,7 @@ class AlgorithmConfig:
         if no_done_at_end is not None:
             self.no_done_at_end = no_done_at_end
         if preprocessor_pref is not None:
+            assert preprocessor_pref in ("rllib", "deepmind", None)
             self.preprocessor_pref = preprocessor_pref
         if observation_filter is not None:
             self.observation_filter = observation_filter
