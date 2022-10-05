@@ -32,12 +32,14 @@ class RLCheckpoint(Checkpoint):
         Returns:
             The policy stored in this checkpoint.
         """
-        # TODO: We can probably deprecate this RLCheckpoint class (or move all our
-        #  Algorithm/Policy.from_checkpoint utils into here.
+        # TODO: Deprecate this RLCheckpoint class (or move all our
+        #  Algorithm/Policy.from_checkpoint utils into here).
         # If newer checkpoint version -> Use `Policy.from_checkpoint()` util.
         checkpoint_info = get_checkpoint_info(checkpoint=self)
         if checkpoint_info["checkpoint_version"] > version.Version("0.1"):
-            return Policy.from_checkpoint(checkpoint=self)
+            # Since we have an Algorithm checkpoint, will extract all policies in that
+            # Algorithm -> need to index into "default_policy" in the returned dict.
+            return Policy.from_checkpoint(checkpoint=self)["default_policy"]
 
         # Older checkpoint version.
         with self.as_directory() as checkpoint_path:

@@ -5,6 +5,7 @@ import re
 from typing import Any, Dict
 
 from ray.air.checkpoint import Checkpoint
+from ray.util.annotations import PublicAPI
 
 # The current checkpoint version used by RLlib for Algorithm and Policy checkpoints.
 # History:
@@ -21,6 +22,7 @@ from ray.air.checkpoint import Checkpoint
 CHECKPOINT_VERSION = version.Version("1.0")
 
 
+@PublicAPI(stability="alpha")
 def get_checkpoint_info(checkpoint) -> Dict[str, Any]:
     """Returns a dict with information about a Algorithm/Policy checkpoint.
 
