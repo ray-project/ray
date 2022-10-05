@@ -2,7 +2,6 @@ import os
 import threading
 from typing import Optional
 
-import ray
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
@@ -89,7 +88,6 @@ class DatasetContext:
 
     def __init__(
         self,
-        block_owner: ray.actor.ActorHandle,
         block_splitting_enabled: bool,
         target_max_block_size: int,
         target_min_block_size: int,
@@ -109,7 +107,6 @@ class DatasetContext:
         enable_tensor_extension_casting: bool,
     ):
         """Private constructor (use get_current() instead)."""
-        self.block_owner = block_owner
         self.block_splitting_enabled = block_splitting_enabled
         self.target_max_block_size = target_max_block_size
         self.target_min_block_size = target_min_block_size
@@ -143,7 +140,6 @@ class DatasetContext:
 
             if _default_context is None:
                 _default_context = DatasetContext(
-                    block_owner=None,
                     block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
                     target_max_block_size=DEFAULT_TARGET_MAX_BLOCK_SIZE,
                     target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
@@ -168,24 +164,6 @@ class DatasetContext:
                     ),
                 )
 
-            if (
-                _default_context.block_splitting_enabled
-                and _default_context.block_owner is None
-            ):
-                owner = _DesignatedBlockOwner.options(
-                    scheduling_strategy=_default_context.scheduling_strategy
-                ).remote()
-                ray.get(owner.ping.remote())
-
-                # Clear the actor handle after Ray reinits since it's no longer
-                # valid.
-                def clear_owner():
-                    if _default_context:
-                        _default_context.block_owner = None
-
-                ray._private.worker._post_init_hooks.append(clear_owner)
-                _default_context.block_owner = owner
-
             return _default_context
 
     @staticmethod
@@ -197,9 +175,3 @@ class DatasetContext:
         """
         global _default_context
         _default_context = context
-
-
-@ray.remote(num_cpus=0)
-class _DesignatedBlockOwner:
-    def ping(self):
-        return "ok"
