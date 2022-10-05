@@ -39,7 +39,7 @@ def wait_until_finish(
         # Test calling list_jobs
         client.list_jobs()
         status = client.get_job_status(job_id)
-        print(f"status for job {job_id}: {status}")
+        # print(f"status for job {job_id}: {status}")
         if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
             return status
         time.sleep(retry_interval_s)
@@ -67,8 +67,9 @@ def submit_batch_jobs(
         client = clients[job_ids.index(job_id) % len(clients)]
         status = wait_until_finish(client, job_id, timeout_s, retry_interval_s)
         if status != JobStatus.SUCCEEDED:
+            print(f"Logs for failed job: {client.get_job_logs(job_id)}")
             print(
-                f"job {job_id} failed with status {status} (`None` indicates timeout)"
+                f"Job {job_id} failed with status {status} (`None` indicates timeout)"
             )
             return False
     return True
@@ -98,7 +99,9 @@ if __name__ == "__main__":
 
     clients = [JobSubmissionClient(address) for i in range(NUM_CLIENTS)]
 
+    counter = 0
     while time.time() - start < timeout:
+        print(f"Submitting batch {counter}")
         # Submit a batch of jobs
         if not submit_batch_jobs(clients, NUM_JOBS_PER_BATCH):
             print("FAILED")
@@ -113,7 +116,7 @@ if __name__ == "__main__":
         job_id = random.choice(jobs).submission_id
         print(f"getting logs for job {job_id}")
         logs = clients[0].get_job_logs(job_id)
-        print(logs)
+        # print(logs)
 
         print("sleeping for 30 seconds")
         time.sleep(30)
