@@ -2061,7 +2061,7 @@
     cluster_compute: tpl_cpu_1.yaml
 
   run:
-    timeout: 86400
+    timeout: 800
     prepare: ray stop
     script: python workloads/serve.py
     long_running: true

@@ -1,6 +1,7 @@
 import os
 import time
 from typing import TYPE_CHECKING, Dict, Tuple
+from ray.dashboard.modules.job.common import JobInfo
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import CommandTimeout
@@ -59,6 +60,15 @@ class JobManager:
             max_retries=3,
         )
 
+    def _get_job_info_with_retry(self, command_id) -> JobInfo:
+        job_client = self._get_job_client()
+        return exponential_backoff_retry(
+            lambda: job_client.get_job_status(self.job_id_pool[command_id]),
+            retry_exceptions=Exception,
+            initial_retry_delay_s=1,
+            max_retries=3,
+        )
+
     def _wait_job(self, command_id: int, timeout: int):
         from ray.job_submission import JobStatus  # noqa: F811
 
@@ -88,6 +98,8 @@ class JobManager:
         if status == JobStatus.SUCCEEDED:
             retcode = 0
         else:
+            job_info = self._get_job_info_with_retry(command_id)
+            logger.error(f"Job failed. Job info: {job_info}")
             retcode = -1
         duration = time.time() - self.start_time[command_id]
         return retcode, duration

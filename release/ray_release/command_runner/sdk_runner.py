@@ -168,11 +168,17 @@ class SDKRunner(CommandRunner):
         try:
             tmpfile = tempfile.mktemp()
             self.file_manager.download(self.result_output_json, tmpfile)
-
+            # Get plaintext content of file
+            with open(tmpfile, "r") as f:
+                content = f.read()
+            print("XXX: Results file content: ", content)
+            logger.error(f"XXX: Results file content: {content}")
             with open(tmpfile, "rt") as f:
                 data = json.load(f)
 
             os.unlink(tmpfile)
             return data
         except Exception as e:
-            raise ResultsError(f"Could not fetch results from session: {e}") from e
+            raise ResultsError(
+                f"Could not fetch results from session: {e}, the content: {content}"
+            ) from e
