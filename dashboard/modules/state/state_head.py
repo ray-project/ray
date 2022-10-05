@@ -380,6 +380,11 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 await response.write(bytes(logs_to_stream))
             await response.write_eof()
             return response
+        except asyncio.CancelledError:
+            # This happens when the client side closes the connection.
+            # Fofce close the connection and do no-op.
+            response.force_close()
+            raise
         except Exception as e:
             logger.exception(e)
             error_msg = bytearray(b"0")
