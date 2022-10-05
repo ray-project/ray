@@ -10,7 +10,7 @@ With ``ray.wait()``, we can apply backpressure and limit the number of pending t
 
 .. note::
 
-   If we submit a finite number of tasks, it's unlikely that we will hit the issue mentioned above since each task only uses a small amount of memory in the queue.
+   If we submit a finite number of tasks, it's unlikely that we will hit the issue mentioned above since each task only uses a small amount of memory for bookkeeping in the queue.
    It's more likely to happen when we have an infinite stream of tasks to run.
 
 .. note::
