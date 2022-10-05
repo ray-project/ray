@@ -113,9 +113,11 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
     std::ifstream mem_file(kCgroupsV1MemoryUsagePath, std::ios::in | std::ios::binary);
     mem_file >> used_bytes;
   }
+  /// This can be zero if the memory limit is not set for cgroup v2.
+  if (total_bytes == 0) {
+    total_bytes = kNull;
+  }
 
-  RAY_CHECK((total_bytes == kNull && used_bytes == kNull) ||
-            (total_bytes != kNull && used_bytes != kNull));
   if (used_bytes < 0) {
     RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
         << "Got negative used memory for cgroup " << used_bytes << ", setting it to zero";
@@ -204,7 +206,7 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
   return {used_bytes, mem_total_bytes};
 }
 
-int64_t MemoryMonitor::GetProcessMemoryBytes(int64_t process_id) {
+int64_t MemoryMonitor::GetProcessMemoryBytes(int64_t process_id) const {
   std::stringstream smap_path;
   smap_path << "/proc/" << std::to_string(process_id) << "/smaps_rollup";
   return GetLinuxProcessMemoryBytesFromSmap(smap_path.str());

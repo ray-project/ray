@@ -683,8 +683,16 @@ class Worker:
             debugger_breakpoint,
         )
 
+    @Deprecated
     def run_function_on_all_workers(self, function: callable):
-        """Run arbitrary code on all of the workers.
+        """This function has been deprecated given the following issues:
+            - no guarantee that the function run before the remote function run.
+            - pubsub signal might be lost in some failure cases.
+
+        This API will be deleted once we move the working dir init away.
+        NO NEW CODE SHOULD USE THIS API.
+
+        Run arbitrary code on all of the workers.
 
         This function will first be run on the driver, and then it will be
         exported to all of the workers to be run. It will also be run on any
@@ -2311,11 +2319,12 @@ def put(
 
     Args:
         value: The Python object to be stored.
-        _owner: The actor that should own this object. This allows creating
-            objects with lifetimes decoupled from that of the creating process.
-            Note that the owner actor must be passed a reference to the object
-            prior to the object creator exiting, otherwise the reference will
-            still be lost.
+        _owner [Experimental]: The actor that should own this object. This
+            allows creating objects with lifetimes decoupled from that of the
+            creating process. The owner actor must be passed a reference to the
+            object prior to the object creator exiting, otherwise the reference
+            will still be lost. *Note that this argument is an experimental API
+            and should be avoided if possible.*
 
     Returns:
         The object ref assigned to this value.
