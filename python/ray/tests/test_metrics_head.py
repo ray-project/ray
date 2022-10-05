@@ -3,6 +3,7 @@ import logging
 import os
 import pytest
 import sys
+import tempfile
 
 from ray.dashboard.modules.metrics.metrics_head import (
     _format_prometheus_output,
@@ -23,13 +24,31 @@ def test_metrics_folder():
             f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
         )
         assert os.path.exists(
-            f"{session_dir}/metrics/grafana/provisioning/dashboards"
+            f"{session_dir}/metrics/grafana/dashboards"
             "/default_grafana_dashboard.json"
         )
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/datasources/default.yml"
         )
         assert os.path.exists(f"{session_dir}/metrics/prometheus/prometheus.yml")
+
+
+@pytest.fixture
+def override_dashboard_dir():
+    with tempfile.TemporaryDirectory() as tempdir:
+        os.environ["RAY_METRICS_GRAFANA_DASHBOARD_OUTPUT_DIR"] = tempdir
+        yield tempdir
+        del os.environ["RAY_METRICS_GRAFANA_DASHBOARD_OUTPUT_DIR"]
+
+
+def test_metrics_folder_with_dashboard_override(override_dashboard_dir):
+    """
+    Tests that the default dashboard files get created.
+    """
+    with _ray_start(include_dashboard=True):
+        assert os.path.exists(
+            f"{override_dashboard_dir}/default_grafana_dashboard.json"
+        )
 
 
 def test_metrics_folder_when_dashboard_disabled():
@@ -43,7 +62,7 @@ def test_metrics_folder_when_dashboard_disabled():
             f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
         )
         assert not os.path.exists(
-            f"{session_dir}/metrics/grafana/provisioning/dashboards"
+            f"{session_dir}/metrics/grafana/dashboards"
             "/default_grafana_dashboard.json"
         )
         assert not os.path.exists(
