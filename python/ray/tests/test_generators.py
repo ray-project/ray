@@ -194,15 +194,9 @@ def test_dynamic_generator_distributed(ray_start_cluster):
             yield np.ones(1_000_000, dtype=np.int8) * i
             time.sleep(0.1)
 
-    @ray.remote
-    def read(gen):
-        for i, ref in enumerate(gen):
-            if ray.get(ref)[0] != i:
-                return False
-        return True
-
     gen = ray.get(dynamic_generator.remote(3))
     for i, ref in enumerate(gen):
+        # Check that we can fetch the values from a different node.
         assert ray.get(ref)[0] == i
 
 
