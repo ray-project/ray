@@ -118,7 +118,9 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         # shallow dict
         self._data = dict()  # type: Dict[str, Union[T, NestedDict[T]]]
         x = x or {}
-        if isinstance(x, Mapping):
+        if isinstance(x, NestedDict):
+            self._data = x._data
+        elif isinstance(x, Mapping):
             for k, v in x.items():
                 self[k] = v
         elif isinstance(x, Iterable):
@@ -295,10 +297,8 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         return output
 
     def copy(self) -> "NestedDict[T]":
-        output = NestedDict(self.items())
-        for k, v in self.items():
-            output[k] = v
-        return output
+        """Returns a shallow copy of the NestedDict."""
+        return NestedDict(self.items())
 
     def __copy__(self) -> "NestedDict[T]":
         return self.copy()
