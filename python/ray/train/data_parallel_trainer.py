@@ -486,10 +486,10 @@ class DataParallelTrainer(BaseTrainer):
         return VBox(content, layout=Layout(width="100%"))
 
 
-def _load_checkpoint(
+def _load_checkpoint_dict(
     checkpoint: Checkpoint, trainer_name: str
 ) -> Tuple[Any, Optional["Preprocessor"]]:
-    """Load a Ray Train Checkpoint.
+    """Load a Ray Train Checkpoint (dict based).
 
     This is a private API.
 
