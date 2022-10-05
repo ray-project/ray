@@ -1,4 +1,4 @@
-from typing import Union, Type
+from typing import Union, Type, Mapping, Any
 
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
@@ -15,17 +15,20 @@ _MISSING_KEYS_FROM_DATA = (
 )
 _TYPE_MISMATCH = (
     "The data does not match the spec. The data element "
-    "{} (type: {}) is not of type {}."
+    "{} has type {} (expected type {})."
 )
 
+SPEC_LEAF_TYPE = Union[Type, TensorSpecs]
+DATA_TYPE = Union[NestedDict[Any], Mapping[str, Any]]
 
-class ModelSpecDict(NestedDict[Union[Type, TensorSpecs]]):
+
+class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
     """A NestedDict containing specs and class types."""
 
     def validate(
         self,
-        data: Union["ModelSpecDict", NestedDict],
-        exact_match: bool = False,
+        data: DATA_TYPE,
+        exact_match: bool = True,
     ) -> None:
         """Checks whether the data matches the spec.
 
@@ -37,7 +40,7 @@ class ModelSpecDict(NestedDict[Union[Type, TensorSpecs]]):
         Raises:
             ValueError: If the data doesn't match the spec.
         """
-
+        data = NestedDict(data)
         missing_keys = set(self.keys()).difference(set(data.keys()))
         if missing_keys:
             raise ValueError(_MISSING_KEYS_FROM_DATA.format(missing_keys))
@@ -54,7 +57,7 @@ class ModelSpecDict(NestedDict[Union[Type, TensorSpecs]]):
                 if not isinstance(data_to_validate, spec):
                     raise ValueError(
                         _TYPE_MISMATCH.format(
-                            data_to_validate, type(data_to_validate), spec
+                            spec_name, type(data_to_validate).__name__, spec.__name__
                         )
                     )
 
