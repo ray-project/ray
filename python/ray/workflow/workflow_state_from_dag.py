@@ -4,7 +4,7 @@ import unicodedata
 
 import ray
 from ray.workflow.common import WORKFLOW_OPTIONS
-
+from ray.workflow import workflow_access
 from ray.dag import DAGNode, FunctionNode, InputNode
 from ray.dag.input_node import InputAttributeNode, DAGInputData
 from ray import cloudpickle
@@ -168,7 +168,10 @@ def workflow_state_from_dag(
                     flattened_args = _SerializationContextPreservingWrapper(
                         flattened_args
                     )
-                input_placeholder: ray.ObjectRef = ray.put(flattened_args)
+                workflow_manager = workflow_access.get_management_actor()
+                input_placeholder: ray.ObjectRef = ray.put(
+                    flattened_args, _owner=workflow_manager
+                )
 
             orig_task_id = workflow_options.get("task_id", None)
             if orig_task_id is None:
