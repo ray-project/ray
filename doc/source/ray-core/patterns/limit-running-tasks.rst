@@ -21,7 +21,8 @@ Example use case
 
 You have a data processing workload that processes each input file independently using Ray :ref:`remote functions <ray-remote-functions>`.
 Since each task needs to load the input data into heap memory and do the processing, running too many of them can cause OOM.
-In this case, you can use the logical ``memory`` resource to limit the number of concurrently running tasks (usage of other resources like ``num_cpus`` can achieve the same goal as well).
+In this case, you can use the ``memory`` resource to limit the number of concurrently running tasks (usage of other resources like ``num_cpus`` can achieve the same goal as well).
+Note that similar to ``num_cpus``, the ``memory`` resource requirement is *logical*, meaning that Ray will not enforce the physical memory usage of each task if it exceeds this amount.
 
 .. note::
 
