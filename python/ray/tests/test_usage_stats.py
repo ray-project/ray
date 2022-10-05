@@ -591,6 +591,16 @@ with joblib.parallel_backend("ray"):
         "ray://127.0.0.1:10001" if ray_client else address
     )
     run_string_as_driver(driver)
+
+    job_submission_client = ray.job_submission.JobSubmissionClient(
+        "http://127.0.0.1:8265"
+    )
+    job_id = job_submission_client.submit_job(entrypoint="ls")
+    wait_for_condition(
+        lambda: job_submission_client.get_job_status(job_id)
+        == ray.job_submission.JobStatus.SUCCEEDED
+    )
+
     library_usages = ray_usage_lib.get_library_usages_to_report(
         ray.experimental.internal_kv.internal_kv_get_gcs_client()
     )
@@ -609,7 +619,10 @@ with joblib.parallel_backend("ray"):
         "util.multiprocessing.Pool",
         "util.Queue",
         "util.joblib",
+        "job_submission",
     }
+    if ray_client:
+        expected.add("client")
     assert set(library_usages) == expected
     if not ray_client:
         assert set(lib_usages_from_home_folder) == expected
@@ -927,7 +940,6 @@ provider:
         cluster.add_node(num_cpus=3)
         if os.environ.get("RAY_MINIMAL") != "1":
             from ray import train  # noqa: F401
-            from ray import tune  # noqa: F401
             from ray.rllib.algorithms.ppo import PPO  # noqa: F401
 
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST1, "extra_v2")
@@ -935,6 +947,15 @@ provider:
         ray.init(address=cluster.address)
 
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "extra_v3")
+
+        if os.environ.get("RAY_MINIMAL") != "1":
+            from ray import tune  # noqa: F401
+
+            def objective(*args):
+                pass
+
+            tuner = tune.Tuner(objective)
+            tuner.fit()
 
         @ray.remote(num_cpus=0)
         class StatusReporter:
@@ -1168,10 +1189,16 @@ import ray
 import os
 if os.environ.get("RAY_MINIMAL") != "1":
     from ray import train  # noqa: F401
-    from ray import tune  # noqa: F401
     from ray.rllib.algorithms.ppo import PPO  # noqa: F401
 
 ray.init(address="{addr}")
+
+if os.environ.get("RAY_MINIMAL") != "1":
+    from ray import tune  # noqa: F401
+    def objective(*args):
+        pass
+
+    tune.run(objective)
 """
         # Run a script in a separate process. It is a workaround to
         # reimport libraries. Without this, `import train`` will become
@@ -1221,11 +1248,15 @@ def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats
         class ActorWithLibImport:
             def __init__(self):
                 from ray import train  # noqa: F401
-                from ray import tune  # noqa: F401
                 from ray.rllib.algorithms.ppo import PPO  # noqa: F401
 
             def ready(self):
-                pass
+                from ray import tune  # noqa: F401
+
+                def objective(*args):
+                    pass
+
+                tune.run(objective)
 
         # Use a runtime env to run tests in minimal installation.
         a = ActorWithLibImport.options(
@@ -1270,6 +1301,11 @@ from ray.rllib.algorithms.ppo import PPO  # noqa: F401
 
 # Start a instance that disables usage stats.
 ray.init()
+
+def objective(*args):
+    pass
+
+tune.run(objective)
 """
 
     run_string_as_driver(script)

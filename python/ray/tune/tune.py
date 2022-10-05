@@ -373,6 +373,8 @@ def run(
     if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
         _ray_auto_init()
 
+    ray._private.usage.usage_lib.record_library_usage("tune")
+
     if _remote:
         remote_run = ray.remote(num_cpus=0)(run)
 
