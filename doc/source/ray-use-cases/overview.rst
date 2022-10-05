@@ -33,7 +33,7 @@ but is meant to be an engineering resource that you can use to build your own us
     +++
     .. link-button:: /ray-air/examples/huggingface_text_classification
         :type: ref
-        :text: Text Classification with Ray
+        :text: Text classification with Ray
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/image-classification.webp
@@ -41,7 +41,7 @@ but is meant to be an engineering resource that you can use to build your own us
     +++
     .. link-button:: /ray-air/examples/torch_image_example
         :type: ref
-        :text: Image Classification with Ray
+        :text: Image classification with Ray
         :classes: btn-link btn-block stretched-link
     ---
     :img-top: /images/credit.png
@@ -50,4 +50,12 @@ but is meant to be an engineering resource that you can use to build your own us
     .. link-button:: /ray-air/examples/feast_example
         :type: ref
         :text: Credit scoring with Ray and Feast
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/tabular-data.png
+
+    +++
+    .. link-button:: /ray-air/examples/xgboost_example
+        :type: ref
+        :text: Machine learning on tabular data
         :classes: btn-link btn-block stretched-link
