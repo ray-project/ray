@@ -37,14 +37,32 @@ WANDB_SETUP_API_KEY_HOOK = "WANDB_SETUP_API_KEY_HOOK"
 WANDB_PROCESS_RUN_INFO_HOOK = "WANDB_PROCESS_RUN_INFO_HOOK"
 _VALID_TYPES = (
     Number,
-    wandb.data_types.Video,
-    wandb.data_types.Image,
+    wandb.data_types.Audio,
+    wandb.data_types.BoundingBoxes2D,
+    wandb.data_types.Graph,
     wandb.data_types.Histogram,
+    wandb.data_types.Html,
+    wandb.data_types.Image,
+    wandb.data_types.ImageMask,
+    wandb.data_types.Molecule,
+    wandb.data_types.Object3D,
+    wandb.data_types.Plotly,
+    wandb.data_types.Table,
+    wandb.data_types.Video,
 )
 _VALID_ITERABLE_TYPES = (
-    wandb.data_types.Video,
-    wandb.data_types.Image,
+    wandb.data_types.Audio,
+    wandb.data_types.BoundingBoxes2D,
+    wandb.data_types.Graph,
     wandb.data_types.Histogram,
+    wandb.data_types.Html,
+    wandb.data_types.Image,
+    wandb.data_types.ImageMask,
+    wandb.data_types.Molecule,
+    wandb.data_types.Object3D,
+    wandb.data_types.Plotly,
+    wandb.data_types.Table,
+    wandb.data_types.Video,
 )
 
 

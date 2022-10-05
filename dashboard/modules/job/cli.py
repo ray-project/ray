@@ -18,12 +18,10 @@ from ray.util.annotations import PublicAPI
 def _get_sdk_client(
     address: Optional[str], create_cluster_if_needed: bool = False
 ) -> JobSubmissionClient:
-
-    if address is None and "RAY_ADDRESS" in os.environ:
-        address = os.environ["RAY_ADDRESS"]
-
-    cli_logger.labeled_value("Job submission server address", address)
-    return JobSubmissionClient(address, create_cluster_if_needed)
+    client = JobSubmissionClient(address, create_cluster_if_needed)
+    client_address = client.get_address()
+    cli_logger.labeled_value("Job submission server address", client_address)
+    return client
 
 
 def _log_big_success_msg(success_msg):
@@ -60,22 +58,7 @@ def _log_job_status(client: JobSubmissionClient, job_id: str):
 
 
 async def _tail_logs(client: JobSubmissionClient, job_id: str):
-    async def _try_get_log_iter():
-        while True:
-            try:
-                log_iter = client.tail_job_logs(job_id)
-                first_line = await log_iter.__anext__()
-                return log_iter, first_line
-            except Exception:
-                await asyncio.sleep(ray_constants.CLI_WAIT_LOG_ITER_INTERVAL_SECONDS)
-
-    job_logs_iter, first_line = await asyncio.wait_for(
-        _try_get_log_iter(),
-        timeout=ray_constants.CLI_WAIT_FOR_SUPERVISOR_ACTOR_RUNNING_TIMEOUT,
-    )
-
-    print(first_line, end="")
-    async for lines in job_logs_iter:
+    async for lines in client.tail_job_logs(job_id):
         print(lines, end="")
 
     _log_job_status(client, job_id)
