@@ -33,7 +33,7 @@ def pbt_function(config):
     faster convergence. Training will not converge without PBT.
     """
     lr = config["lr"]
-    checkpoint_interval = config["checkpoint_interval"]
+    checkpoint_interval = config.get("checkpoint_interval", 1)
 
     accuracy = 0.0  # end = 1000
 
