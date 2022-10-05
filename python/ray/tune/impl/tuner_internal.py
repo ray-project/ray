@@ -222,7 +222,12 @@ class TunerInternal:
             shutil.rmtree(experiment_checkpoint_path)
             self._experiment_checkpoint_dir = str(new_exp_path)
 
-        self._experiment_analysis = ExperimentAnalysis(self._experiment_checkpoint_dir)
+        try:
+            self._experiment_analysis = ExperimentAnalysis(
+                self._experiment_checkpoint_dir
+            )
+        except Exception:
+            self._experiment_analysis = None
 
     def _maybe_sync_down_tuner_state(self, restore_path: str) -> Tuple[bool, str]:
         """Sync down trainable state from remote storage.
