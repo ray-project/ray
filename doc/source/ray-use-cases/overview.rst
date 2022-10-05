@@ -28,14 +28,6 @@ but is meant to be an engineering resource that you can use to build your own us
         :text: Optical character recognition using Ray Datasets
         :classes: btn-link btn-block stretched-link
     ---
-    :img-top: /images/ros.png
-
-    +++
-    .. link-button:: /ray-use-cases/using-ray-with-ros
-        :type: ref
-        :text: Using Ray with the Robotics Operating System (ROS)
-        :classes: btn-link btn-block stretched-link
-    ---
     :img-top: /images/text-classification.png
 
     +++
