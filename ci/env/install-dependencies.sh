@@ -380,6 +380,13 @@ install_pip_packages() {
     pip install -U "ludwig[test]>=0.4" "jsonschema>=4"
   fi
 
+  # Additional dependency for statsforecast.
+  # This cannot be included in requirements_tune.txt as it has conflicting
+  # dependencies.
+  if [ "${INSTALL_STATSFORECAST-}" = 1 ]; then
+    pip install -U "statsforecast==1.1.0"
+  fi
+
   # Data processing test dependencies.
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements.txt

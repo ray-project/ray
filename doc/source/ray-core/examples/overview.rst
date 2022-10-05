@@ -14,6 +14,14 @@ Machine Learning Examples
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
+    .. link-button:: automl_for_time_series
+        :type: ref
+        :text: Build Simple AutoML for Time Series Using Ray
+        :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
     .. link-button:: batch_prediction
         :type: ref
         :text: Build Batch Prediction Using Ray
