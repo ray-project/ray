@@ -1,17 +1,3 @@
-# Copyright 2021 DeepMind Technologies Limited.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """Custom NestedDict datatype."""
 
 import itertools
@@ -29,19 +15,20 @@ from typing import (
     Union,
 )
 
+from ray.rllib.utils.annotations import ExperimentalAPI
 
-StreamType = Union[str, Sequence[str]]
-_IndexType = Union[StreamType, Sequence[StreamType]]
+
+SeqStrType = Union[str, Sequence[str]]
 
 _NestedDictType = Dict[str, Any]
-_NestedMappingType = Mapping[_IndexType, Any]
+_NestedMappingType = Mapping[SeqStrType, Any]
 
 NestedDictInputType = Union[
-    Iterable[Tuple[StreamType, Any]], _NestedMappingType, "NestedDict"
+    Iterable[Tuple[SeqStrType, Any]], _NestedMappingType, "NestedDict"
 ]
 
 
-def _flatten_index(index: _IndexType) -> Sequence[str]:
+def _flatten_index(index: SeqStrType) -> Sequence[str]:
     if isinstance(index, str):
         return (index,)
     else:
@@ -50,22 +37,23 @@ def _flatten_index(index: _IndexType) -> Sequence[str]:
 
 class StrKey(str):
     """A string that can be compared to a string or sequence of strings representing a
-    StreamType. This is needed for the tree functions to work.
+    SeqStrType. This is needed for the tree functions to work.
     """
 
-    def __lt__(self, other: StreamType):
+    def __lt__(self, other: SeqStrType):
         if isinstance(other, str):
             return str(self) < other
         else:
-            return (self,) < other
+            return (self,) < tuple(other)
 
-    def __gt__(self, other: StreamType):
+    def __gt__(self, other: SeqStrType):
         if isinstance(other, str):
             return str(self) > other
         else:
-            return (self,) > other
+            return (self,) > tuple(other)
 
 
+@ExperimentalAPI
 class NestedDict(MutableMapping[str, "NestedDict"]):
     """A nested dict type:
         * The nested dict gives access to nested elements as a sequence of
@@ -77,7 +65,7 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
         that a nested dict can take.
 
     Args:
-        x: a representation of a nested dict: it can be an iterable of `StreamType`
+        x: a representation of a nested dict: it can be an iterable of `SeqStrType`
         to values. e.g. `[(("a", "b") , 1), ("b", 2)]` or a mapping of flattened
         keys to values. e.g. `{("a", "b"): 1, ("b",): 2}` or any nested mapping,
         e.g. `{"a": {"b": 1}, "b": 2}`.
@@ -90,6 +78,8 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
             >>> foo_dict['b', 'c'] = 200    # foo_dict = {'a': 100, 'b': {'c': 200}}
             >>> foo_dict['b', 'd'] = 300    # foo_dict = {'a': 100,
             >>>                             #             'b': {'c': 200, 'd': 300}}
+            >>> foo_dict['b', 'e'] = {}     # foo_dict = {'a': 100,
+            >>>                             #            'b': {'c': 200, 'd': 300}}
             >>> # Getting elements, possibly nested:
             >>> print(foo_dict['b', 'c'])   # 200
             >>> print(foo_dict['b']) # IndexError("Use get for partial indexing.")
@@ -122,28 +112,33 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
         self,
         x: Optional[NestedDictInputType] = None,
     ):
+        # shallow dict
         self._data = dict()  # type: Dict[str, Any]
         x = x or {}
         if isinstance(x, Mapping):
             for k, v in x.items():
                 self[k] = v
-        else:
-            if not isinstance(x, Iterable):
-                raise ValueError(f"Input must be a Mapping or Iterable, got {x}.")
+        elif isinstance(x, Iterable):
             for k, v in x:
                 self[k] = v
-
-    def __contains__(self, k: _IndexType) -> bool:
-        k = _flatten_index(k)
-        if len(k) == 1:
-            return k[0] in self._data
         else:
-            if k[0] in self._data and isinstance(self._data[k[0]], NestedDict):
-                return k[1:] in self._data[k[0]]
-            else:
-                return False
+            raise ValueError(f"Input must be a Mapping or Iterable, got {type(x)}.")
 
-    def get(self, k: _IndexType, *, default: Optional[Any] = None) -> Any:
+    def __contains__(self, k: SeqStrType) -> bool:
+        k = _flatten_index(k)
+
+        data_ptr = self._data  # type: Dict[str, Any]
+        for key in k:
+            # this is to avoid the recursion on __contains__
+            if isinstance(data_ptr, NestedDict):
+                data_ptr = data_ptr._data
+            if not isinstance(data_ptr, Mapping) or key not in data_ptr:
+                return False
+            data_ptr = data_ptr[key]
+
+        return True
+
+    def get(self, k: SeqStrType, *, default: Optional[Any] = None) -> Any:
         """Returns `self[k]`, with partial indexing allowed.
         If `k` is not in the `NestedDict`, returns default. If default is `None`,
         and `k` is not in the `NestedDict`, a `KeyError` is raised.
@@ -160,52 +155,67 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
         Raises:
             KeyError: if `k` is not in the `NestedDict` and default is None.
         """
+        k = _flatten_index(k)
+
         if k not in self:
             if default is not None:
                 return default
             else:
                 raise KeyError(k)
-        k = _flatten_index(k)
-        if len(k) == 1:
-            return self._data[k[0]]
-        else:
-            return self._data[k[0]].get(k[1:])
 
-    def __getitem__(self, k: _IndexType) -> Any:
+        k = _flatten_index(k)
+        data_ptr = self._data
+        for key in k:
+            # This is to avoid the recursion on __getitem__
+            if isinstance(data_ptr, NestedDict):
+                data_ptr = data_ptr._data
+            data_ptr = data_ptr[key]
+        return data_ptr
+
+    def __getitem__(self, k: SeqStrType) -> Any:
         output = self.get(k)
         if isinstance(output, NestedDict):
             raise IndexError("Use get for partial indexing.")
         return output
 
-    def __setitem__(self, k: _IndexType, v: Any) -> None:
+    def __setitem__(self, k: SeqStrType, v: Any) -> None:
+        """This is a zero-copy operation. The pointer to value if preserved in the
+        internal data structure."""
+        if isinstance(v, Mapping) and len(v) == 0:
+            return
         if not k:
             raise IndexError("Use valid index value.")
         k = _flatten_index(k)
         v = NestedDict(v) if isinstance(v, Mapping) else v
-        if len(k) == 1:
-            self._data[k[0]] = v
-        else:
-            if k[0] not in self._data:
-                self._data[k[0]] = NestedDict()
-            if not isinstance(self._data[k[0]], NestedDict):
-                raise IndexError("Trying to assign nested values to a leaf.")
-            self._data[k[0]][k[1:]] = v
+        data_ptr = self._data
+        for k_indx, key in enumerate(k):
+            # this is done to avoid recursion over __setitem__
+            if isinstance(data_ptr, NestedDict):
+                data_ptr = data_ptr._data
+            if k_indx == len(k) - 1:
+                data_ptr[key] = v
+            elif key not in data_ptr:
+                data_ptr[key] = NestedDict()
+            data_ptr = data_ptr[key]
 
-    def __iter__(self) -> Iterator[StreamType]:
-        for k, v in self._data.items():
+    def __iter__(self) -> Iterator[SeqStrType]:
+        data_ptr = self._data
+        # do a DFS to get all the keys
+        stack = [((StrKey(k),), v) for k, v in data_ptr.items()]
+        while stack:
+            k, v = stack.pop(0)
             if isinstance(v, NestedDict):
-                for x in v:
-                    if isinstance(x, Tuple):
-                        yield (k,) + x
-                    else:
-                        yield (k, x)
+                stack = [(k + (StrKey(k2),), v) for k2, v in v._data.items()] + stack
             else:
-                yield StrKey(k)
+                yield tuple(k)
 
-    def __delitem__(self, k: _IndexType) -> None:
+    def __delitem__(self, k: SeqStrType) -> None:
         if k not in self:
             raise KeyError(k)
+
         k = _flatten_index(k)
+        # for deletion we need backtracking. Recursion is much simpler to implement.
+        # we don't expect that much of deletion, so we can afford to do recursion.
         if len(k) == 1:
             del self._data[k[0]]
         else:
@@ -214,23 +224,33 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
                 del self._data[k[0]]
 
     def __len__(self) -> int:
-        output = 0
-        for v in self.values():
-            if isinstance(v, NestedDict):
-                output += len(v)
+        """Returns the number of leaf nodes in the `NestedDict` that
+        are not of type Mappings.
+        """
+
+        # do a DFS to count the number of leaf nodes
+        count = 0
+        stack = [self._data]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, NestedDict):
+                node = node._data
+            if isinstance(node, Mapping):
+                stack.extend(node.values())
             else:
-                output += 1
-        return output
+                count += 1
+
+        return count
 
     def __str__(self) -> str:
         return str(self.asdict())
 
     def __repr__(self) -> str:
-        return repr(self.asdict())
+        return f"NestedDict({repr(self._data)})"
 
     def filter(
         self,
-        other: Union[Sequence[StreamType], "NestedDict"],
+        other: Union[Sequence[SeqStrType], "NestedDict"],
         ignore_missing: bool = False,
     ) -> "NestedDict":
         """Returns a NestedDict with only entries present in `other`.
@@ -267,7 +287,7 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
         return output
 
     def copy(self) -> "NestedDict":
-        output = NestedDict()
+        output = NestedDict(self.items())
         for k, v in self.items():
             output[k] = v
         return output
