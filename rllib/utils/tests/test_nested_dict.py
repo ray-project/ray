@@ -79,6 +79,8 @@ class TestNestedDict(unittest.TestCase):
         # test __getitem__
         self.assertEqual(foo_dict["aa"], 100)
         self.assertEqual(foo_dict["b", "c"], 200)
+        self.assertEqual(foo_dict["c", "e", "f"], 400)
+        self.assertEqual(foo_dict["d", "g", "h", "i"], 500)
         self.assertRaises(IndexError, lambda: foo_dict["b"])
 
         # test __str__
