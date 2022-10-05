@@ -306,7 +306,6 @@ class BackendExecutor:
             checkpoint,
             dataset_shard,
             encode_data_fn,
-            get_checkpoint_class_fn,
         ):
             try:
                 init_session(
@@ -318,7 +317,6 @@ class BackendExecutor:
                     dataset_shard=dataset_shard,
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
-                    get_checkpoint_class_fn=get_checkpoint_class_fn,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
                 )
             except ValueError:

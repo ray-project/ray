@@ -1,4 +1,5 @@
 import pytest
+from ray.train.batch_predictor import BatchPredictor
 import torch
 import os
 
@@ -74,17 +75,8 @@ def test_torch_e2e(ray_start_4_cpus):
     assert isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
     predict_dataset = ray.data.range(3)
-
-    class TorchScorer:
-        def __init__(self):
-            self.pred = TorchPredictor.from_checkpoint(result.checkpoint)
-
-        def __call__(self, x):
-            return self.pred.predict(x, dtype=torch.float)
-
-    predictions = predict_dataset.map_batches(
-        TorchScorer, batch_format="pandas", compute="actors"
-    )
+    batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
+    predictions = batch_predictor.predict(predict_dataset)
     assert predictions.count() == 3
 
 
@@ -106,19 +98,9 @@ def test_torch_e2e_state_dict(ray_start_4_cpus):
     with pytest.raises(ValueError):
         TorchPredictor.from_checkpoint(result.checkpoint)
 
-    class TorchScorer:
-        def __init__(self):
-            self.pred = TorchPredictor.from_checkpoint(
-                result.checkpoint, model=torch.nn.Linear(1, 1)
-            )
-
-        def __call__(self, x):
-            return self.pred.predict(x, dtype=torch.float)
-
     predict_dataset = ray.data.range(3)
-    predictions = predict_dataset.map_batches(
-        TorchScorer, batch_format="pandas", compute="actors"
-    )
+    batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
+    predictions = batch_predictor.predict(predict_dataset)
     assert predictions.count() == 3
 
 
@@ -137,6 +119,8 @@ def test_torch_e2e_dir(ray_start_4_cpus, tmpdir):
     result = trainer.fit()
     isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
+    # TODO(ml-team): Add a way for TorchCheckpoint to natively support
+    # models from files
     class TorchScorer:
         def __init__(self):
             with result.checkpoint.as_directory() as checkpoint_path:

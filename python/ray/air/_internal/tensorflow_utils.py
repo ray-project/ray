@@ -139,6 +139,8 @@ def convert_ndarray_batch_to_tf_tensor_batch(
     return batch
 
 
+# This is not foolproof, but it's better than nothing
+# The place it is used in will be deprecated soon
 def contains_tensorflow_object(obj):
     if "keras" in obj.__module__ or "tensorflow" in obj.__module__:
         return True
