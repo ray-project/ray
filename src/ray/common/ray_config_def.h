@@ -96,7 +96,7 @@ RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
 /// the retry counter of the task or actor is only used when it fails in other ways
 /// that is not related to running out of memory. Note infinite retry (-1) is not
 /// supported.
-RAY_CONFIG(uint64_t, task_oom_retries, 3)
+RAY_CONFIG(uint64_t, task_oom_retries, 15)
 
 /// If the raylet fails to get agent info, we will retry after this interval.
 RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
