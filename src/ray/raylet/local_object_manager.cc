@@ -562,33 +562,35 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
 
 void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> urls_to_delete,
                                               int64_t num_retries) {
-  io_worker_pool_.PopDeleteWorker([this, urls_to_delete, num_retries](
-                                      std::shared_ptr<WorkerInterface> io_worker) {
-    RAY_LOG(DEBUG) << "Sending delete spilled object request. Length: "
-                   << urls_to_delete.size();
-    rpc::DeleteSpilledObjectsRequest request;
-    for (const auto &url : urls_to_delete) {
-      request.add_spilled_objects_url(std::move(url));
-    }
-    io_worker->rpc_client()->DeleteSpilledObjects(
-        request,
-        [this, urls_to_delete = std::move(urls_to_delete), num_retries, io_worker](
-            const ray::Status &status, const rpc::DeleteSpilledObjectsReply &reply) {
-          io_worker_pool_.PushDeleteWorker(io_worker);
-          if (!status.ok()) {
-            num_failed_deletion_requests_ += 1;
-            RAY_LOG(ERROR) << "Failed to send delete spilled object request: "
-                           << status.ToString() << ", retry count: " << num_retries;
+  io_worker_pool_.PopDeleteWorker(
+      [this, urls_to_delete, num_retries](std::shared_ptr<WorkerInterface> io_worker) {
+        RAY_LOG(DEBUG) << "Sending delete spilled object request. Length: "
+                       << urls_to_delete.size();
+        rpc::DeleteSpilledObjectsRequest request;
+        for (const auto &url : urls_to_delete) {
+          request.add_spilled_objects_url(std::move(url));
+        }
+        io_worker->rpc_client()->DeleteSpilledObjects(
+            request,
+            [this, urls_to_delete = std::move(urls_to_delete), num_retries, io_worker](
+                const ray::Status &status, const rpc::DeleteSpilledObjectsReply &reply) {
+              io_worker_pool_.PushDeleteWorker(io_worker);
+              if (!status.ok()) {
+                num_failed_deletion_requests_ += 1;
+                RAY_LOG(ERROR) << "Failed to send delete spilled object request: "
+                               << status.ToString() << ", retry count: " << num_retries;
 
-            if (num_retries > 0) {
-              // retry failed requests.
-              io_service_.post([this, urls_to_delete = std::move(urls_to_delete), num_retries]() {
-                DeleteSpilledObjects(urls_to_delete, num_retries - 1);
-              }, "LocaObjectManager.RetryDeleteSpilledObjects");
-            }
-          }
-        });
-  });
+                if (num_retries > 0) {
+                  // retry failed requests.
+                  io_service_.post(
+                      [this, urls_to_delete = std::move(urls_to_delete), num_retries]() {
+                        DeleteSpilledObjects(urls_to_delete, num_retries - 1);
+                      },
+                      "LocaObjectManager.RetryDeleteSpilledObjects");
+                }
+              }
+            });
+      });
 }
 
 void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) const {
