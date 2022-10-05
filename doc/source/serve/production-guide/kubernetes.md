@@ -20,6 +20,7 @@ This section walks through how to deploy, monitor, and upgrade the [`FruitStand`
 Although it's actively developed and maintained, [KubeRay] is still considered alpha, or experimental, so some APIs may be subject to change.
 :::
 
+(serve-installing-kuberay-operator)=
 ## Installing the KubeRay operator
 
 This guide assumes that you have a running Kubernetes cluster and have `kubectl` configured to run commands on it.
@@ -42,6 +43,7 @@ kuberay-operator-68c75b5d5f-m8xd7    1/1     Running   0          42s
 
 For more details, see the [KubeRay quickstart guide](kuberay-quickstart).
 
+(serve-deploy-app-on-kuberay)=
 ## Deploying a Serve application
 
 Once the KubeRay controller is running, you can manage your Ray Serve application by creating and updating a `RayService` custom resource (CR).

@@ -255,7 +255,103 @@ This section explains how Serve recovers from system failures. It uses the follo
 ```
 ::::
 
+You can follow along using your own Kubernetes cluster. Make sure it has at least 4 CPUs and 6 GB of memory to run the working example. First, install the [KubeRay operator](serve-installing-kuberay-operator):
+
+```console
+$ kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
+$ kubectl get deployments -n ray-system
+NAME                READY   UP-TO-DATE   AVAILABLE   AGE
+kuberay-operator    1/1     1            1           13s
+
+$ kubectl get pods -n ray-system
+NAME                                 READY   STATUS    RESTARTS   AGE
+kuberay-operator-68c75b5d5f-m8xd7    1/1     Running   0          42s
+```
+
+Then, [deploy the Serve application](serve-deploy-app-on-kuberay) above:
+
+```console
+$ kubectl apply -f config.yaml
+```
+
 ### Worker node failure
+
+When a worker node fails, any actors running on the node also crash. Serve detects that the failed node's actors have crashed, and it attempts to relaunch the actors on the remaining nodes. Meanwhile, KubeRay detects that the node crashed, and it attempts to start a new node to replace it. Once KubeRay starts the new node, Serve can launch any pending actors on the new node as well.
+
+We can simulate a worker node failure in our working example. First, let's take a look at the nodes and pods running in our Kubernetes cluster:
+
+```console
+$ kubectl get nodes
+
+NAME                                        STATUS   ROLES    AGE     VERSION
+gke-serve-demo-default-pool-ed597cce-nvm2   Ready    <none>   3d22h   v1.22.12-gke.1200
+gke-serve-demo-default-pool-ed597cce-m888   Ready    <none>   3d22h   v1.22.12-gke.1200
+gke-serve-demo-default-pool-ed597cce-pu2q   Ready    <none>   3d22h   v1.22.12-gke.1200
+
+$ kubectl get pods -o wide
+
+NAME                                                      READY   STATUS    RESTARTS        AGE    IP           NODE                                        NOMINATED NODE   READINESS GATES
+ervice-sample-raycluster-thwmr-worker-small-group-bdv6q   1/1     Running   0               3m3s   10.68.2.62   gke-serve-demo-default-pool-ed597cce-nvm2   <none>           <none>
+ervice-sample-raycluster-thwmr-worker-small-group-pztzk   1/1     Running   0               3m3s   10.68.2.61   gke-serve-demo-default-pool-ed597cce-m888   <none>           <none>
+rayservice-sample-raycluster-thwmr-head-28mdh             1/1     Running   1 (2m55s ago)   3m3s   10.68.0.45   gke-serve-demo-default-pool-ed597cce-pu2q   <none>           <none>
+redis-75c8b8b65d-4qgfz                                    1/1     Running   0               3m3s   10.68.2.60   gke-serve-demo-default-pool-ed597cce-nvm2   <none>           <none>
+```
+
+Open a separate terminal window and port-forward to one of the worker nodes:
+
+```console
+$ kubectl port-forward ervice-sample-raycluster-thwmr-worker-small-group-bdv6q 8000
+Forwarding from 127.0.0.1:8000 -> 8000
+Forwarding from [::1]:8000 -> 8000
+```
+
+While the `port-forward` is running, you can query the application in another terminal window:
+
+```console
+$ curl localhost:8000
+418
+```
+
+The output is the process ID of the deployment replica that handled the request. The application launches 6 deployment replicas, so if you run the query multiple times, you should see different process IDs:
+
+```console
+$ curl localhost:8000
+418
+$ curl localhost:8000
+256
+$ curl localhost:8000
+385
+```
+
+Now you can simulate worker failues. You have two options: kill a worker pod or kill a worker node. Let's start with the worker pod. Make sure to kill the pod that you're **not** port-forwarding to, so you can continue querying the living worker while the other one relaunches.
+
+```console
+$ kubectl delete pod ervice-sample-raycluster-thwmr-worker-small-group-pztzk
+pod "ervice-sample-raycluster-thwmr-worker-small-group-pztzk" deleted
+
+$ curl localhost:8000
+6318
+```
+
+While the pod crashes and recovers, the live pod can continue serving traffic!
+
+You can similarly kill a worker node and see that the other nodes can continue serving traffic:
+
+```console
+$ kubectl get pods -o wide
+
+NAME                                                      READY   STATUS    RESTARTS      AGE     IP           NODE                                        NOMINATED NODE   READINESS GATES
+ervice-sample-raycluster-thwmr-worker-small-group-bdv6q   1/1     Running   0             65m     10.68.2.62   gke-serve-demo-default-pool-ed597cce-nvm2   <none>           <none>
+ervice-sample-raycluster-thwmr-worker-small-group-mznwq   1/1     Running   0             5m46s   10.68.1.3    gke-serve-demo-default-pool-ed597cce-m888   <none>           <none>
+rayservice-sample-raycluster-thwmr-head-28mdh             1/1     Running   1 (65m ago)   65m     10.68.0.45   gke-serve-demo-default-pool-ed597cce-pu2q   <none>           <none>
+redis-75c8b8b65d-4qgfz                                    1/1     Running   0             65m     10.68.2.60   gke-serve-demo-default-pool-ed597cce-nvm2   <none>           <none>
+
+$ kubectl delete node gke-serve-demo-default-pool-ed597cce-m888
+node "gke-serve-demo-default-pool-ed597cce-m888" deleted
+
+$ curl localhost:8000
+6318
+```
 
 ### Head node failure
 
