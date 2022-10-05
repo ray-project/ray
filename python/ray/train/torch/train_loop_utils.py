@@ -345,6 +345,7 @@ class _TorchAccelerator(Accelerator):
             rank = train.local_rank()
 
         device = self.get_device()
+        logger.info("Prepare model get device", device)
 
         if torch.cuda.is_available():
             torch.cuda.set_device(device)
@@ -531,6 +532,7 @@ class _TorchAccelerator(Accelerator):
 
         if move_to_device:
             device = self.get_device()
+            logger.info("Prepare dataloader get device", device)
             data_loader = _WrappedDataLoader(data_loader, device, auto_transfer)
 
         return data_loader
@@ -562,6 +564,7 @@ class _TorchAccelerator(Accelerator):
             # GPU `ray.get_gpu_ids()` may return ints or may return strings.
             # We should always convert to strings.
             gpu_ids = [str(id) for id in ray.get_gpu_ids()]
+            loger.info("GPU ids", gpu_ids)
 
             if len(gpu_ids) > 0:
                 # By default, there should only be one GPU ID if `use_gpu=True`.
@@ -571,6 +574,7 @@ class _TorchAccelerator(Accelerator):
                 gpu_id = gpu_ids[0]
 
                 cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+                logger.info("cuda visible device str", cuda_visible_str)
                 if cuda_visible_str and cuda_visible_str != "NoDevFiles":
                     cuda_visible_list = cuda_visible_str.split(",")
                     device_id = cuda_visible_list.index(gpu_id)
@@ -656,6 +660,7 @@ class _WrappedDataLoader(DataLoader):
         def try_move_device(i):
             try:
                 i = i.to(self.device, non_blocking=self._auto_transfer)
+                logger.info("Moving batch to device", self.device)
             except AttributeError:
                 logger.debug(f"Item {i} cannot be moved to device " f"{self.device}.")
             return i
