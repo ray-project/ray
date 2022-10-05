@@ -5,6 +5,7 @@ from typing import (
     AbstractSet,
     Any,
     Dict,
+    Generic,
     Iterable,
     Iterator,
     Mapping,
@@ -12,6 +13,7 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
+    TypeVar,
     Union,
 )
 
@@ -19,12 +21,13 @@ from ray.rllib.utils.annotations import ExperimentalAPI
 
 
 SeqStrType = Union[str, Sequence[str]]
+T = TypeVar("T")
 
 _NestedDictType = Dict[str, Any]
 _NestedMappingType = Mapping[SeqStrType, Any]
 
 NestedDictInputType = Union[
-    Iterable[Tuple[SeqStrType, Any]], _NestedMappingType, "NestedDict"
+    Iterable[Tuple[SeqStrType, T]], _NestedMappingType, "NestedDict[T]"
 ]
 
 
@@ -54,7 +57,7 @@ class StrKey(str):
 
 
 @ExperimentalAPI
-class NestedDict(MutableMapping[str, "NestedDict"]):
+class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
     """A nested dict type:
         * The nested dict gives access to nested elements as a sequence of
         strings.
@@ -113,7 +116,7 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
         x: Optional[NestedDictInputType] = None,
     ):
         # shallow dict
-        self._data = dict()  # type: Dict[str, Any]
+        self._data = dict()  # type: Dict[str, Union[T, NestedDict[T]]]
         x = x or {}
         if isinstance(x, Mapping):
             for k, v in x.items():
@@ -138,7 +141,9 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
 
         return True
 
-    def get(self, k: SeqStrType, *, default: Optional[Any] = None) -> Any:
+    def get(
+        self, k: SeqStrType, *, default: Optional[T] = None
+    ) -> Union[T, "NestedDict[T]"]:
         """Returns `self[k]`, with partial indexing allowed.
         If `k` is not in the `NestedDict`, returns default. If default is `None`,
         and `k` is not in the `NestedDict`, a `KeyError` is raised.
@@ -172,13 +177,13 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
             data_ptr = data_ptr[key]
         return data_ptr
 
-    def __getitem__(self, k: SeqStrType) -> Any:
+    def __getitem__(self, k: SeqStrType) -> T:
         output = self.get(k)
         if isinstance(output, NestedDict):
             raise IndexError("Use get for partial indexing.")
         return output
 
-    def __setitem__(self, k: SeqStrType, v: Any) -> None:
+    def __setitem__(self, k: SeqStrType, v: Union[T, _NestedMappingType]) -> None:
         """This is a zero-copy operation. The pointer to value if preserved in the
         internal data structure."""
         if isinstance(v, Mapping) and len(v) == 0:
@@ -252,7 +257,7 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
         self,
         other: Union[Sequence[SeqStrType], "NestedDict"],
         ignore_missing: bool = False,
-    ) -> "NestedDict":
+    ) -> "NestedDict[T]":
         """Returns a NestedDict with only entries present in `other`.
         The values in the `other` NestedDict are ignored. Only the keys are used.
 
@@ -286,13 +291,13 @@ class NestedDict(MutableMapping[str, "NestedDict"]):
                 output[k] = v
         return output
 
-    def copy(self) -> "NestedDict":
+    def copy(self) -> "NestedDict[T]":
         output = NestedDict(self.items())
         for k, v in self.items():
             output[k] = v
         return output
 
-    def __copy__(self) -> "NestedDict":
+    def __copy__(self) -> "NestedDict[T]":
         return self.copy()
 
     def shallow_keys(self) -> AbstractSet[str]:
