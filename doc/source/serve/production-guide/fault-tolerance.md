@@ -397,9 +397,217 @@ If you have configured [GCS fault tolerance](serve-e2e-ft-guide-gcs) on your clu
 
 ### Serve controller failure
 
+You can simulate a Serve controller failure by manually killing the Serve actor.
+
+If you're running KubeRay, `exec` into one of your pods:
+
+```console
+$ kubectl get pods
+
+NAME                                                      READY   STATUS    RESTARTS   AGE
+ervice-sample-raycluster-mx5x6-worker-small-group-hfhnw   1/1     Running   0          118m
+ervice-sample-raycluster-mx5x6-worker-small-group-nwcpb   1/1     Running   0          118m
+rayservice-sample-raycluster-mx5x6-head-bqjhw             1/1     Running   0          118m
+redis-75c8b8b65d-4qgfz                                    1/1     Running   0          3h36m
+
+$ kubectl exec -it rayservice-sample-raycluster-mx5x6-head-bqjhw -- bash
+ray@rayservice-sample-raycluster-mx5x6-head-bqjhw:~$
+```
+
+You can use the [Ray State API](state-api-cli-ref) to inspect your Serve app:
+
+```console
+$ ray summary actors
+
+======== Actors Summary: 2022-10-04 21:06:33.678706 ========
+Stats:
+------------------------------------
+total_actors: 10
+
+
+Table (group by class):
+------------------------------------
+    CLASS_NAME              STATE_COUNTS
+0   HTTPProxyActor          ALIVE: 3
+1   ServeReplica:SleepyPid  ALIVE: 6
+2   ServeController         ALIVE: 1
+
+$ ray list actors --filter "class_name=ServeController"
+
+======== List: 2022-10-04 21:09:14.915881 ========
+Stats:
+------------------------------
+Total: 1
+
+Table:
+------------------------------
+    ACTOR_ID                          CLASS_NAME       STATE    NAME                      PID
+ 0  70a718c973c2ce9471d318f701000000  ServeController  ALIVE    SERVE_CONTROLLER_ACTOR  48570
+```
+
+You can then kill the Serve controller via the Python interpreter. Note that you'll need to use the `NAME` from the `ray list actor` output to get a handle to the Serve controller.
+
+```console
+$ python
+
+>>> import ray
+>>> controller_handle = ray.get_actor("SERVE_CONTROLLER_ACTOR", namespace="serve")
+>>> ray.kill(controller_handle, no_restart=True)
+>>> exit()
+```
+
+You can use the Ray State API to check the controller's status:
+
+```console
+$ ray list actors --filter "class_name=ServeController"
+
+======== List: 2022-10-04 21:36:37.157754 ========
+Stats:
+------------------------------
+Total: 2
+
+Table:
+------------------------------
+    ACTOR_ID                          CLASS_NAME       STATE    NAME                      PID
+ 0  3281133ee86534e3b707190b01000000  ServeController  ALIVE    SERVE_CONTROLLER_ACTOR  49914
+ 1  70a718c973c2ce9471d318f701000000  ServeController  DEAD     SERVE_CONTROLLER_ACTOR  48570
+```
+
+You should still be able to query your deployments while the controller is recovering:
+
+```console
+# If you're running KubeRay, you
+# can do this from inside the pod:
+$ python
+>>> import requests
+>>> requests.get("http://localhost:8000").json()
+347
+```
+
 ### Deployment replica failure
 
+You can simulate replica failures by manually killing deployment replicas. If you're running KubeRay, make sure to `exec` into a Ray pod before running these commands.
+
+```console
+$ ray summary actors
+
+======== Actors Summary: 2022-10-04 21:40:36.454488 ========
+Stats:
+------------------------------------
+total_actors: 11
+
+
+Table (group by class):
+------------------------------------
+    CLASS_NAME              STATE_COUNTS
+0   HTTPProxyActor          ALIVE: 3
+1   ServeController         ALIVE: 1
+2   ServeReplica:SleepyPid  ALIVE: 6
+
+$ ray list actors --filter "class_name=ServeReplica:SleepyPid"
+
+======== List: 2022-10-04 21:41:32.151864 ========
+Stats:
+------------------------------
+Total: 6
+
+Table:
+------------------------------
+    ACTOR_ID                          CLASS_NAME              STATE    NAME                               PID
+ 0  39e08b172e66a5d22b2b4cf401000000  ServeReplica:SleepyPid  ALIVE    SERVE_REPLICA::SleepyPid#RlRptP    203
+ 1  55d59bcb791a1f9353cd34e301000000  ServeReplica:SleepyPid  ALIVE    SERVE_REPLICA::SleepyPid#BnoOtj    348
+ 2  8c34e675edf7b6695461d13501000000  ServeReplica:SleepyPid  ALIVE    SERVE_REPLICA::SleepyPid#SakmRM    283
+ 3  a95405318047c5528b7483e701000000  ServeReplica:SleepyPid  ALIVE    SERVE_REPLICA::SleepyPid#rUigUh    347
+ 4  c531188fede3ebfc868b73a001000000  ServeReplica:SleepyPid  ALIVE    SERVE_REPLICA::SleepyPid#gbpoFe    383
+ 5  de8dfa16839443f940fe725f01000000  ServeReplica:SleepyPid  ALIVE    SERVE_REPLICA::SleepyPid#PHvdJW    176
+```
+
+You can use the `NAME` from the `ray list actor` output to get a handle to one of the replicas:
+
+```console
+$ python
+
+>>> import ray
+>>> replica_handle = ray.get_actor("SERVE_REPLICA::SleepyPid#RlRptP", namespace="serve")
+>>> ray.kill(replica_handle, no_restart=True)
+>>> exit()
+```
+
+While the replica is restarted, the other replicas can continue processing requests. Eventually the replica restarts and continues serving requests:
+
+```console
+$ python
+
+>>> import requests
+>>> requests.get("http://localhost:8000").json()
+383
+```
+
 ### HTTPProxy failure
+
+You can simulate HTTPProxy failures by manually killing deployment replicas. If you're running KubeRay, make sure to `exec` into a Ray pod before running these commands.
+
+```console
+$ ray summary actors
+
+======== Actors Summary: 2022-10-04 21:51:55.903800 ========
+Stats:
+------------------------------------
+total_actors: 12
+
+
+Table (group by class):
+------------------------------------
+    CLASS_NAME              STATE_COUNTS
+0   HTTPProxyActor          ALIVE: 3
+1   ServeController         ALIVE: 1
+2   ServeReplica:SleepyPid  ALIVE: 6
+
+$ ray list actors --filter "class_name=HTTPProxyActor"
+
+======== List: 2022-10-04 21:52:39.853758 ========
+Stats:
+------------------------------
+Total: 3
+
+Table:
+------------------------------
+    ACTOR_ID                          CLASS_NAME      STATE    NAME                                                                                                 PID
+ 0  283fc11beebb6149deb608eb01000000  HTTPProxyActor  ALIVE    SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-91f9a685e662313a0075efcb7fd894249a5bdae7ee88837bea7985a0    101
+ 1  2b010ce28baeff5cb6cb161e01000000  HTTPProxyActor  ALIVE    SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-cc262f3dba544a49ea617d5611789b5613f8fe8c86018ef23c0131eb    133
+ 2  7abce9dd241b089c1172e9ca01000000  HTTPProxyActor  ALIVE    SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-7589773fc62e08c2679847aee9416805bbbf260bee25331fa3389c4f    267
+```
+
+You can use the `NAME` from the `ray list actor` output to get a handle to one of the replicas:
+
+```console
+$ python
+
+>>> import ray
+>>> proxy_handle = ray.get_actor("SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-91f9a685e662313a0075efcb7fd894249a5bdae7ee88837bea7985a0", namespace="serve")
+>>> ray.kill(proxy_handle, no_restart=False)
+>>> exit()
+```
+
+While the proxy is restarted, the other proxies can continue accepting requests. Eventually the proxy restarts and continues accepting requests. You can use the `ray list actor` command to see when the proxy restarts:
+
+```console
+$ ray list actors --filter "class_name=HTTPProxyActor"
+
+======== List: 2022-10-04 21:58:41.193966 ========
+Stats:
+------------------------------
+Total: 3
+
+Table:
+------------------------------
+    ACTOR_ID                          CLASS_NAME      STATE    NAME                                                                                                 PID
+ 0  283fc11beebb6149deb608eb01000000  HTTPProxyActor  ALIVE     SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-91f9a685e662313a0075efcb7fd894249a5bdae7ee88837bea7985a0  57317
+ 1  2b010ce28baeff5cb6cb161e01000000  HTTPProxyActor  ALIVE    SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-cc262f3dba544a49ea617d5611789b5613f8fe8c86018ef23c0131eb    133
+ 2  7abce9dd241b089c1172e9ca01000000  HTTPProxyActor  ALIVE    SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-7589773fc62e08c2679847aee9416805bbbf260bee25331fa3389c4f    267
+```
+
+Note that the PID for the first HTTPProxyActor has changed, indicating that it restarted.
 
 [KubeRay]: https://ray-project.github.io/kuberay/
 [external storage namespace]: https://ray-project.github.io/kuberay/guidance/gcs-ft/#external-storage-namespace
