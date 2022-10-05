@@ -59,3 +59,11 @@ but is meant to be an engineering resource that you can use to build your own us
         :type: ref
         :text: Machine learning on tabular data
         :classes: btn-link btn-block stretched-link
+    ---
+    :img-top: /images/timeseries.png
+
+    +++
+    .. link-button:: /ray-core/examples/automl_for_time_series
+        :type: ref
+        :text: AutoML for Time Series with Ray
+        :classes: btn-link btn-block stretched-link
