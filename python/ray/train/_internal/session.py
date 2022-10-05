@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
 from typing import Callable, Dict, Optional, Type, Union
-import warnings
 
 import ray
 from ray.air._internal.util import StartTraceback, RunnerThread
@@ -30,7 +29,6 @@ from ray.train.constants import (
 )
 from ray.train.error import SessionMisuseError
 from ray.train.session import _TrainSessionImpl
-from ray.util import log_once
 
 
 class TrainingResultType(Enum):
@@ -56,7 +54,6 @@ class TrainingResult:
     type: TrainingResultType
     data: Union[Dict, Checkpoint]
     metadata: Optional[Dict] = None
-    encoded: bool = True
 
 
 # TODO(xwjiang): This needs a better name.
@@ -76,8 +73,6 @@ class _TrainSession:
         checkpoint: Optional[Union[Dict, Checkpoint]] = None,
         # Deprecated
         encode_data_fn: Optional[Callable] = None,
-        # Temporary until train.save_checkpoint is hard-deprecated.
-        get_checkpoint_class_fn: Callable = None,
         detailed_autofilled_metrics: bool = False,
     ):
 
@@ -91,16 +86,13 @@ class _TrainSession:
         self.loaded_checkpoint: Optional[Union[Dict, Checkpoint]] = checkpoint
 
         # Function to encode checkpoint dict before sending to the driver.
+        if not encode_data_fn:
+
+            def noop(x):
+                return x
+
+            encode_data_fn = noop
         self._encode_data_fn = encode_data_fn
-
-        # Temporary until train.save_checkpoint is hard-deprecated.
-        if not get_checkpoint_class_fn:
-
-            def get_checkpoint_cls(x):
-                return Checkpoint
-
-            get_checkpoint_class_fn = get_checkpoint_cls
-        self._get_checkpoint_class_fn = get_checkpoint_class_fn
 
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         if trial_info:
@@ -266,14 +258,8 @@ class _TrainSession:
                 )
 
         kwargs = self._auto_fill_metrics(kwargs)
-        encoded = False
-        if self._encode_data_fn:
-            kwargs = self._encode_data_fn(kwargs)
-            encoded = True
 
-        result = TrainingResult(
-            type=TrainingResultType.REPORT, data=kwargs, encoded=encoded
-        )
+        result = TrainingResult(type=TrainingResultType.REPORT, data=kwargs)
 
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
@@ -300,6 +286,13 @@ class _TrainSession:
         except queue.Empty:
             pass
 
+    # TODO(ml-team): Remove alongside ray.train.save_checkpoint
+    def _legacy_checkpoint(self, checkpoint_dict: dict):
+        """Logic for legacy checkpointing.
+
+        Should be removed alongside ``ray.train.save_checkpoint``."""
+        return self.checkpoint(Checkpoint.from_dict(checkpoint_dict))
+
     def checkpoint(self, checkpoint: Checkpoint):
         """Adds kwargs to the queue to be consumed by main thread.
 
@@ -309,42 +302,16 @@ class _TrainSession:
         # Update session checkpoint to latest checkpoint.
         self.loaded_checkpoint = checkpoint
 
-        encoded = False
-
         # Only store checkpoints on worker with rank 0.
         if self.world_rank != 0:
             checkpoint = None
-        elif checkpoint and self._encode_data_fn:
-            checkpoint = checkpoint.from_dict(
-                self._encode_data_fn(checkpoint.to_dict())
-            )
-            encoded = True
-
-        if checkpoint and type(checkpoint) is Checkpoint:
-            checkpoint_dict = (
-                {}
-                if checkpoint.get_internal_representation()[0] != "data_dict"
-                else checkpoint.to_dict()
-            )
-            intended_checkpoint_class = self._get_checkpoint_class_fn(checkpoint_dict)
-            if intended_checkpoint_class is not Checkpoint:
-                if log_once("bad_checkpoint_type"):
-                    warnings.warn(
-                        f"You have reported a checkpoint with the `{Checkpoint}` "
-                        "type, but the intended checkpoint type for the Trainer "
-                        f"you are using is `{intended_checkpoint_class}`. Not using "
-                        "the intended checkpoint type may cause issues or "
-                        "exceptions, especially during serialization and "
-                        "deserialization. The checkpoint type will be changed "
-                        "automatically. This behavior may change in the future."
-                    )
-                checkpoint.__class__ = intended_checkpoint_class
+        elif checkpoint:
+            checkpoint = self._encode_data_fn(checkpoint)
 
         result = TrainingResult(
             type=TrainingResultType.CHECKPOINT,
             data=checkpoint,
             metadata=self._auto_fill_checkpoint_metrics({}),
-            encoded=encoded,
         )
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)

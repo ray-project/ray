@@ -2,10 +2,11 @@ from dataclasses import dataclass
 import logging
 import os
 from datetime import timedelta
-from typing import Dict, Optional, Type
+from typing import Optional
 
 import ray
-from ray.train.backend import BackendConfig, Backend
+from ray.air.checkpoint import Checkpoint
+from ray.train.backend import BackendConfig, Backend, _warn_about_bad_checkpoint_type
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train._internal.utils import get_address_and_port
@@ -176,10 +177,10 @@ class _TorchBackend(Backend):
             _shutdown_torch, destroy_process_group=len(worker_group) > 1
         )
 
-    @staticmethod
-    def _get_checkpoint_class(data_dict: Dict) -> Type[TorchCheckpoint]:
-        """Get Ray AIR Checkpoint class to use with the legacy Train API.
-
-        This is temporary until ``ray.train.save_checkpoint`` is
-        hard-deprecated."""
-        return TorchCheckpoint
+    @classmethod
+    def _encode_data(cls, checkpoint: Checkpoint):
+        checkpoint = super()._encode_data(checkpoint)
+        if type(checkpoint) is Checkpoint:
+            _warn_about_bad_checkpoint_type(checkpoint, TorchCheckpoint)
+            checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
+        return checkpoint

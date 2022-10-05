@@ -1,19 +1,19 @@
 import sys
-from typing import Optional, Set, Dict, Type
+from typing import Optional, Set
 
 import os
 from dataclasses import dataclass
 
 import ray
-from ray.air._internal.torch_utils import contains_tensor
 from ray.air.checkpoint import Checkpoint
-from ray.train.backend import BackendConfig, Backend
+from ray.train.backend import BackendConfig, Backend, _warn_about_bad_checkpoint_type
 from ray.train._internal.utils import update_env_vars
 from ray.train._internal.worker_group import WorkerGroup, Worker
 
 from horovod.ray.runner import Coordinator
 from horovod.ray.utils import detect_nics, nics_to_env_var
 from horovod.runner.common.util import secret, timeout
+from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
 
 from ray.util import PublicAPI
@@ -133,17 +133,28 @@ class _HorovodBackend(Backend):
 
         worker_group.execute(update_env_vars, coordinator_envs)
 
-    @staticmethod
-    def _get_checkpoint_class(data_dict: Dict) -> Type[Checkpoint]:
-        """Get Ray AIR Checkpoint class to use with the legacy Train API.
+    @classmethod
+    def _encode_data(cls, checkpoint: Checkpoint):
+        checkpoint = super()._encode_data(checkpoint)
+        if type(checkpoint) is Checkpoint:
+            if checkpoint.get_internal_representation()[0] == "data_dict":
+                if "tensorflow" in sys.modules:
+                    from ray.air._internal.tensorflow_utils import (
+                        contains_tensorflow_object,
+                    )
 
-        This is temporary until ``ray.train.save_checkpoint`` is
-        hard-deprecated."""
-        # If torch is imported, we can use it to serialize the data dict
-        # into bytes. This will prevent e.g. GPU deserialization errors.
-        if "torch" in sys.modules and contains_tensor(data_dict):
-            return TorchCheckpoint
-        return Checkpoint
+                    if contains_tensorflow_object(checkpoint.to_dict()):
+                        _warn_about_bad_checkpoint_type(
+                            checkpoint, TensorflowCheckpoint
+                        )
+                        checkpoint = TensorflowCheckpoint.from_checkpoint(checkpoint)
+                if "torch" in sys.modules:
+                    from ray.air._internal.torch_utils import contains_tensor
+
+                    if contains_tensor(checkpoint.to_dict()):
+                        _warn_about_bad_checkpoint_type(checkpoint, TorchCheckpoint)
+                        checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
+        return checkpoint
 
 
 def _init_env_vars(world_rank: int, world_size: int, node_id: str):

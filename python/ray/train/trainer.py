@@ -28,7 +28,7 @@ from ray.train._internal.session import TrainingResultType
 # Ray Train should be usable even if Tune is not installed.
 from ray.train._internal.utils import ActorWrapper, construct_path, construct_train_func
 from ray.train._internal.worker_group import WorkerGroup
-from ray.train.backend import Backend, BackendConfig, _encode_decode_deprecation_message
+from ray.train.backend import BackendConfig
 from ray.train.base_trainer import (  # noqa: F401
     BaseTrainer,
     GenDataset,
@@ -692,23 +692,7 @@ class TrainingIterator:
         self._final_results = None
         self._finished_training = False
 
-        # If we get a user-defined encode data func, we'll print a deprecation warning.
-        decode_data_fn = (
-            self._backend.decode_data
-            if self._backend.decode_data != Backend.decode_data
-            else None
-        )
-        if decode_data_fn:
-            warnings.warn(
-                _encode_decode_deprecation_message, DeprecationWarning, stacklevel=2
-            )
-        else:
-
-            def noop(x):
-                return x
-
-            decode_data_fn = noop
-        self._decode_data_fn = decode_data_fn
+        self._decode_data_fn = self._backend._decode_data
 
     def __iter__(self):
         return self
@@ -813,10 +797,7 @@ class TrainingIterator:
             first_result = results[0]
             result_type = first_result.type
             if result_type is TrainingResultType.REPORT:
-                result_data = [
-                    self._decode_data_fn(r.data) if r.encoded else r.data
-                    for r in results
-                ]
+                result_data = [r.data for r in results]
                 return result_data
             elif result_type is TrainingResultType.CHECKPOINT:
                 self._checkpoint_manager._process_checkpoint(

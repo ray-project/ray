@@ -137,3 +137,19 @@ def convert_ndarray_batch_to_tf_tensor_batch(
         }
 
     return batch
+
+
+def contains_tensorflow_object(obj):
+    if "keras" in obj.__module__ or "tensorflow" in obj.__module__:
+        return True
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            if contains_tensorflow_object(k):
+                return True
+            if contains_tensorflow_object(v):
+                return True
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            if contains_tensorflow_object(v):
+                return True
+    return False
