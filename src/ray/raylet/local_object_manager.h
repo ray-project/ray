@@ -160,10 +160,6 @@ class LocalObjectManager {
   /// bytes used by objects currently being spilled.
   int64_t GetPrimaryBytes() const;
 
-  /// Get the current number of objects used by primary object copies.
-  /// This number includes  objects currently being spilled.
-  size_t GetPrimaryCount() const;
-
   /// Returns true if we have objects spilled to the local
   /// filesystem.
   bool HasLocallySpilledObjects() const;

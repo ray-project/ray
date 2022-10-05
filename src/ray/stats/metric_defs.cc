@@ -197,12 +197,17 @@ DEFINE_stats(gcs_storage_operation_count,
              ray::stats::COUNT);
 
 /// Object store
-// TODO:
 DEFINE_stats(object_store_memory,
              "Object store memory by various sub-kinds on this node",
              /// Location:
              ///    - InMemory: currently in shared memory(e.g. /dev/shm)
-             ///    - Spilled: spilled to external storage
+             ///    - Spilled: current number of bytes from objects spilled
+             ///      to external storage. Note this might be smaller than
+             ///      the physical storage incurred on the external storage because
+             ///      Ray might fuse spilled objects into a single file, so a deleted
+             ///      spill object might still exist in the spilled file. Check
+             ///      spilled object fusing for more details.
+             ///    TODO(rickyx)
              ///    - Fallback: fallback allocated
              ("Location"),
              (),

@@ -32,7 +32,7 @@ except ImportError:
 # TODO(Clark): Find ways to trigger commented out metrics in cluster setup.
 _METRICS = [
     # TODO(rickyx): refactoring the below 3 metric seem to be a bit involved
-    # , e.g. need product side changes on the metric subscribers.
+    # , e.g. need to see how users currently depend on them.
     "ray_object_store_available_memory",
     "ray_object_store_used_memory",
     "ray_object_store_num_local_objects",
