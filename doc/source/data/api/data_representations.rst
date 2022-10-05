@@ -3,6 +3,8 @@
 Data Representations
 ====================
 
+.. _block-api:
+
 Block API
 ---------
 
@@ -45,10 +47,4 @@ Tensor Column Extension API
     :members:
 
 .. autoclass:: ray.data.extensions.tensor_extension.ArrowTensorArray
-    :members:
-
-.. autoclass:: ray.data.extensions.tensor_extension.ArrowVariableShapedTensorType
-    :members:
-
-.. autoclass:: ray.data.extensions.tensor_extension.ArrowVariableShapedTensorArray
     :members:

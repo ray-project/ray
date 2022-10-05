@@ -92,6 +92,53 @@ TEST_F(NewPlacementGroupResourceManagerTest,
             "");
 }
 
+TEST_F(NewPlacementGroupResourceManagerTest, TestParsePgResources) {
+  /// Test indexed resources
+  ASSERT_EQ(ParsePgFormattedResource(
+                "CPU_group_0_4482dec0faaf5ead891ff1659a9501000000", false, true)
+                ->original_resource,
+            "CPU");
+  ASSERT_EQ(ParsePgFormattedResource(
+                "custom_group_0_4482dec0faaf5ead891ff1659a9501000000", false, true)
+                ->original_resource,
+            "custom");
+  ASSERT_EQ(ParsePgFormattedResource(
+                "GPU_group_0_4482dec0faaf5ead891ff1659a9501000000", false, true)
+                ->original_resource,
+            "GPU");
+  ASSERT_EQ(ParsePgFormattedResource(
+                "CPU_group_0_4482dec0faaf5ead891ff1659a9501000000", false, true)
+                ->bundle_index,
+            0);
+  ASSERT_TRUE(!ParsePgFormattedResource(
+      "CPU_group_0_4482dec0faaf5ead891ff1659a9501000000", true, false));
+
+  /// Parse incorrect resource parsing.
+  ASSERT_TRUE(!ParsePgFormattedResource("CPU", true, true));
+  ASSERT_TRUE(!ParsePgFormattedResource("CPU", false, true));
+  ASSERT_TRUE(!ParsePgFormattedResource("CPU", true, false));
+
+  /// Parse wildcard resources.
+  ASSERT_EQ(ParsePgFormattedResource(
+                "CPU_group_4482dec0faaf5ead891ff1659a9501000000", true, false)
+                ->original_resource,
+            "CPU");
+  ASSERT_EQ(ParsePgFormattedResource(
+                "custom_group_4482dec0faaf5ead891ff1659a9501000000", true, false)
+                ->original_resource,
+            "custom");
+  ASSERT_EQ(ParsePgFormattedResource(
+                "GPU_group_4482dec0faaf5ead891ff1659a9501000000", true, false)
+                ->original_resource,
+            "GPU");
+  ASSERT_EQ(ParsePgFormattedResource(
+                "CPU_group_4482dec0faaf5ead891ff1659a9501000000", true, false)
+                ->bundle_index,
+            -1);
+  ASSERT_TRUE(!ParsePgFormattedResource(
+      "CPU_group_4482dec0faaf5ead891ff1659a9501000000", false, true));
+}
+
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
   // 1. create bundle spec.
   auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
