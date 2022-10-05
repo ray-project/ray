@@ -1530,7 +1530,7 @@ py_test(
 py_test(
     name = "core/tests/torch/test_torch_sarl_trainer",
     tags = ["team:rllib", "multi_gpu"],
-    size = "medium",
+    size = "large",
     srcs = ["core/tests/torch/test_torch_sarl_trainer.py"]
 )
 
