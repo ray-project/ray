@@ -25,6 +25,10 @@ DATA_TYPE = Union[NestedDict[Any], Mapping[str, Any]]
 class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
     """A NestedDict containing specs and class types."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._keys_set = set(self.keys())
+
     def validate(
         self,
         data: DATA_TYPE,
@@ -41,11 +45,12 @@ class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
             ValueError: If the data doesn't match the spec.
         """
         data = NestedDict(data)
-        missing_keys = set(self.keys()).difference(set(data.keys()))
+        data_keys_set = set(data.keys())
+        missing_keys = self._keys_set.difference(data_keys_set)
         if missing_keys:
             raise ValueError(_MISSING_KEYS_FROM_DATA.format(missing_keys))
         if exact_match:
-            data_spec_missing_keys = set(data.keys()).difference(set(self.keys()))
+            data_spec_missing_keys = data_keys_set.difference(self._keys_set)
             if data_spec_missing_keys:
                 raise ValueError(_MISSING_KEYS_FROM_SPEC.format(data_spec_missing_keys))
 
