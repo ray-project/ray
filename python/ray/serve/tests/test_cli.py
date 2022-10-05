@@ -3,6 +3,7 @@ import signal
 import subprocess
 import sys
 import time
+import json
 from tempfile import NamedTemporaryFile
 from typing import List
 
@@ -539,10 +540,9 @@ def test_build_kubernetes_flag():
 
         tmp.seek(0)
         config = yaml.safe_load(tmp.read())
-        print(config)
         assert config == {
             "importPath": "ray.serve.tests.test_cli.k8sFNode",
-            "runtimeEnv": {},
+            "runtimeEnv": json.dumps({}),
             "host": "0.0.0.0",
             "port": 8000,
             "deployments": [
