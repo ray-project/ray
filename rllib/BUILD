@@ -1933,6 +1933,14 @@ py_test(
 # Tag: utils
 # --------------------------------------------------------------------
 
+# Checkpoint Utils
+py_test(
+    name = "test_checkpoint_utils",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/tests/test_checkpoint_utils.py"]
+)
+
 py_test(
     name = "test_errors",
     tags = ["team:rllib", "utils"],

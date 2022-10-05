@@ -5,6 +5,7 @@ from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     MultiAgentPolicyConfigDict,
     PartialAlgorithmConfigDict,
@@ -71,6 +72,9 @@ def check_multi_agent(
 
     # Check each defined policy ID and spec.
     for pid, policy_spec in policies.copy().items():
+        # Make sure our Policy ID is ok.
+        validate_policy_id(pid, error=False)
+
         # Policy IDs must be strings.
         if not isinstance(pid, str):
             raise KeyError(f"Policy IDs must always be of type `str`, got {type(pid)}")
