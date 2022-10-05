@@ -52,13 +52,24 @@ def download_example_file(example_file: str):
     return example_file, temp_file
 
 
+@example_app.callback()
+def example_callback():
+    """RLlib command-line interface to run built-in examples. You can choose to list
+    all available examples, get more information on an example or run a specific
+    example.
+    """
+    pass
+
+
 @example_app.command()
 def list(
     filter: str = typer.Option(None, "--filter", "-f", help=example_help.get("filter"))
 ):
     """List all available RLlib examples that can be run from the command line.
     Note that many of these examples require specific hardware (e.g. a certain number
-    of GPUs) to work.
+    of GPUs) to work.\n\n
+
+    Example usage: `rllib example list --filter=cartpole`
     """
 
     table = Table(title="RLlib Examples")
@@ -102,6 +113,7 @@ def get(
 @example_app.command()
 def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
     """Run an RLlib example from the command line by simply providing its ID.\n\n
+
     Example usage: `rllib example run pong-impala`
     """
     if example_id not in EXAMPLES.keys():
@@ -195,6 +207,8 @@ def rollout(
     use_shelve: bool = cli.UseShelve,
     track_progress: bool = cli.TrackProgress,
 ):
+    """Old rollout script. Please use `rllib evaluate` instead.
+    """
     from ray.rllib.utils.deprecation import deprecation_warning
 
     deprecation_warning(old="rllib rollout", new="rllib evaluate", error=False)
