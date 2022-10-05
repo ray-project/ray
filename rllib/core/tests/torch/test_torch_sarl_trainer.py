@@ -176,8 +176,10 @@ class TorchDummyCompositionModuleTrainer(TorchIndependentModulesTrainer):
 # ==================== The actual tests here ==================== #
 
 
-@pytest.mark.parametrize("trainer_class_fn", [TorchIndependentModulesTrainer, 
-                                        TorchDummyCompositionModuleTrainer])
+@pytest.mark.parametrize(
+    "trainer_class_fn",
+    [TorchIndependentModulesTrainer, TorchDummyCompositionModuleTrainer],
+)
 def test_1_torch_sarl_trainer_2_gpu(trainer_class_fn):
     ray.init()
 
@@ -217,8 +219,10 @@ def test_1_torch_sarl_trainer_2_gpu(trainer_class_fn):
     ray.shutdown()
 
 
-@pytest.mark.parametrize("trainer_class_fn", [TorchIndependentModulesTrainer, 
-                                        TorchDummyCompositionModuleTrainer])
+@pytest.mark.parametrize(
+    "trainer_class_fn",
+    [TorchIndependentModulesTrainer, TorchDummyCompositionModuleTrainer],
+)
 def test_gradients_params_same_on_all_configurations(trainer_class_fn):
     results = []
     for num_gpus in [0, 1, 2]:

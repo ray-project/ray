@@ -1528,10 +1528,10 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "core/tests/test_torch_sarl_trainer",
+    name = "core/tests/torch/test_torch_sarl_trainer",
     tags = ["team:rllib", "multi_gpu"],
     size = "medium",
-    srcs = ["core/tests/test_torch_sarl_trainer.py"]
+    srcs = ["core/tests/torch/test_torch_sarl_trainer.py"]
 )
 
 # --------------------------------------------------------------------
