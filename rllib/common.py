@@ -166,6 +166,11 @@ class CLIArguments:
 
 
 # TODO: write a unit test that asserts that these files exist!!!
+# TODO: in the CLI, sort these entries first.
+# TODO: print the configuration of the agent (nicely)
+
+# Note that the IDs of these examples are lexicographically sorted by environment,
+# not by algorithm. This should be more natural for users, but could be changed easily.
 EXAMPLES = {
     # A2C
     "atari-a2c": {
@@ -189,4 +194,354 @@ EXAMPLES = {
         "file": "tuned_examples/a3c/pong-a3c.yaml",
         "description": "Runs A3C on the PongDeterministic-v4 environment.",
     },
+    # AlphaStar
+    "multi-agent-cartpole-alpha-star": {
+        "file": "tuned_examples/alpha_star/multi-agent-cartpole-alpha-star.yaml",
+        "description": "Runs AlphaStar on 4 CartPole agents.",
+    },
+    # AlphaZero
+    "cartpole-alpha-zero": {
+        "file": "tuned_examples/alpha_zero/cartpole-sparse-rewards-alpha-zero.yaml",
+        "description": "Runs AlphaZero on a Cartpole with sparse rewards.",
+    },
+    # Apex DDPG
+    "mountaincar-apex-ddpg": {
+        "file": "tuned_examples/apex_ddpg/mountaincarcontinuous-apex-ddpg.yaml",
+        "description": "Runs Apex DDPG on MountainCarContinuous-v0.",
+    },
+    "pendulum-apex-ddpg": {
+        "file": "tuned_examples/apex_ddpg/cpendulum-apex-ddpg.yaml",
+        "description": "Runs Apex DDPG on Pendulum-v1.",
+    },
+    # Apex DQN
+    "breakout-apex-dqn": {
+        "file": "tuned_examples/apex_dqn/atari-apex-dqn.yaml",
+        "description": "Runs Apex DQN on BreakoutNoFrameskip-v4.",
+    },
+    "cartpole-apex-dqn": {
+        "file": "tuned_examples/apex_dqn/cartpole-apex-dqn.yaml",
+        "description": "Runs Apex DQN on CartPole-v1.",
+    },
+    "pong-apex-dqn": {
+        "file": "tuned_examples/apex_dqn/pong-apex-dqn.yaml",
+        "description": "Runs Apex DQN on PongNoFrameskip-v4.",
+    },
+    # APPO
+    "cartpole-appo": {
+        "file": "tuned_examples/appo/cartpole-appo.yaml",
+        "description": "Runs APPO on CartPole-v1.",
+    },
+    "frozenlake-appo": {
+        "file": "tuned_examples/appo/frozenlake-appo-vtrace.yaml",
+        "description": "Runs APPO on FrozenLake-v1.",
+    },
+    "halfcheetah-appo": {
+        "file": "tuned_examples/appo/halfcheetah-appo.yaml",
+        "description": "Runs APPO on HalfCheetah-v2.",
+    },
+    "multi-agent-cartpole-appo": {
+        "file": "tuned_examples/appo/multi-agent-cartpole-appo.yaml",
+        "description": "Runs APPO on RLlib's MultiAgentCartPole",
+    },
+    "pendulum-appo": {
+        "file": "tuned_examples/appo/pendulum-appo.yaml",
+        "description": "Runs APPO on Pendulum-v1.",
+    },
+    "pong-appo": {
+        "file": "tuned_examples/appo/pong-appo.yaml",
+        "description": "Runs APPO on PongNoFrameskip-v4.",
+    },
+    # ARS
+    "cartpole-ars": {
+        "file": "tuned_examples/ars/cartpole-ars.yaml",
+        "description": "Runs ARS on CartPole-v1.",
+    },
+    "swimmer-ars": {
+        "file": "tuned_examples/ars/swimmer-ars.yaml",
+        "description": "Runs ARS on Swimmer-v2.",
+    },
+    # Bandits
+    "recsys-bandits": {
+        "file": "tuned_examples/bandits/" +
+                "interest-evolution-recsim-env-bandit-linucb.yaml",
+        "description": "Runs BanditLinUCB on a Recommendation Simulation environment.",
+    },
+    # BC
+    "cartpole-bc": {
+        "file": "tuned_examples/bc/cartpole-bc.yaml",
+        "description": "Runs BC on CartPole-v1.",
+    },
+    # CQL
+    "halfcheetah-cql": {
+        "file": "tuned_examples/cql/halfcheetah-cql.yaml",
+        "description": "Runs grid search on HalfCheetah environments with CQL.",
+    },
+    "hopper-cql": {
+        "file": "tuned_examples/cql/hopper-cql.yaml",
+        "description": "Runs grid search on Hopper environments with CQL.",
+    },
+    "pendulum-cql": {
+        "file": "tuned_examples/cql/pendulum-cql.yaml",
+        "description": "Runs CQL on Pendulum-v1.",
+    },
+    # CRR
+    "cartpole-crr": {
+        "file": "tuned_examples/crr/cartpole-v0-crr.yaml",
+        "description": "Run CRR on CartPole-v1.",
+    },
+    "pendulum-crr": {
+        "file": "tuned_examples/crr/pendulum-v1-crr.yaml",
+        "description": "Run CRR on Pendulum-v1.",
+    },
+    # DDPG
+    "halfcheetah-ddpg": {
+        "file": "tuned_examples/ddpg/halfcheetah-ddpg.yaml",
+        "description": "Runs DDPG on HalfCheetah-v2.",
+    },
+    "halfcheetah-bullet-ddpg": {
+        "file": "tuned_examples/ddpg/halfcheetah-pybullet-ddpg.yaml",
+        "description": "Runs DDPG on HalfCheetahBulletEnv-v0.",
+    },
+    "hopper-bullet-ddpg": {
+        "file": "tuned_examples/ddpg/hopper-pybullet-ddpg.yaml",
+        "description": "Runs DDPG on HopperBulletEnv-v0.",
+    },
+    "mountaincar-ddpg": {
+        "file": "tuned_examples/ddpg/mountaincarcontinuous-ddpg.yaml",
+        "description": "Runs DDPG on MountainCarContinuous-v0.",
+    },
+    "pendulum-ddpg": {
+        "file": "tuned_examples/ddpg/pendulum-ddpg.yaml",
+        "description": "Runs DDPG on Pendulum-v1.",
+    },
+    # DDPPO
+    "breakout-ddppo": {
+        "file": "tuned_examples/ddppo/atari-ddppo.yaml",
+        "description": "Runs DDPPO on BreakoutNoFrameskip-v4.",
+    },
+    "cartpole-ddppo": {
+        "file": "tuned_examples/ddppo/cartpole-ddppo.yaml",
+        "description": "Runs DDPPO on CartPole-v1",
+    },
+    "pendulum-ddppo": {
+        "file": "tuned_examples/ddppo/pendulum-ddppo.yaml",
+        "description": "Runs DDPPO on Pendulum-v1.",
+    },
+    # DQN
+    "atari-dqn": {
+        "file": "tuned_examples/dqn/atari-dqn.yaml",
+        "description": "Run grid search on Atari environments with DQN.",
+    },
+    "atari-duel-ddqn": {
+        "file": "tuned_examples/dqn/atari-duel-ddqn.yaml",
+        "description": "Run grid search on Atari environments "
+                       "with duelling double DQN.",
+    },
+    "cartpole-dqn": {
+        "file": "tuned_examples/dqn/rllib/tuned_examples/dqn/cartpole-dqn.yaml",
+        "description": "Run DQN on CartPole-v1.",
+    },
+    "pong-dqn": {
+        "file": "tuned_examples/dqn/pong-dqn.yaml",
+        "description": "Run DQN on PongDeterministic-v4.",
+    },
+    "pong-rainbow": {
+        "file": "tuned_examples/dqn/pong-rainbow.yaml",
+        "description": "Run Rainbow on PongDeterministic-v4.",
+    },
+    # DREAMER
+    "dm-control-dreamer": {
+        "file": "tuned_examples/dreamer/dreamer-deepmind-control.yaml",
+        "description": "Run DREAMER on a suite of control problems by Deepmind.",
+    },
+    # DT
+    "cartpole-dt": {
+        "file": "tuned_examples/dt/cartpole-v0-dt.yaml",
+        "description": "Run DT on CartPole-v1.",
+    },
+    "pendulum-dt": {
+        "file": "tuned_examples/dt/pendulum-v1-dt.yaml",
+        "description": "Run DT on Pendulum-v1.",
+    },
+    # ES
+    "cartpole-es": {
+        "file": "tuned_examples/es/cartpole-es.yaml",
+        "description": "Run ES on CartPole-v1.",
+    },
+    "humanoid-es": {
+        "file": "tuned_examples/es/humanoid-es.yaml",
+        "description": "Run ES on Humanoid-v2.",
+    },
+    # IMPALA
+    "atari-impala": {
+        "file": "tuned_examples/impala/atari-impala.yaml",
+        "description": "Run grid search over several atari games with IMPALA.",
+    },
+    "cartpole-impala": {
+        "file": "tuned_examples/impala/cartpole-impala.yaml",
+        "description": "Run IMPALA on CartPole-v1.",
+    },
+    "multi-agent-cartpole-impala": {
+        "file": "tuned_examples/impala/multi-agent-cartpole-impala.yaml",
+        "description": "Run IMPALA on RLlib's MultiAgentCartPole",
+    },
+    "pendulum-impala": {
+        "file": "tuned_examples/impala/pendulum-impala.yaml",
+        "description": "Run IMPALA on Pendulum-v1.",
+    },
+    "pong-impala": {
+        "file": "tuned_examples/impala/pong-impala-fast.yaml",
+        "description": "Run IMPALA on PongNoFrameskip-v4.",
+    },
+    # MADDPG
+    "two-step-game-maddpg": {
+        "file": "tuned_examples/maddpg/two-step-game-maddpg.yaml",
+        "description": "Run RLlib's Two-step game with multi-agent DDPG.",
+    },
+    # MAML
+    "cartpole-maml": {
+        "file": "tuned_examples/maml/cartpole-maml.yaml",
+        "description": "Run MAML on CartPole-v1.",
+    },
+    "halfcheetah-maml": {
+        "file": "tuned_examples/maml/halfcheetah-rand-direc-maml.yaml",
+        "description": "Run MAML on a custom HalfCheetah environment.",
+    },
+    "pendulum-maml": {
+        "file": "tuned_examples/maml/pendulum-mass-maml.yaml",
+        "description": "Run MAML on a custom Pendulum environment.",
+    },
+    # MARWIL
+    "cartpole-marwil": {
+        "file": "tuned_examples/marwil/cartpole-marwil.yaml",
+        "description": "Run MARWIL on CartPole-v1.",
+    },
+    # MBMPO
+    "cartpole-mbmpo": {
+        "file": "tuned_examples/mbmpo/cartpole-mbmpo.yaml",
+        "description": "Run MBMPO on a CartPole environment wrapper.",
+    },
+    "halfcheetah-mbmpo": {
+        "file": "tuned_examples/mbmpo/halfcheetah-mbmpo.yaml",
+        "description": "Run MBMPO on a HalfCheetah environment wrapper.",
+    },
+    "hopper-mbmpo": {
+        "file": "tuned_examples/mbmpo/hopper-mbmpo.yaml",
+        "description": "Run MBMPO on a Hopper environment wrapper.",
+    },
+    "pendulum-mbmpo": {
+        "file": "tuned_examples/mbmpo/pendulum-mbmpo.yaml",
+        "description": "Run MBMPO on a Pendulum environment wrapper.",
+    },
+    # PG
+    "cartpole-pg": {
+        "file": "tuned_examples/pg/cartpole-pg.yaml",
+        "description": "Run PG on CartPole-v1",
+    },
+    # PPO
+    "atari-ppo": {
+        "file": "tuned_examples/ppo/atari-ppo.yaml",
+        "description": "Run grid search over several atari games with PPO.",
+    },
+    "cartpole-ppo": {
+        "file": "tuned_examples/ppo/cartpole-ppo.yaml",
+        "description": "Run PPO on CartPole-v1.",
+    },
+    "halfcheetah-ppo": {
+        "file": "tuned_examples/ppo/halfcheetah-ppo.yaml",
+        "description": "Run PPO on HalfCheetah-v2.",
+    },
+    "hopper-ppo": {
+        "file": "tuned_examples/ppo/hopper-ppo.yaml",
+        "description": "Run PPO on Hopper-v1.",
+    },
+    "humanoid-ppo": {
+        "file": "tuned_examples/ppo/humanoid-ppo.yaml",
+        "description": "Run PPO on Humanoid-v1.",
+    },
+    "pendulum-ppo": {
+        "file": "tuned_examples/ppo/pendulum-ppo.yaml",
+        "description": "Run PPO on Pendulum-v1.",
+    },
+    "pong-ppo": {
+        "file": "tuned_examples/ppo/pong-ppo.yaml",
+        "description": "Run PPO on PongNoFrameskip-v4.",
+    },
+    "recsys-ppo": {
+        "file": "tuned_examples/ppo/recomm-sys001-ppo.yaml",
+        "description": "Run PPO on a recommender system example from RLlib.",
+    },
+    "repeatafterme-ppo": {
+        "file": "tuned_examples/ppo/repeatafterme-ppo-lstm.yaml",
+        "description": "Run PPO on RLlib's RepeatAfterMe environment.",
+    },
+    "walker2d-ppo": {
+        "file": "tuned_examples/ppo/walker2d-ppo.yaml",
+        "description": "Run PPO on the Walker2d-v1 environment.",
+    },
+    # QMIX
+    "two-step-game-qmix": {
+        "file": "tuned_examples/qmix/two-step-game-qmix.yaml",
+        "description": "Run QMIX on RLlib's two-step game.",
+    },
+    # R2D2
+    "stateless-cartpole-r2d2": {
+        "file": "tuned_examples/r2d2/two-step-game-qmix.yaml",
+        "description": "Run R2D2 on a stateless cart pole environment.",
+    },
+    # SAC
+    "atari-sac": {
+        "file": "tuned_examples/sac/atari-sac.yaml",
+        "description": "Run grid search on several atari games with SAC.",
+    },
+    "cartpole-sac": {
+        "file": "tuned_examples/sac/cartpole-sac.yaml",
+        "description": "Run SAC on CartPole-v1",
+    },
+    "halfcheetah-sac": {
+        "file": "tuned_examples/sac/halfcheetah-sac.yaml",
+        "description": "Run SAC on HalfCheetah-v3.",
+    },
+    "pacman-sac": {
+        "file": "tuned_examples/sac/mspacman-sac.yaml",
+        "description": "Run SAC on MsPacmanNoFrameskip-v4.",
+    },
+    "pendulum-sac": {
+        "file": "tuned_examples/sac/pendulum-sac.yaml",
+        "description": "Run SAC on Pendulum-v1.",
+    },
+    # SimpleQ
+    "cartpole-simpleq": {
+        "file": "tuned_examples/simple_q/cartpole-simpleq.yaml",
+        "description": "Run SimpleQ on CartPole-v1",
+    },
+    # SlateQ
+    "recsys-long-term-slateq": {
+        "file": "tuned_examples/slateq/long-term-satisfaction-recsim-env-slateq.yaml",
+        "description": "Run SlateQ on a recommendation system aimed at "
+                       "long-term satisfaction.",
+    },
+    "recsys-parametric-slateq": {
+        "file": "tuned_examples/slateq/parametric-item-reco-env-slateq.yaml",
+        "description": "SlateQ run on a recommendation system.",
+    },
+    "recsys-slateq": {
+        "file": "tuned_examples/slateq/recomm-sys001-slateq.yaml",
+        "description": "SlateQ run on a recommendation system.",
+    },
+    # TD3
+    "inverted-pendulum-td3": {
+        "file": "tuned_examples/td3/invertedpendulum-td3.yaml",
+        "description": "Run TD3 on InvertedPendulum-v2.",
+    },
+    "mujoco-td3": {
+        "file": "tuned_examples/td3/mujoco-td3.yaml",
+        "description": "Run TD3 against four of the hardest MuJoCo tasks.",
+    },
+    "pendulum-td3": {
+        "file": "tuned_examples/td3/pendulum-td3.yaml",
+        "description": "Run TD3 on Pendulum-v1.",
+    },
 }
+
+

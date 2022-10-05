@@ -3,7 +3,7 @@
 #      --stop='{"timesteps_total": 50000}' \
 #      --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
 cartpole-marwil:
-    env: CartPole-v0
+    env: CartPole-v1
     run: MARWIL
     stop:
         timesteps_total: 500000

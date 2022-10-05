@@ -1,5 +1,8 @@
 #!/usr/bin/env python
+
+import collections
 import typer
+
 from ray.rllib import train as train_module
 from ray.rllib.common import CLIArguments as cli
 from ray.rllib.common import EXAMPLES, FrameworkEnum
@@ -15,17 +18,19 @@ def list():
     from rich.table import Table
 
     table = Table(title="RLlib Examples")
-    table.add_column("Example ID", justify="right", style="cyan", no_wrap=True)
-    table.add_column("Description", justify="right", style="magenta")
+    table.add_column("Example ID", justify="left", style="cyan", no_wrap=True)
+    table.add_column("Description", justify="left", style="magenta")
 
-    for name, value in EXAMPLES.items():
+    sorted_examples = collections.OrderedDict(sorted(EXAMPLES.items()))
+
+    for name, value in sorted_examples.items():
         table.add_row(name, value["description"])
 
     console = Console()
     console.print(table)
     console.print(
-        "Run any RLlib example as using 'rllib examples run <Example ID>'."
-        "See 'rllib examples run --help' for more information."
+        "Run any RLlib example as using 'rllib example run <Example ID>'."
+        "See 'rllib example run --help' for more information."
     )
 
 
@@ -56,7 +61,7 @@ def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
 
 
 # Register all subcommands
-app.add_typer(examples_app, name="examples")
+app.add_typer(examples_app, name="example")
 app.add_typer(train_module.train_app, name="train")
 # TODO: print (a list of) checkpoints available after training.
 
