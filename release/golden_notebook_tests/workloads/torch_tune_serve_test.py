@@ -7,7 +7,7 @@ import subprocess
 
 import ray
 from ray.air import session
-from ray.air.config import ScalingConfig
+from ray.air.config import CheckpointConfig, ScalingConfig, RunConfig
 from ray.tune.tune_config import TuneConfig
 import requests
 import torch
@@ -94,7 +94,10 @@ def training_loop(config):
         train_epoch(train_loader, model, criterion, optimizer)
         validation_loss = validate_epoch(validation_loader, model, criterion)
 
-        session.report(validation_loss, checkpoint=TorchCheckpoint.from_model(model))
+        session.report(
+            validation_loss,
+            checkpoint=TorchCheckpoint.from_state_dict(model.module.state_dict()),
+        )
 
 
 def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
@@ -115,6 +118,11 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
             metric="val_loss",
             mode="min",
             num_samples=1,
+        ),
+        run_config=RunConfig(
+            stop={"training_iteration": 2},
+            verbose=1,
+            checkpoint_config=CheckpointConfig(checkpoint_at_end=True),
         ),
     )
 
