@@ -208,10 +208,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
         arrays = []
         for column in columns:
             array = self._table[column]
-            if array.num_chunks == 0:
-                array = pyarrow.array([], type=array.type)
-            elif _is_column_extension_type(array):
+            if _is_column_extension_type(array):
                 array = _concatenate_extension_column(array)
+            elif array.num_chunks == 0:
+                array = pyarrow.array([], type=array.type)
             else:
                 array = array.combine_chunks()
             arrays.append(array.to_numpy(zero_copy_only=False))

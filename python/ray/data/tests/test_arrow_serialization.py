@@ -170,7 +170,17 @@ pytest_custom_serialization_arrays = [
 pytest_custom_serialization_data = []
 for arr, cap in pytest_custom_serialization_arrays:
     if len(arr) == 0:
-        pytest_custom_serialization_data.append((arr, cap))
+        pytest_custom_serialization_data.extend(
+            [
+                (arr, cap),
+                (pa.chunked_array([arr]), cap),
+                (
+                    pa.record_batch([arr], schema=pa.schema([pa.field("a", arr.type)])),
+                    cap,
+                ),
+                (pa.table({"a": []}), cap),
+            ]
+        )
     else:
         pytest_custom_serialization_data.extend(
             zip(
@@ -232,9 +242,11 @@ def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
             assert column.offset == 0
     elif isinstance(post_slice, pa.Table):
         for column in post_slice.columns:
-            assert column.chunk(0).offset == 0
+            if column.num_chunks > 0:
+                assert column.chunk(0).offset == 0
     elif isinstance(post_slice, pa.ChunkedArray):
-        assert post_slice.chunk(0).offset == 0
+        if post_slice.num_chunks > 0:
+            assert post_slice.chunk(0).offset == 0
     else:
         assert post_slice.offset == 0
     # Check that slice buffer only contains slice data.
