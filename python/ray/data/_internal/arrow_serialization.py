@@ -102,14 +102,7 @@ def _register_arrow_data_serializer(serialization_context):
     """
     import pyarrow as pa
 
-    if os.environ.get(RAY_DISABLE_CUSTOM_ARROW_DATA_SERIALIZATION) == "1":
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.info(
-            "Disabling custom Arrow data serialization. This may result in bloated "
-            "serialization of Arrow tables!"
-        )
+    if os.environ.get(RAY_DISABLE_CUSTOM_ARROW_DATA_SERIALIZATION, "0") == "1":
         return
 
     # Register custom reducer for Arrow Arrays.
