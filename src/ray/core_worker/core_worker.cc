@@ -267,9 +267,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Register a callback to monitor removed nodes.
   // Note we capture a shared ownership of reference_counter_
   // here to avoid destruction order fiasco between gcs_client and reference_counter_.
-  auto on_node_change = [](const NodeID &node_id,
-                           const rpc::GcsNodeInfo &data,
-                           reference_counter = reference_counter_) {
+  auto on_node_change = [reference_counter = this->reference_counter_](
+                            const NodeID &node_id, const rpc::GcsNodeInfo &data) {
     if (data.state() == rpc::GcsNodeInfo::DEAD) {
       RAY_LOG(INFO) << "Node failure from " << node_id
                     << ". All objects pinned on that node will be lost if object "
