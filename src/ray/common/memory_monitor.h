@@ -52,10 +52,11 @@ class MemoryMonitor {
   /// \param io_service the event loop.
   /// \param usage_threshold a value in [0-1] to indicate the max usage.
   /// \param min_memory_free_bytes to indicate the minimum amount of free space before it
-  /// becomes over the threshold. \param monitor_interval_ms the frequency to update the
-  /// usage. 0 disables the the monitor and callbacks won't fire. \param monitor_callback
-  /// function to execute on a dedicated thread owned by this monitor when the usage is
-  /// refreshed.
+  /// becomes over the threshold.
+  /// \param monitor_interval_ms the frequency to update the usage. 0 disables the the
+  /// monitor and callbacks won't fire.
+  /// \param monitor_callback function to execute on a dedicated thread owned by this
+  /// monitor when the usage is refreshed.
   MemoryMonitor(instrumented_io_context &io_service,
                 float usage_threshold,
                 int64_t min_memory_free_bytes,
