@@ -58,7 +58,7 @@ def submit_batch_jobs(
         # Cycle through clients arbitrarily
         client = clients[i % len(clients)]
         job_id = client.submit_job(
-            runtime_env={"working_dir": os.path.dirname(os.path.abspath(__file__))},
+#            runtime_env={"working_dir": os.path.dirname(os.path.abspath(__file__))},
             entrypoint="echo hello",
         )
         job_ids.append(job_id)
