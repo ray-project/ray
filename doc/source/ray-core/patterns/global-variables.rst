@@ -1,5 +1,5 @@
-Anti-pattern: Accessing or modifying global variables in tasks and actors
-=========================================================================
+Anti-pattern: Using global variables to share state between tasks and actors
+============================================================================
 
 **TLDR:** Don't use global variables to share state with tasks and actors. Instead, encapsulate the global variables in an actor and pass the actor handle to other tasks and actors.
 
