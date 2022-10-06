@@ -1799,20 +1799,21 @@ py_test(
     size = "small",
     srcs = ["models/specs/tests/test_tensor_specs.py"]
 )
+
 # test abstract base models
 py_test(
-    name = "test_base_models",
+    name = "test_base_model",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/tests/test_base_models.py"]
+    srcs = ["models/tests/test_base_model.py"]
 )
 
 # test torch base models
 py_test(
-    name = "test_torch_models",
+    name = "test_torch_model",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/tests/test_torch_models.py"]
+    srcs = ["models/tests/test_torch_model.py"]
 )
 
 
