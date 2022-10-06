@@ -26,7 +26,7 @@ class EventLoggerAdapter:
         When events are emitted, they are aggregated and available via
         state API and dashboard.
 
-        This class is threas-safe.
+        This class is thread-safe.
         """
         self.logger = logger
         # Aligned with `event.proto`'s `message Event``
