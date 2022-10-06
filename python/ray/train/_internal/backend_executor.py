@@ -230,7 +230,7 @@ class BackendExecutor:
 
         futures = []
         for node_id, gpu_ids in node_id_to_gpu_ids.items():
-            all_gpu_ids = ",".join([str(gpu_id) for gpu_id in gpu_ids])
+            all_gpu_ids = ",".join(gpu_ids)
 
             def set_gpu_ids():
                 os.environ["CUDA_VISIBLE_DEVICES"] = all_gpu_ids

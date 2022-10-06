@@ -294,17 +294,28 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method):
 @pytest.mark.parametrize(
     "worker_results",
     [
-        (1, ["0"]),
-        (2, ["0,1", "0,1"]),
-        (3, ["0", "0,1", "0,1"]),
-        (4, ["0,1", "0,1", "0,1", "0,1"]),
+        (1, [[0]]),
+        (2, [[0, 1]] * 2),
+        (3, [[0]] + [[0, 1]] * 2),
+        (4, [[0, 1]] * 4),
     ],
 )
 def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
     config = TestConfig()
 
+    if worker_results[0] != len(worker_results[1]):
+        raise ValueError(
+            "Invalid test parameter. Length of expected result should "
+            "match number of workers."
+        )
+
     def get_resources():
-        return os.environ["CUDA_VISIBLE_DEVICES"]
+        cuda_visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+        # Sort the cuda visible devices to have exact match with expected result.
+        sorted_devices = [
+            int(device) for device in sorted(cuda_visible_devices.split(","))
+        ]
+        return sorted_devices
 
     num_workers, expected_results = worker_results
 
@@ -322,21 +333,35 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
 @pytest.mark.parametrize(
     "worker_results",
     [
-        (1, ["0"]),
-        (2, ["0", "0"]),
-        (3, ["0,1", "0,1", "0,1"]),
-        (4, ["0,1", "0,1", "0,1", "0,1"]),
-        (5, ["0", "0,1", "0,1", "0,1", "0,1"]),
-        (6, ["0", "0", "0,1", "0,1", "0,1", "0,1"]),
-        (7, ["0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1"]),
-        (8, ["0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1"]),
+        (1, [[0]]),
+        (
+            2,
+            [[0]] * 2,
+        ),
+        (3, [[0, 1]] * 3),
+        (4, [[0, 1]] * 4),
+        (5, [[0]] + [[0, 1]] * 4),
+        (6, [[0]] * 2 + [[0, 1]] * 4),
+        (7, [[0, 1]] * 7),
+        (8, [[0, 1]] * 8),
     ],
 )
 def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
     config = TestConfig()
 
+    if worker_results[0] != len(worker_results[1]):
+        raise ValueError(
+            "Invalid test parameter. Length of expected result should "
+            "match number of workers."
+        )
+
     def get_resources():
-        return os.environ["CUDA_VISIBLE_DEVICES"]
+        cuda_visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+        # Sort the cuda visible devices to have exact match with expected result.
+        sorted_devices = [
+            int(device) for device in sorted(cuda_visible_devices.split(","))
+        ]
+        return sorted_devices
 
     num_workers, expected_results = worker_results
 
@@ -354,17 +379,28 @@ def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
 @pytest.mark.parametrize(
     "worker_results",
     [
-        (1, ["0,1"]),
-        (2, ["0,1,2,3", "0,1,2,3"]),
-        (3, ["0,1", "0,1,2,3", "0,1,2,3"]),
-        (4, ["0,1,2,3", "0,1,2,3", "0,1,2,3", "0,1,2,3"]),
+        (1, [[0, 1]]),
+        (2, [[0, 1, 2, 3]] * 2),
+        (3, [[0, 1]] + [[0, 1, 2, 3]] * 2),
+        (4, [[0, 1, 2, 3]] * 4),
     ],
 )
 def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
     config = TestConfig()
 
     def get_resources():
-        return os.environ["CUDA_VISIBLE_DEVICES"]
+        cuda_visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+        # Sort the cuda visible devices to have exact match with expected result.
+        sorted_devices = [
+            int(device) for device in sorted(cuda_visible_devices.split(","))
+        ]
+        return sorted_devices
+
+    if worker_results[0] != len(worker_results[1]):
+        raise ValueError(
+            "Invalid test parameter. Length of expected result should "
+            "match number of workers."
+        )
 
     num_workers, expected_results = worker_results
 

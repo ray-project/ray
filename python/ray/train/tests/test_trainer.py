@@ -1232,7 +1232,8 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
         )
 
     def get_resources():
-        return os.environ["CUDA_VISIBLE_DEVICES"]
+        cuda_visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+        return cuda_visible_devices
 
     # 0 GPUs will be requested and should not raise an error.
     trainer = Trainer(CudaTestConfig(), num_workers=2, use_gpu=False)
@@ -1245,6 +1246,8 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     trainer = Trainer(CudaTestConfig(), num_workers=2, use_gpu=True)
     trainer.start()
     result = trainer.run(get_resources)
+    # Sort the cuda visible devices to have exact match with expected result.
+    result = [",".join(sorted(r.split(","))) for r in result]
     assert result == ["0,1", "0,1"]
     trainer.shutdown()
 
@@ -1263,6 +1266,8 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     )
     trainer.start()
     result = trainer.run(get_resources)
+    # Sort the cuda visible devices to have exact match with expected result.
+    result = [",".join(sorted(r.split(","))) for r in result]
     assert result == ["0,1,2,3", "0,1,2,3"]
     trainer.shutdown()
 
