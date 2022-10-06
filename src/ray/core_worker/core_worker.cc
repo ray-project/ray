@@ -220,13 +220,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
 
-  // Register a callback to monitor removed nodes.
-  auto on_node_change = [this](const NodeID &node_id, const rpc::GcsNodeInfo &data) {
-    if (data.state() == rpc::GcsNodeInfo::DEAD) {
-      OnNodeRemoved(node_id);
-    }
-  };
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
 
   // Initialize profiler.
   profiler_ = std::make_shared<worker::Profiler>(
@@ -271,6 +264,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         return std::shared_ptr<rpc::CoreWorkerClient>(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
+
+  // Register a callback to monitor removed nodes.
+  auto on_node_change = [this](const NodeID &node_id, const rpc::GcsNodeInfo &data) {
+    if (data.state() == rpc::GcsNodeInfo::DEAD) {
+      OnNodeRemoved(node_id);
+    }
+  };
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket,
