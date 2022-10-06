@@ -58,7 +58,7 @@ def submit_batch_jobs(
         client = clients[i % len(clients)]
         job_id = client.submit_job(
             runtime_env={"working_dir": os.path.dirname(os.path.abspath(__file__))},
-            entrypoint="python run_simple_ray_job.py",
+            entrypoint="echo hello",
         )
         job_ids.append(job_id)
         print(f"submitted job: {job_id}")
@@ -67,7 +67,12 @@ def submit_batch_jobs(
         client = clients[job_ids.index(job_id) % len(clients)]
         status = wait_until_finish(client, job_id, timeout_s, retry_interval_s)
         if status != JobStatus.SUCCEEDED:
-            print(f"Logs for failed job: {client.get_job_logs(job_id)}")
+            print(
+                f"Info for failed/timed-out job {job_id}: {client.get_job_info(job_id)}"
+            )
+            print(
+                f"Logs for failed/timed-out job {job_id}: {client.get_job_logs(job_id)}"
+            )
             print(
                 f"Job {job_id} failed with status {status} (`None` indicates timeout)"
             )
@@ -118,12 +123,12 @@ if __name__ == "__main__":
             job_details = random.choice(jobs)
             is_submission_job = job_details.type == "SUBMISSION"
         job_id = job_details.submission_id
-        print(f"Getting logs for job {job_id}...")
+        print(f"Getting logs for randomly chosen job {job_id}...")
         logs = clients[0].get_job_logs(job_id)
         print(logs)
 
-        print("Sleeping for 30 seconds...")
-        time.sleep(30)
+        print("Sleeping for 5 seconds...")
+        time.sleep(5)
 
     time_taken = time.time() - start
     result = {
