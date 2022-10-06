@@ -15,7 +15,9 @@ class TFRecordDatasource(FileBasedDatasource):
 
     _FILE_EXTENSION = "tfrecords"
 
-    def _read_stream(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Iterator[Block]:
+    def _read_stream(
+        self, f: "pyarrow.NativeFile", path: str, **reader_args
+    ) -> Iterator[Block]:
         from google.protobuf.message import DecodeError
         import pandas as pd
         import tensorflow as tf
