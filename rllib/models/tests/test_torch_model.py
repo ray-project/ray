@@ -6,7 +6,9 @@ from torch import nn
 
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.annotations import override
-from ray.rllib.models.temp_spec_classes import TensorDict, SpecDict, ModelConfig
+from ray.rllib.models.temp_spec_classes import TensorDict, ModelConfig
+from ray.rllib.models.specs.specs_dict import ModelSpecDict
+from ray.rllib.models.specs.specs_torch import TorchSpecs
 from ray.rllib.models.torch.model import TorchRecurrentModel, TorchModel
 
 B, T = 6, 8
@@ -15,23 +17,23 @@ B, T = 6, 8
 class SimpleRecurrentModel(TorchRecurrentModel):
     @property
     @override(TorchRecurrentModel)
-    def input_spec(self) -> SpecDict:
-        return SpecDict({"in": "b t h"}, h=2)
+    def input_spec(self) -> ModelSpecDict:
+        return ModelSpecDict({"in": TorchSpecs("b, t, h", h=2)})
 
     @property
     @override(TorchRecurrentModel)
-    def output_spec(self) -> SpecDict:
-        return SpecDict({"out": "b t h"}, h=3)
+    def output_spec(self) -> ModelSpecDict:
+        return ModelSpecDict({"out": TorchSpecs("b, t, h", h=3)})
 
     @property
     @override(TorchRecurrentModel)
-    def prev_state_spec(self) -> SpecDict:
-        return SpecDict({"in": "b h"}, h=4)
+    def prev_state_spec(self) -> ModelSpecDict:
+        return ModelSpecDict({"in": TorchSpecs("b, h", h=4)})
 
     @property
     @override(TorchRecurrentModel)
-    def next_state_spec(self) -> SpecDict:
-        return SpecDict({"out": "b h"}, h=5)
+    def next_state_spec(self) -> ModelSpecDict:
+        return ModelSpecDict({"out": TorchSpecs("b, h", h=5)})
 
     @override(TorchRecurrentModel)
     def _unroll(self, input, prev_state):
@@ -49,13 +51,13 @@ class SimpleRecurrentModel(TorchRecurrentModel):
 class SimpleModel(TorchModel):
     @property
     @override(TorchRecurrentModel)
-    def input_spec(self) -> SpecDict:
-        return SpecDict({"in": "b h"}, h=2)
+    def input_spec(self) -> ModelSpecDict:
+        return ModelSpecDict({"in": TorchSpecs("b, h", h=2)})
 
     @property
     @override(TorchRecurrentModel)
-    def output_spec(self) -> SpecDict:
-        return SpecDict({"out": "b h"}, h=3)
+    def output_spec(self) -> ModelSpecDict:
+        return ModelSpecDict({"out": TorchSpecs("b, h", h=3)})
 
     @override(TorchModel)
     def _forward(self, input):
@@ -106,10 +108,10 @@ class TestTorchModel(unittest.TestCase):
         desired = TensorDict({"out": torch.arange(B * T * 3).reshape(B, T, 3)})
         desired_states = TensorDict({"out": torch.arange(B * 5).reshape(B, 5)})
 
-        for k in outputs.flatten().keys() | desired.flatten().keys():
+        for k in outputs.shallow_keys() | desired.shallow_keys():
             check(outputs[k], desired[k])
 
-        for k in out_states.flatten().keys() | desired_states.flatten().keys():
+        for k in out_states.shallow_keys() | desired_states.shallow_keys():
             check(out_states[k], desired_states[k])
 
     def test_model_init(self):
@@ -127,7 +129,7 @@ class TestTorchModel(unittest.TestCase):
         outputs, _ = SimpleModel(ModelConfig()).unroll(inputs, TensorDict())
         desired = TensorDict({"out": torch.arange(B * 3).reshape(B, 3)})
 
-        for k in outputs.flatten().keys() | desired.flatten().keys():
+        for k in outputs.shallow_keys() | desired.shallow_keys():
             check(outputs[k], desired[k])
 
 

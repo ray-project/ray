@@ -51,12 +51,12 @@ class TorchRecurrentModel(RecurrentModel, nn.Module, TorchModelIO):
         config: The config used to construct the model
 
     Required Attributes:
-        input_spec: SpecDict: Denotes the input keys and shapes passed to `unroll`
-        output_spec: SpecDict: Denotes the output keys and shapes returned from
+        input_spec: ModelSpecDict: Denotes the input keys and shapes passed to `unroll`
+        output_spec: ModelSpecDict: Denotes the output keys and shapes returned from
             `unroll`
-        prev_state_spec: SpecDict: Denotes the keys and shapes for the input
+        prev_state_spec: ModelSpecDict: Denotes the keys and shapes for the input
             recurrent states to the model
-        next_state_spec: SpecDict: Denotes the keys and shapes for the
+        next_state_spec: ModelSpecDict: Denotes the keys and shapes for the
             recurrent states output by the model
 
     Required Overrides:
@@ -96,25 +96,25 @@ class TorchRecurrentModel(RecurrentModel, nn.Module, TorchModelIO):
         ...
         ...     @property
         ...     def input_spec(self):
-        ...         return SpecDict(
+        ...         return ModelSpecDict(
         ...             {"obs": "batch time hidden"}, hidden=self.config.input_size
         ...         )
         ...
         ...     @property
         ...     def output_spec(self):
-        ...         return SpecDict(
+        ...         return ModelSpecDict(
         ...             {"logits": "batch time logits"}, logits=self.config.output_size
         ...         )
         ...
         ...     @property
         ...     def prev_state_spec(self):
-        ...         return SpecDict(
+        ...         return ModelSpecDict(
         ...             {"input_state": "batch recur"}, recur=self.config.recurrent_size
         ...         )
         ...
         ...     @property
         ...     def next_state_spec(self):
-        ...         return SpecDict(
+        ...         return ModelSpecDict(
         ...             {"output_state": "batch recur"},
         ...             recur=self.config.recurrent_size
         ...         )
@@ -162,8 +162,9 @@ class TorchModel(Model, nn.Module, TorchModelIO):
         config: The config used to construct the model
 
     Required Attributes:
-        input_spec: SpecDict: Denotes the input keys and shapes passed to `_forward`
-        output_spec: SpecDict: Denotes the output keys and shapes returned from
+        input_spec: ModelSpecDict: Denotes the input keys and shapes passed
+            to `_forward`
+        output_spec: ModelSpecDict: Denotes the output keys and shapes returned from
             `_forward`
 
     Required Overrides:
@@ -198,13 +199,13 @@ class TorchModel(Model, nn.Module, TorchModelIO):
         ...
         ...     @property
         ...     def input_spec(self):
-        ...         return SpecDict(
+        ...         return ModelSpecDict(
         ...             {"obs": "batch time hidden"}, hidden=self.config.input_size
         ...         )
         ...
         ...     @property
         ...     def output_spec(self):
-        ...         return SpecDict(
+        ...         return ModelSpecDict(
         ...             {"logits": "batch time logits"}, logits=self.config.output_size
         ...         )
         ...

@@ -16,7 +16,8 @@
 import abc
 from typing import Optional, Tuple
 
-from ray.rllib.models.temp_spec_classes import TensorDict, SpecDict, ModelConfig
+from ray.rllib.models.temp_spec_classes import TensorDict, ModelConfig
+from ray.rllib.models.specs.specs_dict import ModelSpecDict
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     OverrideToImplementCustomLogic,
@@ -65,22 +66,22 @@ class RecurrentModel(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def input_spec(self) -> SpecDict:
+    def input_spec(self) -> ModelSpecDict:
         """Returns the spec of the input of this module."""
 
     @property
     @abc.abstractmethod
-    def prev_state_spec(self) -> SpecDict:
+    def prev_state_spec(self) -> ModelSpecDict:
         """Returns the spec of the prev_state of this module."""
 
     @property
     @abc.abstractmethod
-    def output_spec(self) -> SpecDict:
+    def output_spec(self) -> ModelSpecDict:
         """Returns the spec of the output of this module."""
 
     @property
     @abc.abstractmethod
-    def next_state_spec(self) -> SpecDict:
+    def next_state_spec(self) -> ModelSpecDict:
         """Returns the spec of the next_state of this module."""
 
     @abc.abstractmethod
@@ -109,7 +110,7 @@ class RecurrentModel(abc.ABC):
             >>> state # TensorDict(...)
         """
         initial_state = self._initial_state()
-        self.next_state_spec.validate(initial_state)
+        self.prev_state_spec.validate(initial_state)
         return initial_state
 
     @abc.abstractmethod
@@ -155,11 +156,12 @@ class RecurrentModel(abc.ABC):
             >>> state # TensorDict(...)
 
         """
-        self.input_spec.validate(inputs)
-        self.prev_state_spec.validate(prev_state)
         # We hide inputs not specified in input_spec to prevent accidental use.
         inputs = inputs.filter(self.input_spec)
         prev_state = prev_state.filter(self.prev_state_spec)
+        # Ensure filtered inputs match specs
+        self.input_spec.validate(inputs)
+        self.prev_state_spec.validate(prev_state)
         inputs, prev_state = self._update_inputs_and_prev_state(inputs, prev_state)
         outputs, next_state = self._unroll(inputs, prev_state, **kwargs)
         self.output_spec.validate(outputs)
@@ -214,13 +216,13 @@ class Model(RecurrentModel):
 
     @property
     @override(RecurrentModel)
-    def prev_state_spec(self) -> SpecDict:
-        return SpecDict()
+    def prev_state_spec(self) -> ModelSpecDict:
+        return ModelSpecDict()
 
     @property
     @override(RecurrentModel)
-    def next_state_spec(self) -> SpecDict:
-        return SpecDict()
+    def next_state_spec(self) -> ModelSpecDict:
+        return ModelSpecDict()
 
     @override(RecurrentModel)
     def _initial_state(self) -> TensorDict:
