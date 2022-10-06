@@ -56,11 +56,14 @@ for i in range(NUM_NODES):
         redis_max_memory=REDIS_MAX_MEMORY,
         dashboard_host="0.0.0.0",
     )
-
+print("Starting Ray...")
 ray.init(address=cluster.address, log_to_driver=False, dashboard_host="0.0.0.0")
+
+print("Starting Serve...")
 serve.start()
 
 # Print memory usage on the head node to help diagnose/debug memory leaks.
+print("Starting memory monitor...")
 monitor_memory_usage()
 
 
