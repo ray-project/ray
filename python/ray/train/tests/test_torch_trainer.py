@@ -179,6 +179,31 @@ def test_tune_torch_get_device_gpu(
     ray.get([actor.run.remote() for actor in actors])
 
 
+def test_torch_auto_unwrap(ray_start_4_cpus):
+    """Tests if underlying model from DDP is extracted when saving ckpt."""
+
+    def train_fn():
+        model = torch.nn.Linear(1, 1)
+
+        # Wrap in DDP.
+        model = train.torch.prepare_model(model)
+
+        # Save DDP wrapped model.
+        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
+
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    results = trainer.fit()
+
+    last_checkpoint = results.checkpoint
+    model = last_checkpoint.get_model()
+    assert isinstance(model, torch.nn.Module) and not isinstance(
+        model, torch.nn.parallel.DistributedDataParallel
+    )
+
+
 def test_torch_amp(ray_start_4_cpus):
     def train_fn():
         train.torch.accelerate(amp=True)

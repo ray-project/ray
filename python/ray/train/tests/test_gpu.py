@@ -83,17 +83,21 @@ class NonTensorDataset(LinearDataset):
         return {"x": self.x[index, None], "y": 2}
 
 
+# Currently in DataParallelTrainers we only report metrics from rank 0.
+# For testing purposes here, we need to be able to report from all
+# workers.
+class TorchTrainerPatchedMultipleReturns(TorchTrainer):
+    def _report(self, training_iterator) -> None:
+        for results in training_iterator:
+            tune.report(results=results)
+
+
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
 def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
     def train_fn():
         session.report(dict(devices=train.torch.get_device().index))
 
-    class TorchTrainerPatched(TorchTrainer):
-        def _report(self, training_iterator) -> None:
-            for results in training_iterator:
-                tune.report(results=results)
-
-    trainer = TorchTrainerPatched(
+    trainer = TorchTrainerPatchedMultipleReturns(
         train_fn,
         scaling_config=ScalingConfig(
             num_workers=2,
@@ -121,12 +125,7 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
     def train_fn():
         session.report(dict(devices=train.torch.get_device().index))
 
-    class TorchTrainerPatched(TorchTrainer):
-        def _report(self, training_iterator) -> None:
-            for results in training_iterator:
-                tune.report(results=results)
-
-    trainer = TorchTrainerPatched(
+    trainer = TorchTrainerPatchedMultipleReturns(
         train_fn,
         # use gloo instead of nccl, since nccl is not supported
         # on this virtual gpu ray environment
@@ -187,8 +186,7 @@ def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
     trainer = TorchTrainer(
         train_fn, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
     )
-    results = trainer.fit()
-    assert not results.error
+    trainer.fit()
 
 
 @pytest.mark.parametrize(
@@ -228,8 +226,7 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus, dataset):
     trainer = TorchTrainer(
         train_fn, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
     )
-    results = trainer.fit()
-    assert not results.error
+    trainer.fit()
 
 
 @pytest.mark.parametrize("use_gpu", (False, True))
@@ -336,13 +333,12 @@ def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
         model = torchvision.models.resnet101()
         model = train.torch.prepare_model(model)
 
-        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        session.report({"model": model}, checkpoint=TorchCheckpoint.from_model(model))
 
     trainer = TorchTrainer(
         train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
     )
     results = trainer.fit()
-    assert not results.error
     assert results.checkpoint
 
 
@@ -387,7 +383,6 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
         train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True)
     )
     results = trainer.fit()
-    assert not results.error
 
     model = results.checkpoint.get_model()
     assert not next(model.parameters()).is_cuda
@@ -407,16 +402,15 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
         for tensor in state_dict.values():
             assert tensor.is_cuda
 
-        session.report({}, checkpoint=TorchCheckpoint.from_state_dict(state_dict))
-
-        # No longer supported.
-        # ray.train.report(state_dict=state_dict)
+        session.report(
+            {"state_dict": state_dict},
+            checkpoint=TorchCheckpoint.from_state_dict(state_dict),
+        )
 
     trainer = TorchTrainer(
         train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True)
     )
     results = trainer.fit()
-    assert not results.error
 
     state_dict = results.checkpoint.to_dict()[MODEL_KEY]
 

@@ -238,7 +238,7 @@ if __name__ == "__main__":
     if addr is not None and addr.startswith("anyscale://"):
         client = ray.init(address=addr, job_name=job_name)
     else:
-        client = ray.init()
+        client = ray.init(address="auto")
 
     num_workers = 2
     use_gpu = not args.smoke_test

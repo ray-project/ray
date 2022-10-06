@@ -177,24 +177,6 @@ def test_horovod_torch_mnist(ray_start_4_cpus):
     assert loss[-1] < loss[0]
 
 
-# # TODO: Refactor as a backend test.
-# def test_horovod_torch_mnist_stateful(ray_start_4_cpus):
-#     num_workers = 2
-#     num_epochs = 2
-#     trainer = Trainer("horovod", num_workers)
-#     workers = trainer.to_worker_group(
-#         HorovodTrainClass, config={"num_epochs": num_epochs, "lr": 1e-3}
-#     )
-#     results = []
-#     for epoch in range(num_epochs):
-#         results.append(ray.get([w.train.remote(epoch=epoch) for w in workers]))
-#     trainer.shutdown()
-
-#     assert len(results) == num_epochs
-#     for i in range(num_workers):
-#         assert results[num_epochs - 1][i] < results[0][i]
-
-
 if __name__ == "__main__":
     import sys
 

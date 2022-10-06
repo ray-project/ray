@@ -330,6 +330,9 @@ def test_world_rank(ray_start_4_cpus):
     def train_func():
         session.report(dict(world_rank=session.get_world_rank()))
 
+    # Currently in DataParallelTrainers we only report metrics from rank 0.
+    # For testing purposes here, we need to be able to report from all
+    # workers.
     class DataParallelTrainerPatched(DataParallelTrainer):
         def _report(self, training_iterator) -> None:
             for results in training_iterator:

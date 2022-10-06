@@ -35,8 +35,7 @@ def test_torch_fsdp(ray_start_4_cpus_2_gpus):
     trainer = TorchTrainer(
         train_fn, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
     )
-    results = trainer.fit()
-    assert not results.error
+    trainer.fit()
 
 
 if __name__ == "__main__":
