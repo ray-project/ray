@@ -21,7 +21,6 @@ from ray.dashboard.modules.job.common import JobStatus
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 import ray
 from ray.job_submission import JobSubmissionClient
-from ray._private.test_utils import monitor_memory_usage
 
 NUM_CLIENTS = 4
 NUM_JOBS_PER_BATCH = 5
@@ -106,10 +105,6 @@ if __name__ == "__main__":
         address = "http://127.0.0.1:8265"
 
     clients = [JobSubmissionClient(address) for i in range(NUM_CLIENTS)]
-
-    # Print memory usage on the head node to help diagnose/debug memory leaks.
-
-    monitor_memory_usage(warning_threshold=0.1)
 
     batch_counter = 0
     while time.time() - start < timeout:
