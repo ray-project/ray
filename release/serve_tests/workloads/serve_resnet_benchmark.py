@@ -1,3 +1,19 @@
+"""
+Serve Resnet50 model benchmarking.
+
+Including tasks:
+1. Image downloading
+2. Image convesion to tensors.
+3. Batch tensors.
+4. Inference with Restnet50 model
+
+Beside last step, all steps are done inside the CPU, and model inference step is
+finished on the GPU device.
+
+In the benchmarking, the image download and tensor conversion is done across different
+replicas on CPUs.
+"""
+
 import ray
 from ray import serve
 from torchvision import models
@@ -18,14 +34,14 @@ from ray.serve.handle import RayServeHandle
 
 # 8 images as input when batch size increase, we replica the input here
 input_uris = [
-    "http://images.cocodataset.org/test-stuff2017/000000000019.jpg",
-    "http://images.cocodataset.org/test-stuff2017/000000000128.jpg",
-    "http://images.cocodataset.org/test-stuff2017/000000000171.jpg",
-    "http://images.cocodataset.org/test-stuff2017/000000000184.jpg",
-    "http://images.cocodataset.org/test-stuff2017/000000000300.jpg",
-    "http://images.cocodataset.org/test-stuff2017/000000000311.jpg",
-    "http://images.cocodataset.org/test-stuff2017/000000000333.jpg",
-    "http://images.cocodataset.org/test-stuff2017/000000000416.jpg",
+    "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg",
+    "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000128.jpeg",
+    "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000171.jpeg",
+    "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000184.jpeg",
+    "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000300.jpeg",
+    "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000311.jpeg",
+    "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000333.jpeg",
+    "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000416.jpeg",
 ]
 
 
@@ -53,20 +69,15 @@ class ImageObjectioner:
         return {"result": res, "model_inference_latency": end - start}
 
 
-@serve.deployment(
-    ray_actor_options={"runtime_env": {"pip": ["validators"]}}, num_replicas=5
-)
+@serve.deployment(num_replicas=5)
 class DataDownloader:
     def __init__(self):
         self.utils = torch.hub.load(
             "NVIDIA/DeepLearningExamples:torchhub", "nvidia_convnets_processing_utils"
         )
 
-    async def _get_tensor_from_img(self, uri: str):
-        return await asyncio.coroutine(self.utils.prepare_input_from_uri)(uri)
-
-    async def __call__(self, uris: List[str]):
-        return await asyncio.gather(*[self._get_tensor_from_img(uri) for uri in uris])
+    def __call__(self, uris: List[str]):
+        return [self.utils.prepare_input_from_uri(uri) for uri in uris]
 
 
 async def measure_http_throughput_tps(data_size: int = 8, requests_sent: int = 8):
@@ -102,14 +113,14 @@ async def trial(measure_func, data_size: int = 8, num_clients: int = 1):
     throughput_stats_tps = []
     for client_stats in result_stats_list:
         throughput_stats_tps.extend(client_stats[0])
-    throuput_mean = round(np.mean(throughput_stats_tps), 2)
+    throughput_mean = round(np.mean(throughput_stats_tps), 2)
 
     model_inference_latency = []
     for client_stats in result_stats_list:
         model_inference_latency.extend(client_stats[1])
     inference_latency_mean = round(np.mean(model_inference_latency), 2)
 
-    return throuput_mean, inference_latency_mean
+    return throughput_mean, inference_latency_mean
 
 
 async def json_resolver(request: starlette.requests.Request):
@@ -117,7 +128,14 @@ async def json_resolver(request: starlette.requests.Request):
 
 
 @click.command()
-@click.option("--gpu-env", type=bool, is_flag=True, default=False)
+@click.option(
+    "--gpu-env",
+    type=bool,
+    is_flag=True,
+    default=False,
+    help="If it is set, the model inference will be run on the GPU,"
+    "otherwise it is run on CPU",
+)
 @click.option("--smoke-run", type=bool, is_flag=True, default=False)
 def main(gpu_env: Optional[bool], smoke_run: Optional[bool]):
 

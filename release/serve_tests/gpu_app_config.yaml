@@ -5,7 +5,8 @@ debian_packages:
   - unzip
 
 python:
-  pip_packages: []
+  pip_packages:
+    - "validators"
   conda_packages: []
 
 post_build_cmds:
