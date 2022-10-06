@@ -76,13 +76,24 @@ RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 /// The duration between raylet check memory pressure and send gc request
 RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 
-/// Threshold when the node is beyond the memory capacity.
+/// Threshold when the node is beyond the memory capacity. If the memory is above the
+/// memory_usage_threshold_fraction and free space is below the min_memory_free_bytes then
+/// it will start killing processes to free up the space.
 /// Ranging from [0, 1]
 RAY_CONFIG(float, memory_usage_threshold_fraction, 0.9)
 
 /// The interval between runs of the memory usage monitor.
 /// Monitor is disabled when this value is 0.
 RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 0)
+
+/// The minimum amount of free space. If the memory is above the
+/// memory_usage_threshold_fraction and free space is below min_memory_free_bytes then it
+/// will start killing processes to free up the space. Disabled if it is -1.
+///
+/// This value is useful for larger host where the memory_usage_threshold_fraction could
+/// represent a large chunk of memory, e.g. a host with 64GB of memory and 0.9 threshold
+/// means 6.4 GB of the memory will not be usable.
+RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)1 * 1024 * 1024 * 1024)
 
 /// The TTL for when the task failure entry is considered
 /// eligble for garbage colletion.

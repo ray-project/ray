@@ -25,9 +25,11 @@ namespace ray {
 
 MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
                              float usage_threshold,
+                             int64_t min_memory_free_bytes,
                              uint64_t monitor_interval_ms,
                              MemoryUsageRefreshCallback monitor_callback)
     : usage_threshold_(usage_threshold),
+      min_memory_free_bytes_(min_memory_free_bytes),
       monitor_callback_(monitor_callback),
       runner_(io_service) {
   RAY_CHECK(monitor_callback_ != nullptr);
@@ -42,8 +44,15 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
           system_memory.used_bytes = used_memory_bytes;
           system_memory.total_bytes = total_memory_bytes;
 
-          bool is_usage_above_threshold = IsUsageAboveThreshold(system_memory);
-          monitor_callback_(is_usage_above_threshold, system_memory, usage_threshold_);
+          // TODO(clarng): compute this once only.
+          int64_t threshold_bytes = GetMemoryThreshold(
+              system_memory.total_bytes, usage_threshold_, min_memory_free_bytes_);
+
+          bool is_usage_above_threshold =
+              IsUsageAboveThreshold(system_memory, threshold_bytes);
+
+          float threshold_fraction = (float)threshold_bytes / system_memory.total_bytes;
+          monitor_callback_(is_usage_above_threshold, system_memory, threshold_fraction);
         },
         monitor_interval_ms,
         "MemoryMonitor.CheckIsMemoryUsageAboveThreshold");
@@ -58,7 +67,8 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
   }
 }
 
-bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory) {
+bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory,
+                                          int64_t threshold_bytes) {
   int64_t used_memory_bytes = system_memory.used_bytes;
   int64_t total_memory_bytes = system_memory.total_bytes;
   if (total_memory_bytes == kNull || used_memory_bytes == kNull) {
@@ -67,13 +77,13 @@ bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory) {
         << "to detect memory usage above threshold.";
     return false;
   }
-  float usage_fraction = static_cast<float>(used_memory_bytes) / total_memory_bytes;
-  bool is_usage_above_threshold = usage_fraction >= usage_threshold_;
+  bool is_usage_above_threshold = used_memory_bytes > threshold_bytes;
   if (is_usage_above_threshold) {
     RAY_LOG_EVERY_MS(INFO, kLogIntervalMs)
         << "Node memory usage above threshold, used: " << used_memory_bytes
-        << ", total: " << total_memory_bytes << ", usage fraction: " << usage_fraction
-        << ", threshold: " << usage_threshold_;
+        << ", threshold_bytes: " << threshold_bytes
+        << ", total bytes: " << total_memory_bytes
+        << ", threshold fraction: " << float(threshold_bytes) / total_memory_bytes;
   }
   return is_usage_above_threshold;
 }
@@ -260,6 +270,25 @@ int64_t MemoryMonitor::NullableMin(int64_t left, int64_t right) {
     return left;
   } else {
     return std::min(left, right);
+  }
+}
+
+int64_t MemoryMonitor::GetMemoryThreshold(int64_t total_memory_bytes,
+                                          float usage_threshold,
+                                          int64_t min_memory_free_bytes) {
+  RAY_CHECK_GE(total_memory_bytes, kNull);
+  RAY_CHECK_GE(min_memory_free_bytes, kNull);
+  RAY_CHECK_GE(usage_threshold, 0);
+  RAY_CHECK_LE(usage_threshold, 1);
+
+  int64_t threshold_fraction = (int64_t)(total_memory_bytes * usage_threshold);
+
+  if (min_memory_free_bytes > kNull) {
+    int64_t threshold_absolute = total_memory_bytes - min_memory_free_bytes;
+    RAY_CHECK_GE(threshold_absolute, 0);
+    return std::max(threshold_fraction, threshold_absolute);
+  } else {
+    return threshold_fraction;
   }
 }
 
