@@ -78,12 +78,12 @@ class TestToTF:
         dataset = ds.to_tf(feature_columns="spam", label_columns="ham", batch_size=4)
 
         feature_spec, label_spec = dataset.element_spec
-        assert feature_spec.shape == tf.TensorShape((None,))
-        assert label_spec.shape == tf.TensorShape((None,))
+        assert tuple(feature_spec.shape) == (None,)
+        assert tuple(label_spec.shape) == (None,)
 
         features, labels = next(iter(dataset))
-        assert features.shape == tf.TensorShape((4,))
-        assert labels.shape == tf.TensorShape((4,))
+        assert tuple(features.shape) == (4,)
+        assert tuple(labels.shape) == (4,)
 
     def test_element_spec_shape_with_tensors(self):
         ds = ray.data.from_items(8 * [{"spam": np.zeros([3, 32, 32]), "ham": 0}])
@@ -91,11 +91,11 @@ class TestToTF:
         dataset = ds.to_tf(feature_columns="spam", label_columns="ham", batch_size=4)
 
         feature_spec, _ = dataset.element_spec
-        assert tuple(feature_spec.shape) == tf.TensorShape((None, 3, 32, 32))
+        assert tuple(feature_spec.shape) == (None, 3, 32, 32)
 
         features, labels = next(iter(dataset))
-        assert features.shape == tf.TensorShape((4, 3, 32, 32))
-        assert labels.shape == tf.TensorShape((4,))
+        assert tuple(features.shape) == (4, 3, 32, 32)
+        assert tuple(labels.shape) == (4,)
 
     def test_training(self):
         def build_model() -> tf.keras.Model:

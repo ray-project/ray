@@ -2808,11 +2808,11 @@ class Dataset(Generic[T]):
         there are to be multiple TensorFlow workers consuming the data.
 
         Args:
-            feature_columns: Columns that correspond to model inputs. If this is a 
-                string, the input data is a tensor. If this is a list, the input data 
+            feature_columns: Columns that correspond to model inputs. If this is a
+                string, the input data is a tensor. If this is a list, the input data
                 is a ``dict`` that maps column names to their tensor representation.
-            label_column: Columns that correspond to model targets. If this is a 
-                string, the target data is a tensor. If this is a list, the target data 
+            label_column: Columns that correspond to model targets. If this is a
+                string, the target data is a tensor. If this is a list, the target data
                 is a ``dict`` that maps column names to their tensor representation.
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
