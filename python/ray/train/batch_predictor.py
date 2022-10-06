@@ -186,6 +186,8 @@ class BatchPredictor:
         has_predict_numpy = (
             self._predictor_cls._predict_numpy != Predictor._predict_numpy
         )
+        # Setting batch_format at map_batches is much preferable for pref as it
+        # pushes block formatting work upstream to dataset level
         batch_format = BatchFormat.NUMPY if has_predict_numpy else BatchFormat.PANDAS
 
         ctx = DatasetContext.get_current()
@@ -253,6 +255,8 @@ class BatchPredictor:
                     return prediction_output_batch
 
             def __call__(self, input_batch: DataBatchType) -> DataBatchType:
+                # TODO (jiaodong): Investigate if there's room to optimize prediction
+                # result joins to minimize GPU <> CPU transfer
                 prediction_batch: DataBatchType = self._select_columns_from_input_batch(
                     input_batch, select_columns=feature_columns
                 )
@@ -268,7 +272,6 @@ class BatchPredictor:
                 if batch_format == BatchFormat.NUMPY:
                     # User code just need to return Numpy format where we will
                     # internall convert to Arrow format.
-                    # TODO (jiaodong): Test against ragged tensors
                     return prediction_output_batch
                 else:
                     return convert_batch_type_to_pandas(
@@ -289,8 +292,7 @@ class BatchPredictor:
                 # Set the in-predictor preprocessing to a no-op when using a separate
                 # GPU stage. Otherwise, the preprocessing will be applied twice.
                 override_prep = BatchMapper(lambda x: x)
-                batch_fn = preprocessor._transform_batch
-                data = data.map_batches(batch_fn, batch_format=batch_format)
+                data = preprocessor.transform(data)
 
         prediction_results = data.map_batches(
             ScoringWrapper,

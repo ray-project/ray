@@ -4,8 +4,11 @@ from typing import Dict, TypeVar, Union
 import numpy as np
 import pandas as pd
 
-from ray.air.util.data_batch_conversion import BatchFormat, convert_pandas_to_batch_type
-from ray.air.util.tensor_extensions.pandas import TensorArray
+from ray.air.util.data_batch_conversion import (
+    BatchFormat,
+    convert_pandas_to_batch_type,
+    convert_batch_type_to_pandas,
+)
 from ray.train.predictor import Predictor
 
 TensorType = TypeVar("TensorType")
@@ -64,25 +67,13 @@ class DLPredictor(Predictor):
     def _predict_pandas(
         self, data: pd.DataFrame, dtype: Union[TensorDtype, Dict[str, TensorDtype]]
     ) -> pd.DataFrame:
-        tensors = convert_pandas_to_batch_type(
+        numpy_input = convert_pandas_to_batch_type(
             data,
             BatchFormat.NUMPY,
             self._cast_tensor_columns,
         )
-        model_input = self._arrays_to_tensors(tensors, dtype)
-
-        output = self.call_model(model_input)
-
-        # Handle model multi-output. For example if model outputs 2 images.
-        if isinstance(output, dict):
-            return pd.DataFrame(
-                {k: TensorArray(self._tensor_to_array(v)) for k, v in output.items()}
-            )
-        else:
-            return pd.DataFrame(
-                {"predictions": TensorArray(self._tensor_to_array(output))},
-                columns=["predictions"],
-            )
+        numpy_output = self._predict_numpy(numpy_input)
+        return convert_batch_type_to_pandas(numpy_output)
 
     def _predict_numpy(
         self,
