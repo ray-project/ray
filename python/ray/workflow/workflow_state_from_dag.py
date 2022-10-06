@@ -167,6 +167,8 @@ def workflow_state_from_dag(
                     flattened_args = _SerializationContextPreservingWrapper(
                         flattened_args
                     )
+                # Set the owner of the objects to the actor so that even the driver
+                # exits, these objects are still available.
                 input_placeholder: ray.ObjectRef = ray.put(flattened_args, _owner=mgr)
 
             orig_task_id = workflow_options.get("task_id", None)
