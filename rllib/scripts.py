@@ -1,16 +1,18 @@
 #!/usr/bin/env python
 
 import collections
-import os.path
-
 from rich.console import Console
 from rich.table import Table
-import tempfile
 import typer
 
 from ray.rllib import train as train_module
 from ray.rllib.common import CLIArguments as cli
-from ray.rllib.common import EXAMPLES, FrameworkEnum, example_help
+from ray.rllib.common import (
+    EXAMPLES,
+    FrameworkEnum,
+    example_help,
+    download_example_file,
+)
 
 # Main Typer CLI app
 app = typer.Typer()
@@ -22,34 +24,6 @@ def example_error(example_id: str):
         f"Example {example_id} not found. Use `rllib example list` "
         f"to see available examples."
     )
-
-
-def download_example_file(example_file: str):
-    """Download the example file from GitHub if it doesn't exist locally.
-    Not every user will have cloned our repo and cd'ed into this working directory
-    when using the CLI.
-    """
-    temp_file = None
-    if not os.path.exists(example_file):
-
-        print(f">>> Attempting to download example file {example_file} from GitHub...")
-        # We test the existing of the file in unit tests, so it must be on GitHub.
-        base_url = "https://raw.githubusercontent.com/ray-project/ray/master/rllib/"
-        example_url = base_url + example_file
-
-        temp_file = tempfile.NamedTemporaryFile()
-
-        import requests
-        r = requests.get(example_url)
-        with open(temp_file.name, "wb") as f:
-            print(r.content)
-            f.write(r.content)
-
-        if r.status_code == "200":
-            # only overwrite the file if the download was successful
-            example_file = temp_file.name
-
-    return example_file, temp_file
 
 
 @example_app.callback()
@@ -94,9 +68,7 @@ def list(
 
 
 @example_app.command()
-def get(
-    example_id: str = typer.Argument(..., help="The example ID of the example.")
-):
+def get(example_id: str = typer.Argument(..., help="The example ID of the example.")):
     """Print the configuration of an example.\n\n
     Example usage: `rllib example get atari-a2c`
     """
@@ -147,7 +119,6 @@ def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
 # Register all subcommands
 app.add_typer(example_app, name="example")
 app.add_typer(train_module.train_app, name="train")
-# TODO: print (a list of) checkpoints available after training.
 
 
 @app.command()
@@ -207,8 +178,7 @@ def rollout(
     use_shelve: bool = cli.UseShelve,
     track_progress: bool = cli.TrackProgress,
 ):
-    """Old rollout script. Please use `rllib evaluate` instead.
-    """
+    """Old rollout script. Please use `rllib evaluate` instead."""
     from ray.rllib.utils.deprecation import deprecation_warning
 
     deprecation_warning(old="rllib rollout", new="rllib evaluate", error=False)
@@ -249,11 +219,16 @@ def main_helper():
     .                                         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n
     .\n
         Example usage for training:\n
-            rllib train --algo DQN --env CartPole-v1\n\n
+            rllib train --algo DQN --env CartPole-v1\n
+            rllib train file tuned_examples/ppo/pendulum-ppo.yaml\n\n
 
         Example usage for evaluation:\n
-            rllib evaluate /trial_dir/checkpoint_000001/checkpoint-1 --algo DQN
-    --env CartPole-v1
+            rllib evaluate /trial_dir/checkpoint_000001/checkpoint-1 --algo DQN\n\n
+
+        Example usage for built-in examples:\n
+            rllib example list\n
+            rllib example get atari-ppo\n
+            rllib example run atari-ppo\n
     """
 
 

@@ -12,7 +12,7 @@ from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.common import CLIArguments as cli
-from ray.rllib.common import FrameworkEnum
+from ray.rllib.common import FrameworkEnum, SupportedFileType
 
 
 def import_backends():
@@ -50,7 +50,9 @@ def _patch_path(path: str):
         return path
 
 
-def load_experiments_from_file(config_file: str):
+def load_experiments_from_file(config_file: str, file_type: SupportedFileType = None):
+    """Load experiments from a file. Currently only supports YAML."""
+    # TODO use file type to load JSON and Python files (i.e. from config objects).
     with open(config_file) as f:
         experiments = yaml.safe_load(f)
     return experiments
@@ -79,22 +81,31 @@ def file(
     scheduler_config: str = cli.SchedulerConfig,
 ):
     """Train a reinforcement learning agent from file.
-    The file argument is required to run this command.
+    The file argument is required to run this command.\n\n
 
-    Grid search example via RLlib CLI:\n
+    Grid search example with the RLlib CLI:\n
       rllib train file tuned_examples/ppo/cartpole-ppo.yaml\n\n
 
-    Grid search example via executable:\n
-      ./train.py file tuned_examples/ppo/cartpole-ppo.yaml\n\n
+    You can also run an example from a URL with the file content:\n
+      rllib train file https://raw.githubusercontent.com/ray-project/ray/master/rllib/tuned_examples/ppo/cartpole-ppo.yaml
     """
+    from ray.rllib.common import download_example_file
+
+    # Attempt to download the file if it's not found locally.
+    config_file, temp_file = download_example_file(
+        example_file=config_file, base_url=None
+    )
 
     import_backends()
-
     framework = framework.value if framework else None
 
     experiments = load_experiments_from_file(config_file)
     exp_name = list(experiments.keys())[0]
     algo = experiments[exp_name]["run"]
+
+    # if we had to download the config file, remove the temp file.
+    if temp_file:
+        temp_file.close()
 
     run_rllib_experiments(
         experiments=experiments,
@@ -233,6 +244,8 @@ def run_rllib_experiments(
     scheduler_config: cli.SchedulerConfig,
     algo: cli.Algo,
 ):
+    """Main training function for the RLlib CLI, whether you've loaded your
+    experiments from a config file or from command line options."""
 
     # Override experiment data with command line arguments.
     verbose = 1
@@ -313,8 +326,10 @@ def run_rllib_experiments(
         for cp in checkpoints:
             print(f"  {cp}")
 
-        print("\nYou can now evaluate your trained algorithm from any "
-              "checkpoint, e.g. by running:")
+        print(
+            "\nYou can now evaluate your trained algorithm from any "
+            "checkpoint, e.g. by running:"
+        )
         print(Panel(f"[green]  rllib evaluate {checkpoints[0]} --algo {algo}"))
 
 

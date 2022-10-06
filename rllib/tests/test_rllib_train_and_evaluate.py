@@ -275,7 +275,6 @@ class TestTrainAndEvaluate(unittest.TestCase):
 
 
 class TestCLISmokeTests(unittest.TestCase):
-
     def test_help(self):
         assert os.popen(f"python {rllib_dir}/scripts.py --help").read()
         assert os.popen(f"python {rllib_dir}/train.py --help").read()
@@ -290,8 +289,16 @@ class TestCLISmokeTests(unittest.TestCase):
         assert os.popen(f"python {rllib_dir}/scripts.py example list -f=ppo").read()
         assert os.popen(f"python {rllib_dir}/scripts.py example get atari-a2c").read()
 
+        assert os.popen(
+            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
+            f"cartpole-simpleq-test.yaml"
+        ).read()
+
     def test_all_example_files_exist(self):
+        """ "The 'example' command now knows about example files,
+        so we check that they exist."""
         from ray.rllib.common import EXAMPLES
+
         for val in EXAMPLES.values():
             file = val["file"]
             assert os.path.exists(os.path.join(rllib_dir, file))

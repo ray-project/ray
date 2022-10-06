@@ -1,10 +1,30 @@
 import argparse
 from dataclasses import dataclass
 from enum import Enum
+import os.path
+import tempfile
 import typer
+import requests
+
 
 from ray.tune.experiment.config_parser import _make_parser
 from ray.tune.result import DEFAULT_RESULTS_DIR
+
+
+class FrameworkEnum(str, Enum):
+    """Supported frameworks for RLlib, used for CLI argument validation."""
+
+    tf = "tf"
+    tf2 = "tf2"
+    torch = "torch"
+
+
+class SupportedFileType(str, Enum):
+    """Supported file types for RLlib, used for CLI argument validation."""
+
+    yaml = "yaml"
+    json = "json"
+    py = "py"
 
 
 def _create_tune_parser_help():
@@ -19,6 +39,45 @@ def _create_tune_parser_help():
 PARSER_HELP = _create_tune_parser_help()
 
 
+def download_example_file(
+    example_file: str,
+    base_url: str = "https://raw.githubusercontent.com/ray-project/ray/master/rllib/",
+):
+    """Download the example file (e.g. from GitHub) if it doesn't exist locally.
+    If the provided example file exists locally, we return it directly.
+
+    Not every user will have cloned our repo and cd'ed into this working directory
+    when using the CLI.
+
+    Args:
+        example_file (str): The example file to download.
+        base_url (str): The base URL to download the example file from. Use this if
+            'example_file' is a link relative to this base URL. If set to 'None',
+            'example_file' is assumed to be a complete URL (or a local file, in which
+            case nothing is downloaded).
+    """
+    temp_file = None
+    if not os.path.exists(example_file):
+
+        example_url = base_url + example_file if base_url else example_file
+        print(f">>> Attempting to download example file {example_url}...")
+
+        temp_file = tempfile.NamedTemporaryFile()
+
+        r = requests.get(example_url)
+        with open(temp_file.name, "wb") as f:
+            print(r.content)
+            f.write(r.content)
+
+        print(f"  Status code: {r.status_code}")
+        if r.status_code == 200:
+            print(f"  Downloaded example file to {temp_file.name}")
+            # only overwrite the file if the download was successful
+            example_file = temp_file.name
+
+    return example_file, temp_file
+
+
 def get_help(key: str) -> str:
     """Get the help string from a parser for a given key.
     If e.g. 'resource_group' is provided, we return
@@ -30,19 +89,11 @@ def get_help(key: str) -> str:
     return PARSER_HELP.get(key).help
 
 
-class FrameworkEnum(str, Enum):
-    """Supported frameworks for RLlib, used for CLI argument validation."""
-
-    tf = "tf"
-    tf2 = "tf2"
-    torch = "torch"
-
-
 example_help = dict(
     filter="Filter examples by exact substring match. For instance,"
-           " --filter=ppo will only show examples that"
-           " contain the substring 'ppo' in their ID. The same way, -f=recsys"
-           "will return all recommender system examples.",
+    " --filter=ppo will only show examples that"
+    " contain the substring 'ppo' in their ID. The same way, -f=recsys"
+    "will return all recommender system examples.",
 )
 
 
