@@ -16,11 +16,29 @@ from ray.data.datasource import (
     PartitionStyle,
     PathPartitionEncoder,
     PathPartitionFilter,
+    Partitioning,
 )
 
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+def test_read_binary_files_partitioning(ray_start_regular_shared, tmp_path):
+    os.mkdir(os.path.join(tmp_path, "country=us"))
+    path = os.path.join(tmp_path, "country=us", "file.bin")
+    with open(path, "wb") as f:
+        f.write(b"foo")
+
+    ds = ray.data.read_binary_files(path, partitioning=Partitioning("hive"))
+
+    assert ds.take() == [{"bytes": b"foo", "country": "us"}]
+
+    ds = ray.data.read_binary_files(
+        path, include_paths=True, partitioning=Partitioning("hive")
+    )
+
+    assert ds.take() == [{"bytes": b"foo", "path": path, "country": "us"}]
 
 
 def test_read_binary_files(ray_start_regular_shared):

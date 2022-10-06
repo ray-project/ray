@@ -70,6 +70,8 @@ class MemoryMonitor {
       "/sys/fs/cgroup/memory/memory.limit_in_bytes";
   static constexpr char kCgroupsV1MemoryUsagePath[] =
       "/sys/fs/cgroup/memory/memory.usage_in_bytes";
+  static constexpr char kCgroupsV1MemoryStatPath[] =
+      "/sys/fs/cgroup/memory/memory.stat";
   static constexpr char kCgroupsV2MemoryMaxPath[] = "/sys/fs/cgroup/memory.max";
   static constexpr char kCgroupsV2MemoryUsagePath[] = "/sys/fs/cgroup/memory.current";
   /// The logging frequency. Decoupled from how often the monitor runs.
@@ -85,6 +87,9 @@ class MemoryMonitor {
 
   /// \return the used and total memory in bytes from Cgroup.
   std::tuple<int64_t, int64_t> GetCGroupMemoryBytes();
+
+  /// \return the used memory for cgroup v1.
+  int64_t GetCGroupV1MemoryUsedBytes();
 
   /// \return the used and total memory in bytes for linux OS.
   std::tuple<int64_t, int64_t> GetLinuxMemoryBytes();

@@ -15,8 +15,7 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
-  "id": 2,
-  "iteration": 1617025949981,
+  "iteration": 1664989121079,
   "links": [],
   "panels": [
     {
@@ -26,11 +25,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 2
+        "y": 0
       },
       "id": 14,
       "panels": [],
-      "title": "Ray Dashboard",
+      "title": "Ray Dashboard Metrics",
       "type": "row"
     },
     {
@@ -40,9 +39,7 @@
       "dashes": false,
       "datasource": "Prometheus",
       "fieldConfig": {
-        "defaults": {
-          "custom": {}
-        },
+        "defaults": {},
         "overrides": []
       },
       "fill": 0,
@@ -51,7 +48,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 3
+        "y": 1
       },
       "hiddenSeries": false,
       "id": 24,
@@ -73,7 +70,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.3.2",
+      "pluginVersion": "7.5.17",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -83,20 +80,23 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "ray_cluster_active_nodes",
+          "exemplar": true,
+          "expr": "ray_cluster_active_nodes{cluster_id=\"$cluster_id\"}",
           "interval": "",
           "legendFormat": "Active Nodes ({{node_type}})",
           "queryType": "randomWalk",
           "refId": "A"
         },
         {
-          "expr": "ray_cluster_failed_nodes",
+          "exemplar": true,
+          "expr": "ray_cluster_failed_nodes{cluster_id=\"$cluster_id\"}",
           "interval": "",
           "legendFormat": "Failed Nodes {{node_type}}",
           "refId": "B"
         },
         {
-          "expr": "ray_cluster_pending_nodes",
+          "exemplar": true,
+          "expr": "ray_cluster_pending_nodes{cluster_id=\"$cluster_id\"}",
           "interval": "",
           "legendFormat": "Pending Nodes ({{node_type}})",
           "refId": "C"
@@ -148,7 +148,6 @@
       "description": "",
       "fieldConfig": {
         "defaults": {
-          "custom": {},
           "decimals": 1,
           "mappings": [],
           "thresholds": {
@@ -172,12 +171,14 @@
         "h": 5,
         "w": 24,
         "x": 0,
-        "y": 10
+        "y": 8
       },
       "id": 10,
       "options": {
         "reduceOptions": {
-          "calcs": ["mean"],
+          "calcs": [
+            "mean"
+          ],
           "fields": "",
           "values": false
         },
@@ -185,30 +186,34 @@
         "showThresholdMarkers": true,
         "text": {}
       },
-      "pluginVersion": "7.3.2",
+      "pluginVersion": "7.5.17",
       "targets": [
         {
-          "expr": "sum(ray_node_cpu_utilization{instance=~\"$Instance\"} * ray_node_cpu_count{instance=~\"$Instance\"}) / sum(ray_node_cpu_count{instance=~\"$Instance\"})",
+          "exemplar": true,
+          "expr": "sum(ray_node_cpu_utilization{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} * ray_node_cpu_count{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}) / sum(ray_node_cpu_count{instance=~\"$Instance\",cluster_id=\"$cluster_id\"})",
           "interval": "",
           "legendFormat": "CPU Utilization",
           "queryType": "randomWalk",
           "refId": "A"
         },
         {
-          "expr": "sum(ray_node_mem_used{instance=~\"$Instance\"}) * 100 / sum(ray_node_mem_total{instance=~\"$Instance\"})",
+          "exemplar": true,
+          "expr": "sum(ray_node_mem_used{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}) * 100 / sum(ray_node_mem_total{instance=~\"$Instance\",cluster_id=\"$cluster_id\"})",
           "interval": "",
           "legendFormat": "Memory Utilization",
           "refId": "B"
         },
         {
-          "expr": "sum(ray_node_disk_usage{instance=~\"$Instance\"}) * 100 / sum(ray_node_disk_usage{instance=~\"$Instance\"} + ray_node_disk_free{instance=~\"$Instance\"})",
+          "exemplar": true,
+          "expr": "sum(ray_node_disk_usage{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}) * 100 / sum(ray_node_disk_usage{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} + ray_node_disk_free{instance=~\"$Instance\",cluster_id=\"$cluster_id\"})",
           "hide": false,
           "interval": "",
           "legendFormat": "Disk Utilization",
           "refId": "C"
         },
         {
-          "expr": "ray_node_gpus_utilization{instance=~\"$Instance\"} * 100 / ray_node_gpus_available{instance=~\"$Instance\"}",
+          "exemplar": true,
+          "expr": "ray_node_gpus_utilization{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} * 100 / ray_node_gpus_available{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
           "interval": "",
           "legendFormat": "GPUs Utilization",
           "refId": "D"
@@ -226,9 +231,7 @@
       "dashes": false,
       "datasource": "Prometheus",
       "fieldConfig": {
-        "defaults": {
-          "custom": {}
-        },
+        "defaults": {},
         "overrides": []
       },
       "fill": 0,
@@ -237,7 +240,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 15
+        "y": 13
       },
       "hiddenSeries": false,
       "id": 2,
@@ -259,7 +262,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.3.2",
+      "pluginVersion": "7.5.17",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -269,7 +272,8 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "ray_node_cpu_utilization{instance=~\"$Instance\"} * ray_node_cpu_count{instance=~\"$Instance\"} / 100",
+          "exemplar": true,
+          "expr": "ray_node_cpu_utilization{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} * ray_node_cpu_count{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} / 100",
           "instant": false,
           "interval": "",
           "legendFormat": "CPU Usage: {{instance}}",
@@ -277,7 +281,8 @@
           "refId": "A"
         },
         {
-          "expr": "ray_node_cpu_count{instance=~\"$Instance\"}",
+          "exemplar": true,
+          "expr": "ray_node_cpu_count{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
           "instant": false,
           "interval": "",
           "legendFormat": "CPU Count: {{instance}}",
@@ -333,7 +338,6 @@
       "datasource": "Prometheus",
       "fieldConfig": {
         "defaults": {
-          "custom": {},
           "unit": "bytes"
         },
         "overrides": []
@@ -344,7 +348,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 15
+        "y": 13
       },
       "hiddenSeries": false,
       "id": 4,
@@ -366,7 +370,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.3.2",
+      "pluginVersion": "7.5.17",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -376,20 +380,23 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "ray_node_mem_used{instance=~\"$Instance\"}",
+          "exemplar": true,
+          "expr": "ray_node_mem_used{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
           "interval": "",
           "legendFormat": "Memory Used: {{instance}}",
           "queryType": "randomWalk",
           "refId": "A"
         },
         {
-          "expr": "ray_node_mem_available{instance=~\"$Instance\"}",
+          "exemplar": true,
+          "expr": "ray_node_mem_available{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
           "interval": "",
           "legendFormat": "Memory Available: {{instance}}",
           "refId": "B"
         },
         {
-          "expr": "ray_node_mem_total{instance=~\"$Instance\"}",
+          "exemplar": true,
+          "expr": "ray_node_mem_total{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
           "interval": "",
           "legendFormat": "Memory Total: {{instance}}",
           "refId": "C"
@@ -444,7 +451,6 @@
       "datasource": "Prometheus",
       "fieldConfig": {
         "defaults": {
-          "custom": {},
           "unit": "bytes"
         },
         "overrides": []
@@ -455,7 +461,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 15
+        "y": 13
       },
       "hiddenSeries": false,
       "id": 6,
@@ -477,7 +483,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.3.2",
+      "pluginVersion": "7.5.17",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -487,14 +493,16 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "ray_node_disk_usage{instance=~\"$Instance\"}",
+          "exemplar": true,
+          "expr": "ray_node_disk_usage{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
           "interval": "",
           "legendFormat": "Disk Used: {{instance}}",
           "queryType": "randomWalk",
           "refId": "A"
         },
         {
-          "expr": "ray_node_disk_usage{instance=~\"$Instance\"} / (ray_node_disk_utilization_percentage{instance=~\"$Instance\"} / 100)",
+          "exemplar": true,
+          "expr": "ray_node_disk_usage{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} / (ray_node_disk_utilization_percentage{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} / 100)",
           "instant": false,
           "interval": "",
           "legendFormat": "Disk Total: {{instance}}",
@@ -551,7 +559,6 @@
       "decimals": 2,
       "fieldConfig": {
         "defaults": {
-          "custom": {},
           "displayName": "ray_node_network_receive_speed",
           "unit": "binBps"
         },
@@ -563,7 +570,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 21
+        "y": 19
       },
       "hiddenSeries": false,
       "id": 20,
@@ -586,7 +593,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.3.2",
+      "pluginVersion": "7.5.17",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -596,14 +603,16 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "ray_node_network_receive_speed{instance=~\"$Instance\"}",
+          "exemplar": true,
+          "expr": "ray_node_network_receive_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
           "interval": "",
           "legendFormat": "Network Receive: {{instance}}",
           "queryType": "randomWalk",
           "refId": "A"
         },
         {
-          "expr": "ray_node_network_send_speed{instance=~\"$Instance\"}",
+          "exemplar": true,
+          "expr": "ray_node_network_send_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
           "interval": "",
           "legendFormat": "Network Send: {{instance}}",
           "refId": "B"
@@ -657,9 +666,7 @@
       "dashes": false,
       "datasource": "Prometheus",
       "fieldConfig": {
-        "defaults": {
-          "custom": {}
-        },
+        "defaults": {},
         "overrides": []
       },
       "fill": 1,
@@ -668,7 +675,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 21
+        "y": 19
       },
       "hiddenSeries": false,
       "id": 8,
@@ -690,7 +697,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.3.2",
+      "pluginVersion": "7.5.17",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -700,14 +707,16 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "ray_node_gpus_utilization{instance=~\"$Instance\"} OR vector(0)",
+          "exemplar": true,
+          "expr": "ray_node_gpus_utilization{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} OR vector(0)",
           "interval": "",
           "legendFormat": "GPU Usage: {{instance}}",
           "queryType": "randomWalk",
           "refId": "A"
         },
         {
-          "expr": "ray_node_gpus_available{instance=~\"$Instance\"} OR vector(0)",
+          "exemplar": true,
+          "expr": "ray_node_gpus_available{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} OR vector(0)",
           "interval": "",
           "legendFormat": "GPU Available: {{instance}}",
           "refId": "B"
@@ -762,7 +771,6 @@
       "datasource": "Prometheus",
       "fieldConfig": {
         "defaults": {
-          "custom": {},
           "unit": "bytes"
         },
         "overrides": []
@@ -773,7 +781,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 21
+        "y": 19
       },
       "hiddenSeries": false,
       "id": 18,
@@ -795,7 +803,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.3.2",
+      "pluginVersion": "7.5.17",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -805,20 +813,23 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "ray_node_gram_used{instance=~\"$Instance\"} or vector(0)",
+          "exemplar": true,
+          "expr": "ray_node_gram_used{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} or vector(0)",
           "interval": "",
           "legendFormat": "Used GRAM: {{instance}}",
           "queryType": "randomWalk",
           "refId": "A"
         },
         {
-          "expr": "ray_node_gram_available{instance=~\"$Instance\"} or vector(0)",
+          "exemplar": true,
+          "expr": "ray_node_gram_available{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} or vector(0)",
           "interval": "",
           "legendFormat": "Available GRAM: {{instance}}",
           "refId": "B"
         },
         {
-          "expr": "ray_node_gram_used{instance=~\"$Instance\"} + on(NodeAddress) node_gram_available{instance=~\"$Instance\"} or vector(0)",
+          "exemplar": true,
+          "expr": "ray_node_gram_used{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} + on(NodeAddress) node_gram_available{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} or vector(0)",
           "interval": "",
           "legendFormat": "Total GRAM: {{instance}}",
           "refId": "C"
@@ -867,7 +878,7 @@
     }
   ],
   "refresh": "",
-  "schemaVersion": 26,
+  "schemaVersion": 27,
   "style": "dark",
   "tags": [],
   "templating": {
@@ -875,9 +886,13 @@
       {
         "allValue": null,
         "current": {
-          "selected": true,
-          "text": ["All"],
-          "value": ["$__all"]
+          "selected": false,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "datasource": "Prometheus",
         "definition": "label_values(instance)",
@@ -889,7 +904,10 @@
         "multi": true,
         "name": "Instance",
         "options": [],
-        "query": "label_values(instance)",
+        "query": {
+          "query": "label_values(instance)",
+          "refId": "Prometheus-Instance-Variable-Query"
+        },
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -899,6 +917,28 @@
         "tagsQuery": "",
         "type": "query",
         "useTags": false
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        },
+        "description": "Optional id that identifies the ray cluster. Useful if this dashboard is used in a grafana instance that is monitoring multiple ray clusters.",
+        "error": null,
+        "hide": 0,
+        "label": "ClusterId",
+        "name": "cluster_id",
+        "options": [
+          {
+            "selected": true,
+            "text": "",
+            "value": ""
+          }
+        ],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "textbox"
       }
     ]
   },
@@ -910,5 +950,5 @@
   "timezone": "",
   "title": "Default Dashboard",
   "uid": "rayDefaultDashboard",
-  "version": 2
+  "version": 1
 }

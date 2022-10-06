@@ -1019,7 +1019,6 @@ class TorchPolicy(Policy):
             extra_fetches[SampleBatch.ACTION_LOGP] = logp
 
         # Update our global timestep by the batch size.
-        print(f"increasing global_timestep by {len(input_dict[SampleBatch.CUR_OBS])}")
         self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
 
         return convert_to_numpy((actions, state_out, extra_fetches))
