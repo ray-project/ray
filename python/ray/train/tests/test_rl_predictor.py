@@ -26,6 +26,7 @@ from ray.rllib.policy import Policy
 # from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.rl import RLTrainer
 
+# from ray.train.rl.rl_checkpoint import RLCheckpoint
 # from ray.train.rl.rl_predictor import RLPredictor
 from ray.tune.trainable.util import TrainableUtil
 
@@ -93,8 +94,8 @@ def create_checkpoint(
     preprocessor: Optional[Preprocessor] = None, config: Optional[dict] = None
 ) -> Checkpoint:
     rl_trainer = RLTrainer(
-        algorithm=_DummyAlgo,
-        config=config or {},
+        algorithm="PPO",
+        config=config or {"env": "CartPole-v1"},
         preprocessor=preprocessor,
     )
     rl_trainable_cls = rl_trainer.as_trainable()
