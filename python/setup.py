@@ -225,8 +225,6 @@ if setup_spec.type == SetupType.RAY:
             pandas_dep,
             "pyarrow >= 6.0.1, < 7.0.0",
             "fsspec",
-            "pymongo",
-            "pymongoarrow",
         ],
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
