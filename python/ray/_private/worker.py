@@ -1260,6 +1260,8 @@ def init(
                 usage_lib.put_pre_init_usage_stats()
         else:
             usage_lib.put_pre_init_usage_stats()
+
+        usage_lib.record_library_usage("client")
         return ctx
 
     if kwargs:
