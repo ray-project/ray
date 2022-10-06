@@ -57,7 +57,7 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
     import pyspark
-    import pymongoarrow
+    import pymongoarrow.api
 
 
 T = TypeVar("T")

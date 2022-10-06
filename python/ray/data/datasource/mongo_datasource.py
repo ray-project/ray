@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.data.block import (
@@ -11,8 +11,8 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
 
-import pymongo
-from pymongoarrow.api import Schema
+if TYPE_CHECKING:
+    import pymongoarrow.api
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,8 @@ class MongoDatasource(Datasource):
         database: str,
         collection: str,
     ) -> List[ObjectRef[WriteResult]]:
+        import pymongo
+
         _validate_database_collection_exist(
             pymongo.MongoClient(uri), database, collection
         )
@@ -75,9 +77,11 @@ class _MongoDatasourceReader(Reader):
         database: str,
         collection: str,
         pipeline: Optional[List[Dict]] = None,
-        schema: Optional[Schema] = None,
+        schema: Optional["pymongoarrow.api.Schema"] = None,
         **mongo_args,
     ):
+        import pymongo
+
         self._uri = uri
         self._database = database
         self._collection = collection
@@ -123,9 +127,10 @@ class _MongoDatasourceReader(Reader):
             min_id: ObjectId,
             max_id: ObjectId,
             right_closed: bool,
-            schema: Schema,
+            schema: "pymongoarrow.api.Schema",
             kwargs: dict,
         ) -> Block:
+            import pymongo
             from pymongoarrow.api import aggregate_arrow_all
 
             # A range query over the partition.
