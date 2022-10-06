@@ -2976,12 +2976,6 @@ void CoreWorker::AddSpilledObjectLocationOwner(
     // object is spilled before the reply from the task that created the
     // object. Add the dynamically created object to our ref counter so that we
     // know that it exists.
-    // NOTE(swang): We don't need to do this for in-plasma object locations because:
-    // 1) We will add the primary copy as a location when processing the task
-    // reply.
-    // 2) It is not possible to copy the object to a second location until
-    // after the owner has added the object to the ref count table (since no
-    // raylet can get the current location of the object until this happens).
     RAY_CHECK(!generator_id->IsNil());
     reference_counter_->AddDynamicReturn(object_id, *generator_id);
   }
@@ -3004,6 +2998,17 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
   auto reference_exists = reference_counter_->AddObjectLocation(object_id, node_id);
   if (!reference_exists) {
     RAY_LOG(DEBUG) << "Object " + object_id.Hex() + " not found";
+  }
+
+  // For generator tasks where we haven't yet received the task reply, the
+  // internal ObjectRefs may not be added yet, so we don't find out about these
+  // until the task finishes.
+  const auto &maybe_generator_id = task_manager_->TaskGeneratorId(object_id.TaskId());
+  if (!maybe_generator_id.IsNil()) {
+    // The task is a generator and may not have finished yet. Add the internal
+    // ObjectID so that we can update its location.
+    reference_counter_->AddDynamicReturn(object_id, maybe_generator_id);
+    RAY_UNUSED(reference_counter_->AddObjectLocation(object_id, node_id));
   }
 }
 

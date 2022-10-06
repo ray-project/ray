@@ -809,5 +809,17 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
   reply->set_tasks_total(total);
 }
 
+ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return ObjectID::Nil();
+  }
+  if (!it->second.spec.ReturnsDynamic()) {
+    return ObjectID::Nil();
+  }
+  return it->second.spec.ReturnId(0);
+}
+
 }  // namespace core
 }  // namespace ray
