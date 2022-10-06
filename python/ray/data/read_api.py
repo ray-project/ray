@@ -49,8 +49,6 @@ from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup
 
-from pymongoarrow.api import Schema
-
 if TYPE_CHECKING:
     import dask
     import datasets
@@ -59,6 +57,7 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
     import pyspark
+    import pymongoarrow
 
 
 T = TypeVar("T")
@@ -332,7 +331,7 @@ def read_mongo(
     collection: str,
     *,
     pipeline: Optional[List[Dict]] = None,
-    schema: Optional[Schema] = None,
+    schema: Optional["pymongoarrow.api.Schema"] = None,
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
     **mongo_args,
