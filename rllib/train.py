@@ -87,7 +87,8 @@ def file(
       rllib train file tuned_examples/ppo/cartpole-ppo.yaml\n\n
 
     You can also run an example from a URL with the file content:\n
-      rllib train file https://raw.githubusercontent.com/ray-project/ray/master/rllib/tuned_examples/ppo/cartpole-ppo.yaml
+      rllib train file https://raw.githubusercontent.com/ray-project/ray/\
+      master/rllib/tuned_examples/ppo/cartpole-ppo.yaml
     """
     from ray.rllib.common import download_example_file
 
