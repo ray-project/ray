@@ -7,9 +7,11 @@ from ray.rllib.models.base_model import (
     ForwardOutputType,
 )
 import numpy as np
-from ray.rllib.models.temp_spec_classes import TensorDict, SpecDict
+from ray.rllib.models.temp_spec_classes import TensorDict
+from ray.rllib.models.specs.specs_dict import ModelSpecDict
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check
+from ray.rllib.models.specs.specs_np import NPSpecs
 
 
 class NpRecurrentModelImpl(RecurrentModel):
@@ -27,22 +29,22 @@ class NpRecurrentModelImpl(RecurrentModel):
     @property
     @override(RecurrentModel)
     def input_spec(self):
-        return SpecDict({"in": "h"}, h=3)
+        return ModelSpecDict({"in": NPSpecs("h", h=3)})
 
     @property
     @override(RecurrentModel)
     def output_spec(self):
-        return SpecDict({"out": "o"}, o=2)
+        return ModelSpecDict({"out": NPSpecs("o", o=2)})
 
     @property
     @override(RecurrentModel)
     def next_state_spec(self):
-        return SpecDict({"out": "i"}, i=4)
+        return ModelSpecDict({"out": NPSpecs("i", i=4)})
 
     @property
     @override(RecurrentModel)
     def prev_state_spec(self):
-        return SpecDict({"in": "o"}, o=1)
+        return ModelSpecDict({"in": NPSpecs("o", o=1)})
 
     @override(RecurrentModel)
     def _update_inputs_and_prev_state(self, inputs, states):
@@ -85,12 +87,12 @@ class NpModelImpl(Model):
     @property
     @override(Model)
     def input_spec(self):
-        return SpecDict({"in": "h"}, h=3)
+        return ModelSpecDict({"in": NPSpecs("h", h=3)})
 
     @property
     @override(Model)
     def output_spec(self):
-        return SpecDict({"out": "o"}, o=2)
+        return ModelSpecDict({"out": NPSpecs("o", o=2)})
 
     @override(Model)
     def _update_inputs(self, inputs):
@@ -118,7 +120,7 @@ class TestRecurrentModel(unittest.TestCase):
         and outputs correct values."""
         output = NpRecurrentModelImpl().initial_state()
         desired = TensorDict({"in": np.arange(1)})
-        for k in output.flatten().keys() | desired.flatten().keys():
+        for k in output.shallow_keys() | desired.shallow_keys():
             check(output[k], desired[k])
 
     def test_unroll(self):
@@ -133,9 +135,9 @@ class TestRecurrentModel(unittest.TestCase):
             TensorDict({"out": np.arange(4)}),
         )
 
-        for k in out.flatten().keys() | desired.flatten().keys():
+        for k in out.shallow_keys() | desired.shallow_keys():
             check(out[k], desired[k])
-        for k in out_state.flatten().keys() | desired_state.flatten().keys():
+        for k in out_state.shallow_keys() | desired_state.shallow_keys():
             check(out_state[k], desired_state[k])
 
     def test_unroll_filter(self):
