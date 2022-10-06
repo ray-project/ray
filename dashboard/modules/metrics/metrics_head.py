@@ -1,4 +1,5 @@
 from typing import Any, Dict, Optional
+import aiohttp
 import logging
 import os
 from pydantic import BaseModel
