@@ -404,7 +404,7 @@ def test_newer_task_not_retriable_kill_older_retriable_task_first(
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_put_object_consume_shared_mem_and_page_cache_task_usage_slightly_below_limit_does_not_crash():
+def test_put_object_task_usage_slightly_below_limit_does_not_crash():
     with ray.init(
         num_cpus=1,
         object_store_memory=2 << 30,
