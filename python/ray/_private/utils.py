@@ -635,8 +635,8 @@ def get_cgroupv1_used_memory(filename):
                 inactive_file_bytes = int(line.split()[1])
         if cache_bytes >= 0 and rss_bytes >= 0 and inactive_file_bytes >= 0:
             working_set = rss_bytes + cache_bytes - inactive_file_bytes
-        if rss_bytes >= 0 or working_set >= 0:
-            return max(working_set, rss_bytes)
+            assert working_set >= 0
+            return working_set
         return None
 
 
