@@ -85,6 +85,8 @@ Pillow; platform_system != "Windows"
 proxy.py
 pyarrow >= 6.0.1, < 7.0.0
 pygments
+pymongo
+pymongoarrow
 pyspark==3.1.2
 pytest==7.0.1
 pytest-asyncio==0.16.0
