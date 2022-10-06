@@ -760,7 +760,10 @@ class TrialRunner:
             trial_to_add = trial
             if trial.status == Trial.ERROR:
                 if resume_errored:
-                    trial_to_add = trial.reset()
+                    # Keep trial ID on resume
+                    trial_to_add.error_file = None
+                    trial_to_add.pickled_error_file = None
+                    trial_to_add.set_status(Trial.PENDING)
                     trial_to_add.restore_path = trial.checkpoint.dir_or_data
                 elif restart_errored:
                     trial_to_add = trial.reset()
