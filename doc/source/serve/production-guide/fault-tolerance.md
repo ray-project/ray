@@ -26,7 +26,7 @@ By default, the Serve controller periodically health-checks each Serve deploymen
 You can define custom application-level health-checks and adjust their frequency and timeout.
 To define a custom health-check, add a `check_health` method to your deployment class.
 This method should take no arguments and return no result, and it should raise an exception if the replica should be considered unhealthy.
-The Serve controller logs the raised exception if the health-check fails.
+If the health-check fails, the Serve controller logs the exception, kills the unhealthy replica(s), and restarts them.
 You can also use the deployment options to customize how frequently the health-check is run and the timeout after which a replica is marked unhealthy.
 
 ```{literalinclude} ../doc_code/fault_tolerance/replica_health_check.py
@@ -485,6 +485,10 @@ $ python
 >>> requests.get("http://localhost:8000").json()
 347
 ```
+
+:::{note}
+While the controller is dead, replica health-checking and deployment autoscaling will not work. They'll continue working once the controller recovers.
+:::
 
 ### Deployment replica failure
 
