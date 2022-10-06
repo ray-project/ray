@@ -115,7 +115,7 @@ message PutRequest {
   // Total size in bytes of the data being put
   int64 total_size = 5;
   // The owner of the put
-  bytes _owner_id = 6;
+  bytes owner_id = 6;
 }
 
 message PutResponse {

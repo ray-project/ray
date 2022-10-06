@@ -496,13 +496,13 @@ class Worker:
         return self._put_pickled(data, client_ref_id, _owner)
 
     def _put_pickled(
-        self, data, client_ref_id: bytes, _owner: Optional[ClientActorHandle] = None
+        self, data, client_ref_id: bytes, owner: Optional[ClientActorHandle] = None
     ):
         req = ray_client_pb2.PutRequest(data=data)
         if client_ref_id is not None:
             req.client_ref_id = client_ref_id
-        if _owner is not None:
-            req._owner_id = _owner.actor_ref.id
+        if owner is not None:
+            req.owner_id = owner.actor_ref.id
 
         resp = self.data_client.PutObject(req)
         if not resp.valid:

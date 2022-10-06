@@ -508,7 +508,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     ) -> ray_client_pb2.PutResponse:
         """gRPC entrypoint for unary PutObject"""
         return self._put_object(
-            request.data, request.client_ref_id, "", request._owner_id, context
+            request.data, request.client_ref_id, "", request.owner_id, context
         )
 
     def _put_object(
@@ -516,7 +516,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         data: Union[bytes, bytearray],
         client_ref_id: bytes,
         client_id: str,
-        _owner_id: bytes,
+        owner_id: bytes,
         context=None,
     ):
         """Put an object in the cluster with ray.put() via gRPC.
@@ -527,18 +527,18 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             client_ref_id: The id associated with this object on the client.
             client_id: The client who owns this data, for tracking when to
               delete this reference.
-            _owner_id: The owner id of the object.
+            owner_id: The owner id of the object.
             context: gRPC context.
         """
         try:
             obj = loads_from_client(data, self)
 
-            if _owner_id:
-                _owner = self.actor_refs[_owner_id]
+            if owner_id:
+                owner = self.actor_refs[owner_id]
             else:
-                _owner = None
+                owner = None
             with disable_client_hook():
-                objectref = ray.put(obj, _owner=_owner)
+                objectref = ray.put(obj, _owner=owner)
         except Exception as e:
             logger.exception("Put failed:")
             return ray_client_pb2.PutResponse(
