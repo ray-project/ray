@@ -407,7 +407,7 @@ def test_newer_task_not_retriable_kill_older_retriable_task_first(
 def test_put_object_consume_shared_mem_and_page_cache_task_usage_slightly_below_limit_does_not_crash():
     with ray.init(
         num_cpus=1,
-        object_store_memory=11 << 30,
+        object_store_memory=2 << 30,
         _system_config={
             "memory_monitor_interval_ms": 0,
         },
@@ -421,7 +421,7 @@ def test_put_object_consume_shared_mem_and_page_cache_task_usage_slightly_below_
             timeout=90,
         )
 
-        entries = int((10 << 30) / 8)
+        entries = int((1 << 30) / 8)
         obj_ref = ray.put(np.random.rand(entries))
         ray.get(obj_ref)
 
