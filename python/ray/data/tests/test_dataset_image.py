@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import pytest
 from ray.data.datasource.image_folder_datasource import (
@@ -188,6 +190,37 @@ def test_image_folder_reader_estimate_data_size(
     assert (
         data_size >= expected_size and data_size <= expected_size * 1.5
     ), "estimated data size is out of expected bound"
+
+
+def test_image_folder_dynamic_block_split(ray_start_regular_shared):
+    ctx = ray.data.context.DatasetContext.get_current()
+    target_max_block_size = ctx.target_max_block_size
+    block_splitting_enabled = ctx.block_splitting_enabled
+    # Reduce target max block size to trigger block splitting on small input.
+    # Otherwise we have to generate big input files, which is unnecessary.
+    ctx.target_max_block_size = 1
+    ctx.block_splitting_enabled = True
+    try:
+        root = "example://image-folders/simple"
+        ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, parallelism=1)
+        assert ds.num_blocks() == 1
+        ds.fully_executed()
+        # Verify dynamic block splitting taking effect to generate more blocks.
+        assert ds.num_blocks() == 3
+
+        # NOTE: Need to wait for 1 second before checking stats, because we report
+        # stats to stats actors asynchronously when returning the blocks metadata.
+        # TODO(chengsu): clean it up after refactoring lazy block list.
+        time.sleep(1)
+        assert "3 blocks executed" in ds.stats()
+
+        # Test union of same datasets
+        union_ds = ds.union(ds, ds, ds).fully_executed()
+        assert union_ds.num_blocks() == 12
+        assert "3 blocks executed" in union_ds.stats()
+    finally:
+        ctx.target_max_block_size = target_max_block_size
+        ctx.block_splitting_enabled = block_splitting_enabled
 
 
 if __name__ == "__main__":

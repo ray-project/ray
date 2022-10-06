@@ -4,6 +4,9 @@ from ray.data.extensions.tensor_extension import (
     TensorArrayElement,
     ArrowTensorType,
     ArrowTensorArray,
+    ArrowVariableShapedTensorType,
+    ArrowVariableShapedTensorArray,
+    column_needs_tensor_extension,
 )
 
 __all__ = [
@@ -13,4 +16,7 @@ __all__ = [
     "TensorArrayElement",
     "ArrowTensorType",
     "ArrowTensorArray",
+    "ArrowVariableShapedTensorType",
+    "ArrowVariableShapedTensorArray",
+    "column_needs_tensor_extension",
 ]

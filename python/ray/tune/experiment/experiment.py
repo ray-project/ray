@@ -1,4 +1,5 @@
 import copy
+import datetime
 from functools import partial
 import grpc
 import inspect
@@ -7,8 +8,20 @@ import os
 from pathlib import Path
 from pickle import PicklingError
 import traceback
-from typing import Any, Dict, Optional, Sequence, Union, Callable, Type, List
+from typing import (
+    Any,
+    Dict,
+    Optional,
+    Sequence,
+    Union,
+    Callable,
+    Type,
+    List,
+    Mapping,
+    TYPE_CHECKING,
+)
 
+from ray.air import CheckpointConfig
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -17,6 +30,10 @@ from ray.tune.syncer import SyncConfig
 from ray.tune.utils import date_str, _detect_checkpoint_function
 
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    from ray.tune.experiment import Trial
+    from ray.tune import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
 
@@ -105,26 +122,26 @@ class Experiment:
 
     def __init__(
         self,
-        name,
-        run,
-        stop=None,
-        time_budget_s=None,
-        config=None,
-        resources_per_trial=None,
-        num_samples=1,
-        local_dir=None,
+        name: str,
+        run: Union[str, Callable, Type],
+        *,
+        stop: Optional[Union[Mapping, Stopper, Callable[[str, Mapping], bool]]] = None,
+        time_budget_s: Optional[Union[int, float, datetime.timedelta]] = None,
+        config: Optional[Dict[str, Any]] = None,
+        resources_per_trial: Union[
+            None, Mapping[str, Union[float, int, Mapping]], "PlacementGroupFactory"
+        ] = None,
+        num_samples: int = 1,
+        local_dir: Optional[str] = None,
         _experiment_checkpoint_dir: Optional[str] = None,
-        sync_config=None,
-        trial_name_creator=None,
-        trial_dirname_creator=None,
-        log_to_file=False,
-        checkpoint_freq=0,
-        checkpoint_at_end=False,
-        keep_checkpoints_num=None,
-        checkpoint_score_attr=None,
-        export_formats=None,
-        max_failures=0,
-        restore=None,
+        sync_config: Optional[Union[SyncConfig, dict]] = None,
+        checkpoint_config: Optional[Union[CheckpointConfig, dict]] = None,
+        trial_name_creator: Optional[Callable[["Trial"], str]] = None,
+        trial_dirname_creator: Optional[Callable[["Trial"], str]] = None,
+        log_to_file: bool = False,
+        export_formats: Optional[Sequence] = None,
+        max_failures: int = 0,
+        restore: Optional[str] = None,
     ):
 
         local_dir = _get_local_dir_with_expand_user(local_dir)
@@ -140,20 +157,30 @@ class Experiment:
             self.dir_name = os.path.relpath(_experiment_checkpoint_dir, local_dir)
 
         config = config or {}
-        sync_config = sync_config or SyncConfig()
+
+        if isinstance(sync_config, dict):
+            sync_config = SyncConfig(**sync_config)
+        else:
+            sync_config = sync_config or SyncConfig()
+
+        if isinstance(checkpoint_config, dict):
+            checkpoint_config = CheckpointConfig(**checkpoint_config)
+        else:
+            checkpoint_config = checkpoint_config or CheckpointConfig()
+
         if (
             callable(run)
             and not inspect.isclass(run)
             and _detect_checkpoint_function(run)
         ):
-            if checkpoint_at_end:
+            if checkpoint_config.checkpoint_at_end:
                 raise ValueError(
                     "'checkpoint_at_end' cannot be used with a "
                     "checkpointable function. You can specify "
                     "and register checkpoints within "
                     "your trainable function."
                 )
-            if checkpoint_freq:
+            if checkpoint_config.checkpoint_frequency:
                 raise ValueError(
                     "'checkpoint_freq' cannot be used with a "
                     "checkpointable function. You can specify checkpoints "
@@ -176,17 +203,12 @@ class Experiment:
 
         self.name = name or self._run_identifier
 
+        self.sync_config = sync_config
+
         if not _experiment_checkpoint_dir:
             self.dir_name = _get_dir_name(run, name, self.name)
 
         assert self.dir_name
-
-        if sync_config.upload_dir:
-            self.remote_checkpoint_dir = os.path.join(
-                sync_config.upload_dir, self.dir_name
-            )
-        else:
-            self.remote_checkpoint_dir = None
 
         self._stopper = None
         stopping_criteria = {}
@@ -239,15 +261,12 @@ class Experiment:
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
             "local_dir": local_dir,
+            "experiment_dir_name": self.dir_name,
             "sync_config": sync_config,
-            "remote_checkpoint_dir": self.remote_checkpoint_dir,
+            "checkpoint_config": checkpoint_config,
             "trial_name_creator": trial_name_creator,
             "trial_dirname_creator": trial_dirname_creator,
             "log_to_file": (stdout_file, stderr_file),
-            "checkpoint_freq": checkpoint_freq,
-            "checkpoint_at_end": checkpoint_at_end,
-            "keep_checkpoints_num": keep_checkpoints_num,
-            "checkpoint_score_attr": checkpoint_score_attr,
             "export_formats": export_formats or [],
             "max_failures": max_failures,
             "restore": os.path.abspath(os.path.expanduser(restore))
@@ -276,6 +295,9 @@ class Experiment:
 
         if "sync_config" in spec and isinstance(spec["sync_config"], dict):
             spec["sync_config"] = SyncConfig(**spec["sync_config"])
+
+        if "checkpoint_config" in spec and isinstance(spec["checkpoint_config"], dict):
+            spec["checkpoint_config"] = CheckpointConfig(**spec["checkpoint_config"])
 
         spec = copy.deepcopy(spec)
 
@@ -408,6 +430,12 @@ class Experiment:
             return self._experiment_checkpoint_dir
         assert self.local_dir
         return os.path.join(self.local_dir, self.dir_name)
+
+    @property
+    def remote_checkpoint_dir(self) -> Optional[str]:
+        if not self.sync_config.upload_dir or not self.dir_name:
+            return None
+        return os.path.join(self.sync_config.upload_dir, self.dir_name)
 
     @property
     def run_identifier(self):
