@@ -23,7 +23,66 @@ DATA_TYPE = Union[NestedDict[Any], Mapping[str, Any]]
 
 
 class ModelSpecDict(NestedDict[SPEC_LEAF_TYPE]):
-    """A NestedDict containing specs and class types."""
+    """A NestedDict containing `TensorSpecs` and `Types`.
+
+    It can be used to validate an incoming data against a nested dictionary of specs.
+
+    Examples:
+
+        Basic validation:
+        -----------------
+        >>> spec_dict = ModelSpecDict({
+        ...     "obs": {
+        ...         "arm":      TensorSpecs("b, d_a", d_a=64),
+        ...         "gripper":  TensorSpecs("b, d_g", d_g=12)
+        ...     },
+        ...     "action": TensorSpecs("b, d_a", h=12),
+        ...     "action_dist": torch.distributions.Categorical
+        ... })
+
+        >>> spec_dict.validate({
+        ...     "obs": {
+        ...         "arm":      torch.randn(32, 64),
+        ...         "gripper":  torch.randn(32, 12)
+        ...     },
+        ...     "action": torch.randn(32, 12),
+        ...     "action_dist": torch.distributions.Categorical(torch.randn(32, 12))
+        ... }) # No error
+
+        >>> spec_dict.validate({
+        ...     "obs": {
+        ...         "arm":      torch.randn(32, 32), # Wrong shape
+        ...         "gripper":  torch.randn(32, 12)
+        ...     },
+        ...     "action": torch.randn(32, 12),
+        ...     "action_dist": torch.distributions.Categorical(torch.randn(32, 12))
+        ... }) # raises ValueError
+
+        Filtering input data:
+        ---------------------
+        >>> input_data = {
+        ...     "obs": {
+        ...         "arm":      torch.randn(32, 64),
+        ...         "gripper":  torch.randn(32, 12),
+        ...         "unused":   torch.randn(32, 12)
+        ...     },
+        ...     "action": torch.randn(32, 12),
+        ...     "action_dist": torch.distributions.Categorical(torch.randn(32, 12)),
+        ...     "unused": torch.randn(32, 12)
+        ... }
+        >>> input_data.filter(spec_dict) # returns a dict with only the keys in the spec
+        {
+            "obs": {
+                "arm":      input_data["obs"]["arm"],
+                "gripper":  input_data["obs"]["gripper"]
+            },
+            "action": input_data["action"],
+            "action_dist": input_data["action_dist"]
+        }
+
+    Raises:
+        ValueError: If the data doesn't match the spec.
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

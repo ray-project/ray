@@ -1,7 +1,7 @@
 import abc
 from typing import Any, Optional, Dict, List, Tuple, Union, Type
 
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.typing import TensorType
 
 _INVALID_INPUT_DUP_DIM = "Duplicate dimension names in shape ({})"
@@ -13,7 +13,22 @@ _INVALID_TYPE = "Expected tensor type {} but found {}"
 
 
 @DeveloperAPI
-class TensorSpecs(abc.ABC):
+class SpecsAbstract(abs.ABC):
+    @DeveloperAPI
+    @abc.abstractstaticmethod
+    def validate(self, data: Any) -> None:
+        """Validates the given data against this spec.
+
+        Args:
+            data: The input to validate.
+
+        Raises:
+            ValueError: If the data does not match this spec.
+        """
+
+
+@DeveloperAPI
+class TensorSpecs(SpecsAbstract):
     """A base class that specifies the shape and dtype of a tensor.
 
     Args:
@@ -72,7 +87,7 @@ class TensorSpecs(abc.ABC):
         """Returns a dtype specifying the tensor dtype."""
         return self._dtype
 
-    @DeveloperAPI
+    @override(SpecsAbstract)
     def validate(self, tensor: TensorType) -> None:
         """Checks if the shape and dtype of the tensor matches the specification.
 
