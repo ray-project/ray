@@ -650,7 +650,7 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
 
     # Incorrect to parse scientific notation in int64 as PyArrow represents
     # it as double.
-    with pytest.raises(pa.lib.ArrowInvalid):
+    with pytest.raises(ValueError):
         ray.data.read_csv(
             file_path,
             convert_options=csv.ConvertOptions(
@@ -691,7 +691,7 @@ def test_csv_read_filter_non_csv_file(shutdown_only, tmp_path):
 
     # Single non-CSV file.
     error_message = "Failed to read CSV file"
-    with pytest.raises(pa.lib.ArrowInvalid, match=error_message):
+    with pytest.raises(ValueError, match=error_message):
         ray.data.read_csv(path3)
 
     # Single non-CSV file with filter.
@@ -710,7 +710,7 @@ def test_csv_read_filter_non_csv_file(shutdown_only, tmp_path):
 
     # Directory of CSV and non-CSV files.
     error_message = "Failed to read CSV file"
-    with pytest.raises(pa.lib.ArrowInvalid, match=error_message):
+    with pytest.raises(ValueError, match=error_message):
         ray.data.read_csv(tmp_path)
 
     # Directory of CSV and non-CSV files with filter.

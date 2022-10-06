@@ -55,12 +55,12 @@ class CSVDatasource(FileBasedDatasource):
                 except StopIteration:
                     return
         except pa.lib.ArrowInvalid as e:
-            raise pa.lib.ArrowInvalid(
-                f"{e}. Failed to read CSV file: {path}. "
+            raise ValueError(
+                f"Failed to read CSV file: {path}. "
                 "Please check the CSV file has correct format, or filter out non-CSV "
                 "file with 'partition_filter' field. See read_csv() documentation for "
                 "more details."
-            )
+            ) from e
 
     def _write_block(
         self,
