@@ -490,7 +490,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     // because the tasks are pushed directly to the actor, not placed on any queues
     // in task_finisher_.
   } else if (status.ok()) {
-    task_finisher_.CompletePendingTask(task_id, reply, addr);
+    task_finisher_.CompletePendingTask(
+        task_id, reply, addr, reply.is_application_error());
   } else {
     bool is_actor_dead = false;
     rpc::ErrorType error_type;

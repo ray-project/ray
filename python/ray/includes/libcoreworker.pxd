@@ -298,6 +298,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             shared_ptr[LocalMemoryBuffer]
             &creation_task_exception_pb_bytes,
             c_bool *is_retryable_error,
+            c_bool *is_application_error,
             const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
             const c_string name_of_concurrency_group_to_execute,
             c_bool is_reattempt) nogil

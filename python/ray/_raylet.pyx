@@ -606,12 +606,14 @@ cdef execute_task(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_bool *is_retryable_error,
+        c_bool *is_application_error,
         # This parameter is only used for actor creation task to define
         # the concurrency groups of this actor.
         const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
         const c_string c_name_of_concurrency_group_to_execute,
         c_bool is_reattempt):
 
+    is_application_error[0] = False
     is_retryable_error[0] = False
 
     worker = ray._private.worker.global_worker
@@ -806,6 +808,7 @@ cdef execute_task(
                     raise TaskCancelledError(
                             core_worker.get_current_task_id())
                 except Exception as e:
+                    is_application_error[0] = True
                     is_retryable_error[0] = determine_if_retryable(
                         e,
                         serialized_retry_exception_allowlist,
@@ -960,6 +963,7 @@ cdef CRayStatus task_execution_handler(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
         c_bool *is_retryable_error,
+        c_bool *is_application_error,
         const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
         const c_string name_of_concurrency_group_to_execute,
         c_bool is_reattempt) nogil:
@@ -976,6 +980,7 @@ cdef CRayStatus task_execution_handler(
                              returns,
                              dynamic_returns,
                              is_retryable_error,
+                             is_application_error,
                              defined_concurrency_groups,
                              name_of_concurrency_group_to_execute,
                              is_reattempt)
