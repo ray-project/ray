@@ -1,5 +1,6 @@
 import math
 import os
+from unittest.mock import patch
 
 import pytest
 import time
@@ -16,6 +17,7 @@ from ray.train._internal.backend_executor import (
     BackendExecutor,
     InactiveWorkerGroupError,
     TrainBackendError,
+    TrainingWorkerError,
 )
 from ray.train._internal.dataset_spec import RayDatasetSpec
 from ray.train._internal.worker_group import WorkerGroup
@@ -213,20 +215,19 @@ def test_train_single_worker_failure(ray_start_2_cpus):
     assert isinstance(exc.value.__cause__, ValueError)
 
 
-# Failure handling moved to Ray AIR
-# def test_worker_failure(ray_start_2_cpus):
-#     config = TestConfig()
-#     e = BackendExecutor(config, num_workers=2)
-#     e.start()
+def test_worker_failure(ray_start_2_cpus):
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=2)
+    e.start()
 
-#     def train_fail():
-#         ray.actor.exit_actor()
+    def train_fail():
+        ray.actor.exit_actor()
 
-#     new_execute_func = gen_execute_special(train_fail)
-#     with patch.object(WorkerGroup, "execute_async", new_execute_func):
-#         with pytest.raises(TrainingWorkerError):
-#             e.start_training(lambda: 1, dataset_spec=EMPTY_RAY_DATASET_SPEC)
-#             e.finish_training()
+    new_execute_func = gen_execute_special(train_fail)
+    with patch.object(WorkerGroup, "execute_async", new_execute_func):
+        with pytest.raises(TrainingWorkerError):
+            e.start_training(lambda: 1, dataset_spec=EMPTY_RAY_DATASET_SPEC)
+            e.finish_training()
 
 
 def test_mismatch_checkpoint_report(ray_start_2_cpus):
