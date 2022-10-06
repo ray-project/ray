@@ -196,7 +196,7 @@
     script: python workloads/xgboost_benchmark.py
 
     wait_for_nodes:
-      num_nodes: 10
+      num_nodes: 11
 
     type: sdk_command
     file_manager: job
