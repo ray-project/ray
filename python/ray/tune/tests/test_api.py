@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 import ray
 from ray import tune
+from ray.air import CheckpointConfig
 from ray.air._internal.remote_storage import _ensure_directory
 from ray.rllib import _register_all
 from ray.tune import (
@@ -1107,7 +1108,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
         test_trainable.restore(result)
         self.assertEqual(test_trainable.state["hi"], 1)
 
-        trials = run_experiments({"foo": {"run": TestTrain, "checkpoint_at_end": True}})
+        trials = run_experiments(
+            {
+                "foo": {
+                    "run": TestTrain,
+                    "checkpoint_config": CheckpointConfig(checkpoint_at_end=True),
+                }
+            }
+        )
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
@@ -1137,7 +1145,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
         test_trainable.restore(checkpoint_1)
         self.assertEqual(test_trainable.state["iter"], 0)
 
-        trials = run_experiments({"foo": {"run": TestTrain, "checkpoint_at_end": True}})
+        trials = run_experiments(
+            {
+                "foo": {
+                    "run": TestTrain,
+                    "checkpoint_config": CheckpointConfig(checkpoint_at_end=True),
+                }
+            }
+        )
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
