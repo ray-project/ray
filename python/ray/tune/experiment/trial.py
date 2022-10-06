@@ -642,7 +642,6 @@ class Trial:
         self.invalidate_json_state()
 
     def handle_error(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
-        use_restore_counter = False
         if isinstance(exc, _TuneRestoreError):
             exc = exc.exc
             if self.num_restore_failures >= int(
@@ -650,10 +649,10 @@ class Trial:
             ):
                 # Restore was unsuccessful, try again without checkpoint.
                 self.clear_checkpoint()
+                self.num_failures += 1
             else:
                 self.num_restore_failures += 1
-                use_restore_counter = True
-        if not use_restore_counter:
+        else:
             self.num_failures += 1
 
         if self.logdir:
