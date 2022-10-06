@@ -29,7 +29,7 @@ class CSVDatasource(FileBasedDatasource):
     def _read_stream(
         self, f: "pyarrow.NativeFile", path: str, **reader_args
     ) -> Iterator[Block]:
-        import pyarrow
+        import pyarrow as pa
         from pyarrow import csv
 
         read_options = reader_args.pop(
@@ -48,18 +48,18 @@ class CSVDatasource(FileBasedDatasource):
             while True:
                 try:
                     batch = reader.read_next_batch()
-                    table = pyarrow.Table.from_batches([batch], schema=schema)
+                    table = pa.Table.from_batches([batch], schema=schema)
                     if schema is None:
                         schema = table.schema
                     yield table
                 except StopIteration:
                     return
-        except Exception as e:
-            raise type(e)(
+        except pa.lib.ArrowInvalid as e:
+            raise pa.lib.ArrowInvalid(
                 f"{e}. Failed to read CSV file: {path}. "
-                "Please check the file has correct format, or filter out file with "
-                "'partition_filter' field. See read_csv() documentation for more "
-                "details."
+                "Please check the CSV file has correct format, or filter out non-CSV "
+                "file with 'partition_filter' field. See read_csv() documentation for "
+                "more details."
             )
 
     def _write_block(
