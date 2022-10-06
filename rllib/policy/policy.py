@@ -241,7 +241,7 @@ class Policy(metaclass=ABCMeta):
                     policy_state.update({"policy_spec": serialized_policy_spec})
                     policies[pid] = Policy.from_state(policy_state)
             # Newer versions: Get policy states from "policies/" sub-dirs.
-            else:
+            elif checkpoint_info["policy_ids"] is not None:
                 for policy_id in checkpoint_info["policy_ids"]:
                     if policy_ids is None or policy_id in policy_ids:
                         policy_checkpoint_info = get_checkpoint_info(

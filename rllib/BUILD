@@ -1804,7 +1804,7 @@ py_test(
     name = "test_tensor_specs",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/specs/tests/test_specs.py"]
+    srcs = ["models/specs/tests/test_tensor_specs.py"]
 )
 
 # --------------------------------------------------------------------
