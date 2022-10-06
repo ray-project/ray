@@ -532,6 +532,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             metric="error",
             mode="min",
             perturbation_interval=5,
+            hyperparam_mutations={"ignored": [1]},
             burn_in_period=50,
             log_config=True,
             synch=True,
