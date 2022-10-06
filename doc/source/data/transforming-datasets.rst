@@ -346,6 +346,40 @@ The following output types are allowed for per-row UDFs (e.g.,
     :start-after: __writing_simple_out_row_udfs_begin__
     :end-before: __writing_simple_out_row_udfs_end__
 
+----------------------
+Configuring Batch Size
+----------------------
+
+:meth:`ds.map_batches() <ray.data.Dataset.map_batches>` is the canonical parallel
+transformation API for Datasets: it launches parallel tasks over the underlying Datasets
+blocks and maps UDFs over batches of data within those tasks, allowing the UDF to
+implement vectorized operations on batches. An important parameter to
+set is the ``batch_size``, which controls the size of batches provided to the UDF.
+
+.. literalinclude:: ./doc_code/transforming_datasets.py
+  :language: python
+  :start-after: __configuring_batch_size_begin__
+  :end-before: __configuring_batch_size_end__
+
+Increasing ``batch_size`` can result in faster execution by better leveraging SIMD
+hardware, reducing batch slicing overhead, and overall saturating CPUs/GPUs, but will
+also result in higher memory utilization, which can lead to out-of-memory failures.
+If encountering OOMs, decreasing your ``batch_size`` may help.
+
+.. note::
+  The default ``batch_size`` of ``4096`` may be too large for wide tables (many columns)
+  or datasets containing large images.
+
+Datasets will also bundle multiple blocks together for a single mapper task in order
+to better satisfy ``batch_size``, so if ``batch_size`` is a lot larger than your Dataset
+blocks (e.g. if your dataset was created with too large of a ``parallelism`` and/or the
+``batch_size`` is set to too large of a value), the number of parallel mapper tasks may
+be less than expected and you may be leaving some throughput on the table.
+
+.. note::
+  The size of the batches provided to the UDF may be smaller than the provided ``batch_size``
+  if ``batch_size`` doesn't evenly divide the block(s) sent to a given map task.
+
 .. _transform_datasets_compute_strategy:
 
 ----------------
