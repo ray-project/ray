@@ -1805,6 +1805,7 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "small",
     srcs = ["models/tests/test_base_model.py"]
+)
 
 # Test torch base models
 py_test(
