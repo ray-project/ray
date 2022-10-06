@@ -191,6 +191,7 @@ class LocalObjectManager {
   FRIEND_TEST(LocalObjectManagerTest,
               TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
+  FRIEND_TEST(LocalObjectManagerTest, TestRetryDeleteSpilledObjects);
 
   /// Asynchronously spill objects when space is needed. The callback tries to
   /// spill at least num_bytes_to_spill and returns true if we found objects to
