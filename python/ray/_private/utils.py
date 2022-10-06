@@ -1512,3 +1512,30 @@ def parse_runtime_env(runtime_env: Optional[Union[Dict, "RuntimeEnv"]]):
         # if runtime_env is None to know whether or not to fall back to the
         # runtime_env specified in the @ray.remote decorator.
         return None
+
+
+def split_address(address: str) -> Tuple[str, str]:
+    """Splits address into a module string (scheme) and an inner_address.
+
+    We use a custom splitting function instead of urllib because
+    PEP allows "underscores" in a module names, while URL schemes do not
+    allow them.
+
+    Args:
+        address: The address to split.
+
+    Returns:
+        A tuple of (scheme, inner_address).
+
+    Raises:
+        ValueError: If the address does not contain '://'.
+
+    Examples:
+        >>> split_address("ray://my_cluster")
+        ("ray", "my_cluster")
+    """
+    if "://" not in address:
+        raise ValueError("Address must contain '://'")
+
+    module_string, inner_address = address.split("://", maxsplit=1)
+    return (module_string, inner_address)

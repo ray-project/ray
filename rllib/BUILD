@@ -1499,21 +1499,21 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_connector",
+    name = "connectors/tests/test_connector",
     tags = ["team:rllib", "connector"],
     size = "small",
     srcs = ["connectors/tests/test_connector.py"]
 )
 
 py_test(
-    name = "test_action",
+    name = "connectors/tests/test_action",
     tags = ["team:rllib", "connector"],
     size = "small",
     srcs = ["connectors/tests/test_action.py"]
 )
 
 py_test(
-    name = "test_agent",
+    name = "connectors/tests/test_agent",
     tags = ["team:rllib", "connector"],
     size = "small",
     srcs = ["connectors/tests/test_agent.py"]
@@ -1792,6 +1792,39 @@ py_test(
     srcs = ["models/tests/test_preprocessors.py"]
 )
 
+# test Tensor specs
+py_test(
+    name = "test_tensor_specs",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/specs/tests/test_specs.py"]
+)
+# test abstract base models
+py_test(
+    name = "test_base_models",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/tests/test_base_model.py"]
+)
+
+# test torch base models
+py_test(
+    name = "test_torch_models",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/tests/test_torch_model.py"]
+)
+
+
+# test ModelSpecDict
+py_test(
+    name = "test_tensor_specs_dict",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/specs/tests/test_specs_dict.py"]
+)
+
+
 # --------------------------------------------------------------------
 # Offline
 # rllib/offline/
@@ -1814,7 +1847,7 @@ py_test(
     name = "test_feature_importance",
     tags = ["team:rllib", "offline", "torch_only"],
     size = "medium",
-    srcs = ["offline/estimators/tests/test_feature_importance.py"]
+    srcs = ["offline/tests/test_feature_importance.py"]
 )
 
 py_test(
@@ -1831,6 +1864,13 @@ py_test(
     size = "medium",
     srcs = ["offline/estimators/tests/test_ope.py"],
     data = ["tests/data/cartpole/small.json"],
+)
+
+py_test(
+    name = "test_ope_math",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/estimators/tests/test_ope_math.py"]
 )
 
 py_test(
@@ -1909,6 +1949,13 @@ py_test(
     tags = ["team:rllib", "utils"],
     size = "medium",
     srcs = ["utils/tests/test_errors.py"]
+)
+
+py_test(
+    name = "test_nested_dict",
+    tags = ["team:rllib", "utils"],
+    size = "medium",
+    srcs = ["utils/tests/test_nested_dict.py"]
 )
 
 py_test(

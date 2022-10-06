@@ -223,7 +223,7 @@ if setup_spec.type == SetupType.RAY:
         "data": [
             numpy_dep,
             pandas_dep,
-            "pyarrow >= 6.0.1, < 7.0.0",
+            "pyarrow >= 6.0.1",
             "fsspec",
         ],
         "default": [
@@ -234,7 +234,7 @@ if setup_spec.type == SetupType.RAY:
             "colorful",
             "py-spy >= 0.2.0",
             "requests",
-            "gpustat >= 1.0.0b1",  # for windows
+            "gpustat >= 1.0.0",  # for windows
             "opencensus",
             "pydantic",
             "prometheus_client >= 0.7.1, < 0.14.0",
