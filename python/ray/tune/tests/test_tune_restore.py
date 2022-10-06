@@ -47,7 +47,7 @@ class TuneRestoreTest(unittest.TestCase):
 
         logdir = os.path.expanduser(os.path.join(tmpdir, test_name))
         self.logdir = logdir
-        self.checkpoint_path = recursive_fnmatch(logdir, "checkpoint-1")[0]
+        self.checkpoint_path = recursive_fnmatch(logdir, "algorithm_state.pkl")[0]
 
     def tearDown(self):
         shutil.rmtree(self.logdir)

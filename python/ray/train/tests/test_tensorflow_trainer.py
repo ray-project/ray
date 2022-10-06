@@ -5,14 +5,17 @@ import pytest
 
 import ray
 from ray.air import session
-from ray.air.checkpoint import Checkpoint
 from ray.air.examples.tf.tensorflow_regression_example import (
     get_dataset,
     train_func as tensorflow_linear_train_func,
 )
 from ray.air.config import ScalingConfig
-from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
-from ray.train.tensorflow import TensorflowPredictor, TensorflowTrainer
+from ray.train.constants import TRAIN_DATASET_KEY
+from ray.train.tensorflow import (
+    TensorflowCheckpoint,
+    TensorflowPredictor,
+    TensorflowTrainer,
+)
 
 
 @pytest.fixture
@@ -66,8 +69,8 @@ def test_tensorflow_linear(ray_start_4_cpus, num_workers):
 
 def test_tensorflow_e2e(ray_start_4_cpus):
     def train_func():
-        model = build_model().get_weights()
-        session.report({}, checkpoint=Checkpoint.from_dict({MODEL_KEY: model}))
+        model = build_model()
+        session.report({}, checkpoint=TensorflowCheckpoint.from_model(model))
 
     scaling_config = ScalingConfig(num_workers=2)
     trainer = TensorflowTrainer(
@@ -101,9 +104,10 @@ def test_report_and_load_using_ml_session(ray_start_4_cpus):
         else:
             model = build_model()
 
-        model.save("my_model", overwrite=True)
+        model.save("my_model")
         session.report(
-            metrics={"iter": 1}, checkpoint=Checkpoint.from_directory("my_model")
+            metrics={"iter": 1},
+            checkpoint=TensorflowCheckpoint.from_saved_model("my_model"),
         )
 
     scaling_config = ScalingConfig(num_workers=2)
