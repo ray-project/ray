@@ -410,20 +410,26 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
     assert list(df["bytes_list"]) == [[b"abc", b"1234"]]
 
 
-def test_read_write_mongo(ray_start_regular_shared):
+@pytest.fixture
+def start_mongo():
     import subprocess
+
+    subprocess.run(["sudo", "rm", "/var/lib/mongodb/mongod.lock"])
+    subprocess.run(["sudo", "service", "mongodb", " start"])
+    yield "mongodb://localhost:27017"
+    subprocess.run(["sudo", "service", "mongodb", " stop"])
+
+
+def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     import pymongo
     from pymongoarrow.api import Schema
     from pymongo.errors import ServerSelectionTimeoutError
 
-    # Setup mongodb.
-    subprocess.run(["sudo", "rm", "/var/lib/mongodb/mongod.lock"])
-    subprocess.run(["sudo", "service", "mongodb", " start"])
-
-    mongo_url = "mongodb://localhost:27017"
-    client = pymongo.MongoClient(mongo_url)
+    mongo_url = start_mongo
     foo_db = "foo-db"
     foo_collection = "foo-collection"
+
+    client = pymongo.MongoClient(mongo_url)
     foo = client[foo_db][foo_collection]
     foo.delete_many({})
 
@@ -562,20 +568,12 @@ def test_read_write_mongo(ray_start_regular_shared):
             uri=mongo_url, database=foo_db, collection="nonexistent-collection"
         )
 
-    # Stop the mongodb service.
-    subprocess.run(["sudo", "service", "mongodb", " stop"])
 
-
-def test_mongo_datasource(ray_start_regular_shared):
-    import subprocess
+def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     import pymongo
     from pymongoarrow.api import Schema
 
-    # Setup mongodb.
-    subprocess.run(["sudo", "rm", "/var/lib/mongodb/mongod.lock"])
-    subprocess.run(["sudo", "service", "mongodb", " start"])
-
-    mongo_url = "mongodb://localhost:27017"
+    mongo_url = start_mongo
     client = pymongo.MongoClient(mongo_url)
     foo_db = "foo-db"
     foo_collection = "foo-collection"
@@ -671,8 +669,6 @@ def test_mongo_datasource(ray_start_regular_shared):
         "title: string, numeric_field: int32})"
     )
     df[df["numeric_field"] < 3].equals(ds.drop_columns(["_id"]).to_pandas())
-
-    subprocess.run(["sudo", "service", "mongodb", " stop"])
 
 
 if __name__ == "__main__":
