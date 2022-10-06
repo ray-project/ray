@@ -3,6 +3,7 @@ from ray.rllib.models.base_encoder import Encoder
 from ray.rllib.models.temp_spec_classes import ModelConfig, TensorDict
 from ray.rllib.models.specs.specs_dict import ModelSpecDict
 from ray.rllib.models.base_model import ForwardOutputType
+from ray.rllib.models.model_catalog import get_activation
 
 from torch import nn
 
@@ -18,19 +19,18 @@ class VectorEncoder(TorchModel, Encoder):
     # TODO: Do we want to use a ModelConfig or create a new
     # EncoderConfig?
     def __init__(self, config: ModelConfig):
-        self.mlp = nn.Sequential(
-            nn.Linear(
-                config.encoder_config.input_size, config.encoder_config.hidden_size
-            ),
-            nn.ReLU(),
-            nn.Linear(
-                config.encoder_config.hidden_size, config.encoder_config.hidden_size
-            ),
-            nn.ReLU(),
-            nn.Linear(
-                config.encoder_config.hidden_size, config.encoder_config.hidden_size
-            ),
-        )
+        act = get_activation(config.encoder.activation, config.framework)
+        layers = [
+            nn.Linear(config.encoder.input_size, config.encoder.hidden_size),
+            act(),
+        ]
+        for _ in range(config.encoder.num_layers - 1):
+            layers += [
+                nn.Linear(config.encoder.hidden_size, config.encoder.hidden_size),
+                act(),
+            ]
+        layers += [nn.Linear(config.encoder.hidden_size, config.encoder.hidden_size)]
+        self.mlp = nn.Sequential(*layers)
 
     @override(TorchModel)
     @property

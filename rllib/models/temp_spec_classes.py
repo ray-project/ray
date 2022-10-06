@@ -12,7 +12,9 @@ from ray.rllib.utils.nested_dict import NestedDict
 @dataclass
 class EncoderConfig:
     input_size: int
-    hidden_size: int
+    hidden_size: int = 128
+    num_layers: int = 2
+    activation: str = "relu"
 
 
 # TODO: Remove once TensorDict is in master
@@ -23,4 +25,4 @@ class TensorDict(NestedDict):
 # TODO: Remove once ModelConfig is in master
 class ModelConfig:
     name = "Bork"
-    encoder_config = EncoderConfig(input_size=32, hidden_size=64)
+    encoder = EncoderConfig()
