@@ -2849,8 +2849,10 @@ class Dataset(Generic[T]):
                 "flexible `iter_batches` in place of `to_tf`."
             )
 
+        schema = self.schema()
+        valid_columns = schema.names
+
         def validate_column(column: str) -> None:
-            valid_columns = self.schema().names
             if column not in valid_columns:
                 raise ValueError(
                     f"You specified '{column}' in `feature_columns` or "
@@ -2889,8 +2891,8 @@ class Dataset(Generic[T]):
                 labels = get_columns_from_batch(batch, columns=label_columns)
                 yield features, labels
 
-        feature_type_spec = get_type_spec(self.schema(), columns=feature_columns)
-        label_type_spec = get_type_spec(self.schema(), columns=label_columns)
+        feature_type_spec = get_type_spec(schema, columns=feature_columns)
+        label_type_spec = get_type_spec(schema, columns=label_columns)
         output_signature = (feature_type_spec, label_type_spec)
 
         dataset = tf.data.Dataset.from_generator(
