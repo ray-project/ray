@@ -6,10 +6,8 @@ import argparse
 import gym
 from pathlib import Path
 
-from ray.rllib.utils.policy import (
-    load_policies_from_checkpoint,
-    local_policy_inference,
-)
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.policy import local_policy_inference
 
 
 parser = argparse.ArgumentParser()
@@ -31,7 +29,10 @@ assert args.checkpoint_file, "Must specify flag --checkpoint_file."
 def run(checkpoint_path):
     # __sphinx_doc_begin__
     # Restore policy.
-    policies = load_policies_from_checkpoint(checkpoint_path, [args.policy_id])
+    policies = Policy.from_checkpoint(
+        checkpoint=checkpoint_path,
+        policy_ids=[args.policy_id],
+    )
     policy = policies[args.policy_id]
 
     # Run CartPole.

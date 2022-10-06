@@ -128,7 +128,7 @@ class DynamicTFPolicyV2(TFPolicy):
             prev_action_input=prev_action_input,
             prev_reward_input=prev_reward_input,
             seq_lens=self._seq_lens,
-            max_seq_len=config["model"]["max_seq_len"],
+            max_seq_len=config["model"].get("max_seq_len", 20),
             batch_divisibility_req=batch_divisibility_req,
             explore=explore,
             timestep=timestep,

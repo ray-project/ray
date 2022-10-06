@@ -50,6 +50,7 @@ from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import Filter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
 from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
@@ -1240,6 +1241,8 @@ class RolloutWorker(ParallelIteratorWorker):
             KeyError: If the given `policy_id` already exists in this worker's
                 PolicyMap.
         """
+        validate_policy_id(policy_id, error=False)
+
         merged_config = merge_dicts(self.policy_config, config or {})
 
         if policy_id in self.policy_map:
@@ -1283,6 +1286,7 @@ class RolloutWorker(ParallelIteratorWorker):
             policy=policy,
             seed=self.policy_config.get("seed"),
         )
+
         new_policy = self.policy_map[policy_id]
         # Set the state of the newly created policy.
         if policy_state:
@@ -1520,7 +1524,7 @@ class RolloutWorker(ParallelIteratorWorker):
         return return_filters
 
     @DeveloperAPI
-    def get_state(self) -> bytes:
+    def get_state(self) -> dict:
         """Serializes this RolloutWorker's current state and returns it.
 
         Returns:
@@ -1528,48 +1532,65 @@ class RolloutWorker(ParallelIteratorWorker):
             byte sequence.
         """
         filters = self.get_filters(flush_after=True)
-        state = {}
-        policy_specs = {}
-        connector_enabled = self.policy_config.get("enable_connectors", False)
+        policy_states = {}
         for pid in self.policy_map:
-            state[pid] = self.policy_map[pid].get_state()
-            policy_spec = self.policy_map.policy_specs[pid]
-            # If connectors are enabled, try serializing the policy spec
-            # instead of picking the spec object.
-            policy_specs[pid] = (
-                policy_spec.serialize() if connector_enabled else policy_spec
-            )
-        return pickle.dumps(
-            {
-                "filters": filters,
-                "state": state,
-                "policy_specs": policy_specs,
-                "policy_config": self.policy_config,
-            }
-        )
+            policy_states[pid] = self.policy_map[pid].get_state()
+        return {
+            # List all known policy IDs here for convenience. When an Algorithm gets
+            # restored from a checkpoint, it will not have access to the list of
+            # possible IDs as each policy is stored in its own sub-dir
+            # (see "policy_states").
+            "policy_ids": list(self.policy_map.keys()),
+            # Note that this field will not be stored in the algorithm checkpoint's
+            # state file, but each policy will get its own state file generated in
+            # a sub-dir within the algo's checkpoint dir.
+            "policy_states": policy_states,
+            # Also store current mapping fn and which policies to train.
+            "policy_mapping_fn": self.policy_mapping_fn,
+            "is_policy_to_train": self.is_policy_to_train,
+            # TODO: Filters will be replaced by connectors.
+            "filters": filters,
+        }
 
     @DeveloperAPI
-    def set_state(self, objs: bytes) -> None:
-        """Restores this RolloutWorker's state from a sequence of bytes.
+    def set_state(self, state: dict) -> None:
+        """Restores this RolloutWorker's state from a state dict.
 
         Args:
-            objs: The byte sequence to restore this worker's state from.
+            state: The state dict to restore this worker's state from.
 
         Examples:
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> # Create a RolloutWorker.
             >>> worker = ... # doctest: +SKIP
-            >>> state = worker.save() # doctest: +SKIP
+            >>> state = worker.get_state() # doctest: +SKIP
             >>> new_worker = RolloutWorker(...) # doctest: +SKIP
-            >>> new_worker.restore(state) # doctest: +SKIP
+            >>> new_worker.set_state(state) # doctest: +SKIP
         """
-        objs = pickle.loads(objs)
-        self.sync_filters(objs["filters"])
+        # Backward compatibility (old checkpoints' states would have the local
+        # worker state as a bytes object, not a dict).
+        if isinstance(state, bytes):
+            state = pickle.loads(state)
+
+        # TODO: Once filters are handled by connectors, get rid of the "filters"
+        #  key in `state` entirely (will be part of the policies then).
+        self.sync_filters(state["filters"])
+
         connector_enabled = self.policy_config.get("enable_connectors", False)
-        for pid, state in objs["state"].items():
+
+        # Support older checkpoint versions (< 1.0), in which the policy_map
+        # was stored under the "state" key, not "policy_states".
+        policy_states = (
+            state["policy_states"] if "policy_states" in state else state["state"]
+        )
+        for pid, policy_state in policy_states.items():
+            # If - for some reason - we have an invalid PolicyID in the state,
+            # this might be from an older checkpoint (pre v1.0). Just warn here.
+            validate_policy_id(pid, error=False)
+
             if pid not in self.policy_map:
-                spec = objs.get("policy_specs", {}).get(pid)
-                if not spec:
+                spec = policy_state.get("policy_spec", None)
+                if spec is None:
                     logger.warning(
                         f"PolicyID '{pid}' was probably added on-the-fly (not"
                         " part of the static `multagent.policies` config) and"
@@ -1588,7 +1609,13 @@ class RolloutWorker(ParallelIteratorWorker):
                         config=policy_spec.config,
                     )
             if pid in self.policy_map:
-                self.policy_map[pid].set_state(state)
+                self.policy_map[pid].set_state(policy_state)
+
+        # Also restore mapping fn and which policies to train.
+        if "policy_mapping_fn" in state:
+            self.set_policy_mapping_fn(state["policy_mapping_fn"])
+        if "is_policy_to_train" in state:
+            self.set_is_policy_to_train(state["is_policy_to_train"])
 
     @DeveloperAPI
     def get_weights(
@@ -1986,13 +2013,15 @@ class RolloutWorker(ParallelIteratorWorker):
     def foreach_trainable_policy(self, func, **kwargs):
         return self.foreach_policy_to_train(func, **kwargs)
 
-    @Deprecated(new="RolloutWorker.get_state()", error=False)
-    def save(self, *args, **kwargs):
-        return self.get_state(*args, **kwargs)
+    @Deprecated(new="state_dict = RolloutWorker.get_state()", error=False)
+    def save(self):
+        state = self.get_state()
+        return pickle.dumps(state)
 
-    @Deprecated(new="RolloutWorker.set_state([state])", error=False)
-    def restore(self, *args, **kwargs):
-        return self.set_state(*args, **kwargs)
+    @Deprecated(new="RolloutWorker.set_state([state_dict])", error=False)
+    def restore(self, objs):
+        state_dict = pickle.loads(objs)
+        self.set_state(state_dict)
 
 
 def _determine_spaces_for_multi_agent_dict(
