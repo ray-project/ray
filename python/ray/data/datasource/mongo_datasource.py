@@ -154,7 +154,6 @@ class _MongoDatasourceReader(Reader):
                 input_files=None,
                 exec_stats=None,
             )
-            right_closed = i == len(partitions_ids) - 1
             make_block_args = (
                 self._uri,
                 self._database,
@@ -162,7 +161,7 @@ class _MongoDatasourceReader(Reader):
                 self._pipeline,
                 partition["_id"]["min"],
                 partition["_id"]["max"],
-                right_closed,
+                i == len(partitions_ids) - 1,
                 self._schema,
                 self._mongo_args,
             )
