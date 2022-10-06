@@ -10,6 +10,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.worker_group import WorkerGroup
+from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import PREPROCESSOR_KEY
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.air.config import CheckpointConfig, RunConfig, ScalingConfig
@@ -363,10 +364,10 @@ def test_world_rank(ray_start_4_cpus):
 
 
 def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
-    class CudaTestBackend(TestBackend):
+    class CudaTestBackend(Backend):
         share_cuda_visible_devices = True
 
-    class CudaTestConfig(TestConfig):
+    class CudaTestConfig(BackendConfig):
         @property
         def backend_cls(self):
             return CudaTestBackend
