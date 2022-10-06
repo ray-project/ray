@@ -194,6 +194,10 @@ class _TorchBackend(Backend):
         # are in the checkpoint dict can be properly deserialized on the
         # driver side, even if the driver does not have access to a GPU device.
         _buffer = io.BytesIO()
+        # If a custom torch model contains a function that cannot be pickled normally,
+        # we need to use ray.cloudpickle. This is also consistent with how Ray
+        # serialization works in general and has no downsides
+        # (this can still be unpickled without ray using normal pickle).
         torch.save(data_dict, _buffer, pickle_module=ray.cloudpickle)
         return _buffer.getvalue()
 
