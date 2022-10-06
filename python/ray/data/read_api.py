@@ -41,7 +41,7 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
-    _wrap_and_register_arrow_serialization_workaround,
+    _wrap_arrow_serialization_workaround,
 )
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
@@ -275,7 +275,7 @@ def read_datasource(
                 ctx,
                 cur_pg,
                 parallelism,
-                _wrap_and_register_arrow_serialization_workaround(read_args),
+                _wrap_arrow_serialization_workaround(read_args),
             )
         )
 

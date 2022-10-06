@@ -92,10 +92,24 @@ def s3_fs_with_anonymous_crendential(
 
 
 def _s3_fs(aws_credentials, s3_server, s3_path):
+    import pkg_resources
     import urllib.parse
 
+    kwargs = aws_credentials
+
+    pyarrow_version_info = pkg_resources.require("pyarrow")
+    pyarrow_version_str = pyarrow_version_info[0].version
+    pyarrow_version = tuple(
+        int(n) for n in pyarrow_version_str.split(".") if "dev" not in n
+    )
+
+    if pyarrow_version >= (9, 0, 0):
+        kwargs["allow_bucket_creation"] = True
+
     fs = pa.fs.S3FileSystem(
-        region="us-west-2", endpoint_override=s3_server, **aws_credentials
+        region="us-west-2",
+        endpoint_override=s3_server,
+        **kwargs,
     )
     if s3_path.startswith("s3://"):
         if "@" in s3_path:
