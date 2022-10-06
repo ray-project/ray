@@ -113,13 +113,9 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
                 this->AddToClientObjectIds(object_id, request->client);
               },
           [this](const auto &request) { this->ReturnFromGet(request); }) {
-  const auto event_stats_print_interval_ms =
-      RayConfig::instance().event_stats_print_interval_ms();
-  if (event_stats_print_interval_ms > 0 && RayConfig::instance().event_stats()) {
+  if (RayConfig::instance().event_stats_print_interval_ms() > 0 &&
+      RayConfig::instance().event_stats()) {
     PrintAndRecordDebugDump();
-  }
-  if (RayConfig::instance().metrics_report_interval_ms() > 0) {
-    RecordMetrics();
   }
 }
 
@@ -548,6 +544,7 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
 
 void PlasmaStore::PrintAndRecordDebugDump() const {
   absl::MutexLock lock(&mutex_);
+  RecordMetrics();
   RAY_LOG(INFO) << GetDebugDump();
   stats_timer_ = execute_after(
       io_context_,
@@ -555,17 +552,7 @@ void PlasmaStore::PrintAndRecordDebugDump() const {
       RayConfig::instance().event_stats_print_interval_ms());
 }
 
-void PlasmaStore::RecordMetrics() const {
-  absl::MutexLock lock(&mutex_);
-  RAY_LOG(DEBUG) << "Exporting plasma store metrics.";
-  object_lifecycle_mgr_.RecordMetrics();
-
-  // Schedule the next metric export callback
-  metrics_timer_ = execute_after(
-      io_context_,
-      [this]() { RecordMetrics(); },
-      RayConfig::instance().metrics_report_interval_ms() / 2);
-}
+void PlasmaStore::RecordMetrics() const { object_lifecycle_mgr_.RecordMetrics(); }
 
 std::string PlasmaStore::GetDebugDump() const {
   std::stringstream buffer;

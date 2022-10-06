@@ -18,7 +18,8 @@ _SYSTEM_CONFIG = {
     "max_io_workers": 100,
     "min_spilling_size": 1,
     "object_spilling_threshold": 0.99,  # to prevent premature spilling
-    "metrics_report_interval_ms": 100,
+    "metrics_report_interval_ms": 200,
+    "event_stats_print_interval_ms": 100,  # so metrics get exported
 }
 
 
@@ -52,9 +53,7 @@ def test_all_shared_memory(shutdown_only):
 
     info = ray.init(
         object_store_memory=100 * MiB,
-        _system_config={
-            "metrics_report_interval_ms": 100,
-        },
+        _system_config=_SYSTEM_CONFIG,
     )
 
     # Allocate 80MiB data

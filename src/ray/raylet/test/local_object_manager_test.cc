@@ -342,6 +342,10 @@ class LocalObjectManagerTestWithMinSpillingSize {
 
   int64_t NumBytesPendingSpill() { return manager.num_bytes_pending_spill_; }
 
+  int64_t GetCurrentSpilledBytes() { return manager.spilled_bytes_current_; }
+
+  size_t GetCurrentSpilledCount() { return manager.spilled_objects_url_.size(); }
+
   void AssertNoLeaks() {
     // TODO(swang): Assert this for all tests.
     ASSERT_TRUE(manager.pinned_objects_size_ == 0);
@@ -464,8 +468,8 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
 
   // Spilled
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), object_ids.size());
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), object_ids.size() * object_size);
+  ASSERT_EQ(GetCurrentSpilledCount(), object_ids.size());
+  ASSERT_EQ(GetCurrentSpilledBytes(), object_ids.size() * object_size);
 
   // The first update is sent out immediately and the remaining ones are batched
   // since the first one is still in-flight.
@@ -545,8 +549,8 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
     ASSERT_EQ((*unpins)[id], 1);
   }
 
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), object_ids.size());
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), object_ids.size() * object_size);
+  ASSERT_EQ(GetCurrentSpilledCount(), object_ids.size());
+  ASSERT_EQ(GetCurrentSpilledBytes(), object_ids.size() * object_size);
 }
 
 TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
@@ -601,8 +605,8 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
   }
 
   // Only spilled once
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), object_ids.size());
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), object_ids.size() * object_size);
+  ASSERT_EQ(GetCurrentSpilledCount(), object_ids.size());
+  ASSERT_EQ(GetCurrentSpilledBytes(), object_ids.size() * object_size);
 }
 
 TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSizeZero) {
@@ -633,8 +637,8 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSizeZero) {
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects({url}));
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), 1);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), 1 * object_size);
+  ASSERT_EQ(GetCurrentSpilledCount(), 1);
+  ASSERT_EQ(GetCurrentSpilledBytes(), 1 * object_size);
 }
 
 TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
@@ -684,8 +688,8 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
     ASSERT_TRUE(it != urls.end());
     ASSERT_EQ((*unpins)[object_url.first], 1);
   }
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), max_fused_object_count_);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), max_fused_object_count_ * object_size);
+  ASSERT_EQ(GetCurrentSpilledCount(), max_fused_object_count_);
+  ASSERT_EQ(GetCurrentSpilledBytes(), max_fused_object_count_ * object_size);
 }
 
 TEST_F(LocalObjectManagerTest, TestSpillObjectNotEvictable) {
@@ -715,8 +719,8 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectNotEvictable) {
   ASSERT_TRUE(manager.SpillObjectsOfSize(1000));
 
   AssertIOWorkersDoSpill(/*num_objects*/ 1, /*num_batches*/ 1);
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), 1);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), 1 * object_size);
+  ASSERT_EQ(GetCurrentSpilledCount(), 1);
+  ASSERT_EQ(GetCurrentSpilledBytes(), 1 * object_size);
 }
 
 TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
@@ -764,8 +768,8 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
       ASSERT_EQ((*unpins)[object_url.first], 1);
     }
   }
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), 1);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), 1 * object_size);
+  ASSERT_EQ(GetCurrentSpilledCount(), 1);
+  ASSERT_EQ(GetCurrentSpilledBytes(), 1 * object_size);
 
   // Now, there's only one object that is current spilling.
   // SpillObjectUptoMaxThroughput will spill one more object (since one worker is
@@ -785,8 +789,8 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
     ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects({urls[i]}));
     ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   }
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), object_ids.size());
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), object_size * object_ids.size());
+  ASSERT_EQ(GetCurrentSpilledCount(), object_ids.size());
+  ASSERT_EQ(GetCurrentSpilledBytes(), object_size * object_ids.size());
 
   ASSERT_EQ(owner_client->object_urls.size(), 3);
   for (auto &object_url : owner_client->object_urls) {
@@ -832,8 +836,8 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
   ASSERT_EQ((*unpins)[object_id], 0);
 
   // Make sure no spilled
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), 0);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), 0);
+  ASSERT_EQ(GetCurrentSpilledCount(), 0);
+  ASSERT_EQ(GetCurrentSpilledBytes(), 0);
 
   // Try to spill the same object again.
   manager.SpillObjects({object_id}, [&](const Status &status) mutable {
@@ -850,8 +854,8 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
   ASSERT_EQ((*unpins)[object_id], 1);
 
   // Now spill happened
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), 1);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), object_size);
+  ASSERT_EQ(GetCurrentSpilledCount(), 1);
+  ASSERT_EQ(GetCurrentSpilledBytes(), object_size);
 }
 
 TEST_F(LocalObjectManagerTest, TestPartialSpillError) {
@@ -882,8 +886,8 @@ TEST_F(LocalObjectManagerTest, TestPartialSpillError) {
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
 
   // only tracking 2 spilled objected
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), 2);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), 2 * object_size);
+  ASSERT_EQ(GetCurrentSpilledCount(), 2);
+  ASSERT_EQ(GetCurrentSpilledBytes(), 2 * object_size);
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     if (i < urls.size()) {
@@ -959,8 +963,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
 
   AssertIOWorkersDoSpill(/*num_objects*/ object_ids_to_spill.size(), /*num_batches*/ 2);
 
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), object_ids_to_spill.size());
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), total_spill_size);
+  ASSERT_EQ(GetCurrentSpilledCount(), object_ids_to_spill.size());
+  ASSERT_EQ(GetCurrentSpilledBytes(), total_spill_size);
 
   // All objects are out of scope now.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
@@ -972,8 +976,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   ASSERT_EQ(deleted_urls_size, object_ids_to_spill.size());
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), 0);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), 0);
+  ASSERT_EQ(GetCurrentSpilledCount(), 0);
+  ASSERT_EQ(GetCurrentSpilledBytes(), 0);
 }
 
 TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
@@ -1018,8 +1022,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
     ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   }
 
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), object_ids_to_spill.size());
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), total_spill_size);
+  ASSERT_EQ(GetCurrentSpilledCount(), object_ids_to_spill.size());
+  ASSERT_EQ(GetCurrentSpilledBytes(), total_spill_size);
 
   // Everything is evicted except the last object. In this case, ref count is still > 0.
   for (size_t i = 0; i < free_objects_batch_size - 1; i++) {
@@ -1032,8 +1036,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
   ASSERT_EQ(deleted_urls_size, 0);
 
   // Only 1 spilled object left
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), 1);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), 1 * object_size);
+  ASSERT_EQ(GetCurrentSpilledCount(), 1);
+  ASSERT_EQ(GetCurrentSpilledBytes(), 1 * object_size);
 
   // The last reference is deleted.
   EXPECT_CALL(*subscriber_,
@@ -1044,8 +1048,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
   // Now the object is deleted.
   ASSERT_EQ(deleted_urls_size, 1);
 
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), 0);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), 0);
+  ASSERT_EQ(GetCurrentSpilledCount(), 0);
+  ASSERT_EQ(GetCurrentSpilledBytes(), 0);
 }
 
 TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
@@ -1100,8 +1104,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   // Spillset 1 objects are spilled.
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls_spill_set_1));
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), spill_set_1_size);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), spill_set_1_bytes);
+  ASSERT_EQ(GetCurrentSpilledCount(), spill_set_1_size);
+  ASSERT_EQ(GetCurrentSpilledBytes(), spill_set_1_bytes);
 
   // Every object has gone out of scope.
   for (size_t i = 0; i < spilled_urls_size; i++) {
@@ -1120,15 +1124,15 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   // These fail because the object is already freed, so the raylet does not
   // send the RPC.
   ASSERT_FALSE(owner_client->ReplyUpdateObjectLocationBatch());
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), spill_set_2_size);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), spill_set_2_bytes);
+  ASSERT_EQ(GetCurrentSpilledCount(), spill_set_2_size);
+  ASSERT_EQ(GetCurrentSpilledBytes(), spill_set_2_bytes);
 
   // Every object is now deleted.
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   ASSERT_EQ(deleted_urls_size, spill_set_2_size);
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), 0);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), 0);
+  ASSERT_EQ(GetCurrentSpilledCount(), 0);
+  ASSERT_EQ(GetCurrentSpilledBytes(), 0);
 }
 
 TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
@@ -1168,8 +1172,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
     ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   }
 
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), spilled_urls_size);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), object_size * spilled_urls_size);
+  ASSERT_EQ(GetCurrentSpilledCount(), spilled_urls_size);
+  ASSERT_EQ(GetCurrentSpilledBytes(), object_size * spilled_urls_size);
 
   // Every reference has gone out of scope.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
@@ -1222,8 +1226,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
   }
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
 
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), object_ids_to_spill.size());
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), object_size * object_ids_to_spill.size());
+  ASSERT_EQ(GetCurrentSpilledCount(), object_ids_to_spill.size());
+  ASSERT_EQ(GetCurrentSpilledBytes(), object_size * object_ids_to_spill.size());
 
   EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[0].Binary()));
   ASSERT_TRUE(subscriber_->PublishObjectEviction());
@@ -1234,9 +1238,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
   ASSERT_EQ(deleted_urls_size, 0);
 
   // But 1 spilled object shoudl be deleted
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), free_objects_batch_size - 1);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(),
-            object_size * (free_objects_batch_size - 1));
+  ASSERT_EQ(GetCurrentSpilledCount(), free_objects_batch_size - 1);
+  ASSERT_EQ(GetCurrentSpilledBytes(), object_size * (free_objects_batch_size - 1));
 
   // Everything else is now deleted.
   for (size_t i = 1; i < free_objects_batch_size; i++) {
@@ -1248,8 +1251,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
   // Nothing is deleted yet because the ref count is > 0.
   ASSERT_EQ(deleted_urls_size, 1);
 
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), 0);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), 0);
+  ASSERT_EQ(GetCurrentSpilledCount(), 0);
+  ASSERT_EQ(GetCurrentSpilledBytes(), 0);
 }
 
 TEST_F(LocalObjectManagerTest, TestDuplicatePin) {
@@ -1421,8 +1424,8 @@ TEST_F(LocalObjectManagerFusedTest, TestMinSpillingSize) {
   }
 
   // Spilled 2 objects
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), 2);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), object_size * 2);
+  ASSERT_EQ(GetCurrentSpilledCount(), 2);
+  ASSERT_EQ(GetCurrentSpilledBytes(), object_size * 2);
 
   ASSERT_EQ(owner_client->object_urls.size(), 2);
   int num_unpinned = 0;
@@ -1480,8 +1483,8 @@ TEST_F(LocalObjectManagerFusedTest, TestMinSpillingSizeMaxFusionCount) {
     ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   }
   // Spilled first 2 batches
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), 30);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), object_size * 30);
+  ASSERT_EQ(GetCurrentSpilledCount(), 30);
+  ASSERT_EQ(GetCurrentSpilledBytes(), object_size * 30);
 
   // We will spill the last objects even though we're under the min spilling
   // size because they are the only spillable objects.
@@ -1498,8 +1501,8 @@ TEST_F(LocalObjectManagerFusedTest, TestMinSpillingSizeMaxFusionCount) {
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
 
   // Spilled all objects
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), 40);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), object_size * 40);
+  ASSERT_EQ(GetCurrentSpilledCount(), 40);
+  ASSERT_EQ(GetCurrentSpilledBytes(), object_size * 40);
 }
 
 TEST_F(LocalObjectManagerTest, TestPinBytes) {
@@ -1557,8 +1560,8 @@ TEST_F(LocalObjectManagerTest, TestPinBytes) {
   }
   ASSERT_TRUE(spilled);
 
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), object_ids.size());
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), total_objects_size);
+  ASSERT_EQ(GetCurrentSpilledCount(), object_ids.size());
+  ASSERT_EQ(GetCurrentSpilledBytes(), total_objects_size);
 
   // With all objects spilled, the pinned bytes would be 0.
   ASSERT_EQ(manager.GetPrimaryBytes(), 0);
@@ -1573,8 +1576,8 @@ TEST_F(LocalObjectManagerTest, TestPinBytes) {
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   ASSERT_EQ(deleted_urls_size, object_ids.size());
 
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), 0);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), 0);
+  ASSERT_EQ(GetCurrentSpilledCount(), 0);
+  ASSERT_EQ(GetCurrentSpilledBytes(), 0);
 
   // With no pinned or spilled object, the pinned bytes should be 0.
   ASSERT_EQ(manager.GetPrimaryBytes(), 0);
@@ -1642,8 +1645,8 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete1) {
   ASSERT_TRUE(spilled);
 
   // No spill actually happens on the IO worker
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), object_ids.size());
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), total_size);
+  ASSERT_EQ(GetCurrentSpilledCount(), object_ids.size());
+  ASSERT_EQ(GetCurrentSpilledBytes(), total_size);
 
   manager.ProcessSpilledObjectsDeleteQueue(free_objects_batch_size);
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
@@ -1687,7 +1690,7 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete2) {
   ASSERT_GT(manager.GetPrimaryBytes(), 0);
 
   // No spill reported
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), 0);
+  ASSERT_EQ(GetCurrentSpilledBytes(), 0);
 
   // Spill all objects.
   bool spilled = false;
@@ -1711,8 +1714,8 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete2) {
   ASSERT_TRUE(spilled);
 
   // No spill actually happens on the IO worker
-  ASSERT_EQ(manager.GetCurrentSpilledCount(), 0);
-  ASSERT_EQ(manager.GetCurrentSpilledBytes(), 0);
+  ASSERT_EQ(GetCurrentSpilledCount(), 0);
+  ASSERT_EQ(GetCurrentSpilledBytes(), 0);
 
   manager.ProcessSpilledObjectsDeleteQueue(free_objects_batch_size);
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();

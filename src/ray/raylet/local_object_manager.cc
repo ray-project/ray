@@ -628,14 +628,6 @@ void LocalObjectManager::RecordMetrics() const {
       {{"Location", ray::rpc::ObjectLocation_Name(ray::rpc::ObjectLocation::SPILLED)}});
 }
 
-size_t LocalObjectManager::GetCurrentSpilledCount() const {
-  return spilled_objects_url_.size();
-}
-
-int64_t LocalObjectManager::GetCurrentSpilledBytes() const {
-  return spilled_bytes_current_;
-}
-
 int64_t LocalObjectManager::GetPrimaryBytes() const {
   return pinned_objects_size_ + num_bytes_pending_spill_;
 }
@@ -659,6 +651,7 @@ std::string LocalObjectManager::DebugString() const {
   result << "- num objects pending restore: " << objects_pending_restore_.size() << "\n";
   result << "- num objects pending spill: " << objects_pending_spill_.size() << "\n";
   result << "- num bytes pending spill: " << num_bytes_pending_spill_ << "\n";
+  result << "- num bytes currently spilled: " << spilled_bytes_current_ << "\n";
   result << "- cumulative spill requests: " << spilled_objects_total_ << "\n";
   result << "- cumulative restore requests: " << restored_objects_total_ << "\n";
   result << "- spilled objects pending delete: " << spilled_object_pending_delete_.size()

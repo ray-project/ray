@@ -164,13 +164,6 @@ class LocalObjectManager {
   /// filesystem.
   bool HasLocallySpilledObjects() const;
 
-  /// Get the current bytes spilled to the disk. This number excludes objects
-  /// that have been deleted on the external storage.
-  int64_t GetCurrentSpilledBytes() const;
-
-  // Get the current number of objects being spilled.
-  size_t GetCurrentSpilledCount() const;
-
   std::string DebugString() const;
 
  private:
