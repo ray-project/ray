@@ -400,14 +400,13 @@ void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids
     }
 
     // Mark that the object is spilled and unpin the pending requests.
+    spilled_objects_url_.emplace(object_id, object_url);
     RAY_LOG(DEBUG) << "Unpinning pending spill object " << object_id;
     auto it = objects_pending_spill_.find(object_id);
     RAY_CHECK(it != objects_pending_spill_.end());
     const auto object_size = it->second->GetSize();
     num_bytes_pending_spill_ -= object_size;
     objects_pending_spill_.erase(it);
-
-    spilled_objects_url_.emplace(object_id, object_url);
 
     // Update the internal spill metrics
     spilled_bytes_total_ += object_size;
@@ -547,7 +546,7 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
 
       // Update current spilled objects metrics
       RAY_CHECK(local_objects_.contains(object_id))
-          << "local objects might should contain the spilled object: " << object_id;
+          << "local objects should contain the spilled object: " << object_id;
       spilled_bytes_current_ -= local_objects_.at(object_id).object_size;
     } else {
       // If the object was not spilled, it gets pinned again. Unpin here to

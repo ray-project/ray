@@ -57,10 +57,10 @@ class ObjectStatsCollector {
 
   int64_t GetNumObjectsUnsealed() const;
 
+  int64_t GetNumBytesCreatedCurrent() const;
+
  private:
   friend struct ObjectStatsCollectorTest;
-
-  int64_t num_bytes_in_memory_ = 0;
 
   int64_t num_objects_spillable_ = 0;
   int64_t num_bytes_spillable_ = 0;

@@ -65,6 +65,7 @@ def test_all_shared_memory(shutdown_only):
     expected = {
         "IN_MEMORY": 80 * MiB,
         "SPILLED": 0,
+        "UNSEALED": 0,
     }
 
     wait_for_condition(
@@ -80,6 +81,7 @@ def test_all_shared_memory(shutdown_only):
     expected = {
         "IN_MEMORY": 0,
         "SPILLED": 0,
+        "UNSEALED": 0,
     }
 
     wait_for_condition(
@@ -110,6 +112,7 @@ def test_spilling(object_spilling_config, shutdown_only):
     expected = {
         "IN_MEMORY": 100 * MiB,
         "SPILLED": 0,
+        "UNSEALED": 0,
     }
 
     wait_for_condition(
@@ -125,6 +128,7 @@ def test_spilling(object_spilling_config, shutdown_only):
     expected = {
         "IN_MEMORY": 100 * MiB,
         "SPILLED": 100 * MiB,
+        "UNSEALED": 0,
     }
     wait_for_condition(
         # 1KiB for metadata difference
@@ -138,6 +142,7 @@ def test_spilling(object_spilling_config, shutdown_only):
     expected = {
         "IN_MEMORY": 100 * MiB,
         "SPILLED": 0,
+        "UNSEALED": 0,
     }
     wait_for_condition(
         # 1KiB for metadata difference
@@ -151,6 +156,7 @@ def test_spilling(object_spilling_config, shutdown_only):
     expected = {
         "IN_MEMORY": 0,
         "SPILLED": 0,
+        "UNSEALED": 0,
     }
     wait_for_condition(
         # 1KiB for metadata difference

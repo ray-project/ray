@@ -29,7 +29,6 @@ void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
   num_bytes_created_total_ += kObjectSize;
   // TODO(rickyx):
   // Add fallback memory accounting here.
-  num_bytes_in_memory_ += kObjectSize;
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_created_by_worker_++;
@@ -74,8 +73,6 @@ void ObjectStatsCollector::OnObjectSealed(const LocalObject &obj) {
 void ObjectStatsCollector::OnObjectDeleting(const LocalObject &obj) {
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
-
-  num_bytes_in_memory_ -= kObjectSize;
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_created_by_worker_--;
@@ -174,10 +171,19 @@ void ObjectStatsCollector::OnObjectRefDecreased(const LocalObject &obj) {
   }
 }
 
+int64_t ObjectStatsCollector::GetNumBytesCreatedCurrent() const {
+  return num_bytes_created_by_worker_ + num_bytes_restored_ + num_bytes_received_ +
+         num_bytes_errored_;
+}
+
 void ObjectStatsCollector::RecordMetrics() const {
   ray::stats::STATS_object_store_memory.Record(
-      num_bytes_in_memory_,
+      GetNumBytesCreatedCurrent() - num_bytes_unsealed_,
       {{"Location", ray::rpc::ObjectLocation_Name(ray::rpc::ObjectLocation::IN_MEMORY)}});
+
+  ray::stats::STATS_object_store_memory.Record(
+      num_bytes_unsealed_,
+      {{"Location", ray::rpc::ObjectLocation_Name(ray::rpc::ObjectLocation::UNSEALED)}});
 
   // TODO(rickyx):
   // Add fallback memory recording here.

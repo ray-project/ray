@@ -564,7 +564,7 @@ void PlasmaStore::RecordMetrics() const {
   metrics_timer_ = execute_after(
       io_context_,
       [this]() { RecordMetrics(); },
-      RayConfig::instance().metrics_report_interval_ms());
+      RayConfig::instance().metrics_report_interval_ms() / 2);
 }
 
 std::string PlasmaStore::GetDebugDump() const {
