@@ -3,7 +3,7 @@
 Submits many jobs on a long running cluster.
 
 5 jobs every 30 seconds for 8 hours (or 10 minutes if smoke test).
-Each job is a simple Tune job (~10s). Total of ~5k jobs.
+Each job is a simple Ray job (~10s). Total of ~5k jobs.
 
 Test owner: architkulkarni
 
@@ -18,6 +18,7 @@ import pprint
 import random
 from typing import List, Optional
 from ray.dashboard.modules.job.common import JobStatus
+from ray.dashboard.modules.job.pydantic_models import JobDetails
 
 from ray.job_submission import JobSubmissionClient
 
@@ -108,12 +109,16 @@ if __name__ == "__main__":
             exit(1)
 
         # Test list jobs
-        jobs = clients[0].list_jobs()
+        jobs: List[JobDetails] = clients[0].list_jobs()
         print("list jobs:")
         pprint.pprint(jobs)
 
-        # Get job logs from random job
-        job_id = random.choice(jobs).submission_id
+        # Get job logs from random submission job
+        is_submission_job = False
+        while not is_submission_job:
+            job_details = random.choice(jobs)
+            is_submission_job = job_details.type == "SUBMISSION"
+        job_id = job_details.submission_id
         print(f"getting logs for job {job_id}")
         logs = clients[0].get_job_logs(job_id)
         # print(logs)
