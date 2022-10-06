@@ -168,10 +168,7 @@ def workflow_state_from_dag(
                     flattened_args = _SerializationContextPreservingWrapper(
                         flattened_args
                     )
-                workflow_manager = workflow_access.get_management_actor()
-                input_placeholder: ray.ObjectRef = ray.put(
-                    flattened_args, _owner=workflow_manager
-                )
+                input_placeholder: ray.ObjectRef = ray.put(flattened_args, _owner=mgr)
 
             orig_task_id = workflow_options.get("task_id", None)
             if orig_task_id is None:

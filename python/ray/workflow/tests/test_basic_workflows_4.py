@@ -69,7 +69,7 @@ def test_no_init_api(shutdown_only):
     workflow.list_all()
 
 
-def test_object_valid(workflow_start_cluster):
+def test_object_valid(workflow_start_regular):
     # Test the async api and make sure the object live
     # across the lifetime of the job.
     import uuid
@@ -80,7 +80,7 @@ import ray
 from ray import workflow
 from typing import List
 
-ray.init(address="auto")
+ray.init(address="{workflow_start_regular}")
 
 @ray.remote
 def echo(data, sleep_s=0, others=None):
@@ -94,7 +94,7 @@ e2 = echo.bind(a, 0, e1)
 workflow.run_async(e2, workflow_id="{workflow_id}")
 """
     run_string_as_driver(script)
-    ray.init("auto")
+
     print(ray.get(workflow.get_output_async(workflow_id=workflow_id)))
 
 
