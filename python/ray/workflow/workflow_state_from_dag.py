@@ -4,7 +4,6 @@ import unicodedata
 
 import ray
 from ray.workflow.common import WORKFLOW_OPTIONS
-from ray.workflow import workflow_access
 from ray.dag import DAGNode, FunctionNode, InputNode
 from ray.dag.input_node import InputAttributeNode, DAGInputData
 from ray import cloudpickle
