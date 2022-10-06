@@ -1,7 +1,7 @@
 Anti-pattern: Accessing or modifying global variables in tasks and actors
 =========================================================================
 
-**TLDR:** Don't access or modify global variables in remote functions and classes. Instead, encapsulate the global variables into an actor's instance variables.
+**TLDR:** Don't use global variables to share state with tasks and actors. Instead, encapsulate the global variables in an actor and pass the actor handle to other tasks and actors.
 
 Ray drivers, tasks and actors are running in
 different processes, so they don’t share the same address space.
