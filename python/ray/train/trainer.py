@@ -81,7 +81,7 @@ class Trainer:
     ):
         raise DeprecationWarning(
             "The `ray.train.Trainer` API is deprecated in Ray "
-            "2.1, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+            "2.0, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
             "https://docs.ray.io/en/latest/ray-air/getting-started.html) "
             "provides greater functionality than `ray.train.Trainer`, "
             "and with a more flexible and easy-to-use API.",
