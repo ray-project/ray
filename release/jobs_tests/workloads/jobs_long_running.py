@@ -14,7 +14,6 @@ import argparse
 import json
 import os
 import time
-import pprint
 import random
 from typing import List, Optional
 from ray.dashboard.modules.job.common import JobStatus
@@ -100,9 +99,10 @@ if __name__ == "__main__":
 
     clients = [JobSubmissionClient(address) for i in range(NUM_CLIENTS)]
 
-    counter = 0
+    batch_counter = 0
     while time.time() - start < timeout:
-        print(f"Submitting batch {counter}")
+        batch_counter += 1
+        print(f"Submitting batch {batch_counter}...")
         # Submit a batch of jobs
         if not submit_batch_jobs(clients, NUM_JOBS_PER_BATCH):
             print("FAILED")
@@ -110,8 +110,7 @@ if __name__ == "__main__":
 
         # Test list jobs
         jobs: List[JobDetails] = clients[0].list_jobs()
-        print("list jobs:")
-        pprint.pprint(jobs)
+        print(f"Total jobs submitted so far: {len(jobs)}")
 
         # Get job logs from random submission job
         is_submission_job = False
@@ -119,11 +118,11 @@ if __name__ == "__main__":
             job_details = random.choice(jobs)
             is_submission_job = job_details.type == "SUBMISSION"
         job_id = job_details.submission_id
-        print(f"getting logs for job {job_id}")
+        print(f"Getting logs for job {job_id}...")
         logs = clients[0].get_job_logs(job_id)
-        # print(logs)
+        print(logs)
 
-        print("sleeping for 30 seconds")
+        print("Sleeping for 30 seconds...")
         time.sleep(30)
 
     time_taken = time.time() - start

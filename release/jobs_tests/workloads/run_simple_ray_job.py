@@ -21,6 +21,7 @@ class Counter(object):
         self.n = 0
 
     def increment(self):
+        print(f"Incrementing Counter: {self.n}")
         self.n += 1
 
     def read(self):
