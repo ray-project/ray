@@ -260,7 +260,16 @@ class TestSAC(unittest.TestCase):
             if weights_dict is None:
                 # Start with the tf vars-dict.
                 assert fw in ["tf2", "tf", "tfe"]
-                weights_dict = policy.get_weights()
+
+                weights_dict_list = (
+                    policy.model.variables() + policy.target_model.variables()
+                )
+                with p_sess.graph.as_default():
+                    collector = ray.experimental.tf_utils.TensorFlowVariables(
+                        [], p_sess, weights_dict_list
+                    )
+                    weights_dict = collector.get_weights()
+
                 if fw == "tfe":
                     log_alpha = weights_dict[10]
                     weights_dict = self._translate_tfe_weights(weights_dict, map_)

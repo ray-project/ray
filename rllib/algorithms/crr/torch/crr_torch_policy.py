@@ -13,7 +13,6 @@ from typing import (
 from ray.rllib.algorithms import AlgorithmConfig
 from ray.rllib.algorithms.crr.torch import CRRModel
 from ray.rllib.algorithms.ddpg.noop_model import TorchNoopModel
-from ray.rllib.algorithms.sac.sac_torch_policy import TargetNetworkMixin
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
@@ -22,6 +21,7 @@ from ray.rllib.models.torch.torch_action_dist import (
     get_torch_categorical_class_with_temperature,
 )
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
+from ray.rllib.policy.torch_mixins import TargetNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import override

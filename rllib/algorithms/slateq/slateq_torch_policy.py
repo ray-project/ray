@@ -6,7 +6,6 @@ import numpy as np
 from typing import Dict, Tuple, Type
 
 import ray
-from ray.rllib.algorithms.sac.sac_torch_policy import TargetNetworkMixin
 from ray.rllib.algorithms.slateq.slateq_torch_model import SlateQTorchModel
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
@@ -16,6 +15,7 @@ from ray.rllib.models.torch.torch_action_dist import (
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.torch_mixins import TargetNetworkMixin
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,

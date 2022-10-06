@@ -22,10 +22,10 @@ from ray.rllib.algorithms.sac.sac_tf_policy import (
     validate_spaces,
     ActorCriticOptimizerMixin as SACActorCriticOptimizerMixin,
     ComputeTDErrorMixin,
-    TargetNetworkMixin,
 )
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
+from ray.rllib.policy.tf_mixins import TargetNetworkMixin
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
