@@ -58,7 +58,7 @@ def submit_batch_jobs(
         client = clients[i % len(clients)]
         job_id = client.submit_job(
             runtime_env={"working_dir": os.path.dirname(os.path.abspath(__file__))},
-            entrypoint="python run_simple_tune_job.py",
+            entrypoint="python run_simple_ray_job.py",
         )
         job_ids.append(job_id)
         print(f"submitted job: {job_id}")
