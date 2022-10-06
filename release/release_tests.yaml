@@ -4504,7 +4504,7 @@
     test_name: dataset_shuffle_push_based_random_shuffle_100tb
     test_suite: dataset_test
 
-  frequency: nightly
+  frequency: weekly
   team: data
   cluster:
     cluster_env: shuffle/100tb_shuffle_app_config.yaml
