@@ -33,7 +33,8 @@ class TaskFinisherInterface {
  public:
   virtual void CompletePendingTask(const TaskID &task_id,
                                    const rpc::PushTaskReply &reply,
-                                   const rpc::Address &actor_addr) = 0;
+                                   const rpc::Address &actor_addr,
+                                   bool is_application_error) = 0;
 
   virtual bool RetryTaskIfPossible(const TaskID &task_id,
                                    bool task_failed_due_to_oom) = 0;
@@ -149,10 +150,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] task_id ID of the pending task.
   /// \param[in] reply Proto response to a direct actor or task call.
   /// \param[in] worker_addr Address of the worker that executed the task.
+  /// \param[in] is_application_error Whether this is an Exception return.
   /// \return Void.
   void CompletePendingTask(const TaskID &task_id,
                            const rpc::PushTaskReply &reply,
-                           const rpc::Address &worker_addr) override;
+                           const rpc::Address &worker_addr,
+                           bool is_application_error) override;
 
   /// Returns true if task can be retried.
   ///

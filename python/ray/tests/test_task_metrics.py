@@ -302,13 +302,14 @@ time.sleep(999)
 
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
-        "FINISHED": 2.0,
+        "FAILED": 1.0,
+        "FINISHED": 1.0,
     }
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
     )
     assert tasks_by_name_and_state(info) == {
-        ("g", "FINISHED"): 1.0,
+        ("g", "FAILED"): 1.0,
         ("f", "FINISHED"): 1.0,
     }
     proc.kill()
@@ -333,7 +334,41 @@ time.sleep(999)
 
     proc = run_string_as_driver_nonblocking(driver)
     expected = {
-        "FINISHED": 1.0,  # Only recorded as finished once.
+        "FAILED": 1.0,  # Only recorded as finished once.
+    }
+    wait_for_condition(
+        lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+    )
+    proc.kill()
+
+
+def test_task_failure(shutdown_only):
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+
+    driver = """
+import ray
+import time
+import os
+
+ray.init("auto")
+
+@ray.remote
+def f():
+    print("RUNNING FAILING TASK")
+    os._exit(1)
+
+@ray.remote
+def g():
+    assert False
+
+f.remote()
+g.remote()
+time.sleep(999)
+"""
+
+    proc = run_string_as_driver_nonblocking(driver)
+    expected = {
+        "FAILED": 2.0,
     }
     wait_for_condition(
         lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
