@@ -316,6 +316,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
             manager_node_id_,
             "address",
             1234,
+            io_service_,
             free_objects_batch_size,
             /*free_objects_period_ms=*/1000,
             worker_pool,
