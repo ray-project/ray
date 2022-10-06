@@ -68,7 +68,7 @@ class CrossLanguageError(RayError):
 class TaskCancelledError(RayError):
     """Raised when this task is cancelled.
 
-    Attributes:
+    Args:
         task_id: The TaskID of the function that was directly
             cancelled.
     """
@@ -254,12 +254,13 @@ class RayActorError(RayError):
     RayActorError will contain the creation_task_error, which is used to
     reconstruct the exception on the caller side.
 
-    cause: The cause of the actor error. `RayTaskError` type means
-        the actor has died because of an exception within `__init__`.
-        `ActorDiedErrorContext` means the actor has died because of
-        unexepected system error. None means the cause is not known.
-        Theoretically, this should not happen,
-        but it is there as a safety check.
+    Args:
+        cause: The cause of the actor error. `RayTaskError` type means
+            the actor has died because of an exception within `__init__`.
+            `ActorDiedErrorContext` means the actor has died because of
+            unexepected system error. None means the cause is not known.
+            Theoretically, this should not happen,
+            but it is there as a safety check.
     """
 
     def __init__(self, cause: Union[RayTaskError, ActorDiedErrorContext] = None):
@@ -400,7 +401,7 @@ class ObjectLostError(RayError):
     """Indicates that the object is lost from distributed memory, due to
     node failure or system error.
 
-    Attributes:
+    Args:
         object_ref_hex: Hex ID of the object.
     """
 
@@ -440,7 +441,7 @@ class ObjectLostError(RayError):
 class ObjectFetchTimedOutError(ObjectLostError):
     """Indicates that an object fetch timed out.
 
-    Attributes:
+    Args:
         object_ref_hex: Hex ID of the object.
     """
 
@@ -461,7 +462,7 @@ class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
     """Indicates that an object has been deleted while there was still a
     reference to it.
 
-    Attributes:
+    Args:
         object_ref_hex: Hex ID of the object.
     """
 
@@ -501,7 +502,7 @@ class OwnerDiedError(ObjectLostError):
     """Indicates that the owner of the object has died while there is still a
     reference to the object.
 
-    Attributes:
+    Args:
         object_ref_hex: Hex ID of the object.
     """
 
@@ -539,7 +540,7 @@ class OwnerDiedError(ObjectLostError):
 class ObjectReconstructionFailedError(ObjectLostError):
     """Indicates that the object cannot be reconstructed.
 
-    Attributes:
+    Args:
         object_ref_hex: Hex ID of the object.
     """
 
@@ -560,7 +561,7 @@ class ObjectReconstructionFailedMaxAttemptsExceededError(ObjectLostError):
     """Indicates that the object cannot be reconstructed because the maximum
     number of task retries has been exceeded.
 
-    Attributes:
+    Args:
         object_ref_hex: Hex ID of the object.
     """
 
@@ -582,7 +583,7 @@ class ObjectReconstructionFailedLineageEvictedError(ObjectLostError):
     """Indicates that the object cannot be reconstructed because its lineage
     was evicted due to memory pressure.
 
-    Attributes:
+    Args:
         object_ref_hex: Hex ID of the object.
     """
 
@@ -624,7 +625,7 @@ class AsyncioActorExit(RayError):
 class RuntimeEnvSetupError(RayError):
     """Raised when a runtime environment fails to be set up.
 
-    params:
+    Args:
         error_message: The error message that explains
             why runtime env setup has failed.
     """
