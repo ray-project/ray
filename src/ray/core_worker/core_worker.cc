@@ -127,7 +127,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                   std::placeholders::_3,
                                   std::placeholders::_4,
                                   std::placeholders::_5,
-                                  std::placeholders::_6);
+                                  std::placeholders::_6,
+                                  std::placeholders::_7);
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task, [this] {
           return local_raylet_client_->TaskDone();
@@ -1897,9 +1898,9 @@ Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_
 }
 
 Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
-                                           int timeout_seconds) {
-  const auto status =
-      gcs_client_->PlacementGroups().SyncWaitUntilReady(placement_group_id);
+                                           int64_t timeout_seconds) {
+  const auto status = gcs_client_->PlacementGroups().SyncWaitUntilReady(
+      placement_group_id, timeout_seconds);
   if (status.IsTimedOut()) {
     std::ostringstream stream;
     stream << "There was timeout in waiting for placement group " << placement_group_id
@@ -2234,7 +2235,8 @@ Status CoreWorker::ExecuteTask(
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
-    bool *is_retryable_error) {
+    bool *is_retryable_error,
+    bool *is_application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
@@ -2336,6 +2338,7 @@ Status CoreWorker::ExecuteTask(
       dynamic_return_objects,
       creation_task_exception_pb_bytes,
       is_retryable_error,
+      is_application_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
       /*is_reattempt=*/task_spec.AttemptNumber() > 0);
@@ -2523,6 +2526,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   auto old_id = GetActorId();
   SetActorId(actor_id);
   bool is_retryable_error;
+  bool is_application_error;
   // TODO(swang): Support ObjectRefGenerators in local mode?
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
   RAY_UNUSED(ExecuteTask(task_spec,
@@ -2530,7 +2534,8 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
                          &return_objects,
                          &dynamic_return_objects,
                          &borrowed_refs,
-                         &is_retryable_error));
+                         &is_retryable_error,
+                         &is_application_error));
   SetActorId(old_id);
   return returned_refs;
 }
@@ -2976,12 +2981,6 @@ void CoreWorker::AddSpilledObjectLocationOwner(
     // object is spilled before the reply from the task that created the
     // object. Add the dynamically created object to our ref counter so that we
     // know that it exists.
-    // NOTE(swang): We don't need to do this for in-plasma object locations because:
-    // 1) We will add the primary copy as a location when processing the task
-    // reply.
-    // 2) It is not possible to copy the object to a second location until
-    // after the owner has added the object to the ref count table (since no
-    // raylet can get the current location of the object until this happens).
     RAY_CHECK(!generator_id->IsNil());
     reference_counter_->AddDynamicReturn(object_id, *generator_id);
   }
@@ -3004,6 +3003,17 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
   auto reference_exists = reference_counter_->AddObjectLocation(object_id, node_id);
   if (!reference_exists) {
     RAY_LOG(DEBUG) << "Object " + object_id.Hex() + " not found";
+  }
+
+  // For generator tasks where we haven't yet received the task reply, the
+  // internal ObjectRefs may not be added yet, so we don't find out about these
+  // until the task finishes.
+  const auto &maybe_generator_id = task_manager_->TaskGeneratorId(object_id.TaskId());
+  if (!maybe_generator_id.IsNil()) {
+    // The task is a generator and may not have finished yet. Add the internal
+    // ObjectID so that we can update its location.
+    reference_counter_->AddDynamicReturn(object_id, maybe_generator_id);
+    RAY_UNUSED(reference_counter_->AddObjectLocation(object_id, node_id));
   }
 }
 

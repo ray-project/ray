@@ -23,7 +23,7 @@ frequency_str_to_enum = {
     "any-smoke": Frequency.ANY,
     "multi": Frequency.MULTI,
     "nightly": Frequency.NIGHTLY,
-    "nightly-3x": Frequency.NIGHTLY,
+    "nightly-3x": Frequency.NIGHTLY_3x,
     "weekly": Frequency.WEEKLY,
 }
 

@@ -22,10 +22,9 @@ def _concatenate_extension_column(ca: "pyarrow.ChunkedArray") -> "pyarrow.Array"
         raise ValueError("Chunked array isn't an extension array: {ca}")
 
     if ca.num_chunks == 0:
-        # No-op for no-chunk chunked arrays, since there's nothing to concatenate.
-        return ca
+        # Create empty storage array.
+        storage = pyarrow.array([], type=ca.type.storage_type)
+    else:
+        storage = pyarrow.concat_arrays([c.storage for c in ca.chunks])
 
-    chunk = ca.chunk(0)
-    return type(chunk).from_storage(
-        chunk.type, pyarrow.concat_arrays([c.storage for c in ca.chunks])
-    )
+    return ca.type.__arrow_ext_class__().from_storage(ca.type, storage)

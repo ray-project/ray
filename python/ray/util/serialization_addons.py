@@ -55,3 +55,9 @@ def register_starlette_serializer(serialization_context):
 def apply(serialization_context):
     register_pydantic_serializer(serialization_context)
     register_starlette_serializer(serialization_context)
+
+    from ray.data._internal.arrow_serialization import (
+        _register_custom_datasets_serializers,
+    )
+
+    _register_custom_datasets_serializers(serialization_context)

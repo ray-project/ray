@@ -1,11 +1,10 @@
 from collections import Counter
 from typing import Dict, List, Optional, Union
 
-from ray.air.constants import MODEL_KEY
 from tensorflow.keras.callbacks import Callback as KerasCallback
 
 from ray.air import session
-from ray.air.checkpoint import Checkpoint
+from ray.train.tensorflow import TensorflowCheckpoint
 from ray.util.annotations import PublicAPI
 
 
@@ -176,7 +175,7 @@ class Callback(_Callback):
 
         checkpoint = None
         if freq > 0 and self._counter[when] % freq == 0:
-            checkpoint = Checkpoint.from_dict({MODEL_KEY: self.model.get_weights()})
+            checkpoint = TensorflowCheckpoint.from_model(self.model)
 
         if not self._metrics:
             report_dict = logs

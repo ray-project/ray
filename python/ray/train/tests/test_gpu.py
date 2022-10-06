@@ -177,6 +177,32 @@ def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
     trainer.shutdown()
 
 
+def test_torch_prepare_model_uses_device(ray_start_4_cpus_2_gpus):
+    """Tests if `prepare_model` uses the train.torch.get_device even if it does not
+    match with the local rank."""
+    # The below test should pass without errors.
+
+    @patch.object(
+        ray.train.torch.train_loop_utils._TorchAccelerator,
+        "get_device",
+        lambda self: torch.device(f"cuda:{1 - train.local_rank()}"),
+    )
+    def train_func():
+        # These assert statements must hold for prepare_model to wrap with DDP.
+        assert torch.cuda.is_available()
+        assert train.world_size() > 1
+        model = torch.nn.Linear(1, 1)
+        data = torch.ones(1)
+        data = data.to(train.torch.get_device())
+        model = train.torch.prepare_model(model)
+        model(data)
+
+    trainer = TorchTrainer(
+        train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+    )
+    trainer.fit()
+
+
 # TODO: Refactor as a backend test.
 @pytest.mark.parametrize(
     "dataset", (LinearDataset, LinearDatasetDict, NonTensorDataset)
@@ -555,13 +581,13 @@ def test_auto_transfer_data_from_host_to_device(
 
 def test_auto_transfer_correct_device(ray_start_4_cpus_2_gpus):
     """Tests that auto_transfer uses the right device for the cuda stream."""
-    import nvidia_smi
+    import pynvml
 
-    nvidia_smi.nvmlInit()
+    pynvml.nvmlInit()
 
     def get_gpu_used_mem(i):
-        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(i)
-        info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+        handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+        info = pynvml.nvmlDeviceGetMemoryInfo(handle)
         return info.used
 
     start_gpu_memory = get_gpu_used_mem(1)

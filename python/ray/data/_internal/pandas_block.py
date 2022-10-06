@@ -141,7 +141,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             tensor = tensor.to_numpy()
         return tensor
 
-    def slice(self, start: int, end: int, copy: bool) -> "pandas.DataFrame":
+    def slice(self, start: int, end: int, copy: bool = False) -> "pandas.DataFrame":
         view = self._table[start:end]
         view.reset_index(drop=True, inplace=True)
         if copy:
