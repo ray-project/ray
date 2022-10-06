@@ -2809,10 +2809,10 @@ class Dataset(Generic[T]):
 
         .. warning::
 
-            If your dataset contains ragged tensors, this method will error. To prevent 
+            If your dataset contains ragged tensors, this method will error. To prevent
             errors, resize tensors or
             :ref:`disable tensor extension casting <disable_tensor_extension_casting>`.
-    
+
         Args:
             feature_columns: Columns that correspond to model inputs. If this is a
                 string, the input data is a tensor. If this is a list, the input data
