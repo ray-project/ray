@@ -65,11 +65,11 @@ const TIME_RANGE_DURATIONS_MS: Record<TimeRangeOptions, number> = {
 
 const METRICS_CONFIG = [
   {
-    title: "Task Execution State",
+    title: "Scheduler Task State",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=26",
   },
   {
-    title: "Cluster CPUs (logical slots)",
+    title: "Scheduler CPUs (logical slots)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=27",
   },
   {
@@ -77,7 +77,7 @@ const METRICS_CONFIG = [
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=29",
   },
   {
-    title: "Cluster GPUs (logical slots)",
+    title: "Scheduler GPUs (logical slots)",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=28",
   },
   {

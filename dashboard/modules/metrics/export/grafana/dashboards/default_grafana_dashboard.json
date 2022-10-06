@@ -108,7 +108,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Task Execution State",
+      "title": "Scheduler Task State",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -207,7 +207,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Cluster CPUs (logical slots)",
+      "title": "Scheduler CPUs (logical slots)",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -304,7 +304,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Object Store Memory (GB)",
+      "title": "Object Store Memory",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -401,7 +401,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Cluster GPUs (logical slots)",
+      "title": "Scheduler GPUs (logical slots)",
       "tooltip": {
         "shared": true,
         "sort": 0,
