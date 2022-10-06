@@ -223,6 +223,10 @@ def create_checkpoint(
 #    assert all(2.0 <= action.item() < 3.0 for action in np.array(actions))
 
 
+def test_test():
+    return
+
+
 if __name__ == "__main__":
     import sys
 
