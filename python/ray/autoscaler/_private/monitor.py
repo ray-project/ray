@@ -616,7 +616,6 @@ if __name__ == "__main__":
     monitor = Monitor(
         bootstrap_address,
         autoscaling_config,
-        args.logs_dir,
         redis_password=args.redis_password,
         monitor_ip=args.monitor_ip,
     )

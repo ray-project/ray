@@ -23,6 +23,9 @@ class EventLoggerAdapter:
     def __init__(self, source: Event.SourceType, logger: logging.Logger):
         """Adapter for the Python logger that's used to emit events.
 
+        When events are emitted, they are aggregated and available via
+        state API and dashboard.
+
         This class is threas-safe.
         """
         self.logger = logger

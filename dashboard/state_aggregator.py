@@ -598,6 +598,13 @@ class StateAPIManager:
         )
 
     async def list_cluster_events(self, *, option: ListApiOptions) -> ListApiResponse:
+        """List all cluster events from the cluster.
+
+        Returns:
+            A list of cluster events in the cluster.
+            The schema of returned "dict" is equivalent to the
+            `ClusterEventState` protobuf message.
+        """
         result = []
         all_events = await self._client.get_all_cluster_events()
         for _, events in all_events.items():
