@@ -360,7 +360,7 @@ py_test(
 
 py_test(
     name = "test_training_iterator",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_training_iterator.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
