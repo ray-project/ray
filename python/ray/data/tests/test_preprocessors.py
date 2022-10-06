@@ -1023,7 +1023,6 @@ def test_chain():
     ds = ray.data.from_pandas(in_df)
 
     def udf(df):
-        df = df.copy(deep=True)
         df["A"] *= 2
         return df
 
@@ -1134,37 +1133,6 @@ def test_normalizer():
     processed_col_c = [1.0, 1.0, -1.0]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
-
-    assert out_df.equals(expected_df)
-
-
-def test_batch_mapper():
-    """Tests batch mapper functionality."""
-    old_column = [1, 2, 3, 4]
-    to_be_modified = [1, -1, 1, -1]
-    in_df = pd.DataFrame.from_dict(
-        {"old_column": old_column, "to_be_modified": to_be_modified}
-    )
-    ds = ray.data.from_pandas(in_df)
-
-    def add_and_modify_udf(df: "pd.DataFrame"):
-        df = df.copy(deep=True)
-        df["new_col"] = df["old_column"] + 1
-        df["to_be_modified"] *= 2
-        return df
-
-    batch_mapper = BatchMapper(fn=add_and_modify_udf)
-    batch_mapper.fit(ds)
-    transformed = batch_mapper.transform(ds)
-    out_df = transformed.to_pandas()
-
-    expected_df = pd.DataFrame.from_dict(
-        {
-            "old_column": old_column,
-            "to_be_modified": [2, -2, 2, -2],
-            "new_col": [2, 3, 4, 5],
-        }
     )
 
     assert out_df.equals(expected_df)
