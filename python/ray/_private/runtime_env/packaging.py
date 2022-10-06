@@ -805,7 +805,7 @@ def unzip_package(
 
     If remove_top_level_directory is True and the top level consists of a
     a single directory (or possibly also a second hidden directory named
-    __MACOS at the top level arising from macOS's zip command), the function
+    __MACOSX at the top level arising from macOS's zip command), the function
     will automatically remove the top-level directory and store the contents
     directly in target_dir.
 
