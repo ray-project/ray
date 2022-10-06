@@ -45,9 +45,11 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
           system_memory.total_bytes = total_memory_bytes;
 
           // TODO(clarng): compute this once only.
-          int64_t threshold_bytes = GetMemoryThreshold(system_memory.total_bytes, usage_threshold_, min_memory_free_bytes_);
+          int64_t threshold_bytes = GetMemoryThreshold(
+              system_memory.total_bytes, usage_threshold_, min_memory_free_bytes_);
 
-          bool is_usage_above_threshold = IsUsageAboveThreshold(system_memory, threshold_bytes);
+          bool is_usage_above_threshold =
+              IsUsageAboveThreshold(system_memory, threshold_bytes);
 
           float threshold_fraction = (float)threshold_bytes / system_memory.total_bytes;
           monitor_callback_(is_usage_above_threshold, system_memory, threshold_fraction);
@@ -65,7 +67,8 @@ MemoryMonitor::MemoryMonitor(instrumented_io_context &io_service,
   }
 }
 
-bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory, int64_t threshold_bytes) {
+bool MemoryMonitor::IsUsageAboveThreshold(MemorySnapshot system_memory,
+                                          int64_t threshold_bytes) {
   int64_t used_memory_bytes = system_memory.used_bytes;
   int64_t total_memory_bytes = system_memory.total_bytes;
   if (total_memory_bytes == kNull || used_memory_bytes == kNull) {

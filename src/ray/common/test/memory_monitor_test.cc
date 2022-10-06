@@ -137,7 +137,6 @@ TEST_F(MemoryMonitorTest, TestMonitorPeriodSetCallbackExecuted) {
     std::unique_lock<std::mutex> callback_ran_mutex_lock(callback_ran_mutex);
     callback_ran.wait(callback_ran_mutex_lock);
   }
- 
 }
 
 TEST_F(MemoryMonitorTest, TestMonitorMinFreeZeroThresholdIsOne) {
