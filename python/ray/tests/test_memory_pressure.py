@@ -2,7 +2,6 @@ from math import ceil
 import sys
 import time
 
-import psutil
 import pytest
 
 import ray
@@ -12,7 +11,6 @@ from ray._private.test_utils import get_node_stats, wait_for_condition
 import numpy as np
 from ray._private.utils import get_system_memory
 from ray._private.utils import get_used_memory
-
 
 
 memory_usage_threshold_fraction = 0.65
@@ -417,11 +415,11 @@ def test_put_object_consume_shared_mem_and_page_cache_task_usage_slightly_below_
         bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.97)
         print(bytes_to_alloc)
         ray.get(
-                allocate_memory.options(max_retries=0).remote(
-                    allocate_bytes=bytes_to_alloc,
-                ),
-                timeout = 90
-            )
+            allocate_memory.options(max_retries=0).remote(
+                allocate_bytes=bytes_to_alloc,
+            ),
+            timeout=90,
+        )
 
         entries = int((10 << 30) / 8)
         obj_ref = ray.put(np.random.rand(entries))
@@ -430,11 +428,11 @@ def test_put_object_consume_shared_mem_and_page_cache_task_usage_slightly_below_
         bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.97)
         print(bytes_to_alloc)
         ray.get(
-                allocate_memory.options(max_retries=0).remote(
-                    allocate_bytes=bytes_to_alloc,
-                ),
-                timeout = 90
-            )
+            allocate_memory.options(max_retries=0).remote(
+                allocate_bytes=bytes_to_alloc,
+            ),
+            timeout=90,
+        )
 
 
 if __name__ == "__main__":

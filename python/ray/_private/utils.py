@@ -628,16 +628,17 @@ def get_cgroupv1_used_memory(filename):
         working_set = -1
         for line in lines:
             if "total_rss " in line:
-                rss_bytes  = int(line.split()[1])
+                rss_bytes = int(line.split()[1])
             elif "cache " in line:
-                cache_bytes  = int(line.split()[1])
+                cache_bytes = int(line.split()[1])
             elif "inactive_file" in line:
-                inactive_file_bytes  = int(line.split()[1])
+                inactive_file_bytes = int(line.split()[1])
         if cache_bytes >= 0 and rss_bytes >= 0 and inactive_file_bytes >= 0:
             working_set = rss_bytes + cache_bytes - inactive_file_bytes
-        if rss_bytes >=0 or working_set >= 0:
+        if rss_bytes >= 0 or working_set >= 0:
             return max(working_set, rss_bytes)
         return None
+
 
 def get_used_memory():
     """Return the currently used system memory in bytes
