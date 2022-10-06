@@ -16,11 +16,12 @@
 
 #include <sys/sysinfo.h>
 
+#include <fstream>
+
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/util/process.h"
-#include <fstream>
 #include "ray/common/id.h"
+#include "ray/util/process.h"
 
 namespace ray {
 class MemoryMonitorTest : public ::testing::Test {
@@ -145,10 +146,14 @@ TEST_F(MemoryMonitorTest, TestCgroupV1MemFileValidReturnsWorkingSet) {
 
   std::ofstream mem_file;
   mem_file.open(file_name);
-  mem_file << "total_cache " << "918757" << std::endl;
-  mem_file << "unknown " << "9" << std::endl;
-  mem_file << "total_rss " << "8571" << std::endl;
-  mem_file << "total_inactive_file " << "821" << std::endl;
+  mem_file << "total_cache "
+           << "918757" << std::endl;
+  mem_file << "unknown "
+           << "9" << std::endl;
+  mem_file << "total_rss "
+           << "8571" << std::endl;
+  mem_file << "total_inactive_file "
+           << "821" << std::endl;
   mem_file.close();
 
   int64_t used_bytes = MemoryMonitor::GetCGroupV1MemoryUsedBytes(file_name.c_str());
@@ -163,9 +168,12 @@ TEST_F(MemoryMonitorTest, TestCgroupV1MemFileMissingFieldReturnskNull) {
 
   std::ofstream mem_file;
   mem_file.open(file_name);
-  mem_file << "total_cache " << "918757" << std::endl;
-  mem_file << "unknown " << "9" << std::endl;
-  mem_file << "total_rss " << "8571" << std::endl;
+  mem_file << "total_cache "
+           << "918757" << std::endl;
+  mem_file << "unknown "
+           << "9" << std::endl;
+  mem_file << "total_rss "
+           << "8571" << std::endl;
   mem_file.close();
 
   int64_t used_bytes = MemoryMonitor::GetCGroupV1MemoryUsedBytes(file_name.c_str());
