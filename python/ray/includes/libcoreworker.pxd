@@ -124,7 +124,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus RemovePlacementGroup(
             const CPlacementGroupID &placement_group_id)
         CRayStatus WaitPlacementGroupReady(
-            const CPlacementGroupID &placement_group_id, int timeout_seconds)
+            const CPlacementGroupID &placement_group_id, int64_t timeout_seconds)
         optional[c_vector[CObjectReference]] SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
@@ -264,7 +264,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         int64_t GetNumLeasesRequested() const
 
-        unordered_map[c_string, c_vector[uint64_t]] GetActorCallStats() const
+        unordered_map[c_string, c_vector[int64_t]] GetActorCallStats() const
 
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type
@@ -299,7 +299,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             &creation_task_exception_pb_bytes,
             c_bool *is_retryable_error,
             const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
-            const c_string name_of_concurrency_group_to_execute) nogil
+            const c_string name_of_concurrency_group_to_execute,
+            c_bool is_reattempt) nogil
          ) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals

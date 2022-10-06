@@ -41,8 +41,9 @@ DEFINE_stats(
     tasks,
     "Current number of tasks currently in a particular state.",
     // State: the task state, as described by rpc::TaskState proto in common.proto.
+    // Name: the name of the function called.
     // Source: component reporting, e.g., "core_worker", "executor", or "pull_manager".
-    ("State", "Source"),
+    ("State", "Name", "Source"),
     (),
     ray::stats::GAUGE);
 
@@ -166,6 +167,14 @@ DEFINE_stats(scheduler_failed_worker_startup_total,
              "available. Labels are broken per reason {JobConfigMissing, "
              "RegistrationTimedOut, RateLimited}",
              ("Reason"),
+             (),
+             ray::stats::GAUGE);
+
+/// Raylet Resource Manager
+DEFINE_stats(resources,
+             // TODO(sang): Support placement_group_reserved_available | used
+             "Logical Ray resources broken per state {AVAILABLE, USED}",
+             ("Name", "State"),
              (),
              ray::stats::GAUGE);
 

@@ -21,29 +21,13 @@
 #include "ray/common/task/task.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/stats/metric_defs.h"
+#include "ray/util/counter_map.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace core {
-
-/// This class tracks the number of tasks at a particular state for the
-/// purpose of emitting Prometheus metrics.
-class TaskStatusCounter {
- public:
-  /// Construct a new TaskStatusCounter.
-  TaskStatusCounter();
-
-  /// Track the change of the status of a task from old to new status.
-  void Swap(rpc::TaskStatus old_status, rpc::TaskStatus new_status);
-
-  /// Increment the number of tasks at a specific status by one.
-  void Increment(rpc::TaskStatus status);
-
- private:
-  int64_t counters_[rpc::TaskStatus_ARRAYSIZE] = {};
-};
 
 class TaskFinisherInterface {
  public:
@@ -57,8 +41,7 @@ class TaskFinisherInterface {
   virtual void FailPendingTask(const TaskID &task_id,
                                rpc::ErrorType error_type,
                                const Status *status = nullptr,
-                               const rpc::RayErrorInfo *ray_error_info = nullptr,
-                               bool mark_task_object_failed = true) = 0;
+                               const rpc::RayErrorInfo *ray_error_info = nullptr) = 0;
 
   virtual bool FailOrRetryPendingTask(const TaskID &task_id,
                                       rpc::ErrorType error_type,
@@ -76,11 +59,6 @@ class TaskFinisherInterface {
 
   virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
 
-  virtual void MarkTaskReturnObjectsFailed(
-      const TaskSpecification &spec,
-      rpc::ErrorType error_type,
-      const rpc::RayErrorInfo *ray_error_info = nullptr) = 0;
-
   virtual absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
 
   virtual ~TaskFinisherInterface() {}
@@ -93,6 +71,7 @@ class TaskResubmissionInterface {
   virtual ~TaskResubmissionInterface() {}
 };
 
+using TaskStatusCounter = CounterMap<std::pair<std::string, rpc::TaskStatus>>;
 using PutInLocalPlasmaCallback =
     std::function<void(const RayObject &object, const ObjectID &object_id)>;
 using RetryTaskCallback = std::function<void(TaskSpecification &spec, bool delay)>;
@@ -116,6 +95,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         retry_task_callback_(retry_task_callback),
         push_error_callback_(push_error_callback),
         max_lineage_bytes_(max_lineage_bytes) {
+    task_counter_.SetOnChangeCallback(
+        [](const std::pair<std::string, rpc::TaskStatus> key, int64_t value) {
+          ray::stats::STATS_tasks.Record(value,
+                                         {{"State", rpc::TaskStatus_Name(key.second)},
+                                          {"Name", key.first},
+                                          {"Source", "owner"}});
+        });
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
           return RemoveLineageReference(object_id, ids_to_release);
@@ -186,7 +172,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Nullptr means that there's no error information.
   /// TODO(sang): Remove nullptr case. Every error message should have metadata.
   /// \param[in] mark_task_object_failed whether or not it marks the task
-  /// return object as failed.
+  /// return object as failed. If this is set to false, then the caller is
+  /// responsible for later failing or completing the task.
   /// \return Whether the task will be retried or not.
   bool FailOrRetryPendingTask(const TaskID &task_id,
                               rpc::ErrorType error_type,
@@ -207,8 +194,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   void FailPendingTask(const TaskID &task_id,
                        rpc::ErrorType error_type,
                        const Status *status = nullptr,
-                       const rpc::RayErrorInfo *ray_error_info = nullptr,
-                       bool mark_task_object_failed = true) override;
+                       const rpc::RayErrorInfo *ray_error_info = nullptr) override;
 
   /// Treat a pending task's returned Ray object as failed. The lock should not be held
   /// when calling this method because it may trigger callbacks in this or other classes.
@@ -219,7 +205,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   void MarkTaskReturnObjectsFailed(
       const TaskSpecification &spec,
       rpc::ErrorType error_type,
-      const rpc::RayErrorInfo *ray_error_info = nullptr) override LOCKS_EXCLUDED(mu_);
+      const rpc::RayErrorInfo *ray_error_info,
+      const absl::flat_hash_set<ObjectID> &store_in_plasma_ids) LOCKS_EXCLUDED(mu_);
 
   /// A task's dependencies were inlined in the task spec. This will decrement
   /// the ref count for the dependency IDs. If the dependencies contained other
@@ -297,13 +284,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
   void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
 
-  /// Update nested ref count info and store the in-memory value for a task's
-  /// return object. Returns true if the task's return object was returned
-  /// directly by value.
-  bool HandleTaskReturn(const ObjectID &object_id,
-                        const rpc::ReturnObject &return_object,
-                        const NodeID &worker_raylet_id,
-                        bool store_in_plasma);
+  /// Returns the generator ID that contains the dynamically allocated
+  /// ObjectRefs, if the task is dynamic. Else, returns Nil.
+  ObjectID TaskGeneratorId(const TaskID &task_id) const;
 
  private:
   struct TaskEntry {
@@ -319,11 +302,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
-      counter.Increment(rpc::TaskStatus::PENDING_ARGS_AVAIL);
+      counter.Increment({spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL});
     }
 
     void SetStatus(rpc::TaskStatus new_status) {
-      counter.Swap(status, new_status);
+      counter.Swap({spec.GetName(), status}, {spec.GetName(), new_status});
       status = new_status;
     }
 
@@ -380,6 +363,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     rpc::TaskStatus status = rpc::TaskStatus::PENDING_ARGS_AVAIL;
   };
 
+  /// Update nested ref count info and store the in-memory value for a task's
+  /// return object. Returns true if the task's return object was returned
+  /// directly by value.
+  bool HandleTaskReturn(const ObjectID &object_id,
+                        const rpc::ReturnObject &return_object,
+                        const NodeID &worker_raylet_id,
+                        bool store_in_plasma) LOCKS_EXCLUDED(mu_);
+
   /// Remove a lineage reference to this object ID. This should be called
   /// whenever a task that depended on this object ID can no longer be retried.
   ///
@@ -400,6 +391,20 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       bool release_lineage,
       const rpc::Address &worker_addr,
       const ReferenceCounter::ReferenceTableProto &borrowed_refs);
+
+  // Get the objects that were stored in plasma upon the first successful
+  // execution of this task. If the task is re-executed, these objects should
+  // get stored in plasma again, even if they are small and were returned
+  // directly in the worker's reply. This ensures that any reference holders
+  // that are already scheduled at the raylet can retrieve these objects
+  // through plasma.
+  // \param[in] task_id The task ID.
+  // \param[out] first_execution Whether the task has been successfully
+  // executed before. If this is false, then the objects to store in plasma
+  // will be empty.
+  // \param [out] Return objects that should be stored in plasma.
+  absl::flat_hash_set<ObjectID> GetTaskReturnObjectsToStoreInPlasma(
+      const TaskID &task_id, bool *first_execution = nullptr) const LOCKS_EXCLUDED(mu_);
 
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);
