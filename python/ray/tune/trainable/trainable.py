@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Union, TYPE_CHECKING
 
 import ray
+from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.util import skip_exceptions
 from ray.air.checkpoint import (
     Checkpoint,
@@ -428,7 +429,7 @@ class Trainable:
     ) -> Optional[str]:
         # Create checkpoint_xxxxx directory and drop checkpoint marker
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
-            checkpoint_dir or self.logdir, index=self.iteration
+            checkpoint_dir or self.logdir, index=self.iteration, override=True
         )
         return checkpoint_dir
 
@@ -502,6 +503,56 @@ class Trainable:
 
         return checkpoint_dir
 
+    def _get_latest_available_checkpoint(self) -> Optional[str]:
+        latest_local_checkpoint = self._get_latest_local_available_checkpoint()
+        latest_remote_checkpoint = self._get_latest_remote_available_checkpoint()
+
+        if not latest_local_checkpoint:
+            return latest_remote_checkpoint
+        elif not latest_remote_checkpoint:
+            return latest_local_checkpoint
+
+        # Else, both are available
+        return max([latest_local_checkpoint, latest_remote_checkpoint])
+
+    def _get_latest_local_available_checkpoint(self) -> Optional[str]:
+        checkpoint_candidates = []
+        for name in os.listdir(self._logdir):
+            if not name.startswith("checkpoint_"):
+                continue
+            candidate_path = os.path.join(self._logdir, name)
+            if not os.path.isdir(candidate_path):
+                continue
+
+            # On local storage it is cheap to check for valid checkpoints
+            try:
+                TrainableUtil.find_checkpoint_dir(candidate_path)
+            except Exception:
+                continue
+
+            checkpoint_candidates.append(candidate_path)
+
+        if not checkpoint_candidates:
+            return None
+
+        return max(checkpoint_candidates)
+
+    def _get_latest_remote_available_checkpoint(self) -> Optional[str]:
+        if not self.remote_checkpoint_dir:
+            return None
+
+        checkpoint_candidates = []
+        for name in list_at_uri(self.remote_checkpoint_dir):
+            if not name.startswith("checkpoint_"):
+                continue
+            candidate_path = os.path.join(self._logdir, name)
+            checkpoint_candidates.append(candidate_path)
+
+        if not checkpoint_candidates:
+            return None
+
+        return max(checkpoint_candidates)
+
     def _maybe_save_to_cloud(self, checkpoint_dir: str) -> bool:
         if not self.uses_cloud_checkpointing:
             return False
@@ -550,6 +601,7 @@ class Trainable:
         )
         external_uri = os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir)
         local_dir = os.path.join(self.logdir, rel_checkpoint_dir)
+        path_existed_before = os.path.exists(local_dir)
 
         if self.custom_syncer:
             # Only keep for backwards compatibility
@@ -560,7 +612,7 @@ class Trainable:
         checkpoint = Checkpoint.from_uri(external_uri)
         if not retry_fn(
             lambda: checkpoint.to_directory(local_dir),
-            subprocess.CalledProcessError,
+            (subprocess.CalledProcessError, FileNotFoundError),
             num_retries=3,
             sleep_time=1,
             timeout=self.sync_timeout,
@@ -569,6 +621,10 @@ class Trainable:
                 f"Could not download checkpoint even after 3 retries: "
                 f"{external_uri}"
             )
+            # We may have created this dir when we tried to sync, so clean up
+            if not path_existed_before and os.path.exists(local_dir):
+                shutil.rmtree(local_dir)
+            return False
 
         return True
 
@@ -599,6 +655,7 @@ class Trainable:
         self,
         checkpoint_path: Union[str, Checkpoint],
         checkpoint_node_ip: Optional[str] = None,
+        fallback_to_latest: bool = False,
     ):
         """Restores training state from a given model checkpoint.
 
@@ -629,6 +686,9 @@ class Trainable:
             checkpoint_node_ip: If given, try to restore
                 checkpoint from this node if it doesn't exist locally or
                 on cloud storage.
+            fallback_to_latest: If True, will try to recover the
+                latest available checkpoint if the given ``checkpoint_path``
+                could not be found.
 
         """
         # Ensure Checkpoints are converted
@@ -639,7 +699,7 @@ class Trainable:
             # If a checkpoint source IP is given
             checkpoint_node_ip
             # And the checkpoint does not currently exist on the local node
-            and not os.path.exists(checkpoint_node_ip)
+            and not os.path.exists(checkpoint_path)
             # And the source IP is different to the current IP
             and checkpoint_node_ip != ray.util.get_node_ip_address()
         ):
@@ -650,6 +710,21 @@ class Trainable:
                 checkpoint.to_directory(checkpoint_path)
 
         if not os.path.exists(checkpoint_path):
+            if fallback_to_latest:
+                logger.info(
+                    f"Checkpoint path was not available, trying to recover from latest "
+                    f"available checkpoint instead. Unavailable checkpoint path: "
+                    f"{checkpoint_path}"
+                )
+                checkpoint_path = self._get_latest_available_checkpoint()
+                if checkpoint_path:
+                    logger.info(
+                        f"Trying to recover from latest available checkpoint: "
+                        f"{checkpoint_path}"
+                    )
+                    return self.restore(checkpoint_path, fallback_to_latest=False)
+
+            # Else, raise
             raise ValueError(
                 f"Could not recover from checkpoint as it does not exist on local "
                 f"disk and was not available on cloud storage or another Ray node. "
