@@ -646,7 +646,7 @@ def read_csv(
             with a custom callback to read only selected partitions of a dataset.
             By default, this does not filter out any files.
             If wishing to filter out all file paths except those whose file extension
-            matches e.g. "*.csv", a ``FileExtensionFilter("csv")`` can be provided.
+            matches e.g. "*.csv*", a ``FileExtensionFilter("csv")`` can be provided.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_.
