@@ -1277,9 +1277,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Whether or not this worker is connected to the raylet and GCS.
   bool connected_ = false;
 
-  // Client to the GCS shared by core worker interfaces.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
-
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through
   // one client, and we need to keep the connection alive until we return all
@@ -1291,6 +1288,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Keeps track of object ID reference counts.
   std::shared_ptr<ReferenceCounter> reference_counter_;
+
+  // Client to the GCS shared by core worker interfaces.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   ///
   /// Fields related to storing and retrieving objects.
