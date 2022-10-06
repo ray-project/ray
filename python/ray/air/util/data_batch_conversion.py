@@ -7,7 +7,6 @@ import pandas as pd
 from ray.air.data_batch_type import DataBatchType
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.util.annotations import DeveloperAPI
-from ray.air.util.tensor_extensions.arrow import ArrowTensorType
 
 # TODO: Consolidate data conversion edges for arrow bug workaround.
 from ray.air.util.transform_pyarrow import (
@@ -139,30 +138,22 @@ def _convert_batch_type_to_numpy(
                 )
         return data
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
-        if data.column_names == [TENSOR_COLUMN_NAME] and (
-            isinstance(data.schema.types[0], ArrowTensorType)
-        ):
-            # If representing a tensor dataset, return as a single numpy array.
-            # Example: ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
-            # Arrow’s incorrect concatenation of extension arrays:
-            # https://issues.apache.org/jira/browse/ARROW-16503
-            return _concatenate_extension_column(data[TENSOR_COLUMN_NAME]).to_numpy(
-                zero_copy_only=False
-            )
-        else:
-            output_dict = {}
-            for col_name in data.column_names:
-                col = data[col_name]
-                if col.num_chunks == 0:
-                    col = pyarrow.array([], type=col.type)
-                elif _is_column_extension_type(col):
-                    # Arrow’s incorrect concatenation of extension arrays:
-                    # https://issues.apache.org/jira/browse/ARROW-16503
-                    col = _concatenate_extension_column(col)
-                else:
-                    col = col.combine_chunks()
-                output_dict[col_name] = col.to_numpy(zero_copy_only=False)
-            return output_dict
+        output_dict = {}
+        for col_name in data.column_names:
+            col = data[col_name]
+            if col.num_chunks == 0:
+                col = pyarrow.array([], type=col.type)
+            elif _is_column_extension_type(col):
+                # Arrow’s incorrect concatenation of extension arrays:
+                # https://issues.apache.org/jira/browse/ARROW-16503
+                col = _concatenate_extension_column(col)
+            else:
+                col = col.combine_chunks()
+            output_dict[col_name] = col.to_numpy(zero_copy_only=False)
+        # For tensor data, return numpy array directly.
+        if output_dict.keys() == {TENSOR_COLUMN_NAME}:
+            return output_dict[TENSOR_COLUMN_NAME]
+        return output_dict
     elif isinstance(data, pd.DataFrame):
         return convert_pandas_to_batch_type(data, DataType.NUMPY)
     else:

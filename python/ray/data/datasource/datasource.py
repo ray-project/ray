@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, Generic, Iterable, List, Optional, Tuple
 import numpy as np
 
 import ray
+from ray.data._internal.table_block import VALUE_COL_NAME
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_pyarrow_version
@@ -244,8 +245,10 @@ class _RangeDatasourceReader(Reader):
             if block_format == "arrow":
                 import pyarrow as pa
 
+                # Use the reserved column name for representing tensor arrays in
+                # tabular format.
                 return pa.Table.from_arrays(
-                    [np.arange(start, start + count)], names=["value"]
+                    [np.arange(start, start + count)], names=[VALUE_COL_NAME]
                 )
             elif block_format == "tensor":
                 import pyarrow as pa

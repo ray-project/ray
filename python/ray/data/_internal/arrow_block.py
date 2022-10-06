@@ -20,6 +20,7 @@ from ray.air.util.transform_pyarrow import (
     _concatenate_extension_column,
     _is_column_extension_type,
 )
+from ray.air.util.data_batch_conversion import _convert_batch_type_to_numpy
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.table_block import (
     VALUE_COL_NAME,
@@ -204,21 +205,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
                     f"Cannot find column {column}, available columns: "
                     f"{self._table.column_names}"
                 )
-        arrays = []
-        for column in columns:
-            array = self._table[column]
-            if array.num_chunks == 0:
-                array = pyarrow.array([], type=array.type)
-            elif _is_column_extension_type(array):
-                array = _concatenate_extension_column(array)
-            else:
-                array = array.combine_chunks()
-            arrays.append(array.to_numpy(zero_copy_only=False))
-        if len(arrays) == 1:
-            arrays = arrays[0]
-        else:
-            arrays = dict(zip(columns, arrays))
-        return arrays
+
+        numpy_batch = _convert_batch_type_to_numpy(self._table)
+        numpy_batch = dict(zip(columns, numpy_batch.values()))
+        return numpy_batch
 
     def to_arrow(self) -> "pyarrow.Table":
         return self._table

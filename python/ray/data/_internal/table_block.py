@@ -3,6 +3,7 @@ from typing import Dict, Iterator, List, Union, Any, TypeVar, TYPE_CHECKING
 
 import numpy as np
 
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data.block import Block, BlockAccessor
 from ray.data.row import TableRow
 from ray.data._internal.block_builder import BlockBuilder
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
 
 # The internal column name used for pure-tensor datasets, represented as
 # single-tensor-column tables.
-VALUE_COL_NAME = "__value__"
+VALUE_COL_NAME = TENSOR_COLUMN_NAME
 
 T = TypeVar("T")
 
