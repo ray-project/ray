@@ -219,13 +219,14 @@ DEFINE_stats(object_store_memory,
              /// Location:
              ///    TODO(rickyx): spill fallback from in memory
              ///    - IN_MEMORY: currently in shared memory(e.g. /dev/shm) and
-             ///      fallback allocated.
+             ///      fallback allocated. This is memory already sealed.
              ///    - SPILLED: current number of bytes from objects spilled
              ///      to external storage. Note this might be smaller than
              ///      the physical storage incurred on the external storage because
              ///      Ray might fuse spilled objects into a single file, so a deleted
              ///      spill object might still exist in the spilled file. Check
              ///      spilled object fusing for more details.
+             ///    - UNSEALED: unsealed bytes that come from objects just created.
              ("Location"),
              (),
              ray::stats::GAUGE);
