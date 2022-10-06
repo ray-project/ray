@@ -50,8 +50,8 @@ def download_example_file(
     when using the CLI.
 
     Args:
-        example_file (str): The example file to download.
-        base_url (str): The base URL to download the example file from. Use this if
+        example_file: The example file to download.
+        base_url: The base URL to download the example file from. Use this if
             'example_file' is a link relative to this base URL. If set to 'None',
             'example_file' is assumed to be a complete URL (or a local file, in which
             case nothing is downloaded).
