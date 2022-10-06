@@ -14,10 +14,12 @@ class Actor:
 
 actor = Actor.remote()
 global_var = 4
-# This returns 6, not 7. It is because the value change of global_var inside a driver is not
-# reflected to the actor because they are running in different processes.
+# This returns 6, not 7. It is because the value change of global_var
+# inside a driver is not reflected to the actor
+# because they are running in different processes.
 assert ray.get(actor.f.remote()) == 6
 # __anti_pattern_end__
+
 
 # __better_approach_start__
 @ray.remote
