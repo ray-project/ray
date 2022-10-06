@@ -18,7 +18,6 @@
 #include "ray/object_manager/plasma/stats_collector.h"
 
 #include "ray/stats/metric_defs.h"
-#include "src/ray/protobuf/common.pb.h"  // rpc::ObjectLocation
 
 namespace plasma {
 
@@ -178,12 +177,12 @@ int64_t ObjectStatsCollector::GetNumBytesCreatedCurrent() const {
 
 void ObjectStatsCollector::RecordMetrics() const {
   ray::stats::STATS_object_store_memory.Record(
-      GetNumBytesCreatedCurrent() - num_bytes_unsealed_,
-      {{"Location", ray::rpc::ObjectLocation_Name(ray::rpc::ObjectLocation::IN_MEMORY)}});
+      GetNumBytesCreatedCurrene() - num_bytes_unsealed_,
+      {{ray::stats::LocationKey::name(), ray::stats::kObjectLocInMemory}});
 
   ray::stats::STATS_object_store_memory.Record(
       num_bytes_unsealed_,
-      {{"Location", ray::rpc::ObjectLocation_Name(ray::rpc::ObjectLocation::UNSEALED)}});
+      {{ray::stats::LocationKey::name(), ray::stats::kObjectLocUnsealed}});
 
   // TODO(rickyx):
   // Add fallback memory recording here.
