@@ -85,7 +85,7 @@ def get_step(
     else:
         python_version = DEFAULT_PYTHON_VERSION
 
-    step["plugins"][0]["docker#v3.9.0"][
+    step["plugins"][0]["docker#v5.2.0"][
         "image"
     ] = f"rayproject/ray:nightly-py{python_version_str(python_version)}"
 
