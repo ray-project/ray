@@ -10,12 +10,17 @@ return a list of node types that can satisfy the demands given constraints
 import collections
 import copy
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Callable
+from functools import partial
 
 import numpy as np
 
 from ray._private.gcs_utils import PlacementGroupTableData
-from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
+from ray.autoscaler._private.constants import (
+    AUTOSCALER_CONSERVE_GPU_NODES,
+    AUTOSCALER_UTILIZATION_SCORER_KEY,
+)
+import os
 from ray.autoscaler._private.util import (
     NodeID,
     NodeIP,
@@ -24,6 +29,7 @@ from ray.autoscaler._private.util import (
     ResourceDict,
     is_placement_group_resource,
 )
+from ray.autoscaler._private.loader import load_function_or_class
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
@@ -33,11 +39,56 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
 )
 from ray.core.generated.common_pb2 import PlacementStrategy
+from typing_extensions import Protocol
+from abc import abstractmethod
+from ray.autoscaler._private.node_provider_availability_tracker import NodeAvailabilitySummary
 
 logger = logging.getLogger(__name__)
 
 # The minimum number of nodes to launch concurrently.
 UPSCALING_INITIAL_NUM_NODES = 5
+
+
+class UtilizationScore(Protocol):
+    """This fancy class just defines the `UtilizationScore` protocol to be
+    some type which is well ordered (e.g. things that can be sorted).
+
+    What we're really trying to express is
+
+    ```
+    UtilizationScore = TypeVar("UtilizationScore", bound=Comparable["UtilizationScore"])
+    ```
+
+    but Comparable isn't a real type and, and a bound with a type argument
+    can't be enforced (f-bounded polymorphism with contravariance). See Guido's
+    comment for more details: https://github.com/python/typing/issues/59.
+
+    """
+    @abstractmethod
+    def __eq__(self, other: "UtilizationScore") -> bool:
+        pass
+
+    @abstractmethod
+    def __lt__(self: "UtilizationScore", other: "UtilizationScore") -> bool:
+        pass
+
+    def __gt__(self: "UtilizationScore", other: "UtilizationScore") -> bool:
+        return (not self < other) and self != other
+
+    def __le__(self: "UtilizationScore", other: "UtilizationScore") -> bool:
+        return self < other or self == other
+
+    def __ge__(self: "UtilizationScore", other: "UtilizationScore") -> bool:
+        return (not self < other)
+
+
+class UtilizationScorer(Protocol):
+    def __call__(node_resources: ResourceDict,
+                 resources: List[ResourceDict],
+                 *,
+                 node_availability_summary : NodeAvailabilitySummary
+                 ) -> Optional[UtilizationScore]:
+        pass
 
 
 class ResourceDemandScheduler:
@@ -47,7 +98,7 @@ class ResourceDemandScheduler:
         node_types: Dict[NodeType, NodeTypeConfigDict],
         max_workers: int,
         head_node_type: NodeType,
-        upscaling_speed: float = 1,
+        upscaling_speed: float,
     ) -> None:
         self.provider = provider
         self.node_types = copy.deepcopy(node_types)
@@ -55,6 +106,16 @@ class ResourceDemandScheduler:
         self.max_workers = max_workers
         self.head_node_type = head_node_type
         self.upscaling_speed = upscaling_speed
+
+        utilization_scorer_str = os.environ.get(
+            AUTOSCALER_UTILIZATION_SCORER_KEY,
+            "ray.autoscaler._private.resource_demand_scheduler"
+            "._default_utilization_scorer"
+        )
+        self.utilization_scorer : UtilizationScorer = load_function_or_class(
+            utilization_scorer_str
+        )
+
 
     def _get_head_and_workers(self, nodes: List[NodeID]) -> Tuple[NodeID, List[NodeID]]:
         """Returns the head node's id and the list of all worker node ids,
@@ -158,6 +219,7 @@ class ResourceDemandScheduler:
             self.max_workers,
             self.head_node_type,
             ensure_min_cluster_size,
+            utilization_scorer=partial(self.utilization_scorer, node_availability_summary=None)
         )
 
         # Step 3: get resource demands of placement groups and return the
@@ -211,6 +273,7 @@ class ResourceDemandScheduler:
             self.head_node_type,
             max_to_add,
             unfulfilled_placement_groups_demands,
+            utilization_scorer=partial(self.utilization_scorer, node_availability_summary=None),
         )
         placement_groups_nodes_max_limit = {
             node_type: spread_pg_nodes_to_add.get(node_type, 0)
@@ -229,6 +292,7 @@ class ResourceDemandScheduler:
             self.head_node_type,
             max_to_add,
             unfulfilled,
+            utilization_scorer=partial(self.utilization_scorer, node_availability_summary=None),
         )
         logger.debug("Final unfulfilled: {}".format(final_unfulfilled))
         # Merge nodes to add based on demand and nodes to add based on
@@ -494,6 +558,7 @@ class ResourceDemandScheduler:
                 self.head_node_type,
                 max_to_add,
                 unfulfilled,
+            utilization_scorer=partial(self.utilization_scorer, node_availability_summary=None),
                 strict_spread=True,
             )
             _inplace_add(node_type_counts, to_launch)
@@ -548,6 +613,7 @@ def _add_min_workers_nodes(
     max_workers: int,
     head_node_type: NodeType,
     ensure_min_cluster_size: List[ResourceDict],
+        utilization_scorer : Callable[[ResourceDict, List[ResourceDict]], Optional[UtilizationScore]],
 ) -> (List[ResourceDict], Dict[NodeType, int], Dict[NodeType, int]):
     """Updates resource demands to respect the min_workers and
     request_resources() constraints.
@@ -606,6 +672,7 @@ def _add_min_workers_nodes(
             head_node_type,
             max_to_add,
             resource_requests_unfulfilled,
+            utilization_scorer=utilization_scorer,
         )
         # Update the resources, counts and total nodes to add.
         for node_type in nodes_to_add_request_resources:
@@ -632,6 +699,7 @@ def get_nodes_for(
     head_node_type: NodeType,
     max_to_add: int,
     resources: List[ResourceDict],
+        utilization_scorer : Callable[[ResourceDict, List[ResourceDict]], Optional[UtilizationScore]],
     strict_spread: bool = False,
 ) -> (Dict[NodeType, int], List[ResourceDict]):
     """Determine nodes to add given resource demands and constraints.
@@ -649,7 +717,7 @@ def get_nodes_for(
         Dict of count to add for each node type, and residual of resources
         that still cannot be fulfilled.
     """
-    nodes_to_add = collections.defaultdict(int)
+    nodes_to_add : Dict[NodeType, int] = collections.defaultdict(int)
 
     while resources and sum(nodes_to_add.values()) < max_to_add:
         utilization_scores = []
@@ -667,9 +735,9 @@ def get_nodes_for(
             if strict_spread:
                 # If handling strict spread, only one bundle can be placed on
                 # the node.
-                score = _utilization_score(node_resources, [resources[0]])
+                score = utilization_scorer(node_resources, [resources[0]])
             else:
-                score = _utilization_score(node_resources, resources)
+                score = utilization_scorer(node_resources, resources)
             if score is not None:
                 utilization_scores.append((score, node_type))
 
@@ -701,9 +769,9 @@ def get_nodes_for(
     return nodes_to_add, resources
 
 
-def _utilization_score(
-    node_resources: ResourceDict, resources: List[ResourceDict]
-) -> Optional[float]:
+def _default_utilization_scorer(
+        node_resources: ResourceDict, resources: List[ResourceDict], *, node_availability_summary : NodeAvailabilitySummary
+) -> Optional[Tuple[float, float]]:
     remaining = copy.deepcopy(node_resources)
     is_gpu_node = "GPU" in node_resources and node_resources["GPU"] > 0
     any_gpu_task = any("GPU" in r for r in resources)

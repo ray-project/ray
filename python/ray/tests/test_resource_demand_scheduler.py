@@ -30,7 +30,7 @@ from ray.autoscaler._private.providers import _NODE_PROVIDERS, _clear_provider_c
 from ray.autoscaler._private.resource_demand_scheduler import (
     ResourceDemandScheduler,
     _add_min_workers_nodes,
-    _utilization_score,
+    _default_utilization_scorer,
     get_bin_pack_residual,
 )
 from ray.autoscaler._private.resource_demand_scheduler import get_nodes_for as _get
@@ -61,50 +61,55 @@ from ray.tests.test_autoscaler import (
     mock_raylet_id,
 )
 from ray.cluster_utils import AutoscalingCluster
+from ray.autoscaler._private.node_provider_availability_tracker import NodeAvailabilitySummary
+from functools import partial
 
 GET_DEFAULT_METHOD = "ray.autoscaler._private.util._get_default_config"
 
+EMPTY_AVAILABILITY_SUMMARY = NodeAvailabilitySummary({})
+utilization_scorer = partial(_default_utilization_scorer, node_availability_summary=EMPTY_AVAILABILITY_SUMMARY)
 
 def get_nodes_for(*a, **kw):
-    return _get(*a, **kw)[0]
+    return _get(*a, utilization_scorer=utilization_scorer, **kw,)[0]
+    # return _get(*a, **kw,)[0]
 
 
 def test_util_score():
-    assert _utilization_score({"CPU": 64}, [{"TPU": 16}]) is None
-    assert _utilization_score({"GPU": 4}, [{"GPU": 2}]) == (1, 0.5, 0.5)
-    assert _utilization_score({"GPU": 4}, [{"GPU": 1}, {"GPU": 1}]) == (1, 0.5, 0.5)
-    assert _utilization_score({"GPU": 2}, [{"GPU": 2}]) == (1, 2, 2)
-    assert _utilization_score({"GPU": 2}, [{"GPU": 1}, {"GPU": 1}]) == (1, 2, 2)
-    assert _utilization_score({"GPU": 1}, [{"GPU": 1, "CPU": 1}, {"GPU": 1}]) == (
+    assert _default_utilization_scorer({"CPU": 64}, [{"TPU": 16}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY) is None
+    assert _default_utilization_scorer({"GPU": 4}, [{"GPU": 2}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY) == (1, 0.5, 0.5)
+    assert _default_utilization_scorer({"GPU": 4}, [{"GPU": 1}, {"GPU": 1}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY) == (1, 0.5, 0.5)
+    assert _default_utilization_scorer({"GPU": 2}, [{"GPU": 2}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY) == (1, 2, 2)
+    assert _default_utilization_scorer({"GPU": 2}, [{"GPU": 1}, {"GPU": 1}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY) == (1, 2, 2)
+    assert _default_utilization_scorer({"GPU": 1}, [{"GPU": 1, "CPU": 1}, {"GPU": 1}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY) == (
         1,
         1,
         1,
     )
-    assert _utilization_score(
-        {"GPU": 1, "CPU": 1}, [{"GPU": 1, "CPU": 1}, {"GPU": 1}]
+    assert _default_utilization_scorer(
+        {"GPU": 1, "CPU": 1}, [{"GPU": 1, "CPU": 1}, {"GPU": 1}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
     ) == (2, 1, 1)
-    assert _utilization_score({"GPU": 2, "TPU": 1}, [{"GPU": 2}]) == (1, 0, 1)
-    assert _utilization_score({"CPU": 64}, [{"CPU": 64}]) == (1, 64, 64)
-    assert _utilization_score({"CPU": 64}, [{"CPU": 32}]) == (1, 8, 8)
-    assert _utilization_score({"CPU": 64}, [{"CPU": 16}, {"CPU": 16}]) == (1, 8, 8)
+    assert _default_utilization_scorer({"GPU": 2, "TPU": 1}, [{"GPU": 2}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY) == (1, 0, 1)
+    assert _default_utilization_scorer({"CPU": 64}, [{"CPU": 64}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY) == (1, 64, 64)
+    assert _default_utilization_scorer({"CPU": 64}, [{"CPU": 32}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY) == (1, 8, 8)
+    assert _default_utilization_scorer({"CPU": 64}, [{"CPU": 16}, {"CPU": 16}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY) == (1, 8, 8)
 
 
 def test_gpu_node_util_score():
     # Avoid scheduling CPU tasks on GPU node.
-    assert _utilization_score({"GPU": 1, "CPU": 1}, [{"CPU": 1}]) is None
-    assert _utilization_score({"GPU": 1, "CPU": 1}, [{"CPU": 1, "GPU": 1}]) == (
+    assert _default_utilization_scorer({"GPU": 1, "CPU": 1}, [{"CPU": 1}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY) is None
+    assert _default_utilization_scorer({"GPU": 1, "CPU": 1}, [{"CPU": 1, "GPU": 1}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY) == (
         2,
         1.0,
         1.0,
     )
-    assert _utilization_score({"GPU": 1, "CPU": 1}, [{"GPU": 1}]) == (1, 0.0, 0.5)
+    assert _default_utilization_scorer({"GPU": 1, "CPU": 1}, [{"GPU": 1}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY) == (1, 0.0, 0.5)
 
 
 def test_zero_resource():
     # Test edge case of node type with all zero resource values.
-    assert _utilization_score({"CPU": 0, "custom": 0}, [{"custom": 1}]) is None
+    assert _default_utilization_scorer({"CPU": 0, "custom": 0}, [{"custom": 1}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY) is None
     # Just check that we don't have a division-by-zero error.
-    _utilization_score({"CPU": 0, "custom": 1}, [{"custom": 1}])
+    _default_utilization_scorer({"CPU": 0, "custom": 1}, [{"custom": 1}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY)
 
 
 def test_bin_pack():
@@ -180,7 +185,8 @@ def test_get_nodes_packing_heuristic():
     ) == {"m4.4xlarge": 2, "p2.8xlarge": 1}
 
     assert get_nodes_for(
-        TYPES_A, {}, "empty_node", 9999, [{"GPU": 1}] * 8, strict_spread=False
+        TYPES_A, {}, "empty_node", 9999, [{"GPU": 1}] * 8,
+        strict_spread=False
     ) == {"p2.8xlarge": 1}
     assert get_nodes_for(
         TYPES_A, {}, "empty_node", 9999, [{"GPU": 1}] * 8, strict_spread=True
@@ -204,17 +210,17 @@ def test_node_packing_gpu_cpu_bundles():
         },
     }
     nodes = get_nodes_for(
-        TYPES, {}, "cpu", 9999, ([{"CPU": 1}] * 30 + [{"GPU": 1, "CPU": 1}])
+        TYPES, {}, "cpu", 9999, ([{"CPU": 1}] * 30 + [{"GPU": 1, "CPU": 1}]),
     )
     assert nodes == {"gpu": 1, "cpu": 1}
 
     nodes = get_nodes_for(
-        TYPES, {}, "cpu", 9999, ([{"GPU": 1, "CPU": 1}] + [{"CPU": 1}] * 30)
+        TYPES, {}, "cpu", 9999, ([{"GPU": 1, "CPU": 1}] + [{"CPU": 1}] * 30),
     )
     assert nodes == {"gpu": 1, "cpu": 1}
 
     nodes = get_nodes_for(
-        TYPES, {}, "cpu", 9999, ([{"GPU": 1, "CPU": 1}] + [{"CPU": 1}] * 15)
+        TYPES, {}, "cpu", 9999, ([{"GPU": 1, "CPU": 1}] + [{"CPU": 1}] * 15),
     )
     assert nodes == {"gpu": 1}
 
@@ -234,11 +240,13 @@ def test_gpu_node_avoid_cpu_task():
         },
     }
     r1 = [{"CPU": 1}] * 100
-    assert get_nodes_for(types, {}, "empty_node", 100, r1) == {"cpu": 10}
+    assert get_nodes_for(types, {}, "empty_node", 100, r1,) == {"cpu": 10}
     r2 = [{"GPU": 1}] + [{"CPU": 1}] * 100
-    assert get_nodes_for(types, {}, "empty_node", 100, r2) == {"gpu": 1}
+    assert get_nodes_for(types, {}, "empty_node", 100, r2,
+        ) == {"gpu": 1}
     r3 = [{"GPU": 1}] * 4 + [{"CPU": 1}] * 404
-    assert get_nodes_for(types, {}, "empty_node", 100, r3) == {"gpu": 4, "cpu": 4}
+    assert get_nodes_for(types, {}, "empty_node", 100, r3,
+        ) == {"gpu": 4, "cpu": 4}
 
 
 def test_get_nodes_respects_max_limit():
@@ -252,20 +260,24 @@ def test_get_nodes_respects_max_limit():
             "max_workers": 99999,
         },
     }
-    assert get_nodes_for(types, {}, "empty_node", 2, [{"CPU": 1}] * 10) == {
+    assert get_nodes_for(types, {}, "empty_node", 2, [{"CPU": 1}] * 10,
+        ) == {
         "m4.large": 2
     }
     assert (
-        get_nodes_for(types, {"m4.large": 9999}, "empty_node", 9999, [{"CPU": 1}] * 10)
+        get_nodes_for(types, {"m4.large": 9999}, "empty_node", 9999, [{"CPU": 1}] * 10,
+    )
         == {}
     )
     assert get_nodes_for(
-        types, {"m4.large": 0}, "empty_node", 9999, [{"CPU": 1}] * 10
+        types, {"m4.large": 0}, "empty_node", 9999, [{"CPU": 1}] * 10,
     ) == {"m4.large": 5}
-    assert get_nodes_for(types, {"m4.large": 7}, "m4.large", 4, [{"CPU": 1}] * 10) == {
+    assert get_nodes_for(types, {"m4.large": 7}, "m4.large", 4, [{"CPU": 1}] * 10,
+        ) == {
         "m4.large": 4
     }
-    assert get_nodes_for(types, {"m4.large": 7}, "m4.large", 2, [{"CPU": 1}] * 10) == {
+    assert get_nodes_for(types, {"m4.large": 7}, "m4.large", 2, [{"CPU": 1}] * 10,
+        ) == {
         "m4.large": 2
     }
 
@@ -299,19 +311,23 @@ def test_add_min_workers_nodes():
     # fmt: off
     assert _add_min_workers_nodes([],
                                   {},
-                                  types, None, None, None) == \
+                                  types, None, None, None,
+         utilization_scorer=utilization_scorer,) == \
         ([{"CPU": 2}]*50+[{"GPU": 1}]*99999, {"m2.large": 50, "gpu": 99999},
-            {"m2.large": 50, "gpu": 99999})
+            {"m2.large": 50, "gpu": 99999}
+         )
 
     assert _add_min_workers_nodes([{"CPU": 2}]*5,
                                   {"m2.large": 5},
-                                  types, None, None, None) == \
+                                  types, None, None, None,
+         utilization_scorer=utilization_scorer,) == \
         ([{"CPU": 2}]*50+[{"GPU": 1}]*99999, {"m2.large": 50, "gpu": 99999},
             {"m2.large": 45, "gpu": 99999})
 
     assert _add_min_workers_nodes([{"CPU": 2}]*60,
                                   {"m2.large": 60},
-                                  types, None, None, None) == \
+                                  types, None, None, None,
+         utilization_scorer=utilization_scorer,) == \
         ([{"CPU": 2}]*60+[{"GPU": 1}]*99999, {"m2.large": 60, "gpu": 99999},
             {"gpu": 99999})
 
@@ -322,7 +338,8 @@ def test_add_min_workers_nodes():
     }] * 99999, {
         "m2.large": 50,
         "gpu": 99999
-    }, types, None, None, None) == ([{
+    }, types, None, None, None,
+         utilization_scorer=utilization_scorer,) == ([{
         "CPU": 2
     }] * 50 + [{
         "GPU": 1
@@ -332,11 +349,13 @@ def test_add_min_workers_nodes():
     }, {})
 
     assert _add_min_workers_nodes([], {}, {"gpubla": types["gpubla"]}, None,
-                                  None, None) == ([], {}, {})
+                                  None, None,
+         utilization_scorer=utilization_scorer,) == ([], {}, {})
 
     types["gpubla"]["max_workers"] = 10
     assert _add_min_workers_nodes([], {}, {"gpubla": types["gpubla"]}, None,
-                                  None, None) == ([{
+                                  None, None,
+         utilization_scorer=utilization_scorer,) == ([{
                                       "GPU": 1
                                   }] * 10, {
                                       "gpubla": 10
@@ -351,7 +370,8 @@ def test_get_nodes_to_launch_with_min_workers():
     new_types = copy.deepcopy(TYPES_A)
     new_types["p2.8xlarge"]["min_workers"] = 2
     scheduler = ResourceDemandScheduler(
-        provider, new_types, 3, head_node_type="p2.8xlarge"
+        provider, new_types, 3, head_node_type="p2.8xlarge",
+        upscaling_speed=1,
     )
 
     provider.create_node(
@@ -387,7 +407,8 @@ def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
     new_types = copy.deepcopy(TYPES_A)
     new_types["p2.8xlarge"]["min_workers"] = 2
     scheduler = ResourceDemandScheduler(
-        provider, new_types, 10, head_node_type="p2.8xlarge"
+        provider, new_types, 10, head_node_type="p2.8xlarge",
+        upscaling_speed=1,
     )
     provider.create_node(
         {},
@@ -424,7 +445,8 @@ def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
     # p2.8xlarge only tomeet the min_workers constraint and the demand.
     new_types["p2.8xlarge"]["min_workers"] = 3
     scheduler = ResourceDemandScheduler(
-        provider, new_types, 10, head_node_type="p2.8xlarge"
+        provider, new_types, 10, head_node_type="p2.8xlarge",
+        upscaling_speed=1,
     )
     to_launch, rem = scheduler.get_nodes_to_launch(
         nodes, pending_nodes, demands, utilizations, [], {}
@@ -437,7 +459,8 @@ def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
 def test_get_nodes_to_launch_limits():
     provider = MockProvider()
     scheduler = ResourceDemandScheduler(
-        provider, TYPES_A, 3, head_node_type="p2.8xlarge"
+        provider, TYPES_A, 3, head_node_type="p2.8xlarge",
+        upscaling_speed=1,
     )
 
     provider.create_node(
@@ -467,7 +490,8 @@ def test_get_nodes_to_launch_limits():
 def test_calculate_node_resources():
     provider = MockProvider()
     scheduler = ResourceDemandScheduler(
-        provider, TYPES_A, 10, head_node_type="p2.8xlarge"
+        provider, TYPES_A, 10, head_node_type="p2.8xlarge",
+        upscaling_speed=1,
     )
 
     provider.create_node(
@@ -503,7 +527,8 @@ def test_request_resources_existing_usage():
         },
     }
     scheduler = ResourceDemandScheduler(
-        provider, TYPES, max_workers=100, head_node_type="empty_node"
+        provider, TYPES, max_workers=100, head_node_type="empty_node",
+        upscaling_speed=1,
     )
 
     # 5 nodes with 32 CPU and 8 GPU each
@@ -596,7 +621,8 @@ def test_backlog_queue_impact_on_binpacking_time():
     ):
         provider = MockProvider()
         scheduler = ResourceDemandScheduler(
-            provider, new_types, max_workers=10000, head_node_type="m4.16xlarge"
+            provider, new_types, max_workers=10000, head_node_type="m4.16xlarge",
+        upscaling_speed=1,
         )
 
         provider.create_node(
@@ -693,7 +719,8 @@ class TestPlacementGroupScaling:
     def test_strategies(self):
         provider = MockProvider()
         scheduler = ResourceDemandScheduler(
-            provider, TYPES_A, 10, head_node_type="p2.8xlarge"
+            provider, TYPES_A, 10, head_node_type="p2.8xlarge",
+        upscaling_speed=1,
         )
 
         provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
@@ -743,7 +770,8 @@ class TestPlacementGroupScaling:
     def test_many_strict_spreads(self):
         provider = MockProvider()
         scheduler = ResourceDemandScheduler(
-            provider, TYPES_A, 10, head_node_type="p2.8xlarge"
+            provider, TYPES_A, 10, head_node_type="p2.8xlarge",
+        upscaling_speed=1,
         )
 
         provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
@@ -772,7 +800,8 @@ class TestPlacementGroupScaling:
     def test_packing(self):
         provider = MockProvider()
         scheduler = ResourceDemandScheduler(
-            provider, TYPES_A, 10, head_node_type="p2.8xlarge"
+            provider, TYPES_A, 10, head_node_type="p2.8xlarge",
+        upscaling_speed=1,
         )
 
         provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 1)
@@ -805,7 +834,8 @@ def test_get_concurrent_resource_demand_to_launch():
     node_types["m4.large"]["max_workers"] = 100
     provider = MockProvider()
     scheduler = ResourceDemandScheduler(
-        provider, node_types, 200, head_node_type="empty_node"
+        provider, node_types, 200, head_node_type="empty_node",
+        upscaling_speed=1,
     )
     # Sanity check.
     assert len(provider.non_terminated_nodes({})) == 0
@@ -989,7 +1019,8 @@ def test_get_concurrent_resource_demand_to_launch_with_upscaling_speed():
 
     # Test default behaviour limits to 5 inital nodes
     slow_scheduler = ResourceDemandScheduler(
-        create_provider(), node_types, 200, head_node_type="empty_node"
+        create_provider(), node_types, 200, head_node_type="empty_node",
+        upscaling_speed=1,
     )
 
     to_launch = slow_scheduler._get_concurrent_resource_demand_to_launch(
@@ -1047,7 +1078,8 @@ def test_get_nodes_to_launch_max_launch_concurrency_placement_groups():
     new_types["p2.8xlarge"]["min_workers"] = 10
     new_types["p2.8xlarge"]["max_workers"] = 40
 
-    scheduler = ResourceDemandScheduler(provider, new_types, 50, head_node_type=None)
+    scheduler = ResourceDemandScheduler(provider, new_types, 50, head_node_type=None,
+        upscaling_speed=1,)
 
     pending_placement_groups = [
         PlacementGroupTableData(
@@ -1125,7 +1157,8 @@ def test_get_nodes_to_launch_max_launch_concurrency():
     new_types["p2.8xlarge"]["min_workers"] = 10
     new_types["p2.8xlarge"]["max_workers"] = 40
 
-    scheduler = ResourceDemandScheduler(provider, new_types, 30, head_node_type=None)
+    scheduler = ResourceDemandScheduler(provider, new_types, 30, head_node_type=None,
+        upscaling_speed=1,)
 
     to_launch, rem = scheduler.get_nodes_to_launch([], {}, [], {}, [], {})
     # Respects min_workers despite max launch limit.
@@ -3072,7 +3105,8 @@ def test_placement_group_match_string():
     provider = MockProvider()
     new_types = copy.deepcopy(TYPES_A)
     scheduler = ResourceDemandScheduler(
-        provider, new_types, 3, head_node_type="p2.8xlarge"
+        provider, new_types, 3, head_node_type="p2.8xlarge",
+        upscaling_speed=1,
     )
 
     provider.create_node(
