@@ -231,6 +231,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         self.put_request_chunk_collector.data,
                         req.put.client_ref_id,
                         client_id,
+                        req.put.owner_id,
                     )
                     self.put_request_chunk_collector.reset()
                     resp = ray_client_pb2.DataResponse(put=put_resp)
