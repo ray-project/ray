@@ -1,7 +1,17 @@
-raise DeprecationWarning(
-    "`ray.train.callbacks` API is deprecated in Ray "
-    "2.0, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR "
-    "(https://docs.ray.io/en/latest/ray-air/getting-started.html) "
-    "provides greater functionality and a unified API. "
-    "The new Ray AIR callbacks can be found in `ray.air.callbacks`."
+from ray.train.callbacks.callback import TrainingCallback
+from ray.train.callbacks.logging import (
+    JsonLoggerCallback,
+    MLflowLoggerCallback,
+    TBXLoggerCallback,
 )
+from ray.train.callbacks.print import PrintCallback
+from ray.train.callbacks.profile import TorchTensorboardProfilerCallback
+
+__all__ = [
+    "TrainingCallback",
+    "JsonLoggerCallback",
+    "MLflowLoggerCallback",
+    "TBXLoggerCallback",
+    "TorchTensorboardProfilerCallback",
+    "PrintCallback",
+]

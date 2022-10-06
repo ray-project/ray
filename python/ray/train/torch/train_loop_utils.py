@@ -238,7 +238,7 @@ class TorchWorkerProfiler:
 
     def __init__(self, trace_dir: Optional[str] = None):
         raise DeprecationWarning(
-            "The `ray.train.torch.TorchWorkerProfiler` API is deprecated in Ray 2.1.",
+            "The `ray.train.torch.TorchWorkerProfiler` API is deprecated in Ray 2.0.",
         )
 
 

@@ -5,7 +5,7 @@ from ray.util.annotations import Deprecated
 
 # Deprecated. Alias of CheckpointConfig for backwards compat
 deprecation_message = (
-    "`ray.train.checkpoint.CheckpointStrategy` is deprecated in Ray 2.1. "
+    "`ray.train.checkpoint.CheckpointStrategy` is deprecated in Ray 2.0. "
     "Please use `ray.air.config.CheckpointConfig` instead."
 )
 
