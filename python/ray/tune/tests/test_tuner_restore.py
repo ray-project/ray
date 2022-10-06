@@ -1,11 +1,12 @@
 import os
+import shutil
 import time
 
 import pytest
 import ray
 from ray import tune
 from ray.air import RunConfig, Checkpoint, session, FailureConfig
-from ray.air._internal.remote_storage import download_from_uri
+from ray.air._internal.remote_storage import download_from_uri, delete_at_uri
 from ray.tune import Callback
 from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.experiment import Trial
@@ -39,11 +40,12 @@ def _train_fn_sometimes_failing(config, checkpoint_dir=None):
     else:
         state = {"it": 0}
 
-    state["it"] += 1
+    for i in range(config.get("num_epochs", 1)):
+        state["it"] += 1
 
-    session.report(state, checkpoint=Checkpoint.from_dict(state))
+        session.report(state, checkpoint=Checkpoint.from_dict(state))
 
-    # We fail after reporting one checkpoint.
+    # We fail after reporting num_epochs checkpoints.
     if failing and failing.exists():
         raise RuntimeError("I am failing")
 
@@ -377,6 +379,62 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir):
     # Overwriting should work
     tuner3 = Tuner.restore("memory:///test/restore/exp_dir")
     tuner3.fit()
+
+
+@pytest.mark.parametrize(
+    "upload_uri",
+    [None, "memory:///test/test_tuner_restore_latest_available_checkpoint"],
+)
+def test_tuner_restore_latest_available_checkpoint(
+    ray_start_4_cpus, tmpdir, upload_uri
+):
+    """Resuming errored trials should pick up from previous state"""
+    fail_marker = tmpdir / "fail_marker"
+    fail_marker.write_text("", encoding="utf-8")
+
+    tuner = Tuner(
+        _train_fn_sometimes_failing,
+        tune_config=TuneConfig(
+            num_samples=1,
+        ),
+        run_config=RunConfig(
+            name="test_tuner_restore_latest_available_checkpoint",
+            local_dir=str(tmpdir),
+            sync_config=tune.SyncConfig(upload_dir=upload_uri),
+        ),
+        param_space={"failing_hanging": (fail_marker, None), "num_epochs": 4},
+    )
+
+    results = tuner.fit()
+
+    assert len(results) == 1
+    assert len(results.errors) == 1
+
+    [result] = list(results)
+    # num_epochs = 4, so it = 4
+    assert result.metrics["it"] == 4
+
+    del tuner
+    fail_marker.remove(ignore_errors=True)
+
+    shutil.rmtree(os.path.join(result.log_dir, "checkpoint_000003"))
+    shutil.rmtree(os.path.join(result.log_dir, "checkpoint_000002"))
+
+    if upload_uri:
+        delete_at_uri(upload_uri + "/checkpoint_000003")
+        delete_at_uri(upload_uri + "/checkpoint_000002")
+
+    tuner = Tuner.restore(
+        str(tmpdir / "test_tuner_restore_latest_available_checkpoint"),
+        resume_errored=True,
+    )
+    results = tuner.fit()
+    assert len(results) == 1
+    assert len(results.errors) == 0
+    [result] = list(results)
+    # restored from 2, plus num_epochs = 4, plus one additional epoch
+    assert result.metrics["it"] == 7
+    assert result.metrics["iterations_since_restore"] == 5
 
 
 if __name__ == "__main__":

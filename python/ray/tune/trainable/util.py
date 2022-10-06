@@ -102,7 +102,7 @@ class TrainableUtil:
 
     @staticmethod
     def make_checkpoint_dir(
-        checkpoint_dir: str, index: Union[int, str], override=False
+        checkpoint_dir: str, index: Union[int, str], override: bool = False
     ):
         """Creates a checkpoint directory within the provided path.
 
