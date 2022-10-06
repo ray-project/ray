@@ -17,6 +17,7 @@ from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointS
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
+from ray.tune.error import _TuneRestoreError
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -640,16 +641,24 @@ class Trial:
         self.experiment_tag = experiment_tag
         self.invalidate_json_state()
 
-    def write_error_log(
-        self,
-        exc: Optional[Union[TuneError, RayTaskError]] = None,
-        should_increment_num_failures_counter: Optional[bool] = True,
-    ):
-        if exc and self.logdir:
-            if should_increment_num_failures_counter:
-                self.num_failures += 1
+    def handle_error(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
+        use_restore_counter = False
+        if isinstance(exc, _TuneRestoreError):
+            exc = exc.exc
+            if self.num_restore_failures >= int(
+                os.environ.get("TUNE_RESTORE_RETRY_NUM", 0)
+            ):
+                # Restore was unsuccessful, try again without checkpoint.
+                self.clear_checkpoint()
+            else:
+                self.num_restore_failures += 1
+                use_restore_counter = True
+        if not use_restore_counter:
+            self.num_failures += 1
+
+        if self.logdir:
             self.error_file = os.path.join(self.logdir, "error.txt")
-            if exc and isinstance(exc, RayTaskError):
+            if isinstance(exc, RayTaskError):
                 # Piping through the actual error to result grid.
                 self.pickled_error_file = os.path.join(self.logdir, "error.pkl")
                 with open(self.pickled_error_file, "wb") as f:

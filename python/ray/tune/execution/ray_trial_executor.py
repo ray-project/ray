@@ -488,7 +488,6 @@ class RayTrialExecutor:
         trial: Trial,
         error: bool = False,
         exc: Optional[Union[TuneError, RayTaskError]] = None,
-        should_increment_num_failures_counter: Optional[bool] = True,
     ):
         """Stops this trial.
 
@@ -499,21 +498,14 @@ class RayTrialExecutor:
         Args:
             error: Whether to mark this trial as terminated in error.
             exc: Optional exception.
-            should_increment_num_failures_counter: Whether to increment per trial
-                failure counter.
-                This is False when the trial is using another restore retry counter.
         """
         self.set_status(trial, Trial.ERROR if error or exc else Trial.TERMINATED)
         self._trial_just_finished = True
         trial.set_location(_Location())
 
         try:
-            trial.write_error_log(
-                exc=exc,
-                should_increment_num_failures_counter=(
-                    should_increment_num_failures_counter
-                ),
-            )
+            if exc:
+                trial.handle_error(exc=exc)
             if hasattr(trial, "runner") and trial.runner:
                 if (
                     not error
@@ -609,7 +601,6 @@ class RayTrialExecutor:
         trial: Trial,
         error: bool = False,
         exc: Optional[Union[TuneError, RayTaskError]] = None,
-        should_increment_num_failures_counter: Optional[bool] = True,
     ) -> None:
         """Stops the trial, releasing held resources and removing futures related to
         this trial from the execution queue.
@@ -620,9 +611,6 @@ class RayTrialExecutor:
                 will be set to either `Trial.ERROR` or `Trial.TERMINATED` based on this.
                 Defaults to False.
             exc: Optional exception to log (as a reason for stopping). Defaults to None.
-            should_increment_num_failures_counter: Whether to increment per trial
-                failure counter.
-                This is False when the trial is using another restore retry counter.
         """
         prior_status = trial.status
         if prior_status == Trial.RUNNING:
@@ -631,11 +619,11 @@ class RayTrialExecutor:
             for result_id in out:
                 self._futures.pop(result_id)
         trial.saving_to = None
+        trial.restoring_from = None
         self._stop_trial(
             trial,
             error=error or exc,
             exc=exc,
-            should_increment_num_failures_counter=should_increment_num_failures_counter,
         )
 
     def continue_training(self, trial: Trial) -> None:
