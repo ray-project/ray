@@ -734,28 +734,43 @@ def _build_eager_tf_policy(
 
         @override(Policy)
         def export_model(self, export_dir, onnx: Optional[int] = None) -> None:
-            if onnx:
-                try:
-                    import tf2onnx
-                except ImportError as e:
-                    raise RuntimeError(
-                        "Converting a TensorFlow model to ONNX requires "
-                        "`tf2onnx` to be installed. Install with "
-                        "`pip install tf2onnx`."
-                    ) from e
+            """Exports the Policy's Model to local directory for serving.
 
-                model_proto, external_tensor_storage = tf2onnx.convert.from_keras(
-                    self.model.base_model,
-                    output_path=os.path.join(export_dir, "model.onnx"),
-                )
-            # Save the tf.keras.Model (architecture and weights, so it can be retrieved
-            # w/o access to the original (custom) Model or Policy code).
-            elif (
+            Note: Since the TfModelV2 class that EagerTfPolicy uses is-NOT-a
+            tf.keras.Model, we need to assume that there is a `base_model` property
+            within this TfModelV2 class that is-a tf.keras.Model. This base model
+            will be used here for the export.
+            TODO (kourosh): This restriction will be resolved once we move Policy and
+             ModelV2 to the new RLTrainer/RLModule APIs.
+
+            Args:
+                export_dir: Local writable directory.
+                onnx: If given, will export model in ONNX format. The
+                    value of this parameter set the ONNX OpSet version to use.
+            """
+            if (
                 hasattr(self, "model")
                 and hasattr(self.model, "base_model")
                 and isinstance(self.model.base_model, tf.keras.Model)
             ):
-                if self.config["checkpoints_contain_native_model_files"]:
+                # Store model in ONNX format.
+                if onnx:
+                    try:
+                        import tf2onnx
+                    except ImportError as e:
+                        raise RuntimeError(
+                            "Converting a TensorFlow model to ONNX requires "
+                            "`tf2onnx` to be installed. Install with "
+                            "`pip install tf2onnx`."
+                        ) from e
+
+                    model_proto, external_tensor_storage = tf2onnx.convert.from_keras(
+                        self.model.base_model,
+                        output_path=os.path.join(export_dir, "model.onnx"),
+                    )
+                # Save the tf.keras.Model (architecture and weights, so it can be
+                # retrieved w/o access to the original (custom) Model or Policy code).
+                else:
                     try:
                         self.model.base_model.save(export_dir, save_format="tf")
                     except Exception:

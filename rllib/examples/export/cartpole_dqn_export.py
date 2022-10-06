@@ -16,7 +16,7 @@ ray.init(num_cpus=10)
 def train_and_export_policy_and_model(algo_name, num_steps, model_dir, ckpt_dir):
     cls, config = get_algorithm_class(algo_name, return_config=True)
     # Set exporting native (DL-framework) model files to True.
-    config["checkpoints_contain_native_model_files"] = True
+    config["export_native_model_files"] = True
     alg = cls(config=config, env="CartPole-v0")
     for _ in range(num_steps):
         alg.train()

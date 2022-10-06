@@ -1112,6 +1112,8 @@ def _start_redis_instance(
         command += ["--bind", "127.0.0.1"]
     pidfile = os.path.join(session_dir_path, "redis-" + uuid.uuid4().hex + ".pid")
     command += ["--pidfile", pidfile]
+    if sys.platform != "win32":
+        command += ["--save", "", "--appendonly", "no"]
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REDIS_SERVER,

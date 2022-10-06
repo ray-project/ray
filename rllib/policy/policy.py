@@ -1,16 +1,18 @@
 from abc import ABCMeta, abstractmethod
 import gym
 from gym.spaces import Box
+import json
 import logging
 import numpy as np
 import os
+from packaging import version
 import platform
-import tempfile
 import tree  # pip install dm_tree
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Container,
     Dict,
     List,
     Optional,
@@ -35,7 +37,12 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     is_overridden,
 )
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
+from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
@@ -176,43 +183,85 @@ class Policy(metaclass=ABCMeta):
     """
 
     @staticmethod
-    def from_checkpoint(checkpoint: Union[str, Checkpoint]) -> "Policy":
-        """Creates a new Policy instance from a given checkpoint.
+    def from_checkpoint(
+        checkpoint: Union[str, Checkpoint],
+        policy_ids: Optional[Container[PolicyID]] = None,
+    ) -> Union["Policy", Dict[PolicyID, "Policy"]]:
+        """Creates new Policy instance(s) from a given Policy or Algorithm checkpoint.
 
-        Note: This method must remain backward compatible from 2.1.0 on.
+        Note: This method must remain backward compatible from 2.1.0 on, wrt.
+        checkpoints created with Ray 2.0.0 or later.
 
         Args:
-            checkpoint: The path (str) to the policy checkpoint directory to use
-                or an AIR Checkpoint instance to restore from.
+            checkpoint: The path (str) to a Policy or Algorithm checkpoint directory
+                or an AIR Checkpoint (Policy or Algorithm) instance to restore
+                from.
+                If checkpoint is a Policy checkpoint, `policy_ids` must be None
+                and only the Policy in that checkpoint is restored and returned.
+                If checkpoint is an Algorithm checkpoint and `policy_ids` is None,
+                will return a list of all Policy objects found in
+                the checkpoint, otherwise a list of those policies in `policy_ids`.
+            policy_ids: List of policy IDs to extract from a given Algorithm checkpoint.
+                If None and an Algorithm checkpoint is provided, will restore all
+                policies found in that checkpoint. If a Policy checkpoint is given,
+                this arg must be None.
 
         Returns:
-            The instantiated Policy.
+            An instantiated Policy, if `checkpoint` is a Policy checkpoint. A dict
+            mapping PolicyID to Policies, if `checkpoint` is an Algorithm checkpoint.
+            In the latter case, returns all policies within the Algorithm if
+            `policy_ids` is None, else a dict of only those Policies that are in
+            `policy_ids`.
         """
-        # `checkpoint` is a str: Checkpoint directory.
-        if isinstance(checkpoint, str):
-            # Checkpoint is dir.
-            if os.path.isdir(checkpoint):
-                checkpoint = Checkpoint.from_directory(checkpoint)
-            else:
-                raise ValueError(
-                    f"Given checkpoint ({checkpoint}) directory not found or is a "
-                    "file! Must be a checkpoint directory."
-                )
+        checkpoint_info = get_checkpoint_info(checkpoint)
 
-        # Open main state file of checkpoint.
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            checkpoint.to_directory(tmp_dir)
-            state_file = os.path.join(tmp_dir, "policy_state.pkl")
+        # Algorithm checkpoint: Extract one or more policies from it and return them
+        # in a dict (mapping PolicyID to Policy instances).
+        if checkpoint_info["type"] == "Algorithm":
+            from ray.rllib.algorithms.algorithm import Algorithm
 
-            if not os.path.isfile(state_file):
-                raise ValueError(
-                    "Given checkpoint does not seem to be valid! No file "
-                    "with the name `policy_state.pkl` found."
-                )
+            policies = {}
 
-            state = pickle.load(open(state_file, "rb"))
+            # Old Algorithm checkpoints: State must be completely retrieved from:
+            # algo state file -> worker -> "state".
+            if checkpoint_info["checkpoint_version"] < version.Version("1.0"):
+                with open(checkpoint_info["state_file"], "rb") as f:
+                    state = pickle.load(f)
+                # In older checkpoint versions, the policy states are stored under
+                # "state" within the worker state (which is pickled in itself).
+                worker_state = pickle.loads(state["worker"])
+                policy_states = worker_state["state"]
+                for pid, policy_state in policy_states.items():
+                    # Get spec and config, merge config with
+                    serialized_policy_spec = worker_state["policy_specs"][pid]
+                    policy_config = Algorithm.merge_trainer_configs(
+                        worker_state["policy_config"], serialized_policy_spec["config"]
+                    )
+                    serialized_policy_spec.update({"config": policy_config})
+                    policy_state.update({"policy_spec": serialized_policy_spec})
+                    policies[pid] = Policy.from_state(policy_state)
+            # Newer versions: Get policy states from "policies/" sub-dirs.
+            elif checkpoint_info["policy_ids"] is not None:
+                for policy_id in checkpoint_info["policy_ids"]:
+                    if policy_ids is None or policy_id in policy_ids:
+                        policy_checkpoint_info = get_checkpoint_info(
+                            os.path.join(
+                                checkpoint_info["checkpoint_dir"],
+                                "policies",
+                                policy_id,
+                            )
+                        )
+                        assert policy_checkpoint_info["type"] == "Policy"
+                        with open(policy_checkpoint_info["state_file"], "rb") as f:
+                            policy_state = pickle.load(f)
+                        policies[policy_id] = Policy.from_state(policy_state)
+            return policies
 
-        return Policy.from_state(state)
+        # Policy checkpoint: Return a single Policy instance.
+        else:
+            with open(checkpoint_info["state_file"], "rb") as f:
+                state = pickle.load(f)
+            return Policy.from_state(state)
 
     @staticmethod
     def from_state(state: PolicyState) -> "Policy":
@@ -230,18 +279,21 @@ class Policy(metaclass=ABCMeta):
         Returns:
             A new Policy instance.
         """
-        pol_spec: PolicySpec = state.get("policy_spec")
-        if pol_spec is None:
+        serialized_pol_spec: Optional[dict] = state.get("policy_spec")
+        if serialized_pol_spec is None:
             raise ValueError(
-                "No `policy_spec` key was found in given `state`! Cannot create "
-                "new Policy."
+                "No `policy_spec` key was found in given `state`! "
+                "Cannot create new Policy."
             )
+        pol_spec = PolicySpec.deserialize(serialized_pol_spec)
+
         # Create the new policy.
         new_policy = pol_spec.policy_class(
             observation_space=pol_spec.observation_space,
             action_space=pol_spec.action_space,
             config=pol_spec.config,
         )
+
         # Set the new policy's state (weights, optimizer vars, exploration state,
         # etc..).
         new_policy.set_state(state)
@@ -850,9 +902,9 @@ class Policy(metaclass=ABCMeta):
             action_space=self.action_space,
             config=self.config,
         )
+        state["policy_spec"] = policy_spec.serialize()
 
         if self.config.get("enable_connectors", False):
-            state["policy_spec"] = policy_spec.serialize()
             # Checkpoint connectors state as well if enabled.
             connector_configs = {}
             if self.agent_connectors:
@@ -860,8 +912,6 @@ class Policy(metaclass=ABCMeta):
             if self.action_connectors:
                 connector_configs["action"] = self.action_connectors.to_state()
             state["connector_configs"] = connector_configs
-        else:
-            state["policy_spec"] = policy_spec
 
         return state
 
@@ -949,39 +999,57 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def export_checkpoint(
-        self, export_dir: str, filename_prefix: str = "model"
-    ) -> Checkpoint:
+        self,
+        export_dir: str,
+        filename_prefix=DEPRECATED_VALUE,
+        *,
+        policy_state: Optional[PolicyState] = None,
+    ) -> None:
         """Exports Policy checkpoint to a local directory and returns an AIR Checkpoint.
 
         Args:
             export_dir: Local writable directory to store the AIR Checkpoint
                 information into.
-
-        Returns:
-            The AIR Checkpoint instance created (in addition to writing the given
-            directory).
-
-        Raises:
-            KeyError if `policy_id` cannot be found in this Algorithm.
+            policy_state: An optional PolicyState to write to disk. Used by
+                `Algorithm.save_checkpoint()` to save on the additional
+                `self.get_state()` calls of its different Policies.
 
         Example:
             >>> from ray.rllib.algorithms.ppo import PPOTorchPolicy
             >>> policy = PPOTorchPolicy(...) # doctest: +SKIP
-            >>> air_ckpt = policy.export_checkpoint("/tmp/export_dir") # doctest: +SKIP
+            >>> policy.export_checkpoint("/tmp/export_dir") # doctest: +SKIP
         """
         # `filename_prefix` should not longer be used as new Policy checkpoints
         # contain more than one file with a fixed filename structure.
-        assert filename_prefix == "model", (
-            "The arg `filename_prefix` for `Policy.export_checkpoint()` is "
-            "deprecated and must not be set anymore! Simply leave this arg empty."
-        )
-        state = self.get_state()
+        if filename_prefix != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Policy.export_checkpoint(filename_prefix=...)",
+                error=True,
+            )
+        if policy_state is None:
+            policy_state = self.get_state()
+        policy_state["checkpoint_version"] = CHECKPOINT_VERSION
+
+        # Write main policy state file.
         os.makedirs(export_dir, exist_ok=True)
-        pickle.dump(state, open(os.path.join(export_dir, "policy_state.pkl"), "w+b"))
-        if self.config["checkpoints_contain_native_model_files"]:
+        with open(os.path.join(export_dir, "policy_state.pkl"), "w+b") as f:
+            pickle.dump(policy_state, f)
+
+        # Write RLlib checkpoint json.
+        with open(os.path.join(export_dir, "rllib_checkpoint.json"), "w") as f:
+            json.dump(
+                {
+                    "type": "Policy",
+                    "checkpoint_version": str(policy_state["checkpoint_version"]),
+                    "ray_version": ray.__version__,
+                    "ray_commit": ray.__commit__,
+                },
+                f,
+            )
+
+        # Add external model files, if required.
+        if self.config["export_native_model_files"]:
             self.export_model(os.path.join(export_dir, "model"))
-        checkpoint = Checkpoint.from_directory(export_dir)
-        return checkpoint
 
     @DeveloperAPI
     def export_model(self, export_dir: str, onnx: Optional[int] = None) -> None:
@@ -1449,6 +1517,6 @@ class Policy(metaclass=ABCMeta):
     def __repr__(self):
         return type(self).__name__
 
-    @Deprecated(new="get_exploration_state", error=False)
+    @Deprecated(new="get_exploration_state", error=True)
     def get_exploration_info(self) -> Dict[str, TensorType]:
         return self.get_exploration_state()

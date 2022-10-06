@@ -37,6 +37,7 @@ _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY = "_ray_additional_checkpoint_files"
 _METADATA_CHECKPOINT_SUFFIX = ".meta.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
+_METADATA_KEY = "_metadata"
 _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
 
 logger = logging.getLogger(__name__)
@@ -54,23 +55,6 @@ class _CheckpointMetadata:
 
     checkpoint_type: Type["Checkpoint"]
     checkpoint_state: Dict[str, Any]
-
-
-class _CheckpointDict(dict):
-    """A ``dict`` that represents a checkpoint.
-
-    Args:
-        metadata: Metadata about the checkpoint that this ``dict`` represents.
-    """
-
-    def __init__(self, *args, metadata: _CheckpointMetadata, **kwargs):
-        self._metadata = metadata
-        super().__init__(*args, **kwargs)
-
-    @property
-    def metadata(self) -> _CheckpointMetadata:
-        """Metadata about the checkpoint that this ``dict`` represents."""
-        return self._metadata
 
 
 @PublicAPI(stability="beta")
@@ -247,6 +231,39 @@ class Checkpoint:
             },
         )
 
+    @property
+    def uri(self) -> Optional[str]:
+        """Return checkpoint URI, if available.
+
+        This will return a URI to cloud storage if this checkpoint is
+        persisted on cloud, or a local ``file://`` URI if this checkpoint
+        is persisted on local disk and available on the current node.
+
+        In all other cases, this will return None. Users can then choose to
+        persist to cloud with
+        :meth:`Checkpoint.to_uri() <ray.air.Checkpoint.to_uri>`.
+
+        Example:
+
+            >>> from ray.air import Checkpoint
+            >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
+            >>> assert checkpoint.uri == "s3://some-bucket/some-location"
+            >>> checkpoint = Checkpoint.from_dict({"data": 1})
+            >>> assert checkpoint.uri == None
+
+        Returns:
+            Checkpoint URI if this URI is reachable from the current node (e.g.
+            cloud storage or locally available file URI).
+
+        """
+        if self._uri:
+            return self._uri
+
+        if self._local_path and Path(self._local_path).exists():
+            return "file://" + self._local_path
+
+        return None
+
     @classmethod
     def from_bytes(cls, data: bytes) -> "Checkpoint":
         """Create a checkpoint from the given byte string.
@@ -287,9 +304,10 @@ class Checkpoint:
             Checkpoint: checkpoint object.
         """
         state = {}
-        if isinstance(data, _CheckpointDict):
-            cls = cls._get_checkpoint_type(data.metadata.checkpoint_type)
-            state = data.metadata.checkpoint_state
+        if _METADATA_KEY in data:
+            metadata = data[_METADATA_KEY]
+            cls = cls._get_checkpoint_type(metadata.checkpoint_type)
+            state = metadata.checkpoint_state
 
         checkpoint = cls(data_dict=data)
         checkpoint.__dict__.update(state)
@@ -298,11 +316,6 @@ class Checkpoint:
 
     def to_dict(self) -> dict:
         """Return checkpoint data as dictionary.
-
-        .. note::
-            :meth:`~Checkpoint.to_dict` returns a ``dict`` subclass that contains
-            information about the checkpoint type. This ``dict`` subclass is
-            functionally identical to the built-in ``dict``.
 
         Returns:
             dict: Dictionary containing checkpoint data.
@@ -369,7 +382,8 @@ class Checkpoint:
         else:
             raise RuntimeError(f"Empty data for checkpoint {self}")
 
-        return _CheckpointDict(checkpoint_data, metadata=self._metadata)
+        checkpoint_data[_METADATA_KEY] = self._metadata
+        return checkpoint_data
 
     @classmethod
     @Deprecated(
@@ -453,6 +467,9 @@ class Checkpoint:
             >>> model = checkpoint.get_model()  # doctest: +SKIP
             Linear(in_features=1, out_features=1, bias=True)
         """
+        if type(other) is cls:
+            return other
+
         return cls(
             local_path=other._local_path,
             data_dict=other._data_dict,
@@ -647,10 +664,11 @@ class Checkpoint:
         try:
             checkpoint_metadata_uri = os.path.join(uri, _CHECKPOINT_METADATA_FILE_NAME)
             metadata = pickle.loads(read_file_from_uri(checkpoint_metadata_uri))
+        except Exception:
+            pass
+        else:
             cls = cls._get_checkpoint_type(metadata.checkpoint_type)
             state = metadata.checkpoint_state
-        except FileNotFoundError:
-            pass
 
         checkpoint = cls(uri=uri)
         checkpoint.__dict__.update(state)

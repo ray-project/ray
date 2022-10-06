@@ -32,7 +32,7 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import NullContextManager, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
-from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
+from ray.rllib.utils.error import ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -900,14 +900,14 @@ class TorchPolicy(Policy):
             )
         # Save the torch.Model (architecture and weights, so it can be retrieved
         # w/o access to the original (custom) Model or Policy code).
-        elif self.config["checkpoints_contain_native_model_files"]:
+        else:
             filename = os.path.join(export_dir, "model.pt")
             try:
                 torch.save(self.model, f=filename)
             except Exception:
                 if os.path.exists(filename):
                     os.remove(filename)
-                logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
+                logger.warning(ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL)
 
     @override(Policy)
     @DeveloperAPI
@@ -1022,7 +1022,6 @@ class TorchPolicy(Policy):
             extra_fetches[SampleBatch.ACTION_LOGP] = logp
 
         # Update our global timestep by the batch size.
-        print(f"increasing global_timestep by {len(input_dict[SampleBatch.CUR_OBS])}")
         self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
 
         return convert_to_numpy((actions, state_out, extra_fetches))

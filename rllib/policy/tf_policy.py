@@ -476,7 +476,7 @@ class TFPolicy(Policy):
     def get_exploration_state(self) -> Dict[str, TensorType]:
         return self.exploration.get_state(sess=self.get_session())
 
-    @Deprecated(new="get_exploration_state", error=False)
+    @Deprecated(new="get_exploration_state", error=True)
     def get_exploration_info(self) -> Dict[str, TensorType]:
         return self.get_exploration_state()
 
@@ -573,14 +573,11 @@ class TFPolicy(Policy):
             and hasattr(self.model, "base_model")
             and isinstance(self.model.base_model, tf.keras.Model)
         ):
-            if self.config["checkpoints_contain_native_model_files"]:
-                with self.get_session().graph.as_default():
-                    try:
-                        self.model.base_model.save(
-                            filepath=export_dir, save_format="tf"
-                        )
-                    except Exception:
-                        logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
+            with self.get_session().graph.as_default():
+                try:
+                    self.model.base_model.save(filepath=export_dir, save_format="tf")
+                except Exception:
+                    logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
         else:
             logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 

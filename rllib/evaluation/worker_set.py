@@ -38,6 +38,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     AgentID,
     AlgorithmConfigDict,
@@ -382,12 +383,14 @@ class WorkerSet:
 
         Raises:
             ValueError: If both `policy_cls` AND `policy` are provided.
+            ValueError: If Policy ID is not a valid one.
         """
         if (policy_cls is None) == (policy is None):
             raise ValueError(
                 "Only one of `policy_cls` or `policy` must be provided to "
-                "Algorithm.add_policy()!"
+                "staticmethod: `WorkerSet.add_policy_to_workers()`!"
             )
+        validate_policy_id(policy_id, error=False)
 
         # Policy instance not provided: Use the information given here.
         if policy_cls is not None:
@@ -902,7 +905,6 @@ class WorkerSet:
             compress_observations=config["compress_observations"],
             num_envs=config["num_envs_per_worker"],
             observation_fn=config["multiagent"]["observation_fn"],
-            observation_filter=config["observation_filter"],
             clip_rewards=config["clip_rewards"],
             normalize_actions=config["normalize_actions"],
             clip_actions=config["clip_actions"],
@@ -978,11 +980,11 @@ class WorkerSet:
                 )
         return False
 
-    @Deprecated(new="WorkerSet.foreach_policy_to_train", error=False)
+    @Deprecated(new="WorkerSet.foreach_policy_to_train", error=True)
     def foreach_trainable_policy(self, func):
         return self.foreach_policy_to_train(func)
 
-    @Deprecated(new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=False)
+    @Deprecated(new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=True)
     def trainable_policies(self):
         local_worker = self.local_worker()
         if local_worker is not None:
