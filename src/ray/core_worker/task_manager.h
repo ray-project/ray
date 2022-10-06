@@ -284,13 +284,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
   void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
 
-  /// Update nested ref count info and store the in-memory value for a task's
-  /// return object. Returns true if the task's return object was returned
-  /// directly by value.
-  bool HandleTaskReturn(const ObjectID &object_id,
-                        const rpc::ReturnObject &return_object,
-                        const NodeID &worker_raylet_id,
-                        bool store_in_plasma);
+  /// Returns the generator ID that contains the dynamically allocated
+  /// ObjectRefs, if the task is dynamic. Else, returns Nil.
+  ObjectID TaskGeneratorId(const TaskID &task_id) const;
 
  private:
   struct TaskEntry {
@@ -366,6 +362,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // The task's current execution status.
     rpc::TaskStatus status = rpc::TaskStatus::PENDING_ARGS_AVAIL;
   };
+
+  /// Update nested ref count info and store the in-memory value for a task's
+  /// return object. Returns true if the task's return object was returned
+  /// directly by value.
+  bool HandleTaskReturn(const ObjectID &object_id,
+                        const rpc::ReturnObject &return_object,
+                        const NodeID &worker_raylet_id,
+                        bool store_in_plasma) LOCKS_EXCLUDED(mu_);
 
   /// Remove a lineage reference to this object ID. This should be called
   /// whenever a task that depended on this object ID can no longer be retried.
