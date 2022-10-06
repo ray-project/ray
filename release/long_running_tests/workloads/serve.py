@@ -56,7 +56,7 @@ for i in range(NUM_NODES):
         dashboard_host="0.0.0.0",
     )
 
-ray.init(address=cluster.address, dashboard_host="0.0.0.0")
+ray.init(address=cluster.address, log_to_driver=False, dashboard_host="0.0.0.0")
 serve.start()
 
 
@@ -101,7 +101,13 @@ while True:
     )
     proc.wait()
     out, err = proc.communicate()
-
+    # Check if command succeeded
+    if proc.returncode != 0:
+        print("wrk failed with the following error: ")
+        print(err)
+        print("Will try again in 5 seconds")
+        time.sleep(5)
+        continue
     # Sample wrk stdout:
     #
     # Running 10s test @ http://127.0.0.1:8000/echo
