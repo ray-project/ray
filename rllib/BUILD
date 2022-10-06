@@ -1807,7 +1807,7 @@ py_test(
     srcs = ["models/tests/test_base_model.py"]
 )
 
-# Test torch base models
+# test torch base models
 py_test(
     name = "test_torch_models",
     tags = ["team:rllib", "models"],
