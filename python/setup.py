@@ -223,7 +223,7 @@ if setup_spec.type == SetupType.RAY:
         "data": [
             numpy_dep,
             pandas_dep,
-            "pyarrow >= 6.0.1, < 7.0.0",
+            "pyarrow >= 6.0.1",
             "fsspec",
         ],
         "default": [

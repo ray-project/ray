@@ -197,6 +197,9 @@ class AlgorithmConfig:
         self.min_train_timesteps_per_iteration = 0
         self.min_sample_timesteps_per_iteration = 0
 
+        # `self.checkpointing()`
+        self.export_native_model_files = False
+
         # `self.debugging()`
         self.logger_creator = None
         self.logger_config = None
@@ -339,7 +342,7 @@ class AlgorithmConfig:
         *,
         num_gpus: Optional[Union[float, int]] = None,
         _fake_gpus: Optional[bool] = None,
-        num_cpus_per_worker: Optional[int] = None,
+        num_cpus_per_worker: Optional[Union[float, int]] = None,
         num_gpus_per_worker: Optional[Union[float, int]] = None,
         num_cpus_for_local_worker: Optional[int] = None,
         custom_resources_per_worker: Optional[dict] = None,
@@ -1180,6 +1183,29 @@ class AlgorithmConfig:
             self.min_train_timesteps_per_iteration = min_train_timesteps_per_iteration
         if min_sample_timesteps_per_iteration is not None:
             self.min_sample_timesteps_per_iteration = min_sample_timesteps_per_iteration
+
+        return self
+
+    def checkpointing(
+        self,
+        export_native_model_files: Optional[bool] = None,
+    ) -> "AlgorithmConfig":
+        """Sets the config's checkpointing settings.
+
+        Args:
+            export_native_model_files: Whether an individual Policy-
+                or the Algorithm's checkpoints also contain (tf or torch) native
+                model files. These could be used to restore just the NN models
+                from these files w/o requiring RLlib. These files are generated
+                by calling the tf- or torch- built-in saving utility methods on
+                the actual models.
+
+        Returns:
+            This updated AlgorithmConfig object.
+        """
+
+        if export_native_model_files is not None:
+            self.export_native_model_files = export_native_model_files
 
         return self
 
