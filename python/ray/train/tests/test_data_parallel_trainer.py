@@ -1,3 +1,4 @@
+import os
 import time
 from unittest.mock import patch
 import pytest
@@ -31,6 +32,17 @@ def ray_start_4_cpus_4_gpus_4_extra():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+# Currently in DataParallelTrainers we only report metrics from rank 0.
+# For testing purposes here, we need to be able to report from all
+# workers.
+
+
+class DataParallelTrainerPatchedMultipleReturns(DataParallelTrainer):
+    def _report(self, training_iterator) -> None:
+        for results in training_iterator:
+            tune.report(results=results)
 
 
 def gen_execute_single_async_special(special_f):
@@ -348,6 +360,68 @@ def test_world_rank(ray_start_4_cpus):
         0,
         1,
     ]
+
+
+def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
+    class CudaTestBackend(TestBackend):
+        share_cuda_visible_devices = True
+
+    class CudaTestConfig(TestConfig):
+        @property
+        def backend_cls(self):
+            return CudaTestBackend
+
+    def get_resources():
+        cuda_visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+        session.report(dict(devices=cuda_visible_devices))
+
+    # 0 GPUs will be requested and should not raise an error.
+    trainer = DataParallelTrainerPatchedMultipleReturns(
+        get_resources,
+        backend_config=CudaTestConfig(),
+        scaling_config=ScalingConfig(num_workers=2, use_gpu=False),
+    )
+    results = trainer.fit()
+    results = [result["devices"] for result in results.metrics["results"]]
+    assert results == ["", ""]
+
+    # 1 GPU will be requested and should not raise an error.
+    trainer = DataParallelTrainerPatchedMultipleReturns(
+        get_resources,
+        backend_config=CudaTestConfig(),
+        scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
+    )
+    results = trainer.fit()
+    results = [result["devices"] for result in results.metrics["results"]]
+    # Sort the cuda visible devices to have exact match with expected result.
+    results = [",".join(sorted(r.split(","))) for r in results]
+    assert results == ["0,1", "0,1"]
+
+    # Partial GPUs should not raise an error.
+    trainer = DataParallelTrainerPatchedMultipleReturns(
+        get_resources,
+        backend_config=CudaTestConfig(),
+        scaling_config=ScalingConfig(
+            num_workers=2, use_gpu=True, resources_per_worker={"GPU": 0.1}
+        ),
+    )
+    results = trainer.fit()
+    results = [result["devices"] for result in results.metrics["results"]]
+    assert results == ["0", "0"]
+
+    # Multiple GPUs should not raise an error.
+    trainer = DataParallelTrainerPatchedMultipleReturns(
+        get_resources,
+        backend_config=CudaTestConfig(),
+        scaling_config=ScalingConfig(
+            num_workers=2, use_gpu=True, resources_per_worker={"GPU": 2}
+        ),
+    )
+    results = trainer.fit()
+    results = [result["devices"] for result in results.metrics["results"]]
+    # Sort the cuda visible devices to have exact match with expected result.
+    results = [",".join(sorted(r.split(","))) for r in results]
+    assert results == ["0,1,2,3", "0,1,2,3"]
 
 
 if __name__ == "__main__":
