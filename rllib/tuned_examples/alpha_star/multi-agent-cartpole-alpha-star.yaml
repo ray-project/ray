@@ -2,7 +2,7 @@ multi-agent-cartpole-alpha-star:
     env: ray.rllib.examples.env.multi_agent.MultiAgentCartPole
     run: AlphaStar
     stop:
-        episode_reward_mean: 600  # 600 / 4 (==num_agents) = 150
+        episode_reward_mean: 450  # 450 / 3 (==num_agents) = 150
         timesteps_total: 200000
     config:
         # Works for both torch and tf.
@@ -11,10 +11,10 @@ multi-agent-cartpole-alpha-star:
         # 4-agent MA cartpole.
         env_config:
           config:
-            num_agents: 4
+            num_agents: 3
 
         num_envs_per_worker: 5
-        num_workers: 4
+        num_workers: 3
         num_gpus: 1
         _fake_gpus: true
 
@@ -35,7 +35,7 @@ multi-agent-cartpole-alpha-star:
             type: ray.rllib.algorithms.alpha_star.league_builder.NoLeagueBuilder
 
         multiagent:
-            policies: ["p0", "p1", "p2", "p3"]
+            policies: ["p0", "p1", "p2"]
             # YAML-capable policy_mapping_fn definition via providing a callable class here.
             policy_mapping_fn:
                 type: ray.rllib.examples.multi_agent_and_self_play.policy_mapping_fn.PolicyMappingFn
