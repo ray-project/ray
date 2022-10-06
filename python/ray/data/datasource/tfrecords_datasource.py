@@ -33,7 +33,7 @@ class TFRecordDatasource(FileBasedDatasource):
                     f"file contains a message type other than `tf.train.Example`: {e}"
                 )
 
-            yield pd.DataFrame(_convert_example_to_dict(example), index=[0])
+            yield pd.DataFrame([_convert_example_to_dict(example)])
 
 
 def _convert_example_to_dict(
