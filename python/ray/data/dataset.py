@@ -2808,12 +2808,12 @@ class Dataset(Generic[T]):
         there are to be multiple TensorFlow workers consuming the data.
 
         Args:
-            feature_columns: Columns that correspond to model inputs. If this is a string,
-                the input data is a tensor. If this is a list, the input data is a
-                ``dict`` that maps column names to their tensor representation.
-            label_column: Columns that correspond to model targets. If this is a string,
-                the target data is a tensor. If this is a list, the target data is a
-                ``dict`` that maps column names to their tensor representation.
+            feature_columns: Columns that correspond to model inputs. If this is a 
+                string, the input data is a tensor. If this is a list, the input data 
+                is a ``dict`` that maps column names to their tensor representation.
+            label_column: Columns that correspond to model targets. If this is a 
+                string, the target data is a tensor. If this is a list, the target data 
+                is a ``dict`` that maps column names to their tensor representation.
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
             batch_size: Record batch size. Defaults to 1.
@@ -2835,7 +2835,6 @@ class Dataset(Generic[T]):
             A ``tf.data.Dataset`` that yields inputs and targets.
         """
         from ray.air._internal.tensorflow_utils import get_type_spec
-        from ray.train.tensorflow import prepare_dataset_shard
 
         try:
             import tensorflow as tf
@@ -2847,6 +2846,12 @@ class Dataset(Generic[T]):
                 "`to_tf` doesn't support simple datasets. Call `map_batches` and "
                 "convert your data to a tabular format. Alternatively, call the more-"
                 "flexible `iter_batches` in place of `to_tf`."
+            )
+
+        if self._is_tensor_dataset():
+            raise NotImplementedError(
+                "`to_tf` doesn't support single-column tensor datasets. Call the "
+                "more-flexible `iter_batches` instead."
             )
 
         schema = self.schema()
@@ -2873,7 +2878,6 @@ class Dataset(Generic[T]):
         def get_columns_from_batch(
             batch: Dict[str, tf.Tensor], *, columns: Union[str, List[str]]
         ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
-            assert isinstance(columns, (str, list))
             if isinstance(columns, str):
                 return batch[columns]
             return {column: batch[column] for column in columns}
@@ -2899,7 +2903,11 @@ class Dataset(Generic[T]):
             generator, output_signature=output_signature
         )
 
-        return prepare_dataset_shard(dataset)
+        options = tf.data.Options()
+        options.experimental_distribute.auto_shard_policy = (
+            tf.data.experimental.AutoShardPolicy.OFF
+        )
+        return dataset.with_options(options)
 
     def to_dask(
         self,
@@ -3693,6 +3701,15 @@ class Dataset(Generic[T]):
             if schema.names == [VALUE_COL_NAME]:
                 return np.ndarray
             return pd.DataFrame
+
+    def _is_tensor_dataset(self) -> bool:
+        """Return ``True`` if this dataset is a tensor dataset."""
+        from ray.air.constants import TENSOR_COLUMN_NAME
+
+        schema = self.schema()
+        if isinstance(schema, type):
+            return False
+        return schema.names == [TENSOR_COLUMN_NAME]
 
     def _dataset_format(self) -> str:
         """Determine the format of the dataset. Possible values are: "arrow",

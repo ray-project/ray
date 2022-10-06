@@ -1,10 +1,13 @@
-from typing import Dict, List, Optional, Union, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Union, Tuple
 
 import numpy as np
 import pyarrow
 import tensorflow as tf
 
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
+
+if TYPE_CHECKING:
+    from ray.data._internal.pandas_block import PandasBlockSchema
 
 
 def convert_ndarray_to_tf_tensor(
@@ -62,7 +65,7 @@ def convert_ndarray_batch_to_tf_tensor_batch(
 
 
 def get_type_spec(
-    schema: "pyarrow.lib.Schema",
+    schema: Union["pyarrow.lib.Schema", "PandasBlockSchema"],
     columns: Union[str, List[str]],
 ) -> Union[tf.TypeSpec, Dict[str, tf.TypeSpec]]:
     import pyarrow as pa
