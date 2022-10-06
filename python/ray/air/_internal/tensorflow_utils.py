@@ -80,11 +80,12 @@ def get_type_spec(
         return tf.dtypes.as_dtype(dtype)
 
     def get_shape(dtype: Union[np.dtype, pa.DataType]) -> Tuple[int, ...]:
+        shape = (None,)
         if isinstance(dtype, ArrowTensorType):
             dtype = dtype.to_pandas_dtype()
         if isinstance(dtype, TensorDtype):
-            return (None,) + dtype.element_shape
-        return (None,)
+            shape += dtype.element_shape
+        return shape
 
     if isinstance(columns, str):
         name, dtype = columns, dtypes[columns]
