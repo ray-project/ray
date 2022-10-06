@@ -10,6 +10,7 @@ Test owner: architkulkarni
 Acceptance criteria: Should run through and print "PASSED"
 """
 
+# XXX: Move to long_running folder (do I need to?)
 import argparse
 import json
 import os
@@ -18,7 +19,7 @@ import random
 from typing import List, Optional
 from ray.dashboard.modules.job.common import JobStatus
 from ray.dashboard.modules.job.pydantic_models import JobDetails
-
+import ray
 from ray.job_submission import JobSubmissionClient
 from ray._private.test_utils import monitor_memory_usage
 
@@ -97,6 +98,7 @@ if __name__ == "__main__":
 
     start = time.time()
 
+    ray.init()
     address = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "jobs_basic")
 
@@ -106,6 +108,7 @@ if __name__ == "__main__":
     clients = [JobSubmissionClient(address) for i in range(NUM_CLIENTS)]
 
     # Print memory usage on the head node to help diagnose/debug memory leaks.
+
     monitor_memory_usage(warning_threshold=0.1)
 
     batch_counter = 0
