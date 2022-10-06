@@ -4,6 +4,7 @@ import re
 import time
 import subprocess
 from subprocess import PIPE
+from ray._private.test_utils import monitor_memory_usage
 
 import requests
 
@@ -59,6 +60,8 @@ for i in range(NUM_NODES):
 ray.init(address=cluster.address, log_to_driver=False, dashboard_host="0.0.0.0")
 serve.start()
 
+# Print memory usage on the head node to help diagnose/debug memory leaks.
+monitor_memory_usage()
 
 @serve.deployment(name="echo", num_replicas=NUM_REPLICAS)
 class Echo:
