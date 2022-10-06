@@ -37,7 +37,7 @@ const columns = [
   { label: "Submission ID" },
   { label: "Status" },
   {
-    label: "Progress",
+    label: "Tasks",
     helpInfo: (
       <Typography>
         The progress of the all submitted tasks per job. Tasks that are not yet
