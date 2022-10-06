@@ -624,7 +624,7 @@ void LocalObjectManager::RecordMetrics() const {
 
   ray::stats::STATS_object_store_memory.Record(
       spilled_bytes_current_,
-      {{ray::stats::LocationKey::name(), ray::stats::kObjectLocSpilled}});
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocSpilled}});
 }
 
 int64_t LocalObjectManager::GetPrimaryBytes() const {

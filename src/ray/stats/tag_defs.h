@@ -48,6 +48,6 @@ extern const TagKeyType NameKey;
 
 // Object store memory location tag constants
 extern const TagKeyType LocationKey;
-constexpr std::string_view kObjectLocInMemory = "IN_MEMORY";
-constexpr std::string_view kObjectLocSpilled = "SPILLED";
-constexpr std::string_view kObjectLocUnsealed = "UNSEALED";
+constexpr char kObjectLocInMemory[] = "IN_MEMORY";
+constexpr char kObjectLocSpilled[] = "SPILLED";
+constexpr char kObjectLocUnsealed[] = "UNSEALED";

@@ -177,12 +177,12 @@ int64_t ObjectStatsCollector::GetNumBytesCreatedCurrent() const {
 
 void ObjectStatsCollector::RecordMetrics() const {
   ray::stats::STATS_object_store_memory.Record(
-      GetNumBytesCreatedCurrene() - num_bytes_unsealed_,
-      {{ray::stats::LocationKey::name(), ray::stats::kObjectLocInMemory}});
+      GetNumBytesCreatedCurrent() - num_bytes_unsealed_,
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocInMemory}});
 
   ray::stats::STATS_object_store_memory.Record(
       num_bytes_unsealed_,
-      {{ray::stats::LocationKey::name(), ray::stats::kObjectLocUnsealed}});
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocUnsealed}});
 
   // TODO(rickyx):
   // Add fallback memory recording here.
