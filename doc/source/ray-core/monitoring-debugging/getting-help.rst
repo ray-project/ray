@@ -3,22 +3,10 @@
 Getting Help
 ============
 
-Ask Ray community or navigate through the documentation if your problem is not solved by the guide above.
+Ray Community
+-------------
 
-Getting Help from the Documentation
------------------------------------
-If you are stuck, navigate through the ray documentation. It is structured to answer a wide range of questions.
-
-- :ref:`Key Concepts <core-key-concepts>` explains key concepts of Ray.
-- :ref:`Ray Clusters Overview <cluster-index>` explains you how to deploy Ray clusters and submit code to them.
-- :ref:`Ray Core User Guide <core-use-guide>` explains how to use Ray task, actor, object, placement groups, and dependencies.
-- :ref:`Task Design Pattern <task-patterns>`, :ref:`Actor Design Pattern <actor-patterns>`, :ref:`Design Patterns & Anti-patterns<core-patterns>`, and :ref:`Ray Common Gotchas <gotchas>` explains best practice, anti-pattern, and common gotchas of Ray.
-- :ref:`Ray Core Examples <ray-core-examples-tutorial>` shows examples of using Ray (from building ML libraries to running simple yet highly embarrassingly parallel workloads).
-- :ref:`White Paper <whitepaper>` explains internal details of Ray.
-
-Getting Help from the Community
--------------------------------
-When you are still stuck, ask the Ray community questions.
+If you stuck on a problem, there are several ways to ask the Ray community.
 
 .. _`Discourse Forum`: https://discuss.ray.io/
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
@@ -52,9 +40,9 @@ When you are still stuck, ask the Ray community questions.
 
 Discourse Forum
 ~~~~~~~~~~~~~~~
-`Discourse Forum`_ is the primary place to ask questions. 
+`Discourse Forum` is the primary place to ask questions, where the Ray committers, contributors, and other Ray users answer questions.
 Someone from the community may have already answered your question, so before you ask a new question, please make sure to search them.
-The forum is monitored by Ray contributors daily basis, and questions are expected to be responded to within a day.
+The Ray contributors monitor the forum daily and expect to respond within a day.
 
 Bugs or Feature Requests
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -62,11 +50,11 @@ Sometimes, the question or problem you have turns out to be a real bug or requir
 file a new issue to the `GitHub Issues`_ page. Ray contributors will triage and
 address them accordingly.
 
-Stackoverflow
+StackOverflow
 ~~~~~~~~~~~~~
-You can also ask questions to `StackOverflow`_ with a Ray tag. Stackoverflow questions are expected to be responded to within 3~5 days.
+You can also ask questions to `StackOverflow`_ with a Ray tag. On StackOverflow, we strive to respond to questions within 3~5 days.
 
 Slack
 ~~~~~
 Many Ray users hang out on Ray `Slack`_ (the invitation is open to everyone). You can join the slack and directly communicate to other Ray users or contributors.
-For asking questions, we recommend using the discourse forum or Stackoverflow for future searchability.
+For asking questions, we recommend using the discourse forum or StackOverflow for future searchability.
