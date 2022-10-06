@@ -159,8 +159,8 @@ class TestReadImages:
         ctx.target_max_block_size = 1
         ctx.block_splitting_enabled = True
         try:
-            root = "example://image-folders/simple"
-            ds = ray.data.read_datasource(ImageDatasource(), root=root, parallelism=1)
+            root = "example://image-datasets/simple"
+            ds = ray.data.read_images(root, parallelism=1)
             assert ds.num_blocks() == 1
             ds.fully_executed()
             # Verify dynamic block splitting taking effect to generate more blocks.
