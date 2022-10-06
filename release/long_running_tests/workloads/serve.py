@@ -63,6 +63,7 @@ serve.start()
 # Print memory usage on the head node to help diagnose/debug memory leaks.
 monitor_memory_usage()
 
+
 @serve.deployment(name="echo", num_replicas=NUM_REPLICAS)
 class Echo:
     @serve.batch(max_batch_size=MAX_BATCH_SIZE)
