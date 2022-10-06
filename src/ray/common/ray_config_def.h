@@ -90,7 +90,7 @@ RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 0)
 /// The memory threshold is calculcated as
 /// Threshold = max(node_memory * memory_usage_threshold_fraction, node_memory -
 /// min_memory_free_bytes)
-RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)1.5 * 1024 * 1024 * 1024)
+RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t) 1 * 1024 * 1024 * 1024)
 
 /// The TTL for when the task failure entry is considered
 /// eligble for garbage colletion.
