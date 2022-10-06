@@ -2808,7 +2808,7 @@ class Dataset(Generic[T]):
         there are to be multiple TensorFlow workers consuming the data.
 
         Args:
-            feature_columns: Columns that correspond to inputs. If this is a string,
+            feature_columns: Columns that correspond to model inputs. If this is a string,
                 the input data is a tensor. If this is a list, the input data is a
                 ``dict`` that maps column names to their tensor representation.
             label_column: Columns that correspond to targets. If this is a string,
