@@ -32,7 +32,7 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "agents": {"queue": "runner_queue_branch"},
     "plugins": [
         {
-            "docker#v3.9.0": {
+            "docker#v5.2.0": {
                 "image": "rayproject/ray",
                 "propagate-environment": True,
                 "volumes": [
