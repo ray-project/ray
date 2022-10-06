@@ -4,16 +4,17 @@ import time
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import numpy as np
+from ray.air.constants import TENSOR_COLUMN_NAME
 
 from ray.data._internal.util import _check_import
-from ray.data.block import BlockMetadata
+from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
     _FileBasedDatasourceReader,
     FileBasedDatasource,
 )
-from ray.data._internal.arrow_block import ArrowBlockBuilder
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.datasource.file_meta_provider import DefaultFileMetadataProvider
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.util.annotations import DeveloperAPI
@@ -58,17 +59,30 @@ class ImageDatasource(BinaryDatasource):
             )
 
         _check_import(self, module="PIL", package="Pillow")
-        _check_import(self, module="pandas", package="pandas")
 
         return _ImageDatasourceReader(self, size=size, mode=mode, **kwargs)
 
     def _convert_block_to_tabular_block(
-        self, block: "pyarrow.Table", column_name: Optional[str] = None
-    ) -> "pyarrow.Table":
+        self, block: Block, column_name: Optional[str] = None
+    ) -> Block:
+        import pandas as pd
+        import pyarrow as pa
+
+        if column_name is None:
+            column_name = self._COLUMN_NAME
+
         # The input block has one column named `TENSOR_COLUMN_NAME`. We don't want to
         # leak `TENSOR_COLUMN_NAME`, so we rename the column to a more human-readable
         # name.
-        return block.rename_columns([self._COLUMN_NAME])
+        assert isinstance(block, (pa.Table, pd.DataFrame))
+        tabular_block = None
+        if isinstance(block, pa.Table):
+            assert block.column_names == [TENSOR_COLUMN_NAME]
+            tabular_block = block.rename_columns([column_name])
+        if isinstance(block, pd.DataFrame):
+            assert block.columns == [TENSOR_COLUMN_NAME]
+            tabular_block = block.rename(columns={TENSOR_COLUMN_NAME: column_name})
+        return tabular_block
 
     def _read_file(
         self,
@@ -90,7 +104,7 @@ class ImageDatasource(BinaryDatasource):
         if mode is not None:
             image = image.convert(mode)
 
-        builder = ArrowBlockBuilder()
+        builder = DelegatingBlockBuilder()
         builder.add(np.array(image))
         block = builder.build()
 

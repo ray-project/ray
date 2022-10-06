@@ -20,29 +20,41 @@ class TestReadImages:
         """Test basic `read_images` functionality.
         The folder "simple" contains three 32x32 RGB images.
         """
+        # "simple" contains three 32x32 RGB images.
         ds = ray.data.read_images("example://image-datasets/simple")
         assert ds.schema().names == [TENSOR_COLUMN_NAME]
         column_type = ds.schema().types[0]
         assert isinstance(column_type, ArrowTensorType)
         assert all(array.shape == (32, 32, 3) for array in ds.take())
 
+    def test_multiple_paths(self, ray_start_regular_shared):
+        ds = ray.data.read_images(
+            paths=[
+                "example://image-datasets/simple/image1.jpg",
+                "example://image-datasets/simple/image2.jpg",
+            ]
+        )
+        assert ds.count() == 2
+
     def test_filtering(self, ray_start_regular_shared):
-        """Test `read_images` correctly filters non-image files.
-        The folder "different-extensions" contains three 32x32 RGB images and two
-        non-images.
-        """
+        # "different-extensions" contains three images and two non-images.
         ds = ray.data.read_images("example://image-datasets/different-extensions")
         assert ds.count() == 3
 
     def test_size(self, ray_start_regular_shared):
-        """Test `read_images` size parameter works with differently-sized images.
-        The folder "different-sizes" contains three RGB images. Each image has a
-        different size, with the size described in file names (e.g., 32x32.png).
-        """
+        # "different-sizes" contains RGB images with different heights and widths.
         ds = ray.data.read_images(
             "example://image-datasets/different-sizes", size=(32, 32)
         )
         assert all(array.shape == (32, 32, 3) for array in ds.take())
+
+    def test_different_sizes(self, ray_start_regular_shared):
+        ds = ray.data.read_images("example://image-datasets/different-sizes")
+        assert sorted(array.shape for array in ds.take()) == [
+            (16, 16, 3),
+            (32, 32, 3),
+            (64, 64, 3),
+        ]
 
     @pytest.mark.parametrize("size", [(-32, 32), (32, -32), (-32, -32)])
     def test_invalid_size(self, ray_start_regular_shared, size):
@@ -58,10 +70,7 @@ class TestReadImages:
         expected_shape,
         ray_start_regular_shared,
     ):
-        """Test `read_images` works with images from different colorspaces.
-        The folder "different-modes" contains three 32x32 images with modes "CMYK", "L",
-        and "RGB".
-        """
+        # "different-modes" contains 32x32 images with modes "CMYK", "L", and "RGB"
         ds = ray.data.read_images("example://image-datasets/different-modes", mode=mode)
         assert all([array.shape == expected_shape for array in ds.take()])
 
