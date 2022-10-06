@@ -1,3 +1,5 @@
+.. _task-pattern-tree-of-tasks:
+
 Pattern: Tree of tasks
 ======================
 
