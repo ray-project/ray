@@ -18,7 +18,7 @@ from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.tune.schedulers.pbt import _filter_mutated_params_from_full_config
+from ray.tune.schedulers.pbt import _filter_mutated_params_from_config
 from ray.tune.tune_config import TuneConfig
 from ray._private.test_utils import object_memory_usage
 
@@ -630,7 +630,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
 
 class PopulationBasedTrainingLoggingTest(unittest.TestCase):
     def testFilterHyperparamConfig(self):
-        filtered_params = _filter_mutated_params_from_full_config(
+        filtered_params = _filter_mutated_params_from_config(
             {
                 "training_loop_config": {
                     "lr": 0.1,
@@ -676,10 +676,10 @@ class PopulationBasedTrainingLoggingTest(unittest.TestCase):
                 None, DummyTrial(old_config)
             )
 
-            old_params = _filter_mutated_params_from_full_config(
+            old_params = _filter_mutated_params_from_config(
                 old_config, hyperparam_mutations
             )
-            new_params = _filter_mutated_params_from_full_config(
+            new_params = _filter_mutated_params_from_config(
                 new_config, hyperparam_mutations
             )
 

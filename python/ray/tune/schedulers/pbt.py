@@ -168,9 +168,24 @@ def _fill_config(
             _fill_config(config[attr], k, v)
 
 
-def _filter_mutated_params_from_full_config(config, hyperparam_mutations):
+def _filter_mutated_params_from_config(
+    config: Dict, hyperparam_mutations: Dict
+) -> Dict:
     """Filter out hyperparameters from a config so that only parameters specified
     within hyperparam_mutations remain. This recursively filters nested configs.
+
+    Example:
+    >>> config = {
+    ...     "a": {"b": 2, "c": 0, "d": {"e": 0.1}},
+    ...     "f": {"g": 0.5},
+    ... }
+    >>> hyperparam_mutations = {
+    ...     "a": {"b": [1, 2], "c": [-1, 0]},
+    ... }
+    >>> _filter_mutated_params_from_config(config, hyperparam_mutations) == {
+    ...     "a": {"b": 2, "c": 0}
+    ... }
+    True
 
     Args:
         config: The config dict that we want to filter.
@@ -187,7 +202,7 @@ def _filter_mutated_params_from_full_config(config, hyperparam_mutations):
             continue
 
         if isinstance(config[param_name], dict):
-            nested_params = _filter_mutated_params_from_full_config(
+            nested_params = _filter_mutated_params_from_config(
                 config[param_name], hyperparam_mutations[param_name]
             )
             mutated_params[param_name] = nested_params
@@ -695,16 +710,47 @@ class PopulationBasedTraining(FIFOScheduler):
         )
 
     def _summarize_hyperparam_changes(
-        self, old_params: Dict, new_params: Dict, operations: Dict, prefix: str = ""
+        self,
+        old_params: Dict,
+        new_params: Dict,
+        operations: Optional[Dict] = None,
+        prefix: str = "",
     ) -> str:
         """Generates a summary of hyperparameter changes from a PBT "explore" step.
+
+        Example:
+        Given the following hyperparam_mutations:
+
+        hyperparam_mutations = {
+            "a": tune.uniform(0, 1),
+            "b": list(range(5)),
+            "c": {
+                "d": tune.uniform(2, 3),
+                "e": {"f": [-1, 0, 1]},
+            },
+        }
+
+        This is an example summary output of the operations performed on old_params
+        to get new_params:
+
+        a : 0.5 --- (* 0.8) --> 0.4
+        b : 2 --- (resample) --> 4
+        c :
+            d : 2.5 --- (* 1.2) --> 3.0
+            e :
+                f : 0 --- (shift right) --> 1
+
+        The summary shows the old and new hyperparameter values, with the operation
+        used to perturb labeled in between.
+        If the operation for a certain hyperparameter is not provided, then the summary
+        will just contain arrows without a label. (ex: a : 0.5 -----> 0.4)
 
         Args:
             old_params: Old values of hyperparameters that are perturbed to generate
                 the new config
             new_params: The newly generated hyperparameter config from PBT exploration
-            operations: Map of hyperparam -> string describing mutation the operation
-                performed on it to generate the value in `new_params`
+            operations: Map of hyperparams -> string descriptors the operations
+                performed to generate the values in `new_params`
             prefix: Helper argument to format nested dict hyperparam configs
 
         Returns:
@@ -728,7 +774,10 @@ class PopulationBasedTraining(FIFOScheduler):
                 summary_str += "\n"
                 nested_operations = operations.get(param_name, {})
                 summary_str += self._summarize_hyperparam_changes(
-                    old_val, new_val, nested_operations, prefix=prefix + " " * 4
+                    old_val,
+                    new_val,
+                    operations=nested_operations,
+                    prefix=prefix + " " * 4,
                 )
             else:
                 op = operations.get(param_name, None)
@@ -765,10 +814,10 @@ class PopulationBasedTraining(FIFOScheduler):
         new_config, operations = self._get_new_config(trial, trial_to_clone)
 
         # Only log mutated hyperparameters and not entire config.
-        old_params = _filter_mutated_params_from_full_config(
+        old_params = _filter_mutated_params_from_config(
             trial_to_clone.config, self._hyperparam_mutations
         )
-        new_params = _filter_mutated_params_from_full_config(
+        new_params = _filter_mutated_params_from_config(
             new_config, self._hyperparam_mutations
         )
         explore_info_str = (
