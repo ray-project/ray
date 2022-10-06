@@ -1,5 +1,6 @@
 import sys
 import time
+import json
 import pytest
 import requests
 from pydantic import ValidationError
@@ -466,6 +467,71 @@ class TestServeApplicationSchema:
         serve_application_schema["import_path"] = path
         with pytest.raises(ValidationError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
+
+    def test_serve_application_kubernetes_config(self):
+        # Test kubernetes_dict() behavior
+
+        config = {
+            "import_path": "module.graph",
+            "runtime_env": {"working_dir": "s3://path/file.zip"},
+            "host": "1.1.1.1",
+            "port": 7470,
+            "deployments": [
+                {
+                    "name": "shallow",
+                    "num_replicas": 2,
+                    "route_prefix": "/shallow",
+                    "user_config": {"a": 1, "b": "c", 2: 3},
+                    "ray_actor_options": {
+                        "runtime_env": {
+                            "py_modules": ["gs://fake2/file2.zip"],
+                        },
+                        "num_cpus": 3,
+                        "memory": 5,
+                        "object_store_memory": 3,
+                        "resources": {"custom_asic": 8},
+                        "accelerator_type": NVIDIA_TESLA_P4,
+                    },
+                },
+                {
+                    "name": "deep",
+                },
+            ],
+        }
+
+        kubernetes_config = ServeApplicationSchema.parse_obj(config).kubernetes_dict(
+            exclude_unset=True
+        )
+
+        assert kubernetes_config == {
+            "importPath": "module.graph",
+            "runtimeEnv": json.dumps({"working_dir": "s3://path/file.zip"}),
+            "host": "1.1.1.1",
+            "port": 7470,
+            "deployments": [
+                {
+                    "name": "shallow",
+                    "numReplicas": 2,
+                    "routePrefix": "/shallow",
+                    "userConfig": json.dumps({"a": 1, "b": "c", 2: 3}),
+                    "rayActorOptions": {
+                        "runtimeEnv": json.dumps(
+                            {
+                                "py_modules": ["gs://fake2/file2.zip"],
+                            }
+                        ),
+                        "numCpus": 3.0,
+                        "memory": 5.0,
+                        "objectStoreMemory": 3.0,
+                        "resources": json.dumps({"custom_asic": 8}),
+                        "acceleratorType": NVIDIA_TESLA_P4,
+                    },
+                },
+                {
+                    "name": "deep",
+                },
+            ],
+        }
 
 
 class TestServeStatusSchema:

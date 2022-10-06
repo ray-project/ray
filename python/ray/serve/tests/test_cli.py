@@ -3,6 +3,7 @@ import signal
 import subprocess
 import sys
 import time
+import json
 from tempfile import NamedTemporaryFile
 from typing import List
 
@@ -514,6 +515,47 @@ def test_build(ray_start_stop, node):
             lambda: ping_endpoint("") == CONNECTION_ERROR_MSG, timeout=15
         )
         print("Delete succeeded! Node is not reachable over HTTP.")
+
+
+k8sFNode = global_f.options(
+    num_replicas=2, ray_actor_options={"num_cpus": 2, "num_gpus": 1}
+).bind()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_build_kubernetes_flag():
+    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
+        print("Building k8sFNode.")
+        subprocess.check_output(
+            [
+                "serve",
+                "build",
+                "ray.serve.tests.test_cli.k8sFNode",
+                "-o",
+                tmp.name,
+                "-k",
+            ]
+        )
+        print("Build succeeded!")
+
+        tmp.seek(0)
+        config = yaml.safe_load(tmp.read())
+        assert config == {
+            "importPath": "ray.serve.tests.test_cli.k8sFNode",
+            "runtimeEnv": json.dumps({}),
+            "host": "0.0.0.0",
+            "port": 8000,
+            "deployments": [
+                {
+                    "name": "global_f",
+                    "numReplicas": 2,
+                    "rayActorOptions": {
+                        "numCpus": 2.0,
+                        "numGpus": 1.0,
+                    },
+                },
+            ],
+        }
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
