@@ -57,11 +57,7 @@ def exception_cause(exc: Optional[Exception]) -> Optional[Exception]:
     if not exc:
         return None
 
-    cause = getattr(exc, "__cause__", None)
-    if not cause:
-        return None
-
-    return exc.__cause__
+    return getattr(exc, "__cause__", None)
 
 
 class RunnerThread(threading.Thread):
