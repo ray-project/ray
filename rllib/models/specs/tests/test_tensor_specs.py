@@ -50,53 +50,53 @@ class TestSpecs(unittest.TestCase):
             self.assertEqual(x.shape, (1, 2, 3, 3))
             self.assertEqual(x.dtype, double_type)
 
-    def test_validation(self):
+    # def test_validation(self):
 
-        b, h = 2, 3
+    #    b, h = 2, 3
 
-        for fw in SPEC_CLASSES.keys():
-            spec_class = SPEC_CLASSES[fw]
-            double_type = DOUBLE_TYPE[fw]
-            float_type = FLOAT_TYPE[fw]
+    #    for fw in SPEC_CLASSES.keys():
+    #        spec_class = SPEC_CLASSES[fw]
+    #        double_type = DOUBLE_TYPE[fw]
+    #        float_type = FLOAT_TYPE[fw]
 
-            tensor_2d = spec_class("b,h", b=b, h=h, dtype=double_type).fill()
+    #        tensor_2d = spec_class("b,h", b=b, h=h, dtype=double_type).fill()
 
-            matching_specs = [
-                spec_class("b,h"),
-                spec_class("b,h", h=h),
-                spec_class("b,h", h=h, b=b),
-                spec_class("b,h", b=b, dtype=double_type),
-            ]
+    #        matching_specs = [
+    #            spec_class("b,h"),
+    #            spec_class("b,h", h=h),
+    #            spec_class("b,h", h=h, b=b),
+    #            spec_class("b,h", b=b, dtype=double_type),
+    #        ]
 
-            # check if get_shape returns a tuple of ints
-            shape = matching_specs[0].get_shape(tensor_2d)
-            self.assertIsInstance(shape, tuple)
-            self.assertTrue(all(isinstance(x, int) for x in shape))
+    #        # check if get_shape returns a tuple of ints
+    #        shape = matching_specs[0].get_shape(tensor_2d)
+    #        self.assertIsInstance(shape, tuple)
+    #        self.assertTrue(all(isinstance(x, int) for x in shape))
 
-            # check matching
-            for spec in matching_specs:
-                spec.validate(tensor_2d)
+    #        # check matching
+    #        for spec in matching_specs:
+    #            spec.validate(tensor_2d)
 
-            non_matching_specs = [
-                spec_class("b"),
-                spec_class("b,h1,h2"),
-                spec_class("b,h", h=h + 1),
-            ]
-            if fw != "jax":
-                non_matching_specs.append(spec_class("b,h", dtype=float_type))
+    #        non_matching_specs = [
+    #            spec_class("b"),
+    #            spec_class("b,h1,h2"),
+    #            spec_class("b,h", h=h + 1),
+    #        ]
+    #        if fw != "jax":
+    #            non_matching_specs.append(spec_class("b,h", dtype=float_type))
 
-            for spec in non_matching_specs:
-                self.assertRaises(ValueError, lambda: spec.validate(tensor_2d))
+    #        for spec in non_matching_specs:
+    #            self.assertRaises(ValueError, lambda: spec.validate(tensor_2d))
 
-            # non unique dimensions
-            self.assertRaises(ValueError, lambda: spec_class("b,b"))
-            # unknown dimensions
-            self.assertRaises(ValueError, lambda: spec_class("b,h", b=1, h=2, c=3))
-            self.assertRaises(ValueError, lambda: spec_class("b1", b2=1))
-            # zero dimensions
-            self.assertRaises(ValueError, lambda: spec_class("b,h", b=1, h=0))
-            # non-integer dimension
-            self.assertRaises(ValueError, lambda: spec_class("b,h", b=1, h="h"))
+    #        # non unique dimensions
+    #        self.assertRaises(ValueError, lambda: spec_class("b,b"))
+    #        # unknown dimensions
+    #        self.assertRaises(ValueError, lambda: spec_class("b,h", b=1, h=2, c=3))
+    #        self.assertRaises(ValueError, lambda: spec_class("b1", b2=1))
+    #        # zero dimensions
+    #        self.assertRaises(ValueError, lambda: spec_class("b,h", b=1, h=0))
+    #        # non-integer dimension
+    #        self.assertRaises(ValueError, lambda: spec_class("b,h", b=1, h="h"))
 
     def test_equal(self):
 
