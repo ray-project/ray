@@ -1,8 +1,6 @@
-from contextlib import redirect_stderr, redirect_stdout
 import pytest
 import torch
 import os
-import io
 
 import ray
 from ray.air.examples.pytorch.torch_linear_example import (
@@ -16,7 +14,7 @@ from ray.train.torch import TorchConfig
 import ray.train as train
 from unittest.mock import patch
 from ray.cluster_utils import Cluster
-from ray.air import session, Checkpoint
+from ray.air import session
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
 
@@ -179,37 +177,40 @@ def test_torch_session_errors(ray_start_4_cpus):
     trainer.fit()
 
 
-def test_torch_bad_checkpoint_warning(ray_start_4_cpus):
-    """Test that a warning is printed if bad checkpoint type is used."""
+# See comment in backend.py::_warn_about_bad_checkpoint_type
+# for why test_torch_bad_checkpoint_warning is commented out
 
-    def train_func():
-        model = torch.nn.Linear(1, 1).state_dict()
-        session.report({}, checkpoint=TorchCheckpoint.from_dict({"model": model}))
+# def test_torch_bad_checkpoint_warning(ray_start_4_cpus):
+#     """Test that a warning is printed if bad checkpoint type is used."""
 
-    scaling_config = ScalingConfig(num_workers=2)
-    trainer = TorchTrainer(
-        train_loop_per_worker=train_func,
-        scaling_config=scaling_config,
-    )
-    output = io.StringIO()
-    with redirect_stdout(output), redirect_stderr(output):
-        trainer.fit()
-    output = output.getvalue()
-    assert "You have reported a checkpoint" not in output
+#     def train_func():
+#         model = torch.nn.Linear(1, 1).state_dict()
+#         session.report({}, checkpoint=TorchCheckpoint.from_dict({"model": model}))
 
-    def train_func():
-        model = torch.nn.Linear(1, 1).state_dict()
-        session.report({}, checkpoint=Checkpoint.from_dict({"model": model}))
+#     scaling_config = ScalingConfig(num_workers=2)
+#     trainer = TorchTrainer(
+#         train_loop_per_worker=train_func,
+#         scaling_config=scaling_config,
+#     )
+#     output = io.StringIO()
+#     with redirect_stdout(output), redirect_stderr(output):
+#         trainer.fit()
+#     output = output.getvalue()
+#     assert "You have reported a checkpoint" not in output
 
-    trainer = TorchTrainer(
-        train_loop_per_worker=train_func,
-        scaling_config=scaling_config,
-    )
-    output = io.StringIO()
-    with redirect_stdout(output), redirect_stderr(output):
-        trainer.fit()
-    output = output.getvalue()
-    assert "You have reported a checkpoint" in output
+#     def train_func():
+#         model = torch.nn.Linear(1, 1).state_dict()
+#         session.report({}, checkpoint=Checkpoint.from_dict({"model": model}))
+
+#     trainer = TorchTrainer(
+#         train_loop_per_worker=train_func,
+#         scaling_config=scaling_config,
+#     )
+#     output = io.StringIO()
+#     with redirect_stdout(output), redirect_stderr(output):
+#         trainer.fit()
+#     output = output.getvalue()
+#     assert "You have reported a checkpoint" in output
 
 
 @pytest.mark.parametrize(

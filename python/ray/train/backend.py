@@ -26,7 +26,7 @@ def _warn_about_bad_checkpoint_type(expected_checkpoint_cls: Type[Checkpoint]):
     return
     # Do not print warnings in 2.1 yet.
     # TODO(ml-team): Change this once we have full API parity with framework
-    # checkpoints.
+    # checkpoints. Also turn on test_torch_trainer::test_torch_bad_checkpoint_warning
     # warnings.warn(
     #     f"You have reported a checkpoint with the `{Checkpoint}` "
     #     "type, but the intended checkpoint type for the Trainer "
