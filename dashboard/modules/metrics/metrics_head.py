@@ -5,9 +5,6 @@ from pydantic import BaseModel
 import shutil
 from urllib.parse import quote
 
-import aiohttp
-import aiohttp.web
-
 from ray.dashboard.modules.metrics.grafana_datasource_template import (
     GRAFANA_DATASOURCE_TEMPLATE,
 )
