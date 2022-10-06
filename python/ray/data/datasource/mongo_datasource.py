@@ -72,8 +72,8 @@ class _MongoDatasourceReader(Reader):
         uri: str,
         database: str,
         collection: str,
-        pipeline: List[Dict] = None,
-        schema: Schema = None,
+        pipeline: Optional[List[Dict]] = None,
+        schema: Optional[Schema] = None,
         **mongo_args,
     ):
         self._uri = uri
