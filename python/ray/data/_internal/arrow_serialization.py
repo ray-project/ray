@@ -1,4 +1,3 @@
-import logging
 import functools
 import os
 from typing import List, Callable, TYPE_CHECKING
@@ -12,8 +11,6 @@ RAY_DISABLE_CUSTOM_ARROW_JSON_OPTIONS_SERIALIZATION = (
 RAY_DISABLE_CUSTOM_ARROW_DATA_SERIALIZATION = (
     "RAY_DISABLE_CUSTOM_ARROW_DATA_SERIALIZATION"
 )
-
-logger = logging.getLogger(__name__)
 
 
 def _register_custom_datasets_serializers(serialization_context):
@@ -39,10 +36,6 @@ def _register_arrow_json_readoptions_serializer(serialization_context):
         )
         == "1"
     ):
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.info("Disabling custom Arrow JSON ReadOptions serialization.")
         return
 
     import pyarrow.json as pajson
@@ -62,10 +55,6 @@ def _register_arrow_json_parseoptions_serializer(serialization_context):
         )
         == "1"
     ):
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.info("Disabling custom Arrow JSON ParseOptions serialization.")
         return
 
     import pyarrow.json as pajson
