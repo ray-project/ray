@@ -4,6 +4,8 @@ from typing import Union, Optional, TYPE_CHECKING
 from types import ModuleType
 import sys
 
+import numpy as np
+
 import ray
 from ray.data.context import DatasetContext
 
@@ -96,7 +98,7 @@ def _autodetect_parallelism(
     max_reasonable_parallelism = sys.maxsize
     if reader:
         mem_size = reader.estimate_inmemory_data_size()
-        if mem_size is not None:
+        if mem_size is not None and not np.isnan(mem_size):
             min_safe_parallelism = max(1, int(mem_size / ctx.target_max_block_size))
             max_reasonable_parallelism = max(
                 1, int(mem_size / ctx.target_min_block_size)

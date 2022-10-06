@@ -13,6 +13,14 @@ Machine Learning Examples
     :img-top-cls: pt-5 w-75 d-block mx-auto
 
     ---
+    :img-top: /images/timeseries.png
+
+    +++
+    .. link-button:: automl_for_time_series
+        :type: ref
+        :text: Build Simple AutoML for Time Series Using Ray
+        :classes: btn-link btn-block stretched-link
+    ---
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
