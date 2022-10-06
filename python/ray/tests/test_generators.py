@@ -1,6 +1,7 @@
 import pytest
 import numpy as np
 import sys
+import time
 
 import ray
 
@@ -177,6 +178,26 @@ def test_dynamic_generator(ray_start_regular, store_in_plasma):
 
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(static.remote(3))
+
+
+def test_dynamic_generator_distributed(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_returns="dynamic")
+    def dynamic_generator(num_returns):
+        for i in range(num_returns):
+            yield np.ones(1_000_000, dtype=np.int8) * i
+            time.sleep(0.1)
+
+    gen = ray.get(dynamic_generator.remote(3))
+    for i, ref in enumerate(gen):
+        # Check that we can fetch the values from a different node.
+        assert ray.get(ref)[0] == i
 
 
 def test_dynamic_generator_reconstruction(ray_start_cluster):
