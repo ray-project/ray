@@ -23,7 +23,7 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    df["image"] = [preprocess(x).numpy() for x in df["image"]]
+    df.loc[:, "image"] = [preprocess(x).numpy() for x in df["image"]]
     return df
 
 
@@ -39,4 +39,4 @@ preprocessor = BatchMapper(preprocess)
 ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
 
 predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
-predictor.predict(dataset, feature_columns=["image"])
+predictor.predict(dataset, feature_columns=["image"], batch_size=80)

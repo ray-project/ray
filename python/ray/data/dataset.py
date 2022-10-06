@@ -27,6 +27,7 @@ import numpy as np
 import ray
 import ray.cloudpickle as pickle
 from ray._private.usage import usage_lib
+from ray.data._internal.batcher import Batcher
 from ray.data._internal.block_batching import BatchType, batch_blocks
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
@@ -44,6 +45,7 @@ from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data._internal.plan import (
     ExecutionPlan,
     OneToOneStage,
+    _adapt_for_multiple_blocks,
 )
 from ray.data._internal.stage_impl import (
     RandomizeBlocksStage,
@@ -290,6 +292,7 @@ class Dataset(Generic[T]):
         self._warn_slow()
         context = DatasetContext.get_current()
 
+        @_adapt_for_multiple_blocks
         def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
@@ -351,6 +354,14 @@ class Dataset(Generic[T]):
         .. note::
             If ``fn`` mutates its input, you will need to ensure that the batch provided
             to ``fn`` is writable. See the ``allow_mutate_batch`` parameter.
+
+        .. note::
+            The size of the batches provided to ``fn`` may be smaller than the provided
+            ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent to
+            a given map task. Each map task will be sent a single block if the block is
+            equal to or larger than ``batch_size``, and will be sent a bundle of blocks
+            up to (but not exceeding) ``batch_size`` if blocks are smaller than
+            ``batch_size``.
 
         Examples:
 
@@ -424,16 +435,17 @@ class Dataset(Generic[T]):
             fn: The function to apply to each record batch, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
-            batch_size: The number of rows in each batch, or ``None`` to use entire
-                blocks as batches. Blocks can contain different number of rows, and
-                the last batch can include fewer than ``batch_size`` rows. Defaults to
-                ``4096``.
+            batch_size: The desired number of rows in each batch, or None to use entire
+                blocks as batches (blocks may contain different number of rows).
+                The actual size of the batch provided to ``fn`` may be smaller than
+                ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
+                to a given map task. Defaults to 4096.
             compute: The compute strategy, either ``"tasks"`` (default) to use Ray
                 tasks, or ``"actors"`` to use an autoscaling actor pool. If you want to
                 configure the size of the autoscaling actor pool, provide an
                 :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>` instance.
                 If you're passing callable type to ``fn``, you must pass an
-                :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>`.
+                :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>` or ``"actors"``.
             batch_format: Specify ``"default"`` to use the default block format
                 (promotes tables to Pandas and tensors to NumPy), ``"pandas"`` to select
                 ``pandas.DataFrame``, "pyarrow" to select ``pyarrow.Table``, or
@@ -517,28 +529,27 @@ class Dataset(Generic[T]):
         context = DatasetContext.get_current()
 
         def transform(
-            block: Block,
+            blocks: Iterable[Block],
             batch_fn: BatchUDF,
             *fn_args,
             **fn_kwargs,
         ) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
-            block = BlockAccessor.for_block(block)
-            total_rows = block.num_rows()
-            max_batch_size = batch_size
-            if max_batch_size is None:
-                max_batch_size = max(total_rows, 1)
-
-            for start in range(0, total_rows, max_batch_size):
-                # Build a block for each batch.
-                end = min(total_rows, start + max_batch_size)
-                view = block.slice(start, end, copy=allow_mutate_batch)
+            # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
+            batcher = Batcher(
+                batch_size, ensure_copy=allow_mutate_batch and batch_size is not None
+            )
+            for block in blocks:
+                batcher.add(block)
+            batcher.done_adding()
+            while batcher.has_any():
+                batch = batcher.next_batch()
                 # Convert to batch format.
-                view = BlockAccessor.for_block(view).to_batch_format(batch_format)
-
+                batch = BlockAccessor.for_block(batch).to_batch_format(batch_format)
+                # Apply UDF.
                 try:
-                    applied = batch_fn(view, *fn_args, **fn_kwargs)
+                    batch = batch_fn(batch, *fn_args, **fn_kwargs)
                 except ValueError as e:
                     read_only_msgs = [
                         "assignment destination is read-only",
@@ -557,22 +568,23 @@ class Dataset(Generic[T]):
                     else:
                         raise e from None
                 if not (
-                    isinstance(applied, list)
-                    or isinstance(applied, pa.Table)
-                    or isinstance(applied, np.ndarray)
+                    isinstance(batch, list)
+                    or isinstance(batch, pa.Table)
+                    or isinstance(batch, np.ndarray)
                     or (
-                        isinstance(applied, dict)
-                        and all(isinstance(col, np.ndarray) for col in applied.values())
+                        isinstance(batch, dict)
+                        and all(isinstance(col, np.ndarray) for col in batch.values())
                     )
-                    or isinstance(applied, pd.core.frame.DataFrame)
+                    or isinstance(batch, pd.core.frame.DataFrame)
                 ):
                     raise ValueError(
                         "The map batches UDF returned the value "
-                        f"{applied} of type {type(applied)}, "
+                        f"{batch} of type {type(batch)}, "
                         "which is not allowed. "
                         f"The return type must be one of: {BatchType}"
                     )
-                output_buffer.add_batch(applied)
+                # Add output batch to output buffer.
+                output_buffer.add_batch(batch)
                 if output_buffer.has_next():
                     yield output_buffer.next()
 
@@ -586,6 +598,8 @@ class Dataset(Generic[T]):
                 transform,
                 compute,
                 ray_remote_args,
+                # TODO(Clark): Add a strict cap here.
+                target_block_size=batch_size,
                 fn=fn,
                 fn_args=fn_args,
                 fn_kwargs=fn_kwargs,
@@ -731,6 +745,7 @@ class Dataset(Generic[T]):
         self._warn_slow()
         context = DatasetContext.get_current()
 
+        @_adapt_for_multiple_blocks
         def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
@@ -798,6 +813,7 @@ class Dataset(Generic[T]):
         self._warn_slow()
         context = DatasetContext.get_current()
 
+        @_adapt_for_multiple_blocks
         def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)

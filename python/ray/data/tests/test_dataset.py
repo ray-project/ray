@@ -1,3 +1,4 @@
+import itertools
 import math
 import os
 import random
@@ -205,7 +206,7 @@ def test_callable_classes(shutdown_only):
     assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
     # map batches
-    actor_reuse = ds.map_batches(StatefulFn, compute="actors").take()
+    actor_reuse = ds.map_batches(StatefulFn, batch_size=1, compute="actors").take()
     assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
     class StatefulFn:
@@ -2409,7 +2410,7 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path):
     ds = ray.data.range(size)
     ds2 = ds.map_batches(lambda df: df + 1, batch_size=17, batch_format="pandas")
     assert ds2._dataset_format() == "pandas"
-    ds_list = ds2.take(limit=size)
+    ds_list = ds2.take_all()
     for i in range(size):
         # The pandas column is "value", and it originally has rows from 0~299.
         # After the map batch, it should have 1~300.
@@ -2459,8 +2460,8 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
         ds.map_batches(Foo, compute="tasks")
 
     with pytest.raises(ValueError):
-        # fn_constructor_args and fn_constructor_kwargs only supported for actor compute
-        # strategy.
+        # fn_constructor_args and fn_constructor_kwargs only supported for actor
+        # compute strategy.
         ds.map_batches(
             lambda x: x,
             compute="tasks",
@@ -2684,6 +2685,144 @@ def test_map_batches_actors_preserves_order(ray_start_regular_shared):
     # Test that actor compute model preserves block order.
     ds = ray.data.range(10, parallelism=5)
     assert ds.map_batches(lambda x: x, compute="actors").take() == list(range(10))
+
+
+@pytest.mark.parametrize(
+    "num_rows,num_blocks,batch_size",
+    [
+        (10, 5, 2),
+        (10, 1, 10),
+        (12, 3, 2),
+    ],
+)
+def test_map_batches_batch_mutation(
+    ray_start_regular_shared, num_rows, num_blocks, batch_size
+):
+    # Test that batch mutation works without encountering a read-only error (e.g. if the
+    # batch is a zero-copy view on data in the object store).
+    def mutate(df):
+        df["value"] += 1
+        return df
+
+    ds = ray.data.range_table(num_rows, parallelism=num_blocks).repartition(num_blocks)
+    # Convert to Pandas blocks.
+    ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
+
+    # Apply UDF that mutates the batches.
+    ds = ds.map_batches(mutate, batch_size=batch_size)
+    assert [row["value"] for row in ds.iter_rows()] == list(range(1, num_rows + 1))
+
+
+@pytest.mark.parametrize(
+    "num_rows,num_blocks,batch_size",
+    [
+        (10, 5, 2),
+        (10, 1, 10),
+        (12, 3, 2),
+    ],
+)
+def test_map_batches_batch_zero_copy(
+    ray_start_regular_shared, num_rows, num_blocks, batch_size
+):
+    # Test that batches are zero-copy read-only views when allow_mutate_batch=False.
+    def mutate(df):
+        # Check that batch is read-only.
+        assert not df.values.flags.writeable
+        df["value"] += 1
+        return df
+
+    ds = ray.data.range_table(num_rows, parallelism=num_blocks).repartition(num_blocks)
+    # Convert to Pandas blocks.
+    ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
+
+    # Apply UDF that mutates the batches, which should fail since the batch is
+    # read-only.
+    with pytest.raises(ValueError, match="tried to mutate a zero-copy read-only batch"):
+        ds.map_batches(mutate, batch_size=batch_size, allow_mutate_batch=False)
+
+
+BLOCK_BUNDLING_TEST_CASES = [
+    (block_size, batch_size)
+    for batch_size in range(1, 8)
+    for block_size in range(1, 2 * batch_size + 1)
+]
+
+
+@pytest.mark.parametrize("block_size,batch_size", BLOCK_BUNDLING_TEST_CASES)
+def test_map_batches_block_bundling_auto(
+    ray_start_regular_shared, block_size, batch_size
+):
+    # Ensure that we test at least 2 batches worth of blocks.
+    num_blocks = max(10, 2 * batch_size // block_size)
+    ds = ray.data.range(num_blocks * block_size, parallelism=num_blocks)
+    # Confirm that we have the expected number of initial blocks.
+    assert ds.num_blocks() == num_blocks
+    ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+    # Blocks should be bundled up to the batch size.
+    assert ds.num_blocks() == math.ceil(num_blocks / max(batch_size // block_size, 1))
+
+
+@pytest.mark.parametrize(
+    "block_sizes,batch_size,expected_num_blocks",
+    [
+        ([1, 2], 3, 1),
+        ([2, 2, 1], 3, 2),
+        ([1, 2, 3, 4], 4, 3),
+        ([3, 1, 1, 3], 4, 2),
+        ([2, 4, 1, 8], 4, 4),
+        ([1, 1, 1, 1], 4, 1),
+        ([1, 0, 3, 2], 4, 2),
+        ([4, 4, 4, 4], 4, 4),
+    ],
+)
+def test_map_batches_block_bundling_skewed_manual(
+    ray_start_regular_shared, block_sizes, batch_size, expected_num_blocks
+):
+    num_blocks = len(block_sizes)
+    ds = ray.data.from_pandas(
+        [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
+    )
+    # Confirm that we have the expected number of initial blocks.
+    assert ds.num_blocks() == num_blocks
+    ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+
+    # Blocks should be bundled up to the batch size.
+    assert ds.num_blocks() == expected_num_blocks
+
+
+BLOCK_BUNDLING_SKEWED_TEST_CASES = [
+    (block_sizes, batch_size)
+    for batch_size in range(1, 4)
+    for num_blocks in range(1, batch_size + 1)
+    for block_sizes in itertools.product(
+        range(1, 2 * batch_size + 1), repeat=num_blocks
+    )
+]
+
+
+@pytest.mark.parametrize("block_sizes,batch_size", BLOCK_BUNDLING_SKEWED_TEST_CASES)
+def test_map_batches_block_bundling_skewed_auto(
+    ray_start_regular_shared, block_sizes, batch_size
+):
+    num_blocks = len(block_sizes)
+    ds = ray.data.from_pandas(
+        [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
+    )
+    # Confirm that we have the expected number of initial blocks.
+    assert ds.num_blocks() == num_blocks
+    ds = ds.map_batches(lambda x: x, batch_size=batch_size)
+    curr = 0
+    num_out_blocks = 0
+    for block_size in block_sizes:
+        if curr > 0 and curr + block_size > batch_size:
+            num_out_blocks += 1
+            curr = 0
+        curr += block_size
+    if curr > 0:
+        num_out_blocks += 1
+
+    # Blocks should be bundled up to the batch size.
+    assert ds.num_blocks() == num_out_blocks
 
 
 def test_union(ray_start_regular_shared):
@@ -4162,8 +4301,13 @@ def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
     assert ds1._block_num_rows() == [100]
 
     # ds2 has 30 blocks, but only 3 of them are non-empty
-    ds2 = ray.data.from_items(xs).repartition(30).sort().map_batches(lambda x: x)
-    assert len(ds2._block_num_rows()) == 30
+    ds2 = (
+        ray.data.from_items(xs)
+        .repartition(30)
+        .sort()
+        .map_batches(lambda x: x, batch_size=1)
+    )
+    assert len(ds2._block_num_rows()) == 3
     count = sum(1 for x in ds2._block_num_rows() if x > 0)
     assert count == 3
 
@@ -5128,7 +5272,9 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
     num_cpus = 5
     ray.init(num_cpus=num_cpus)
     compute_strategy = ray.data.ActorPoolStrategy()
-    ray.data.range(10, parallelism=10).map_batches(f, compute=compute_strategy)
+    ray.data.range(10, parallelism=10).map_batches(
+        f, batch_size=1, compute=compute_strategy
+    )
     expected_max_num_workers = math.ceil(
         num_cpus * (1 / compute_strategy.ready_to_total_workers_ratio)
     )

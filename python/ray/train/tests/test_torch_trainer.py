@@ -59,7 +59,7 @@ def test_torch_linear(ray_start_4_cpus, num_workers):
 
 def test_torch_e2e(ray_start_4_cpus):
     def train_func():
-        model = torch.nn.Linear(1, 1)
+        model = torch.nn.Linear(3, 1)
         session.report({}, checkpoint=Checkpoint.from_dict(dict(model=model)))
 
     scaling_config = ScalingConfig(num_workers=2)
@@ -68,7 +68,7 @@ def test_torch_e2e(ray_start_4_cpus):
     )
     result = trainer.fit()
 
-    predict_dataset = ray.data.range(3)
+    predict_dataset = ray.data.range(9)
 
     class TorchScorer:
         def __init__(self):
@@ -78,14 +78,14 @@ def test_torch_e2e(ray_start_4_cpus):
             return self.pred.predict(x, dtype=torch.float)
 
     predictions = predict_dataset.map_batches(
-        TorchScorer, batch_format="pandas", compute="actors"
+        TorchScorer, batch_size=3, batch_format="pandas", compute="actors"
     )
     assert predictions.count() == 3
 
 
 def test_torch_e2e_state_dict(ray_start_4_cpus):
     def train_func():
-        model = torch.nn.Linear(1, 1).state_dict()
+        model = torch.nn.Linear(3, 1).state_dict()
         session.report({}, checkpoint=Checkpoint.from_dict(dict(model=model)))
 
     scaling_config = ScalingConfig(num_workers=2)
@@ -101,15 +101,15 @@ def test_torch_e2e_state_dict(ray_start_4_cpus):
     class TorchScorer:
         def __init__(self):
             self.pred = TorchPredictor.from_checkpoint(
-                result.checkpoint, model=torch.nn.Linear(1, 1)
+                result.checkpoint, model=torch.nn.Linear(3, 1)
             )
 
         def __call__(self, x):
             return self.pred.predict(x, dtype=torch.float)
 
-    predict_dataset = ray.data.range(3)
+    predict_dataset = ray.data.range(9)
     predictions = predict_dataset.map_batches(
-        TorchScorer, batch_format="pandas", compute="actors"
+        TorchScorer, batch_size=3, batch_format="pandas", compute="actors"
     )
     assert predictions.count() == 3
 
