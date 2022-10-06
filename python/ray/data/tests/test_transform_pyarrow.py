@@ -108,7 +108,7 @@ def test_arrow_concat_tensor_extension_variable_shaped():
     assert len(out) == 4
     # Check schema.
     assert out.column_names == ["a"]
-    assert out.schema.types == [ArrowVariableShapedTensorType(pa.int64())]
+    assert out.schema.types == [ArrowVariableShapedTensorType(pa.int64(), 2)]
     # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
     # consolidation).
     assert out["a"].num_chunks == 2
@@ -136,7 +136,7 @@ def test_arrow_concat_tensor_extension_uniform_and_variable_shaped():
     assert len(out) == 5
     # Check schema.
     assert out.column_names == ["a"]
-    assert out.schema.types == [ArrowVariableShapedTensorType(pa.int64())]
+    assert out.schema.types == [ArrowVariableShapedTensorType(pa.int64(), 2)]
     # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
     # consolidation).
     assert out["a"].num_chunks == 2
