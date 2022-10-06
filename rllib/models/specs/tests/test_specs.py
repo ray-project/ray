@@ -1,3 +1,4 @@
+import itertools
 import unittest
 import torch
 import numpy as np
@@ -111,6 +112,22 @@ class TestSpecs(unittest.TestCase):
             self.assertTrue(spec_eq_2 == spec_eq_3)
             self.assertTrue(spec_eq_1 != spec_neq_1)
             self.assertTrue(spec_eq_1 != spec_neq_2)
+
+    def test_type_validation(self):
+
+        fw_keys = SPEC_CLASSES.keys()
+        # check all combinations of spec fws with tensor fws
+        for spec_fw, tensor_fw in itertools.product(fw_keys, fw_keys):
+
+            spec = SPEC_CLASSES[spec_fw]("b, h", b=2, h=3)
+            tensor = SPEC_CLASSES[tensor_fw]("b, h", b=2, h=3).fill(0)
+
+            print("spec:", type(spec), ", tensor: ", type(tensor))
+
+            if spec_fw == tensor_fw:
+                spec.validate(tensor)
+            else:
+                self.assertRaises(ValueError, lambda: spec.validate(tensor))
 
 
 if __name__ == "__main__":

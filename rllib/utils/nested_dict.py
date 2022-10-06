@@ -192,7 +192,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         if not k:
             raise IndexError("Use valid index value.")
         k = _flatten_index(k)
-        v = NestedDict(v) if isinstance(v, Mapping) else v
+        v = self.__class__(v) if isinstance(v, Mapping) else v
         data_ptr = self._data
         for k_indx, key in enumerate(k):
             # this is done to avoid recursion over __setitem__
@@ -201,7 +201,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
             if k_indx == len(k) - 1:
                 data_ptr[key] = v
             elif key not in data_ptr:
-                data_ptr[key] = NestedDict()
+                data_ptr[key] = self.__class__()
             data_ptr = data_ptr[key]
 
     def __iter__(self) -> Iterator[SeqStrType]:
@@ -273,7 +273,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         Returns:
             A NestedDict with only keys present in `other`.
         """
-        output = NestedDict()
+        output = self.__class__()
         if isinstance(other, Sequence):
             keys = other
         else:
