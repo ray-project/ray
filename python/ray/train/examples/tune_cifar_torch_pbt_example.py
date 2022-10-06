@@ -95,8 +95,6 @@ def train_func(config):
         checkpoint_epoch = checkpoint_dict["epoch"]
         epoch = checkpoint_epoch + 1
 
-        print("[DEBUGGING] epoch = ", epoch)
-
     # Load in training and validation data.
     transform_train = transforms.Compose(
         [
