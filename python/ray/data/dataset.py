@@ -537,8 +537,9 @@ class Dataset(Generic[T]):
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
-            # TODO(Clark): Expose this zero-copy behavior as a map_batches parameter.
-            batcher = Batcher(batch_size, ensure_copy=batch_size is not None)
+            batcher = Batcher(
+                batch_size, ensure_copy=allow_mutate_batch and batch_size is not None
+            )
             for block in blocks:
                 batcher.add(block)
             batcher.done_adding()
