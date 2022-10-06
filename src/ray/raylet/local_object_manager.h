@@ -33,6 +33,9 @@ namespace ray {
 
 namespace raylet {
 
+/// The default number of retries when spilled object deletion failed.
+const int64_t kDefaultSpilledObjectDeleteRetries = 3;
+
 /// This class implements memory management for primary objects, objects that
 /// have been freed, and objects that have been spilled.
 class LocalObjectManager {
@@ -222,7 +225,7 @@ class LocalObjectManager {
   /// \param num_retries Num of retries allowed in case of failure, zero or negative
   /// means don't retry.
   void DeleteSpilledObjects(std::vector<std::string> urls_to_delete,
-                            int64_t num_retries = 3);
+                            int64_t num_retries = kDefaultSpilledObjectDeleteRetries);
 
   const NodeID self_node_id_;
   const std::string self_node_address_;
