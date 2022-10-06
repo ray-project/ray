@@ -8,7 +8,7 @@ multi-agent-cartpole-alpha-star:
         # Works for both torch and tf.
         framework: tf
 
-        # 4-agent MA cartpole.
+        # 3-agent MA cartpole.
         env_config:
           config:
             num_agents: 3
