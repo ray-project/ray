@@ -429,7 +429,7 @@ class Trainable:
     ) -> Optional[str]:
         # Create checkpoint_xxxxx directory and drop checkpoint marker
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
-            checkpoint_dir or self.logdir, index=self.iteration
+            checkpoint_dir or self.logdir, index=self.iteration, override=True
         )
         return checkpoint_dir
 
@@ -718,6 +718,10 @@ class Trainable:
                 )
                 checkpoint_path = self._get_latest_available_checkpoint()
                 if checkpoint_path:
+                    logger.info(
+                        f"Trying to recover from latest available checkpoint: "
+                        f"{checkpoint_path}"
+                    )
                     return self.restore(checkpoint_path, fallback_to_latest=False)
 
             # Else, raise
