@@ -97,7 +97,6 @@ def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> int:
     used = get_used_memory()
     total = get_system_memory()
     bytes_needed = int(total * pct) - used
-    print(f'total {total} used {used} bytes_needed {bytes_needed}')
     assert bytes_needed > 0, "node has less memory than what is requested"
     return bytes_needed
 
