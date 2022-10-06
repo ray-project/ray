@@ -1807,6 +1807,24 @@ py_test(
     srcs = ["models/tests/test_base_model.py"]
 )
 
+# test torch base models
+py_test(
+    name = "test_torch_models",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/tests/test_torch_model.py"]
+)
+
+
+# test ModelSpecDict
+py_test(
+    name = "test_tensor_specs_dict",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["models/specs/tests/test_specs_dict.py"]
+)
+
+
 # --------------------------------------------------------------------
 # Offline
 # rllib/offline/
