@@ -563,7 +563,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
         agent2.train()
 
         # Test rollout works on restore
-        rollout(agent2, "nested", 100)
+        rollout(agent=agent2, env_name="nested", num_steps=100)
 
     def test_py_torch_model(self):
         ModelCatalog.register_custom_model("composite", TorchSpyModel)

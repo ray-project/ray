@@ -263,7 +263,7 @@ def run(
         target_episodes=episodes,
         save_info=save_info,
     ) as saver:
-        rollout(algorithm, steps, episodes, saver, not render)
+        rollout(algorithm, env, steps, episodes, saver, not render)
     algorithm.stop()
 
 
@@ -289,6 +289,7 @@ def keep_going(steps: int, num_steps: int, episodes: int, num_episodes: int) -> 
 
 def rollout(
     agent,
+    env_name,  # keep me, used in tests
     num_steps,
     num_episodes=0,
     saver=None,
