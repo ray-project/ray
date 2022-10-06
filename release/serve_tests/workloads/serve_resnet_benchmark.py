@@ -159,7 +159,7 @@ def main(gpu_env: Optional[bool], smoke_run: Optional[bool]):
 
         save_test_results(
             {test_name: result},
-            default_output_file="/tmp/serve_resent50_benchmark.json",
+            default_output_file="/tmp/serve_resent_benchmark.json",
         )
 
 
