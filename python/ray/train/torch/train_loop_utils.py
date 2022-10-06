@@ -401,8 +401,8 @@ class _TorchAccelerator(Accelerator):
                 DataParallel = DistributedDataParallel
                 if torch.cuda.is_available():
                     parallel_strategy_kwargs = {
-                        "device_ids": [rank],
-                        "output_device": rank,
+                        "device_ids": [device],
+                        "output_device": device,
                         **parallel_strategy_kwargs,
                     }
             else:
