@@ -16,8 +16,11 @@
 
 #include <sys/sysinfo.h>
 
+#include <fstream>
+
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/id.h"
 #include "ray/util/process.h"
 
 namespace ray {
@@ -157,6 +160,56 @@ TEST_F(MemoryMonitorTest, TestMonitorMinFreeZeroThresholdIsOne) {
                         });
   std::unique_lock<std::mutex> callback_ran_mutex_lock(callback_ran_mutex);
   callback_ran.wait(callback_ran_mutex_lock);
+}
+
+TEST_F(MemoryMonitorTest, TestCgroupV1MemFileValidReturnsWorkingSet) {
+  std::string file_name = UniqueID::FromRandom().Binary();
+
+  std::ofstream mem_file;
+  mem_file.open(file_name);
+  mem_file << "total_cache "
+           << "918757" << std::endl;
+  mem_file << "unknown "
+           << "9" << std::endl;
+  mem_file << "total_rss "
+           << "8571" << std::endl;
+  mem_file << "total_inactive_file "
+           << "821" << std::endl;
+  mem_file.close();
+
+  int64_t used_bytes = MemoryMonitor::GetCGroupV1MemoryUsedBytes(file_name.c_str());
+
+  std::remove(file_name.c_str());
+
+  ASSERT_EQ(used_bytes, 8571 + 918757 - 821);
+}
+
+TEST_F(MemoryMonitorTest, TestCgroupV1MemFileMissingFieldReturnskNull) {
+  std::string file_name = UniqueID::FromRandom().Binary();
+
+  std::ofstream mem_file;
+  mem_file.open(file_name);
+  mem_file << "total_cache "
+           << "918757" << std::endl;
+  mem_file << "unknown "
+           << "9" << std::endl;
+  mem_file << "total_rss "
+           << "8571" << std::endl;
+  mem_file.close();
+
+  int64_t used_bytes = MemoryMonitor::GetCGroupV1MemoryUsedBytes(file_name.c_str());
+
+  std::remove(file_name.c_str());
+
+  ASSERT_EQ(used_bytes, MemoryMonitor::kNull);
+}
+
+TEST_F(MemoryMonitorTest, TestCgroupV1NonexistentMemFileReturnskNull) {
+  std::string file_name = UniqueID::FromRandom().Binary();
+
+  int64_t used_bytes = MemoryMonitor::GetCGroupV1MemoryUsedBytes(file_name.c_str());
+
+  ASSERT_EQ(used_bytes, MemoryMonitor::kNull);
 }
 
 TEST_F(MemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues) {

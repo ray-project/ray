@@ -105,6 +105,44 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   return std::tuple(system_used_bytes, system_total_bytes);
 }
 
+int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *path) {
+  std::ifstream memstat_ifs(path, std::ios::in | std::ios::binary);
+  if (!memstat_ifs.is_open()) {
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << path;
+    return kNull;
+  }
+
+  std::string line;
+  std::string title;
+  int64_t value;
+
+  int64_t rss_bytes = kNull;
+  int64_t cache_bytes = kNull;
+  int64_t inactive_file_bytes = kNull;
+  while (std::getline(memstat_ifs, line)) {
+    std::istringstream iss(line);
+    iss >> title >> value;
+    if (title == "total_rss") {
+      rss_bytes = value;
+    } else if (title == "total_cache") {
+      cache_bytes = value;
+    } else if (title == "total_inactive_file") {
+      inactive_file_bytes = value;
+    }
+  }
+  if (rss_bytes == kNull || cache_bytes == kNull || inactive_file_bytes == kNull) {
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+        << "Failed to parse cgroup v1 mem stat. rss " << rss_bytes << " cache "
+        << cache_bytes << " inactive " << inactive_file_bytes;
+    return kNull;
+  }
+  // Working set, used by cadvisor for cgroup oom killing, is calculcated as (usage -
+  // inactive files)
+  // https://medium.com/@eng.mohamed.m.saeed/memory-working-set-vs-memory-rss-in-kubernetes-which-one-you-should-monitor-8ef77bf0acee
+  int64_t used = rss_bytes + cache_bytes - inactive_file_bytes;
+  return used;
+}
+
 std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
   int64_t total_bytes = kNull;
   if (std::filesystem::exists(kCgroupsV2MemoryMaxPath)) {
@@ -119,10 +157,10 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
   if (std::filesystem::exists(kCgroupsV2MemoryUsagePath)) {
     std::ifstream mem_file(kCgroupsV2MemoryUsagePath, std::ios::in | std::ios::binary);
     mem_file >> used_bytes;
-  } else if (std::filesystem::exists(kCgroupsV1MemoryUsagePath)) {
-    std::ifstream mem_file(kCgroupsV1MemoryUsagePath, std::ios::in | std::ios::binary);
-    mem_file >> used_bytes;
+  } else if (std::filesystem::exists(kCgroupsV1MemoryStatPath)) {
+    used_bytes = GetCGroupV1MemoryUsedBytes(kCgroupsV1MemoryStatPath);
   }
+
   /// This can be zero if the memory limit is not set for cgroup v2.
   if (total_bytes == 0) {
     total_bytes = kNull;
@@ -152,7 +190,7 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
   std::string meminfo_path = "/proc/meminfo";
   std::ifstream meminfo_ifs(meminfo_path, std::ios::in | std::ios::binary);
   if (!meminfo_ifs.is_open()) {
-    RAY_LOG_EVERY_MS(ERROR, kLogIntervalMs) << " file not found: " << meminfo_path;
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << meminfo_path;
     return {kNull, kNull};
   }
   std::string line;
@@ -184,7 +222,7 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
     }
   }
   if (mem_total_bytes == kNull) {
-    RAY_LOG_EVERY_MS(ERROR, kLogIntervalMs)
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
         << "Unable to determine total bytes . Will return null";
     return {kNull, kNull};
   }
