@@ -88,13 +88,16 @@ class MemoryMonitor {
   /// \return the used and total memory in bytes from Cgroup.
   std::tuple<int64_t, int64_t> GetCGroupMemoryBytes();
 
+  /// \param path file path to the memory stat file.
+  ///
   /// \return the used memory for cgroup v1.
-  int64_t GetCGroupV1MemoryUsedBytes();
+  static int64_t GetCGroupV1MemoryUsedBytes(const char *path);
 
   /// \return the used and total memory in bytes for linux OS.
   std::tuple<int64_t, int64_t> GetLinuxMemoryBytes();
 
   /// \param smap_path file path to the smap file
+  ///
   /// \return the used memory in bytes from the given smap file or kNull if the file does
   /// not exist or if it fails to read a valid value.
   static int64_t GetLinuxProcessMemoryBytesFromSmap(const std::string smap_path);
@@ -109,9 +112,13 @@ class MemoryMonitor {
   FRIEND_TEST(MemoryMonitorTest, TestUsageAtThresholdReportsTrue);
   FRIEND_TEST(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive);
   FRIEND_TEST(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupV1MemFileValidReturnsWorkingSet);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupV1MemFileMissingFieldReturnskNull);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupV1NonexistentMemFileReturnskNull);
 
   /// Memory usage fraction between [0, 1]
   const double usage_threshold_;
+
   /// Callback function that executes at each monitoring interval,
   /// on a dedicated thread managed by this class.
   const MemoryUsageRefreshCallback monitor_callback_;

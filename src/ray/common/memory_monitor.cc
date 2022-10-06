@@ -95,10 +95,10 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   return std::tuple(system_used_bytes, system_total_bytes);
 }
 
-int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes() {
-  std::ifstream memstat_ifs(kCgroupsV1MemoryStatPath, std::ios::in | std::ios::binary);
+int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes(const char *path) {
+  std::ifstream memstat_ifs(path, std::ios::in | std::ios::binary);
   if (!memstat_ifs.is_open()) {
-    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << kCgroupsV1MemoryStatPath;
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs) << " file not found: " << path;
     return kNull;
   }
 
@@ -125,6 +125,8 @@ int64_t MemoryMonitor::GetCGroupV1MemoryUsedBytes() {
       << "Failed to parse cgroup v1 mem stat. rss " << rss_bytes << " cache " << cache_bytes << " inactive " << inactive_file_bytes;
       return kNull;
   }
+  // Working set, used by cadvisor for cgroup oom killing, is calculcated as "usage - inactive files"
+  // https://medium.com/@eng.mohamed.m.saeed/memory-working-set-vs-memory-rss-in-kubernetes-which-one-you-should-monitor-8ef77bf0acee
   int64_t used = rss_bytes + cache_bytes - inactive_file_bytes;
   return used;
 }
@@ -144,7 +146,7 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
     std::ifstream mem_file(kCgroupsV2MemoryUsagePath, std::ios::in | std::ios::binary);
     mem_file >> used_bytes;
   } else if (std::filesystem::exists(kCgroupsV1MemoryStatPath)) {
-    used_bytes = GetCGroupV1MemoryUsedBytes();
+    used_bytes = GetCGroupV1MemoryUsedBytes(kCgroupsV1MemoryStatPath);
   }
 
   /// This can be zero if the memory limit is not set for cgroup v2.
