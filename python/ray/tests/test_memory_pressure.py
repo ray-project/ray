@@ -10,6 +10,8 @@ from ray._private import test_utils
 from ray._private.test_utils import get_node_stats, wait_for_condition
 
 import numpy as np
+from ray._private.utils import get_system_memory
+from ray._private.utils import get_used_memory
 
 
 
@@ -92,52 +94,11 @@ class Leaker:
 
 
 def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> int:
-    node_mem = psutil.virtual_memory()
-    used = node_mem.total - node_mem.available
-    bytes_needed = node_mem.total * pct - used
-    assert bytes_needed > 0, "node has less memory than what is requested"
-    return bytes_needed
-
-
-def get_cgroup_v1_total() -> int :
-    f = open("/sys/fs/cgroup/memory/memory.limit_in_bytes", "r")
-    return int(f.read())
-
-def get_cgroup_v1_used() -> int :
-    """Return the currently used system memory in bytes
-
-    Returns:
-        The total amount of used memory
-    """
-    f = open("/sys/fs/cgroup/memory/memory.stat", "r")
-    lines = f.readlines()
-    cache_bytes = -1
-    rss_bytes = -1
-    inactive_file_bytes = -1
-    working_set = -1
-    for line in lines:
-        if "total_rss " in line:
-            # print(f'total_rss {int(line.split()[1]) >> 30 }')
-            rss_bytes  = int(line.split()[1])
-        elif "cache " in line:
-            # print(f'cache_bytes {int(line.split()[1]) >> 30 }')
-            cache_bytes  = int(line.split()[1])
-        elif "inactive_file" in line:
-            # print(f'inactive_file {int(line.split()[1]) >> 30 }')
-            inactive_file_bytes  = int(line.split()[1])
-    if cache_bytes >= 0 and rss_bytes >= 0 and inactive_file_bytes >= 0:
-        working_set = rss_bytes + cache_bytes - inactive_file_bytes
-    print(f'rss rss_bytes {rss_bytes >> 30} working_set {working_set >> 30} cache {cache_bytes >> 30} inactive_file {inactive_file_bytes >> 30}')
-
-    return max(working_set, rss_bytes)
-
-def get_additional_bytes_to_reach_memory_usage_pct_cgroupv1(pct: float) -> int:
-    total = get_cgroup_v1_total()
-    used = get_cgroup_v1_used()
+    used = get_used_memory()
+    total = get_system_memory()
     bytes_needed = int(total * pct) - used
-
+    print(f'total {total} used {used} bytes_needed {bytes_needed}')
     assert bytes_needed > 0, "node has less memory than what is requested"
-    print(f'total {total >> 30} usd {used >> 30} need {bytes_needed}')
     return bytes_needed
 
 
@@ -454,7 +415,8 @@ def test_put_object_consume_shared_mem_and_page_cache_task_usage_slightly_below_
             "memory_monitor_interval_ms": 0,
         },
     ):
-        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct_cgroupv1(0.97)
+        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.97)
+        print(bytes_to_alloc)
         ray.get(
                 allocate_memory.options(max_retries=0).remote(
                     allocate_bytes=bytes_to_alloc,
@@ -466,7 +428,8 @@ def test_put_object_consume_shared_mem_and_page_cache_task_usage_slightly_below_
         obj_ref = ray.put(np.random.rand(entries))
         ray.get(obj_ref)
 
-        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct_cgroupv1(0.97)
+        bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.97)
+        print(bytes_to_alloc)
         ray.get(
                 allocate_memory.options(max_retries=0).remote(
                     allocate_bytes=bytes_to_alloc,
