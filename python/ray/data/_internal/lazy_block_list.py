@@ -666,7 +666,8 @@ def _execute_read_task_split(
     input_files = task.get_metadata().input_files
     blocks_metadata = []
     block_exec_stats = BlockExecStats.builder()
-    for block in blocks:
+    for j, block in enumerate(blocks):
+        print("BLOCK", i, j)
         metadata = BlockAccessor.for_block(block).get_metadata(
             input_files=input_files,
             exec_stats=block_exec_stats.build(),
