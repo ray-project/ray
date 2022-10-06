@@ -31,6 +31,35 @@ from ray.dashboard.utils import async_loop_forever
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
+import linecache
+import os
+import tracemalloc
+
+def display_top(snapshot, key_type='lineno', limit=10):
+    snapshot = snapshot.filter_traces((
+        tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
+        tracemalloc.Filter(False, "<unknown>"),
+    ))
+    top_stats = snapshot.statistics(key_type)
+
+    logger.info("Top %s lines" % limit)
+    for index, stat in enumerate(top_stats[:limit], 1):
+        frame = stat.traceback[0]
+        logger.info("#%s: %s:%s: %.1f KiB"
+              % (index, frame.filename, frame.lineno, stat.size / 1024))
+        line = linecache.getline(frame.filename, frame.lineno).strip()
+        if line:
+            logger.info('    %s' % line)
+
+    other = top_stats[limit:]
+    if other:
+        size = sum(stat.size for stat in other)
+        logger.info("%s other: %.1f KiB" % (len(other), size / 1024))
+    total = sum(stat.size for stat in top_stats)
+    logger.info("Total allocated size: %.1f KiB" % (total / 1024))
+
+tracemalloc.start()
+
 
 def gcs_node_info_to_dict(message):
     return dashboard_utils.message_to_dict(
@@ -308,6 +337,28 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
     @async_loop_forever(node_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
     async def _update_node_stats(self):
+
+        from pympler import summary, muppy
+
+        all_objects = muppy.get_objects()
+        sum1 = summary.summarize(all_objects)
+        summary.print_(sum1)
+        # Print summary to logger
+        logger.info("printing Pympler summary from NODE_HEAD")
+        for line in summary.format_(sum1):
+            logger.info(line)
+
+        from pympler import asizeof
+
+        logger.info("printing Pympler asizeof from NODE_HEAD")
+        logger.info(asizeof.asizeof(DataSource))
+        # Print size of all attributes of DataSource
+        for attr in dir(DataSource):
+            if not attr.startswith("__"):
+                logger.info(f"{attr} : {asizeof.asizeof(getattr(DataSource, attr))}")
+        logger.info("printing tracemalloc from NODE_HEAD")
+        snapshot = tracemalloc.take_snapshot()
+        display_top(snapshot)
         # Copy self._stubs to avoid `dictionary changed size during iteration`.
         for node_id, stub in list(self._stubs.items()):
             node_info = DataSource.nodes.get(node_id)

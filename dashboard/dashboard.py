@@ -211,7 +211,7 @@ if __name__ == "__main__":
             # Re-open the issue: https://github.com/ray-project/ray/issues/25518
             # if a truly graceful shutdown is required.
             loop.add_signal_handler(signal.SIGTERM, sigterm_handler)
-
+        logger.info("Starting dashbaord run loop")
         loop.run_until_complete(dashboard.run())
     except Exception as e:
         traceback_str = ray._private.utils.format_error_message(traceback.format_exc())

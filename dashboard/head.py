@@ -16,8 +16,9 @@ from ray._private.gcs_pubsub import GcsAioErrorSubscriber, GcsAioLogSubscriber
 from ray._private.gcs_utils import GcsClient, GcsAioClient, check_health
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
-
+from pympler import summary, muppy
 from typing import Optional, Set
+import time
 
 try:
     from grpc import aio as aiogrpc
@@ -139,6 +140,17 @@ class DashboardHead:
         assert self.http_server, "Accessing unsupported API in a minimal ray."
         return self.http_server.http_session
 
+    @async_loop_forever(interval_seconds=10)
+    async def _print_heap(self):
+        all_objects = muppy.get_objects()
+        sum1 = summary.summarize(all_objects)
+        summary.print_(sum1)
+        # Print summary to logger
+        logger.info("printing Pympler summary from _print_heap from DashboardHead.")
+        print(f"Printing Heap Status at {time.time()}")
+        for line in summary.format_(sum1):
+            logger.info(line)
+
     @async_loop_forever(dashboard_consts.GCS_CHECK_ALIVE_INTERVAL_SECONDS)
     async def _gcs_check_alive(self):
         check_future = self.health_check_thread.check_once()
@@ -183,7 +195,15 @@ class DashboardHead:
         """
         modules = []
         head_cls_list = dashboard_utils.get_all_modules(DashboardHeadModule)
+        from pympler import summary, muppy
 
+        all_objects = muppy.get_objects()
+        sum1 = summary.summarize(all_objects)
+        summary.print_(sum1)
+        # Print summary to logger
+        logger.info("printing Pympler summary from head")
+        for line in summary.format_(sum1):
+            logger.info(line)
         # Select modules to load.
         modules_to_load = modules_to_load or {m.__name__ for m in head_cls_list}
         logger.info("Modules to load: %s", modules_to_load)
@@ -201,8 +221,10 @@ class DashboardHead:
                 "Actual loaded modules, {}, doesn't match the requested modules "
                 "to load, {}".format(loaded_modules, modules_to_load)
             )
-
         logger.info("Loaded %d modules. %s", len(modules), modules)
+        # # Discard some of the modules. We discarded the nodehead module
+        # modules = modules[:6] + modules[7:]
+        logger.info("After possibly discarding some, actually loaded %d modules. %s", len(modules), modules)
         return modules
 
     async def run(self):
@@ -258,6 +280,7 @@ class DashboardHead:
         dashboard_utils.SignalManager.freeze()
         concurrent_tasks = [
             self._gcs_check_alive(),
+            self._print_heap(),
             _async_notify(),
             DataOrganizer.purge(),
             DataOrganizer.organize(),
