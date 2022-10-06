@@ -337,23 +337,24 @@ def read_mongo(
     ray_remote_args: Dict[str, Any] = None,
     **mongo_args,
 ) -> Dataset[ArrowRow]:
-    """Create an Arrow dataset from MongoDB for the given pipeline.
+    """Create an Arrow dataset from MongoDB.
 
     The data to read from is specified via the ``uri``, ``database`` and ``collection``
-    of the MongoDB. The pipeline is executed against the specified collection. The
-    execution results are converted into Arrow format and then used to create a dataset.
+    of the MongoDB. The dataset is created from the results of executing ``pipeline``
+    against the ``collection``. If ``pipeline`` is None, the entire ``collection`` will
+    be read.
 
     You can check out more details here about these MongoDB concepts:
     - URI: https://www.mongodb.com/docs/manual/reference/connection-string/
     - Database and Collection: https://www.mongodb.com/docs/manual/core/databases-and-collections/
     - Pipeline: https://www.mongodb.com/docs/manual/core/aggregation-pipeline/
 
-    To read the MongoDB in parallel, the execution of the pipeline is sharded, with a
-    Ray read task to handle a partition of the results. The number of partitions is
-    determined by ``parallelism`` which can be requested from this interface or
-    automatically chosen if unspecified. The sharding is automatically determined
-    in an attempt to evenly distribute the documents into the specified number of
-    partitions.
+    To read the MongoDB in parallel, the execution of the pipeline is run on partitions
+    of the collection, with a Ray read task to handle a partition. Partitions are
+    created in an attempt to evenly distribute the documents into the specified number
+    of partitions. The number of partitions is determined by ``parallelism`` which can
+    be requested from this interface or automatically chosen if unspecified (see the
+    ``parallelism`` arg below).
 
     Examples:
         >>> import ray

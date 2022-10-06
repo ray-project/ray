@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.data.block import (
     Block,
+    BlockAccessor,
     BlockMetadata,
 )
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -52,6 +53,7 @@ class MongoDatasource(Datasource):
         def write_block(uri: str, database: str, collection: str, block: Block):
             from pymongoarrow.api import write
 
+            block = BlockAccessor.for_block(block).to_arrow()
             client = pymongo.MongoClient(uri)
             write(client[database][collection], block)
 

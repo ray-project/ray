@@ -2300,7 +2300,7 @@ class Dataset(Generic[T]):
 
         Notes:
         - Currently, this supports only a subset of the pyarrow's types, due to the
-          the limitation of pymongoarrow which is used underneath. Writing unsupported
+          limitation of pymongoarrow which is used underneath. Writing unsupported
           types will fail on type checking. See all the supported types at:
           https://mongo-arrow.readthedocs.io/en/latest/supported_types.html.
         - The records will be inserted into MongoDB as new documents. If a record has

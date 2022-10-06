@@ -551,11 +551,6 @@ def test_read_write_mongo(ray_start_regular_shared):
     )
     ds3.drop_columns(["_id"]).to_pandas().equals(expected_ds.to_pandas())
 
-    # List is not supported (yet) in pymongoarrow.
-    with pytest.raises(ValueError):
-        ray.data.range(10).write_mongo(
-            uri=mongo_url, database=foo_db, collection=foo_collection
-        )
     # Destination database doesn't exist.
     with pytest.raises(ValueError):
         ray.data.range(10).write_mongo(
