@@ -44,10 +44,6 @@ from ray.tune.result_grid import ResultGrid
 from ray.tune.tuner import Tuner
 from ray.tune.tune_config import TuneConfig
 
-from ray._private.usage import usage_lib
-
-usage_lib.record_library_usage("tune")
-
 __all__ = [
     "Trainable",
     "Callback",
