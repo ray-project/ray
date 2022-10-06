@@ -63,7 +63,7 @@ class JobManager:
     def _get_job_info_with_retry(self, command_id) -> JobInfo:
         job_client = self._get_job_client()
         return exponential_backoff_retry(
-            lambda: job_client.get_job_status(self.job_id_pool[command_id]),
+            lambda: job_client.get_job_info(self.job_id_pool[command_id]),
             retry_exceptions=Exception,
             initial_retry_delay_s=1,
             max_retries=3,
