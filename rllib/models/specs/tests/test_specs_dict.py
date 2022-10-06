@@ -13,7 +13,8 @@ class TypeClass2:
     pass
 
 
-class TestModel(unittest.TestCase):
+class TestModelSpecDict(unittest.TestCase):
+    
     def test_basic_validation(self):
 
         h1, h2 = 3, 4
