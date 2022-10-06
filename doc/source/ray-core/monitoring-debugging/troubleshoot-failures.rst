@@ -4,16 +4,15 @@ Troubleshooting Failures
 Crashes
 -------
 
-If Ray crashed, you may wonder what happened. Currently, this can occur for some
-of the following reasons.
+If Ray crashed, you want to know why and what happened. Currently, this can be attributed to the following reasons:
 
-- **Stressful workloads:** Workloads that create many many tasks in a short
-  amount of time can sometimes interfere with the heartbeat mechanism that we
-  use to check that processes are still alive. On the head node in the cluster,
-  you can check the files ``/tmp/ray/session_*/logs/monitor*``. They will
-  indicate which processes Ray has marked as dead (due to a lack of heartbeats).
-  However, it is currently possible for a process to get marked as dead without
-  actually having died.
+- **Stressful workloads:** It is currently possible for a process to get
+  marked as dead without actually having died. For example, workloads that
+  create many many tasks in a short amount of time can sometimes interfere
+  with the heartbeat mechanism that we use to check that processes are still alive.
+  On the head node in the cluster, you can check the files
+  ``/tmp/ray/session_*/logs/monitor*``. They will indicate which processes Ray has marked
+  as dead (due to a lack of heartbeats).
 
 - **Starting many actors:** Workloads that start a large number of actors all at
   once may exhibit problems when the processes (or libraries that they use)

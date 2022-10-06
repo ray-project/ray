@@ -8,7 +8,7 @@ Visualizing Tasks in the Ray Timeline
 
 The most important tool is the timeline visualization tool. To visualize tasks
 in the Ray timeline, you can dump the timeline as a JSON file by running ``ray
-timeline`` from the command line or by using the following command.
+timeline`` from the command line or ``ray.timeline`` from the Python API.
 
 To use the timeline, Ray profiling must be enabled by setting the
 ``RAY_PROFILING=1`` environment variable prior to starting Ray on every machine.
@@ -25,8 +25,7 @@ Then open `chrome://tracing`_ in the Chrome web browser, and load
 Profiling Using Python's CProfile
 ---------------------------------
 
-A second way to profile the performance of your Ray application is to
-use Python's native cProfile `profiling module`_. Rather than tracking
+You can use Python's native cProfile `profiling module`_ to profile the performance of your Ray application. Rather than tracking
 line-by-line of your application code, cProfile can give the total runtime
 of each loop function, as well as list the number of calls made and
 execution time of all function calls made within the profiled code.
@@ -34,7 +33,7 @@ execution time of all function calls made within the profiled code.
 .. _`profiling module`: https://docs.python.org/3/library/profile.html#module-cProfile
 
 Unlike ``line_profiler`` above, this detailed list of profiled function calls
-**includes** internal function calls and function calls made within Ray!
+**includes** internal function calls and function calls made within Ray.
 
 However, similar to ``line_profiler``, cProfile can be enabled with minimal
 changes to your application code (given that each section of the code you want
@@ -59,8 +58,8 @@ statement, then replace calls to the loop functions as follows:
   if __name__ == "__main__":
       main()
 
-Now, when executing your Python script, a cProfile list of profiled function
-calls will be outputted to terminal for each call made to ``cProfile.run()``.
+Now, when you execute your Python script, a cProfile list of profiled function
+calls are printed on the terminal for each call made to ``cProfile.run()``.
 At the very top of cProfile's output gives the total execution time for
 ``'ex1()'``:
 
@@ -172,8 +171,8 @@ Running our new Actor example, cProfile's abbreviated output is as follows:
   ...
 
 It turns out that the entire example still took 2.5 seconds to execute, or the
-time for five calls to ``actor_func()`` to run in serial. We remember in ``ex1``
-that this behavior was because we did not wait until after submitting all five
+time for five calls to ``actor_func()`` to run in serial. If you recall ``ex1``,
+this behavior was because we did not wait until after submitting all five
 remote function tasks to call ``ray.get()``, but we can verify on cProfile's
 output line ``worker.py:2535(get)`` that ``ray.get()`` was only called once at
 the end, for 2.509 seconds. What happened?

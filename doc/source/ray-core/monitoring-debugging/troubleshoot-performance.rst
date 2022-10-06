@@ -33,10 +33,10 @@ application! The most common reasons are the following.
 
 - **Multi-threaded libraries:** Are all of your tasks attempting to use all of
   the cores on the machine? If so, they are likely to experience contention and
-  prevent your application from achieving a speedup. This is very common with
-  some versions of ``numpy``, and in that case can usually be setting an
-  environment variable like ``MKL_NUM_THREADS`` (or the equivalent depending
-  on your installation) to ``1``.
+  prevent your application from achieving a speedup.
+  This is common with some versions of ``numpy``. To avoid contention, set an
+  environment variable like ``MKL_NUM_THREADS`` (or the equivalent depending on
+  your installation) to ``1``.
 
   For many - but not all - libraries, you can diagnose this by opening ``top``
   while your application is running. If one process is using most of the CPUs,

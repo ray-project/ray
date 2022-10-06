@@ -28,7 +28,7 @@ the API raises an exception if anything goes wrong with a related task, actor or
 
 - :ref:`RayTaskError <ray-core-exceptions-ray-task-error>` is raised when there's an error from user code that throws an exception.
 - :ref:`RayActorError <ray-core-exceptions-ray-actor-error>` is raised when an actor is dead (by a system failure such as node failure or user-level failure such as an exception from ``__init__`` method). 
-- :ref:`RuntimeEnvSetupError <ray-core-exceptions-runtime-env-setup-error>` is raised when the actor or task couldn't be started because :ref:`a runtime environment <runtime-environments>` is failed to be created.
+- :ref:`RuntimeEnvSetupError <ray-core-exceptions-runtime-env-setup-error>` is raised when the actor or task couldn't be started because :ref:`a runtime environment <runtime-environments>` failed to be created.
 
 See :ref:`Exceptions Reference <ray-core-exceptions>` for more details.
 
@@ -81,15 +81,15 @@ See :ref:`Ray State API <state-api-overview-ref>` for more details.
 
 Dashboard (Web UI)
 ------------------
-Ray supports the web-based dashboard to help users monitor the cluster. When a new cluster is started, the dashboard will be available
-through the default address `localhost:8265` (port can be incremented if port 8265 is already occupied).
+Ray supports the web-based dashboard to help users monitor the cluster. When a new cluster is started, the dashboard is available
+through the default address `localhost:8265` (port can be automatically incremented if port 8265 is already occupied).
 
 See :ref:`Ray Dashboard <ray-dashboard>` for more details.
 
 Debugger
 --------
-Ray has a built-in debugger that allows you to debug your distributed applications. It allows
-to set breakpoints in your Ray tasks and actors and when hitting the breakpoint you can
+Ray has a built-in debugger that allows you to debug your distributed applications.
+It allows you to set breakpoints in your Ray tasks and actors, and when hitting the breakpoint, you can
 drop into a PDB session that you can then use to:
 
 - Inspect variables in that context
@@ -136,7 +136,7 @@ Metrics
 -------
 Ray collects and exposes the physical stats (e.g., CPU, memory, GRAM, disk, and network usage of each node), 
 internal stats (e.g., number of actors in the cluster, number of worker failures of the cluster), 
-and custom metrics (e.g., metrics defined by users). All stats can be exported as time series data and used
+and custom metrics (e.g., metrics defined by users). All stats can be exported as time series data (to Prometheus by default) and used
 to monitor the cluster over time. 
 
 See :ref:`Ray Metrics <ray-metrics>` for more details.
