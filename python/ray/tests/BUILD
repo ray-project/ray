@@ -455,6 +455,7 @@ py_test_module_list(
     "test_basic_4.py",
     "test_basic_5.py",
     "test_asyncio.py",
+    "test_object_assign_owner.py",
     "test_multiprocessing.py",
     "test_list_actors.py",
     "test_list_actors_2.py",
