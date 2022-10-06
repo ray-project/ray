@@ -30,9 +30,9 @@ from ray.core.generated.metrics_pb2 import Metric
 
 logger = logging.getLogger(__name__)
 
-# When the worker is dead, we'd like to clean up relevant metrics.
-# However, we'd like to clean up the metrics with some delay
-# so that the last reported metrics are aggregated.
+# Env var key to decide worker timeout.
+# If the worker doesn't report for more than
+# this time, we treat workers as dead.
 RAY_WORKER_TIMEOUT_S = "RAY_WORKER_TIMEOUT_S"
 
 
@@ -131,7 +131,7 @@ class MetricsAgent:
             self.view_manager.register_exporter(stats_exporter)
 
         # Below fields are used to clean up view data when workers are dead.
-        # Note that Opencensus export metrics stored to
+        # Note that Opencensus export metrics from
         # `view_data.tag_value_aggregation_data_map[tag_vals]`, which means
         # we can stop exporting metrics by deleting data in there.
         # Note that tag_vals is something like (<WorkerId>, <IP>, <tags..>).
@@ -304,9 +304,6 @@ class MetricsAgent:
     def _clean_worker_metrics(self, worker_id_hex: str):
         assert self._lock.locked()
 
-        # Find tag_vals that include the worker id and remove them
-        # from `tag_value_aggregation_data_map`, which is used
-        # to export metrics.
         if worker_id_hex not in self.worker_id_to_state:
             return
 
@@ -318,6 +315,8 @@ class MetricsAgent:
             view_data = self._get_mutable_view_data(view_name)
             for tag_vals in tag_vals_to_clean:
                 if tag_vals in view_data.tag_value_aggregation_data_map:
+                    # If we remove tag_vals from here,
+                    # exporter will stop exporting metrics.
                     del view_data.tag_value_aggregation_data_map[tag_vals]
             view_names_changed.add(view_name)
 
