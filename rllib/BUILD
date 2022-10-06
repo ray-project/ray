@@ -1799,16 +1799,17 @@ py_test(
     srcs = ["models/tests/test_preprocessors.py"]
 )
 
-# test Tensor specs
+# Test Tensor specs
 py_test(
     name = "test_tensor_specs",
     tags = ["team:rllib", "models"],
     size = "small",
     srcs = ["models/specs/tests/test_tensor_specs.py"]
 )
+
 # test abstract base models
 py_test(
-    name = "test_base_models",
+    name = "test_base_model",
     tags = ["team:rllib", "models"],
     size = "small",
     srcs = ["models/tests/test_base_model.py"]
@@ -1816,19 +1817,18 @@ py_test(
 
 # test torch base models
 py_test(
-    name = "test_torch_models",
+    name = "test_torch_model",
     tags = ["team:rllib", "models"],
     size = "small",
     srcs = ["models/tests/test_torch_model.py"]
 )
-
 
 # test ModelSpecDict
 py_test(
     name = "test_tensor_specs_dict",
     tags = ["team:rllib", "models"],
     size = "small",
-    srcs = ["models/specs/tests/test_specs_dict.py"]
+    srcs = ["models/specs/tests/test_tensor_specs_dict.py"]
 )
 
 
