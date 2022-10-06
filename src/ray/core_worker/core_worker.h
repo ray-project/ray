@@ -1217,9 +1217,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
-  /// Handler if a raylet node is removed from the cluster.
-  void OnNodeRemoved(const NodeID &node_id);
-
   /// Request the spillage of an object that we own from the primary that hosts
   /// the primary copy to spill.
   void SpillOwnedObject(const ObjectID &object_id,
