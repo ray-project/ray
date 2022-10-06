@@ -70,19 +70,17 @@ pytest_custom_serialization_arrays = [
         ),
         0.1,
     ),
-    # TODO(Clark): Support dense union arrays.
-    # # Union array (dense)
-    # (
-    #     pa.UnionArray.from_dense(
-    #         pa.array([0, 1] * 50, type=pa.int8()),
-    #         pa.array([
-    #             i if i % 2 == 0 else (i % 3) % 2
-    #             for i in range(100)
-    #         ], type=pa.int32()),
-    #         [pa.array(list(range(100))), pa.array([True, False])],
-    #     ),
-    #     0.5,
-    # ),
+    # Union array (dense)
+    (
+        pa.UnionArray.from_dense(
+            pa.array([0, 1] * 500, type=pa.int8()),
+            pa.array(
+                [i if i % 2 == 0 else (i % 3) % 2 for i in range(1000)], type=pa.int32()
+            ),
+            [pa.array(list(range(1000))), pa.array([True, False])],
+        ),
+        0.1,
+    ),
     # Dictionary array
     (
         pa.DictionaryArray.from_arrays(
