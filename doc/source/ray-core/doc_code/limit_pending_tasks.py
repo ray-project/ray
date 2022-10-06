@@ -23,10 +23,10 @@ ray.get(result_refs)
 # __without_backpressure_end__
 
 # __with_backpressure_start__
-MAX_NUM_IN_FLIGHT_TASKS = 100
+MAX_NUM_PENDING_TASKS = 100
 result_refs = []
 for _ in range(NUM_TASKS):
-    if len(result_refs) > MAX_NUM_IN_FLIGHT_TASKS:
+    if len(result_refs) > MAX_NUM_PENDING_TASKS:
         # update result_refs to only
         # track the remaining tasks.
         ready_refs, result_refs = ray.wait(result_refs, num_returns=1)
