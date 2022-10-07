@@ -18,6 +18,7 @@
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
+#include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
