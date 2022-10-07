@@ -29,7 +29,6 @@ from ray._private.test_utils import (
 from ray.dashboard.modules.event.event_utils import (
     monitor_events,
 )
-from ray.experimental.state.api import list_cluster_events
 from ray.job_submission import JobSubmissionClient
 
 logger = logging.getLogger(__name__)
@@ -389,6 +388,7 @@ def test_autoscaler_cluster_events(shutdown_only):
     finally:
         ray.shutdown()
         cluster.shutdown()
+
 
 def test_jobs_cluster_events(shutdown_only):
     ray.init()
