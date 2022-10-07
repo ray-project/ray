@@ -1,0 +1,71 @@
+From 07a9b996979c90621494a65f3ba7408d6e2f7834 Mon Sep 17 00:00:00 2001
+From: Clarence Ng <clarence.wyng@gmail.com>
+Date: Fri, 7 Oct 2022 08:07:13 -0700
+Subject: [PATCH] [core] add task fail counter by error type
+
+Signed-off-by: Clarence Ng <clarence.wyng@gmail.com>
+---
+ .../core_worker/transport/direct_task_transport.cc   | 12 ++++++++----
+ src/ray/stats/metric_defs.cc                         |  7 +++++++
+ src/ray/stats/metric_defs.h                          |  3 +++
+ 3 files changed, 18 insertions(+), 4 deletions(-)
+
+diff --git a/src/ray/core_worker/transport/direct_task_transport.cc b/src/ray/core_worker/transport/direct_task_transport.cc
+index 7ba4fe385..cd4577998 100644
+--- a/src/ray/core_worker/transport/direct_task_transport.cc
++++ b/src/ray/core_worker/transport/direct_task_transport.cc
+@@ -658,11 +658,15 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
+     error_info->set_error_message(buffer.str());
+     error_info->set_error_type(rpc::ErrorType::NODE_DIED);
+   }
++  if (is_actor) {
++    task_error_type = rpc::ErrorType::ACTOR_DIED;
++  }
+   RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
+-      task_id,
+-      is_actor ? rpc::ErrorType::ACTOR_DIED : task_error_type,
+-      &task_execution_status,
+-      error_info.get()));
++      task_id, task_error_type, &task_execution_status, error_info.get()));
++  std::string metric_name = "TaskFailure.";
++  metric_name.append(std::to_string(task_error_type));
++  metric_name.append(".Total");
++  ray::stats::STATS_task_failure_error_type_total.Record(1, metric_name);
+ }
+ 
+ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
+diff --git a/src/ray/stats/metric_defs.cc b/src/ray/stats/metric_defs.cc
+index 3edda46fc..7b7ebe994 100644
+--- a/src/ray/stats/metric_defs.cc
++++ b/src/ray/stats/metric_defs.cc
+@@ -268,6 +268,13 @@ DEFINE_stats(memory_manager_worker_eviction_total,
+              ("Type"),
+              (),
+              ray::stats::COUNT);
++
++/// Task manager
++DEFINE_stats(task_failure_error_type_total,
++             "Counts the number of task failure by the error type",
++             ("Type"),
++             (),
++             ray::stats::COUNT);
+ }  // namespace stats
+ 
+ }  // namespace ray
+diff --git a/src/ray/stats/metric_defs.h b/src/ray/stats/metric_defs.h
+index d08218d15..9c7c78a06 100644
+--- a/src/ray/stats/metric_defs.h
++++ b/src/ray/stats/metric_defs.h
+@@ -108,6 +108,9 @@ DECLARE_stats(gcs_actors_count);
+ /// Memory Manager
+ DECLARE_stats(memory_manager_worker_eviction_total);
+ 
++/// Task manager
++DECLARE_stats(task_failure_error_type_total);
++
+ /// The below items are legacy implementation of metrics.
+ /// TODO(sang): Use DEFINE_stats instead.
+ 
+-- 
+2.25.1
+
