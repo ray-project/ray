@@ -512,9 +512,10 @@ class _AioSubscriber(_SubscriberBase):
             done, others = await asyncio.wait(
                 [poll, close], timeout=timeout, return_when=asyncio.FIRST_COMPLETED
             )
-            not_done_task = not_done.pop()
-            if not not_done_task.done():
-                not_done_task.cancel()
+            # Cancel the other task if needed to prevent memory leak.
+            other_task = others.pop()
+            if not other_task.done():
+                other_task.cancel()
             if poll not in done or close in done:
                 # Request timed out or subscriber closed.
                 break
