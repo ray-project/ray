@@ -62,6 +62,8 @@ class ObjectStatsCollector {
 
   int64_t GetNumBytesCreatedCurrent() const;
 
+  int64_t num_bytes_on_fallback_ = 0;
+
   int64_t num_objects_spillable_ = 0;
   int64_t num_bytes_spillable_ = 0;
   int64_t num_objects_unsealed_ = 0;

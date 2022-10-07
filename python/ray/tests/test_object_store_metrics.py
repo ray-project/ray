@@ -65,6 +65,7 @@ def test_all_shared_memory(shutdown_only):
         "IN_MEMORY": 80 * MiB,
         "SPILLED": 0,
         "UNSEALED": 0,
+        "FALLBACK": 0,
     }
 
     wait_for_condition(
@@ -81,6 +82,7 @@ def test_all_shared_memory(shutdown_only):
         "IN_MEMORY": 0,
         "SPILLED": 0,
         "UNSEALED": 0,
+        "FALLBACK": 0,
     }
 
     wait_for_condition(
@@ -112,6 +114,7 @@ def test_spilling(object_spilling_config, shutdown_only):
         "IN_MEMORY": 100 * MiB,
         "SPILLED": 0,
         "UNSEALED": 0,
+        "FALLBACK": 0,
     }
 
     wait_for_condition(
@@ -128,6 +131,7 @@ def test_spilling(object_spilling_config, shutdown_only):
         "IN_MEMORY": 100 * MiB,
         "SPILLED": 100 * MiB,
         "UNSEALED": 0,
+        "FALLBACK": 0,
     }
     wait_for_condition(
         # 1KiB for metadata difference
@@ -142,6 +146,7 @@ def test_spilling(object_spilling_config, shutdown_only):
         "IN_MEMORY": 100 * MiB,
         "SPILLED": 0,
         "UNSEALED": 0,
+        "FALLBACK": 0,
     }
     wait_for_condition(
         # 1KiB for metadata difference
@@ -156,10 +161,96 @@ def test_spilling(object_spilling_config, shutdown_only):
         "IN_MEMORY": 0,
         "SPILLED": 0,
         "UNSEALED": 0,
+        "FALLBACK": 0,
     }
     wait_for_condition(
         # 1KiB for metadata difference
         lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
+        timeout=20,
+        retry_interval_ms=500,
+    )
+
+
+def test_fallback_memory(shutdown_only):
+    """Test some fallback allocated objects"""
+
+    expected_fallback = 6
+    expected_in_memory = 5
+    obj_size_mb = 20
+
+    # So expected_in_memory objects could fit in object store
+    delta_mb = 5
+    info = ray.init(
+        object_store_memory=expected_in_memory * obj_size_mb * MiB + delta_mb * MiB,
+        _system_config=_SYSTEM_CONFIG,
+    )
+    obj_refs = [
+        ray.put(np.zeros(obj_size_mb * MiB, dtype=np.uint8))
+        for _ in range(expected_in_memory)
+    ]
+
+    # Getting and using the objects to prevent spilling
+    in_use_objs = [ray.get(obj) for obj in obj_refs]
+
+    # No fallback and spilling yet
+    expected = {
+        "IN_MEMORY": expected_in_memory * obj_size_mb * MiB,
+        "FALLBACK": 0,
+        "SPILLED": 0,
+        "UNSEALED": 0,
+    }
+
+    wait_for_condition(
+        # 2KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
+        timeout=20,
+        retry_interval_ms=500,
+    )
+
+    # Fallback allocated and make them not spillable
+    obj_refs_fallback = []
+    in_use_objs_fallback = []
+    for _ in range(expected_fallback):
+        obj = ray.put(np.zeros(obj_size_mb * MiB, dtype=np.uint8))
+        in_use_objs_fallback.append(ray.get(obj))
+        obj_refs_fallback.append(obj)
+
+        # NOTE(rickyx): I actually wasn't aware this reference would
+        # keep the reference count? Removing this line would cause
+        # a single object not deleted.
+        del obj
+
+    # Fallback allocated and still no spilling
+    expected = {
+        "IN_MEMORY": expected_in_memory * obj_size_mb * MiB,
+        "FALLBACK": expected_fallback * obj_size_mb * MiB,
+        "SPILLED": 0,
+        "UNSEALED": 0,
+    }
+
+    wait_for_condition(
+        # 1KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
+        timeout=20,
+        retry_interval_ms=500,
+    )
+
+    # Free all of them
+    del in_use_objs
+    del obj_refs
+    del in_use_objs_fallback
+    del obj_refs_fallback
+
+    expected = {
+        "IN_MEMORY": 0,
+        "FALLBACK": 0,
+        "SPILLED": 0,
+        "UNSEALED": 0,
+    }
+
+    wait_for_condition(
+        # 1KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 2 * KiB),
         timeout=20,
         retry_interval_ms=500,
     )

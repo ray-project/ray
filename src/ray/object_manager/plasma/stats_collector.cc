@@ -24,10 +24,11 @@ namespace plasma {
 void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
+  const auto &kAllocation = obj.GetAllocation();
 
-  num_bytes_created_total_ += kObjectSize;
-  // TODO(rickyx):
-  // Add fallback memory accounting here.
+  if (kAllocation.fallback_allocated) {
+    num_bytes_on_fallback_ += kObjectSize;
+  }
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_created_by_worker_++;
@@ -72,6 +73,11 @@ void ObjectStatsCollector::OnObjectSealed(const LocalObject &obj) {
 void ObjectStatsCollector::OnObjectDeleting(const LocalObject &obj) {
   const auto kObjectSize = obj.GetObjectInfo().GetObjectSize();
   const auto kSource = obj.GetSource();
+  const auto &kAllocation = obj.GetAllocation();
+
+  if (kAllocation.fallback_allocated) {
+    num_bytes_on_fallback_ -= kObjectSize;
+  }
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_created_by_worker_--;
@@ -177,15 +183,16 @@ int64_t ObjectStatsCollector::GetNumBytesCreatedCurrent() const {
 
 void ObjectStatsCollector::RecordMetrics() const {
   ray::stats::STATS_object_store_memory.Record(
-      GetNumBytesCreatedCurrent() - num_bytes_unsealed_,
+      GetNumBytesCreatedCurrent() - num_bytes_unsealed_ - num_bytes_on_fallback_,
       {{ray::stats::LocationKey.name(), ray::stats::kObjectLocInMemory}});
 
   ray::stats::STATS_object_store_memory.Record(
       num_bytes_unsealed_,
       {{ray::stats::LocationKey.name(), ray::stats::kObjectLocUnsealed}});
 
-  // TODO(rickyx):
-  // Add fallback memory recording here.
+  ray::stats::STATS_object_store_memory.Record(
+      num_bytes_on_fallback_,
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocFallback}});
 }
 
 void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {
@@ -197,6 +204,7 @@ void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {
   buffer << "- bytes in use: " << num_bytes_in_use_ << "\n";
   buffer << "- objects evictable: " << num_objects_evictable_ << "\n";
   buffer << "- bytes evictable: " << num_bytes_evictable_ << "\n";
+  buffer << "- bytes on fallback: " << num_bytes_on_fallback_ << "\n";
   buffer << "\n";
 
   buffer << "- objects created by worker: " << num_objects_created_by_worker_ << "\n";
