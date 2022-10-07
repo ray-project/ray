@@ -15,6 +15,6 @@ If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <
     objects
     placement-group
     handling-dependencies
-    monitoring-debugging/monitoring-debugging
+    ../ray-observability/monitoring-debugging/monitoring-debugging
     patterns/index.rst
     advanced-topics
