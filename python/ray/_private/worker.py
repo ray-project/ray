@@ -1560,7 +1560,7 @@ def init(
 
     record_extra_usage_tag(
         TagKey.MEMORY_MONITOR_ENABLED,
-        "true" if ray._config.memory_monitor_interval_ms() > 0 else "false",
+        "true" if ray._raylet.Config.memory_monitor_interval_ms() > 0 else "false",
     )
 
     node_id = global_worker.core_worker.get_current_node_id()
