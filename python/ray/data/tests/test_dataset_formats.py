@@ -422,6 +422,7 @@ def start_mongo():
     subprocess.run(["sudo", "service", "mongodb", " stop"])
     subprocess.run(["sudo", "apt-get", "purge", "-y", "mongodb*"])
 
+
 def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     import pymongo
     from pymongoarrow.api import Schema
