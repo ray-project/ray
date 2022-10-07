@@ -294,7 +294,9 @@ if __name__ == "__main__":
         ),
         dataset_config={
             "train": DatasetConfig(
-                use_stream_api=True, stream_window_size=stream_window_size
+                use_stream_api=True,
+                stream_window_size=stream_window_size,
+                global_shuffle=True,
             ),
             "test": DatasetConfig(use_stream_api=False),
         },
