@@ -485,6 +485,7 @@ class _AioSubscriber(_SubscriberBase):
         # A queue of received PubMessage.
         self._queue = deque()
         # Indicates whether the subscriber has closed.
+        self._wait_call_count = 0
         self._close = asyncio.Event()
 
     async def subscribe(self) -> None:
@@ -509,6 +510,7 @@ class _AioSubscriber(_SubscriberBase):
             # supported.
             poll = asyncio.ensure_future(self._poll_call(req, timeout=timeout))
             close = asyncio.ensure_future(self._close.wait())
+            self._wait_call_count += 1
             done, _ = await asyncio.wait(
                 [poll, close], timeout=timeout, return_when=asyncio.FIRST_COMPLETED
             )
@@ -523,6 +525,8 @@ class _AioSubscriber(_SubscriberBase):
                 if self._should_terminate_polling(e):
                     return
                 raise
+            finally:
+                # time.sleep(0.1)
 
     async def close(self) -> None:
         """Closes the subscriber and its active subscription."""

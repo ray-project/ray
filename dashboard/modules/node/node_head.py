@@ -31,6 +31,7 @@ from ray.dashboard.utils import async_loop_forever
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
+from pympler import asizeof
 
 def gcs_node_info_to_dict(message):
     return dashboard_utils.message_to_dict(
@@ -335,7 +336,38 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 DataSource.gcs_scheduling_stats = gcs_stats_to_dict(reply)
         except Exception:
             logger.exception("Error updating gcs stats.")
-
+        logger.info("printing Pympler asizeof DataSource attrs from NODE_HEAD")
+        logger.info(asizeof.asizeof(DataSource))
+        # Print size of all attributes of DataSource
+        for attr in dir(DataSource):
+            if not attr.startswith("__"):
+                logger.info(f"{attr} : {asizeof.asizeof(getattr(DataSource, attr))}")
+        logger.info("printing Pympler asizeof NodeHead attrs from NODE_HEAD")
+        # Print size of all attributes of current class
+        for attr in dir(self):
+            if not attr.startswith("__"):
+                logger.info(f"{attr} : {asizeof.asizeof(getattr(self, attr))}")
+        logger.info("printing Pympler asizeof DashboardHEad attrs from NODE_HEAD")
+        # Print size of all attributes of dashboard head
+        for attr in dir(self._dashboard_head):
+            if not attr.startswith("__"):
+                logger.info(
+                    f"{attr} : {asizeof.asizeof(getattr(self._dashboard_head, attr))}"
+                )
+        # Print size of all attributes of dashbaord head's gcs log subscriber
+        logger.info("printing Pympler asizeof GCSLogSubscriber attrs from NODE_HEAD")
+        for attr in dir(self._dashboard_head.gcs_log_subscriber):
+            if not attr.startswith("__"):
+                logger.info(
+                    f"{attr} : {asizeof.asizeof(getattr(self._dashboard_head.gcs_log_subscriber, attr))}"
+                )
+        logger.info("printing Pympler asizeof GCSLogSubscriber._close attrs from NODE_HEAD")
+        for attr in dir(self._dashboard_head.gcs_log_subscriber._close):
+            if not attr.startswith("__"):
+                logger.info(
+                    f"{attr} : {asizeof.asizeof(getattr(self._dashboard_head.gcs_log_subscriber._close, attr))}")
+        logger.info("Number of waiters on GCSLogSubscriber._close: {}".format(len(self._dashboard_head.gcs_log_subscriber._close._waiters)))
+        logger.info("Wait call count from GCS Subscriber: " + str(self._dashboard_head.gcs_log_subscriber._wait_call_count))
     async def _update_log_info(self):
         if ray_constants.DISABLE_DASHBOARD_LOG_INFO:
             return
