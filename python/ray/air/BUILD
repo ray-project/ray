@@ -180,14 +180,6 @@ py_test(
 )
 
 py_test(
-    name = "test_checkpoint_config",
-    size = "small",
-    srcs = ["tests/test_checkpoint_config.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
     name = "test_checkpoint_manager",
     size = "small",
     srcs = ["tests/test_checkpoint_manager.py"],
