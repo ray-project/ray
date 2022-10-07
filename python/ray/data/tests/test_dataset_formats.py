@@ -575,15 +575,6 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     foo = client[foo_db][foo_collection]
     foo.delete_many({})
 
-    # Read empty source.
-    ds = ray.data.read_datasource(
-        MongoDatasource(),
-        uri=mongo_url,
-        database=foo_db,
-        collection=foo_collection,
-    ).fully_executed()
-    assert str(ds) == "Dataset(num_blocks=0, num_rows=None, schema=Unknown schema)"
-
     # Inject 5 test docs.
     docs = [{"title": "test read_datasource", "numeric_field": key} for key in range(5)]
     df = pd.DataFrame(docs).astype({"numeric_field": "int32"})
