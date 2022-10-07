@@ -157,10 +157,8 @@ def convert_ndarray_batch_to_tf_tensor_batch(
 # This is not foolproof, but it's better than nothing
 # The place it is used in will be deprecated soon
 def contains_tensorflow_object(obj):
-    if (
-        hasattr(obj, "__module__")
-        and "keras" in obj.__module__
-        or "tensorflow" in obj.__module__
+    if hasattr(obj, "__module__") and (
+        "keras" in obj.__module__ or "tensorflow" in obj.__module__
     ):
         return True
     elif isinstance(obj, dict):
