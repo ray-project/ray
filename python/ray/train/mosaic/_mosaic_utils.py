@@ -1,5 +1,5 @@
 import math
-from typing import Any, Dict, Tuple, Iterable, Optional
+from typing import Any, Dict, Tuple, Iterable, Optional, List
 import torch
 import os
 from ray.air import session
@@ -7,7 +7,7 @@ from ray.data.dataset import Dataset
 from ray.train.mosaic.mosaic_checkpoint import MosaicCheckpoint
 from ray.tune.syncer import _DefaultSyncer
 
-from composer.loggers import Logger
+from composer.loggers import Logger, InMemoryLogger
 from composer.loggers.logger_destination import LoggerDestination
 from composer.core.state import State
 from composer.callbacks.checkpoint_saver import CheckpointSaver
@@ -146,10 +146,10 @@ class RayLogger(LoggerDestination):
     practiced in Mosaic's composer library.
 
     Args:
-        log_level: the granuality to log data. The default value is ``LogLevel.BATCH``
+        keys: the key values that will be included in the reported metrics.
     """
 
-    def __init__(self, keys=None) -> None:
+    def __init__(self, keys: List[str] = None) -> None:
         self.data = {}
         if keys:
             for key in keys:
@@ -171,21 +171,23 @@ class RayLogger(LoggerDestination):
 
 
 class RayTrainReportCallback(Callback):
-    """A callback that wraps Composer's ``CheckpointSaver``.
+    """A callback to report the saved checkpoints at the very end of training.
 
-    This class is used to wrap each Composer ``CheckpointSaver`` to be used in Composer
-    trainer. The main role of this callback is to report the paths of the checkpoints
-    saved by the Composer ``CheckpointSaver`` it wraps. In addition, when the training
-    ends, (either with or without exception) the last checkpoint and the list of all
-    the checkpoints that have been saved and the list of Composer InMemoryLogger are
-    reported.
+    Upon the ``close`` event in ``composer.trainer.Trainer.fit``, a ``MosaicCheckpoint``
+    object is created and reported. This checkpoint contains the working directory,
+    list of ``InMemoryLogger`` objects of the trainer, list of relative paths to all
+    composer checkpoint files, and the URI to the remote directory (if there is one).
+    If a remote directory is provided, then the checkpointed files are uploaded before
+    the checkpoint is reproted. Note that the synced files or the paths would be
+    different from those that will result when using ``SyncConfig`` in ``RunConfig``.
+    Only the files related to the composer library's training logic would be saved; this
+    is to provide as identical a view as when training pure composer models.
 
     Example:
         .. code-block:: python
             # create a MosaicTrainer
             mosaic_trainer =  MosaicTrainer(
                     trainer_init_per_worker=trainer_init_per_worker,
-                    datasets={"train": train_dataset},
                     trainer_init_config=trainer_init_config,
                     scaling_config=scaling_config
                 )
@@ -194,24 +196,28 @@ class RayTrainReportCallback(Callback):
             chkpt_dict = result.checkpoint.to_dict()
 
             in_memory_logger = chkpt_dict["in_memory_logger"]
-            last_checkpoint = chkpt_dict["last_checkpoint"]
+            last_checkpoint = chkpt_dict["remote_dir"]
             all_checkpoints = chkpt_dict["all_checkpoints"]
+            working_directory = chkpt_dict["working_directory"]
 
     Args:
-        in_memory_logger: The list of Composer InMemoryLogger that would be used in
+        in_memory_logger: A list of Composer InMemoryLogger that would be used in
             Composer trainer initialization.
+        ray_logger : A ``RayLogger`` object that is created to relay the logged data via
+            Ray. The last updated metrics will be reported with the checkpoint at the
+            end of the trianing.
         checkpoint_saver: A Composer ``CheckpointSaver`` that the callback will wrap.
             If this argument is provided, then the parent class is initialized with the
             passed in ``CheckpointSaver`` object's attributes. Otherwise, the parent
             class is initialized with args provided.
-        args: Arguments for initializing a Composer ``CheckpointSaver`` object.
+        remote_dir: A URI to a remote storage.
     """
 
     def __init__(
         self,
-        in_memory_logger,
-        ray_logger,
-        checkpoint_savers: CheckpointSaver,
+        in_memory_logger: List[InMemoryLogger],
+        ray_logger: RayLogger,
+        checkpoint_savers: List[CheckpointSaver],
         remote_dir: str = None,
     ):
         self.in_memory_logger = in_memory_logger

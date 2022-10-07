@@ -48,178 +48,27 @@ class MosaicTrainer(TorchTrainer):
     should be provided in the ``trainer_init_config``
 
     With ``MosaicTrainer``, there will always be checkpointing, with a default
-    ``CheckpointSaver`` that saves checkpoints to `ray_tmp` folder. All
-    ``CheckpointSaver`` objects are wrapped with ``RayTrainReportCallback`` to
-    allow reporting the paths of saved checkpoints. (For more detail check out
-    ``RayTrainReportCallback``). When resuming training from checkpoint, if
-    ``load_path`` is provided in ``trainer_init_config``, it will be used to load
-    saved checkpoints. Otherwise, if ``resume_from_checkpoint`` is provided, the
-    last reported path will be passed in as ``load_path`` to the Composer trainer.
+    ``CheckpointSaver`` that saves checkpoints to `ray_tmp` folder. For more details on
+    checkpointing and loading, sese ``trainer_init_config`` argument details.
 
     All logged information, whether there is a composer logger provided or not, is
     reported as metrics via ``RayLogger``. ``RayLogger`` is added to the logger
     configuration for Composer trainer initialization. (For more detail check out
-    ``RayLogger``.)
+    ``RayLogger``.) As the information logged on ``InMemoryLogger`` is not automatically
+    relayed to the object if passed in as a config, all ``InMemoryLoggers`` will be
+    reported in the final MosaicCheckpoint object with ``"in_memory_logger"`` key
+    returned by ``MosaicTrainer.fit`` function call.
 
     Example:
 
             .. code-block:: python
             # Based on https://docs.mosaicml.com/en/v0.9.0/examples/getting_started.html
-
-            from typing import Tuple
-            import pandas as pd
-
-            import ray
-            from ray.data.datasource import SimpleTorchDatasource
-            from ray.train.mosaic import MosaicTrainer
-            from ray.air.config import ScalingConfig
-            from ray.data.extensions import TensorArray
-
-            import torch
-            import torch.utils.data
-            from torchmetrics.classification.accuracy import Accuracy
-
-            import torchvision.datasets
-            import torchvision.transforms as transforms
-
-            import composer
-
-            # create ray datasets
-            transform = transforms.Compose(
-                [transforms.ToTensor(),
-                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
-            )
-
-            def train_dataset_factory():
-                return torchvision.datasets.CIFAR10(root="./data",
-                    download=True, train=True, transform=transform)
-
-            def test_dataset_factory():
-                return torchvision.datasets.CIFAR10(root="./data",
-                    download=True, train=False, transform=transform)
-
-            train_dataset: ray.data.Dataset = \
-                ray.data.read_datasource(SimpleTorchDatasource(),
-                    dataset_factory=train_dataset_factory)
-            test_dataset: ray.data.Dataset = \
-                ray.data.read_datasource(SimpleTorchDatasource(),
-                    dataset_factory=test_dataset_factory)
-
-            # map the dataset to pandas DataFrame
-            def convert_batch_pair(batch: Tuple[torch.Tensor, int]):
-                images = TensorArray([image.numpy() for image, _ in batch])
-                labels = [label for _, label in batch]
-                df = pd.DataFrame({"image" : images, "label": labels})
-                return df.head(32)
-
-            train_dataset_mapped = train_dataset.map_batches(convert_batch_pair)
-            test_dataset_mapped = test_dataset.map_batches(convert_batch_pair)
-
-            # create trainer_init_per_worker
-            def trainer_init_per_worker(train_dataset, eval_dataset, **config):
-                model = config.pop("model")
-                optimizer = config.pop("optimizer")
-                scheduler = config.pop("scheduler")
-
-                evaluator = composer.core.evaluator.Evaluator(
-                    dataloader = eval_dataset,
-                    label = 'my_evaluator',
-                    metrics = Accuracy()
-                )
-
-                return composer.trainer.Trainer(
-                    model=model,
-                    run_name="logger_test",
-                    train_dataloader=train_dataset,
-                    eval_dataloader=evaluator,
-                    optimizers=optimizer,
-                    schedulers=scheduler,
-                    **config
-                )
-
-
-            # setup trainer_init_config
-            model = composer.models.composer_resnet_cifar(model_name='resnet_20',
-                num_classes=10)
-
-            optimizer = composer.optim.DecoupledSGDW(
-                model.parameters(),
-                lr=0.05,
-                momentum=0.9,
-                weight_decay=2.0e-3
-            )
-
-            lr_scheduler = composer.optim.LinearWithWarmupScheduler(
-                t_warmup="1ep",
-                alpha_i=1.0,
-                alpha_f=1.0
-            )
-
-            scaling_config = ScalingConfig(num_workers=1, use_gpu=False)
-
-            loggers = [composer.loggers.InMemoryLogger()]
-
-            trainer_init_config = {
-                "model" : model,
-                "optimizer" : optimizer,
-                "scheduler" : lr_scheduler,
-                "batch_size" : 32,
-                "max_duration" : "1ep",
-                "labels" : ["image","label"],
-                "loggers" : loggers,
-                "save_folder" : "my_folder",
-            }
-
-            # create MosaicTrainer
-            datasets = {"train": train_dataset_mapped,
-                "evaluation": test_dataset_mapped}
-            trainer = MosaicTrainer(
-                trainer_init_per_worker=trainer_init_per_worker,
-                datasets=datasets,
-                trainer_init_config=trainer_init_config,
-                scaling_config=scaling_config
-            )
-
-            # run trainer
-            result=trainer.fit()
-
-            # retrieve checkpoint information
-            chkpt_dict = result.checkpoint.to_dict()
-            loggers = chkpt_dict["loggers"]
-            last_checkpoint = chkpt_dict["last_checkpoint"]
-            all_checkpoints = chkpt_dict["all_checkpoints"]
-
-            # retrieve metrics
-            metrics = result.metrics
-
-            # get epoch timeseries from in memory logger
-            in_memory_logger = loggers[0]
-            epoch_time_series = in_memory_logger.get_timeseries('epoch')
-
-            # create a new MosaicTrainer to resume from the last checkpoint
-            trainer_init_config["max_duration"] = "2ep"
-            trainer = MosaicTrainer(
-                trainer_init_per_worker=trainer_init_per_worker,
-                datasets=datasets,
-                trainer_init_config=trainer_init_config,
-                scaling_config=scaling_config,
-                resume_from_checkpoint=result.checkpoint
-            )
-
-            # train
-            trainer.fit()
-
+            TODO
 
     Args:
         trainer_init_per_worker: The function that returns an instantiated
-            ``composer.Trainer`` object and takes in the following arguments:
-            train ``Iterable``, optional evaluation
-            ``Iterable`` and config as kwargs. The Composer Trainer should take in
-            these arguments as ``train_dataloader`` and ``eval_dataloader`` without
-            creating a new dataloader for each dataset. The Iterable yields batches
-            of size defined in the ``trainer_init_config``. The Iterables are
-            automatically created by converting the Ray Datasets internally before
-            they are passed into the function.
+            ``composer.Trainer`` object and takes in an optional configuration
+            dictionary as an argument.
         datasets: Any Ray Datasets to use for training. The datasets must be mapped to
             pandas DataFrame and the labels for each column should be provided. Use
             the key "train" to denote which dataset is the training
@@ -228,11 +77,39 @@ class MosaicTrainer(TorchTrainer):
             and up to one extra dataset to be used for evaluation.
             If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be
-            transformed by the ``preprocessor`` if one is provided.
+            transformed by the ``preprocessor`` if one is provided. If the datasets are
+            provided, they can be accessed via ``train_dataset_shard`` or
+            ``eval_dataset_shard`` in the configuration dictionary passed in as an
+            argument for the trainer init function. Additionally, the
+            ``trainer_init_config`` should contain ``labels`` and ``batch_size``
+            information, as these are needed when converting Ray Datasets into
+            Iterables.
         trainer_init_config: Configurations to pass into
-            ``trainer_init_per_worker`` as kwargs. It must contain
-            ``labels`` and ``batch_size`` information, as these are needed when
-            converting Ray Datasets into Iterables.
+            ``trainer_init_per_worker`` as kwargs. There are no required items but the
+            following is a list of keys that are used by the
+            ``trainer_init_per_worker`` :
+                ``log_keys`` : in the result metrics_dataframe returned by the trainer's
+                    ``fit`` function, the metrics that are not logged in the very first
+                    report will not be included. As such, to have the desired keys that
+                    are not reported on the very first ``session.report`` call should be
+                    provided here to be present in the final result metrics_dataframe.
+                ``load_path`` : a path to the composer checkpoint that will be loaded to
+                    the trainer. If you are resuming from checkpoint, by default, this
+                    is set to the latest checkpoint path. The path must be an absolute
+                    path, unless the checkpoint is loaded from a remote storage, in
+                    which case ``remote_dir`` and ``load_from_remote`` should also be
+                    provided.
+                ``remote_dir`` : URI to a remote storage. If this key is defined, then
+                    the logging directory will be synced with the provided remote
+                    directory after the ``fit`` call
+                ``load_from_remote`` : a boolean value, which defaults to False. If this
+                    is set to true, then the logging directory is synced with the
+                    provided remote directory and the checkpoint file is loaded from
+                    ``remote_dir/load_path``. If you are resuming from a
+                    MosaicCheckpoint and the checkpoint has composer checkpoint objects
+                    stored in the cloud, then this must be set to True; otherwise, the
+                    trainer will look for a file path saved in the checkpoint from the
+                    local machine.
         torch_config: Configuration for setting up the PyTorch backend. If set to
             None, use the default configuration. This replaces the ``backend_config``
             arg of ``DataParallelTrainer``. Same as in ``TorchTrainer``.
@@ -241,7 +118,7 @@ class MosaicTrainer(TorchTrainer):
         run_config: Configuration for the execution of the training run.
         preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
-        resume_from_checkpoint: A checkpoint to resume training from.
+        resume_from_checkpoint: A MosiacCheckpoint to resume training from.
     """
 
     def __init__(
@@ -368,5 +245,6 @@ def _mosaic_train_loop_per_worker(config):
             remote_dir=remote_dir,
         )
     )
+
     # call the trainer
     trainer.fit(**fit_config)
