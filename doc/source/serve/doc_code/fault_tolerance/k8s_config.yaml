@@ -68,6 +68,8 @@ metadata:
   annotations:
     ray.io/ft-enabled: "true"
 spec:
+  serviceUnhealthySecondThreshold: 300
+  deploymentUnhealthySecondThreshold: 300
   serveConfig:
     importPath: "sleepy_pid:app"
     runtimeEnv: |
