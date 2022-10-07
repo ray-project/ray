@@ -273,9 +273,14 @@ div.topic{
   border-left-color: var(--border-color-gray);
 }
 
-/* custom css for up and down arrows in colllapsable cards */
+/* custom css for up and down arrows in collapsible cards */
 details.dropdown .summary-up, details.dropdown .summary-down {
   top: 1em;
+}
+
+/* remove focus border in collapsible admonition buttons */
+.toggle.admonition button.toggle-button:focus {
+  outline: none;
 }
 
 /* custom css for shadow class */
