@@ -16,7 +16,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": 3,
-  "iteration": 1665097146778,
+  "iteration": 1665101733478,
   "links": [],
   "panels": [
     {
@@ -73,31 +73,14 @@
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
-      "seriesOverrides": [
-        {
-          "$$hashKey": "object:443",
-          "alias": "FINISHED",
-          "fill": 0,
-          "stack": false,
-          "yaxis": 2
-        }
-      ],
+      "seriesOverrides": [],
       "spaceLength": 10,
       "stack": true,
       "steppedLine": false,
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(max_over_time(ray_tasks{State=\"FINISHED\"}[1h]))",
-          "hide": false,
-          "instant": false,
-          "interval": "",
-          "legendFormat": "FINISHED",
-          "refId": "B"
-        },
-        {
-          "exemplar": true,
-          "expr": "sum(ray_tasks{State!=\"FINISHED\"}) by (State)",
+          "expr": "sum(ray_tasks) by (State)",
           "interval": "",
           "legendFormat": "",
           "queryType": "randomWalk",
@@ -1340,5 +1323,5 @@
   "timezone": "",
   "title": "Default Dashboard",
   "uid": "rayDefaultDashboard",
-  "version": 13
+  "version": 2
 }
