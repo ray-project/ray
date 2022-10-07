@@ -66,9 +66,6 @@ from ray.tests.test_autoscaler import (
     mock_raylet_id,
 )
 from ray.cluster_utils import AutoscalingCluster
-from ray.autoscaler._private.node_provider_availability_tracker import (
-    NodeAvailabilitySummary,
-)
 from functools import partial
 
 GET_DEFAULT_METHOD = "ray.autoscaler._private.util._get_default_config"
