@@ -9,8 +9,10 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
-import random
-import sys
+# To run tests locally, make sure you install mongodb
+# and start a local service:
+# sudo apt-get install -y mongodb
+# sudo service mongodb start
 
 
 @pytest.fixture
@@ -19,6 +21,12 @@ def start_mongo():
 
     mongo_url = "mongodb://localhost:27017"
     client = pymongo.MongoClient(mongo_url)
+    # Make sure a clean slate for each test by dropping
+    # previously created ones (if any).
+    for db in client.list_database_names():
+        # Keep the MongoDB default databases.
+        if db not in ("admin", "local", "config"):
+            client.drop_database(db)
     return client, mongo_url
 
 
@@ -27,7 +35,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     from pymongo.errors import ServerSelectionTimeoutError
 
     client, mongo_url = start_mongo
-    foo_db = f"foo-db-{random.randint(0, sys.maxsize)}"
+    foo_db = "foo-db"
     foo_collection = "foo-collection"
     foo = client[foo_db][foo_collection]
     foo.delete_many({})
@@ -162,7 +170,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     from pymongoarrow.api import Schema
 
     client, mongo_url = start_mongo
-    foo_db = f"foo-db-{random.randint(0, sys.maxsize)}"
+    foo_db = "foo-db"
     foo_collection = "foo-collection"
     foo = client[foo_db][foo_collection]
     foo.delete_many({})
@@ -250,4 +258,6 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
 
 
 if __name__ == "__main__":
+    import sys
+
     sys.exit(pytest.main(["-v", __file__]))
