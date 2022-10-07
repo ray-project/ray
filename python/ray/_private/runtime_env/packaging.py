@@ -646,8 +646,12 @@ async def download_and_unpack_package(
                         f"Failed to download runtime_env file package {pkg_uri} "
                         "from the GCS to the Ray worker node. The package may "
                         "have prematurely been deleted from the GCS due to a "
-                        "problem with Ray. Try re-running the statement or "
-                        "restarting the Ray cluster."
+                        "long upload time or a problem with Ray. Try setting the "
+                        "environment variable "
+                        f"{RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR} "
+                        " to a value larger than the upload time in seconds "
+                        "(the default is 30). If this fails, try re-running "
+                        "after making any change to a file in the file package."
                     )
                 code = code or b""
                 pkg_file.write_bytes(code)
