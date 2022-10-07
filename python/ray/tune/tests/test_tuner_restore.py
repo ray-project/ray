@@ -441,7 +441,7 @@ def test_tuner_restore_latest_available_checkpoint(
 
 
 @pytest.mark.parametrize("retry_num", [0, 1])
-def test_retore_retry(retry_num):
+def test_retore_retry(ray_start_4_cpus, retry_num):
     """Test retrying restore on a trial level."""
 
     class MockTrainable(Trainable):
