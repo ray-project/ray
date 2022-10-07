@@ -152,6 +152,28 @@ def test_batch_mapper_pandas_data_format(ds_with_expected_pandas_numpy_df):
     assert_frame_equal(out_df, expected_numpy_df)
 
 
+def test_batch_mapper_batch_size():
+    """Tests BatcMapper batch size."""
+
+    batch_size = 5
+
+    def check_batch_size(df):
+        assert len(df) == batch_size
+        return df + 1
+
+    df = pd.DataFrame({"a": list(range(100))})
+    expected_df = df + 1
+    ds = ray.data.from_pandas(df)
+
+    batch_mapper = BatchMapper(
+        fn=check_batch_size, batch_size=batch_size, batch_format="pandas"
+    )
+    batch_mapper.fit(ds)
+    transformed_ds = batch_mapper.transform(ds)
+    out_df = transformed_ds.to_pandas()
+    assert_frame_equal(out_df, expected_df)
+
+
 @pytest.mark.parametrize(
     "ds_with_expected_pandas_numpy_df",
     [
