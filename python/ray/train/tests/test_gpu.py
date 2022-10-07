@@ -16,7 +16,7 @@ from ray.cluster_utils import Cluster
 import ray.train as train
 from ray.train import Trainer, TrainingCallback
 from ray.air.config import ScalingConfig
-from ray.train.constants import TRAINING_ITERATION
+from ray.train.constants import TRAINING_ITERATION, DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
 )
@@ -33,8 +33,9 @@ from ray.train.tests.test_tune import (
     tune_tensorflow_mnist,
 )
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
-from ray.train.torch import TorchConfig
+from ray.train.torch.config import TorchConfig, _TorchBackend
 from ray.train.torch.torch_trainer import TorchTrainer
+from ray.train._internal.worker_group import WorkerGroup
 
 
 @pytest.fixture
@@ -49,6 +50,12 @@ def ray_start_4_cpus_2_gpus():
 def ray_start_1_cpu_1_gpu():
     address_info = ray.init(num_cpus=1, num_gpus=1)
     yield address_info
+    ray.shutdown()
+
+
+@pytest.fixture
+def shutdown_only():
+    yield None
     ray.shutdown()
 
 
@@ -81,9 +88,33 @@ class NonTensorDataset(LinearDataset):
 
 
 # TODO: Refactor as a backend test.
+@pytest.mark.parametrize("cuda_visible_devices", ["", "1,2"])
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
-def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
+def test_torch_get_device(
+    shutdown_only, num_gpus_per_worker, cuda_visible_devices, monkeypatch
+):
+    if cuda_visible_devices:
+        # Test if `get_device` is correct even with user specified env var.
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", cuda_visible_devices)
+
+    ray.init(num_cpus=4, num_gpus=2)
+
     def train_fn():
+        # Make sure environment variable is being set correctly.
+        if cuda_visible_devices:
+            if num_gpus_per_worker == 0.5:
+                assert os.environ["CUDA_VISIBLE_DEVICES"] == "1"
+            elif num_gpus_per_worker == 1:
+                visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+                # Sort the cuda visible devices to have exact match with
+                # expected result.
+                sorted_devices = ",".join(sorted(visible_devices.split(",")))
+                assert sorted_devices == "1,2"
+
+            else:
+                raise ValueError(
+                    f"Untested paramater configuration: {num_gpus_per_worker}"
+                )
         return train.torch.get_device().index
 
     trainer = Trainer(
@@ -99,7 +130,7 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
     if num_gpus_per_worker == 0.5:
         assert devices == [0, 0]
     elif num_gpus_per_worker == 1:
-        assert devices == [0, 1]
+        assert set(devices) == {0, 1}
     else:
         raise RuntimeError(
             "New parameter for this test has been added without checking that the "
@@ -144,9 +175,10 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
     elif num_gpus_per_worker == 2:
         # worker gpu topology:
         # 1 workers on node 1, 1 workers on node 2
-        # `ray.get_gpu_ids()` returns [0, 1] on node 1 and [0, 1] on node 2
-        # and `device_id` returns the first index
-        assert count[0] == 2
+        # `ray.get_gpu_ids()` returns {0, 1} on node 1 and {0, 1} on node 2
+        # and `device_id` returns the one index from each set.
+        # So total count of devices should be 2.
+        assert sum(count.values()) == 2
     else:
         raise RuntimeError(
             "New parameter for this test has been added without checking that the "
@@ -174,6 +206,32 @@ def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
     trainer.start()
     trainer.run(train_fn)
     trainer.shutdown()
+
+
+def test_torch_prepare_model_uses_device(ray_start_4_cpus_2_gpus):
+    """Tests if `prepare_model` uses the train.torch.get_device even if it does not
+    match with the local rank."""
+    # The below test should pass without errors.
+
+    @patch.object(
+        ray.train.torch.train_loop_utils._TorchAccelerator,
+        "get_device",
+        lambda self: torch.device(f"cuda:{1 - train.local_rank()}"),
+    )
+    def train_func():
+        # These assert statements must hold for prepare_model to wrap with DDP.
+        assert torch.cuda.is_available()
+        assert train.world_size() > 1
+        model = torch.nn.Linear(1, 1)
+        data = torch.ones(1)
+        data = data.to(train.torch.get_device())
+        model = train.torch.prepare_model(model)
+        model(data)
+
+    trainer = TorchTrainer(
+        train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+    )
+    trainer.fit()
 
 
 # TODO: Refactor as a backend test.
@@ -323,6 +381,27 @@ def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
     trainer.start()
     trainer.run(train_func)
     trainer.shutdown()
+
+
+@pytest.mark.parametrize("nccl_socket_ifname", ["", "ens3"])
+def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_gpus, nccl_socket_ifname):
+    worker_group = WorkerGroup(num_workers=2, num_gpus_per_worker=1)
+
+    if nccl_socket_ifname:
+
+        def set_env_var():
+            os.environ["NCCL_SOCKET_IFNAME"] = nccl_socket_ifname
+
+        worker_group.execute(set_env_var)
+
+    def assert_env_var_set():
+        value = nccl_socket_ifname if nccl_socket_ifname else DEFAULT_NCCL_SOCKET_IFNAME
+        assert os.environ["NCCL_SOCKET_IFNAME"] == value
+
+    torch_backend = _TorchBackend()
+    torch_backend.on_start(worker_group, backend_config=TorchConfig(backend="nccl"))
+
+    worker_group.execute(assert_env_var_set)
 
 
 # TODO: Refactor as a backend test.
@@ -533,13 +612,13 @@ def test_auto_transfer_data_from_host_to_device(
 
 def test_auto_transfer_correct_device(ray_start_4_cpus_2_gpus):
     """Tests that auto_transfer uses the right device for the cuda stream."""
-    import nvidia_smi
+    import pynvml
 
-    nvidia_smi.nvmlInit()
+    pynvml.nvmlInit()
 
     def get_gpu_used_mem(i):
-        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(i)
-        info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+        handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+        info = pynvml.nvmlDeviceGetMemoryInfo(handle)
         return info.used
 
     start_gpu_memory = get_gpu_used_mem(1)

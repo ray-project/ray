@@ -7,7 +7,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
 from ray.train.constants import PREPROCESSOR_KEY
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.air.config import ScalingConfig
+from ray.air.config import ScalingConfig, CheckpointConfig, RunConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -191,6 +191,48 @@ def test_tune(ray_start_4_cpus):
 
     # Make sure original Trainer is not affected.
     assert trainer._train_loop_config["x"] == 100
+
+
+@pytest.mark.parametrize("mode", ["min", "max"])
+def test_checkpoints_to_keep(ray_start_4_cpus, mode):
+    def train_func():
+        session.report(
+            dict(loss=float("nan")), checkpoint=Checkpoint.from_dict({"idx": 0})
+        )  # nan, deleted
+        session.report(
+            dict(loss=3), checkpoint=Checkpoint.from_dict({"idx": 1})
+        )  # best for min, worst for max (del)
+        session.report(
+            dict(loss=7), checkpoint=Checkpoint.from_dict({"idx": 2})
+        )  # worst for min (del), best for max
+        session.report(dict(loss=5), checkpoint=Checkpoint.from_dict({"idx": 3}))
+
+    checkpoint_config = CheckpointConfig(
+        num_to_keep=2, checkpoint_score_attribute="loss", checkpoint_score_order=mode
+    )
+
+    trainer = DataParallelTrainer(
+        train_func,
+        scaling_config=scale_config,
+        run_config=RunConfig(checkpoint_config=checkpoint_config),
+    )
+    result = trainer.fit()
+    assert len(result.best_checkpoints) == 2
+
+    # Last checkpoint
+    assert result.checkpoint.to_dict()["idx"] == 3
+
+    if mode == "min":
+        indices = [3, 1]
+        losses = [5, 3]
+    else:
+        indices = [3, 2]
+        losses = [5, 7]
+
+    assert result.best_checkpoints[0][0].to_dict()["idx"] == indices[0]
+    assert result.best_checkpoints[1][0].to_dict()["idx"] == indices[1]
+    assert result.best_checkpoints[0][1]["loss"] == losses[0]
+    assert result.best_checkpoints[1][1]["loss"] == losses[1]
 
 
 if __name__ == "__main__":

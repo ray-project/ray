@@ -183,6 +183,7 @@ linkcheck_ignore = [
     r"https://www.meetup.com/*",  # seems to be flaky
     r"https://www.pettingzoo.ml/*",  # seems to be flaky
     r"http://localhost[:/].*",  # Ignore localhost links
+    r"^http:/$",  # Ignore incomplete links
 ]
 
 # -- Options for HTML output ----------------------------------------------
@@ -326,3 +327,6 @@ def setup(app):
     linkcheck_summarizer = LinkcheckSummarizer()
     app.connect("builder-inited", linkcheck_summarizer.add_handler_to_linkcheck)
     app.connect("build-finished", linkcheck_summarizer.summarize)
+
+    # Create galleries on the fly
+    app.connect("builder-inited", build_gallery)

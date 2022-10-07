@@ -1,6 +1,7 @@
 import time
 import json
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from typing import List, Tuple
 from unittest.mock import MagicMock
@@ -70,6 +71,7 @@ from ray.experimental.state.api import (
     summarize_tasks,
     StateApiClient,
 )
+from ray._private.event.event_logger import get_event_id
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
@@ -82,10 +84,11 @@ from ray.experimental.state.common import (
     SupportedFilterType,
     TaskState,
     WorkerState,
+    ClusterEventState,
     StateSchema,
-    ray_address_to_api_server_url,
     state_column,
 )
+from ray.dashboard.utils import ray_address_to_api_server_url
 from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.experimental.state.state_cli import (
     AvailableFormat,
@@ -175,7 +178,7 @@ def generate_task_entry(
     id,
     name="class",
     func_or_class="class",
-    state=TaskStatus.SCHEDULED,
+    state=TaskStatus.PENDING_NODE_ASSIGNMENT,
     type=TaskType.NORMAL_TASK,
 ):
     return TaskInfoEntry(
@@ -188,7 +191,7 @@ def generate_task_entry(
 
 
 def generate_task_data(
-    id, name="class", func_or_class="class", state=TaskStatus.SCHEDULED
+    id, name="class", func_or_class="class", state=TaskStatus.PENDING_NODE_ASSIGNMENT
 ):
     return GetTasksInfoReply(
         owned_task_info_entries=[
@@ -204,7 +207,7 @@ def generate_object_info(
     obj_id,
     size_bytes=1,
     callsite="main.py",
-    task_state=TaskStatus.SCHEDULED,
+    task_state=TaskStatus.PENDING_NODE_ASSIGNMENT,
     local_ref_count=1,
     attempt_number=1,
     pid=1234,
@@ -576,6 +579,63 @@ async def test_api_manager_list_pgs(state_api_manager):
 
 
 @pytest.mark.asyncio
+async def test_api_manager_list_cluster_events(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+    event_id_1 = get_event_id()
+    event_id_2 = get_event_id()
+    data_source_client.get_all_cluster_events.return_value = {
+        "job_1": {
+            event_id_1: {
+                "timestamp": 10,
+                "severity": "DEBUG",
+                "message": "a",
+                "event_id": event_id_1,
+            },
+            event_id_2: {
+                "timestamp": 10,
+                "severity": "INFO",
+                "message": "b",
+                "event_id": event_id_2,
+            },
+        }
+    }
+    result = await state_api_manager.list_cluster_events(option=create_api_options())
+    data = result.result
+    data = data[0]
+    verify_schema(ClusterEventState, data)
+    assert result.total == 2
+
+    """
+    Test detail
+    """
+    # TODO(sang)
+
+    """
+    Test limit
+    """
+    assert len(result.result) == 2
+    result = await state_api_manager.list_cluster_events(
+        option=create_api_options(limit=1)
+    )
+    data = result.result
+    assert len(data) == 1
+    assert result.total == 2
+
+    """
+    Test filters
+    """
+    # If the column is not supported for filtering, it should raise an exception.
+    with pytest.raises(ValueError):
+        result = await state_api_manager.list_cluster_events(
+            option=create_api_options(filters=[("time", "=", "20")])
+        )
+    result = await state_api_manager.list_cluster_events(
+        option=create_api_options(filters=[("severity", "=", "INFO")])
+    )
+    assert len(result.result) == 1
+
+
+@pytest.mark.asyncio
 async def test_api_manager_list_nodes(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     id = b"1234"
@@ -693,7 +753,7 @@ async def test_api_manager_list_workers(state_api_manager):
 
 
 @pytest.mark.skipif(
-    sys.version_info <= (3, 7, 0),
+    sys.version_info < (3, 8, 0),
     reason=("Not passing in CI although it works locally. Will handle it later."),
 )
 @pytest.mark.asyncio
@@ -784,7 +844,7 @@ async def test_api_manager_list_tasks(state_api_manager):
 
 
 @pytest.mark.skipif(
-    sys.version_info <= (3, 7, 0),
+    sys.version_info < (3, 8, 0),
     reason=("Not passing in CI although it works locally. Will handle it later."),
 )
 @pytest.mark.asyncio
@@ -896,7 +956,7 @@ async def test_api_manager_list_objects(state_api_manager):
 
 
 @pytest.mark.skipif(
-    sys.version_info <= (3, 7, 0),
+    sys.version_info < (3, 8, 0),
     reason=("Not passing in CI although it works locally. Will handle it later."),
 )
 @pytest.mark.asyncio
@@ -1485,6 +1545,12 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     wait_for_condition(
         lambda: verify_output(ray_list, ["actors"], ["Stats:", "Table:", "ACTOR_ID"])
     )
+    # TODO(sang): Enable it.
+    # wait_for_condition(
+    #     lambda: verify_output(
+    #         ray_list, ["cluster-events"], ["Stats:", "Table:", "EVENT_ID"]
+    #     )
+    # )
     wait_for_condition(
         lambda: verify_output(ray_list, ["workers"], ["Stats:", "Table:", "WORKER_ID"])
     )
@@ -1570,34 +1636,53 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_get_actors(shutdown_only):
-    ray.init()
+class TestListActors:
+    def test_list_get_actors(self, class_ray_instance):
+        @ray.remote
+        class A:
+            pass
 
-    @ray.remote
-    class A:
-        pass
+        a = A.remote()  # noqa
 
-    a = A.remote()  # noqa
+        def verify():
+            # Test list
+            actors = list_actors()
+            assert len(actors) == 1
+            assert actors[0]["state"] == "ALIVE"
+            assert is_hex(actors[0]["actor_id"])
+            assert a._actor_id.hex() == actors[0]["actor_id"]
 
-    def verify():
-        # Test list
+            # Test get
+            actors = list_actors(detail=True)
+            for actor in actors:
+                get_actor_data = get_actor(actor["actor_id"])
+                assert get_actor_data is not None
+                assert get_actor_data == actor
+
+            return True
+
+        wait_for_condition(verify)
+        print(list_actors())
+
+    def test_list_actors_namespace(self, class_ray_instance):
+        """Check that list_actors returns namespaces."""
+
+        @ray.remote
+        class A:
+            pass
+
+        A.options(namespace="x").remote()
+        A.options(namespace="y").remote()
+
         actors = list_actors()
-        assert len(actors) == 1
-        assert actors[0]["state"] == "ALIVE"
-        assert is_hex(actors[0]["actor_id"])
-        assert a._actor_id.hex() == actors[0]["actor_id"]
+        namespaces = Counter([actor["ray_namespace"] for actor in actors])
+        assert namespaces["x"] == 1
+        assert namespaces["y"] == 1
 
-        # Test get
-        actors = list_actors(detail=True)
-        for actor in actors:
-            get_actor_data = get_actor(actor["actor_id"])
-            assert get_actor_data is not None
-            assert get_actor_data == actor
-
-        return True
-
-    wait_for_condition(verify)
-    print(list_actors())
+        # Check that we can filter by namespace
+        x_actors = list_actors(filters=[("ray_namespace", "=", "x")])
+        assert len(x_actors) == 1
+        assert x_actors[0]["ray_namespace"] == "x"
 
 
 @pytest.mark.skipif(
@@ -1766,6 +1851,35 @@ def test_list_get_workers(shutdown_only):
     print(list_workers())
 
 
+# TODO(sang): Enable the test.
+# @pytest.mark.skipif(
+#     sys.platform == "win32",
+#     reason="Failed on Windows",
+# )
+# def test_list_cluster_events(shutdown_only):
+#     ray.init()
+
+#     @ray.remote(num_gpus=1)
+#     def f():
+#         pass
+
+#     f.remote()
+
+#     def verify():
+#         events = list_cluster_events()
+#         assert len(events) == 1
+#         assert (
+#             "event_summary:Error: No available node types can fulfill "
+#             "resource request {'GPU': 1.0, 'CPU': 1.0}."
+#         ) in events[0]["message"]
+#         return True
+
+#     wait_for_condition(verify)
+#     print(list_cluster_events())
+
+#     # TODO(sang): Support get_cluster_events
+
+
 def test_list_get_tasks(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -1795,20 +1909,25 @@ def test_list_get_tasks(shutdown_only):
         waiting_for_execution = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "WAITING_FOR_EXECUTION",
+                    lambda task: task["scheduling_state"] == "SUBMITTED_TO_WORKER",
                     tasks,
                 )
             )
         )
         assert waiting_for_execution == 0
         scheduled = len(
-            list(filter(lambda task: task["scheduling_state"] == "SCHEDULED", tasks))
+            list(
+                filter(
+                    lambda task: task["scheduling_state"] == "PENDING_NODE_ASSIGNMENT",
+                    tasks,
+                )
+            )
         )
         assert scheduled == 2
         waiting_for_dep = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "WAITING_FOR_DEPENDENCIES",
+                    lambda task: task["scheduling_state"] == "PENDING_ARGS_AVAIL",
                     tasks,
                 )
             )
@@ -1858,8 +1977,7 @@ def test_list_actor_tasks(shutdown_only):
             len(
                 list(
                     filter(
-                        lambda task: task["scheduling_state"]
-                        == "WAITING_FOR_EXECUTION",
+                        lambda task: task["scheduling_state"] == "SUBMITTED_TO_WORKER",
                         tasks,
                     )
                 )
@@ -1869,7 +1987,11 @@ def test_list_actor_tasks(shutdown_only):
         assert (
             len(
                 list(
-                    filter(lambda task: task["scheduling_state"] == "SCHEDULED", tasks)
+                    filter(
+                        lambda task: task["scheduling_state"]
+                        == "PENDING_NODE_ASSIGNMENT",
+                        tasks,
+                    )
                 )
             )
             == 0
@@ -1878,8 +2000,7 @@ def test_list_actor_tasks(shutdown_only):
             len(
                 list(
                     filter(
-                        lambda task: task["scheduling_state"]
-                        == "WAITING_FOR_DEPENDENCIES",
+                        lambda task: task["scheduling_state"] == "PENDING_ARGS_AVAIL",
                         tasks,
                     )
                 )

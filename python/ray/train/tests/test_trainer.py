@@ -766,6 +766,7 @@ def test_user_error(ray_start_2_cpus):
             train.report(loss=1)
         raise NotImplementedError
 
+    trainer.start()
     with pytest.raises(StartTraceback) as exc:
         trainer.run(fail_train_2)
     assert "NotImplementedError" in str(exc.value)
@@ -780,7 +781,7 @@ def test_worker_failure_1(ray_start_2_cpus):
     def train_actor_failure():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
@@ -804,7 +805,7 @@ def test_worker_failure_2(ray_start_2_cpus):
             train.report(loss=1)
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
@@ -824,7 +825,7 @@ def test_worker_failure_local_rank(ray_start_2_cpus):
     def train_actor_failure():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
         return train.local_rank()
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
@@ -865,7 +866,7 @@ def test_max_failures(ray_start_2_cpus):
     def train_func():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     trainer = Trainer(test_config, num_workers=2)
     trainer.start()
@@ -883,7 +884,7 @@ def test_start_max_failures(ray_start_2_cpus):
     def init_hook_fail():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     with pytest.raises(RuntimeError):
         trainer.start(initialization_hook=init_hook_fail)
@@ -1009,25 +1010,6 @@ def test_multiple_run(ray_start_2_cpus):
 
     output_2 = trainer.run(train_2)
     assert output_2 == [2, 2]
-
-
-def test_run_after_user_error(ray_start_2_cpus):
-    config = TestConfig()
-
-    def fail_train():
-        raise NotImplementedError
-
-    trainer = Trainer(config, num_workers=2)
-    trainer.start()
-    with pytest.raises(StartTraceback) as exc:
-        trainer.run(fail_train)
-    assert "NotImplementedError" in str(exc.value)
-
-    def train_func():
-        return 1
-
-    output = trainer.run(train_func)
-    assert output == [1, 1]
 
 
 def check_dataset_output(num_data, num_epochs, data_all_epochs):
@@ -1172,7 +1154,7 @@ def test_dataset_fault_tolerance(ray_start_4_cpus):
     def train_actor_failure():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
@@ -1250,7 +1232,8 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
         )
 
     def get_resources():
-        return os.environ["CUDA_VISIBLE_DEVICES"]
+        cuda_visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+        return cuda_visible_devices
 
     # 0 GPUs will be requested and should not raise an error.
     trainer = Trainer(CudaTestConfig(), num_workers=2, use_gpu=False)
@@ -1263,6 +1246,8 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     trainer = Trainer(CudaTestConfig(), num_workers=2, use_gpu=True)
     trainer.start()
     result = trainer.run(get_resources)
+    # Sort the cuda visible devices to have exact match with expected result.
+    result = [",".join(sorted(r.split(","))) for r in result]
     assert result == ["0,1", "0,1"]
     trainer.shutdown()
 
@@ -1281,6 +1266,8 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     )
     trainer.start()
     result = trainer.run(get_resources)
+    # Sort the cuda visible devices to have exact match with expected result.
+    result = [",".join(sorted(r.split(","))) for r in result]
     assert result == ["0,1,2,3", "0,1,2,3"]
     trainer.shutdown()
 

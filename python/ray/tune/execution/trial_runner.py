@@ -13,7 +13,7 @@ import warnings
 import ray
 from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.exceptions import RayTaskError
-from ray.tune.error import _TuneStopTrialError
+from ray.tune.error import _TuneStopTrialError, _TuneRestoreError
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
@@ -760,7 +760,10 @@ class TrialRunner:
             trial_to_add = trial
             if trial.status == Trial.ERROR:
                 if resume_errored:
-                    trial_to_add = trial.reset()
+                    # Keep trial ID on resume
+                    trial_to_add.error_file = None
+                    trial_to_add.pickled_error_file = None
+                    trial_to_add.set_status(Trial.PENDING)
                     trial_to_add.restore_path = trial.checkpoint.dir_or_data
                 elif restart_errored:
                     trial_to_add = trial.reset()
@@ -977,10 +980,9 @@ class TrialRunner:
     def _post_process_on_training_saving_result(self, trial):
         # `self._queued_trial_decisions` now contains a final decision
         # based on all results
-        if trial not in self._cached_trial_decisions:
-            final_decision = self._queued_trial_decisions.pop(trial.trial_id, None)
-            if final_decision:
-                self._execute_action(trial, final_decision)
+        final_decision = self._queued_trial_decisions.pop(trial.trial_id, None)
+        if final_decision:
+            self._execute_action(trial, final_decision)
 
     def _on_executor_error(self, trial, e: Union[RayTaskError, TuneError]):
         error_msg = f"Trial {trial}: Error processing event."
@@ -1295,7 +1297,7 @@ class TrialRunner:
         if decision == TrialScheduler.CONTINUE:
             self.trial_executor.continue_training(trial)
         elif decision == TrialScheduler.PAUSE:
-            self.trial_executor.pause_trial(trial)
+            self.pause_trial(trial)
         elif decision == TrialScheduler.STOP:
             self.stop_trial(trial)
         elif decision == TrialScheduler.NOOP:
@@ -1323,10 +1325,13 @@ class TrialRunner:
         # Resetting this, in case that the trial is in saving status when it crashes.
         if trial.is_saving:
             trial.saving_to = None
-        if trial.is_restoring:
-            # Restore was unsuccessful, try again without checkpoint.
-            trial.clear_checkpoint()
-        self.trial_executor.stop_trial(trial, error=exc is not None, exc=exc)
+        if trial.is_restoring and exc:
+            exc = _TuneRestoreError(exc)
+        self.trial_executor.stop_trial(
+            trial,
+            error=exc is not None,
+            exc=exc,
+        )
         if self.trial_executor.has_resources_for_trial(trial):
             requeue_trial = False
             logger.info(
@@ -1426,6 +1431,19 @@ class TrialRunner:
         while self._stop_queue:
             t = self._stop_queue.pop()
             self.stop_trial(t)
+
+    def pause_trial(self, trial: Trial, should_checkpoint: bool = True):
+        """Pause a trial and reset the necessary state variables for resuming later.
+
+        Args:
+            trial: Trial to pause.
+            should_checkpoint: Whether or not an in-memory checkpoint should be created
+                for this paused trial. Defaults to True.
+        """
+        # NOTE: The cached trial decision is not needed since we will overrule this
+        # decision with PAUSE.
+        self._cached_trial_decisions.pop(trial.trial_id, None)
+        self.trial_executor.pause_trial(trial, should_checkpoint=should_checkpoint)
 
     def stop_trial(self, trial):
         """The canonical implementation of stopping a trial.
