@@ -2997,18 +2997,21 @@ const std::string NodeManager::CreateOomKillMessageDetails(
         << " The task/actor is not retriable, which can fail the application.";
   }
   std::stringstream oom_kill_details_ss;
-  oom_kill_details_ss
-      << "Memory on the node (IP: " << worker->IpAddress() << ", ID: " << node_id
-      << ") where the task (" << worker->GetIdAsDebugString() << ") was running was "
-      << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
-      << "), which exceeds the memory usage threshold of " << usage_threshold
-      << ". Ray killed this worker (ID: " << worker->WorkerId() << ") to free up memory."
-      << is_retriable_ss.str()
-      << " See documentation for more details about the worker killing policy under "
-         "memory pressure. To see more information about memory usage on this node, use "
-         "`ray logs raylet.out -ip "
-      << worker->IpAddress() << "`. To see the logs of the worker, use `ray logs worker-"
-      << worker->WorkerId() << "*out -ip " << worker->IpAddress() << "`. ";
+  oom_kill_details_ss << "Memory on the node (IP: " << worker->IpAddress()
+                      << ", ID: " << node_id << ") where the task ("
+                      << worker->GetIdAsDebugString() << ") was running was "
+                      << used_bytes_gb << "GB / " << total_bytes_gb << "GB ("
+                      << usage_fraction
+                      << "), which exceeds the memory usage threshold of "
+                      << usage_threshold
+                      << ". Ray killed this worker (ID: " << worker->WorkerId()
+                      << ") to free up memory." << is_retriable_ss.str()
+                      << " To see more information about memory usage on this node, use "
+                         "`ray logs raylet.out -ip "
+                      << worker->IpAddress()
+                      << "`. To see the logs of the worker, use `ray logs worker-"
+                      << worker->WorkerId() << "*out -ip " << worker->IpAddress()
+                      << "`. ";
   /// TODO: (clarng) add a link to the oom killer / memory manager documentation
   return oom_kill_details_ss.str();
 }
