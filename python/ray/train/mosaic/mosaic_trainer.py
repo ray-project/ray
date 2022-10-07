@@ -60,10 +60,72 @@ class MosaicTrainer(TorchTrainer):
     returned by ``MosaicTrainer.fit`` function call.
 
     Example:
-
             .. code-block:: python
-            # Based on https://docs.mosaicml.com/en/v0.9.0/examples/getting_started.html
-            TODO
+            >>>
+            >>> BATCH_SIZE = 1024
+            >>> TRAIN_DURATION = "3ep"
+            >>> def trainer_init_per_worker(**config):
+            ...     model=torchvision.models.resnet18(num_classes=10)
+            ...
+            ...     # prepare the model for distributed training and wrap with
+            ...     # ComposerClassifier for Composer Trainer compatibility
+            ...     model = ComposerClassifier(ray.train.torch.prepare_model(model))
+            ...
+            ...     # torchvision dataset
+            ...     train_dataset = datasets.CIFAR10( ... )
+            ...     test_dataset = datasets.CIFAR10( ... )
+            ...
+            ...     batch_size_per_worker = BATCH_SIZE // session.get_world_size()
+            ...     train_dataloader = torch.utils.data.DataLoader(
+            ...         train_dataset,
+            ...         batch_size=batch_size_per_worker,
+            ...     )
+            ...     test_dataloader = torch.utils.data.DataLoader(
+            ...         test_dataset,
+            ...         batch_size=batch_size_per_worker,
+            ...     )
+            ...
+            ...     # prepare dataloader with ray.train
+            ...     train_dataloader = train.torch.prepare_data_loader(train_dataloader)
+            ...     test_dataloader = train.torch.prepare_data_loader(test_dataloader)
+            ...
+            ...     evaluator = Evaluator(
+            ...          dataloader = test_dataloader,
+            ...          label = 'my_evaluator',
+            ...          metrics = Accuracy()
+            ...     )
+            ...
+            ...     optimizer = composer.optim.DecoupledSGDW(
+            ...         model.parameters(),
+            ...         lr=0.05,
+            ...         momentum=0.9,
+            ...         weight_decay=2.0e-3
+            ...     )
+            ...
+            ...     return composer.trainer.Trainer(
+            ...         model=model,
+            ...         train_dataloader=train_dataloader,
+            ...         eval_dataloader=evaluator,
+            ...         optimizers=optimizer,
+            ...         **config
+            ...     )
+            >>>
+            >>> trainer_init_config = {
+            ...     "max_duration" : TRAIN_DURATION,
+            ...     "loggers" : [InMemoryLogger()],
+            ...     "log_keys":["metrics/my_evaluator/Accuracy"], # evaluation log key
+            ...     "algorithms": [LabelSmoothing(0.1)], # Composer algorithm
+            ... }
+            >>> scaling_config = ScalingConfig(num_workers=2, use_gpu=(DEVICE == "gpu"))
+            >>> trainer = MosaicTrainer(
+            ...     trainer_init_per_worker=trainer_init_per_worker,
+            ...     trainer_init_config=trainer_init_config,
+            ...     scaling_config=scaling_config,
+            ... )
+            >>>
+            >>> ### Run Trainer ###
+            >>> result=trainer.fit()
+
 
     Args:
         trainer_init_per_worker: The function that returns an instantiated
@@ -110,6 +172,8 @@ class MosaicTrainer(TorchTrainer):
                     stored in the cloud, then this must be set to True; otherwise, the
                     trainer will look for a file path saved in the checkpoint from the
                     local machine.
+                ``fit_config`` : arguments that will be passed in to the ``fit`` call
+                    for the composer trainer
         torch_config: Configuration for setting up the PyTorch backend. If set to
             None, use the default configuration. This replaces the ``backend_config``
             arg of ``DataParallelTrainer``. Same as in ``TorchTrainer``.

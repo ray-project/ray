@@ -30,6 +30,17 @@ class MosaicPredictor(TorchPredictor):
         """
         This function creates a TorchPredictor from a saved Composer checkpoint.
 
+        Example:
+                .. code-block:: python
+                >>> result = mosaic_trainer.fit()
+                >>> ds = ray.data.from_items([x.numpy() for x, _ in test_data])
+                >>> predictor = BatchPredictor.from_checkpoint(
+                ...     checkpoint=result.checkpoint,
+                ...     predictor_cls=MosaicPredictor,
+                ...     model=torchvision.models.resnet18(num_classes=10)
+                ... )
+                >>> results = predictor.predict(ds)
+
         Args:
             path: Path to the saved checkpoint object
             model: the model to which the saved checkpoint will be loaded. This
