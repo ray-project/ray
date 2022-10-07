@@ -116,7 +116,7 @@ def run_xgboost_prediction(model_path: str, data_path: str):
 def main(args):
 
     if args.smoke_test:
-        experiment_params = _EXPERIMENT_PARAMS["smoke_tst"]
+        experiment_params = _EXPERIMENT_PARAMS["smoke_test"]
         cpus_per_worker = 1
     else:
         experiment_params = _EXPERIMENT_PARAMS[args.size]
