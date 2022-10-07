@@ -167,7 +167,6 @@ def _setup_redis(request):
     address_str = ",".join(
         map(lambda x: f"{scheme}127.0.0.1:{x}", external_redis_ports)
     )
-    import os
 
     old_addr = os.environ.get("RAY_REDIS_ADDRESS")
     os.environ["RAY_REDIS_ADDRESS"] = address_str

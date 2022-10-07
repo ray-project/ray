@@ -1456,7 +1456,7 @@ def start_gcs_server(
         else:
             if len(parts) != 2 or parts[0] not in ("redis", "rediss"):
                 raise ValueError(f"Invalid redis address {redis_address}")
-            redis_ip_address, redis_port = parts[0].rsplit(":", 1)
+            redis_ip_address, redis_port = parts[1].rsplit(":", 1)
             if parts[0] == "rediss":
                 enable_redis_ssl = "true"
 
