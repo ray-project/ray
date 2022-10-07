@@ -68,7 +68,7 @@ Record = namedtuple("Record", ["gauge", "value", "tags"])
 
 class WorkerProxyExportState:
     def __init__(self):
-        self._last_reported_time = time.time()
+        self._last_reported_time = time.monotonic()
         # view_name
         # -> set of tag_vals tuple that this worker genereated.
         # NOTE: We assume a tuple of tag_vals correspond to a
@@ -84,7 +84,7 @@ class WorkerProxyExportState:
         return self._view_to_owned_tag_vals
 
     def update_last_reported_time(self):
-        self._last_reported_time = time.time()
+        self._last_reported_time = time.monotonic()
 
     def put_tag_vals(self, view_name: str, tag_vals: Tuple[str]):
         self._view_to_owned_tag_vals[view_name].add(tag_vals)
@@ -115,7 +115,7 @@ class MetricsAgent:
         #
 
         # Managing views to export metrics
-        # If the view manager is None, we disable all metrics export.
+        # If the stats_exporter is None, we disable all metrics export.
         self.view_manager = view_manager
         # A class that's used to record metrics
         # emitted from the current process.
@@ -144,8 +144,8 @@ class MetricsAgent:
         #   reported time is bigger than the threashold, we treat
         #   the worker as dead.
         # - If the worker somehow reports metrics again, we starts reporting
-        #   again. But if it stops reporting for a long time, it will be
-        #   eventually marked as dead.
+        #   again. If workers are dead, they will stop reporting, so the dead
+        #   worker metrics will eventually be cleaned up
 
         # {worker_id -> {view_name -> {tag_vals}}}
         # Used to clean up data created from a worker of worker id.
@@ -155,9 +155,10 @@ class MetricsAgent:
         # new metrics (it happens every 2 seconds by default).
         # This value must be longer than the Prometheus
         # scraping interval (10s by default in Ray).
-        self.worker_timeout_s = int(os.getenv(RAY_WORKER_TIMEOUT_S, 60))
+        self.worker_timeout_s = int(os.getenv(RAY_WORKER_TIMEOUT_S, 120))
 
-    def _get_mutable_view_data(self, view_name: str):
+    def _get_mutable_view_data(self, view_name: str) -> ViewData:
+        """Return the current view data for a given view name."""
         assert self._lock.locked()
         return self.view_manager.measure_to_view_map._measure_to_view_data_list_map[
             view_name
@@ -247,7 +248,7 @@ class MetricsAgent:
             for series in timeseries:
                 tag_vals = tuple(val.value for val in series.label_values)
 
-                # If the worker is reported from a worker,
+                # If the metric is reported from a worker,
                 # we update the states accordingly.
                 if worker_id_hex:
                     state = self.worker_id_to_state[worker_id_hex]
@@ -295,7 +296,14 @@ class MetricsAgent:
 
             worker_ids_to_clean = []
             for worker_id_hex, state in self.worker_id_to_state.items():
-                if time.time() - state.last_reported_time > self.worker_timeout_s:
+                elapsed = time.monotonic() - state.last_reported_time
+                if elapsed > self.worker_timeout_s:
+                    logger.info(
+                        "Metrics from a worker ({}) is cleaned up due to "
+                        "timeout. Time since last report {}s".format(
+                            worker_id_hex, elapsed
+                        )
+                    )
                     worker_ids_to_clean.append(worker_id_hex)
 
             for worker_id in worker_ids_to_clean:
@@ -303,9 +311,7 @@ class MetricsAgent:
 
     def _clean_worker_metrics(self, worker_id_hex: str):
         assert self._lock.locked()
-
-        if worker_id_hex not in self.worker_id_to_state:
-            return
+        assert worker_id_hex not in self.worker_id_to_state
 
         state = self.worker_id_to_state[worker_id_hex]
         state.view_to_owned_tag_vals
