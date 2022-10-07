@@ -593,11 +593,11 @@ cdef store_task_errors(
         raise RayActorError.from_task_error(failure_object)
     return num_errors_stored
 
-cdef execute_dynamic_generator_task(
+cdef execute_dynamic_generator_and_store_task_outputs(
         generator,
         const CObjectID &generator_id,
         CTaskType task_type,
-        const c_string serialized_retry_exception_allowlist,
+        const c_string &serialized_retry_exception_allowlist,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
         c_bool *is_retryable_error,
         c_bool *is_application_error,
@@ -946,7 +946,7 @@ cdef execute_task(
                                 "must return a generator")
                     task_exception = True
 
-                    execute_dynamic_generator_task(
+                    execute_dynamic_generator_and_store_task_outputs(
                             outputs,
                             returns[0][0].first,
                             task_type,
