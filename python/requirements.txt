@@ -86,7 +86,7 @@ proxy.py
 pyarrow >= 6.0.1, < 7.0.0
 pygments
 pymongo
-pymongoarrow==0.5.1
+pymongoarrow
 pyspark==3.1.2
 pytest==7.0.1
 pytest-asyncio==0.16.0
