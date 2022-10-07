@@ -50,6 +50,9 @@ Evaluating Trained Policies
 In order to save checkpoints from which to evaluate policies,
 set ``--checkpoint-freq`` (number of training iterations between checkpoints)
 when running ``rllib train``.
+When working with RLlib Algorithms directly (not via ``rllib train``), you can refer to
+`this guide here <rllib-checkpoints-and-exports.html>`__ on how to produce checkpoints and
+restore Algorithms and Policies from them for evaluation.
 
 
 An example of evaluating a previously trained DQN policy is as follows:
@@ -57,11 +60,11 @@ An example of evaluating a previously trained DQN policy is as follows:
 .. code-block:: bash
 
     rllib rollout \
-        ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1 \
+        ~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1 \
         --run DQN --env CartPole-v0 --steps 10000
 
 The ``rollout.py`` helper script reconstructs a DQN policy from the checkpoint
-located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1``
+located in the directory ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/``
 and renders its behavior in the environment specified by ``--env``.
 
 (Type ``rllib rollout --help`` to see the available evaluation options.)
@@ -728,8 +731,8 @@ Here is an example of the basic usage (for a more complete example, see `custom_
        print(pretty_print(result))
 
        if i % 100 == 0:
-           checkpoint = algo.save()
-           print("checkpoint saved at", checkpoint)
+           checkpoint_dir = algo.save()
+           print(f"Checkpoint saved in directory {checkpoint_dir}")
 
     # Also, in case you have trained a model outside of ray/RLlib and have created
     # an h5-file with weight values in it, e.g.
@@ -810,7 +813,8 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
     )
 
 Loading and restoring a trained algorithm from a checkpoint is simple.
-For RLlib checkpoint versions of "v1" or higher, do:
+For RLlib checkpoint versions of >= v1.0 (you can find your checkpoint's version by
+looking into the ``rllib_checkpoint.json`` file inside your checkpoint directory), do:
 
 .. code-block:: python
 
@@ -818,7 +822,7 @@ For RLlib checkpoint versions of "v1" or higher, do:
     algo = Algorithm.from_checkpoint(checkpoint_path)
 
 
-For older RLlib checkpoint versions ("v0" and earlier), you can still restore an algorithm via:
+For older RLlib checkpoint versions (v0.1), you can still restore an algorithm via:
 
 .. code-block:: python
 
