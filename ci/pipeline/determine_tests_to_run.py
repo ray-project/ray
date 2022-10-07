@@ -24,6 +24,10 @@ def list_changed_files(commit_range):
     Returns:
         list: List of changed files within the commit range
     """
+    base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
+    if base_branch:
+        pull_command = ["git", "fetch", "origin", base_branch]
+        subprocess.check_call(pull_command)
 
     command = ["git", "diff", "--name-only", commit_range, "--"]
     out = subprocess.check_output(command)
