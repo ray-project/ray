@@ -385,6 +385,12 @@ def ray_start_object_store_memory(request, maybe_external_redis):
 
 @pytest.fixture
 def call_ray_start(request):
+    with call_ray_start_context(request) as address:
+        yield address
+
+
+@contextmanager
+def call_ray_start_context(request):
     default_cmd = (
         "ray start --head --num-cpus=1 --min-worker-port=0 "
         "--max-worker-port=0 --port 0"
