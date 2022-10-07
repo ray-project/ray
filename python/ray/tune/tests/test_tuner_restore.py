@@ -384,7 +384,8 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir):
     tuner3.fit()
 
 
-def test_retore_retry():
+@pytest.mark.parametrize("retry_num", [0, 1])
+def test_retore_retry(retry_num):
     """Test retrying restore on a trial level."""
 
     class MockTrainable(Trainable):
@@ -420,26 +421,7 @@ def test_retore_retry():
                 self.idx = json.loads(f.read())["idx"]
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        os.environ["TUNE_RESTORE_RETRY_NUM"] = "1"
-        tag_file = os.path.join(temp_dir, "tag")
-        tuner = Tuner(
-            MockTrainable,
-            run_config=RunConfig(
-                name="tryout_restore",
-                stop={"training_iteration": 5},
-                failure_config=FailureConfig(max_failures=1),
-                checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
-            ),
-            param_space={"tag_file_path": tag_file},
-        )
-        # run through success.
-        results = tuner.fit()
-        [result] = list(results)
-        assert result.metrics["score"] == 5
-
-    # Without setting env var, the thing fails.
-    with tempfile.TemporaryDirectory() as temp_dir:
-        os.environ["TUNE_RESTORE_RETRY_NUM"] = "0"
+        os.environ["TUNE_RESTORE_RETRY_NUM"] = str(retry_num)
         tag_file = os.path.join(temp_dir, "tag")
         tuner = Tuner(
             MockTrainable,
@@ -453,7 +435,10 @@ def test_retore_retry():
         )
         results = tuner.fit()
         [result] = list(results)
-        assert result.metrics["score"] == 2
+        if retry_num == 1:
+            assert result.metrics["score"] == 5
+        else:
+            assert result.metrics["score"] == 2
 
 
 @pytest.mark.parametrize(
