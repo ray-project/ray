@@ -40,7 +40,11 @@ from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
+from ray.rllib.policy.sample_batch import (
+    DEFAULT_POLICY_ID,
+    MultiAgentBatch,
+    concat_samples,
+)
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list, merge_dicts
@@ -180,7 +184,6 @@ class RolloutWorker(ParallelIteratorWorker):
         num_cpus: Optional[int] = None,
         num_gpus: Optional[Union[int, float]] = None,
         memory: Optional[int] = None,
-        object_store_memory: Optional[int] = None,
         resources: Optional[dict] = None,
     ) -> type:
         """Returns RolloutWorker class as a `@ray.remote using given options`.
@@ -192,7 +195,6 @@ class RolloutWorker(ParallelIteratorWorker):
             num_gpus: The number of GPUs to allocate for the remote actor.
                 This could be a fraction as well.
             memory: The heap memory request for the remote actor.
-            object_store_memory: The object store memory for the remote actor.
             resources: The default custom resources to allocate for the remote
                 actor.
 
@@ -203,7 +205,6 @@ class RolloutWorker(ParallelIteratorWorker):
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             memory=memory,
-            object_store_memory=object_store_memory,
             resources=resources,
         )(cls)
 
@@ -847,7 +848,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 else batch.agent_steps()
             )
             batches.append(batch)
-        batch = batches[0].concat_samples(batches) if len(batches) > 1 else batches[0]
+        batch = concat_samples(batches)
 
         self.callbacks.on_sample_end(worker=self, samples=batch)
 
