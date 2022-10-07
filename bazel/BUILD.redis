@@ -48,13 +48,8 @@ genrule(
         "redis-cli",
     ],
     cmd = """
-    mkdir tmp-redis-bin
-    cp -rf $(locations :redis) ./tmp-redis-bin/
-    cp tmp-redis-bin/redis-server $(location redis-server)
-    chmod +x $(location redis-server)
-    cp tmp-redis-bin/redis-cli $(location redis-cli)
-    chmod +x $(location redis-cli)
-    rm -rf tmp-redis-bin
+        cp $(RULEDIR)/redis/bin/redis-server $(location redis-server)
+        cp $(RULEDIR)/redis/bin/redis-cli $(location redis-cli)
     """,
     visibility = ["//visibility:public"],
     tags = ["local"],
