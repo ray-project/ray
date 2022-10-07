@@ -339,44 +339,44 @@ def test_autoscaler_cluster_events(shutdown_only):
             cluster_events = list_cluster_events()
             messages = {(e["message"], e["source_type"]) for e in cluster_events}
 
-            assert (":event_summary:Resized to 2 CPUs.", "AUTOSCALER") in messages
+            assert ("Resized to 2 CPUs.", "AUTOSCALER") in messages
             assert (
-                ":event_summary:Adding 1 node(s) of type gpu_node.",
+                "Adding 1 node(s) of type gpu_node.",
                 "AUTOSCALER",
             ) in messages
             assert (
-                ":event_summary:Resized to 4 CPUs, 1 GPUs.",
+                "Resized to 4 CPUs, 1 GPUs.",
                 "AUTOSCALER",
             ) in messages
             assert (
-                ":event_summary:Adding 1 node(s) of type gpu_node.",
+                "Adding 1 node(s) of type gpu_node.",
                 "AUTOSCALER",
             ) in messages
             assert (
-                ":event_summary:Resized to 6 CPUs, 2 GPUs.",
+                "Resized to 6 CPUs, 2 GPUs.",
                 "AUTOSCALER",
             ) in messages
             assert (
-                ":event_summary:Adding 1 node(s) of type cpu_node.",
+                "Adding 1 node(s) of type cpu_node.",
                 "AUTOSCALER",
             ) in messages
             assert (
-                ":event_summary:Resized to 10 CPUs, 2 GPUs.",
+                "Resized to 10 CPUs, 2 GPUs.",
                 "AUTOSCALER",
             ) in messages
             assert (
-                ":event_summary:Adding 1 node(s) of type cpu_node.",
+                "Adding 1 node(s) of type cpu_node.",
                 "AUTOSCALER",
             ) in messages
             assert (
-                ":event_summary:Resized to 14 CPUs, 2 GPUs.",
+                "Resized to 14 CPUs, 2 GPUs.",
                 "AUTOSCALER",
             ) in messages
             assert (
                 (
-                    ":event_summary:Error: No available node types can fulfill "
-                    "resource request {'GPU': 5.0, 'CPU': 3.0}. Add suitable "
-                    "node types to this cluster to resolve this issue."
+                    "Error: No available node types can fulfill resource "
+                    "request {'CPU': 3.0, 'GPU': 5.0}. Add suitable node "
+                    "types to this cluster to resolve this issue."
                 ),
                 "AUTOSCALER",
             ) in messages
