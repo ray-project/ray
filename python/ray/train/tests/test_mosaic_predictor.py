@@ -1,6 +1,5 @@
 import pytest
-from typing import Tuple
-import pandas as pd
+import os
 import numpy as np
 
 # torch libraries
@@ -9,27 +8,23 @@ import torch.utils.data
 
 # torchvision libraries
 import torchvision
-from torchvision import transforms
+from torchvision import transforms, datasets
 
 # Import Ray libraries
 import ray
-from ray.data.datasource import SimpleTorchDatasource
 from ray.air.config import ScalingConfig
+import ray.train as train
+from ray.air import session
+from ray.train.batch_predictor import BatchPredictor
 
 # import ray-mosaic integration libraries
 from ray.train.mosaic import MosaicTrainer
 from ray.train.mosaic import MosaicPredictor
 
 # import composer training libraries
-from torchmetrics.classification.accuracy import Accuracy
-from composer.core.evaluator import Evaluator
 from composer.models.tasks import ComposerClassifier
 import composer.optim
-from ray.train.batch_predictor import BatchPredictor
-from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
 
-
-BATCH_SIZE = 1024
 
 @pytest.fixture(autouse=True, scope="session")
 def ray_start_8_cpus():
@@ -39,49 +34,43 @@ def ray_start_8_cpus():
     ray.shutdown()
 
 
-@pytest.fixture(autouse=True, scope="module")
-def prepare_dataset():
-    transform = transforms.Compose(
-        [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
-    )
+mean = (0.507, 0.487, 0.441)
+std = (0.267, 0.256, 0.276)
+cifar10_transforms = transforms.Compose(
+    [transforms.ToTensor(), transforms.Normalize(mean, std)]
+)
+# data_directory = "./data" ## TODO : remove the following line
+data_directory = "~/Desktop/workspace/data"
+train_dataset = datasets.CIFAR10(
+    data_directory, train=True, download=True, transform=cifar10_transforms
+)
+test_dataset = datasets.CIFAR10(
+    data_directory, train=False, download=True, transform=cifar10_transforms
+)
 
-    def train_dataset_factory():
-        return torchvision.datasets.CIFAR10(
-            root="./data", download=True, train=True, transform=transform
-        )
+test_images = [x.numpy() for x, _ in test_dataset]
 
-    def test_dataset_factory():
-        return torchvision.datasets.CIFAR10(
-            root="./data", download=True, train=False, transform=transform
-        )
+scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
 
-    train_dataset_raw: ray.data.Dataset = ray.data.read_datasource(
-        SimpleTorchDatasource(), dataset_factory=train_dataset_factory
-    )
-    test_dataset_raw: ray.data.Dataset = ray.data.read_datasource(
-        SimpleTorchDatasource(), dataset_factory=test_dataset_factory
-    )
 
-    # Map into pandas
-    def convert_batch_to_pandas(batch: Tuple[torch.Tensor, int]) -> pd.DataFrame:
-        images = [image.numpy() for image, _ in batch]
-        labels = [label for _, label in batch]
-        return pd.DataFrame({"image": images, "label": labels}).head(10)
-
-    global train_dataset
-    train_dataset = train_dataset_raw.map_batches(convert_batch_to_pandas)
-    global test_dataset
-    test_dataset = test_dataset_raw.map_batches(convert_batch_to_pandas)
-
-scaling_config = ScalingConfig(num_workers=6, use_gpu=False)
-
-def trainer_init_per_worker(train_dataset, eval_dataset=None, **config):
-    model = config.pop("model", torchvision.models.resnet18(num_classes=10))
-
+def trainer_init_per_worker(**config):
+    BATCH_SIZE = 1024
     # prepare the model for distributed training and wrap with ComposerClassifier for
     # Composer Trainer compatibility
+    model = config.pop("model", torchvision.models.resnet18(num_classes=10))
     model = ComposerClassifier(ray.train.torch.prepare_model(model))
 
+    # prepare train/test dataset
+    train_dataset = config.pop("train_dataset")
+
+    batch_size_per_worker = BATCH_SIZE // session.get_world_size()
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=batch_size_per_worker, shuffle=True
+    )
+
+    train_dataloader = train.torch.prepare_data_loader(train_dataloader)
+
+    # prepare optimizer
     optimizer = composer.optim.DecoupledSGDW(
         model.parameters(),
         lr=0.05,
@@ -89,73 +78,71 @@ def trainer_init_per_worker(train_dataset, eval_dataset=None, **config):
         weight_decay=2.0e-3,
     )
 
-    lr_scheduler = composer.optim.LinearWithWarmupScheduler(
-        t_warmup="1ep",
-        alpha_i=1.0,
-        alpha_f=1.0,
-    )
-
-    evaluator = Evaluator(
-        dataloader=eval_dataset, label="my_evaluator", metrics=Accuracy()
-    )
-
     return composer.trainer.Trainer(
-        model=model,
-        train_dataloader=train_dataset,
-        eval_dataloader=evaluator,
-        optimizers=optimizer,
-        schedulers=lr_scheduler,
-        **config
+        model=model, train_dataloader=train_dataloader, optimizers=optimizer, **config
     )
+
+
+trainer_init_per_worker.__test__ = False
+
 
 def convert_logits_to_classes(df):
     best_class = df["predictions"].map(lambda x: x.argmax())
     df["prediction"] = best_class
     return df
 
+
 def calculate_prediction_scores(df):
     df["correct"] = df["prediction"] == df["label"]
     return df[["prediction", "label", "correct"]]
 
-def get_prediction_scores(predictor):
+
+def get_prediction(predictor, input):
+    return predictor.predict(input)
+
+
+def get_prediction_scores(predictor, input):
     # make predictions
-    outputs = predictor.predict(
-        data=test_dataset, dtype=torch.float, feature_columns=["image"], keep_columns=["label"]
-    )
+    outputs = get_prediction(predictor, input)
+    predictions = outputs.map_batches(convert_logits_to_classes, batch_format="pandas")
 
-    predictions = outputs.map_batches(
-        convert_logits_to_classes, batch_format="pandas"
-    )
+    # add label column
+    prediction_df = predictions.to_pandas()
+    prediction_df["label"] = [y for _, y in test_dataset]
+    predictions = ray.data.from_pandas(prediction_df)
 
-    # get scores from the prediction
+    # score prediction
     scores = predictions.map_batches(calculate_prediction_scores)
-    
+
     return scores.sum(on="correct") / scores.count()
+
 
 trainer_init_per_worker.__test__ = False
 convert_logits_to_classes.__test__ = False
 calculate_prediction_scores.__test__ = False
+get_prediction.__test__ = False
 get_prediction_scores.__test__ = False
 
-tested_models = [
-    torchvision.models.resnet18(num_classes=10),
-]
 
+class TestResnet:
+    """
+    Test making predictions with MosaicPredictor for Resnet
+    """
 
-@pytest.mark.parametrize('model', tested_models, scope="session")
-class TestResnet():
+    @pytest.fixture(scope="class")
+    def model(self):
+        return torchvision.models.resnet18(num_classes=10)
+
     @pytest.fixture(scope="class")
     def train_model(self, model):
         trainer_init_config = {
-            "model" : model,
-            "batch_size": BATCH_SIZE,
-            "max_duration": "1ep",
-            "labels": ["image", "label"],
+            "model": model,
+            "max_duration": "1ba",
+            "train_dataset": train_dataset,
         }
 
         trainer = MosaicTrainer(
             trainer_init_per_worker=trainer_init_per_worker,
-            datasets={"train": train_dataset, "evaluation": test_dataset},
             trainer_init_config=trainer_init_config,
             scaling_config=scaling_config,
         )
@@ -163,27 +150,51 @@ class TestResnet():
         result = trainer.fit()
         return result
 
-    def test_predict(self,model, train_model):
+    def test_predict(self, model, train_model):
+        """
+        Basic prediction using MosaicPredictor, for which the model is loaded from save
+        path.
+        """
         checkpoint_dict = train_model.checkpoint.to_dict()
-
-        predictor = MosaicPredictor.from_save_path(
-            checkpoint_dict["last_checkpoint"][-1],
-            model=model
+        save_path = os.path.join(
+            checkpoint_dict["working_directory"], checkpoint_dict["all_checkpoints"][-1]
         )
 
-        test_batch = np.array(next(test_dataset.iter_torch_batches())["image"])
-        _ = predictor.predict(data=test_batch, dtype=torch.float)
+        predictor = MosaicPredictor.from_save_path(save_path, model=model)
 
-    def test_batch_predict(self,model, train_model):
+        test_batch = np.array(test_images)
+        _ = get_prediction(predictor, test_batch)
+
+    def test_batch_predict(self, model, train_model):
+        """
+        Use BatchPredictor to make predictions
+        """
         predictor = BatchPredictor.from_checkpoint(
             checkpoint=train_model.checkpoint,
             predictor_cls=MosaicPredictor,
-            model=model
+            model=model,
         )
 
-        _ = get_prediction_scores(predictor)
+        test_input = ray.data.from_items(test_images)
+
+        _ = get_prediction(predictor, test_input)
+
+    def test_batch_predict_and_score(self, model, train_model):
+        """
+        Use BatchPredictor to make predictions and get scores
+        """
+        predictor = BatchPredictor.from_checkpoint(
+            checkpoint=train_model.checkpoint,
+            predictor_cls=MosaicPredictor,
+            model=model,
+        )
+
+        test_input = ray.data.from_items(test_images)
+
+        _ = get_prediction_scores(predictor, test_input)
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-x", __file__]))
