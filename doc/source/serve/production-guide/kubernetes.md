@@ -50,7 +50,7 @@ Once the KubeRay controller is running, you can manage your Ray Serve applicatio
 - a Ray Serve [config](serve-in-production-config-file) defining the Serve application to run on the cluster.
 
 :::{tip}
-You can use the `--kubernetes-format`/`-k` with `serve build` flag to print the Serve config in a format that's compatible with [KubeRay](serve-in-production-kubernetes). You can paste this config into the `RayService` CR.
+You can use the `--kubernetes-format`/`-k` flag with `serve build` to print the Serve config in a format that can be copy-pasted directly into your [Kubernetes config](serve-in-production-kubernetes). You can paste this config into the `RayService` CR.
 :::
 
 When the `RayService` is created, the `KubeRay` controller first creates a Ray cluster using the provided configuration.
