@@ -19,3 +19,4 @@ This section is a collection of common design patterns and anti-patterns for wri
     redefine-task-actor-loop
     pass-large-arg-by-value
     closure-capture-large-objects
+    global-variables
