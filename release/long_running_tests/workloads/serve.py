@@ -13,7 +13,7 @@ from ray.cluster_utils import Cluster
 
 # Global variables / constants appear only right after imports.
 # Ray serve deployment setup constants
-NUM_REPLICAS = 7
+NUM_REPLICAS = 14
 MAX_BATCH_SIZE = 16
 
 # Cluster setup constants
@@ -27,7 +27,7 @@ NUM_CONNECTIONS = int(NUM_REPLICAS * MAX_BATCH_SIZE * 0.75)
 NUM_THREADS = 2
 # Append and print every 5mins for quick status polling as well
 # as time series plotting
-TIME_PER_CYCLE = "5m"
+TIME_PER_CYCLE = "1m"
 
 
 def update_progress(result):
@@ -48,6 +48,7 @@ for i in range(NUM_NODES):
     cluster.add_node(
         redis_port=6379 if i == 0 else None,
         num_redis_shards=NUM_REDIS_SHARDS if i == 0 else None,
+        dashboard_agent_listen_port=(52365 + i),
         num_cpus=8,
         num_gpus=0,
         resources={str(i): 2},
@@ -56,7 +57,7 @@ for i in range(NUM_NODES):
         dashboard_host="0.0.0.0",
     )
 
-ray.init(address=cluster.address, dashboard_host="0.0.0.0")
+ray.init(address=cluster.address, log_to_driver=False, dashboard_host="0.0.0.0")
 serve.start()
 
 
@@ -101,7 +102,13 @@ while True:
     )
     proc.wait()
     out, err = proc.communicate()
-
+    # Check if command succeeded
+    if proc.returncode != 0:
+        print("wrk failed with the following error: ")
+        print(err)
+        print("Will try again in 5 seconds")
+        time.sleep(5)
+        continue
     # Sample wrk stdout:
     #
     # Running 10s test @ http://127.0.0.1:8000/echo
