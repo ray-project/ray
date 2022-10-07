@@ -496,7 +496,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_node_cpu_utilization{instance=~\"$Instance\"} * ray_node_cpu_count{instance=~\"$Instance\"} / 100",
+          "expr": "ray_node_cpu_utilization{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} * ray_node_cpu_count{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} / 100",
           "instant": false,
           "interval": "",
           "legendFormat": "CPU Usage: {{instance}}",
