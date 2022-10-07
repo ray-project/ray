@@ -135,7 +135,7 @@ class Monitor:
         self,
         address: str,
         autoscaling_config: Union[str, Callable[[], Dict[str, Any]]],
-        log_dir: str,
+        log_dir: str = None,
         redis_password: Optional[str] = None,
         prefix_cluster_info: bool = False,
         monitor_ip: Optional[str] = None,
@@ -184,11 +184,15 @@ class Monitor:
         # If set, we are in a manually created cluster (non-autoscaling) and
         # simply mirroring what the GCS tells us the cluster node types are.
         self.readonly_config = None
-        try:
-            self.event_logger = get_event_logger(
-                RayEvent.SourceType.AUTOSCALER, log_dir
-            )
-        except Exception:
+
+        if log_dir:
+            try:
+                self.event_logger = get_event_logger(
+                    RayEvent.SourceType.AUTOSCALER, log_dir
+                )
+            except Exception:
+                self.event_logger = None
+        else:
             self.event_logger = None
 
         self.prom_metrics = AutoscalerPrometheusMetrics()

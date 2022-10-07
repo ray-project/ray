@@ -383,7 +383,7 @@ def test_autoscaler_cluster_events(shutdown_only):
 
             return True
 
-        wait_for_condition(verify)
+        wait_for_condition(verify, timeout=30)
     finally:
         ray.shutdown()
         cluster.shutdown()
