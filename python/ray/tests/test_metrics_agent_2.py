@@ -1,5 +1,6 @@
 import os
 import time
+import sys
 
 import pytest
 
@@ -100,6 +101,7 @@ def get_agent(request, monkeypatch):
         execution_context.set_measure_to_view_map({})
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_metrics_agent_record_and_export(get_agent):
     namespace = "test"
     agent, agent_port = get_agent
@@ -162,6 +164,7 @@ def test_metrics_agent_record_and_export(get_agent):
     assert samples[0].labels == {"tag": "a"}
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_metrics_agent_proxy_record_and_export_basic(get_agent):
     """Test the case the metrics are exported without worker_id."""
     namespace = "test"
@@ -207,6 +210,7 @@ def test_metrics_agent_proxy_record_and_export_basic(get_agent):
     assert samples[1].value == 5
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_metrics_agent_proxy_record_and_export_from_workers(get_agent):
     """
     Test the basic worker death case.
@@ -233,6 +237,7 @@ def test_metrics_agent_proxy_record_and_export_from_workers(get_agent):
     assert get_metric(f"{namespace}_test", agent_port) is None
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_metrics_agent_proxy_record_and_export_from_workers_complicated(
     get_agent,
 ):  # noqa
@@ -298,6 +303,7 @@ def test_metrics_agent_proxy_record_and_export_from_workers_complicated(
 DELAY = 3
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize("get_agent", [DELAY], indirect=True)
 def test_metrics_agent_proxy_record_and_export_from_workers_delay(get_agent):  # noqa
     """
