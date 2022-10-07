@@ -1487,3 +1487,7 @@ class Node:
                 "redis" if os.environ.get("RAY_REDIS_ADDRESS") is not None else "memory"
             )
             record_extra_usage_tag(TagKey.GCS_STORAGE, gcs_storage_type)
+            record_extra_usage_tag(TagKey.MEMORY_MONITOR_ENABLED,
+                ray._raylet.Config.memory_monitor_interval_ms())
+
+

@@ -2117,15 +2117,6 @@ def connect(
             _setup_tracing()
             ray.__traced__ = True
 
-    # import here since record_extra_usage_tag depends on ray._private.worker
-    # that is initialized here.
-    from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-
-    record_extra_usage_tag(
-        TagKey.MEMORY_MONITOR_ENABLED,
-        "true" if ray._raylet.Config.memory_monitor_interval_ms() > 0 else "false",
-    )
-
 
 def disconnect(exiting_interpreter=False):
     """Disconnect this worker from the raylet and object store."""
