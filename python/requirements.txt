@@ -57,7 +57,7 @@ aiorwlock
 opentelemetry-exporter-otlp==1.1.0
 starlette
 typer
-pyarrow<7.0.0,>=6.0.1
+pyarrow>=6.0.1
 aiohttp_cors
 opentelemetry-api==1.1.0
 pyyaml

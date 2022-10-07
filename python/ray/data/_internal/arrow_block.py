@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.sort import SortKeyT
 
+
 T = TypeVar("T")
 
 
@@ -169,7 +170,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def _build_tensor_row(row: ArrowRow) -> np.ndarray:
         return row[VALUE_COL_NAME][0]
 
-    def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
+    def slice(self, start: int, end: int, copy: bool = False) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
         if copy:
             view = _copy_table(view)
@@ -212,10 +213,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
         arrays = []
         for column in columns:
             array = self._table[column]
-            if array.num_chunks == 0:
-                array = pyarrow.array([], type=array.type)
-            elif _is_column_extension_type(array):
+            if _is_column_extension_type(array):
                 array = _concatenate_extension_column(array)
+            elif array.num_chunks == 0:
+                array = pyarrow.array([], type=array.type)
             else:
                 array = array.combine_chunks()
             arrays.append(array.to_numpy(zero_copy_only=False))
@@ -399,11 +400,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
             bounds = np.searchsorted(table[col], boundaries)
         last_idx = 0
         for idx in bounds:
-            # Slices need to be copied to avoid including the base table
-            # during serialization.
-            partitions.append(_copy_table(table.slice(last_idx, idx - last_idx)))
+            partitions.append(table.slice(last_idx, idx - last_idx))
             last_idx = idx
-        partitions.append(_copy_table(table.slice(last_idx)))
+        partitions.append(table.slice(last_idx))
         return partitions
 
     def combine(self, key: KeyFn, aggs: Tuple[AggregateFn]) -> Block[ArrowRow]:
@@ -449,7 +448,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                         except StopIteration:
                             next_row = None
                             break
-                    yield next_key, self.slice(start, end, copy=False)
+                    yield next_key, self.slice(start, end)
                     start = end
                 except StopIteration:
                     break
