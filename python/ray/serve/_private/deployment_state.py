@@ -51,9 +51,9 @@ from ray.serve._private.utils import (
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
 
-
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.util import metrics
 from ray._private.gcs_utils import GcsClient
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -983,6 +983,24 @@ class DeploymentState:
             self._name, DeploymentStatus.UPDATING
         )
 
+        self.health_check_success_counter = metrics.Counter(
+            "serve_deployment_health_check_successes",
+            description=(
+                "The number of replica health checks that succeeded on this deployment."
+            ),
+            tag_keys=("deployment"),
+        )
+        self.health_check_success_counter.set_default_tags({"deployment": self._name})
+
+        self.health_check_failure_counter = metrics.Counter(
+            "serve_deployment_health_check_failures",
+            description=(
+                "The number of replica health checks that failed on this deployment."
+            ),
+            tag_keys=("deployment"),
+        )
+        self.health_check_failure_counter.set_default_tags({"deployment": self._name})
+
     def should_autoscale(self) -> bool:
         """
         Check if the deployment is under autoscaling
@@ -1489,12 +1507,14 @@ class DeploymentState:
         for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
             if replica.check_health():
                 self._replicas.add(ReplicaState.RUNNING, replica)
+                self.health_check_success_counter.inc()
             else:
                 running_replicas_changed = True
                 logger.warning(
                     f"Replica {replica.replica_tag} of deployment "
                     f"{self._name} failed health check, stopping it."
                 )
+                self.health_check_failure_counter.inc()
                 replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)
                 # If this is a replica of the target version, the deployment
