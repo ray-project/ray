@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import tune
+from ray.air import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.tune import Trainable
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
@@ -856,8 +857,10 @@ class _MockTrial(Trial):
         self.custom_dirname = None
         self._default_result_or_future = None
         self.checkpoint_manager = _CheckpointManager(
-            keep_checkpoints_num=2,
-            checkpoint_score_attr="episode_reward_mean",
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=2,
+                checkpoint_score_attribute="episode_reward_mean",
+            ),
             delete_fn=lambda c: None,
         )
 
