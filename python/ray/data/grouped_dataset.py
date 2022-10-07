@@ -320,7 +320,7 @@ class GroupedDataset(Generic[T]):
             builder = block_accessor.builder()
             start = 0
             for end in boundaries:
-                group = block_accessor.slice(start, end)
+                group = block_accessor.slice(start, end, False)
                 applied = fn(group)
                 builder.add_block(applied)
                 start = end
