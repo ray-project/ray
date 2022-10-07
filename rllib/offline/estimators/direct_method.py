@@ -14,7 +14,7 @@ logger = logging.getLogger()
 
 @DeveloperAPI
 class DirectMethod(OffPolicyEstimator):
-    """The Direct Method estimator.
+    r"""The Direct Method estimator.
 
     Let s_t, a_t, and r_t be the state, action, and reward at timestep t.
 

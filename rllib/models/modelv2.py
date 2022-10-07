@@ -22,7 +22,7 @@ torch, _ = try_import_torch()
 
 @PublicAPI
 class ModelV2:
-    """Defines an abstract neural network model for use with RLlib.
+    r"""Defines an abstract neural network model for use with RLlib.
 
     Custom models should extend either TFModelV2 or TorchModelV2 instead of
     this class directly.
