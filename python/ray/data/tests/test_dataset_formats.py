@@ -414,6 +414,7 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
 def start_mongo():
     import subprocess
 
+    subprocess.run(["sudo", "apt-get", "install", "mongodb"])
     subprocess.run(["sudo", "rm", "/var/lib/mongodb/mongod.lock"])
     subprocess.run(["sudo", "service", "mongodb", " start"])
     yield "mongodb://localhost:27017"
