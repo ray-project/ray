@@ -680,6 +680,16 @@ RAY_CONFIG(std::string, TLS_SERVER_CERT, "")
 RAY_CONFIG(std::string, TLS_SERVER_KEY, "")
 RAY_CONFIG(std::string, TLS_CA_CERT, "")
 
+/// Location of Redis TLS credentials
+/// https://github.com/redis/hiredis/blob/c78d0926bf169670d15cfc1214e4f5d21673396b/README.md#hiredis-openssl-wrappers
+RAY_CONFIG(bool, REDIS_ENABLE_SSL, false)
+RAY_CONFIG(std::string, REDIS_CA_CERT, "")
+RAY_CONFIG(std::string, REDIS_CA_PATH, "")
+
+RAY_CONFIG(std::string, REDIS_CLIENT_CERT, "")
+RAY_CONFIG(std::string, REDIS_CLIENT_KEY, "")
+RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
+
 /// grpc delay testing flags
 ///  To use this, simply do
 ///      export RAY_testing_asio_delay_us="method1=min_val:max_val,method2=20:100"

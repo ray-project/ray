@@ -24,6 +24,7 @@ import psutil  # We must import psutil after ray because we bundle it with ray.
 from ray._private import (
     ray_constants,
 )
+from ray._private.worker import RayContext
 import yaml
 from grpc._channel import _InactiveRpcError
 
@@ -834,6 +835,20 @@ def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
     for sample in samples:
         samples_by_name[sample.name].append(sample)
     return samples_by_name
+
+
+def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
+    """Return prometheus metrics from a RayContext
+
+    Args:
+        info: Ray context returned from ray.init()
+
+    Returns:
+        Dict from metric name to a list of samples for the metrics
+    """
+    metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
+    print("Fetch metrics from", metrics_page)
+    return fetch_prometheus_metrics([metrics_page])
 
 
 def load_test_config(config_file_name):

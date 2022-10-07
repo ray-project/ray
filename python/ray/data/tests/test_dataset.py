@@ -2713,34 +2713,6 @@ def test_map_batches_batch_mutation(
     assert [row["value"] for row in ds.iter_rows()] == list(range(1, num_rows + 1))
 
 
-@pytest.mark.parametrize(
-    "num_rows,num_blocks,batch_size",
-    [
-        (10, 5, 2),
-        (10, 1, 10),
-        (12, 3, 2),
-    ],
-)
-def test_map_batches_batch_zero_copy(
-    ray_start_regular_shared, num_rows, num_blocks, batch_size
-):
-    # Test that batches are zero-copy read-only views when allow_mutate_batch=False.
-    def mutate(df):
-        # Check that batch is read-only.
-        assert not df.values.flags.writeable
-        df["value"] += 1
-        return df
-
-    ds = ray.data.range_table(num_rows, parallelism=num_blocks).repartition(num_blocks)
-    # Convert to Pandas blocks.
-    ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
-
-    # Apply UDF that mutates the batches, which should fail since the batch is
-    # read-only.
-    with pytest.raises(ValueError, match="tried to mutate a zero-copy read-only batch"):
-        ds.map_batches(mutate, batch_size=batch_size, allow_mutate_batch=False)
-
-
 BLOCK_BUNDLING_TEST_CASES = [
     (block_size, batch_size)
     for batch_size in range(1, 8)
@@ -2823,6 +2795,28 @@ def test_map_batches_block_bundling_skewed_auto(
 
     # Blocks should be bundled up to the batch size.
     assert ds.num_blocks() == num_out_blocks
+
+
+def test_map_with_mismatched_columns(ray_start_regular_shared):
+    def bad_fn(row):
+        if row > 5:
+            return {"a": "hello1"}
+        else:
+            return {"b": "hello1"}
+
+    def good_fn(row):
+        if row > 5:
+            return {"a": "hello1", "b": "hello2"}
+        else:
+            return {"b": "hello2", "a": "hello1"}
+
+    ds = ray.data.range(10, parallelism=1)
+    error_message = "Current row has different columns compared to previous rows."
+    with pytest.raises(ValueError) as e:
+        ds.map(bad_fn)
+    assert error_message in str(e.value)
+    ds_map = ds.map(good_fn)
+    assert ds_map.take() == [{"a": "hello1", "b": "hello2"} for _ in range(10)]
 
 
 def test_union(ray_start_regular_shared):
