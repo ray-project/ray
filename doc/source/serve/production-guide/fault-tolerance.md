@@ -44,7 +44,7 @@ You **must** deploy your Serve application with [KubeRay] to use this feature.
 See Serve's [Kubernetes production guide](serve-in-production-kubernetes) to learn how you can deploy your app with KubeRay.
 :::
 
-By default, Serve can recover from certain failures, such as unhealthy actors. When [Serve runs on Kubernetes](serve-in-production-kubernetes) with [KubeRay], it can also recover from some cluster-level failures, such as dead worker or head nodes.
+By default, Serve can recover from certain failures, such as unhealthy actors. When [Serve runs on Kubernetes](serve-in-production-kubernetes) with [KubeRay], it can also recover from some cluster-level failures, such as dead workers or head nodes.
 
 When a worker node fails, the actors running on it also fail. Serve detects that the actors have failed, and it attempts to respawn the actors on the remaining, healthy nodes. Meanwhile, KubeRay detects that the node itself has failed, so it attempts to restart the worker pod on another running node, and it also brings up a new healthy node to replace it. Once the node comes up, if the pod is still pending, it can be restarted on that node. Similarly, Serve can also respawn any pending actors on that node as well. The deployment replicas running on healthy nodes can continue serving traffic throughout the recovery period.
 
@@ -74,7 +74,7 @@ Below, we explain how to do each of these.
 
 GCS fault tolerance requires an external Redis database. You can choose to host your own Redis database, or you can use one through a third-party vendor. We recommend using a highly-available Redis database for resiliency.
 
-**For development puposes**, you can also host a small Redis database on the same Kubernetes cluster as your Ray cluster. For example, you can add a 1-node Redis cluster by prepending these three Redis objects to your Kubernetes YAML:
+**For development purposes**, you can also host a small Redis database on the same Kubernetes cluster as your Ray cluster. For example, you can add a 1-node Redis cluster by prepending these three Redis objects to your Kubernetes YAML:
 
 (one-node-redis-example)=
 ```YAML
@@ -228,7 +228,7 @@ spec:
 
 `RAY_REDIS_ADDRESS`'s value should be your Redis database's `redis://` address. It should contain your Redis database's host and port. An [example Redis address](https://www.iana.org/assignments/uri-schemes/prov/rediss) is `redis://user:secret@localhost:6379/0?foo=bar&qux=baz`.
 
-In the example above, the Redis deployment name (`redis`) is the host within the Kubernetes cluster, and the Redis port is `6379`. The example is compatible with last section's [example config](one-node-redis-example).
+In the example above, the Redis deployment name (`redis`) is the host within the Kubernetes cluster, and the Redis port is `6379`. The example is compatible with the previous section's [example config](one-node-redis-example).
 
 After you apply the Redis objects along with your updated `RayService`, your Ray cluster can recover from head node crashes without restarting all the workers!
 
@@ -321,7 +321,7 @@ $ curl localhost:8000
 385
 ```
 
-Now you can simulate worker failues. You have two options: kill a worker pod or kill a worker node. Let's start with the worker pod. Make sure to kill the pod that you're **not** port-forwarding to, so you can continue querying the living worker while the other one relaunches.
+Now you can simulate worker failures. You have two options: kill a worker pod or kill a worker node. Let's start with the worker pod. Make sure to kill the pod that you're **not** port-forwarding to, so you can continue querying the living worker while the other one relaunches.
 
 ```console
 $ kubectl delete pod ervice-sample-raycluster-thwmr-worker-small-group-pztzk
