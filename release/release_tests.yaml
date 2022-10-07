@@ -1737,7 +1737,7 @@
     cluster_compute: gpu_tpl.yaml
 
   run:
-    timeout: 3600
+    timeout: 1800
     script: python workloads/torch_tune_serve_test.py
     type: client
 

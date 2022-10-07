@@ -15,6 +15,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from filelock import FileLock
 from ray import serve, tune, train
+from ray.tune.utils.node import _force_on_current_node
 from ray.train.torch import TorchTrainer, TorchCheckpoint
 from ray.tune import Tuner
 from torch.utils.data import DataLoader, Subset
@@ -132,6 +133,27 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
     return tuner.fit()
 
 
+def get_remote_model(remote_model_checkpoint_path):
+    if ray.util.client.ray.is_connected():
+        remote_load = ray.remote(get_model)
+        remote_load = _force_on_current_node(remote_load)
+        return ray.get(remote_load.remote(remote_model_checkpoint_path))
+    else:
+        get_best_model_remote = ray.remote(get_model)
+        return ray.get(get_best_model_remote.remote(remote_model_checkpoint_path))
+
+
+def get_model(model_checkpoint_path):
+    checkpoint_dict = TorchCheckpoint.from_directory(model_checkpoint_path)
+    model_state = checkpoint_dict.to_dict()["model"]
+
+    model = resnet18()
+    model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=3, bias=False)
+    model.load_state_dict(model_state)
+
+    return model
+
+
 @serve.deployment(name="mnist", route_prefix="/mnist")
 class MnistDeployment:
     def __init__(self, model):
@@ -243,19 +265,19 @@ if __name__ == "__main__":
     if addr is not None and addr.startswith("anyscale://"):
         client = ray.init(address=addr, job_name=job_name)
     else:
-        client = ray.init(address="auto")
+        client = ray.init()
 
     num_workers = 2
     use_gpu = not args.smoke_test
 
     print("Training model.")
-    result_grid = train_mnist(args.smoke_test, num_workers, use_gpu)
+    analysis = train_mnist(args.smoke_test, num_workers, use_gpu)._experiment_analysis
 
     print("Retrieving best model.")
-    best_checkpoint = result_grid.get_best_result().checkpoint
-    model = resnet18()
-    model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=3, bias=False)
-    model = best_checkpoint.get_model(model)
+    best_checkpoint_path = analysis.get_best_checkpoint(
+        analysis.best_trial, return_path=True
+    )
+    model = get_remote_model(best_checkpoint_path)
 
     print("Setting up Serve.")
     setup_serve(model, use_gpu)
