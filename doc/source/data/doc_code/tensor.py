@@ -496,3 +496,35 @@ read_ds = ray.data.read_numpy("/tmp/some_path")
 print(read_ds.schema())
 # -> __value__: extension<arrow.py_extension_type<ArrowTensorType>>
 # __write_2_end__
+
+# fmt: off
+# __create_variable_shaped_tensors_begin___
+# Create a Dataset of variable-shaped tensors.
+arr = np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object)
+ds = ray.data.from_numpy([arr, arr])
+# -> Dataset(num_blocks=2, num_rows=4,
+#            schema={__value__: ArrowVariableShapedTensorType(dtype=double)})
+
+ds.take(2)
+# -> [array([[1., 1.],
+#            [1., 1.]]),
+#     array([[1., 1., 1.],
+#            [1., 1., 1.],
+#            [1., 1., 1.]])]
+# __create_variable_shaped_tensors_end__
+
+# fmt: off
+# __tf_variable_shaped_tensors_begin___
+# Convert Ray Dataset to a TensorFlow Dataset.
+tf_ds = ds.to_tf(
+    batch_size=2,
+    output_signature=tf.RaggedTensorSpec(shape=(None, None, None), dtype=tf.float64),
+)
+# Iterate through the tf.RaggedTensors.
+for ragged_tensor in tf_ds:
+    print(ragged_tensor)
+# -> <tf.RaggedTensor [[[1.0, 1.0], [1.0, 1.0]],
+#     [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]>
+#    <tf.RaggedTensor [[[1.0, 1.0], [1.0, 1.0]],
+#     [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]>
+# __tf_variable_shaped_tensors_end__

@@ -49,8 +49,10 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
               // Copy the actor's reply to the GCS for ref counting purposes.
               rpc::PushTaskReply push_task_reply;
               push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
-              task_finisher_->CompletePendingTask(
-                  task_id, push_task_reply, reply.actor_address());
+              task_finisher_->CompletePendingTask(task_id,
+                                                  push_task_reply,
+                                                  reply.actor_address(),
+                                                  /*is_application_error=*/false);
             } else {
               rpc::RayErrorInfo ray_error_info;
               if (status.IsSchedulingCancelled()) {
@@ -613,7 +615,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           if (!task_spec.GetMessage().retry_exceptions() || !reply.is_retryable_error() ||
               !task_finisher_->RetryTaskIfPossible(task_id,
                                                    /*task_failed_due_to_oom*/ false)) {
-            task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
+            task_finisher_->CompletePendingTask(
+                task_id, reply, addr.ToProto(), reply.is_application_error());
           }
         }
       });

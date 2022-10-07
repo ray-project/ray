@@ -190,7 +190,7 @@ parts:
                   - file: serve/production-guide/rest-api
                   - file: serve/production-guide/kubernetes
                   - file: serve/production-guide/monitoring
-                  - file: serve/production-guide/failures
+                  - file: serve/production-guide/fault-tolerance
               - file: serve/performance
               - file: serve/handling-dependencies
               - file: serve/managing-java-deployments
@@ -263,6 +263,7 @@ parts:
           - file: ray-core/examples/highly_parallel
           - file: ray-core/examples/batch_prediction
           - file: ray-core/examples/batch_training
+          - file: ray-core/examples/automl_for_time_series
       - file: ray-core/package-ref
 
   - caption: Ray Clusters
@@ -331,3 +332,4 @@ parts:
       - file: ray-core/configure
       - file: ray-observability/index
       - file: ray-contribute/whitepaper
+      - file: ray-use-cases/overview

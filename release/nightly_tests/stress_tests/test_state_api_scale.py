@@ -57,7 +57,7 @@ def test_many_tasks(num_tasks: int):
     invoke_state_api(
         lambda res: len(res) == 0,
         list_tasks,
-        filters=[("name", "=", "pi4_sample()"), ("scheduling_state", "=", "RUNNING")],
+        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
     )
@@ -87,7 +87,7 @@ def test_many_tasks(num_tasks: int):
     invoke_state_api_n(
         lambda res: len(res) == num_tasks,
         list_tasks,
-        filters=[("name", "=", "pi4_sample()")],
+        filters=[("name", "=", "pi4_sample")],
         key_suffix=f"{num_tasks}",
         limit=STATE_LIST_LIMIT,
     )
@@ -101,7 +101,7 @@ def test_many_tasks(num_tasks: int):
     invoke_state_api(
         lambda res: len(res) == 0,
         list_tasks,
-        filters=[("name", "=", "pi4_sample()"), ("scheduling_state", "=", "RUNNING")],
+        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
     )
