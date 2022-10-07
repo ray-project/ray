@@ -69,8 +69,10 @@ RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR = (
     "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S"
 )
-# Defaults to 30 seconds. This should be enough time for the job to start.
-RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 30
+# Defaults to 10 minutes. This should be longer than the total time it takes for
+# the local working_dir and py_modules to be uploaded, or these files might get
+# garbage collected before the job starts.
+RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 10 * 60
 RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
 # Hook for running a user-specified runtime-env hook. This hook will be called
 # unconditionally given the runtime_env dict passed for ray.init. It must return
@@ -354,9 +356,3 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Jobs within these namespaces should be hidden from users
 # and should not be considered user activity.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
-
-# After submitting a job, `SupervisorActor` will be launched
-# asynchronously, so it may be necessary to wait for `SupervisorActor`
-# to launch before knowing which node  `SupervisorActor`/`driver` is running on
-CLI_WAIT_FOR_SUPERVISOR_ACTOR_RUNNING_TIMEOUT = 60
-CLI_WAIT_LOG_ITER_INTERVAL_SECONDS = 0.5

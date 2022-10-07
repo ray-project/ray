@@ -5,7 +5,7 @@ from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.air._internal.util import skip_exceptions
+from ray.air._internal.util import skip_exceptions, exception_cause
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup
 
@@ -27,7 +27,8 @@ class RayTrainWorker:
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            raise skip_exceptions(e) from None
+            skipped = skip_exceptions(e)
+            raise skipped from exception_cause(skipped)
 
 
 @dataclass
@@ -47,7 +48,7 @@ class WorkerMetadata:
     node_id: str
     node_ip: str
     hostname: str
-    gpu_ids: Optional[List[int]]
+    gpu_ids: Optional[List[str]]
 
 
 @dataclass
@@ -81,7 +82,7 @@ def construct_metadata() -> WorkerMetadata:
     node_id = ray.get_runtime_context().node_id.hex()
     node_ip = ray.util.get_node_ip_address()
     hostname = socket.gethostname()
-    gpu_ids = ray.get_gpu_ids()
+    gpu_ids = [str(gpu_id) for gpu_id in ray.get_gpu_ids()]
 
     return WorkerMetadata(
         node_id=node_id, node_ip=node_ip, hostname=hostname, gpu_ids=gpu_ids
