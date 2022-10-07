@@ -39,9 +39,9 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
             + "--config='{"
             + '"num_workers": 1, "num_gpus": 0{}{}'.format(fw_, extra_config)
             + ', "min_sample_timesteps_per_iteration": 5,'
-              '"min_time_s_per_iteration": 0.1, '
-              '"model": {"fcnet_hiddens": [10]}'
-              "}' --stop='{\"training_iteration\": 1}'" + " --env={}".format(env)
+            '"min_time_s_per_iteration": 0.1, '
+            '"model": {"fcnet_hiddens": [10]}'
+            "}' --stop='{\"training_iteration\": 1}'" + " --env={}".format(env)
         )
 
         checkpoint_path = os.popen(
@@ -97,7 +97,7 @@ def learn_test_plus_evaluate(algo, env="CartPole-v0"):
             "python {}/train.py --local-dir={} --run={} "
             "--checkpoint-freq=1 --checkpoint-at-end ".format(rllib_dir, tmp_dir, algo)
             + '--config="{\\"num_gpus\\": 0, \\"num_workers\\": 1, '
-              '\\"evaluation_config\\": {\\"explore\\": false}'
+            '\\"evaluation_config\\": {\\"explore\\": false}'
             + fw_
             + '}" '
             + '--stop="{\\"episode_reward_mean\\": 100.0}"'
