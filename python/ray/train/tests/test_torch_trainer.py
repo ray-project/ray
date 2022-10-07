@@ -130,10 +130,10 @@ def test_checkpoint_freq(ray_start_4_cpus):
 
 
 @pytest.mark.parametrize(
-    "num_gpus_per_worker, expected_local_rank", [(0.5, 0), (1, 0), (2, 0)]
+    "num_gpus_per_worker,expected_devices", [(0.5, [0]), (1, [0]), (2, [0, 1])]
 )
 def test_tune_torch_get_device_gpu(
-    ray_2_node_2_gpu, num_gpus_per_worker, expected_local_rank
+    ray_2_node_2_gpu, num_gpus_per_worker, expected_devices
 ):
     """Tests if GPU ids are set correctly when running train concurrently in nested actors
     (for example when used with Tune).
@@ -141,17 +141,16 @@ def test_tune_torch_get_device_gpu(
     from ray.air.config import ScalingConfig
     import time
 
-    num_samples = int(2 // num_gpus_per_worker)
-    num_workers = 2
+    num_samples = 2
+    num_workers = int(4 // (num_gpus_per_worker * num_samples))
 
     @patch("torch.cuda.is_available", lambda: True)
     def train_fn():
-        # two workers are spread across two different nodes
-        # the device ids are always set to 0,
-        # for example, if `num_gpus_per_worker`` is 2,
-        # then each worker will have `ray.get_gpu_ids() == [0, 1]`
-        # and thus, the local rank is 0.
-        assert train.torch.get_device().index == expected_local_rank
+        # We use STRICT_SPREAD strategy to force multiple trials on node.
+        # One worker from each trial is on each node.
+        # CUDA_VISIBLE_DEVICES for each worker has length of 1.
+        # So device index will always be 0.
+        assert train.torch.get_device().index in expected_devices
 
     @ray.remote
     class TrialActor:
@@ -165,16 +164,18 @@ def test_tune_torch_get_device_gpu(
                 scaling_config=ScalingConfig(
                     num_workers=num_workers,
                     use_gpu=True,
-                    resources_per_worker={"GPU": num_gpus_per_worker},
-                    placement_strategy="SPREAD"
-                    # Each gpu worker will be spread onto separate nodes.
+                    resources_per_worker={"CPU": 1, "GPU": num_gpus_per_worker},
+                    trainer_resources={"CPU": 0},
+                    placement_strategy="SPREAD",
+                    # Each gpu worker will be spread onto separate nodes. This forces
+                    # different Tune trials to run concurrently on the same node.
                 ),
             )
 
         def run(self):
             return self.trainer.fit()
 
-    actors = [TrialActor.remote(_) for _ in range(num_samples)]
+    actors = [TrialActor.remote(1) for _ in range(num_samples)]
     ray.get([actor.run.remote() for actor in actors])
 
 
