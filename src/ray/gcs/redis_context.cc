@@ -416,13 +416,15 @@ Status RedisContext::PingPort(const std::string &address, int port) {
 Status RedisContext::Connect(const std::string &address,
                              int port,
                              bool sharding,
-                             const std::string &password) {
+                             const std::string &password,
+                             bool enable_ssl) {
   RAY_CHECK(!context_);
   RAY_CHECK(!redis_async_context_);
   RAY_CHECK(!async_redis_subscribe_context_);
 
   RAY_CHECK_OK(ConnectWithRetries(address, port, redisConnect, &context_));
-  if (ssl_context_ != nullptr) {
+  if (enable_ssl) {
+    RAY_CHECK(ssl_context_ != nullptr);
     RAY_CHECK(redisInitiateSSLWithContext(context_, ssl_context_) == REDIS_OK)
         << "Failed to setup encrypted redis: " << context_->errstr;
   }
@@ -437,7 +439,8 @@ Status RedisContext::Connect(const std::string &address,
   // Connect to async context
   redisAsyncContext *async_context = nullptr;
   RAY_CHECK_OK(ConnectWithRetries(address, port, redisAsyncConnect, &async_context));
-  if (ssl_context_ != nullptr) {
+  if (enable_ssl) {
+    RAY_CHECK(ssl_context_ != nullptr);
     RAY_CHECK(redisInitiateSSLWithContext(&async_context->c, ssl_context_) == REDIS_OK)
         << "Failed to setup encrypted redis: " << context_->errstr;
   }
