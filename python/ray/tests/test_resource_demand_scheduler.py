@@ -3364,7 +3364,7 @@ def test_placement_group_match_string():
 def _launch_nothing_utilization_scorer_plugin(
     node_resources,  # noqa
     resources,  # noqa
-    node_type, # noqa
+    node_type,  # noqa
     *,
     node_availability_summary,  # noqa
 ):
@@ -3420,11 +3420,18 @@ def test_utilization_score_plugin_1(launch_nothing_utilization_score_plugin):
 def _lexical_scorer_plugin(
     node_resources,  # noqa
     resources,  # noqa
-    node_type, # noqa
+    node_type,  # noqa
     *,
     node_availability_summary,  # noqa
 ):
-    if _resource_based_utilization_scorer(node_resources, resources, node_availability_summary=node_availability_summary) is not None:
+    if (
+        _resource_based_utilization_scorer(
+            node_resources,
+            resources,
+            node_availability_summary=node_availability_summary,
+        )
+        is not None
+    ):
         return node_type
     else:
         return None
@@ -3433,8 +3440,7 @@ def _lexical_scorer_plugin(
 @pytest.fixture
 def lexical_score_plugin():
     os.environ[AUTOSCALER_UTILIZATION_SCORER_KEY] = (
-        "ray.tests.test_resource_demand_scheduler."
-        "_lexical_scorer_plugin"
+        "ray.tests.test_resource_demand_scheduler." "_lexical_scorer_plugin"
     )
     try:
         yield None

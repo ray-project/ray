@@ -842,11 +842,13 @@ def _resource_based_utilization_scorer(
 def _default_utilization_scorer(
     node_resources: ResourceDict,
     resources: List[ResourceDict],
-    node_type : str,
+    node_type: str,
     *,
     node_availability_summary: NodeAvailabilitySummary,
 ):
-    return _resource_based_utilization_scorer(node_resources, resources, node_availability_summary=node_availability_summary)
+    return _resource_based_utilization_scorer(
+        node_resources, resources, node_availability_summary=node_availability_summary
+    )
 
 
 def get_bin_pack_residual(
