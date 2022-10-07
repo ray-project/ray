@@ -1,4 +1,5 @@
 import copy
+import os
 import json
 import shutil
 import tempfile
@@ -24,7 +25,7 @@ from ray.autoscaler._private.node_provider_availability_tracker import (
 )
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.commands import get_or_create_head_node
-from ray.autoscaler._private.constants import AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
+from ray.autoscaler._private.constants import AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE, AUTOSCALER_UTILIZATION_SCORER_KEY
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.providers import _NODE_PROVIDERS, _clear_provider_cache
 from ray.autoscaler._private.resource_demand_scheduler import (
@@ -3339,8 +3340,28 @@ def test_placement_group_match_string():
     assert rem == [{"non-existent-custom": 8}]
 
 
+def _launch_nothing_utilization_scorer_plugin(
+    node_resources, # noqa
+    resources, # noqa
+    *,
+    node_availability_summary, # noqa
+):
+    return None
+
+
+@pytest.fixture
+def launch_nothing_utilization_score_plugin():
+    os.environ[AUTOSCALER_UTILIZATION_SCORER_KEY] = (
+        "ray.tests.test_resource_demand_scheduler."
+        "_launch_nothing_utilization_scorer_plugin"
+    )
+    try:
+        yield None
+    finally:
+        del os.environ[AUTOSCALER_UTILIZATION_SCORER_KEY]
+
+
 if __name__ == "__main__":
-    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):
