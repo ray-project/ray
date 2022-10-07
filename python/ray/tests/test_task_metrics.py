@@ -7,7 +7,7 @@ import pytest
 import ray
 
 from ray._private.test_utils import (
-    fetch_prometheus_metrics,
+    raw_metrics,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
@@ -25,13 +25,6 @@ SLOW_METRIC_CONFIG = {
         "metrics_report_interval_ms": 3000,
     }
 }
-
-
-def raw_metrics(info):
-    metrics_page = "localhost:{}".format(info["metrics_export_port"])
-    print("Fetch metrics from", metrics_page)
-    res = fetch_prometheus_metrics([metrics_page])
-    return res
 
 
 def tasks_by_state(info) -> dict:
