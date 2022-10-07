@@ -1012,12 +1012,12 @@ Status PlacementGroupInfoAccessor::AsyncGetAll(
 }
 
 Status PlacementGroupInfoAccessor::SyncWaitUntilReady(
-    const PlacementGroupID &placement_group_id) {
+    const PlacementGroupID &placement_group_id, int64_t timeout_seconds) {
   rpc::WaitPlacementGroupUntilReadyRequest request;
   rpc::WaitPlacementGroupUntilReadyReply reply;
   request.set_placement_group_id(placement_group_id.Binary());
   auto status = client_impl_->GetGcsRpcClient().SyncWaitPlacementGroupUntilReady(
-      request, &reply, GetGcsTimeoutMs());
+      request, &reply, absl::ToInt64Milliseconds(absl::Seconds(timeout_seconds)));
   RAY_LOG(DEBUG) << "Finished waiting placement group until ready, placement group id = "
                  << placement_group_id;
   return status;
