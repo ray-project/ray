@@ -80,7 +80,7 @@ class PlacementGroup:
             resources={BUNDLE_RESOURCE_LABEL: 0.001},
         ).remote(self)
 
-    def wait(self, timeout_seconds: Union[float, int]) -> bool:
+    def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
         """Wait for the placement group to be ready within the specified time.
         Args:
              timeout_seconds(float|int): Timeout in seconds.

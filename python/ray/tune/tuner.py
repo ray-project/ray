@@ -257,3 +257,28 @@ class Tuner:
                 raise TuneError(
                     _TUNER_FAILED_MSG.format(path=experiment_checkpoint_dir)
                 ) from e
+
+    def get_results(self) -> ResultGrid:
+        """Get results of a hyperparameter tuning run.
+
+        This method returns the same results as :meth:`fit() <ray.tune.tuner.Tuner.fit>`
+        and can be used to retrieve the results after restoring a tuner without
+        calling ``fit()`` again.
+
+        If the tuner has not been fit before, an error will be raised.
+
+        .. code-block:: python
+
+            from ray.tune import Tuner
+
+            tuner = Tuner.restore("/path/to/experiment')
+            results = tuner.get_results()
+
+        Returns:
+            Result grid of a previously fitted tuning run.
+
+        """
+        if not self._is_ray_client:
+            return self._local_tuner.get_results()
+        else:
+            return ray.get(self._remote_tuner.fit.remote())
