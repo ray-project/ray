@@ -969,6 +969,10 @@ cdef execute_task(
                     # Swap out the generator for an ObjectRef generator.
                     outputs = (ObjectRefGenerator(dynamic_refs), )
 
+                # TODO(swang): For generator tasks, iterating over outputs will
+                # actually run the task. We should run the usual handlers for
+                # task cancellation, retrying on application exception, etc. for
+                # all generator tasks, both static and dynamic.
                 core_worker.store_task_outputs(
                     worker, outputs,
                     returns)
