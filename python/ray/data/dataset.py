@@ -3767,8 +3767,8 @@ class Dataset(Generic[T]):
         """Return ``True`` if this dataset is a tensor dataset."""
         from ray.air.constants import TENSOR_COLUMN_NAME
 
-        schema = self.schema()
-        if isinstance(schema, type):
+        schema = self.schema(fetch_if_missing=True)
+        if schema is None or isinstance(schema, type):
             return False
         return schema.names == [TENSOR_COLUMN_NAME]
 
