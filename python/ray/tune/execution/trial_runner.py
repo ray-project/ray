@@ -13,7 +13,7 @@ import warnings
 import ray
 from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.exceptions import RayTaskError
-from ray.tune.error import _TuneStopTrialError
+from ray.tune.error import _TuneStopTrialError, _TuneRestoreError
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
@@ -1325,10 +1325,13 @@ class TrialRunner:
         # Resetting this, in case that the trial is in saving status when it crashes.
         if trial.is_saving:
             trial.saving_to = None
-        if trial.is_restoring:
-            # Restore was unsuccessful, try again without checkpoint.
-            trial.clear_checkpoint()
-        self.trial_executor.stop_trial(trial, error=exc is not None, exc=exc)
+        if trial.is_restoring and exc:
+            exc = _TuneRestoreError(exc)
+        self.trial_executor.stop_trial(
+            trial,
+            error=exc is not None,
+            exc=exc,
+        )
         if self.trial_executor.has_resources_for_trial(trial):
             requeue_trial = False
             logger.info(
