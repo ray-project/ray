@@ -750,9 +750,9 @@ def get_nodes_for(
             if strict_spread:
                 # If handling strict spread, only one bundle can be placed on
                 # the node.
-                score = utilization_scorer(node_resources, [resources[0]])
+                score = utilization_scorer(node_resources, [resources[0]], node_type)
             else:
-                score = utilization_scorer(node_resources, resources)
+                score = utilization_scorer(node_resources, resources, node_type)
             if score is not None:
                 utilization_scores.append((score, node_type))
 
@@ -784,7 +784,7 @@ def get_nodes_for(
     return nodes_to_add, resources
 
 
-def _default_utilization_scorer(
+def _resource_based_utilization_scorer(
     node_resources: ResourceDict,
     resources: List[ResourceDict],
     *,
@@ -837,6 +837,16 @@ def _default_utilization_scorer(
         min(util_by_resources),
         np.mean(util_by_resources),
     )
+
+
+def _default_utilization_scorer(
+    node_resources: ResourceDict,
+    resources: List[ResourceDict],
+    node_type : str,
+    *,
+    node_availability_summary: NodeAvailabilitySummary,
+):
+    return _resource_based_utilization_scorer(node_resources, resources, node_availability_summary=node_availability_summary)
 
 
 def get_bin_pack_residual(

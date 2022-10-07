@@ -34,6 +34,7 @@ from ray.autoscaler._private.providers import _NODE_PROVIDERS, _clear_provider_c
 from ray.autoscaler._private.resource_demand_scheduler import (
     ResourceDemandScheduler,
     _add_min_workers_nodes,
+    _resource_based_utilization_scorer,
     _default_utilization_scorer,
     get_bin_pack_residual,
 )
@@ -84,41 +85,40 @@ def get_nodes_for(*a, **kw):
         utilization_scorer=utilization_scorer,
         **kw,
     )[0]
-    # return _get(*a, **kw,)[0]
 
 
 def test_util_score():
     assert (
-        _default_utilization_scorer(
+        _resource_based_utilization_scorer(
             {"CPU": 64},
             [{"TPU": 16}],
             node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
         )
         is None
     )
-    assert _default_utilization_scorer(
+    assert _resource_based_utilization_scorer(
         {"GPU": 4}, [{"GPU": 2}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
     ) == (1, 0.5, 0.5)
     assert (
-        _default_utilization_scorer(
+        _resource_based_utilization_scorer(
             {"GPU": 4},
             [{"GPU": 1}, {"GPU": 1}],
             node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
         )
         == (1, 0.5, 0.5)
     )
-    assert _default_utilization_scorer(
+    assert _resource_based_utilization_scorer(
         {"GPU": 2}, [{"GPU": 2}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
     ) == (1, 2, 2)
     assert (
-        _default_utilization_scorer(
+        _resource_based_utilization_scorer(
             {"GPU": 2},
             [{"GPU": 1}, {"GPU": 1}],
             node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
         )
         == (1, 2, 2)
     )
-    assert _default_utilization_scorer(
+    assert _resource_based_utilization_scorer(
         {"GPU": 1},
         [{"GPU": 1, "CPU": 1}, {"GPU": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
@@ -128,7 +128,7 @@ def test_util_score():
         1,
     )
     assert (
-        _default_utilization_scorer(
+        _resource_based_utilization_scorer(
             {"GPU": 1, "CPU": 1},
             [{"GPU": 1, "CPU": 1}, {"GPU": 1}],
             node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
@@ -136,21 +136,21 @@ def test_util_score():
         == (2, 1, 1)
     )
     assert (
-        _default_utilization_scorer(
+        _resource_based_utilization_scorer(
             {"GPU": 2, "TPU": 1},
             [{"GPU": 2}],
             node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
         )
         == (1, 0, 1)
     )
-    assert _default_utilization_scorer(
+    assert _resource_based_utilization_scorer(
         {"CPU": 64}, [{"CPU": 64}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
     ) == (1, 64, 64)
-    assert _default_utilization_scorer(
+    assert _resource_based_utilization_scorer(
         {"CPU": 64}, [{"CPU": 32}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
     ) == (1, 8, 8)
     assert (
-        _default_utilization_scorer(
+        _resource_based_utilization_scorer(
             {"CPU": 64},
             [{"CPU": 16}, {"CPU": 16}],
             node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
@@ -162,14 +162,14 @@ def test_util_score():
 def test_gpu_node_util_score():
     # Avoid scheduling CPU tasks on GPU node.
     assert (
-        _default_utilization_scorer(
+        _resource_based_utilization_scorer(
             {"GPU": 1, "CPU": 1},
             [{"CPU": 1}],
             node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
         )
         is None
     )
-    assert _default_utilization_scorer(
+    assert _resource_based_utilization_scorer(
         {"GPU": 1, "CPU": 1},
         [{"CPU": 1, "GPU": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
@@ -179,7 +179,7 @@ def test_gpu_node_util_score():
         1.0,
     )
     assert (
-        _default_utilization_scorer(
+        _resource_based_utilization_scorer(
             {"GPU": 1, "CPU": 1},
             [{"GPU": 1}],
             node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
@@ -191,7 +191,7 @@ def test_gpu_node_util_score():
 def test_zero_resource():
     # Test edge case of node type with all zero resource values.
     assert (
-        _default_utilization_scorer(
+        _resource_based_utilization_scorer(
             {"CPU": 0, "custom": 0},
             [{"custom": 1}],
             node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
@@ -199,7 +199,7 @@ def test_zero_resource():
         is None
     )
     # Just check that we don't have a division-by-zero error.
-    _default_utilization_scorer(
+    _resource_based_utilization_scorer(
         {"CPU": 0, "custom": 1},
         [{"custom": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
@@ -3364,6 +3364,7 @@ def test_placement_group_match_string():
 def _launch_nothing_utilization_scorer_plugin(
     node_resources,  # noqa
     resources,  # noqa
+    node_type, # noqa
     *,
     node_availability_summary,  # noqa
 ):
@@ -3380,6 +3381,100 @@ def launch_nothing_utilization_score_plugin():
         yield None
     finally:
         del os.environ[AUTOSCALER_UTILIZATION_SCORER_KEY]
+
+
+def test_utilization_score_plugin_1(launch_nothing_utilization_score_plugin):
+    assert launch_nothing_utilization_score_plugin is None, "Keep mypy happy."
+
+    provider = MockProvider()
+    new_types = copy.deepcopy(TYPES_A)
+    scheduler = ResourceDemandScheduler(
+        provider,
+        new_types,
+        3,
+        head_node_type="p2.8xlarge",
+        upscaling_speed=1,
+    )
+
+    provider.create_node(
+        {},
+        {
+            TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+        },
+        1,
+    )
+
+    nodes = provider.non_terminated_nodes({})
+
+    ips = provider.non_terminated_node_ips({})
+    utilizations = {ip: {"GPU": 8} for ip in ips}
+
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        nodes, {}, [{"GPU": 8}] * 2, utilizations, [], {}
+    )
+    assert to_launch == {}
+
+
+def _lexical_scorer_plugin(
+    node_resources,  # noqa
+    resources,  # noqa
+    node_type, # noqa
+    *,
+    node_availability_summary,  # noqa
+):
+    if _resource_based_utilization_scorer(node_resources, resources, node_availability_summary=node_availability_summary) is not None:
+        return node_type
+    else:
+        return None
+
+
+@pytest.fixture
+def lexical_score_plugin():
+    os.environ[AUTOSCALER_UTILIZATION_SCORER_KEY] = (
+        "ray.tests.test_resource_demand_scheduler."
+        "_lexical_scorer_plugin"
+    )
+    try:
+        yield None
+    finally:
+        del os.environ[AUTOSCALER_UTILIZATION_SCORER_KEY]
+
+
+def test_utilization_score_plugin_2(lexical_score_plugin):
+    assert lexical_score_plugin is None, "Keep mypy happy."
+
+    provider = MockProvider()
+    new_types = copy.deepcopy(TYPES_A)
+    new_types["a2.8xlarge"] = new_types["p2.8xlarge"]
+    scheduler = ResourceDemandScheduler(
+        provider,
+        new_types,
+        3,
+        head_node_type="p2.8xlarge",
+        upscaling_speed=1,
+    )
+
+    provider.create_node(
+        {},
+        {
+            TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+        },
+        1,
+    )
+
+    nodes = provider.non_terminated_nodes({})
+
+    ips = provider.non_terminated_node_ips({})
+    utilizations = {ip: {"GPU": 8} for ip in ips}
+
+    to_launch, rem = scheduler.get_nodes_to_launch(
+        nodes, {}, [{"GPU": 8}] * 2, utilizations, [], {}
+    )
+    assert to_launch == {"p2.8xlarge": 1}
 
 
 if __name__ == "__main__":
