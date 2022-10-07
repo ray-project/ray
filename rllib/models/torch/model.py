@@ -203,14 +203,13 @@ class TorchModel(Model, nn.Module, TorchModelIO):
         ...     @property
         ...     def input_spec(self):
         ...         return ModelSpecDict(
-        ...             {"obs": "batch, time, hidden"}, hidden=self.config.input_size
+        ...             {"obs": TensorSpec("b,t,h"}, h=self.config.input_size)}
         ...         )
         ...
         ...     @property
         ...     def output_spec(self):
         ...         return ModelSpecDict(
-        ...             {"logits": "batch, time, logits"},
-        ...             logits=self.config.output_size
+        ...             {"logits": TensorSpec("b,t,l"}, l=self.config.output_size)}
         ...         )
         ...
         ...     def _forward(self, inputs, **kwargs):
