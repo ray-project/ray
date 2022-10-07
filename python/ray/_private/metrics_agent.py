@@ -311,7 +311,7 @@ class MetricsAgent:
 
     def _clean_worker_metrics(self, worker_id_hex: str):
         assert self._lock.locked()
-        assert worker_id_hex not in self.worker_id_to_state
+        assert worker_id_hex in self.worker_id_to_state
 
         state = self.worker_id_to_state[worker_id_hex]
         state.view_to_owned_tag_vals
