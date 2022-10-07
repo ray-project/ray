@@ -185,7 +185,7 @@ TEST_F(MemoryMonitorTest, TestCgroupV1MemFileValidReturnsWorkingSet) {
 }
 
 TEST_F(MemoryMonitorTest, TestCgroupV1MemFileMissingFieldReturnskNull) {
-  std::string file_name = UniqueID::FromRandom().Binary();
+  std::string file_name = UniqueID::FromRandom().Hex();
 
   std::ofstream mem_file;
   mem_file.open(file_name);
@@ -205,7 +205,7 @@ TEST_F(MemoryMonitorTest, TestCgroupV1MemFileMissingFieldReturnskNull) {
 }
 
 TEST_F(MemoryMonitorTest, TestCgroupV1NonexistentMemFileReturnskNull) {
-  std::string file_name = UniqueID::FromRandom().Binary();
+  std::string file_name = UniqueID::FromRandom().Hex();
 
   int64_t used_bytes = MemoryMonitor::GetCGroupV1MemoryUsedBytes(file_name.c_str());
 
