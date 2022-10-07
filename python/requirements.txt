@@ -83,7 +83,9 @@ opentelemetry-exporter-otlp==1.1.0
 pexpect
 Pillow; platform_system != "Windows"
 proxy.py
-pyarrow >= 6.0.1, < 7.0.0
+# JUST TEST: if pyarrow version is the only blocker here
+# pyarrow >= 6.0.1, < 7.0.0
+pyarrow >= 9.0.0
 pygments
 pymongo
 pymongoarrow
