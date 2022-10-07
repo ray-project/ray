@@ -287,7 +287,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Object Store Memory",
+      "title": "Scheduler Object Store Memory",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -1212,7 +1212,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Instance Count",
+      "title": "Node Count",
       "tooltip": {
         "shared": true,
         "sort": 0,
