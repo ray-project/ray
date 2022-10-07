@@ -1554,7 +1554,8 @@ def init(
     for hook in _post_init_hooks:
         hook()
 
-    # import here since record_extra_usage_tag depends on ray._private.worker that is initialized here.
+    # import here since record_extra_usage_tag depends on ray._private.worker
+    # that is initialized here.
     from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
     record_extra_usage_tag(
