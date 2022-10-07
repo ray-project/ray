@@ -57,4 +57,33 @@ genrule(
     rm -rf tmp-redis-bin
     """,
     visibility = ["//visibility:public"],
+    tags = ["local"],
 )
+
+# This is a build for mac without openssl.
+# rules_foreign_cc somehow pick the wrong toolchain in CI.
+genrule(
+    name = "bin-mac",
+    srcs = glob(["**"]),
+    outs = [
+        "redis-server-mac",
+        "redis-cli-mac",
+    ],
+    cmd = """
+        unset CC LDFLAGS CXX CXXFLAGS
+        tmpdir="redis.tmp"
+        p=$(location Makefile)
+        cp -p -L -R -- "$${p%/*}" "$${tmpdir}"
+        chmod +x "$${tmpdir}"/deps/jemalloc/configure
+        parallel="$$(getconf _NPROCESSORS_ONLN || echo 1)"
+        make -s -C "$${tmpdir}" -j"$${parallel}" V=0 CFLAGS="$${CFLAGS-} -DLUA_USE_MKSTEMP -Wno-pragmas -Wno-empty-body"
+        mv "$${tmpdir}"/src/redis-server $(location redis-server-mac)
+        chmod +x $(location redis-server-mac)
+        mv "$${tmpdir}"/src/redis-cli $(location redis-cli-mac)
+        chmod +x $(location redis-cli-mac)
+        rm -r -f -- "$${tmpdir}"
+    """,
+    visibility = ["//visibility:public"],
+    tags = ["local"],
+)
+

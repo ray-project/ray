@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, List, Union, Iterable
+from typing import TYPE_CHECKING, Dict, List, Union, Iterable, Iterator
 import struct
 
 from ray.util.annotations import PublicAPI
@@ -15,12 +15,13 @@ class TFRecordDatasource(FileBasedDatasource):
 
     _FILE_EXTENSION = "tfrecords"
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Block:
+    def _read_stream(
+        self, f: "pyarrow.NativeFile", path: str, **reader_args
+    ) -> Iterator[Block]:
         from google.protobuf.message import DecodeError
         import pandas as pd
         import tensorflow as tf
 
-        data = []
         for record in _read_records(f):
             example = tf.train.Example()
             try:
@@ -32,9 +33,7 @@ class TFRecordDatasource(FileBasedDatasource):
                     f"file contains a message type other than `tf.train.Example`: {e}"
                 )
 
-            data.append(_convert_example_to_dict(example))
-
-        return pd.DataFrame.from_records(data)
+            yield pd.DataFrame([_convert_example_to_dict(example)])
 
 
 def _convert_example_to_dict(

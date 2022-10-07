@@ -104,6 +104,7 @@ def ray_deps_setup():
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:redis-quiet.patch",
         ],
+        workspace_file_content = 'workspace(name = "com_github_antirez_redis")'
     )
 
     auto_http_archive(
