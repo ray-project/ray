@@ -384,6 +384,62 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir):
     tuner3.fit()
 
 
+@pytest.mark.parametrize(
+    "upload_uri",
+    [None, "memory:///test/test_tuner_restore_latest_available_checkpoint"],
+)
+def test_tuner_restore_latest_available_checkpoint(
+    ray_start_4_cpus, tmpdir, upload_uri
+):
+    """Resuming errored trials should pick up from previous state"""
+    fail_marker = tmpdir / "fail_marker"
+    fail_marker.write_text("", encoding="utf-8")
+
+    tuner = Tuner(
+        _train_fn_sometimes_failing,
+        tune_config=TuneConfig(
+            num_samples=1,
+        ),
+        run_config=RunConfig(
+            name="test_tuner_restore_latest_available_checkpoint",
+            local_dir=str(tmpdir),
+            sync_config=tune.SyncConfig(upload_dir=upload_uri),
+        ),
+        param_space={"failing_hanging": (fail_marker, None), "num_epochs": 4},
+    )
+
+    results = tuner.fit()
+
+    assert len(results) == 1
+    assert len(results.errors) == 1
+
+    [result] = list(results)
+    # num_epochs = 4, so it = 4
+    assert result.metrics["it"] == 4
+
+    del tuner
+    fail_marker.remove(ignore_errors=True)
+
+    shutil.rmtree(os.path.join(result.log_dir, "checkpoint_000003"))
+    shutil.rmtree(os.path.join(result.log_dir, "checkpoint_000002"))
+
+    if upload_uri:
+        delete_at_uri(upload_uri + "/checkpoint_000003")
+        delete_at_uri(upload_uri + "/checkpoint_000002")
+
+    tuner = Tuner.restore(
+        str(tmpdir / "test_tuner_restore_latest_available_checkpoint"),
+        resume_errored=True,
+    )
+    results = tuner.fit()
+    assert len(results) == 1
+    assert len(results.errors) == 0
+    [result] = list(results)
+    # restored from 2, plus num_epochs = 4, plus one additional epoch
+    assert result.metrics["it"] == 7
+    assert result.metrics["iterations_since_restore"] == 5
+
+
 @pytest.mark.parametrize("retry_num", [0, 1])
 def test_retore_retry(retry_num):
     """Test retrying restore on a trial level."""
@@ -439,62 +495,6 @@ def test_retore_retry(retry_num):
             assert result.metrics["score"] == 5
         else:
             assert result.metrics["score"] == 2
-
-
-@pytest.mark.parametrize(
-    "upload_uri",
-    [None, "memory:///test/test_tuner_restore_latest_available_checkpoint"],
-)
-def test_tuner_restore_latest_available_checkpoint(
-    ray_start_4_cpus, tmpdir, upload_uri
-):
-    """Resuming errored trials should pick up from previous state"""
-    fail_marker = tmpdir / "fail_marker"
-    fail_marker.write_text("", encoding="utf-8")
-
-    tuner = Tuner(
-        _train_fn_sometimes_failing,
-        tune_config=TuneConfig(
-            num_samples=1,
-        ),
-        run_config=RunConfig(
-            name="test_tuner_restore_latest_available_checkpoint",
-            local_dir=str(tmpdir),
-            sync_config=tune.SyncConfig(upload_dir=upload_uri),
-        ),
-        param_space={"failing_hanging": (fail_marker, None), "num_epochs": 4},
-    )
-
-    results = tuner.fit()
-
-    assert len(results) == 1
-    assert len(results.errors) == 1
-
-    [result] = list(results)
-    # num_epochs = 4, so it = 4
-    assert result.metrics["it"] == 4
-
-    del tuner
-    fail_marker.remove(ignore_errors=True)
-
-    shutil.rmtree(os.path.join(result.log_dir, "checkpoint_000003"))
-    shutil.rmtree(os.path.join(result.log_dir, "checkpoint_000002"))
-
-    if upload_uri:
-        delete_at_uri(upload_uri + "/checkpoint_000003")
-        delete_at_uri(upload_uri + "/checkpoint_000002")
-
-    tuner = Tuner.restore(
-        str(tmpdir / "test_tuner_restore_latest_available_checkpoint"),
-        resume_errored=True,
-    )
-    results = tuner.fit()
-    assert len(results) == 1
-    assert len(results.errors) == 0
-    [result] = list(results)
-    # restored from 2, plus num_epochs = 4, plus one additional epoch
-    assert result.metrics["it"] == 7
-    assert result.metrics["iterations_since_restore"] == 5
 
 
 if __name__ == "__main__":
