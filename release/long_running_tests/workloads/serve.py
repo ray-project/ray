@@ -103,7 +103,7 @@ while True:
     proc.wait()
     out, err = proc.communicate()
     # Check if wrk command succeeded. If this happens repeatedly, the release test
-    # infrastructure will currectly fail the test with "Last update to results json
+    # infrastructure will correctly fail the test with "Last update to results json
     # was too long ago."
     if proc.returncode != 0:
         print("wrk failed with the following error: ")
