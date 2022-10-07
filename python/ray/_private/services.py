@@ -1090,7 +1090,7 @@ def _start_redis_instance(
         listen_to_localhost_only: Redis server only listens to
             localhost (127.0.0.1) if it's true,
             otherwise it listens to all network interfaces.
-        enable_redis: Enable the TLS/SSL in Redis or not
+        enable_tls: Enable the TLS/SSL in Redis or not
 
     Returns:
         A tuple of the port used by Redis and ProcessInfo for the process that
