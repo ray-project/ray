@@ -507,12 +507,14 @@ def test_add_min_workers_nodes():
 
     assert _add_min_workers_nodes([], {}, {"gpubla": types["gpubla"]}, None,
                                   None, None,
-         utilization_scorer=utilization_scorer,) == ([], {}, {})
+         utilization_scorer=utilization_scorer,
+                                  ) == ([], {}, {})
 
     types["gpubla"]["max_workers"] = 10
     assert _add_min_workers_nodes([], {}, {"gpubla": types["gpubla"]}, None,
                                   None, None,
-         utilization_scorer=utilization_scorer,) == ([{
+            utilization_scorer=utilization_scorer,
+                                  ) == ([{
                                       "GPU": 1
                                   }] * 10, {
                                       "gpubla": 10
