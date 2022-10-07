@@ -35,6 +35,7 @@ from ray.data.datasource.partitioning import (
 
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -275,7 +276,10 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
         if try_create_dir:
-            filesystem.create_dir(path, recursive=True)
+            # Arrow's S3FileSystem doesn't allow creating buckets by default, so we add
+            # a query arg enabling bucket creation if an S3 URI is provided.
+            tmp = _add_creatable_buckets_param_if_s3_uri(path)
+            filesystem.create_dir(tmp, recursive=True)
         filesystem = _wrap_s3_serialization_workaround(filesystem)
 
         _write_block_to_file = self._write_block

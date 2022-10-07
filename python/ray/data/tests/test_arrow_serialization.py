@@ -1,6 +1,7 @@
 import itertools
 import os
 
+from pkg_resources._vendor.packaging.version import parse as parse_version
 import pytest
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -8,6 +9,7 @@ import numpy as np
 
 import ray
 import ray.cloudpickle as pickle
+from ray._private.utils import _get_pyarrow_version
 from ray.tests.conftest import *  # noqa
 from ray.data._internal.arrow_serialization import _get_arrow_array_types
 from ray.data.extensions.tensor_extension import (
@@ -223,7 +225,10 @@ for arr, cap in pytest_custom_serialization_arrays:
 def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
     ray._private.worker.global_worker.get_serialization_context()
     data.validate()
-    buf_size = data.get_total_buffer_size()
+    pyarrow_version = parse_version(_get_pyarrow_version())
+    if pyarrow_version >= parse_version("7.0.0"):
+        # get_total_buffer_size API was added in Arrow 7.0.0.
+        buf_size = data.get_total_buffer_size()
     # Create a zero-copy slice view of data.
     view = data.slice(10, 10)
     s_arr = pickle.dumps(data)
@@ -247,10 +252,11 @@ def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
             assert post_slice.chunk(0).offset == 0
     else:
         assert post_slice.offset == 0
-    # Check that slice buffer only contains slice data.
-    slice_buf_size = post_slice.get_total_buffer_size()
-    if buf_size > 0:
-        assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
+    if pyarrow_version >= parse_version("7.0.0"):
+        # Check that slice buffer only contains slice data.
+        slice_buf_size = post_slice.get_total_buffer_size()
+        if buf_size > 0:
+            assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
 
 
 def test_custom_arrow_data_serializer_parquet_roundtrip(

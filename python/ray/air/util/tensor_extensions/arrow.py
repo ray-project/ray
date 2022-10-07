@@ -1,11 +1,24 @@
 import itertools
 from typing import Iterable, Optional, Tuple, List, Sequence, Union
 
+from pkg_resources._vendor.packaging.version import parse as parse_version
 import numpy as np
 import pyarrow as pa
 
 from ray.air.util.tensor_extensions.utils import _is_ndarray_variable_shaped_tensor
+from ray._private.utils import _get_pyarrow_version
 from ray.util.annotations import PublicAPI
+
+
+PYARROW_VERSION = _get_pyarrow_version()
+if PYARROW_VERSION is not None:
+    PYARROW_VERSION = parse_version(PYARROW_VERSION)
+# Minimum version of Arrow that supports subclassable ExtensionScalars.
+# TODO(Clark): Remove conditional definition once we only support Arrow 9.0.0+.
+MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
+# Minimum version of Arrow that supports ExtensionScalars.
+# TODO(Clark): Remove conditional definition once we only support Arrow 8.0.0+.
+MIN_PYARROW_VERSION_SCALAR = parse_version("8.0.0")
 
 
 @PublicAPI(stability="beta")
@@ -62,6 +75,27 @@ class ArrowTensorType(pa.PyExtensionType):
         """
         return ArrowTensorArray
 
+    if (
+        PYARROW_VERSION is None
+        or PYARROW_VERSION >= MIN_PYARROW_VERSION_SCALAR_SUBCLASS
+    ):
+        # NOTE(Clark): ExtensionScalar is only subclassable in Arrow 9.0.0+.
+        # TODO(Clark): Remove this version guard once we only support Arrow 9.0.0+.
+        def __arrow_ext_scalar_class__(self):
+            """
+            ExtensionScalar subclass with custom logic for this array of tensors type.
+            """
+            return ArrowTensorScalar
+
+    def _extension_scalar_to_ndarray(self, scalar) -> np.ndarray:
+        """
+        Convert an ExtensionScalar to a tensor element.
+        """
+        # TODO(Clark): Construct ndarray view directly on tensor element buffer to
+        # ensure reliable zero-copy semantics.
+        flat_ndarray = scalar.value.values.to_numpy(zero_copy_only=False)
+        return flat_ndarray.reshape(self.shape)
+
     def __str__(self) -> str:
         return (
             f"ArrowTensorType(shape={self.shape}, dtype={self.storage_type.value_type})"
@@ -69,6 +103,18 @@ class ArrowTensorType(pa.PyExtensionType):
 
     def __repr__(self) -> str:
         return str(self)
+
+
+if PYARROW_VERSION is None or PYARROW_VERSION >= MIN_PYARROW_VERSION_SCALAR_SUBCLASS:
+    # NOTE(Clark): ExtensionScalar is only subclassable in Arrow 9.0.0+.
+    # TODO(Clark): Remove this version guard once we only support Arrow 9.0.0+.
+    @PublicAPI(stability="beta")
+    class ArrowTensorScalar(pa.ExtensionScalar):
+        def as_py(self) -> np.ndarray:
+            return self.type._extension_scalar_to_ndarray(self)
+
+        def __array__(self) -> np.ndarray:
+            return self.as_py()
 
 
 @PublicAPI(stability="beta")
@@ -84,36 +130,71 @@ class ArrowTensorArray(pa.ExtensionArray):
 
     OFFSET_DTYPE = np.int32
 
-    def __getitem__(self, key):
-        # This __getitem__ hook allows us to support proper
-        # indexing when accessing a single tensor (a "scalar" item of the
-        # array). Without this hook for integer keys, the indexing will fail on
-        # all currently released pyarrow versions due to a lack of proper
-        # ExtensionScalar support. Support was added in
-        # https://github.com/apache/arrow/pull/10904, but hasn't been released
-        # at the time of this comment, and even with this support, the returned
-        # ndarray is a flat representation of the n-dimensional tensor.
+    if PYARROW_VERSION is not None and PYARROW_VERSION < MIN_PYARROW_VERSION_SCALAR:
+        # NOTE(Clark): These __getitem__, __iter__, and to_pylist overrides are only
+        # needed for Arrow < 8.0.0, before proper ExtensionScalar support was added.
+        # TODO(Clark): Remove these methods once we only support Arrow 8.0.0+.
+        def __getitem__(self, key):
+            # This __getitem__ hook allows us to support proper indexing when accessing
+            # a single tensor (a "scalar" item of the array). Without this hook for
+            # integer keys, the indexing will fail on pyarrow < 8.0.0 due to a lack of
+            # proper ExtensionScalar support.
 
-        # NOTE(Clark): We'd like to override the pa.Array.getitem() helper
-        # instead, which would obviate the need for overriding __iter__()
-        # below, but unfortunately overriding Cython cdef methods with normal
-        # Python methods isn't allowed.
-        if isinstance(key, slice):
-            return super().__getitem__(key)
-        return self._to_numpy(key)
+            # NOTE(Clark): We'd like to override the pa.Array.getitem() helper
+            # instead, which would obviate the need for overriding __iter__()
+            # below, but unfortunately overriding Cython cdef methods with normal
+            # Python methods isn't allowed.
+            if isinstance(key, slice):
+                return super().__getitem__(key)
+            return self._to_numpy(key)
 
-    def __iter__(self):
-        # Override pa.Array.__iter__() in order to return an iterator of
-        # properly shaped tensors instead of an iterator of flattened tensors.
-        # See comment in above __getitem__ method.
-        for i in range(len(self)):
-            # Use overridden __getitem__ method.
-            yield self.__getitem__(i)
+        def __iter__(self):
+            # Override pa.Array.__iter__() in order to return an iterator of
+            # properly shaped tensors instead of an iterator of flattened tensors.
+            # See comment in above __getitem__ method.
+            for i in range(len(self)):
+                # Use overridden __getitem__ method.
+                yield self.__getitem__(i)
 
-    def to_pylist(self):
-        # Override pa.Array.to_pylist() due to a lack of ExtensionScalar
-        # support (see comment in __getitem__).
-        return list(self)
+        def to_pylist(self):
+            # Override pa.Array.to_pylist() due to a lack of ExtensionScalar
+            # support (see comment in __getitem__).
+            return list(self)
+
+    elif (
+        PYARROW_VERSION is not None
+        and PYARROW_VERSION < MIN_PYARROW_VERSION_SCALAR_SUBCLASS
+    ):
+        # NOTE(Clark): These __getitem__, __iter__, and to_pylist overrides are only
+        # needed for Arrow 8.*, before ExtensionScalar subclassing support was added.
+        # TODO(Clark): Remove these methods once we only support Arrow 9.0.0+.
+        def __getitem__(self, key):
+            # This __getitem__ hook allows us to support proper indexing when accessing
+            # a single tensor (a "scalar" item of the array). Without this hook for
+            # integer keys, the indexing will fail on pyarrow < 8.0.0 due to a lack of
+            # proper ExtensionScalar support.
+
+            # NOTE(Clark): We'd like to override the pa.Array.getitem() helper instead,
+            # which would obviate the need for overriding __iter__() below, but
+            # unfortunately overriding Cython cdef methods with normal Python methods
+            # isn't allowed.
+            item = super().__getitem__(key)
+            if not isinstance(key, slice):
+                item = item.type._extension_scalar_to_ndarray(item)
+            return item
+
+        def __iter__(self):
+            # Override pa.Array.__iter__() in order to return an iterator of properly
+            # shaped tensors instead of an iterator of flattened tensors.
+            # See comment in above __getitem__ method.
+            for i in range(len(self)):
+                # Use overridden __getitem__ method.
+                yield self.__getitem__(i)
+
+        def to_pylist(self):
+            # Override pa.Array.to_pylist() due to a lack of ExtensionScalar support
+            # (see comment in __getitem__).
+            return list(self)
 
     @classmethod
     def from_numpy(
@@ -431,12 +512,44 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
         """
         return ArrowVariableShapedTensorArray
 
+    if (
+        PYARROW_VERSION is None
+        or PYARROW_VERSION >= MIN_PYARROW_VERSION_SCALAR_SUBCLASS
+    ):
+
+        def __arrow_ext_scalar_class__(self):
+            """
+            ExtensionScalar subclass with custom logic for this array of tensors type.
+            """
+            return ArrowVariableShapedTensorScalar
+
     def __str__(self) -> str:
         dtype = self.storage_type["data"].type.value_type
         return f"ArrowVariableShapedTensorType(dtype={dtype}, ndim={self.ndim})"
 
     def __repr__(self) -> str:
         return str(self)
+
+    def _extension_scalar_to_ndarray(self, scalar) -> np.ndarray:
+        """
+        Convert an ExtensionScalar to a tensor element.
+        """
+        # TODO(Clark): Construct ndarray view directly on tensor element buffer to
+        # ensure reliable zero-copy semantics.
+        flat_ndarray = scalar.value.get("data").values.to_numpy(zero_copy_only=False)
+        shape = tuple(scalar.value.get("shape").as_py())
+        return flat_ndarray.reshape(shape)
+
+
+if PYARROW_VERSION is None or PYARROW_VERSION >= MIN_PYARROW_VERSION_SCALAR_SUBCLASS:
+
+    @PublicAPI(stability="alpha")
+    class ArrowVariableShapedTensorScalar(pa.ExtensionScalar):
+        def as_py(self) -> np.ndarray:
+            return self.type._extension_scalar_to_ndarray(self)
+
+        def __array__(self) -> np.ndarray:
+            return self.as_py()
 
 
 @PublicAPI(stability="alpha")
@@ -456,40 +569,71 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
 
     OFFSET_DTYPE = np.int32
 
-    def __getitem__(self, key):
-        # This __getitem__ hook allows us to support proper indexing when accessing a
-        # single tensor (a "scalar" item of the array). Without this hook for integer
-        # keys, the indexing will fail on all currently released pyarrow versions due
-        # to a lack of proper ExtensionScalar support. Support was added in
-        # https://github.com/apache/arrow/pull/10904, but hasn't been released at the
-        # time of this comment, and even with this support, the returned ndarray is a
-        # flat representation of the n-dimensional tensor.
+    if PYARROW_VERSION is not None and PYARROW_VERSION < MIN_PYARROW_VERSION_SCALAR:
+        # NOTE(Clark): These __getitem__, __iter__, and to_pylist overrides are only
+        # needed for Arrow < 8.0.0, before proper ExtensionScalar support was added.
+        # TODO(Clark): Remove these methods once we only support Arrow 8.0.0+.
+        def __getitem__(self, key):
+            # This __getitem__ hook allows us to support proper indexing when accessing
+            # a single tensor (a "scalar" item of the array). Without this hook for
+            # integer keys, the indexing will fail on pyarrow < 8.0.0 due to a lack of
+            # proper ExtensionScalar support.
 
-        # NOTE(Clark): We'd like to override the pa.Array.getitem() helper instead,
-        # which would obviate the need for overriding __iter__() below, but
-        # unfortunately overriding Cython cdef methods with normal Python methods isn't
-        # allowed.
-        if isinstance(key, slice):
-            sliced = super().__getitem__(key).to_numpy()
-            if sliced.dtype.type is not np.object_:
-                # Force ths slice to match NumPy semantics for unit (single-element)
-                # slices.
-                sliced = sliced[0:1]
-            return sliced
-        return self._to_numpy(key)
+            # NOTE(Clark): We'd like to override the pa.Array.getitem() helper instead,
+            # which would obviate the need for overriding __iter__() below, but
+            # unfortunately overriding Cython cdef methods with normal Python methods
+            # isn't allowed.
+            if isinstance(key, slice):
+                return super().__getitem__(key)
+            return self._to_numpy(key)
 
-    def __iter__(self):
-        # Override pa.Array.__iter__() in order to return an iterator of properly
-        # shaped tensors instead of an iterator of flattened tensors.
-        # See comment in above __getitem__ method.
-        for i in range(len(self)):
-            # Use overridden __getitem__ method.
-            yield self.__getitem__(i)
+        def __iter__(self):
+            # Override pa.Array.__iter__() in order to return an iterator of properly
+            # shaped tensors instead of an iterator of flattened tensors.
+            # See comment in above __getitem__ method.
+            for i in range(len(self)):
+                # Use overridden __getitem__ method.
+                yield self.__getitem__(i)
 
-    def to_pylist(self):
-        # Override pa.Array.to_pylist() due to a lack of ExtensionScalar support (see
-        # comment in __getitem__).
-        return list(self)
+        def to_pylist(self):
+            # Override pa.Array.to_pylist() due to a lack of ExtensionScalar support
+            # (see comment in __getitem__).
+            return list(self)
+
+    elif (
+        PYARROW_VERSION is not None
+        and PYARROW_VERSION < MIN_PYARROW_VERSION_SCALAR_SUBCLASS
+    ):
+        # NOTE(Clark): These __getitem__, __iter__, and to_pylist overrides are only
+        # needed for Arrow 8.*, before ExtensionScalar subclassing support was added.
+        # TODO(Clark): Remove these methods once we only support Arrow 9.0.0+.
+        def __getitem__(self, key):
+            # This __getitem__ hook allows us to support proper indexing when accessing
+            # a single tensor (a "scalar" item of the array). Without this hook for
+            # integer keys, the indexing will fail on pyarrow < 8.0.0 due to a lack of
+            # proper ExtensionScalar support.
+
+            # NOTE(Clark): We'd like to override the pa.Array.getitem() helper instead,
+            # which would obviate the need for overriding __iter__() below, but
+            # unfortunately overriding Cython cdef methods with normal Python methods
+            # isn't allowed.
+            item = super().__getitem__(key)
+            if not isinstance(key, slice):
+                item = item.type._extension_scalar_to_ndarray(item)
+            return item
+
+        def __iter__(self):
+            # Override pa.Array.__iter__() in order to return an iterator of properly
+            # shaped tensors instead of an iterator of flattened tensors.
+            # See comment in above __getitem__ method.
+            for i in range(len(self)):
+                # Use overridden __getitem__ method.
+                yield self.__getitem__(i)
+
+        def to_pylist(self):
+            # Override pa.Array.to_pylist() due to a lack of ExtensionScalar support
+            # (see comment in __getitem__).
+            return list(self)
 
     @classmethod
     def from_numpy(

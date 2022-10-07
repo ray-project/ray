@@ -6,12 +6,13 @@ from pytest_lazyfixture import lazy_fixture
 from typing import Dict, Union
 from pandas.testing import assert_frame_equal
 
+import ray
 from ray.data.preprocessors import BatchMapper
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.tests.conftest import *  # noqa
 
 
-def test_batch_mapper_basic():
+def test_batch_mapper_basic(ray_start_regular_shared):
     """Tests batch mapper functionality."""
     old_column = [1, 2, 3, 4]
     to_be_modified = [1, -1, 1, -1]

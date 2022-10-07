@@ -4,6 +4,7 @@ import functools
 import hashlib
 import importlib
 import inspect
+import json
 import logging
 import multiprocessing
 import os
@@ -14,6 +15,7 @@ import sys
 import tempfile
 import threading
 import time
+from urllib.parse import urlencode, unquote, urlparse, parse_qsl, ParseResult
 import uuid
 import warnings
 from inspect import signature
@@ -61,6 +63,7 @@ win32_AssignProcessToJobObject = None
 
 
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
+_PYARROW_VERSION = None
 
 
 def get_user_temp_dir():
@@ -1578,3 +1581,101 @@ def split_address(address: str) -> Tuple[str, str]:
 
     module_string, inner_address = address.split("://", maxsplit=1)
     return (module_string, inner_address)
+
+
+def _add_url_query_params(
+    url: str, params: Dict[str, str], override: bool = False
+) -> str:
+    """Add params to the provided url as query parameters.
+
+    Args:
+        url: The URL to add query parameters to.
+        params: The query parameters to add.
+        override: Whether the provided params should override existing query parameters
+            in url: if True, the existing query parameters will be overwritten; if
+            False, the existing query parameters will take precedent. Default is False.
+
+    Returns:
+        URL with params added as query parameters.
+    """
+    # Unquoting URL first so we don't loose existing args.
+    url = unquote(url)
+    # Parse URL.
+    parsed_url = urlparse(url)
+    # Converting URL query string arguments to dict.
+    base_params = dict(parse_qsl(parsed_url.query))
+    if not override:
+        # If not overriding, treat params as base parameters and override with existing
+        # query string parameters.
+        base_params, params = params, base_params
+    # Merging URL query string arguments dict with new params.
+    base_params.update(params)
+    # bool and dict values should be converted to json-friendly values.
+    base_params.update(
+        {
+            k: json.dumps(v)
+            for k, v in base_params.items()
+            if isinstance(v, (bool, dict))
+        }
+    )
+
+    # Converting URL arguments to proper query string.
+    encoded_params = urlencode(base_params, doseq=True)
+    # Creating new parsed result object based on provided with new
+    # URL arguments. Same thing happens inside of urlparse.
+    new_url = ParseResult(
+        parsed_url.scheme,
+        parsed_url.netloc,
+        parsed_url.path,
+        parsed_url.params,
+        encoded_params,
+        parsed_url.fragment,
+    ).geturl()
+
+    return new_url
+
+
+def _add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
+    """If the provided URI is an S3 URL, add allow_bucket_creation=true as a query
+    parameter. For pyarrow >= 9.0.0, this is required in order to allow
+    ``S3FileSystem.create_dir()`` to create S3 buckets.
+
+    If the provided URI is not an S3 URL or if pyarrow < 9.0.0 is installed, we return
+    the URI unchanged.
+
+    Args:
+        uri: The URI that we'll add the query parameter to, if it's an S3 URL.
+
+    Returns:
+        A URI with the added allow_bucket_creation=true query parameter, if the provided
+        URI is an S3 URL; uri will be returned unchanged otherwise.
+    """
+    from pkg_resources._vendor.packaging.version import parse as parse_version
+
+    pyarrow_version = _get_pyarrow_version()
+    if pyarrow_version is not None:
+        pyarrow_version = parse_version(pyarrow_version)
+    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+        # This bucket creation query parameter is not required for pyarrow < 9.0.0.
+        return uri
+    parsed_uri = urlparse(uri)
+    if parsed_uri.scheme == "s3":
+        uri = _add_url_query_params(uri, {"allow_bucket_creation": True})
+    return uri
+
+
+def _get_pyarrow_version() -> Optional[str]:
+    """Get the version of the installed pyarrow package, returned as a tuple of ints.
+    Returns None if the package is not found.
+    """
+    global _PYARROW_VERSION
+    if _PYARROW_VERSION is None:
+        try:
+            import pyarrow
+        except ModuleNotFoundError:
+            # pyarrow not installed, short-circuit.
+            pass
+        else:
+            if hasattr(pyarrow, "__version__"):
+                _PYARROW_VERSION = pyarrow.__version__
+    return _PYARROW_VERSION
