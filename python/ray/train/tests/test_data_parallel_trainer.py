@@ -308,37 +308,6 @@ def test_mismatch_report(ray_start_4_cpus):
         trainer.fit()
 
 
-def test_checkpoint_config(ray_start_4_cpus):
-    def train_func():
-        session.report(
-            dict(loss=float("nan")), checkpoint=Checkpoint.from_dict({"idx": 0})
-        )  # nan, deleted
-        session.report(
-            dict(loss=3), checkpoint=Checkpoint.from_dict({"idx": 1})
-        )  # best
-        session.report(
-            dict(loss=7), checkpoint=Checkpoint.from_dict({"idx": 2})
-        )  # worst, deleted
-        session.report(dict(loss=5), checkpoint=Checkpoint.from_dict({"idx": 3}))
-
-    checkpoint_config = CheckpointConfig(
-        num_to_keep=2, checkpoint_score_attribute="loss", checkpoint_score_order="min"
-    )
-
-    trainer = DataParallelTrainer(
-        train_func,
-        scaling_config=scale_config,
-        run_config=RunConfig(checkpoint_config=checkpoint_config),
-    )
-    results = trainer.fit()
-    assert results.checkpoint.to_dict()["idx"] == 3
-    assert len(results.best_checkpoints) == 2
-    assert results.best_checkpoints[0][0].to_dict()["idx"] == 3
-    assert results.best_checkpoints[1][0].to_dict()["idx"] == 1
-    assert results.best_checkpoints[0][1]["loss"] == 5
-    assert results.best_checkpoints[1][1]["loss"] == 3
-
-
 def test_world_rank(ray_start_4_cpus):
     def train_func():
         session.report(dict(world_rank=session.get_world_rank()))
