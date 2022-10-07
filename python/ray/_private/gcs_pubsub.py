@@ -525,7 +525,7 @@ class _AioSubscriber(_SubscriberBase):
                 if self._should_terminate_polling(e):
                     return
                 raise
-            finally:
+            # finally:
                 # time.sleep(0.1)
 
     async def close(self) -> None:

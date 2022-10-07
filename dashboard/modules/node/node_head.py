@@ -33,6 +33,7 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 
 from pympler import asizeof
 
+
 def gcs_node_info_to_dict(message):
     return dashboard_utils.message_to_dict(
         message, {"nodeId"}, including_default_value_fields=True
@@ -361,13 +362,24 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 logger.info(
                     f"{attr} : {asizeof.asizeof(getattr(self._dashboard_head.gcs_log_subscriber, attr))}"
                 )
-        logger.info("printing Pympler asizeof GCSLogSubscriber._close attrs from NODE_HEAD")
+        logger.info(
+            "printing Pympler asizeof GCSLogSubscriber._close attrs from NODE_HEAD"
+        )
         for attr in dir(self._dashboard_head.gcs_log_subscriber._close):
             if not attr.startswith("__"):
                 logger.info(
-                    f"{attr} : {asizeof.asizeof(getattr(self._dashboard_head.gcs_log_subscriber._close, attr))}")
-        logger.info("Number of waiters on GCSLogSubscriber._close: {}".format(len(self._dashboard_head.gcs_log_subscriber._close._waiters)))
-        logger.info("Wait call count from GCS Subscriber: " + str(self._dashboard_head.gcs_log_subscriber._wait_call_count))
+                    f"{attr} : {asizeof.asizeof(getattr(self._dashboard_head.gcs_log_subscriber._close, attr))}"
+                )
+        logger.info(
+            "Number of waiters on GCSLogSubscriber._close: {}".format(
+                len(self._dashboard_head.gcs_log_subscriber._close._waiters)
+            )
+        )
+        logger.info(
+            "Wait call count from GCS Subscriber: "
+            + str(self._dashboard_head.gcs_log_subscriber._wait_call_count)
+        )
+
     async def _update_log_info(self):
         if ray_constants.DISABLE_DASHBOARD_LOG_INFO:
             return
