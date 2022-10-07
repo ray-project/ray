@@ -23,7 +23,7 @@ RUN sudo apt-get update \
         unzip \
         unrar \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
-    && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
+    && $HOME/anaconda3/bin/pip --no-cache-dir install --use-deprecated=legacy-resolver -U \
            -r requirements.txt \
            -r requirements_rllib.txt \
            -r requirements_train.txt \
