@@ -248,6 +248,10 @@ The following metrics are exposed by Ray Serve:
      - The number of queries for this deployment waiting to be assigned to a replica.
    * - ``serve_num_deployment_http_error_requests`` [*]
      - The number of non-200 HTTP responses returned by each deployment.
+   * - ``serve_deployment_health_check_successes``
+     - The number of replica health checks that succeeded on this deployment.
+   * - ``serve_deployment_health_check_failures``
+     - The number of replica health checks that failed on this deployment.
 ```
 [*] - only available when using HTTP calls  
 [**] - only available when using Python `ServeHandle` calls
