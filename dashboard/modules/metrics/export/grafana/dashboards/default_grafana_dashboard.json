@@ -16,7 +16,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": 3,
-  "iteration": 1665178278684,
+  "iteration": 1665178350015,
   "links": [],
   "panels": [
     {
@@ -1101,7 +1101,6 @@
       "decimals": 2,
       "fieldConfig": {
         "defaults": {
-          "displayName": "ray_node_network_receive_speed",
           "unit": "binBps"
         },
         "overrides": []
@@ -1150,7 +1149,7 @@
           "exemplar": true,
           "expr": "ray_node_network_receive_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
           "interval": "",
-          "legendFormat": "Network Receive: {{instance}}",
+          "legendFormat": "Recv: {{instance}}",
           "queryType": "randomWalk",
           "refId": "A"
         },
@@ -1158,7 +1157,7 @@
           "exemplar": true,
           "expr": "ray_node_network_send_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
           "interval": "",
-          "legendFormat": "Network Send: {{instance}}",
+          "legendFormat": "Send: {{instance}}",
           "refId": "B"
         }
       ],
@@ -1394,5 +1393,5 @@
   "timezone": "",
   "title": "Default Dashboard",
   "uid": "rayDefaultDashboard",
-  "version": 12
+  "version": 13
 }
