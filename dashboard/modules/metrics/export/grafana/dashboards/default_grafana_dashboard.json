@@ -16,7 +16,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": 3,
-  "iteration": 1665178934953,
+  "iteration": 1665179438433,
   "links": [],
   "panels": [
     {
@@ -54,13 +54,19 @@
       "hiddenSeries": false,
       "id": 26,
       "legend": {
+        "alignAsTable": true,
         "avg": false,
-        "current": false,
+        "current": true,
+        "hideEmpty": false,
+        "hideZero": true,
         "max": false,
         "min": false,
+        "rightSide": false,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
-        "values": false
+        "values": true
       },
       "lines": true,
       "linewidth": 1,
@@ -469,7 +475,7 @@
       "yaxes": [
         {
           "$$hashKey": "object:1740",
-          "format": "gpus",
+          "format": "GPUs",
           "label": "",
           "logBase": 1,
           "max": null,
@@ -720,7 +726,7 @@
       "yaxes": [
         {
           "$$hashKey": "object:2835",
-          "format": "gpus",
+          "format": "GPUs",
           "label": "",
           "logBase": 1,
           "max": null,
@@ -1400,12 +1406,12 @@
     ]
   },
   "time": {
-    "from": "now-5m",
+    "from": "now-30m",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "Default Dashboard",
   "uid": "rayDefaultDashboard",
-  "version": 15
+  "version": 20
 }
