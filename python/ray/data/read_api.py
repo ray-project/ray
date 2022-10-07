@@ -577,9 +577,7 @@ def read_csv(
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-    partition_filter: Optional[
-        PathPartitionFilter
-    ] = CSVDatasource.file_extension_filter(),
+    partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = Partitioning("hive"),
     **arrow_csv_args,
 ) -> Dataset[ArrowRow]:
@@ -597,15 +595,13 @@ def read_csv(
         >>> ray.data.read_csv( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
-        >>> # Read files that use a different delimiter. The partition_filter=None is needed here
-        >>> # because by default read_csv only reads .csv files. For more uses of ParseOptions see
+        >>> # Read files that use a different delimiter. For more uses of ParseOptions see
         >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html  # noqa: #501
         >>> from pyarrow import csv
         >>> parse_options = csv.ParseOptions(delimiter="\t")
         >>> ray.data.read_csv( # doctest: +SKIP
         ...     "example://iris.tsv",
-        ...     parse_options=parse_options,
-        ...     partition_filter=None)
+        ...     parse_options=parse_options)
 
         >>> # Convert a date column with a custom format from a CSV file.
         >>> # For more uses of ConvertOptions see
@@ -626,6 +622,15 @@ def read_csv(
         >>> ds.take(1)  # doctest: + SKIP
         [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}
 
+        By default, ``read_csv`` reads all files from file paths. If you want to filter
+        files by file extensions, set the ``partition_filter`` parameter.
+
+        >>> # Read only *.csv files from multiple directories.
+        >>> from ray.data.datasource import FileExtensionFilter
+        >>> ray.data.read_csv( # doctest: +SKIP
+        ...     ["s3://bucket/path1", "s3://bucket/path2"],
+        ...     partition_filter=FileExtensionFilter("csv"))
+
     Args:
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
@@ -639,8 +644,9 @@ def read_csv(
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
-            By default, this filters out any file paths whose file extension does not
-            match "*.csv*".
+            By default, this does not filter out any files.
+            If wishing to filter out all file paths except those whose file extension
+            matches e.g. "*.csv*", a ``FileExtensionFilter("csv")`` can be provided.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_.
