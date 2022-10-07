@@ -43,7 +43,8 @@ tabulate
 tensorboardX >= 1.9
 uvicorn
 dataclasses; python_version < '3.7'
-starlette
+starlette==0.18.0; sys_platform == 'win32'
+starlette; sys_platform != 'win32'
 aiorwlock
 gradio; platform_system != "Windows"
 
