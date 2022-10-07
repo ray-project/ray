@@ -1,13 +1,13 @@
 # Direct Ingress
 
-In the 2.1, Serve provides alpha version gRPC ingress. In this section, you will learn how to 
+In the 2.1, Serve provides an alpha version of gRPC ingress. In this section, you will learn how to
 
-* use Serve internal gRPC schema to send traffic
-* bring your own gRPC schema into serve application
+* use Serve's internal gRPC schema to send traffic
+* bring your own gRPC schema into your Serve application
 
-## Use Serve Schema
+## Use Serve's Schema
 
-Internally, serve provides a simple gRPC schema.
+Internally, Serve provides a simple gRPC schema.
 ```
 message PredictRequest {
   map<string, bytes> input = 2;
@@ -24,14 +24,14 @@ service PredictAPIsService {
 
 Code example:
 
-Server
+Server:
 ```{literalinclude} ../serve/doc_code/direct_ingress.py
 :start-after: __begin_server__
 :end-before: __end_server__
 :language: python
 ```
 
-Client
+Client:
 ```{literalinclude} ../serve/doc_code/direct_ingress.py
 :start-after: __begin_client__
 :end-before: __end_client__
@@ -39,15 +39,15 @@ Client
 ```
 
 :::{note}
-* `input` is a dictionary of `map<string, bytes> ` following the schema described
-*  User input data needs to be serialized to bytes type and feed into the `input`.
-* Response will be under bytes type, which means user code is responsible for to serialize the output into bytes. 
-* By default, the gRPC port is 9000.
+* `input` is a dictionary of `map<string, bytes> ` following the schema described above.
+*  The user input data needs to be serialized to `bytes` type and fed into the `input`.
+* The response will be under `bytes` type, which means the user code is responsible for serializing the output into bytes.
+* By default, the gRPC port is 9000. You can change it by passing port number when calling DefaultgRPCDriver bind function.
 :::
 
 ### Client Schema code generation
 There are lots of ways to generate client schema code. Here is a simple step to generate the code.
-* Insintall the gRPC code generation tools
+* Install the gRPC code generation tools
 ```
 pip install grpcio-tools
 ```
@@ -56,13 +56,14 @@ pip install grpcio-tools
 ```
 python -m grpc_tools.protoc --proto_path=src/ray/protobuf/ --python_out=. --grpc_python_out=. src/ray/protobuf/serve.proto
 ```
-After the two steps above, you should have `serve_pb2.py` and `serve_pb2_grpc.py` files generated.(The steps that show above work for all the schemas files generations.)
+After the two steps above, you should have `serve_pb2.py` and `serve_pb2_grpc.py` files generated.(The steps shown above work for generation for any schema file, including "bring your own schema" described below.)
 
 ## Bring your own Schema
 
-If you have customized schema to use, serve also support it!
+If you have a customized schema to use, Serve also supports it!
 
-Assume you have the schema and generated the corresponding code,
+Assume you have the following customized schema and have generated the corresponding gRPC code:
+
 
 ```
 message PingRequest {
@@ -87,7 +88,7 @@ Server:
 :language: python
 ```
 
-Client
+Client:
 ```{literalinclude} ../serve/doc_code/direct_ingress_with_customized_schema.py
 :start-after: __begin_client__
 :end-before: __end_client__
