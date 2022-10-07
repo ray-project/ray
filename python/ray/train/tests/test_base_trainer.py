@@ -14,6 +14,7 @@ from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessors import BatchMapper
 from ray.tune.impl import tuner_internal
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
@@ -389,6 +390,28 @@ def test_large_params(ray_start_4_cpus):
     checkpoint = Checkpoint.from_dict({"ckpt": np.zeros(shape=array_size)})
     trainer = DummyTrainer(training_loop, resume_from_checkpoint=checkpoint)
     trainer.fit()
+
+
+def test_preprocess_datasets_context(ray_start_4_cpus):
+    """Tests if DatasetContext is propagated to preprocessors."""
+
+    def training_loop(self):
+        assert self.datasets["my_dataset"].take() == [2, 3, 4]
+        session.report(dict(my_metric=1))
+
+    target_max_block_size = 100
+
+    def map_fn(batch):
+        ctx = ray.data.context.DatasetContext.get_current()
+        assert ctx.target_max_block_size == target_max_block_size
+        return batch + 1
+
+    preprocessor = BatchMapper(map_fn)
+
+    datasets = {"my_dataset": ray.data.from_items([1, 2, 3])}
+    trainer = DummyTrainer(training_loop, datasets=datasets, preprocessor=preprocessor)
+    result = trainer.fit()
+    assert result.metrics["my_metric"] == 1
 
 
 if __name__ == "__main__":

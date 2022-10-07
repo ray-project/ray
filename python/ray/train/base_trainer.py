@@ -369,6 +369,7 @@ class BaseTrainer(abc.ABC):
             A Trainable class to use for training.
         """
 
+        from ray.data.context import DatasetContext
         from ray.tune.execution.placement_groups import PlacementGroupFactory
         from ray.tune.trainable import wrap_function
 
@@ -396,6 +397,7 @@ class BaseTrainer(abc.ABC):
 
         trainable_cls = wrap_function(train_func, warn=False)
         has_base_dataset = bool(self.datasets)
+        dataset_context = DatasetContext.get_current()
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
@@ -434,6 +436,9 @@ class BaseTrainer(abc.ABC):
                 ] = self._reconcile_scaling_config_with_trial_resources(
                     merged_scaling_config
                 )
+                # Set the DatasetContext on the Trainer actor to the DatasetContext
+                # specified on the driver.
+                DatasetContext._set_current(dataset_context)
                 super(TrainTrainable, self).setup(config)
 
             def _reconcile_scaling_config_with_trial_resources(
