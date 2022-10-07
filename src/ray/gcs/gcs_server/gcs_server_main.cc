@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
       {ray::stats::JobIdKey, ""},
       {ray::stats::VersionKey, kRayVersion},
       {ray::stats::NodeAddressKey, node_ip_address}};
-  ray::stats::Init(global_tags, metrics_agent_port);
+  ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {

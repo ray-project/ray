@@ -401,8 +401,8 @@ class _TorchAccelerator(Accelerator):
                 DataParallel = DistributedDataParallel
                 if torch.cuda.is_available():
                     parallel_strategy_kwargs = {
-                        "device_ids": [rank],
-                        "output_device": rank,
+                        "device_ids": [device],
+                        "output_device": device,
                         **parallel_strategy_kwargs,
                     }
             else:
@@ -559,7 +559,9 @@ class _TorchAccelerator(Accelerator):
         """
         if torch.cuda.is_available():
             # GPU IDs are assigned by Ray after you specify "use_gpu"
-            gpu_ids = ray.get_gpu_ids()
+            # GPU `ray.get_gpu_ids()` may return ints or may return strings.
+            # We should always convert to strings.
+            gpu_ids = [str(id) for id in ray.get_gpu_ids()]
 
             if len(gpu_ids) > 0:
                 # By default, there should only be one GPU ID if `use_gpu=True`.
@@ -570,9 +572,7 @@ class _TorchAccelerator(Accelerator):
 
                 cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
                 if cuda_visible_str and cuda_visible_str != "NoDevFiles":
-                    cuda_visible_list = [
-                        int(dev) for dev in cuda_visible_str.split(",")
-                    ]
+                    cuda_visible_list = cuda_visible_str.split(",")
                     device_id = cuda_visible_list.index(gpu_id)
                 else:
                     raise RuntimeError(

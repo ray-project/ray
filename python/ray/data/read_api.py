@@ -36,12 +36,14 @@ from ray.data.datasource import (
     PathPartitionFilter,
     RangeDatasource,
     ReadTask,
+    TextDatasource,
     TFRecordDatasource,
 )
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
     _wrap_and_register_arrow_serialization_workaround,
 )
+from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup
@@ -503,6 +505,7 @@ def read_json(
     partition_filter: Optional[
         PathPartitionFilter
     ] = JSONDatasource.file_extension_filter(),
+    partitioning: Partitioning = Partitioning("hive"),
     **arrow_json_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from json files.
@@ -518,6 +521,15 @@ def read_json(
         >>> # Read multiple directories.
         >>> ray.data.read_json( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
+
+        By default, ``read_json`` parses
+        `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_
+        from file paths. If your data adheres to a different partitioning scheme, set
+        the ``partitioning`` parameter.
+
+        >>> ds = ray.data.read_json("example://year=2022/month=09/sales.json")  # doctest: + SKIP
+        >>> ds.take(1)  # doctest: + SKIP
+        [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -535,10 +547,13 @@ def read_json(
             By default, this filters out any file paths whose file extension does not
             match "*.json*".
         arrow_json_args: Other json read options to pass to pyarrow.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. By default, this function parses
+            `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
-    """
+    """  # noqa: E501
     return read_datasource(
         JSONDatasource(),
         parallelism=parallelism,
@@ -548,6 +563,7 @@ def read_json(
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        partitioning=partitioning,
         **arrow_json_args,
     )
 
@@ -561,9 +577,8 @@ def read_csv(
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-    partition_filter: Optional[
-        PathPartitionFilter
-    ] = CSVDatasource.file_extension_filter(),
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = Partitioning("hive"),
     **arrow_csv_args,
 ) -> Dataset[ArrowRow]:
     r"""Create an Arrow dataset from csv files.
@@ -580,15 +595,13 @@ def read_csv(
         >>> ray.data.read_csv( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
-        >>> # Read files that use a different delimiter. The partition_filter=None is needed here
-        >>> # because by default read_csv only reads .csv files. For more uses of ParseOptions see
+        >>> # Read files that use a different delimiter. For more uses of ParseOptions see
         >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html  # noqa: #501
         >>> from pyarrow import csv
         >>> parse_options = csv.ParseOptions(delimiter="\t")
         >>> ray.data.read_csv( # doctest: +SKIP
         ...     "example://iris.tsv",
-        ...     parse_options=parse_options,
-        ...     partition_filter=None)
+        ...     parse_options=parse_options)
 
         >>> # Convert a date column with a custom format from a CSV file.
         >>> # For more uses of ConvertOptions see
@@ -599,6 +612,24 @@ def read_csv(
         >>> ray.data.read_csv( # doctest: +SKIP
         ...     "example://dow_jones_index.csv",
         ...     convert_options=convert_options)
+
+        By default, ``read_csv`` parses
+        `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_
+        from file paths. If your data adheres to a different partitioning scheme, set
+        the ``partitioning`` parameter.
+
+        >>> ds = ray.data.read_csv("example://year=2022/month=09/sales.csv")  # doctest: + SKIP
+        >>> ds.take(1)  # doctest: + SKIP
+        [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}
+
+        By default, ``read_csv`` reads all files from file paths. If you want to filter
+        files by file extensions, set the ``partition_filter`` parameter.
+
+        >>> # Read only *.csv files from multiple directories.
+        >>> from ray.data.datasource import FileExtensionFilter
+        >>> ray.data.read_csv( # doctest: +SKIP
+        ...     ["s3://bucket/path1", "s3://bucket/path2"],
+        ...     partition_filter=FileExtensionFilter("csv"))
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -613,13 +644,17 @@ def read_csv(
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
-            By default, this filters out any file paths whose file extension does not
-            match "*.csv*".
+            By default, this does not filter out any files.
+            If wishing to filter out all file paths except those whose file extension
+            matches e.g. "*.csv*", a ``FileExtensionFilter("csv")`` can be provided.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. By default, this function parses
+            `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_.
         arrow_csv_args: Other csv read options to pass to pyarrow.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
-    """
+    """  # noqa: E501
     return read_datasource(
         CSVDatasource(),
         parallelism=parallelism,
@@ -629,6 +664,7 @@ def read_csv(
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        partitioning=partitioning,
         **arrow_csv_args,
     )
 
@@ -646,6 +682,7 @@ def read_text(
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = None,
 ) -> Dataset[str]:
     """Create a dataset from lines stored in text files.
 
@@ -676,26 +713,25 @@ def read_text(
             By default, this does not filter out any files.
             If wishing to filter out all file paths except those whose file extension
             matches e.g. "*.txt*", a ``FileXtensionFilter("txt")`` can be provided.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
 
     Returns:
         Dataset holding lines of text read from the specified paths.
     """
-
-    def to_text(s):
-        lines = s.decode(encoding).split("\n")
-        if drop_empty_lines:
-            lines = [line for line in lines if line.strip() != ""]
-        return lines
-
-    return read_binary_files(
-        paths,
-        filesystem=filesystem,
+    return read_datasource(
+        TextDatasource(),
         parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
         ray_remote_args=ray_remote_args,
-        arrow_open_stream_args=arrow_open_stream_args,
+        open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
-    ).flat_map(to_text, **(ray_remote_args or {}))
+        partitioning=partitioning,
+        drop_empty_lines=drop_empty_lines,
+        encoding=encoding,
+    )
 
 
 @PublicAPI
@@ -709,6 +745,7 @@ def read_numpy(
     partition_filter: Optional[
         PathPartitionFilter
     ] = NumpyDatasource.file_extension_filter(),
+    partitioning: Partitioning = None,
     **numpy_load_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from numpy files.
@@ -740,6 +777,9 @@ def read_numpy(
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
             match "*.npy*".
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
+
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """
@@ -751,6 +791,7 @@ def read_numpy(
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        partitioning=partitioning,
         **numpy_load_args,
     )
 
@@ -842,6 +883,7 @@ def read_binary_files(
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = None,
 ) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 
@@ -870,6 +912,8 @@ def read_binary_files(
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
             By default, this does not filter out any files.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -882,9 +926,9 @@ def read_binary_files(
         filesystem=filesystem,
         ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
-        schema=bytes,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        partitioning=partitioning,
     )
 
 
