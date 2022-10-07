@@ -184,7 +184,12 @@ class Monitor:
         # If set, we are in a manually created cluster (non-autoscaling) and
         # simply mirroring what the GCS tells us the cluster node types are.
         self.readonly_config = None
-        self.event_logger = get_event_logger(RayEvent.SourceType.AUTOSCALER, log_dir)
+        try:
+            self.event_logger = get_event_logger(
+                RayEvent.SourceType.AUTOSCALER, log_dir
+            )
+        except Exception:
+            self.event_logger = None
 
         self.prom_metrics = AutoscalerPrometheusMetrics()
         if monitor_ip and prometheus_client:
@@ -385,7 +390,8 @@ class Monitor:
                                     ray_constants.LOG_PREFIX_EVENT_SUMMARY, line
                                 )
                             )
-                            self.event_logger.info(line)
+                            if self.event_logger:
+                                self.event_logger.info(line)
 
                     self.event_summarizer.clear()
 
