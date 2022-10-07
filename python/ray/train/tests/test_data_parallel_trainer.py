@@ -13,7 +13,7 @@ from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import PREPROCESSOR_KEY
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.air.config import CheckpointConfig, RunConfig, ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 from ray.tune.callback import Callback

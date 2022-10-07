@@ -182,7 +182,9 @@ def test_worker_failure_1(ray_start_4_cpus):
 
     config = BackendConfig()
 
-    iterator = create_iterator(train_func, config, backend_executor=new_backend_executor_cls)
+    iterator = create_iterator(
+        train_func, config, backend_executor=new_backend_executor_cls
+    )
     output = iterator.get_final_results(force=True)
 
     assert output == [1, 1]
@@ -205,7 +207,9 @@ def test_worker_failure_2(ray_start_4_cpus):
 
     config = BackendConfig()
 
-    iterator = create_iterator(train_func, config, backend_executor=new_backend_executor_cls)
+    iterator = create_iterator(
+        train_func, config, backend_executor=new_backend_executor_cls
+    )
     output = iterator.get_final_results(force=True)
 
     assert output == [1, 1]
@@ -225,7 +229,9 @@ def test_worker_failure_local_rank(ray_start_4_cpus):
 
     config = BackendConfig()
 
-    iterator = create_iterator(train_func, config, backend_executor=new_backend_executor_cls)
+    iterator = create_iterator(
+        train_func, config, backend_executor=new_backend_executor_cls
+    )
     output = iterator.get_final_results(force=True)
 
     assert output == [0, 1]
@@ -248,7 +254,12 @@ def test_worker_start_failure(ray_start_4_cpus):
 
     config = BackendConfig()
 
-    iterator = create_iterator(lambda x: 1, config, backend_executor=TestBackendExecutor, init_hook=init_hook_fail)
+    iterator = create_iterator(
+        lambda x: 1,
+        config,
+        backend_executor=TestBackendExecutor,
+        init_hook=init_hook_fail,
+    )
     iterator.get_final_results(force=True)
 
     assert len(iterator._backend_executor.get_worker_group()) == 2
