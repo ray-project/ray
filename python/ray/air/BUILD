@@ -269,5 +269,6 @@ py_library(
         "//python/ray/air:__subpackages__",
         "//python/ray/train:__pkg__",
         "//python/ray/train:__subpackages__",
+        "//release:__pkg__"
     ],
 )
