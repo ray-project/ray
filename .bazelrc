@@ -89,9 +89,9 @@ build:llvm --action_env=BAZEL_LINKOPTS=-lm:-pthread
 build:llvm --define force_libcpp=enabled
 
 # Thread sanitizer configuration:
+build:tsan --per_file_copt="-bazel-ray/external/com_github_antirez_redis/.*$@-fsanitize=thread"
+build:tsan --per_file_copt="-bazel-ray/external/com_github_antirez_redis/.*$@-DTHREAD_SANITIZER"
 build:tsan --strip=never
-build:tsan --copt -fsanitize=thread
-build:tsan --copt -DTHREAD_SANITIZER
 build:tsan --copt -O2
 build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer

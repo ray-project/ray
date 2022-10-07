@@ -187,6 +187,7 @@ py_test_module_list(
     "test_raylet_output.py",
     "test_scheduling_performance.py",
     "test_get_or_create_actor.py",
+    "test_redis_tls.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
