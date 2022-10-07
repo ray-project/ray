@@ -16,7 +16,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": 3,
-  "iteration": 1665101733478,
+  "iteration": 1665179438433,
   "links": [],
   "panels": [
     {
@@ -54,13 +54,19 @@
       "hiddenSeries": false,
       "id": 26,
       "legend": {
+        "alignAsTable": true,
         "avg": false,
-        "current": false,
+        "current": true,
+        "hideEmpty": false,
+        "hideZero": true,
         "max": false,
         "min": false,
+        "rightSide": false,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
-        "values": false
+        "values": true
       },
       "lines": true,
       "linewidth": 1,
@@ -82,7 +88,7 @@
           "exemplar": true,
           "expr": "sum(ray_tasks) by (State)",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "{{State}}",
           "queryType": "randomWalk",
           "refId": "A"
         }
@@ -108,8 +114,8 @@
       "yaxes": [
         {
           "$$hashKey": "object:628",
-          "format": "short",
-          "label": null,
+          "format": "tasks",
+          "label": "",
           "logBase": 1,
           "max": null,
           "min": "0",
@@ -132,7 +138,8 @@
     },
     {
       "aliasColors": {
-        "{State=\"AVAILABLE\"}": "green"
+        "{State=\"AVAILABLE\"}": "green",
+        "{State=\"USED\"}": "semi-dark-green"
       },
       "bars": false,
       "dashLength": 10,
@@ -153,13 +160,17 @@
       "hiddenSeries": false,
       "id": 27,
       "legend": {
+        "alignAsTable": true,
         "avg": false,
-        "current": false,
+        "current": true,
         "max": false,
         "min": false,
+        "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
-        "values": false
+        "values": true
       },
       "lines": true,
       "linewidth": 1,
@@ -172,18 +183,37 @@
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
-      "seriesOverrides": [],
+      "seriesOverrides": [
+        {
+          "$$hashKey": "object:251",
+          "alias": "MAX",
+          "color": "#1F60C4",
+          "dashes": true,
+          "fill": 0,
+          "stack": false
+        }
+      ],
       "spaceLength": 10,
       "stack": true,
       "steppedLine": false,
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(ray_resources{Name=\"CPU\"}) by (State)",
+          "expr": "ray_resources{Name=\"CPU\",State=\"USED\",instance=~\"$Instance\"}",
+          "format": "time_series",
+          "instant": false,
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "CPU Usage: {{instance}}",
           "queryType": "randomWalk",
           "refId": "A"
+        },
+        {
+          "exemplar": true,
+          "expr": "sum(ray_resources{Name=\"CPU\"})",
+          "hide": false,
+          "interval": "",
+          "legendFormat": "MAX",
+          "refId": "B"
         }
       ],
       "thresholds": [],
@@ -207,8 +237,8 @@
       "yaxes": [
         {
           "$$hashKey": "object:563",
-          "format": "short",
-          "label": null,
+          "format": "cores",
+          "label": "",
           "logBase": 1,
           "max": null,
           "min": "0",
@@ -250,13 +280,17 @@
       "hiddenSeries": false,
       "id": 29,
       "legend": {
+        "alignAsTable": true,
         "avg": false,
-        "current": false,
+        "current": true,
         "max": false,
         "min": false,
+        "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
-        "values": false
+        "values": true
       },
       "lines": true,
       "linewidth": 1,
@@ -269,18 +303,35 @@
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
-      "seriesOverrides": [],
+      "seriesOverrides": [
+        {
+          "$$hashKey": "object:475",
+          "alias": "MAX",
+          "color": "#1F60C4",
+          "dashes": true,
+          "fill": 0,
+          "stack": false
+        }
+      ],
       "spaceLength": 10,
       "stack": true,
       "steppedLine": false,
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(ray_resources{Name=\"object_store_memory\"} / 1e9) by (State)",
+          "expr": "ray_resources{Name=\"object_store_memory\",State=\"USED\"} / 1e9",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "Object Store: {{instance}}",
           "queryType": "randomWalk",
           "refId": "A"
+        },
+        {
+          "exemplar": true,
+          "expr": "sum(ray_resources{Name=\"object_store_memory\"} / 1e9)",
+          "hide": false,
+          "interval": "",
+          "legendFormat": "MAX",
+          "refId": "B"
         }
       ],
       "thresholds": [],
@@ -304,8 +355,8 @@
       "yaxes": [
         {
           "$$hashKey": "object:508",
-          "format": "short",
-          "label": null,
+          "format": "gbytes",
+          "label": "",
           "logBase": 1,
           "max": null,
           "min": "0",
@@ -327,7 +378,9 @@
       }
     },
     {
-      "aliasColors": {},
+      "aliasColors": {
+        "MAX": "dark-blue"
+      },
       "bars": false,
       "dashLength": 10,
       "dashes": false,
@@ -347,13 +400,17 @@
       "hiddenSeries": false,
       "id": 28,
       "legend": {
+        "alignAsTable": true,
         "avg": false,
-        "current": false,
+        "current": true,
         "max": false,
         "min": false,
+        "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
-        "values": false
+        "values": true
       },
       "lines": true,
       "linewidth": 1,
@@ -366,18 +423,35 @@
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
-      "seriesOverrides": [],
+      "seriesOverrides": [
+        {
+          "$$hashKey": "object:353",
+          "alias": "MAX",
+          "color": "#1F60C4",
+          "dashes": true,
+          "fill": 0,
+          "stack": false
+        }
+      ],
       "spaceLength": 10,
       "stack": true,
       "steppedLine": false,
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(ray_resources{Name=\"GPU\"}) by (State)",
+          "expr": "ray_resources{Name=\"GPU\",State=\"USED\"}",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "GPU Usage: {{instance}}",
           "queryType": "randomWalk",
           "refId": "A"
+        },
+        {
+          "exemplar": true,
+          "expr": "sum(ray_resources{Name=\"GPU\"})",
+          "hide": false,
+          "interval": "",
+          "legendFormat": "MAX",
+          "refId": "B"
         }
       ],
       "thresholds": [],
@@ -401,8 +475,8 @@
       "yaxes": [
         {
           "$$hashKey": "object:1740",
-          "format": "short",
-          "label": null,
+          "format": "GPUs",
+          "label": "",
           "logBase": 1,
           "max": null,
           "min": null,
@@ -467,6 +541,8 @@
         "min": false,
         "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
         "values": true
       },
@@ -516,7 +592,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Node CPU",
+      "title": "Node CPU (hardware utilization)",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -583,6 +659,8 @@
         "min": false,
         "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
         "values": true
       },
@@ -613,7 +691,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_node_gpus_utilization{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
+          "expr": "ray_node_gpus_utilization{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} * ray_node_gpus_available{instance=~\"$Instance\",cluster_id=\"$cluster_id\"} / 100",
           "interval": "",
           "legendFormat": "GPU Usage: {{instance}}",
           "queryType": "randomWalk",
@@ -631,7 +709,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Node GPU",
+      "title": "Node GPU (hardware utilization)",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -648,8 +726,8 @@
       "yaxes": [
         {
           "$$hashKey": "object:2835",
-          "format": "short",
-          "label": null,
+          "format": "GPUs",
+          "label": "",
           "logBase": 1,
           "max": null,
           "min": "0",
@@ -672,6 +750,7 @@
     },
     {
       "aliasColors": {
+        "MAX": "dark-red",
         "MAX_AVAIL": "dark-red"
       },
       "bars": false,
@@ -702,6 +781,8 @@
         "min": false,
         "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
         "values": true
       },
@@ -719,7 +800,7 @@
       "seriesOverrides": [
         {
           "$$hashKey": "object:1146",
-          "alias": "MAX_AVAIL",
+          "alias": "MAX",
           "dashes": true,
           "fill": 0,
           "stack": false
@@ -745,7 +826,7 @@
           "expr": "sum(ray_node_disk_free{cluster_id=\"$cluster_id\"}) + sum(ray_node_disk_usage{cluster_id=\"$cluster_id\"})",
           "hide": false,
           "interval": "",
-          "legendFormat": "MAX_AVAIL",
+          "legendFormat": "MAX",
           "refId": "B"
         }
       ],
@@ -824,6 +905,8 @@
         "min": false,
         "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
         "values": true
       },
@@ -871,7 +954,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Node Memory",
+      "title": "Node Memory (heap + object store)",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -940,6 +1023,8 @@
         "min": false,
         "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
         "values": true
       },
@@ -1036,7 +1121,6 @@
       "decimals": 2,
       "fieldConfig": {
         "defaults": {
-          "displayName": "ray_node_network_receive_speed",
           "unit": "binBps"
         },
         "overrides": []
@@ -1060,6 +1144,8 @@
         "min": false,
         "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
         "values": true
       },
@@ -1083,7 +1169,7 @@
           "exemplar": true,
           "expr": "ray_node_network_receive_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
           "interval": "",
-          "legendFormat": "Network Receive: {{instance}}",
+          "legendFormat": "Recv: {{instance}}",
           "queryType": "randomWalk",
           "refId": "A"
         },
@@ -1091,7 +1177,7 @@
           "exemplar": true,
           "expr": "ray_node_network_send_speed{instance=~\"$Instance\",cluster_id=\"$cluster_id\"}",
           "interval": "",
-          "legendFormat": "Network Send: {{instance}}",
+          "legendFormat": "Send: {{instance}}",
           "refId": "B"
         }
       ],
@@ -1166,6 +1252,8 @@
         "min": false,
         "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
         "values": true
       },
@@ -1228,14 +1316,16 @@
       },
       "yaxes": [
         {
-          "format": "short",
-          "label": null,
+          "$$hashKey": "object:1110",
+          "format": "nodes",
+          "label": "",
           "logBase": 1,
           "max": null,
           "min": null,
           "show": true
         },
         {
+          "$$hashKey": "object:1111",
           "format": "short",
           "label": null,
           "logBase": 1,
@@ -1323,5 +1413,5 @@
   "timezone": "",
   "title": "Default Dashboard",
   "uid": "rayDefaultDashboard",
-  "version": 2
+  "version": 20
 }
