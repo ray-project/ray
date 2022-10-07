@@ -84,6 +84,7 @@ DECLARE_stats(scheduler_unscheduleable_tasks);
 /// Raylet Resource Manager
 DECLARE_stats(resources);
 
+/// TODO(rickyx): migrate legacy metrics
 /// Local Object Manager
 DECLARE_stats(spill_manager_objects);
 DECLARE_stats(spill_manager_objects_bytes);
@@ -93,6 +94,9 @@ DECLARE_stats(spill_manager_throughput_mb);
 /// GCS Storage
 DECLARE_stats(gcs_storage_operation_latency_ms);
 DECLARE_stats(gcs_storage_operation_count);
+
+/// Object Store
+DECLARE_stats(object_store_memory);
 
 /// Placement Group
 DECLARE_stats(gcs_placement_group_creation_latency_ms);

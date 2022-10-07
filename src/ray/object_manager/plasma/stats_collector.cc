@@ -26,6 +26,8 @@ void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
   const auto kSource = obj.GetSource();
 
   num_bytes_created_total_ += kObjectSize;
+  // TODO(rickyx):
+  // Add fallback memory accounting here.
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
     num_objects_created_by_worker_++;
@@ -168,8 +170,22 @@ void ObjectStatsCollector::OnObjectRefDecreased(const LocalObject &obj) {
   }
 }
 
+int64_t ObjectStatsCollector::GetNumBytesCreatedCurrent() const {
+  return num_bytes_created_by_worker_ + num_bytes_restored_ + num_bytes_received_ +
+         num_bytes_errored_;
+}
+
 void ObjectStatsCollector::RecordMetrics() const {
-  // TODO(sang): Add metrics.
+  ray::stats::STATS_object_store_memory.Record(
+      GetNumBytesCreatedCurrent() - num_bytes_unsealed_,
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocInMemory}});
+
+  ray::stats::STATS_object_store_memory.Record(
+      num_bytes_unsealed_,
+      {{ray::stats::LocationKey.name(), ray::stats::kObjectLocUnsealed}});
+
+  // TODO(rickyx):
+  // Add fallback memory recording here.
 }
 
 void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {

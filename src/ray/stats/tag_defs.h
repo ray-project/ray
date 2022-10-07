@@ -45,3 +45,9 @@ extern const TagKeyType WorkerIdKey;
 extern const TagKeyType JobIdKey;
 
 extern const TagKeyType NameKey;
+
+// Object store memory location tag constants
+extern const TagKeyType LocationKey;
+constexpr char kObjectLocInMemory[] = "IN_MEMORY";
+constexpr char kObjectLocSpilled[] = "SPILLED";
+constexpr char kObjectLocUnsealed[] = "UNSEALED";

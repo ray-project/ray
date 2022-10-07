@@ -31,9 +31,12 @@ except ImportError:
 # NOTE: Commented out metrics are not available in this test.
 # TODO(Clark): Find ways to trigger commented out metrics in cluster setup.
 _METRICS = [
+    # TODO(rickyx): refactoring the below 3 metric seem to be a bit involved
+    # , e.g. need to see how users currently depend on them.
     "ray_object_store_available_memory",
     "ray_object_store_used_memory",
     "ray_object_store_num_local_objects",
+    "ray_object_store_memory",
     "ray_object_manager_num_pull_requests",
     "ray_object_directory_subscriptions",
     "ray_object_directory_updates",
