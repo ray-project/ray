@@ -3472,7 +3472,7 @@ def test_utilization_score_plugin_2(lexical_score_plugin):
 
     provider = MockProvider()
     new_types = copy.deepcopy(TYPES_A)
-    new_types["a2.8xlarge"] = new_types["p2.8xlarge"]
+    new_types["z2.8xlarge"] = new_types["p2.8xlarge"]
     scheduler = ResourceDemandScheduler(
         provider,
         new_types,
@@ -3499,7 +3499,7 @@ def test_utilization_score_plugin_2(lexical_score_plugin):
     to_launch, rem = scheduler.get_nodes_to_launch(
         nodes, {}, [{"GPU": 8}] * 2, utilizations, [], {}
     )
-    assert to_launch == {"p2.8xlarge": 1}
+    assert to_launch == {"z2.8xlarge": 1}
 
 
 if __name__ == "__main__":
