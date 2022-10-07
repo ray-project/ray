@@ -466,27 +466,47 @@ def test_add_min_workers_nodes():
     # this file. See https://github.com/ray-project/ray/issues/21313 for more
     # information.
     # fmt: off
-    assert _add_min_workers_nodes([],
-                                  {},
-                                  types, None, None, None,
-         utilization_scorer=utilization_scorer,) == \
-        ([{"CPU": 2}]*50+[{"GPU": 1}]*99999, {"m2.large": 50, "gpu": 99999},
+    assert _add_min_workers_nodes(
+        [],
+        {},
+        types,
+        None,
+        None,
+        None,
+        utilization_scorer=utilization_scorer,
+    ) == (
+            [{"CPU": 2}]*50+[{"GPU": 1}]*99999,
+            {"m2.large": 50, "gpu": 99999},
             {"m2.large": 50, "gpu": 99999}
          )
 
-    assert _add_min_workers_nodes([{"CPU": 2}]*5,
-                                  {"m2.large": 5},
-                                  types, None, None, None,
-         utilization_scorer=utilization_scorer,) == \
-        ([{"CPU": 2}]*50+[{"GPU": 1}]*99999, {"m2.large": 50, "gpu": 99999},
-            {"m2.large": 45, "gpu": 99999})
+    assert _add_min_workers_nodes(
+        [{"CPU": 2}]*5,
+        {"m2.large": 5},
+        types,
+        None,
+        None,
+        None,
+        utilization_scorer=utilization_scorer,
+    ) == (
+        [{"CPU": 2}]*50+[{"GPU": 1}]*99999,
+        {"m2.large": 50, "gpu": 99999},
+        {"m2.large": 45, "gpu": 99999}
+    )
 
-    assert _add_min_workers_nodes([{"CPU": 2}]*60,
-                                  {"m2.large": 60},
-                                  types, None, None, None,
-         utilization_scorer=utilization_scorer,) == \
-        ([{"CPU": 2}]*60+[{"GPU": 1}]*99999, {"m2.large": 60, "gpu": 99999},
-            {"gpu": 99999})
+    assert _add_min_workers_nodes(
+        [{"CPU": 2}]*60,
+        {"m2.large": 60},
+        types,
+        None,
+        None,
+        None,
+        utilization_scorer=utilization_scorer,
+    ) == (
+        [{"CPU": 2}]*60+[{"GPU": 1}]*99999,
+        {"m2.large": 60, "gpu": 99999},
+        {"gpu": 99999}
+    )
 
     assert _add_min_workers_nodes(
         [{"CPU": 2}] * 50 + [{"GPU": 1}] * 99999,
