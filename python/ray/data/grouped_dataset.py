@@ -2,6 +2,7 @@ from typing import Any, Callable, Generic, List, Tuple, Union
 
 from ray.data._internal import sort
 from ray.data._internal.compute import CallableClass, ComputeStrategy
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
@@ -317,7 +318,7 @@ class GroupedDataset(Generic[T]):
                 boundaries = get_key_boundaries(block_accessor)
             else:
                 boundaries = [block_accessor.num_rows()]
-            builder = block_accessor.builder()
+            builder = DelegatingBlockBuilder()
             start = 0
             for end in boundaries:
                 group = block_accessor.slice(start, end, False)
