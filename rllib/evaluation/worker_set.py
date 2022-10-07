@@ -38,6 +38,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     AgentID,
     AlgorithmConfigDict,
@@ -382,12 +383,14 @@ class WorkerSet:
 
         Raises:
             ValueError: If both `policy_cls` AND `policy` are provided.
+            ValueError: If Policy ID is not a valid one.
         """
         if (policy_cls is None) == (policy is None):
             raise ValueError(
                 "Only one of `policy_cls` or `policy` must be provided to "
-                "Algorithm.add_policy()!"
+                "staticmethod: `WorkerSet.add_policy_to_workers()`!"
             )
+        validate_policy_id(policy_id, error=False)
 
         # Policy instance not provided: Use the information given here.
         if policy_cls is not None:
@@ -432,8 +435,8 @@ class WorkerSet:
                 worker.add_policy(
                     policy_id=policy_id,
                     policy=policy,
-                    policies_to_train=policies_to_train,
                     policy_mapping_fn=policy_mapping_fn,
+                    policies_to_train=policies_to_train,
                 )
             # A remote worker (ray actor).
             elif isinstance(worker, ActorHandle):

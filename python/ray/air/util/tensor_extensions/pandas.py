@@ -1083,8 +1083,8 @@ class TensorArray(
         shape = None
         for a in to_concat:
             if shape is None:
-                shape = a.numpy_shape
-            if a.is_variable_shaped or a.numpy_shape != shape:
+                shape = a.dtype.element_shape
+            if a.is_variable_shaped or a.dtype.element_shape != shape:
                 should_flatten = True
                 break
         if should_flatten:

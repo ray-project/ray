@@ -626,6 +626,97 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         self.assertTrue(scheduler.choose_trial_to_run(runner))
 
 
+class PopulationBasedTrainingLoggingTest(unittest.TestCase):
+    def testSummarizeHyperparamChanges(self):
+        class DummyTrial:
+            def __init__(self, config):
+                self.config = config
+
+        def test_config(
+            hyperparam_mutations,
+            old_config,
+            resample_probability=0.25,
+            print_summary=False,
+        ):
+            scheduler = PopulationBasedTraining(
+                time_attr="training_iteration",
+                hyperparam_mutations=hyperparam_mutations,
+                resample_probability=resample_probability,
+            )
+            new_config, operations = scheduler._get_new_config(
+                None, DummyTrial(old_config)
+            )
+            summary = scheduler._summarize_hyperparam_changes(
+                old_config, new_config, operations
+            )
+            if print_summary:
+                print(summary)
+            return scheduler, new_config, operations
+
+        # 1. Empty (no hyperparams mutated)
+        _, new_config, operations = test_config({}, {})
+        assert not new_config and not operations
+
+        # 2. No nesting
+        hyperparam_mutations = {
+            "a": tune.uniform(0, 1),
+            "b": list(range(5)),
+        }
+        scheduler, new_config, operations = test_config(
+            hyperparam_mutations, {"a": 0.5, "b": 2}
+        )
+        assert operations["a"] in [
+            f"* {factor}" for factor in scheduler._perturbation_factors
+        ] + ["resample"]
+        assert operations["b"] in ["shift left", "shift right", "resample"]
+
+        # 3. With nesting
+        hyperparam_mutations = {
+            "a": tune.uniform(0, 1),
+            "b": list(range(5)),
+            "c": {
+                "d": tune.uniform(2, 3),
+                "e": {"f": [-1, 0, 1]},
+            },
+        }
+        scheduler, new_config, operations = test_config(
+            hyperparam_mutations,
+            {
+                "a": 0.5,
+                "b": 2,
+                "c": {
+                    "d": 2.5,
+                    "e": {"f": 0},
+                },
+            },
+        )
+        assert isinstance(operations["c"], dict)
+        assert isinstance(operations["c"]["e"], dict)
+        assert operations["c"]["d"] in [
+            f"* {factor}" for factor in scheduler._perturbation_factors
+        ] + ["resample"]
+        assert operations["c"]["e"]["f"] in ["shift left", "shift right", "resample"]
+
+        # 4. Test shift that results in noop
+        hyperparam_mutations = {"a": [1]}
+        scheduler, new_config, operations = test_config(
+            hyperparam_mutations, {"a": 1}, resample_probability=0
+        )
+        assert operations["a"] in ["shift left (noop)", "shift right (noop)"]
+
+        # 5. Test that missing keys in inputs raises an error
+        with self.assertRaises(AssertionError):
+            scheduler._summarize_hyperparam_changes(
+                {"a": 1, "b": {"c": 2}},
+                {"a": 1, "b": {}},
+                {"a": "noop", "b": {"c": "noop"}},
+            )
+        with self.assertRaises(AssertionError):
+            scheduler._summarize_hyperparam_changes(
+                {"a": 1, "b": {"c": 2}}, {"a": 1, "b": {"c": 2}}, {"a": "noop"}
+            )
+
+
 if __name__ == "__main__":
     import pytest
 
