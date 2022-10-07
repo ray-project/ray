@@ -7,7 +7,7 @@ from ray.rllib.models.base_model import (
     ForwardOutputType,
 )
 import numpy as np
-from ray.rllib.models.temp_spec_classes import TensorDict
+from ray.rllib.utils.typing import TensorDict
 from ray.rllib.models.specs.specs_dict import ModelSpecDict
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check
@@ -120,7 +120,7 @@ class TestRecurrentModel(unittest.TestCase):
         and outputs correct values."""
         output = NpRecurrentModelImpl().initial_state()
         desired = TensorDict({"in": np.arange(1)})
-        for k in output.shallow_keys() | desired.shallow_keys():
+        for k in output.keys() | desired.keys():
             check(output[k], desired[k])
 
     def test_unroll(self):
@@ -135,9 +135,9 @@ class TestRecurrentModel(unittest.TestCase):
             TensorDict({"out": np.arange(4)}),
         )
 
-        for k in out.shallow_keys() | desired.shallow_keys():
+        for k in out.keys() | desired.keys():
             check(out[k], desired[k])
-        for k in out_state.shallow_keys() | desired_state.shallow_keys():
+        for k in out_state.keys() | desired_state.keys():
             check(out_state[k], desired_state[k])
 
     def test_unroll_filter(self):

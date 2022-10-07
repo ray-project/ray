@@ -6,7 +6,8 @@ from ray.rllib.utils.annotations import (
     DeveloperAPI,
     override,
 )
-from ray.rllib.models.temp_spec_classes import TensorDict, ModelConfig
+from ray.rllib.models.temp_spec_classes import ModelConfig
+from ray.rllib.utils.typing import TensorDict
 from ray.rllib.models.base_model import RecurrentModel, Model, ModelIO
 
 
@@ -97,25 +98,27 @@ class TorchRecurrentModel(RecurrentModel, nn.Module, TorchModelIO):
         ...     @property
         ...     def input_spec(self):
         ...         return ModelSpecDict(
-        ...             {"obs": "batch time hidden"}, hidden=self.config.input_size
+        ...             {"obs": "batch, time, hidden"}, hidden=self.config.input_size
         ...         )
         ...
         ...     @property
         ...     def output_spec(self):
         ...         return ModelSpecDict(
-        ...             {"logits": "batch time logits"}, logits=self.config.output_size
+        ...             {"logits": "batch, time, logits"},
+        ...             logits=self.config.output_size
         ...         )
         ...
         ...     @property
         ...     def prev_state_spec(self):
         ...         return ModelSpecDict(
-        ...             {"input_state": "batch recur"}, recur=self.config.recurrent_size
+        ...             {"input_state": "batch, recur"},
+        ...             recur=self.config.recurrent_size
         ...         )
         ...
         ...     @property
         ...     def next_state_spec(self):
         ...         return ModelSpecDict(
-        ...             {"output_state": "batch recur"},
+        ...             {"output_state": "batch, recur"},
         ...             recur=self.config.recurrent_size
         ...         )
         ...
@@ -200,13 +203,14 @@ class TorchModel(Model, nn.Module, TorchModelIO):
         ...     @property
         ...     def input_spec(self):
         ...         return ModelSpecDict(
-        ...             {"obs": "batch time hidden"}, hidden=self.config.input_size
+        ...             {"obs": "batch, time, hidden"}, hidden=self.config.input_size
         ...         )
         ...
         ...     @property
         ...     def output_spec(self):
         ...         return ModelSpecDict(
-        ...             {"logits": "batch time logits"}, logits=self.config.output_size
+        ...             {"logits": "batch, time, logits"},
+        ...             logits=self.config.output_size
         ...         )
         ...
         ...     def _forward(self, inputs, **kwargs):

@@ -15,6 +15,7 @@ import numpy as np
 import gym
 
 from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.nested_dict import NestedDict
 
 if TYPE_CHECKING:
     from ray.rllib.env.env_context import EnvContext
@@ -23,20 +24,24 @@ if TYPE_CHECKING:
     from ray.rllib.policy.policy import PolicySpec
     from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
-    from ray.rllib.utils import try_import_tf, try_import_torch
+    from ray.rllib.utils import try_import_tf, try_import_torch, try_import_jax
 
     _, tf, _ = try_import_tf()
     torch, _ = try_import_torch()
+    jax, _ = try_import_jax()
 
 # Represents a generic tensor type.
-# This could be an np.ndarray, tf.Tensor, or a torch.Tensor.
-TensorType = Union[np.array, "tf.Tensor", "torch.Tensor"]
+# This could be an np.ndarray, tf.Tensor, torch.Tensor, or jax array.
+TensorType = Union[np.array, "tf.Tensor", "torch.Tensor", "jax.numpy.array"]
 
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
 TensorStructType = Union[TensorType, dict, tuple]
 
 # A shape of a tensor.
 TensorShape = Union[Tuple[int], List[int]]
+
+# A nested dictionary of tensors
+TensorDict = NestedDict[TensorType]
 
 # Represents a fully filled out config of a Algorithm class.
 # Note: Policy config dicts are usually the same as AlgorithmConfigDict, but

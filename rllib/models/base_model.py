@@ -16,7 +16,8 @@
 import abc
 from typing import Optional, Tuple
 
-from ray.rllib.models.temp_spec_classes import TensorDict, ModelConfig
+from ray.rllib.models.temp_spec_classes import ModelConfig
+from ray.rllib.utils.typing import TensorDict
 from ray.rllib.models.specs.specs_dict import ModelSpecDict
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
