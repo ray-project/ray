@@ -51,16 +51,16 @@ enum TimeRangeOptions {
   SEVEN_DAYS = "7 days",
 }
 
-const TIME_RANGE_DURATIONS_MS: Record<TimeRangeOptions, number> = {
-  [TimeRangeOptions.FIVE_MINS]: 1000 * 60 * 5,
-  [TimeRangeOptions.THIRTY_MINS]: 1000 * 60 * 30,
-  [TimeRangeOptions.ONE_HOUR]: 1000 * 60 * 60 * 1,
-  [TimeRangeOptions.THREE_HOURS]: 1000 * 60 * 60 * 3,
-  [TimeRangeOptions.SIX_HOURS]: 1000 * 60 * 60 * 6,
-  [TimeRangeOptions.TWELVE_HOURS]: 1000 * 60 * 60 * 12,
-  [TimeRangeOptions.ONE_DAY]: 1000 * 60 * 60 * 24 * 1,
-  [TimeRangeOptions.TWO_DAYS]: 1000 * 60 * 60 * 24 * 2,
-  [TimeRangeOptions.SEVEN_DAYS]: 1000 * 60 * 60 * 24 * 7,
+const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
+  [TimeRangeOptions.FIVE_MINS]: "now-5m",
+  [TimeRangeOptions.THIRTY_MINS]: "now-30m",
+  [TimeRangeOptions.ONE_HOUR]: "now-1h",
+  [TimeRangeOptions.THREE_HOURS]: "now-3h",
+  [TimeRangeOptions.SIX_HOURS]: "now-6h",
+  [TimeRangeOptions.TWELVE_HOURS]: "now-12h",
+  [TimeRangeOptions.ONE_DAY]: "now-1d",
+  [TimeRangeOptions.TWO_DAYS]: "now-2d",
+  [TimeRangeOptions.SEVEN_DAYS]: "now-7d",
 };
 
 const METRICS_CONFIG = [
@@ -105,15 +105,13 @@ export const Metrics = () => {
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
     TimeRangeOptions.ONE_HOUR,
   );
-  const [[from, to], setTimeRange] = useState<[number | null, number | null]>([
+  const [[from, to], setTimeRange] = useState<[string | null, string | null]>([
     null,
     null,
   ]);
   useEffect(() => {
-    const now = new Date().getTime();
-    const duration = TIME_RANGE_DURATIONS_MS[timeRangeOption];
-    const from = now - duration;
-    setTimeRange([from, now]);
+    const from = TIME_RANGE_TO_FROM_VALUE[timeRangeOption];
+    setTimeRange([from, "now"]);
   }, [timeRangeOption]);
 
   const fromParam = from !== null ? `&from=${from}` : "";
@@ -173,7 +171,7 @@ export const Metrics = () => {
                 key={title}
                 className={classes.grafanaEmbed}
                 title={title}
-                src={`${grafanaHost}${path}${timeRangeParams}`}
+                src={`${grafanaHost}${path}&refresh${timeRangeParams}`}
                 width="450"
                 height="400"
                 frameBorder="0"
