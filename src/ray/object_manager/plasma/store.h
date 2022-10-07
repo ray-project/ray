@@ -222,7 +222,7 @@ class PlasmaStore {
   // Start listening for clients.
   void DoAccept();
 
-  void RecordMetrics() const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void RecordMetrics() const LOCKS_EXCLUDED(mutex_);
 
   void PrintAndRecordDebugDump() const LOCKS_EXCLUDED(mutex_);
 
@@ -280,6 +280,9 @@ class PlasmaStore {
 
   /// Timer for printing debug information.
   mutable std::shared_ptr<boost::asio::deadline_timer> stats_timer_ GUARDED_BY(mutex_);
+
+  /// Timer for recording object store metrics.
+  mutable std::shared_ptr<boost::asio::deadline_timer> metric_timer_ GUARDED_BY(mutex_);
 
   /// Queue of object creation requests.
   CreateRequestQueue create_request_queue_ GUARDED_BY(mutex_);
