@@ -118,5 +118,29 @@ cdef class Config:
         return RayConfig.instance().use_ray_syncer()
 
     @staticmethod
+    def REDIS_ENABLE_SSL():
+        return RayConfig.instance().REDIS_ENABLE_SSL()
+
+    @staticmethod
+    def REDIS_CA_CERT():
+        return RayConfig.instance().REDIS_CA_CERT()
+
+    @staticmethod
+    def REDIS_CA_PATH():
+        return RayConfig.instance().REDIS_CA_PATH()
+
+    @staticmethod
+    def REDIS_CLIENT_CERT():
+        return RayConfig.instance().REDIS_CLIENT_CERT()
+
+    @staticmethod
+    def REDIS_CLIENT_KEY():
+        return RayConfig.instance().REDIS_CLIENT_KEY()
+
+    @staticmethod
+    def REDIS_SERVER_NAME():
+        return RayConfig.instance().REDIS_SERVER_NAME()
+
+    @staticmethod
     def memory_monitor_interval_ms():
         return RayConfig.instance().memory_monitor_interval_ms()

@@ -6,6 +6,7 @@ import pytest
 
 import ray
 
+from ray._private.metrics_agent import RAY_WORKER_TIMEOUT_S
 from ray._private.test_utils import (
     raw_metrics,
     run_string_as_driver,
@@ -469,6 +470,98 @@ ray.get([f.remote(x) for x in buf])"""
         ("f", "PENDING_OBJ_STORE_MEM_AVAIL"): 91.0,
     }
     proc.kill()
+
+
+def test_stale_view_cleanup_when_job_exits(monkeypatch, shutdown_only):
+    with monkeypatch.context() as m:
+        m.setenv(RAY_WORKER_TIMEOUT_S, 5)
+        info = ray.init(num_cpus=2, **METRIC_CONFIG)
+        print(info)
+
+        driver = """
+import ray
+import time
+import numpy as np
+
+ray.init("auto")
+
+@ray.remote
+def g():
+    time.sleep(999)
+
+ray.get(g.remote())
+    """
+
+        proc = run_string_as_driver_nonblocking(driver)
+        expected = {
+            "RUNNING": 1.0,
+        }
+        wait_for_condition(
+            lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        )
+
+        proc.kill()
+        print("Killing a driver.")
+        expected = {}
+        wait_for_condition(
+            lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        )
+
+
+def test_stale_view_cleanup_when_worker_exits_complicated(monkeypatch, shutdown_only):
+    with monkeypatch.context() as m:
+        m.setenv(RAY_WORKER_TIMEOUT_S, 5)
+        info = ray.init(num_cpus=6, **METRIC_CONFIG)
+        print(info)
+
+        driver = """
+import ray
+import time
+import numpy as np
+
+ray.init("auto")
+
+@ray.remote
+def g(sleep_s):
+    time.sleep(sleep_s)
+
+@ray.remote
+class Actor:
+    def submit(self, sleep_s):
+        ray.get(g.remote(sleep_s))
+
+a = Actor.remote()
+b = Actor.remote()
+
+a_ref = a.submit.remote(5)
+b_ref = b.submit.remote(999)
+
+ray.get(a_ref)
+ray.kill(a)
+ray.get(b_ref)
+    """
+
+        # 2 actor creation tasks + 2 tasks owned by actors + 2 nested tasks.
+        proc = run_string_as_driver_nonblocking(driver)
+        expected = {"RUNNING": 1.0, "RUNNING_IN_RAY_GET": 1.0, "FINISHED": 4.0}
+        wait_for_condition(
+            lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        )
+        print("The first actor is killed.")
+
+        # The first actor is killed. One owned nested task from a dead actor
+        # should stop reporting, so FINISHED: 4 -> 3.
+        expected = {"RUNNING": 1.0, "RUNNING_IN_RAY_GET": 1.0, "FINISHED": 3.0}
+        wait_for_condition(
+            lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        )
+
+        proc.kill()
+        print("Killing a driver.")
+        expected = {}
+        wait_for_condition(
+            lambda: tasks_by_state(info) == expected, timeout=20, retry_interval_ms=500
+        )
 
 
 if __name__ == "__main__":
