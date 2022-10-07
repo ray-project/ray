@@ -14,6 +14,8 @@ python:
     - autorom[accept-rom-license]
     - pytest
     - tensorflow
+    - guppy3
+    - Pympler
   conda_packages: []
 
 post_build_cmds:
