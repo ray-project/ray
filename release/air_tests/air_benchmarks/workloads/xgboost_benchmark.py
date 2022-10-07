@@ -22,6 +22,13 @@ _TRAINING_TIME_THRESHOLD = 1000
 _PREDICTION_TIME_THRESHOLD = 450
 
 _EXPERIMENT_PARAMS = {
+    "smoke_test": {
+        "data": (
+            "https://air-example-data-2.s3.us-west-2.amazonaws.com/"
+            "10G-xgboost-data.parquet/8034b2644a1d426d9be3bbfa78673dfa_000000.parquet"
+        ),
+        "num_workers": 1,
+    },
     "10G": {
         "data": "s3://air-example-data-2/10G-xgboost-data.parquet/",
         "num_workers": 1,
@@ -107,7 +114,9 @@ def run_xgboost_prediction(model_path: str, data_path: str):
 
 
 def main(args):
-    experiment_params = _EXPERIMENT_PARAMS[args.size]
+    experiment_params = _EXPERIMENT_PARAMS[
+        args.size if not args.smoke_test else "smoke_test"
+    ]
     data_path, num_workers = experiment_params["data"], experiment_params["num_workers"]
     print("Running xgboost training benchmark...")
     training_time = run_xgboost_training(data_path, num_workers)
@@ -149,5 +158,6 @@ if __name__ == "__main__":
         action="store_true",
         help="disable runtime error on benchmark timeout",
     )
+    parser.add_argument("--smoke-test", action="store_true")
     args = parser.parse_args()
     main(args)

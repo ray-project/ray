@@ -2,6 +2,10 @@ load("@rules_python//python:defs.bzl", "py_test")
 
 test_srcs = glob(["**/*.py"])
 
+####
+# SERVE smoke tests
+####
+
 py_test(
     name = "serve_failure_smoke_test",
     size = "medium",
@@ -181,6 +185,34 @@ py_test(
         "//python/ray/serve:serve_lib",
     ],
 )
+
+
+####
+# AIR smoke tests
+####
+
+
+py_test(
+    name = "air_benchmark_xgboost_smoke_test",
+    size = "medium",
+    srcs = test_srcs,
+    main = "air_tests/air_benchmarks/workloads/xgboost_benchmark.py",
+    tags = [
+        "exclusive",
+        "team:ml",
+    ],
+    deps = [
+        "//:ray_lib",
+        "//python/ray/air:ml_lib",
+    ],
+    args = ["--smoke-test"]
+)
+
+
+
+####
+# RELEASE TEST INFRA unit tests
+####
 
 py_test(
     name = "test_alerts",
