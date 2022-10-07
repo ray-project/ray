@@ -46,7 +46,7 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
         )
 
         checkpoint_path = os.popen(
-            "ls {}/default/*/checkpoint_000001/algorithm_state.pkl".format(tmp_dir)
+            f"ls {tmp_dir}/default/*/checkpoint_000001/checkpoint-1"
         ).read()[:-1]
 
         if not os.path.exists(checkpoint_path):
