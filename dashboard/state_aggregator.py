@@ -4,6 +4,7 @@ import logging
 from dataclasses import asdict, fields
 from itertools import islice
 from typing import List, Tuple
+from datetime import datetime
 
 from ray._private.ray_constants import env_integer
 
@@ -30,6 +31,7 @@ from ray.experimental.state.common import (
     StateSummary,
     ActorSummaries,
     ObjectSummaries,
+    ClusterEventState,
     filter_fields,
     PredicateType,
 )
@@ -591,6 +593,35 @@ class StateAPIManager:
             result=result,
             partial_failure_warning=partial_failure_warning,
             total=total_runtime_envs,
+            num_after_truncation=num_after_truncation,
+            num_filtered=num_filtered,
+        )
+
+    async def list_cluster_events(self, *, option: ListApiOptions) -> ListApiResponse:
+        """List all cluster events from the cluster.
+
+        Returns:
+            A list of cluster events in the cluster.
+            The schema of returned "dict" is equivalent to the
+            `ClusterEventState` protobuf message.
+        """
+        result = []
+        all_events = await self._client.get_all_cluster_events()
+        for _, events in all_events.items():
+            for _, event in events.items():
+                event["time"] = str(datetime.utcfromtimestamp(int(event["timestamp"])))
+                result.append(event)
+
+        num_after_truncation = len(result)
+        result.sort(key=lambda entry: entry["timestamp"])
+        total = len(result)
+        result = self._filter(result, option.filters, ClusterEventState, option.detail)
+        num_filtered = len(result)
+        # Sort to make the output deterministic.
+        result = list(islice(result, option.limit))
+        return ListApiResponse(
+            result=result,
+            total=total,
             num_after_truncation=num_after_truncation,
             num_filtered=num_filtered,
         )

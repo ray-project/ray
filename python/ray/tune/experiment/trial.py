@@ -372,10 +372,15 @@ class Trial:
             self.custom_syncer = sync_config.syncer
 
         # Checkpoint config
-        self.checkpoint_config = checkpoint_config or CheckpointConfig()
+        checkpoint_config = checkpoint_config or CheckpointConfig()
+        checkpoint_config.checkpoint_score_attribute = (
+            checkpoint_config.checkpoint_score_attribute or TRAINING_ITERATION
+        )
+
+        self.checkpoint_config = checkpoint_config
+
         self.checkpoint_manager = _CheckpointManager(
-            self.checkpoint_config.num_to_keep,
-            self.checkpoint_config.checkpoint_score_attribute,
+            checkpoint_config=self.checkpoint_config,
             delete_fn=_CheckpointDeleter(self._trainable_name(), self.runner),
         )
 
