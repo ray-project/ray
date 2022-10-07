@@ -33,6 +33,9 @@ namespace ray {
 
 namespace raylet {
 
+/// The default number of retries when spilled object deletion failed.
+const int64_t kDefaultSpilledObjectDeleteRetries = 3;
+
 /// This class implements memory management for primary objects, objects that
 /// have been freed, and objects that have been spilled.
 class LocalObjectManager {
@@ -41,6 +44,7 @@ class LocalObjectManager {
       const NodeID &node_id,
       std::string self_node_address,
       int self_node_port,
+      instrumented_io_context &io_service,
       size_t free_objects_batch_size,
       int64_t free_objects_period_ms,
       IOWorkerPoolInterface &io_worker_pool,
@@ -56,6 +60,7 @@ class LocalObjectManager {
       : self_node_id_(node_id),
         self_node_address_(self_node_address),
         self_node_port_(self_node_port),
+        io_service_(io_service),
         free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
@@ -186,6 +191,7 @@ class LocalObjectManager {
   FRIEND_TEST(LocalObjectManagerTest,
               TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
+  FRIEND_TEST(LocalObjectManagerTest, TestRetryDeleteSpilledObjects);
 
   /// Asynchronously spill objects when space is needed. The callback tries to
   /// spill at least num_bytes_to_spill and returns true if we found objects to
@@ -217,11 +223,17 @@ class LocalObjectManager {
   /// Delete spilled objects stored in given urls.
   ///
   /// \param urls_to_delete List of urls to delete from external storages.
-  void DeleteSpilledObjects(std::vector<std::string> &urls_to_delete);
+  /// \param num_retries Num of retries allowed in case of failure, zero or negative
+  /// means don't retry.
+  void DeleteSpilledObjects(std::vector<std::string> urls_to_delete,
+                            int64_t num_retries = kDefaultSpilledObjectDeleteRetries);
 
   const NodeID self_node_id_;
   const std::string self_node_address_;
   const int self_node_port_;
+
+  /// The io_service/thread this class runs in.
+  instrumented_io_context &io_service_;
 
   /// The period between attempts to eagerly evict objects from plasma.
   const int64_t free_objects_period_ms_;
@@ -371,6 +383,9 @@ class LocalObjectManager {
 
   /// The last time a restore log finished.
   int64_t last_restore_log_ns_ = 0;
+
+  /// The number of failed deletion requests.
+  std::atomic<int64_t> num_failed_deletion_requests_ = 0;
 
   friend class LocalObjectManagerTestWithMinSpillingSize;
   friend class LocalObjectManagerTest;
