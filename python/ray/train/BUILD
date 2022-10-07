@@ -151,6 +151,14 @@ py_test(
 )
 
 py_test(
+    name = "test_deprecations",
+    size = "small",
+    srcs = ["tests/test_deprecations.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_examples",
     size = "large",
     srcs = ["tests/test_examples.py"],

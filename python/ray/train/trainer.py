@@ -84,7 +84,10 @@ class Trainer:
             "2.0, and is replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
             "https://docs.ray.io/en/latest/ray-air/getting-started.html) "
             "provides greater functionality than `ray.train.Trainer`, "
-            "and with a more flexible and easy-to-use API.",
+            "and with a more flexible and easy-to-use API. To port over old Ray "
+            "Train code to AIR APIs, you can follow this guide: "
+            "https://docs.google.com/document/d/"
+            "1kLA4n18CbvIo3i2JQNeh2E48sMbFWAeopYwnuyoFGS8/edit?usp=sharing",
         )
 
 
