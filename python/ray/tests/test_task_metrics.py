@@ -472,6 +472,7 @@ ray.get([f.remote(x) for x in buf])"""
     proc.kill()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_stale_view_cleanup_when_job_exits(monkeypatch, shutdown_only):
     with monkeypatch.context() as m:
         m.setenv(RAY_WORKER_TIMEOUT_S, 5)
