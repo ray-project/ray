@@ -4010,10 +4010,6 @@ def test_groupby_map_groups_merging_invalid_result(ray_start_regular_shared):
     with pytest.raises(TypeError):
         grouped.map_groups(lambda x: None if x == [1] else x)
 
-    # The UDF returns a type that's different than the input type, which is invalid.
-    with pytest.raises(TypeError):
-        grouped.map_groups(lambda x: pd.DataFrame([1]) if x == [1] else x)
-
 
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
 def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_parts):
@@ -4111,6 +4107,24 @@ def test_groupby_map_groups_for_arrow(ray_start_regular_shared, num_parts):
     )
     result = pa.Table.from_pandas(mapped.to_pandas())
     assert result.equals(expected)
+
+
+def test_groupby_map_groups_with_different_types(ray_start_regular_shared):
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    def func(group):
+        # Test output type is Python list, different from input type.
+        return [group["value"][0]]
+
+    ds = ds.groupby("group").map_groups(func)
+    assert sorted(ds.take()) == [1, 3]
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
