@@ -1463,7 +1463,7 @@ def start_gcs_server(
         command += [
             f"--redis_address={redis_ip_address}",
             f"--redis_port={redis_port}",
-            f"--redis_enable_ssl={enable_redis_ssl}"
+            f"--redis_enable_ssl={enable_redis_ssl}",
         ]
     if redis_password:
         command += [f"--redis_password={redis_password}"]
