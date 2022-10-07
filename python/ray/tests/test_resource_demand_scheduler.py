@@ -488,27 +488,28 @@ def test_add_min_workers_nodes():
         ([{"CPU": 2}]*60+[{"GPU": 1}]*99999, {"m2.large": 60, "gpu": 99999},
             {"gpu": 99999})
 
-    assert _add_min_workers_nodes([{
-        "CPU": 2
-    }] * 50 + [{
-        "GPU": 1
-    }] * 99999, {
-        "m2.large": 50,
-        "gpu": 99999
-    }, types, None, None, None,
-         utilization_scorer=utilization_scorer,) == ([{
-        "CPU": 2
-    }] * 50 + [{
-        "GPU": 1
-    }] * 99999, {
-        "m2.large": 50,
-        "gpu": 99999
-    }, {})
+    assert _add_min_workers_nodes(
+        [{"CPU": 2}] * 50 + [{"GPU": 1}] * 99999,
+        {"m2.large": 50, "gpu": 99999},
+        types,
+        None,
+        None,
+        None,
+        utilization_scorer=utilization_scorer,
+    ) == (
+        [{"CPU": 2}] * 50 + [{"GPU": 1}] * 99999,
+        {"m2.large": 50, "gpu": 99999}, {}
+    )
 
-    assert _add_min_workers_nodes([], {}, {"gpubla": types["gpubla"]}, None,
-                                  None, None,
-         utilization_scorer=utilization_scorer,
-                                  ) == ([], {}, {})
+    assert _add_min_workers_nodes(
+        [],
+        {},
+        {"gpubla": types["gpubla"]},
+        None,
+        None,
+        None,
+        utilization_scorer=utilization_scorer,
+    ) == ([], {}, {})
 
     types["gpubla"]["max_workers"] = 10
     assert _add_min_workers_nodes(
@@ -519,13 +520,7 @@ def test_add_min_workers_nodes():
         None,
         None,
         utilization_scorer=utilization_scorer,
-    ) == ([{
-                                      "GPU": 1
-                                  }] * 10, {
-                                      "gpubla": 10
-                                  }, {
-                                      "gpubla": 10
-                                  })
+    ) == ([{"GPU": 1}] * 10, {"gpubla": 10}, {"gpubla": 10})
     # fmt: on
 
 
