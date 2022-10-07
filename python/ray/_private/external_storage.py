@@ -213,6 +213,9 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
         Args:
             urls: URLs that store spilled object files.
+
+        NOTE: This function should not fail if some of the urls
+        do not exist.
         """
 
     @abc.abstractmethod
