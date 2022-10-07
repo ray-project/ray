@@ -116,3 +116,7 @@ cdef class Config:
     @staticmethod
     def use_ray_syncer():
         return RayConfig.instance().use_ray_syncer()
+
+    @staticmethod
+    def memory_monitor_interval_ms():
+        return RayConfig.instance().memory_monitor_interval_ms()

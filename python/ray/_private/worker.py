@@ -1554,6 +1554,14 @@ def init(
     for hook in _post_init_hooks:
         hook()
 
+    # import here since record_extra_usage_tag depends on ray._private.worker that is initialized here.
+    from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+
+    record_extra_usage_tag(
+        TagKey.MEMORY_MONITOR_ENABLED,
+        "true" if ray._config.memory_monitor_interval_ms() > 0 else "false",
+    )
+
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)

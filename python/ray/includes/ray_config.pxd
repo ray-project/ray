@@ -70,3 +70,5 @@ cdef extern from "ray/common/ray_config.h" nogil:
         c_bool start_python_importer_thread() const
 
         c_bool use_ray_syncer() const
+
+        uint64_t memory_monitor_interval_ms() const

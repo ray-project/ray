@@ -262,6 +262,9 @@ class TagKey(Enum):
     # The GCS storage type, which could be memory or redis.
     GCS_STORAGE = auto()
 
+    # Core memory monitor and manager, which could be true or false
+    MEMORY_MONITOR_ENABLED = auto()
+
 
 def record_extra_usage_tag(key: TagKey, value: str):
     """Record extra kv usage tag.
