@@ -18,6 +18,7 @@ from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointS
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
+from ray.tune.error import _TuneRestoreError
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -388,6 +389,8 @@ class Trial:
         self.restore_path = restore_path
         self.restoring_from = None
         self.num_failures = 0
+        # Reset after each successful restore.
+        self.num_restore_failures = 0
 
         # AutoML fields
         self.results = None
@@ -649,11 +652,23 @@ class Trial:
         self.experiment_tag = experiment_tag
         self.invalidate_json_state()
 
-    def write_error_log(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
-        if exc and self.logdir:
+    def handle_error(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
+        if isinstance(exc, _TuneRestoreError):
+            exc = exc.exc
+            if self.num_restore_failures >= int(
+                os.environ.get("TUNE_RESTORE_RETRY_NUM", 0)
+            ):
+                # Restore was unsuccessful, try again without checkpoint.
+                self.clear_checkpoint()
+                self.num_failures += 1
+            else:
+                self.num_restore_failures += 1
+        else:
             self.num_failures += 1
+
+        if self.logdir:
             self.error_file = os.path.join(self.logdir, "error.txt")
-            if exc and isinstance(exc, RayTaskError):
+            if isinstance(exc, RayTaskError):
                 # Piping through the actual error to result grid.
                 self.pickled_error_file = os.path.join(self.logdir, "error.pkl")
                 with open(self.pickled_error_file, "wb") as f:
@@ -719,6 +734,7 @@ class Trial:
         assert self.is_restoring
         self.last_result = self.restoring_from.metrics
         self.restoring_from = None
+        self.num_restore_failures = 0
         self.invalidate_json_state()
 
     def should_recover(self):
@@ -729,7 +745,15 @@ class Trial:
         `self.checkpoint_freq` is `0` or because the trial failed before
         a checkpoint has been made.
         """
-        return self.num_failures < self.max_failures or self.max_failures < 0
+        return (
+            self.num_failures < self.max_failures
+            or self.max_failures < 0
+            or (
+                self.num_failures == self.max_failures
+                and self.num_restore_failures
+                < int(os.environ.get("TUNE_RESTORE_RETRY_NUM", 0))
+            )
+        )
 
     def update_last_result(self, result):
         if self.experiment_tag:
