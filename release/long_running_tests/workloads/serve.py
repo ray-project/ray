@@ -13,7 +13,7 @@ from ray.cluster_utils import Cluster
 
 # Global variables / constants appear only right after imports.
 # Ray serve deployment setup constants
-NUM_REPLICAS = 14
+NUM_REPLICAS = 7
 MAX_BATCH_SIZE = 16
 
 # Cluster setup constants
@@ -27,7 +27,7 @@ NUM_CONNECTIONS = int(NUM_REPLICAS * MAX_BATCH_SIZE * 0.75)
 NUM_THREADS = 2
 # Append and print every 5mins for quick status polling as well
 # as time series plotting
-TIME_PER_CYCLE = "1m"
+TIME_PER_CYCLE = "5m"
 
 
 def update_progress(result):
@@ -102,7 +102,9 @@ while True:
     )
     proc.wait()
     out, err = proc.communicate()
-    # Check if command succeeded
+    # Check if wrk command succeeded. If this happens repeatedly, the release test
+    # infrastructure will currectly fail the test with "Last update to results json
+    # was too long ago."
     if proc.returncode != 0:
         print("wrk failed with the following error: ")
         print(err)
