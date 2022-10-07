@@ -222,14 +222,14 @@ class PlasmaStore {
   // Start listening for clients.
   void DoAccept();
 
-  void RecordMetrics() const LOCKS_EXCLUDED(mutex_);
-
   void PrintAndRecordDebugDump() const LOCKS_EXCLUDED(mutex_);
 
   std::string GetDebugDump() const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
  private:
   friend class GetRequestQueue;
+
+  void ScheduleRecordMetrics() const LOCKS_EXCLUDED(mutex_);
 
   // A reference to the asio io context.
   instrumented_io_context &io_context_;

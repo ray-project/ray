@@ -119,7 +119,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
   }
 
   if (RayConfig::instance().metrics_report_interval_ms() > 0) {
-    RecordMetrics();
+    ScheduleRecordMetrics();
   }
 }
 
@@ -555,13 +555,13 @@ void PlasmaStore::PrintAndRecordDebugDump() const {
       RayConfig::instance().event_stats_print_interval_ms());
 }
 
-void PlasmaStore::RecordMetrics() const {
+void PlasmaStore::ScheduleRecordMetrics() const {
   absl::MutexLock lock(&mutex_);
   object_lifecycle_mgr_.RecordMetrics();
 
   metric_timer_ = execute_after(
       io_context_,
-      [this]() { RecordMetrics(); },
+      [this]() { ScheduleRecordMetrics(); },
       // divide by 2 to make sure record happens before reporting
       // this also matches with  NodeManager::RecordMetrics interval
       RayConfig::instance().metrics_report_interval_ms() / 2);
