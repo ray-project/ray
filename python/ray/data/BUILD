@@ -28,12 +28,21 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test(
+    name = "test_mongo_dataset",
+    size = "large",
+    srcs = ["tests/test_mongo_dataset.py"],
+    tags = ["team:core", "exclusive", "dataset_integration"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
 py_test_module_list(
   files = glob(
     include=["tests/test_*.py"],
     exclude=[
         "tests/test_preprocessors.py",
         "tests/test_dataset_formats.py",
+	"tests/test_mongo_dataset.py",
     ],
   ),
   size = "large",
