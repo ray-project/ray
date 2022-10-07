@@ -8,7 +8,6 @@ import aiohttp.web
 
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_utils import (
     parse_event_strings,
     monitor_events,
@@ -85,9 +84,7 @@ class EventHead(
     async def run(self, server):
         event_pb2_grpc.add_ReportEventServiceServicer_to_server(self, server)
         self._monitor = monitor_events(
-            self._event_dir,
-            lambda data: self._update_events(parse_event_strings(data)),
-            source_types=event_consts.EVENT_HEAD_MONITOR_SOURCE_TYPES,
+            self._event_dir, lambda data: self._update_events(parse_event_strings(data))
         )
 
     @staticmethod
