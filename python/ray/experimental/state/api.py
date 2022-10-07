@@ -1184,9 +1184,8 @@ def list_logs(
     Args:
         address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If not specified, it will be retrieved from the initialized ray cluster.
-        node_id: Id of the node containing the logs .
-        node_ip: Ip of the node containing the logs. (At least one of the node_id and
-            node_ip have to be supplied when identifying a node).
+        node_id: Id of the node containing the logs.
+        node_ip: Ip of the node containing the logs.
         glob_filter: Name of the file (relative to the ray log directory) to be
             retrieved. E.g. `glob_filter="*worker*"` for all worker logs.
         actor_id: Id of the actor if getting logs from an actor.
@@ -1199,8 +1198,12 @@ def list_logs(
 
     Raises:
         Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
-            failed to query the data.
+            failed to query the data, or ConnectionError if failed to resolve the
+            ray address.
     """
+    assert (
+        node_ip is not None or node_id is not None
+    ), "At least one of node ip and node id is required"
 
     api_server_url = ray_address_to_api_server_url(address)
 

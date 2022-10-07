@@ -5,6 +5,7 @@ from typing import List
 from unittest.mock import MagicMock
 
 import pytest
+from ray.experimental.state.state_cli import logs_state_cli_group
 import requests
 from click.testing import CliRunner
 
@@ -684,7 +685,7 @@ def test_log_cli(shutdown_only):
 
     # Test the head node is chosen by default.
     def verify():
-        result = runner.invoke(scripts.ray_logs)
+        result = runner.invoke(logs_state_cli_group)
         print(result.output)
         assert result.exit_code == 0
         assert "raylet.out" in result.output
@@ -697,7 +698,7 @@ def test_log_cli(shutdown_only):
 
     # Test when there's only 1 match, it prints logs.
     def verify():
-        result = runner.invoke(scripts.ray_logs, ["raylet.out"])
+        result = runner.invoke(logs_state_cli_group, ["file", "raylet.out"])
         assert result.exit_code == 0
         print(result.output)
         assert "raylet.out" not in result.output
@@ -712,13 +713,54 @@ def test_log_cli(shutdown_only):
 
     # Test when there's more than 1 match, it prints a list of logs.
     def verify():
-        result = runner.invoke(scripts.ray_logs, ["raylet.*"])
+        result = runner.invoke(logs_state_cli_group, ["file", "raylet.*"])
         assert result.exit_code == 0
         print(result.output)
         assert "raylet.out" in result.output
         assert "raylet.err" in result.output
         assert "gcs_server.out" not in result.output
         assert "gcs_server.err" not in result.output
+        return True
+
+    wait_for_condition(verify)
+
+    # Test actor log: `ray logs actor`
+    ACTOR_LOG_LINE = "test actor log"
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            print(ACTOR_LOG_LINE)
+
+    actor = Actor.remote()
+    actor_id = actor._actor_id.hex()
+
+    def verify():
+        result = runner.invoke(logs_state_cli_group, ["actor", "--id", actor_id])
+        assert result.exit_code == 0
+        print(result.output)
+        assert ACTOR_LOG_LINE in result.output
+        return True
+
+    wait_for_condition(verify)
+
+    # Test worker log: `ray logs worker`
+    WORKER_LOG_LINE = "test worker log"
+
+    @ray.remote
+    def worker_func():
+        import os
+
+        print(WORKER_LOG_LINE)
+        return os.getpid()
+
+    pid = ray.get(worker_func.remote())
+
+    def verify():
+        result = runner.invoke(logs_state_cli_group, ["worker", "--pid", pid])
+        assert result.exit_code == 0
+        print(result.output)
+        assert WORKER_LOG_LINE in result.output
         return True
 
     wait_for_condition(verify)

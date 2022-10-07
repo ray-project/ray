@@ -7,15 +7,19 @@ from typing import Dict, List, Optional, Tuple
 import click
 import yaml
 
+import ray._private.services as services
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.experimental.state.api import (
     StateApiClient,
+    get_log,
+    list_logs,
     summarize_actors,
     summarize_objects,
     summarize_tasks,
 )
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
+    DEFAULT_LOG_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     GetApiOptions,
     ListApiOptions,
@@ -668,4 +672,463 @@ def object_summary(ctx, timeout: float, address: str):
                 _explain=True,
             ),
         )
+    )
+
+
+@click.group("logs", invoke_without_command=True)
+@click.pass_context
+def logs_state_cli_group(ctx):
+    """Get logs based on filename (file) or resource identifiers (actor)
+
+    Example:
+
+        Get all the log files available on a node (ray address could be
+        obtained from `ray start --head` or `ray.init()`).
+
+        ``
+        ray logs --address="localhost:6379"
+        ``
+
+        [ray logs file] Print the last 500 lines of raylet.out on a head node.
+
+        ``
+        ray logs file raylet.out --tail 500
+        ``
+
+        Print the last 500 lines of raylet.out on a worker node id A.
+
+        ``
+        ray logs file raylet.out --tail 500 —-node-id A
+        ``
+
+        [ray logs actor] Follow the log file with an actor id ABC.
+
+        ``
+        ray logs actor --id ABC --follow
+        ``
+
+    """
+    if ctx.invoked_subcommand is None:
+        # Forward to `ray logs file` when no argument provided
+        # TODO(rickyyx): ideally we want to forward `ray logs file` to
+        # `ray logs file xxx` as well. However, this is surprisingly tricky
+        # and I wasn't able to get it working cleanly. The issue is to make
+        # click not to treat `xxxx` as a subcommand and set up the context
+        # properly.
+        ctx.forward(log_file)
+
+
+log_follow_option = click.option(
+    "--follow",
+    "-f",
+    required=False,
+    type=bool,
+    is_flag=True,
+    help="Streams the log file as it is updated instead of just tailing.",
+)
+
+log_tail_option = click.option(
+    "--tail",
+    required=False,
+    type=int,
+    default=DEFAULT_LOG_LIMIT,
+    help="Number of lines to tail from log. -1 indicates fetching the whole file.",
+)
+
+log_interval_option = click.option(
+    "--interval",
+    required=False,
+    type=float,
+    default=None,
+    help="The interval in secs to print new logs when `--follow` is specified.",
+    hidden=True,
+)
+
+log_timeout_option = click.option(
+    "--timeout",
+    default=DEFAULT_RPC_TIMEOUT,
+    help=(
+        "Timeout in seconds for the API requests. "
+        f"Default is {DEFAULT_RPC_TIMEOUT}. If --follow is specified, "
+        "this option will be ignored."
+    ),
+)
+
+log_node_ip_option = click.option(
+    "-ip",
+    "--node-ip",
+    required=False,
+    type=str,
+    default=None,
+    help="Filters the logs by this ip address",
+)
+
+log_node_id_option = click.option(
+    "--node-id",
+    "-id",
+    required=False,
+    type=str,
+    default=None,
+    help="Filters the logs by this NodeID",
+)
+
+
+def _get_head_node_ip(address: Optional[str] = None):
+    """Get the head node ip from the ray address if possible
+
+    Args:
+        address: ray cluster address, e.g. "auto", "localhost:6379"
+
+    Raises:
+        click.UsageError if node ip could not be resolved
+    """
+    try:
+        address = services.canonicalize_bootstrap_address_or_die(address)
+        return address.split(":")[0]
+    except (ConnectionError, ValueError) as e:
+        # Hide all the stack trace
+        raise click.UsageError(str(e))
+
+
+def _print_log(
+    address: Optional[str] = None,
+    node_id: Optional[str] = None,
+    node_ip: Optional[str] = None,
+    filename: Optional[str] = None,
+    actor_id: Optional[str] = None,
+    pid: Optional[int] = None,
+    follow: bool = False,
+    tail: int = DEFAULT_LOG_LIMIT,
+    timeout: int = DEFAULT_RPC_TIMEOUT,
+    interval: Optional[float] = None,
+):
+    """Wrapper around `get_log()` that prints the preamble and the log lines"""
+    if tail > 0:
+        print(
+            f"--- Log has been truncated to last {tail} lines."
+            " Use `--tail` flag to toggle. Set to -1 for getting the entire file. ---\n"
+        )
+
+    if node_id is None and node_ip is None:
+        # Auto detect node ip from the ray address when address neither is given
+        node_ip = _get_head_node_ip(address)
+
+    for chunk in get_log(
+        address=address,
+        node_id=node_id,
+        node_ip=node_ip,
+        filename=filename,
+        actor_id=actor_id,
+        tail=tail,
+        pid=pid,
+        follow=follow,
+        _interval=interval,
+        timeout=timeout,
+    ):
+        print(chunk, end="", flush=True)
+
+
+@logs_state_cli_group.command(name="file")
+@click.argument(
+    "glob_filter",
+    required=False,
+    default="*",
+)
+@address_option
+@log_node_id_option
+@log_node_ip_option
+@log_follow_option
+@log_tail_option
+@log_interval_option
+@log_timeout_option
+@click.pass_context
+@PublicAPI(stability="alpha")
+def log_file(
+    ctx,
+    glob_filter: str,
+    address: Optional[str],
+    node_id: Optional[str],
+    node_ip: Optional[str],
+    follow: bool,
+    tail: int,
+    interval: float,
+    timeout: int,
+):
+    """Get/List logs that matches the GLOB_FILTER in the cluster.
+    By default, it prints a list of log files that match the filter.
+    By default, it prints the head node logs.
+    If there's only 1 match, it will print the log file.
+
+    Example:
+
+        Print the last 500 lines of raylet.out on a head node.
+
+        ```
+        ray logs file raylet.out --tail 500
+        ```
+
+        Print the last 500 lines of raylet.out on a worker node id A.
+
+        ```
+        ray logs file raylet.out --tail 500 —-node-id A
+        ```
+
+        Download the gcs_server.txt file to the local machine.
+
+        ```
+        ray logs file gcs_server.out --tail -1 > gcs_server.txt
+        ```
+
+        Follow the log files from the last 100 lines.
+
+        ```
+        ray logs file raylet.out --tail 100 -f
+        ```
+
+    Raises:
+        :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI is failed to query the data.
+    """
+
+    if node_id is None and node_ip is None:
+        node_ip = _get_head_node_ip(address)
+
+    logs = list_logs(
+        address=address,
+        node_id=node_id,
+        node_ip=node_ip,
+        glob_filter=glob_filter,
+        timeout=timeout,
+    )
+
+    log_files_found = []
+    for _, log_files in logs.items():
+        for log_file in log_files:
+            log_files_found.append(log_file)
+
+    if len(log_files_found) != 1:
+        # Print the list of log files found if no unique log found
+        if node_id:
+            print(f"Node ID: {node_id}")
+        elif node_ip:
+            print(f"Node IP: {node_ip}")
+        print(output_with_format(logs, schema=None, format=AvailableFormat.YAML))
+        return
+
+    # If there's only 1 file, that means there's a unique match.
+    filename = log_files_found[0]
+
+    _print_log(
+        address=address,
+        node_id=node_id,
+        node_ip=node_ip,
+        filename=filename,
+        tail=tail,
+        follow=follow,
+        interval=interval,
+        timeout=timeout,
+    )
+
+
+@logs_state_cli_group.command(name="actor")
+@click.option(
+    "--id",
+    "-a",
+    required=False,
+    type=str,
+    default=None,
+    help="Retrieves the logs corresponding to this ActorID.",
+)
+@click.option(
+    "--pid",
+    "-pid",
+    required=False,
+    type=str,
+    default=None,
+    help="Retrieves the logs from the actor with this pid.",
+)
+@address_option
+@log_node_id_option
+@log_node_ip_option
+@log_follow_option
+@log_tail_option
+@log_interval_option
+@log_timeout_option
+@click.pass_context
+@PublicAPI(stability="alpha")
+def log_actor(
+    ctx,
+    id: Optional[str],
+    pid: Optional[str],
+    address: Optional[str],
+    node_id: Optional[str],
+    node_ip: Optional[str],
+    follow: bool,
+    tail: int,
+    interval: float,
+    timeout: int,
+):
+    """Get/List logs associated with an actor.
+
+    Example:
+
+        Follow the log file with an actor id ABC.
+
+        ```
+        ray logs actor --id ABC --follow
+        ```
+
+        Get the actor log from pid 123, ip ABC.
+        Note that this goes well with the driver log of Ray which prints
+        (ip=ABC, pid=123, class_name) logs.
+
+        ```
+        ray logs actor --pid=123  —ip=ABC
+        ```
+
+    Raises:
+        :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI is failed to query the data.
+        MissingParameter if inputs are missing.
+    """
+
+    if pid is None and id is None:
+        raise click.MissingParameter(
+            message="At least one of `--pid` and `--id` has to be set",
+            param_type="option",
+        )
+
+    _print_log(
+        address=address,
+        node_id=node_id,
+        node_ip=node_ip,
+        pid=pid,
+        actor_id=id,
+        tail=tail,
+        follow=follow,
+        interval=interval,
+        timeout=timeout,
+    )
+
+
+@logs_state_cli_group.command(name="worker")
+@click.option(
+    "--pid",
+    "-pid",
+    # The only identifier supported for now, TODO(rickyx): add worker id support
+    required=True,
+    type=str,
+    help="Retrieves the logs from the worker with this pid.",
+)
+@address_option
+@log_node_id_option
+@log_node_ip_option
+@log_follow_option
+@log_tail_option
+@log_interval_option
+@log_timeout_option
+@click.pass_context
+@PublicAPI(stability="alpha")
+def log_worker(
+    ctx,
+    pid: Optional[str],
+    address: Optional[str],
+    node_id: Optional[str],
+    node_ip: Optional[str],
+    follow: bool,
+    tail: int,
+    interval: float,
+    timeout: int,
+):
+    """Get/List logs associated with a worker process.
+
+    Example:
+
+        Follow the log file from a worker process with pid=ABC.
+
+        ```
+        ray logs worker --pid ABC --follow
+        ```
+
+    Raises:
+        :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI is failed to query the data.
+        MissingParameter if inputs are missing.
+    """
+
+    _print_log(
+        address=address,
+        node_id=node_id,
+        node_ip=node_ip,
+        pid=pid,
+        tail=tail,
+        follow=follow,
+        interval=interval,
+        timeout=timeout,
+    )
+
+
+@logs_state_cli_group.command(name="cluster", hidden=True)
+@click.argument(
+    "glob_filter",
+    required=False,
+    default="*",
+)
+@address_option
+@log_node_id_option
+@log_node_ip_option
+@log_follow_option
+@log_tail_option
+@log_interval_option
+@log_timeout_option
+@click.pass_context
+def log_cluster(
+    ctx,
+    glob_filter: str,
+    address: Optional[str],
+    node_id: Optional[str],
+    node_ip: Optional[str],
+    follow: bool,
+    tail: int,
+    interval: float,
+    timeout: int,
+):
+    """Get/List logs that matches the GLOB_FILTER in the cluster.
+    By default, it prints a list of log files that match the filter.
+    By default, it prints the head node logs.
+    If there's only 1 match, it will print the log file.
+
+    Example:
+
+        Print the last 500 lines of raylet.out on a head node.
+
+        ```
+        ray logs cluster raylet.out --tail 500
+        ```
+
+        Print the last 500 lines of raylet.out on a worker node id A.
+
+        ```
+        ray logs cluster raylet.out --tail 500 —-node-id A
+        ```
+
+        Download the gcs_server.txt file to the local machine.
+
+        ```
+        ray logs cluster gcs_server.out --tail -1 > gcs_server.txt
+        ```
+
+        Follow the log files from the last 100 lines.
+
+        ```
+        ray logs cluster raylet.out --tail 100 -f
+        ```
+
+    Raises:
+        :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI is failed to query the data.
+    """
+
+    log_file(
+        ctx, glob_filter, address, node_id, node_ip, follow, tail, interval, timeout
     )
