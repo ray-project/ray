@@ -414,12 +414,13 @@ def test_read_tfrecords(ray_start_regular_shared, tmp_path):
 def start_mongo():
     import subprocess
 
-    subprocess.run(["sudo", "apt-get", "install", "mongodb"])
+    subprocess.run(["sudo", "apt-get", "purge", "-y", "mongodb*"])
+    subprocess.run(["sudo", "apt-get", "install", "-y", "mongodb"])
     subprocess.run(["sudo", "rm", "/var/lib/mongodb/mongod.lock"])
     subprocess.run(["sudo", "service", "mongodb", " start"])
     yield "mongodb://localhost:27017"
     subprocess.run(["sudo", "service", "mongodb", " stop"])
-
+    subprocess.run(["sudo", "apt-get", "purge", "-y", "mongodb*"])
 
 def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     import pymongo
@@ -455,14 +456,6 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
             database=foo_db,
             collection="nonexistent-collection",
         )
-
-    # Read an empty database.
-    ds = ray.data.read_mongo(
-        uri=mongo_url,
-        database=foo_db,
-        collection=foo_collection,
-    )
-    assert str(ds) == "Dataset(num_blocks=0, num_rows=None, schema=Unknown schema)"
 
     # Inject 5 test docs.
     docs = [{"title": "test read_mongo()", "numeric_field": val} for val in range(5)]
