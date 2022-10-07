@@ -8,7 +8,6 @@ from PIL import Image
 
 import ray
 from ray.data.dataset import Dataset
-from ray.data.datasource import ImageFolderDatasource
 
 from benchmark import Benchmark
 
@@ -17,9 +16,7 @@ def read_images(
     root: str, size: Optional[Tuple[int, int]] = None, mode: Optional[str] = None
 ) -> Dataset:
 
-    return ray.data.read_datasource(
-        ImageFolderDatasource(), root=root, size=size, mode=mode
-    )
+    return ray.data.read_images(paths=root, size=size, mode=mode)
 
 
 def generate_images(
