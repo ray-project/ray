@@ -239,24 +239,26 @@
         "defaults": {},
         "overrides": []
       },
-      "fill": 10,
+      "fill": 5,
       "fillGradient": 0,
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 12,
-        "x": 0,
-        "y": 9
+        "x": 12,
+        "y": 39
       },
       "hiddenSeries": false,
-      "id": 29,
+      "id": 32,
       "legend": {
+        "alignAsTable": true,
         "avg": false,
-        "current": false,
+        "current": true,
         "max": false,
         "min": false,
+        "rightSide": true,
         "show": true,
         "total": false,
-        "values": false
+        "values": true
       },
       "lines": true,
       "linewidth": 1,
@@ -276,18 +278,26 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(ray_resources{Name=\"object_store_memory\"} / 1e9) by (State)",
+          "expr": "sum(ray_object_store_memory / 1e6) by (Location)",
           "interval": "",
           "legendFormat": "",
           "queryType": "randomWalk",
           "refId": "A"
+        },
+        {
+          "exemplar": true,
+          "expr": "",
+          "hide": false,
+          "interval": "",
+          "legendFormat": "",
+          "refId": "B"
         }
       ],
       "thresholds": [],
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Scheduler Object Store Memory",
+      "title": "Object Store Memory Usage",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -303,16 +313,16 @@
       },
       "yaxes": [
         {
-          "$$hashKey": "object:508",
-          "format": "short",
+          "$$hashKey": "object:114",
+          "format": "mbytes",
           "label": null,
           "logBase": 1,
           "max": null,
-          "min": "0",
+          "min": null,
           "show": true
         },
         {
-          "$$hashKey": "object:509",
+          "$$hashKey": "object:115",
           "format": "short",
           "label": null,
           "logBase": 1,
