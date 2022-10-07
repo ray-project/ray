@@ -198,6 +198,8 @@ class GcsServer {
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   /// The gcs node manager.
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
+  /// The health check manager.
+  std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
   /// The heartbeat manager.
   std::shared_ptr<GcsHeartbeatManager> gcs_heartbeat_manager_;
   /// The gcs redis failure detector.

@@ -37,6 +37,8 @@ class GcsHealthCheckManager {
       int64_t period_ms = RayConfig::instance().health_check_period_ms(),
       int64_t failure_threshold = RayConfig::instance().health_check_failure_threshold());
 
+  ~GcsHealthCheckManager();
+
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///

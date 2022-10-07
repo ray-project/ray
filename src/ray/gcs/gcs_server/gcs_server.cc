@@ -177,7 +177,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // be run. Otherwise the node failure detector will mistake
   // some living nodes as dead as the timer inside node failure
   // detector is already run.
-  gcs_heartbeat_manager_->Start();
+  if (gcs_heartbeat_manager_) {
+    gcs_heartbeat_manager_->Start();
+  }
 
   RecordMetrics();
 
@@ -205,7 +207,9 @@ void GcsServer::Stop() {
     // GcsHeartbeatManager is still checking nodes' heartbeat timeout. Since RPC Server
     // won't handle heartbeat calls anymore, some nodes will be marked as dead during this
     // time, causing many nodes die after GCS's failure.
-    gcs_heartbeat_manager_->Stop();
+    if (gcs_heartbeat_manager_) {
+      gcs_heartbeat_manager_->Stop();
+    }
     if (RayConfig::instance().use_ray_syncer()) {
       ray_syncer_io_context_.stop();
       ray_syncer_thread_->join();
@@ -238,19 +242,26 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_node_manager_);
-  gcs_heartbeat_manager_ = std::make_shared<GcsHeartbeatManager>(
-      heartbeat_manager_io_service_, /*on_node_death_callback=*/
-      [this](const NodeID &node_id) {
-        main_service_.post(
-            [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id); },
-            "GcsServer.NodeDeathCallback");
-      });
-  // Initialize by gcs tables data.
-  gcs_heartbeat_manager_->Initialize(gcs_init_data);
-  // Register service.
-  heartbeat_info_service_.reset(new rpc::HeartbeatInfoGrpcService(
-      heartbeat_manager_io_service_, *gcs_heartbeat_manager_));
-  rpc_server_.RegisterService(*heartbeat_info_service_);
+  auto node_death_callback = [this](const NodeID &node_id) {
+    main_service_.post(
+        [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id); },
+        "GcsServer.NodeDeathCallback");
+  };
+
+  if (RayConfig::instance().pull_based_healthcheck()) {
+    gcs_healthcheck_manager_ = std::make_unique<GcsHealthCheckManager>(
+        main_service_, *raylet_client_pool_, node_death_callback);
+    gcs_healthcheck_manager_->Initialize(gcs_init_data);
+  } else {
+    gcs_heartbeat_manager_ = std::make_shared<GcsHeartbeatManager>(
+        heartbeat_manager_io_service_, /*on_node_death_callback=*/node_death_callback);
+    // Initialize by gcs tables data.
+    gcs_heartbeat_manager_->Initialize(gcs_init_data);
+    // Register service.
+    heartbeat_info_service_.reset(new rpc::HeartbeatInfoGrpcService(
+        heartbeat_manager_io_service_, *gcs_heartbeat_manager_));
+    rpc_server_.RegisterService(*heartbeat_info_service_);
+  }
 }
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
@@ -598,7 +609,12 @@ void GcsServer::InstallEventListeners() {
     gcs_resource_manager_->OnNodeAdd(*node);
     gcs_placement_group_manager_->OnNodeAdd(node_id);
     gcs_actor_manager_->SchedulePendingActors();
-    gcs_heartbeat_manager_->AddNode(*node);
+    if (gcs_heartbeat_manager_) {
+      gcs_heartbeat_manager_->AddNode(*node);
+    }
+    if (gcs_healthcheck_manager_) {
+      gcs_healthcheck_manager_->AddNode(*node);
+    }
     cluster_task_manager_->ScheduleAndDispatchTasks();
     if (RayConfig::instance().use_ray_syncer()) {
       rpc::Address address;
@@ -622,7 +638,14 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
         raylet_client_pool_->Disconnect(node_id);
-        gcs_heartbeat_manager_->RemoveNode(node_id);
+        if (gcs_heartbeat_manager_) {
+          gcs_heartbeat_manager_->RemoveNode(node_id);
+        }
+
+        if (gcs_healthcheck_manager_) {
+          gcs_healthcheck_manager_->RemoveNode(node_id);
+        }
+
         if (RayConfig::instance().use_ray_syncer()) {
           ray_syncer_->Disconnect(node_id.Binary());
         } else {

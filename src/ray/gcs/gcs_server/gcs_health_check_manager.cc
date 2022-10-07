@@ -19,6 +19,12 @@ GcsHealthCheckManager::GcsHealthCheckManager(
       period_ms_(period_ms),
       failure_threshold_(failure_threshold) {}
 
+GcsHealthCheckManager::~GcsHealthCheckManager() {
+  for (auto &[_, context] : inflight_health_checks_) {
+    context.StopHealthCheck();
+  }
+}
+
 void GcsHealthCheckManager::RemoveNode(const NodeID &node_id) {
   io_service_.dispatch(
       [this, node_id]() {
