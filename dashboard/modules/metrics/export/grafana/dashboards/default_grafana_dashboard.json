@@ -16,7 +16,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": 3,
-  "iteration": 1665178350015,
+  "iteration": 1665178934953,
   "links": [],
   "panels": [
     {
@@ -82,7 +82,7 @@
           "exemplar": true,
           "expr": "sum(ray_tasks) by (State)",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "{{State}}",
           "queryType": "randomWalk",
           "refId": "A"
         }
@@ -154,13 +154,17 @@
       "hiddenSeries": false,
       "id": 27,
       "legend": {
+        "alignAsTable": true,
         "avg": false,
-        "current": false,
+        "current": true,
         "max": false,
         "min": false,
+        "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
-        "values": false
+        "values": true
       },
       "lines": true,
       "linewidth": 1,
@@ -189,9 +193,11 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(ray_resources{Name=\"CPU\",State=\"USED\"}) by (State,NodeAddress)",
+          "expr": "ray_resources{Name=\"CPU\",State=\"USED\",instance=~\"$Instance\"}",
+          "format": "time_series",
+          "instant": false,
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "CPU Usage: {{instance}}",
           "queryType": "randomWalk",
           "refId": "A"
         },
@@ -268,13 +274,17 @@
       "hiddenSeries": false,
       "id": 29,
       "legend": {
+        "alignAsTable": true,
         "avg": false,
-        "current": false,
+        "current": true,
         "max": false,
         "min": false,
+        "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
-        "values": false
+        "values": true
       },
       "lines": true,
       "linewidth": 1,
@@ -303,9 +313,9 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(ray_resources{Name=\"object_store_memory\",State=\"USED\"} / 1e9) by (State,NodeAddress)",
+          "expr": "ray_resources{Name=\"object_store_memory\",State=\"USED\"} / 1e9",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "Object Store: {{instance}}",
           "queryType": "randomWalk",
           "refId": "A"
         },
@@ -384,13 +394,17 @@
       "hiddenSeries": false,
       "id": 28,
       "legend": {
+        "alignAsTable": true,
         "avg": false,
-        "current": false,
+        "current": true,
         "max": false,
         "min": false,
+        "rightSide": true,
         "show": true,
+        "sort": "current",
+        "sortDesc": true,
         "total": false,
-        "values": false
+        "values": true
       },
       "lines": true,
       "linewidth": 1,
@@ -419,9 +433,9 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(ray_resources{Name=\"GPU\",State=\"USED\"}) by (State,NodeAddress)",
+          "expr": "ray_resources{Name=\"GPU\",State=\"USED\"}",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "GPU Usage: {{instance}}",
           "queryType": "randomWalk",
           "refId": "A"
         },
@@ -1393,5 +1407,5 @@
   "timezone": "",
   "title": "Default Dashboard",
   "uid": "rayDefaultDashboard",
-  "version": 13
+  "version": 15
 }
