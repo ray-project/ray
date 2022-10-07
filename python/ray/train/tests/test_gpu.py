@@ -54,6 +54,12 @@ def ray_start_1_cpu_1_gpu():
 
 
 @pytest.fixture
+def shutdown_only():
+    yield None
+    ray.shutdown()
+
+
+@pytest.fixture
 def ray_2_node_2_gpu():
     cluster = Cluster()
     for _ in range(2):
@@ -82,9 +88,33 @@ class NonTensorDataset(LinearDataset):
 
 
 # TODO: Refactor as a backend test.
+@pytest.mark.parametrize("cuda_visible_devices", ["", "1,2"])
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
-def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
+def test_torch_get_device(
+    shutdown_only, num_gpus_per_worker, cuda_visible_devices, monkeypatch
+):
+    if cuda_visible_devices:
+        # Test if `get_device` is correct even with user specified env var.
+        monkeypatch.setenv("CUDA_VISIBLE_DEVICES", cuda_visible_devices)
+
+    ray.init(num_cpus=4, num_gpus=2)
+
     def train_fn():
+        # Make sure environment variable is being set correctly.
+        if cuda_visible_devices:
+            if num_gpus_per_worker == 0.5:
+                assert os.environ["CUDA_VISIBLE_DEVICES"] == "1"
+            elif num_gpus_per_worker == 1:
+                visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+                # Sort the cuda visible devices to have exact match with
+                # expected result.
+                sorted_devices = ",".join(sorted(visible_devices.split(",")))
+                assert sorted_devices == "1,2"
+
+            else:
+                raise ValueError(
+                    f"Untested paramater configuration: {num_gpus_per_worker}"
+                )
         return train.torch.get_device().index
 
     trainer = Trainer(
@@ -100,7 +130,7 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
     if num_gpus_per_worker == 0.5:
         assert devices == [0, 0]
     elif num_gpus_per_worker == 1:
-        assert devices == [0, 1]
+        assert set(devices) == {0, 1}
     else:
         raise RuntimeError(
             "New parameter for this test has been added without checking that the "
@@ -145,9 +175,10 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
     elif num_gpus_per_worker == 2:
         # worker gpu topology:
         # 1 workers on node 1, 1 workers on node 2
-        # `ray.get_gpu_ids()` returns [0, 1] on node 1 and [0, 1] on node 2
-        # and `device_id` returns the first index
-        assert count[0] == 2
+        # `ray.get_gpu_ids()` returns {0, 1} on node 1 and {0, 1} on node 2
+        # and `device_id` returns the one index from each set.
+        # So total count of devices should be 2.
+        assert sum(count.values()) == 2
     else:
         raise RuntimeError(
             "New parameter for this test has been added without checking that the "

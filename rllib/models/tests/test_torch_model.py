@@ -5,8 +5,9 @@ import torch
 from torch import nn
 
 from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.typing import TensorDict
 from ray.rllib.utils.annotations import override
-from ray.rllib.models.temp_spec_classes import TensorDict, ModelConfig
+from ray.rllib.models.temp_spec_classes import ModelConfig
 from ray.rllib.models.specs.specs_dict import ModelSpecDict
 from ray.rllib.models.specs.specs_torch import TorchSpecs
 from ray.rllib.models.torch.model import TorchRecurrentModel, TorchModel
@@ -108,10 +109,10 @@ class TestTorchModel(unittest.TestCase):
         desired = TensorDict({"out": torch.arange(B * T * 3).reshape(B, T, 3)})
         desired_states = TensorDict({"out": torch.arange(B * 5).reshape(B, 5)})
 
-        for k in outputs.shallow_keys() | desired.shallow_keys():
+        for k in outputs.keys() | desired.keys():
             check(outputs[k], desired[k])
 
-        for k in out_states.shallow_keys() | desired_states.shallow_keys():
+        for k in out_states.keys() | desired_states.keys():
             check(out_states[k], desired_states[k])
 
     def test_model_init(self):
@@ -129,7 +130,7 @@ class TestTorchModel(unittest.TestCase):
         outputs, _ = SimpleModel(ModelConfig()).unroll(inputs, TensorDict())
         desired = TensorDict({"out": torch.arange(B * 3).reshape(B, 3)})
 
-        for k in outputs.shallow_keys() | desired.shallow_keys():
+        for k in outputs.keys() | desired.keys():
             check(outputs[k], desired[k])
 
 
