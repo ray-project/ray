@@ -10,6 +10,7 @@ from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 import random
+import sys
 
 
 @pytest.fixture
@@ -26,7 +27,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     from pymongo.errors import ServerSelectionTimeoutError
 
     client, mongo_url = start_mongo
-    foo_db = f"foo-db-{random()}"
+    foo_db = f"foo-db-{random.randint(0, sys.maxsize)}"
     foo_collection = "foo-collection"
     foo = client[foo_db][foo_collection]
     foo.delete_many({})
@@ -161,7 +162,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     from pymongoarrow.api import Schema
 
     client, mongo_url = start_mongo
-    foo_db = f"foo-db-{random()}"
+    foo_db = f"foo-db-{random.randint(0, sys.maxsize)}"
     foo_collection = "foo-collection"
     foo = client[foo_db][foo_collection]
     foo.delete_many({})
@@ -249,6 +250,4 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))
