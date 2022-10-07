@@ -1058,6 +1058,7 @@ def _start_redis_instance(
     fate_share: Optional[bool] = None,
     port_denylist: Optional[List[int]] = None,
     listen_to_localhost_only: bool = False,
+    enable_tls: bool = False,
 ):
     """Start a single Redis server.
 
@@ -1089,6 +1090,7 @@ def _start_redis_instance(
         listen_to_localhost_only: Redis server only listens to
             localhost (127.0.0.1) if it's true,
             otherwise it listens to all network interfaces.
+        enable_redis: Enable the TLS/SSL in Redis or not
 
     Returns:
         A tuple of the port used by Redis and ProcessInfo for the process that
@@ -1108,9 +1110,7 @@ def _start_redis_instance(
             raise ValueError("Spaces not permitted in redis password.")
         command += ["--requirepass", password]
 
-    if not Config.REDIS_ENABLE_SSL():
-        command += ["--port", str(port), "--loglevel", "warning"]
-    else:
+    if enable_tls:
         import socket
 
         with socket.socket() as s:
@@ -1124,12 +1124,14 @@ def _start_redis_instance(
             "--port",
             str(free_port),
         ]
+    else:
+        command += ["--port", str(port), "--loglevel", "warning"]
 
     if listen_to_localhost_only:
         command += ["--bind", "127.0.0.1"]
     pidfile = os.path.join(session_dir_path, "redis-" + uuid.uuid4().hex + ".pid")
     command += ["--pidfile", pidfile]
-    if Config.REDIS_ENABLE_SSL():
+    if enable_tls:
         if Config.REDIS_CA_CERT():
             command += ["--tls-ca-cert-file", Config.REDIS_CA_CERT()]
         if Config.REDIS_CLIENT_CERT():
@@ -1447,7 +1449,7 @@ def start_gcs_server(
         f"--node-ip-address={node_ip_address}",
     ]
     if redis_address:
-        redis_ip_address, redis_port = redis_address.rsplit(":")
+        redis_ip_address, redis_port = redis_address.rsplit(":", 1)
         command += [
             f"--redis_address={redis_ip_address}",
             f"--redis_port={redis_port}",

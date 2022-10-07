@@ -258,43 +258,41 @@ void RedisCallbackManager::RemoveCallback(int64_t callback_index) {
 
 RedisContext::RedisContext(instrumented_io_context &io_service)
     : io_service_(io_service), context_(nullptr), ssl_context_(nullptr) {
-  if (::RayConfig::instance().REDIS_ENABLE_SSL()) {
-    redisSSLContextError ssl_error;
-    redisInitOpenSSL();
+  redisSSLContextError ssl_error;
+  redisInitOpenSSL();
 
-    const char *cacert = nullptr;
-    if (!::RayConfig::instance().REDIS_CA_CERT().empty()) {
-      cacert = ::RayConfig::instance().REDIS_CA_CERT().c_str();
-    }
-
-    const char *capath = nullptr;
-    if (!::RayConfig::instance().REDIS_CA_PATH().empty()) {
-      capath = ::RayConfig::instance().REDIS_CA_PATH().c_str();
-    }
-
-    const char *client_cert = nullptr;
-    if (!::RayConfig::instance().REDIS_CLIENT_CERT().empty()) {
-      client_cert = ::RayConfig::instance().REDIS_CLIENT_CERT().c_str();
-    }
-
-    const char *client_key = nullptr;
-    if (!::RayConfig::instance().REDIS_CLIENT_KEY().empty()) {
-      client_key = ::RayConfig::instance().REDIS_CLIENT_KEY().c_str();
-    }
-
-    const char *server_name = nullptr;
-    if (!::RayConfig::instance().REDIS_SERVER_NAME().empty()) {
-      server_name = ::RayConfig::instance().REDIS_SERVER_NAME().c_str();
-    }
-
-    ssl_error = REDIS_SSL_CTX_NONE;
-    ssl_context_ = redisCreateSSLContext(
-        cacert, capath, client_cert, client_key, server_name, &ssl_error);
-
-    RAY_CHECK(ssl_context_ != nullptr && ssl_error == REDIS_SSL_CTX_NONE)
-        << "Failed to construct a ssl context for redis client: "
-        << redisSSLContextGetError(ssl_error);
+  const char *cacert = nullptr;
+  if (!::RayConfig::instance().REDIS_CA_CERT().empty()) {
+    cacert = ::RayConfig::instance().REDIS_CA_CERT().c_str();
   }
+
+  const char *capath = nullptr;
+  if (!::RayConfig::instance().REDIS_CA_PATH().empty()) {
+    capath = ::RayConfig::instance().REDIS_CA_PATH().c_str();
+  }
+
+  const char *client_cert = nullptr;
+  if (!::RayConfig::instance().REDIS_CLIENT_CERT().empty()) {
+    client_cert = ::RayConfig::instance().REDIS_CLIENT_CERT().c_str();
+  }
+
+  const char *client_key = nullptr;
+  if (!::RayConfig::instance().REDIS_CLIENT_KEY().empty()) {
+    client_key = ::RayConfig::instance().REDIS_CLIENT_KEY().c_str();
+  }
+
+  const char *server_name = nullptr;
+  if (!::RayConfig::instance().REDIS_SERVER_NAME().empty()) {
+    server_name = ::RayConfig::instance().REDIS_SERVER_NAME().c_str();
+  }
+
+  ssl_error = REDIS_SSL_CTX_NONE;
+  ssl_context_ = redisCreateSSLContext(
+      cacert, capath, client_cert, client_key, server_name, &ssl_error);
+
+  RAY_CHECK(ssl_context_ != nullptr && ssl_error == REDIS_SSL_CTX_NONE)
+      << "Failed to construct a ssl context for redis client: "
+      << redisSSLContextGetError(ssl_error);
 }
 
 RedisContext::~RedisContext() {
