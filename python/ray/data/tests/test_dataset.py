@@ -4332,10 +4332,6 @@ def test_groupby_map_groups_merging_invalid_result(ray_start_regular_shared):
     with pytest.raises(TypeError):
         grouped.map_groups(lambda x: None if x == [1] else x)
 
-    # The UDF returns a type that's different than the input type, which is invalid.
-    with pytest.raises(TypeError):
-        grouped.map_groups(lambda x: pd.DataFrame([1]) if x == [1] else x)
-
 
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
 def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_parts):
