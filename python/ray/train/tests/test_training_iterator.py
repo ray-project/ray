@@ -1,3 +1,4 @@
+import functools
 import time
 from unittest.mock import patch
 import pytest
@@ -15,6 +16,10 @@ from ray.train.backend import BackendConfig
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.utils import ActorWrapper, construct_train_func
 from ray.train._internal.checkpoint import CheckpointManager
+from ray.train.examples.tensorflow_mnist_example import (
+    train_func as tensorflow_mnist_train_func,
+)
+from ray.train.examples.torch_linear_example import train_func as linear_train_func
 
 
 @pytest.fixture
@@ -54,17 +59,12 @@ def gen_new_backend_executor(special_f):
     return TestBackendExecutor
 
 
-class CheckpointManagerPatched(CheckpointManager):
-    """CheckpointManager patched to always return a checkpoint object"""
-
-    def _load_checkpoint(self, checkpoint_to_load):
-        if isinstance(checkpoint_to_load, dict):
-            return Checkpoint.from_dict(checkpoint_to_load)
-        return super()._load_checkpoint(checkpoint_to_load)
-
-
 def create_iterator(
-    train_func, backend_config, backend_executor=BackendExecutor, init_hook=None
+    train_func,
+    backend_config,
+    num_workers=2,
+    backend_executor=BackendExecutor,
+    init_hook=None,
 ):
     # Similar logic to the old Trainer.run_iterator().
 
@@ -76,7 +76,7 @@ def create_iterator(
 
     backend_executor_actor = remote_executor.remote(
         backend_config=backend_config,
-        num_workers=2,
+        num_workers=num_workers,
     )
 
     backend_executor = ActorWrapper(backend_executor_actor)
@@ -90,9 +90,7 @@ def create_iterator(
         train_func=train_func,
         run_dir=None,
         dataset_spec=dataset_spec,
-        checkpoint_manager=CheckpointManagerPatched(
-            checkpoint_strategy=checkpoint_strategy
-        ),
+        checkpoint_manager=CheckpointManager(checkpoint_strategy=checkpoint_strategy),
         checkpoint=None,
         checkpoint_strategy=checkpoint_strategy,
     )
@@ -286,11 +284,14 @@ class KillCallback:
         self.counter = 0
         self.fail_on = fail_on
         self.worker_group = backend_executor.get_worker_group()
+        self.results = []
 
-    def handle_result(self, results):
-        print(results, self.counter)
+    def handle_result(self, intermiedate_results=None):
+        if intermiedate_results:
+            self.results.append(intermiedate_results)
         if self.counter == self.fail_on:
             print("killing")
+            self.results = []
             ray.kill(self.worker_group.workers[0].actor)
             time.sleep(3)
         self.counter += 1
@@ -325,7 +326,7 @@ def test_worker_kill(ray_start_4_cpus, backend):
         # Run 2: iter=1, counter=1, Unsuccessful, starts training from beginning
         # Run 3: iter=0, counter=2, Successful
         # Run 4: iter=1, counter=3, Successful
-        kill_callback.handle_result(intermediate_result)
+        kill_callback.handle_result()
     iterator.get_final_results()
     assert kill_callback.counter == 3
 
@@ -337,7 +338,7 @@ def test_worker_kill(ray_start_4_cpus, backend):
         # Run 3: None, counter=2, Unsuccessful, starts training from beginning.
         # Run 4: iter=0, counter=3, Successful
         # Run 5: iter=1, counter=4, Successful
-        kill_callback.handle_result(intermediate_result)
+        kill_callback.handle_result()
     iterator.get_final_results()
     assert kill_callback.counter == 4
 
@@ -345,7 +346,6 @@ def test_worker_kill(ray_start_4_cpus, backend):
 def test_worker_kill_checkpoint(ray_start_4_cpus):
     def train_func():
         checkpoint = session.get_checkpoint()
-        print(checkpoint)
         if checkpoint:
             epoch = checkpoint.to_dict()["epoch"]
         else:
@@ -366,10 +366,60 @@ def test_worker_kill_checkpoint(ray_start_4_cpus):
         # *Checkpoint is saved.*
         # *Worker is killed*
         # Run 2: epoch=1, counter=2, Successful
-        kill_callback.handle_result(intermediate_result)
+        kill_callback.handle_result()
     iterator.get_final_results()
     assert kill_callback.counter == 2
     assert iterator._checkpoint_manager.latest_checkpoint["epoch"] == 2
+
+
+def test_tensorflow_mnist_fail(ray_start_4_cpus):
+    """Tests if tensorflow example works even with worker failure."""
+    epochs = 3
+    num_workers = 2
+
+    from ray.train.tensorflow import TensorflowConfig
+
+    test_config = TensorflowConfig()
+
+    train_func = functools.partial(
+        tensorflow_mnist_train_func, {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
+    )
+    iterator = create_iterator(train_func, test_config, num_workers=num_workers)
+    kill_callback = KillCallback(fail_on=0, backend_executor=iterator._backend_executor)
+
+    for intermediate_result in iterator:
+        assert len(intermediate_result) == num_workers
+        kill_callback.handle_result(intermediate_result)
+
+    results = kill_callback.results
+    assert len(results) == epochs
+    assert results[-1][0]["loss"] < results[0][0]["loss"]
+    assert results[-1][0]["accuracy"] > results[0][0]["accuracy"]
+
+
+def test_torch_linear_failure(ray_start_4_cpus):
+    num_workers = 2
+    epochs = 3
+
+    from ray.train.torch import TorchConfig
+
+    test_config = TorchConfig()
+
+    train_func = functools.partial(
+        linear_train_func, {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
+    )
+
+    iterator = create_iterator(train_func, test_config, num_workers=num_workers)
+    kill_callback = KillCallback(fail_on=1, backend_executor=iterator._backend_executor)
+
+    for intermediate_result in iterator:
+        assert len(intermediate_result) == num_workers
+        kill_callback.handle_result(intermediate_result)
+
+    results = kill_callback.results
+    assert len(results) == epochs
+    for i in range(num_workers):
+        assert results[-1][i]["loss"] < results[0][i]["loss"]
 
 
 if __name__ == "__main__":

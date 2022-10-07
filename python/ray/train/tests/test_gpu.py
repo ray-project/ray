@@ -382,6 +382,7 @@ def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
     )
     results = trainer.fit()
     assert results.checkpoint
+    assert results.checkpoint.get_model()
 
 
 @pytest.mark.parametrize("nccl_socket_ifname", ["", "ens3"])
@@ -408,8 +409,8 @@ def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_gpus, nccl_socket_i
 @patch.dict(os.environ, {"CUDA_VISIBLE_DEVICES": ""})
 def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
     """Tests if GPU tensors are auto converted to CPU on driver."""
-
     num_workers = 2
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == ""
 
     def train_func():
         model = torch.nn.Linear(1, 1)
@@ -419,15 +420,17 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
 
         assert next(model.parameters()).is_cuda
 
-        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        session.report({"model": model}, checkpoint=TorchCheckpoint.from_model(model))
 
     trainer = TorchTrainer(
         train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True)
     )
     results = trainer.fit()
 
-    model = results.checkpoint.get_model()
-    assert not next(model.parameters()).is_cuda
+    model_checkpoint = results.checkpoint.get_model()
+    model_report = results.metrics["model"]
+    assert not next(model_checkpoint.parameters()).is_cuda
+    assert not next(model_report.parameters()).is_cuda
 
     # Test the same thing for state dict.
 
@@ -454,9 +457,13 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
     )
     results = trainer.fit()
 
-    state_dict = results.checkpoint.to_dict()[MODEL_KEY]
+    state_dict_checkpoint = results.checkpoint.to_dict()[MODEL_KEY]
+    state_dict_report = results.metrics["state_dict"]
 
-    for tensor in state_dict.values():
+    for tensor in state_dict_report.values():
+        assert not tensor.is_cuda
+
+    for tensor in state_dict_checkpoint.values():
         assert not tensor.is_cuda
 
 

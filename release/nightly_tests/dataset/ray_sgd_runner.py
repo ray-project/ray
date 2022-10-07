@@ -231,7 +231,6 @@ if __name__ == "__main__":
         "--use-gpu", action="store_true", default=False, help="Use GPU for training."
     )
     parser.add_argument("--num-epochs", default=4, type=int, help="number of epochs")
-    # parser.add_argument("--num-windows", default=64, type=int, help="number of windows")
 
     args = parser.parse_args()
     smoke_test = args.smoke_test
@@ -239,7 +238,6 @@ if __name__ == "__main__":
     num_workers = args.num_workers
     use_gpu = args.use_gpu
     num_epochs = args.num_epochs
-    # num_windows = args.num_windows
 
     BATCH_SIZE = 50000
     NUM_HIDDEN = 50

@@ -4,7 +4,6 @@ import ray
 from ray.air.config import ScalingConfig
 from ray.train.constants import TRAINING_ITERATION
 
-# from ray.train.examples.horovod.horovod_example import HorovodTrainClass
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
 )
@@ -59,7 +58,7 @@ def test_tensorflow_mnist(ray_start_4_cpus, num_workers):
 def test_tf_non_distributed(ray_start_4_cpus):
     """Make sure Ray Train works without TF MultiWorkerMirroredStrategy."""
 
-    trainer = TorchTrainer(
+    trainer = TensorflowTrainer(
         tf_quick_start_train_func, scaling_config=ScalingConfig(num_workers=1)
     )
     trainer.fit()
