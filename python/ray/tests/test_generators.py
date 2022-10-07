@@ -135,6 +135,55 @@ def test_generator_errors(ray_start_regular, store_in_plasma):
 
 
 @pytest.mark.parametrize("store_in_plasma", [False, True])
+def test_dynamic_generator_retry_exception(ray_start_regular, store_in_plasma):
+    class CustomException(Exception):
+        pass
+
+    @ray.remote(num_cpus=0)
+    class ExecutionCounter:
+        def __init__(self):
+            self.count = 0
+
+        def inc(self):
+            self.count += 1
+            return self.count
+
+        def get_count(self):
+            return self.count
+
+        def reset(self):
+            self.count = 0
+
+    @ray.remote(max_retries=1)
+    def generator(num_returns, store_in_plasma, counter):
+        for i in range(num_returns):
+            if store_in_plasma:
+                yield np.ones(1_000_000, dtype=np.int8) * i
+            else:
+                yield [i]
+
+            # Fail on first execution, succeed on next.
+            if ray.get(counter.inc.remote()) == 1:
+                raise CustomException("error")
+
+    counter = ExecutionCounter.remote()
+    dynamic_ref = generator.options(num_returns="dynamic").remote(
+        3, store_in_plasma, counter
+    )
+    ref1, ref2 = ray.get(dynamic_ref)
+    ray.get(ref1)
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(ref2)
+
+    ray.get(counter.reset.remote())
+    dynamic_ref = generator.options(
+        num_returns="dynamic", retry_exceptions=[CustomException]
+    ).remote(3, store_in_plasma, counter)
+    for i, ref in enumerate(ray.get(dynamic_ref)):
+        assert ray.get(ref)[0] == i
+
+
+@pytest.mark.parametrize("store_in_plasma", [False, True])
 def test_dynamic_generator(ray_start_regular, store_in_plasma):
     @ray.remote(num_returns="dynamic")
     def dynamic_generator(num_returns, store_in_plasma):

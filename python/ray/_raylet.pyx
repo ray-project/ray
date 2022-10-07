@@ -593,6 +593,82 @@ cdef store_task_errors(
         raise RayActorError.from_task_error(failure_object)
     return num_errors_stored
 
+cdef execute_dynamic_generator_and_store_task_outputs(
+        generator,
+        const CObjectID &generator_id,
+        CTaskType task_type,
+        const c_string &serialized_retry_exception_allowlist,
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
+        c_bool *is_retryable_error,
+        c_bool *is_application_error,
+        c_bool is_reattempt,
+        function_name,
+        function_descriptor,
+        title):
+    worker = ray._private.worker.global_worker
+    cdef:
+        CoreWorker core_worker = worker.core_worker
+
+    try:
+        core_worker.store_task_outputs(
+            worker, generator,
+            dynamic_returns,
+            generator_id)
+    except Exception as error:
+        is_application_error[0] = True
+        is_retryable_error[0] = determine_if_retryable(
+            error,
+            serialized_retry_exception_allowlist,
+            function_descriptor,
+        )
+        if (
+            is_retryable_error[0]
+            and core_worker.get_current_task_retry_exceptions()
+        ):
+            logger.info("Task failed with retryable exception:"
+                        " {}.".format(
+                            core_worker.get_current_task_id()),
+                        exc_info=True)
+            raise error
+        else:
+            logger.debug("Task failed with unretryable exception:"
+                         " {}.".format(
+                             core_worker.get_current_task_id()),
+                         exc_info=True)
+
+            if not is_reattempt:
+                # If this is the first execution, we should
+                # generate one additional ObjectRef. This last
+                # ObjectRef will contain the error.
+                error_id = (CCoreWorkerProcess.GetCoreWorker()
+                            .AllocateDynamicReturnId())
+                dynamic_returns[0].push_back(
+                        c_pair[CObjectID, shared_ptr[CRayObject]](
+                            error_id, shared_ptr[CRayObject]()))
+
+            # If a generator task fails mid-execution, we fail the
+            # dynamically generated nested ObjectRefs instead of
+            # the top-level ObjectRefGenerator.
+            num_errors_stored = store_task_errors(
+                        worker, error,
+                        False,  # task_exception
+                        None,  # actor
+                        function_name, task_type, title,
+                        dynamic_returns)
+            if num_errors_stored == 0:
+                assert is_reattempt
+                # TODO(swang): The generator task failed and we
+                # also failed to store the error in any of its
+                # return values. This should only occur if the
+                # generator task was re-executed and returned more
+                # values than the initial execution.
+                logger.error(
+                    "Unhandled error: Re-executed generator task "
+                    "returned more than the "
+                    f"{dynamic_returns[0].size()} values returned "
+                    "by the first execution.\n"
+                    "See https://github.com/ray-project/ray/issues/28688.")
+
 cdef execute_task(
         const CAddress &caller_address,
         CTaskType task_type,
@@ -869,42 +945,19 @@ cdef execute_task(
                                 "Functions with @ray.remote(num_returns=\"dynamic\" "
                                 "must return a generator")
                     task_exception = True
-                    try:
-                        core_worker.store_task_outputs(
-                            worker, outputs,
-                            dynamic_returns,
-                            returns[0][0].first)
-                    except Exception as error:
-                        if not is_reattempt:
-                            # If this is the first execution, we should
-                            # generate one additional ObjectRef. This last
-                            # ObjectRef will contain the error.
-                            error_id = (CCoreWorkerProcess.GetCoreWorker()
-                                        .AllocateDynamicReturnId())
-                            dynamic_returns[0].push_back(
-                                    c_pair[CObjectID, shared_ptr[CRayObject]](
-                                        error_id, shared_ptr[CRayObject]()))
 
-                        # If a generator task fails mid-execution, we fail the
-                        # dynamically generated nested ObjectRefs instead of
-                        # the top-level ObjectRefGenerator.
-                        num_errors_stored = store_task_errors(
-                                    worker, error, task_exception, actor,
-                                    function_name, task_type, title,
-                                    dynamic_returns)
-                        if num_errors_stored == 0:
-                            assert is_reattempt
-                            # TODO(swang): The generator task failed and we
-                            # also failed to store the error in any of its
-                            # return values. This should only occur if the
-                            # generator task was re-executed and returned more
-                            # values than the initial execution.
-                            logger.error(
-                                 "Unhandled error: Re-executed generator task "
-                                 "returned more than the "
-                                 f"{dynamic_returns[0].size()} values returned "
-                                 "by the first execution.\n"
-                                 "See https://github.com/ray-project/ray/issues/28688.")
+                    execute_dynamic_generator_and_store_task_outputs(
+                            outputs,
+                            returns[0][0].first,
+                            task_type,
+                            serialized_retry_exception_allowlist,
+                            dynamic_returns,
+                            is_retryable_error,
+                            is_application_error,
+                            is_reattempt,
+                            function_name,
+                            function_descriptor,
+                            title)
 
                     task_exception = False
                     dynamic_refs = []
@@ -916,6 +969,10 @@ cdef execute_task(
                     # Swap out the generator for an ObjectRef generator.
                     outputs = (ObjectRefGenerator(dynamic_refs), )
 
+                # TODO(swang): For generator tasks, iterating over outputs will
+                # actually run the task. We should run the usual handlers for
+                # task cancellation, retrying on application exception, etc. for
+                # all generator tasks, both static and dynamic.
                 core_worker.store_task_outputs(
                     worker, outputs,
                     returns)
