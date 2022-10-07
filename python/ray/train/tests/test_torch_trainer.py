@@ -146,7 +146,7 @@ def test_tune_torch_get_device_gpu(
 
     @patch("torch.cuda.is_available", lambda: True)
     def train_fn():
-        # We use STRICT_SPREAD strategy to force multiple trials on node.
+        # We use SPREAD strategy to force multiple trials on node.
         # One worker from each trial is on each node.
         # CUDA_VISIBLE_DEVICES for each worker has length of 1.
         # So device index will always be 0.
@@ -164,8 +164,7 @@ def test_tune_torch_get_device_gpu(
                 scaling_config=ScalingConfig(
                     num_workers=num_workers,
                     use_gpu=True,
-                    resources_per_worker={"CPU": 1, "GPU": num_gpus_per_worker},
-                    trainer_resources={"CPU": 0},
+                    resources_per_worker={"GPU": num_gpus_per_worker},
                     placement_strategy="SPREAD",
                     # Each gpu worker will be spread onto separate nodes. This forces
                     # different Tune trials to run concurrently on the same node.
