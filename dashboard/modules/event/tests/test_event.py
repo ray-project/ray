@@ -29,6 +29,8 @@ from ray._private.test_utils import (
 from ray.dashboard.modules.event.event_utils import (
     monitor_events,
 )
+from ray.experimental.state.api import list_cluster_events
+from ray.job_submission import JobSubmissionClient
 
 logger = logging.getLogger(__name__)
 
@@ -388,75 +390,74 @@ def test_autoscaler_cluster_events(shutdown_only):
         ray.shutdown()
         cluster.shutdown()
 
+def test_jobs_cluster_events(shutdown_only):
+    ray.init()
+    address = ray._private.worker._global_node.webui_url
+    address = format_web_url(address)
+    client = JobSubmissionClient(address)
+    submission_id = client.submit_job(entrypoint="ls")
 
-# def test_jobs_cluster_events(shutdown_only):
-#     ray.init()
-#     address = ray._private.worker._global_node.webui_url
-#     address = format_web_url(address)
-#     client = JobSubmissionClient(address)
-#     submission_id = client.submit_job(entrypoint="ls")
+    def verify():
+        events = list_cluster_events()
+        print(events)
+        assert len(list_cluster_events()) == 2
+        start_event = events[0]
+        completed_event = events[1]
 
-#     def verify():
-#         events = list_cluster_events()
-#         print(events)
-#         assert len(list_cluster_events()) == 2
-#         start_event = events[0]
-#         completed_event = events[1]
+        assert start_event["source_type"] == "JOBS"
+        assert f"Started a ray job {submission_id}" in start_event["message"]
+        assert start_event["severity"] == "INFO"
+        assert completed_event["source_type"] == "JOBS"
+        assert (
+            f"Completed a ray job {submission_id} with a status SUCCEEDED."
+            == completed_event["message"]
+        )
+        assert completed_event["severity"] == "INFO"
+        return True
 
-#         assert start_event["source_type"] == "JOBS"
-#         assert f"Started a ray job {submission_id}" in start_event["message"]
-#         assert start_event["severity"] == "INFO"
-#         assert completed_event["source_type"] == "JOBS"
-#         assert (
-#             f"Completed a ray job {submission_id} with a status SUCCEEDED."
-#             == completed_event["message"]
-#         )
-#         assert completed_event["severity"] == "INFO"
-#         return True
+    print("Test successful job run.")
+    wait_for_condition(verify)
 
-#     print("Test successful job run.")
-#     wait_for_condition(verify)
+    # Test the failure case. In this part, job fails because the runtime env
+    # creation fails.
+    submission_id = client.submit_job(
+        entrypoint="ls",
+        runtime_env={"working_dir": "s3://does_not_exist.zip"},
+    )
 
-#     # Test the failure case. In this part, job fails because the runtime env
-#     # creation fails.
-#     submission_id = client.submit_job(
-#         entrypoint="ls",
-#         runtime_env={"working_dir": "s3://does_not_exist.zip"},
-#     )
+    def verify():
+        events = list_cluster_events(detail=True)
+        failed_events = []
 
-#     def verify():
-#         events = list_cluster_events(detail=True)
-#         failed_events = []
+        for e in events:
+            if (
+                "submission_id" in e["custom_fields"]
+                and e["custom_fields"]["submission_id"] == submission_id
+            ):
+                failed_events.append(e)
 
-#         for e in events:
-#             if (
-#                 "submission_id" in e["custom_fields"]
-#                 and e["custom_fields"]["submission_id"] == submission_id
-#             ):
-#                 failed_events.append(e)
+        assert len(failed_events) == 2
+        failed_start = failed_events[0]
+        failed_completed = failed_events[1]
 
-#         assert len(failed_events) == 2
-#         failed_start = failed_events[0]
-#         failed_completed = failed_events[1]
+        assert failed_start["source_type"] == "JOBS"
+        assert f"Started a ray job {submission_id}" in failed_start["message"]
+        assert failed_completed["source_type"] == "JOBS"
+        assert (
+            f"Completed a ray job {submission_id} with a status FAILED."
+            in failed_completed["message"]
+        )
+        print(failed_completed["message"])
+        # TODO(sang): Reenable it.
+        # # Make sure the error message is included.
+        # assert (
+        #     "An error occurred (ExpiredToken) when calling the "
+        #     "GetObject operation:" in failed_completed["message"]
+        # )
+        return True
 
-#         assert failed_start["source_type"] == "JOBS"
-#         assert f"Started a ray job {submission_id}" in failed_start["message"]
-#         assert failed_completed["source_type"] == "JOBS"
-#         assert (
-#             f"Completed a ray job {submission_id} with a status FAILED."
-#             in failed_completed["message"]
-#         )
-#         print(failed_completed["message"])
-#         # TODO(sang): Reenable it.
-#         # # Make sure the error message is included.
-#         # assert (
-#         #     "An error occurred (ExpiredToken) when calling the "
-#         #     "GetObject operation:" in failed_completed["message"]
-#         # )
-#         return True
-
-#     print("Test failed (runtime_env failure) job run.")
-#     wait_for_condition(verify)
+    print("Test failed (runtime_env failure) job run.")
+    wait_for_condition(verify)
 
 
 if __name__ == "__main__":
