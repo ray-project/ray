@@ -224,7 +224,11 @@ class DashboardHead:
         logger.info("Loaded %d modules. %s", len(modules), modules)
         # # Discard some of the modules. We discarded the nodehead module
         # modules = modules[:6] + modules[7:]
-        logger.info("After possibly discarding some, actually loaded %d modules. %s", len(modules), modules)
+        logger.info(
+            "After possibly discarding some, actually loaded %d modules. %s",
+            len(modules),
+            modules,
+        )
         return modules
 
     async def run(self):
