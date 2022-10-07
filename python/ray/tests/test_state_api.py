@@ -1867,10 +1867,10 @@ def test_list_cluster_events(shutdown_only):
 
     def verify():
         events = list_cluster_events()
+        print(events)
         assert len(events) == 1
         assert (
-            "Error: No available node types can fulfill "
-            "resource request {'GPU': 1.0, 'CPU': 1.0}."
+            "Error: No available node types can fulfill " "resource request"
         ) in events[0]["message"]
         return True
 
