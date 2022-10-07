@@ -39,9 +39,6 @@ class StandaloneSerializationContext:
     # use the SerializationContext because it requires Ray workers. Please
     # make sure to keep the API consistent.
 
-    def _register_cloudpickle_reducer(self, cls, reducer):
-        pickle.CloudPickler.dispatch[cls] = reducer
-
     def _unregister_cloudpickle_reducer(self, cls):
         pickle.CloudPickler.dispatch.pop(cls, None)
 
