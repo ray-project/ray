@@ -232,6 +232,8 @@ The following metrics are exposed by Ray Serve:
      - The number of exceptions that have occurred in the deployment.
    * - ``serve_deployment_replica_starts`` [**]
      - The number of times this replica has been restarted due to failure.
+   * - ``serve_deployment_replica_healthy``
+     - Whether this deployment replica is healthy. 1 means healthy, 0 unhealthy.
    * - ``serve_deployment_processing_latency_ms`` [**]
      - The latency for queries to be processed.
    * - ``serve_replica_processing_queries`` [**]
@@ -248,10 +250,6 @@ The following metrics are exposed by Ray Serve:
      - The number of queries for this deployment waiting to be assigned to a replica.
    * - ``serve_num_deployment_http_error_requests`` [*]
      - The number of non-200 HTTP responses returned by each deployment.
-   * - ``serve_deployment_health_check_successes``
-     - The number of replica health checks that succeeded on this deployment.
-   * - ``serve_deployment_health_check_failures``
-     - The number of replica health checks that failed on this deployment.
 ```
 [*] - only available when using HTTP calls  
 [**] - only available when using Python `ServeHandle` calls

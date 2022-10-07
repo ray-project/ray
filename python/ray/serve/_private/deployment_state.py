@@ -983,23 +983,14 @@ class DeploymentState:
             self._name, DeploymentStatus.UPDATING
         )
 
-        self.health_check_success_counter = metrics.Counter(
-            "serve_deployment_health_check_successes",
+        self.health_check_gauge = metrics.Gauge(
+            "serve_deployment_replica_healthy",
             description=(
-                "The number of replica health checks that succeeded on this deployment."
+                "Tracks whether this deployment replica is healthy. 1 means "
+                "healthy, 0 means unhealthy."
             ),
-            tag_keys=("deployment"),
+            tag_keys=("deployment", "replica"),
         )
-        self.health_check_success_counter.set_default_tags({"deployment": self._name})
-
-        self.health_check_failure_counter = metrics.Counter(
-            "serve_deployment_health_check_failures",
-            description=(
-                "The number of replica health checks that failed on this deployment."
-            ),
-            tag_keys=("deployment"),
-        )
-        self.health_check_failure_counter.set_default_tags({"deployment": self._name})
 
     def should_autoscale(self) -> bool:
         """
@@ -1507,14 +1498,18 @@ class DeploymentState:
         for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
             if replica.check_health():
                 self._replicas.add(ReplicaState.RUNNING, replica)
-                self.health_check_success_counter.inc()
+                self.health_check_gauge.set(
+                    1, tags={"deployment": self._name, "replica": replica.replica_tag}
+                )
             else:
                 running_replicas_changed = True
                 logger.warning(
                     f"Replica {replica.replica_tag} of deployment "
                     f"{self._name} failed health check, stopping it."
                 )
-                self.health_check_failure_counter.inc()
+                self.health_check_gauge.set(
+                    0, tags={"deployment": self._name, "replica": replica.replica_tag}
+                )
                 replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)
                 # If this is a replica of the target version, the deployment
