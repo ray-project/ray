@@ -509,7 +509,7 @@ class _AioSubscriber(_SubscriberBase):
                 self._poll_call(req, timeout=timeout)
             )
             close = asyncio.get_event_loop().create_task(self._close.wait())
-            done, not_done = await asyncio.wait(
+            done, others = await asyncio.wait(
                 [poll, close], timeout=timeout, return_when=asyncio.FIRST_COMPLETED
             )
             not_done_task = not_done.pop()
