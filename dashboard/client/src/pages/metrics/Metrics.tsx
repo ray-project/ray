@@ -65,36 +65,48 @@ const TIME_RANGE_DURATIONS_MS: Record<TimeRangeOptions, number> = {
 
 const METRICS_CONFIG = [
   {
-    title: "Instance count",
-    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=24",
+    title: "Scheduler Task State",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=26",
   },
   {
-    title: "Utilization percentage",
-    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=10",
+    title: "Scheduler CPUs (logical slots)",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=27",
   },
   {
-    title: "CPU usage",
+    title: "Object Store Memory",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=29",
+  },
+  {
+    title: "Scheduler GPUs (logical slots)",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=28",
+  },
+  {
+    title: "Node CPU",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=2",
-  },
-  {
-    title: "Memory usage",
-    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=4",
-  },
-  {
-    title: "Disk usage",
-    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=6",
-  },
-  {
-    title: "Network speed",
-    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=20",
   },
   {
     title: "Node GPU",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=8",
   },
   {
-    title: "Node GPU memory",
+    title: "Node Disk",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=6",
+  },
+  {
+    title: "Node Memory",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=4",
+  },
+  {
+    title: "Node GPU Memory",
     path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=18",
+  },
+  {
+    title: "Node Network",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=20",
+  },
+  {
+    title: "Instance count",
+    path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=24",
   },
 ];
 
