@@ -9,30 +9,25 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
+import random
+
 
 @pytest.fixture
 def start_mongo():
-    import subprocess
+    import pymongo
 
-    subprocess.run(["sudo", "apt-get", "purge", "-y", "mongodb*"])
-    subprocess.run(["sudo", "apt-get", "install", "-y", "mongodb"])
-    subprocess.run(["sudo", "rm", "/var/lib/mongodb/mongod.lock"])
-    subprocess.run(["sudo", "service", "mongodb", " start"])
-    yield "mongodb://localhost:27017"
-    subprocess.run(["sudo", "service", "mongodb", " stop"])
-    subprocess.run(["sudo", "apt-get", "purge", "-y", "mongodb*"])
+    mongo_url = "mongodb://localhost:27017"
+    client = pymongo.MongoClient(mongo_url)
+    return client, mongo_url
 
 
 def test_read_write_mongo(ray_start_regular_shared, start_mongo):
-    import pymongo
     from pymongoarrow.api import Schema
     from pymongo.errors import ServerSelectionTimeoutError
 
-    mongo_url = start_mongo
-    foo_db = "foo-db"
+    client, mongo_url = start_mongo
+    foo_db = f"foo-db-{random()}"
     foo_collection = "foo-collection"
-
-    client = pymongo.MongoClient(mongo_url)
     foo = client[foo_db][foo_collection]
     foo.delete_many({})
 
@@ -163,12 +158,10 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
 
 
 def test_mongo_datasource(ray_start_regular_shared, start_mongo):
-    import pymongo
     from pymongoarrow.api import Schema
 
-    mongo_url = start_mongo
-    client = pymongo.MongoClient(mongo_url)
-    foo_db = "foo-db"
+    client, mongo_url = start_mongo
+    foo_db = f"foo-db-{random()}"
     foo_collection = "foo-collection"
     foo = client[foo_db][foo_collection]
     foo.delete_many({})
