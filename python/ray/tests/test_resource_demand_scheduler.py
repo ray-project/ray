@@ -25,7 +25,10 @@ from ray.autoscaler._private.node_provider_availability_tracker import (
 )
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.commands import get_or_create_head_node
-from ray.autoscaler._private.constants import AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE, AUTOSCALER_UTILIZATION_SCORER_KEY
+from ray.autoscaler._private.constants import (
+    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
+    AUTOSCALER_UTILIZATION_SCORER_KEY,
+)
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.providers import _NODE_PROVIDERS, _clear_provider_cache
 from ray.autoscaler._private.resource_demand_scheduler import (
@@ -96,19 +99,25 @@ def test_util_score():
     assert _default_utilization_scorer(
         {"GPU": 4}, [{"GPU": 2}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
     ) == (1, 0.5, 0.5)
-    assert _default_utilization_scorer(
-        {"GPU": 4},
-        [{"GPU": 1}, {"GPU": 1}],
-        node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    ) == (1, 0.5, 0.5)
+    assert (
+        _default_utilization_scorer(
+            {"GPU": 4},
+            [{"GPU": 1}, {"GPU": 1}],
+            node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
+        )
+        == (1, 0.5, 0.5)
+    )
     assert _default_utilization_scorer(
         {"GPU": 2}, [{"GPU": 2}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
     ) == (1, 2, 2)
-    assert _default_utilization_scorer(
-        {"GPU": 2},
-        [{"GPU": 1}, {"GPU": 1}],
-        node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    ) == (1, 2, 2)
+    assert (
+        _default_utilization_scorer(
+            {"GPU": 2},
+            [{"GPU": 1}, {"GPU": 1}],
+            node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
+        )
+        == (1, 2, 2)
+    )
     assert _default_utilization_scorer(
         {"GPU": 1},
         [{"GPU": 1, "CPU": 1}, {"GPU": 1}],
@@ -118,27 +127,36 @@ def test_util_score():
         1,
         1,
     )
-    assert _default_utilization_scorer(
-        {"GPU": 1, "CPU": 1},
-        [{"GPU": 1, "CPU": 1}, {"GPU": 1}],
-        node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    ) == (2, 1, 1)
-    assert _default_utilization_scorer(
-        {"GPU": 2, "TPU": 1},
-        [{"GPU": 2}],
-        node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    ) == (1, 0, 1)
+    assert (
+        _default_utilization_scorer(
+            {"GPU": 1, "CPU": 1},
+            [{"GPU": 1, "CPU": 1}, {"GPU": 1}],
+            node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
+        )
+        == (2, 1, 1)
+    )
+    assert (
+        _default_utilization_scorer(
+            {"GPU": 2, "TPU": 1},
+            [{"GPU": 2}],
+            node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
+        )
+        == (1, 0, 1)
+    )
     assert _default_utilization_scorer(
         {"CPU": 64}, [{"CPU": 64}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
     ) == (1, 64, 64)
     assert _default_utilization_scorer(
         {"CPU": 64}, [{"CPU": 32}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
     ) == (1, 8, 8)
-    assert _default_utilization_scorer(
-        {"CPU": 64},
-        [{"CPU": 16}, {"CPU": 16}],
-        node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    ) == (1, 8, 8)
+    assert (
+        _default_utilization_scorer(
+            {"CPU": 64},
+            [{"CPU": 16}, {"CPU": 16}],
+            node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
+        )
+        == (1, 8, 8)
+    )
 
 
 def test_gpu_node_util_score():
@@ -160,11 +178,14 @@ def test_gpu_node_util_score():
         1.0,
         1.0,
     )
-    assert _default_utilization_scorer(
-        {"GPU": 1, "CPU": 1},
-        [{"GPU": 1}],
-        node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    ) == (1, 0.0, 0.5)
+    assert (
+        _default_utilization_scorer(
+            {"GPU": 1, "CPU": 1},
+            [{"GPU": 1}],
+            node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
+        )
+        == (1, 0.0, 0.5)
+    )
 
 
 def test_zero_resource():
@@ -3341,10 +3362,10 @@ def test_placement_group_match_string():
 
 
 def _launch_nothing_utilization_scorer_plugin(
-    node_resources, # noqa
-    resources, # noqa
+    node_resources,  # noqa
+    resources,  # noqa
     *,
-    node_availability_summary, # noqa
+    node_availability_summary,  # noqa
 ):
     return None
 
