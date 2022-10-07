@@ -40,15 +40,15 @@ const useStyles = makeStyles((theme) =>
 );
 
 enum TimeRangeOptions {
-  FIVE_MINS = "5 minutes",
-  THIRTY_MINS = "30 minutes",
-  ONE_HOUR = "1 hour",
-  THREE_HOURS = "3 hours",
-  SIX_HOURS = "6 hours",
-  TWELVE_HOURS = "12 hours",
-  ONE_DAY = "1 day",
-  TWO_DAYS = "2 days",
-  SEVEN_DAYS = "7 days",
+  FIVE_MINS = "Last 5 minutes",
+  THIRTY_MINS = "Last 30 minutes",
+  ONE_HOUR = "Last 1 hour",
+  THREE_HOURS = "Last 3 hours",
+  SIX_HOURS = "Last 6 hours",
+  TWELVE_HOURS = "Last 12 hours",
+  ONE_DAY = "Last 1 day",
+  TWO_DAYS = "Last 2 days",
+  SEVEN_DAYS = "Last 7 days",
 }
 
 const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
