@@ -27,8 +27,13 @@ def load_mnist_data(train: bool, download: bool):
         [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
     )
 
-    with FileLock("~/.ray.lock"):
-        return MNIST(root="~/data", train=train, download=download, transform=transform)
+    with FileLock(os.path.expanduser("~/.ray.lock")):
+        return MNIST(
+            root=os.path.expanduser("~/data"),
+            train=train,
+            download=download,
+            transform=transform,
+        )
 
 
 def train_epoch(dataloader, model, loss_fn, optimizer):
