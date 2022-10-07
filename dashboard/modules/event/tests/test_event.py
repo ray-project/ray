@@ -333,7 +333,8 @@ def test_jobs_cluster_events(shutdown_only):
     print("Test successful job run.")
     wait_for_condition(verify)
 
-    # Test the failure case.
+    # Test the failure case. In this part, job fails because the runtime env
+    # creation fails.
     submission_id = client.submit_job(
         entrypoint="ls",
         runtime_env={"working_dir": "s3://runtime-env-test/script_runtime_env.zip"},
@@ -358,7 +359,7 @@ def test_jobs_cluster_events(shutdown_only):
         assert f"Started a ray job {submission_id}" in failed_start["message"]
         assert failed_completed["source_type"] == "JOBS"
         assert (
-            f"Completed a ray job {submission_id} with a status PENDING."
+            f"Completed a ray job {submission_id} with a status FAILED."
             in failed_completed["message"]
         )
         # Make sure the error message is included.

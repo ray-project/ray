@@ -393,7 +393,10 @@ class JobManager:
         self._gcs_address = gcs_aio_client._channel._gcs_address
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
-        self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
+        try:
+            self.event_logger = get_event_logger(Event.SourceType.JOBS, logs_dir)
+        except Exception:
+            self.event_logger = None
 
         create_task(self._recover_running_jobs())
 
@@ -453,9 +456,10 @@ class JobManager:
                 elif isinstance(e, RuntimeEnvSetupError):
                     logger.info(f"Failed to set up runtime_env for job {job_id}.")
                     job_error_message = f"runtime_env setup failed: {e}"
+                    job_status = JobStatus.FAILED
                     await self._job_info_client.put_status(
                         job_id,
-                        JobStatus.FAILED,
+                        job_status,
                         message=job_error_message,
                     )
                 else:
@@ -463,9 +467,10 @@ class JobManager:
                         f"Job supervisor for job {job_id} failed unexpectedly: {e}."
                     )
                     job_error_message = f"Unexpected error occurred: {e}"
+                    job_status = JobStatus.FAILED
                     await self._job_info_client.put_status(
                         job_id,
-                        JobStatus.FAILED,
+                        job_status,
                         message=job_error_message,
                     )
 
@@ -473,7 +478,8 @@ class JobManager:
                 event_log = f"Completed a ray job {job_id} with a status {job_status}."
                 if job_error_message:
                     event_log += f" {job_error_message}"
-                self.event_logger.info(event_log, submission_id=job_id)
+                if self.event_logger:
+                    self.event_logger.info(event_log, submission_id=job_id)
 
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
         if job_supervisor is not None:
@@ -596,10 +602,10 @@ class JobManager:
                     node_id=ray.get_runtime_context().node_id,
                     soft=False,
                 )
-
-            self.event_logger.info(
-                f"Started a ray job {submission_id}.", submission_id=submission_id
-            )
+            if self.event_logger:
+                self.event_logger.info(
+                    f"Started a ray job {submission_id}.", submission_id=submission_id
+                )
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
