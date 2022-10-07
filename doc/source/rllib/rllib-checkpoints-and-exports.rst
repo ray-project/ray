@@ -1,3 +1,7 @@
+.. include:: /_includes/rllib/announcement.rst
+
+.. include:: /_includes/rllib/we_are_hiring.rst
+
 .. _checkpoints-and-exports-docs:
 
 #################
@@ -7,6 +11,10 @@ Using Checkpoints
 
 What's a checkpoint?
 ====================
+
+You can use :py:class:`~ray.air.checkpoint.Checkpoint` objects to store
+and load the current state of your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+and the neural networks (weights) within.
 
 A checkpoint is a set of information, located inside a directory (which may contain
 further subdirectories) and used to restore either an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
@@ -57,23 +65,23 @@ like this:
       .is_checkpoint
       .tune_metadata
       policies/
-      state.pkl
-      checkpoint_version.txt
+      algorithm_state.pkl
+      rllib_checkpoint.json
 
 As you can see, there is a `policies` sub-directory created for us (more on that
-later), a ``state.pkl`` file, and a ``checkpoint_version.txt`` file.
-The ``state.pkl`` file contains all state information
+later), a ``algorithm_state.pkl`` file, and a ``rllib_checkpoint.json`` file.
+The ``algorithm_state.pkl`` file contains all state information
 of the Algorithm that is **not** Policy-specific, such as the algo's counters and
 other important variables to persistently keep track of.
-The ``checkpoint_version.txt`` file contains the checkpoint version used for the user's
+The ``rllib_checkpoint.json`` file contains the checkpoint version used for the user's
 convenience. From Ray RLlib 2.0 and up, all checkpoint versions will be
 backward compatible, meaning an RLlib version ``V`` will be able to
-handle any checkpoints created with 2.0 or any version up to ``V``.
+handle any checkpoints created with Ray 2.0 or any version up to ``V``.
 
 .. code-block:: shell
 
-    $ mode checkpoint_version.txt
-    v1
+    $ mode rllib_checkpoint.json
+    {"type": "Algorithm", "checkpoint_version": "1.0"}
 
 Now, let's check out the `policies/` sub-directory:
 
@@ -111,14 +119,14 @@ Lastly, let's quickly take a look at our ``default_policy`` sub-directory:
     $ ls -la
       .
       ..
-      checkpoint_version.txt
+      rllib_checkpoint.json
       policy_state.pkl
 
-Similar to the algorithm's state (saved within ``state.pkl``),
+Similar to the algorithm's state (saved within ``algorithm_state.pkl``),
 a Policy's state is stored under the ``policy_state.pkl`` file. We'll cover more
 details on the contents of this file when talking about :py:class:`~ray.rllib.policy.policy.Policy` checkpoints below.
 Note that :py:class:`~ray.rllib.policy.policy.Policy` checkpoint also have a
-version information (in ``checkpoint_version.txt``), which is always identical to the enclosing
+info file (``rllib_checkpoint.json``), which is always identical to the enclosing
 algorithm checkpoint version.
 
 
@@ -152,13 +160,13 @@ have to keep your original config stored somewhere.
 Which Algorithm checkpoint versions can I use?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-RLlib uses simple checkpoint versions (for example "v0" or "v1") to figure
+RLlib uses simple checkpoint versions (for example v0.1 or v1.0) to figure
 out how to restore an Algorithm (or a :py:class:`~ray.rllib.policy.policy.Policy`;
 see below) from a given
 checkpoint directory.
 
 From Ray 2.1 on, you can find the checkpoint version written in the
-``checkpoint_version.txt`` file at the top-level of your checkpoint directory.
+``rllib_checkpoint.json`` file at the top-level of your checkpoint directory.
 RLlib does not use this file or information therein, it solely exists for the
 user's convenience.
 
@@ -208,17 +216,17 @@ Thus, we now have the entire picture of a checkpoint:
     .is_checkpoint
     .tune_metadata
 
-    checkpoint_version.txt          # <- contains checkpoint version, e.g. "v1"
-    state.pkl                       # <- state of the Algorithm (excluding Policy states)
+    rllib_checkpoint.json           # <- checkpoint info, such as checkpoint version, e.g. "1.0"
+    algorithm_state.pkl             # <- state of the Algorithm (excluding Policy states)
 
     policies/
 
         policy_A/
-            checkpoint_version.txt  # <- contains checkpoint version, e.g. "v1"
+            rllib_checkpoint.json   # <- checkpoint info, such as checkpoint version, e.g. "1.0"
             policy_state.pkl        # <- state of policy_A
 
         policy_B/
-            checkpoint_version.txt  # <- contains checkpoint version, e.g. "v1"
+            rllib_checkpoint.json   # <- checkpoint info, such as checkpoint version, e.g. "1.0"
             policy_state.pkl        # <- state of policy_B
 
 
@@ -244,7 +252,7 @@ should see the following files in there:
 
     .
     ..
-    checkpoint_version.txt  # <- contains checkpoint version, e.g. "v1"
+    rllib_checkpoint.json   # <- checkpoint info, such as checkpoint version, e.g. "1.0"
     policy_state.pkl        # <- state of "pol1"
 
 
