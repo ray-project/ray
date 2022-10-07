@@ -35,10 +35,15 @@ import linecache
 import os
 import tracemalloc
 
+from pympler import tracker
+tr = tracker.SummaryTracker()
+tr.print_diff() 
+
 def display_top(snapshot, key_type='lineno', limit=10):
     snapshot = snapshot.filter_traces((
         tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
         tracemalloc.Filter(False, "<unknown>"),
+        tracemalloc.Filter(False, "*pympler*")
     ))
     top_stats = snapshot.statistics(key_type)
 
@@ -344,10 +349,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         sum1 = summary.summarize(all_objects)
         summary.print_(sum1)
         # Print summary to logger
-        logger.info("printing Pympler summary from NODE_HEAD")
-        for line in summary.format_(sum1):
+        logger.info("printing Pympler diff from NODE_HEAD")
+        for line in summary.format_(tr.diff()):
             logger.info(line)
-
         from pympler import asizeof
 
         logger.info("printing Pympler asizeof from NODE_HEAD")
