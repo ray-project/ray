@@ -189,10 +189,12 @@ def run(
         experiments = {
             experiment_name: {  # i.e. log to ~/ray_results/default
                 "run": algo,
-                "checkpoint_freq": checkpoint_freq,
-                "checkpoint_at_end": checkpoint_at_end,
-                "keep_checkpoints_num": keep_checkpoints_num,
-                "checkpoint_score_attr": checkpoint_score_attr,
+                "checkpoint_config": {
+                    "checkpoint_frequency": checkpoint_freq,
+                    "checkpoint_at_end": checkpoint_at_end,
+                    "num_to_keep": keep_checkpoints_num,
+                    "checkpoint_score_attribute": checkpoint_score_attr,
+                },
                 "local_dir": local_dir,
                 "resources_per_trial": (
                     resources_per_trial and resources_to_json(resources_per_trial)
