@@ -23,7 +23,10 @@ from ray.data.datasource import (
     PathPartitionEncoder,
     PathPartitionFilter,
 )
-from ray.data.datasource.file_based_datasource import _unwrap_protocol
+from ray.data.datasource.file_based_datasource import (
+    FileExtensionFilter,
+    _unwrap_protocol,
+)
 
 
 def df_to_csv(dataframe, path, **kwargs):
@@ -196,7 +199,12 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         storage_options=storage_options,
     )
 
-    ds = ray.data.read_csv(path, filesystem=fs, partitioning=None)
+    ds = ray.data.read_csv(
+        path,
+        filesystem=fs,
+        partition_filter=FileExtensionFilter("csv"),
+        partitioning=None,
+    )
     assert ds.num_blocks() == 2
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas()
@@ -642,7 +650,7 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
 
     # Incorrect to parse scientific notation in int64 as PyArrow represents
     # it as double.
-    with pytest.raises(pa.lib.ArrowInvalid):
+    with pytest.raises(ValueError):
         ray.data.read_csv(
             file_path,
             convert_options=csv.ConvertOptions(
@@ -661,15 +669,53 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
     assert ds.to_pandas().equals(expected_df)
 
 
-def test_csv_read_filter_no_file(shutdown_only, tmp_path):
+def test_csv_read_filter_non_csv_file(shutdown_only, tmp_path):
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    table = pa.Table.from_pandas(df)
-    path = os.path.join(str(tmp_path), "test.parquet")
-    pq.write_table(table, path)
 
+    # CSV file with .csv extension.
+    path1 = os.path.join(tmp_path, "test2.csv")
+    df.to_csv(path1, index=False)
+
+    # CSV file without .csv extension.
+    path2 = os.path.join(tmp_path, "test3")
+    df.to_csv(path2, index=False)
+
+    # Directory of CSV files.
+    ds = ray.data.read_csv(tmp_path)
+    assert ds.to_pandas().equals(pd.concat([df, df], ignore_index=True))
+
+    # Non-CSV file in Parquet format.
+    table = pa.Table.from_pandas(df)
+    path3 = os.path.join(tmp_path, "test1.parquet")
+    pq.write_table(table, path3)
+
+    # Single non-CSV file.
+    error_message = "Failed to read CSV file"
+    with pytest.raises(ValueError, match=error_message):
+        ray.data.read_csv(path3)
+
+    # Single non-CSV file with filter.
     error_message = "No input files found to read"
     with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path)
+        ray.data.read_csv(path3, partition_filter=FileExtensionFilter("csv"))
+
+    # Single CSV file without extension.
+    ds = ray.data.read_csv(path2)
+    assert ds.to_pandas().equals(df)
+
+    # Single CSV file without extension with filter.
+    error_message = "No input files found to read"
+    with pytest.raises(ValueError, match=error_message):
+        ray.data.read_csv(path2, partition_filter=FileExtensionFilter("csv"))
+
+    # Directory of CSV and non-CSV files.
+    error_message = "Failed to read CSV file"
+    with pytest.raises(ValueError, match=error_message):
+        ray.data.read_csv(tmp_path)
+
+    # Directory of CSV and non-CSV files with filter.
+    ds = ray.data.read_csv(tmp_path, partition_filter=FileExtensionFilter("csv"))
+    assert ds.to_pandas().equals(df)
 
 
 @pytest.mark.skipif(
