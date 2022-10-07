@@ -556,13 +556,14 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
     spilled_object_pending_delete_.pop();
   }
   if (object_urls_to_delete.size() > 0) {
-    DeleteSpilledObjects(object_urls_to_delete);
+    DeleteSpilledObjects(std::move(object_urls_to_delete));
   }
 }
 
-void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> &urls_to_delete) {
+void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> urls_to_delete,
+                                              int64_t num_retries) {
   io_worker_pool_.PopDeleteWorker(
-      [this, urls_to_delete](std::shared_ptr<WorkerInterface> io_worker) {
+      [this, urls_to_delete, num_retries](std::shared_ptr<WorkerInterface> io_worker) {
         RAY_LOG(DEBUG) << "Sending delete spilled object request. Length: "
                        << urls_to_delete.size();
         rpc::DeleteSpilledObjectsRequest request;
@@ -571,12 +572,22 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> &urls_to_
         }
         io_worker->rpc_client()->DeleteSpilledObjects(
             request,
-            [this, io_worker](const ray::Status &status,
-                              const rpc::DeleteSpilledObjectsReply &reply) {
+            [this, urls_to_delete = std::move(urls_to_delete), num_retries, io_worker](
+                const ray::Status &status, const rpc::DeleteSpilledObjectsReply &reply) {
               io_worker_pool_.PushDeleteWorker(io_worker);
               if (!status.ok()) {
+                num_failed_deletion_requests_ += 1;
                 RAY_LOG(ERROR) << "Failed to send delete spilled object request: "
-                               << status.ToString();
+                               << status.ToString() << ", retry count: " << num_retries;
+
+                if (num_retries > 0) {
+                  // retry failed requests.
+                  io_service_.post(
+                      [this, urls_to_delete = std::move(urls_to_delete), num_retries]() {
+                        DeleteSpilledObjects(urls_to_delete, num_retries - 1);
+                      },
+                      "LocaObjectManager.RetryDeleteSpilledObjects");
+                }
               }
             });
       });
@@ -625,6 +636,9 @@ void LocalObjectManager::RecordMetrics() const {
   ray::stats::STATS_object_store_memory.Record(
       spilled_bytes_current_,
       {{ray::stats::LocationKey.name(), ray::stats::kObjectLocSpilled}});
+
+  ray::stats::STATS_spill_manager_request_total.Record(num_failed_deletion_requests_,
+                                                       "FailedDeletion");
 }
 
 int64_t LocalObjectManager::GetPrimaryBytes() const {

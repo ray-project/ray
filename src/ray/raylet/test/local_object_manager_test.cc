@@ -204,6 +204,23 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
     return deleted_urls_size;
   }
 
+  int FailDeleteSpilledObject(Status status = Status::IOError("io error")) {
+    if (delete_callbacks.size() == 0) {
+      return 0;
+    }
+
+    auto callback = delete_callbacks.front();
+    auto reply = rpc::DeleteSpilledObjectsReply();
+    callback(status, reply);
+
+    auto &request = delete_requests.front();
+    int deleted_urls_size = request.spilled_objects_url_size();
+    delete_callbacks.pop_front();
+    delete_requests.pop_front();
+
+    return deleted_urls_size;
+  }
+
   std::list<rpc::ClientCallback<rpc::SpillObjectsReply>> callbacks;
   std::list<rpc::ClientCallback<rpc::DeleteSpilledObjectsReply>> delete_callbacks;
   std::list<rpc::ClientCallback<rpc::RestoreSpilledObjectsReply>> restore_callbacks;
@@ -316,6 +333,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
             manager_node_id_,
             "address",
             1234,
+            io_service_,
             free_objects_batch_size,
             /*free_objects_period_ms=*/1000,
             worker_pool,
@@ -1379,6 +1397,18 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePinAndSpill) {
 
   manager.FlushFreeObjects();
   AssertNoLeaks();
+}
+
+TEST_F(LocalObjectManagerTest, TestRetryDeleteSpilledObjects) {
+  std::vector<std::string> urls_to_delete{{"url1"}};
+  manager.DeleteSpilledObjects(urls_to_delete, /*num_retries*/ 1);
+  ASSERT_EQ(1, worker_pool.io_worker_client->FailDeleteSpilledObject());
+  io_service_.run_one();
+  // assert the request is retried.
+  ASSERT_EQ(1, worker_pool.io_worker_client->FailDeleteSpilledObject());
+  // retry exhaused.
+  io_service_.run_one();
+  ASSERT_EQ(0, worker_pool.io_worker_client->FailDeleteSpilledObject());
 }
 
 TEST_F(LocalObjectManagerFusedTest, TestMinSpillingSize) {
