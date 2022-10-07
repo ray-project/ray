@@ -1,7 +1,3 @@
-from ray.train.callbacks.callback import TrainingCallback, _deprecation_msg
-from ray.util.annotations import Deprecated
+from ray.train.callbacks.callback import _deprecation_msg
 
-
-@Deprecated(message=_deprecation_msg)
-class TorchTensorboardProfilerCallback(TrainingCallback):
-    pass
+raise DeprecationWarning(_deprecation_msg)
