@@ -321,7 +321,7 @@
           "exemplar": true,
           "expr": "sum(ray_object_store_memory / 1e9) by (Location)",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "{{Location}}",
           "queryType": "randomWalk",
           "refId": "A"
         },
