@@ -19,7 +19,6 @@ _SYSTEM_CONFIG = {
     "min_spilling_size": 1,
     "object_spilling_threshold": 0.99,  # to prevent premature spilling
     "metrics_report_interval_ms": 200,
-    "event_stats_print_interval_ms": 100,  # so metrics get exported
 }
 
 
@@ -163,6 +162,39 @@ def test_spilling(object_spilling_config, shutdown_only):
         timeout=20,
         retry_interval_ms=500,
     )
+
+
+@pytest.mark.parametrize("metric_report_interval_ms", [500, 1000, 3000])
+def test_object_metric_report_interval(shutdown_only, metric_report_interval_ms):
+    """Test objects allocated in shared memory"""
+    import time
+
+    info = ray.init(
+        object_store_memory=100 * MiB,
+        _system_config={"metrics_report_interval_ms": metric_report_interval_ms},
+    )
+
+    # Put object to make sure metric shows up
+    obj = ray.get(ray.put(np.zeros(20 * MiB, dtype=np.uint8)))
+
+    expected = {
+        "IN_MEMORY": 20 * MiB,
+        "SPILLED": 0,
+        "UNSEALED": 0,
+    }
+    start = time.time()
+    wait_for_condition(
+        # 1KiB for metadata difference
+        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+    end = time.time()
+    # Also shouldn't have metrics reported too quickly
+    assert (end - start) * 1000 > metric_report_interval_ms, "Reporting too quickly"
+
+    del obj
 
 
 if __name__ == "__main__":
