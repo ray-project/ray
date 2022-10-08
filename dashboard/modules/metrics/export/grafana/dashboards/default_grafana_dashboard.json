@@ -319,9 +319,9 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "ray_resources{Name=\"object_store_memory\",State=\"USED\"} / 1e9",
+          "expr": "sum(ray_object_store_memory / 1e9) by (Location)",
           "interval": "",
-          "legendFormat": "Object Store: {{instance}}",
+          "legendFormat": "{{Location}}",
           "queryType": "randomWalk",
           "refId": "A"
         },
