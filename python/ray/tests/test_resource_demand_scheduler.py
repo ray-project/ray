@@ -3573,6 +3573,7 @@ def _launch_nothing_utilization_scorer_plugin(
     *,
     node_availability_summary,  # noqa
 ):
+    assert node_availability_summary is not None
     return None
 
 
@@ -3636,6 +3637,7 @@ def _lexical_scorer_plugin(
     *,
     node_availability_summary,  # noqa
 ):
+    assert node_availability_summary is not None
     if (
         _resource_based_utilization_scorer(
             node_resources,

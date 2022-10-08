@@ -211,7 +211,7 @@ class ResourceDemandScheduler:
             that still cannot be fulfilled.
         """
         utilization_scorer = partial(
-            self.utilization_scorer, node_availability_summary=None
+            self.utilization_scorer, node_availability_summary=node_availability_summary
         )
         self._update_node_resources_from_runtime(nodes, max_resources_by_ip)
 
@@ -556,6 +556,9 @@ class ResourceDemandScheduler:
                 the cluster.
             node_type_counts (Dict[NodeType, int]): The amount of each type of
                 node pending or in the cluster.
+            utilization_scorer (Callable): A function that, given a node
+                type, its resources, and resource demands, returns what its
+                utilization would be.
 
         Returns:
             Dict[NodeType, int]: Nodes to add.
@@ -634,7 +637,7 @@ def _add_min_workers_nodes(
     head_node_type: NodeType,
     ensure_min_cluster_size: List[ResourceDict],
     utilization_scorer: Callable[
-        [ResourceDict, List[ResourceDict]], Optional[UtilizationScore]
+        [NodeResources, ResourceDemands, str], Optional[UtilizationScore]
     ],
 ) -> (List[ResourceDict], Dict[NodeType, int], Dict[NodeType, int]):
     """Updates resource demands to respect the min_workers and
@@ -646,6 +649,9 @@ def _add_min_workers_nodes(
         node_types: Node types config.
         max_workers: global max_workers constaint.
         ensure_min_cluster_size: resource demands from request_resources().
+        utilization_scorer (Callable): A function that, given a node
+            type, its resources, and resource demands, returns what its
+            utilization would be.
 
     Returns:
         node_resources: The updated node resources after adding min_workers
@@ -722,7 +728,7 @@ def get_nodes_for(
     max_to_add: int,
     resources: List[ResourceDict],
     utilization_scorer: Callable[
-        [ResourceDict, List[ResourceDict]], Optional[UtilizationScore]
+        [NodeResources, ResourceDemands, str], Optional[UtilizationScore]
     ],
     strict_spread: bool = False,
 ) -> (Dict[NodeType, int], List[ResourceDict]):
@@ -736,6 +742,9 @@ def get_nodes_for(
         resources: resource demands to fulfill.
         strict_spread: If true, each element in `resources` must be placed on a
             different node.
+        utilization_scorer (Callable): A function that, given a node
+            type, its resources, and resource demands, returns what its
+            utilization would be.
 
     Returns:
         Dict of count to add for each node type, and residual of resources
