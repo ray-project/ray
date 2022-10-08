@@ -1,15 +1,43 @@
 package io.ray.serve.docdemo.test;
 
+import com.google.gson.Gson;
 import io.ray.serve.BaseServeTest;
 import io.ray.serve.docdemo.HttpStrategyCalcOnRayServe;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.hc.client5.http.fluent.Request;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class HttpStrategyCalcOnRayServeTest extends BaseServeTest {
+
+  public static class HttpStrategyCalcOnRayServeForTest extends HttpStrategyCalcOnRayServe {
+
+    private Gson gson = new Gson();
+
+    @Override
+    public String httpCalc(Long time, String bank, String indicator) {
+      Map<String, Object> data = new HashMap<>();
+      data.put("time", time);
+      data.put("bank", bank);
+      data.put("indicator", indicator);
+      String result;
+      try {
+        result =
+            Request.post("http://127.0.0.1:8341/http-strategy")
+                .bodyString(gson.toJson(data), null)
+                .execute()
+                .returnContent()
+                .asString();
+      } catch (IOException e) {
+        result = "error";
+      }
+      return result;
+    }
+  }
 
   @Test(groups = {"cluster"})
   public void test() {
@@ -25,7 +53,7 @@ public class HttpStrategyCalcOnRayServeTest extends BaseServeTest {
     banksAndIndicators.put(
         bank2, Arrays.asList(Arrays.asList(indicator1), Arrays.asList(indicator2)));
 
-    HttpStrategyCalcOnRayServe strategy = new HttpStrategyCalcOnRayServe();
+    HttpStrategyCalcOnRayServe strategy = new HttpStrategyCalcOnRayServeForTest();
     strategy.deploy();
 
     List<String> results = strategy.calc(time, banksAndIndicators);
