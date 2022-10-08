@@ -25,12 +25,17 @@ public class ReplicaSetTest {
 
   @Test
   public void updateWorkerReplicasTest() {
-    ReplicaSet replicaSet = new ReplicaSet(deploymentName);
-    ActorNameList.Builder builder = ActorNameList.newBuilder();
+    try {
+      BaseServeTest.initRay();
+      ReplicaSet replicaSet = new ReplicaSet(deploymentName);
+      ActorNameList.Builder builder = ActorNameList.newBuilder();
 
-    replicaSet.updateWorkerReplicas(builder.build());
-    Map<String, Set<ObjectRef<Object>>> inFlightQueries = replicaSet.getInFlightQueries();
-    Assert.assertTrue(inFlightQueries.isEmpty());
+      replicaSet.updateWorkerReplicas(builder.build());
+      Map<String, Set<ObjectRef<Object>>> inFlightQueries = replicaSet.getInFlightQueries();
+      Assert.assertTrue(inFlightQueries.isEmpty());
+    } finally {
+      BaseServeTest.shutdownRay();
+    }
   }
 
   @SuppressWarnings("unused")
