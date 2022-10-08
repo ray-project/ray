@@ -494,7 +494,7 @@
     - ./ci/env/env_info.sh
     - sudo apt-get purge -y mongodb*
     - sudo apt-get install -y mongodb
-    - sudo rm /var/lib/mongodb/mongod.lock
+    - sudo rm -rf /var/lib/mongodb/mongod.lock
     - sudo service mongodb start
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=dataset_integration python/ray/data/...
     - sudo service mongodb stop
