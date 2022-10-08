@@ -1,3 +1,6 @@
+import pytest
+
+
 def test_deprecations():
     with pytest.raises(DeprecationWarning):
         from ray.train import Trainer
@@ -37,7 +40,5 @@ def test_deprecations():
 
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
