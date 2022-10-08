@@ -174,9 +174,40 @@ def get_max_num_concurrent_tasks(spark_context):
     return spark_context._jsc.sc().maxNumConcurrentTasks()
 
 
-def get_per_spark_task_memory(spark):
+def get_avail_mem_per_ray_worker(spark):
+    num_cpus_per_spark_task = int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
+
+    def mapper(_):
+        try:
+            import multiprocessing
+            import psutil
+            import shutil
+
+            num_cpus = multiprocessing.cpu_count()
+            num_task_slots = num_cpus // num_cpus_per_spark_task
+
+            physical_mem_bytes = psutil.virtual_memory().total
+            shared_mem_bytes = shutil.disk_usage('/dev/shm').total
+
+            ray_worker_object_store_bytes = int(shared_mem_bytes / num_task_slots * 0.8)
+            ray_worker_heap_mem_bytes = int((physical_mem_bytes - shared_mem_bytes) / num_task_slots * 0.8)
+
+            return ray_worker_heap_mem_bytes, ray_worker_object_store_bytes, None
+        except Exception as e:
+            return -1, -1, repr(e)
+
+    inferred_ray_worker_heap_mem_bytes, inferred_ray_worker_object_store_bytes, err = \
+        spark.sparkContext.parallelize([1], 1).map(mapper).collect()[0]
+
+    if err is not None:
+        raise RuntimeError(f"Inferring ray worker available memory failed, error: {err}")
+    return inferred_ray_worker_heap_mem_bytes, inferred_ray_worker_object_store_bytes
+
+
+def get_ray_worker_heap_memory(spark):
     """
-    Return the memory size in bytes allocated to each spark task evenly.
+    Return the available heap memory size for each ray node.
+    NB: We have one ray node per spark task.
     """
     sc = spark.sparkContext
     spark_mem_fraction = float(sc.getConf().get("spark.memory.fraction", "0.6"))
@@ -188,6 +219,13 @@ def get_per_spark_task_memory(spark):
     )
     max_num_concurrent_spark_tasks = get_max_num_concurrent_tasks(sc)
     return int(total_executor_mem / spark_mem_fraction / max_num_concurrent_spark_tasks)
+
+
+def get_ray_worker_object_store_memory():
+    """
+    Return the available object store memory for each ray node.
+    NB: We have one ray node per spark task.
+    """
 
 
 def get_spark_task_assigned_physical_gpus(task_context):

@@ -13,7 +13,7 @@ from .utils import (
     get_spark_driver_hostname,
     is_in_databricks_runtime,
     get_spark_task_assigned_physical_gpus,
-    get_per_spark_task_memory,
+    get_avail_mem_per_ray_worker,
     get_dbutils,
 )
 
@@ -125,7 +125,7 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
     num_spark_task_cpus = int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
     num_spark_task_gpus = int(spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0"))
 
-    ray_worker_memory_in_bytes = get_per_spark_task_memory()
+    ray_worker_heap_mem_bytes, ray_worker_object_store_mem_bytes = get_avail_mem_per_ray_worker(spark)
 
     def ray_cluster_job_mapper(_):
         from pyspark.taskcontext import BarrierTaskContext
@@ -145,7 +145,8 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
             f"--num-cpus={num_spark_task_cpus}",
             "--block",
             f"--address={ray_head_hostname}:{ray_head_port}",
-            f"--memory={ray_worker_memory_in_bytes}",
+            f"--memory={ray_worker_heap_mem_bytes}",
+            f"--object-store-memory={ray_worker_object_store_mem_bytes}",
             *_convert_ray_node_options(worker_options)
         ]
 
