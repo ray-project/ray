@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class LightGBMTrainer(GBDTTrainer):
     """A Trainer for data parallel LightGBM training.
 
@@ -23,6 +23,13 @@ class LightGBMTrainer(GBDTTrainer):
     If you would like to take advantage of LightGBM's built-in handling
     for features with the categorical data type, consider using the
     :class:`Categorizer` preprocessor to set the dtypes in the dataset.
+
+    .. note::
+        ``LightGBMTrainer`` does not modify or otherwise alter the working
+        of the LightGBM distributed training algorithm.
+        Ray only provides orchestration, data ingest and fault tolerance.
+        For more information on LightGBM distributed training, refer to
+        `LightGBM documentation <https://lightgbm.readthedocs.io/>`__.
 
     Example:
         .. code-block:: python
@@ -75,6 +82,9 @@ class LightGBMTrainer(GBDTTrainer):
     _default_ray_params: Dict[str, Any] = {
         "checkpoint_frequency": 1,
         "allow_less_than_two_cpus": True,
+        "num_actors": 1,
+        "cpus_per_actor": 2,
+        "gpus_per_actor": 0,
     }
     _init_model_arg_name: str = "init_model"
 

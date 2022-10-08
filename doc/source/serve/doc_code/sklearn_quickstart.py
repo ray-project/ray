@@ -3,13 +3,14 @@
 
 # __serve_example_begin__
 import requests
+from starlette.requests import Request
+from typing import Dict
 
 from sklearn.datasets import load_iris
 from sklearn.ensemble import GradientBoostingClassifier
 
 from ray import serve
 
-serve.start()
 
 # Train model.
 iris_dataset = load_iris()
@@ -23,7 +24,7 @@ class BoostingModel:
         self.model = model
         self.label_list = iris_dataset["target_names"].tolist()
 
-    async def __call__(self, request):
+    async def __call__(self, request: Request) -> Dict:
         payload = (await request.json())["vector"]
         print(f"Received http request with data {payload}")
 
@@ -33,7 +34,7 @@ class BoostingModel:
 
 
 # Deploy model.
-BoostingModel.deploy(model)
+serve.run(BoostingModel.bind(model))
 
 # Query it!
 sample_request_input = {"vector": [1.2, 1.0, 1.1, 0.9]}

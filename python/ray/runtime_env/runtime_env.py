@@ -34,7 +34,7 @@ class RuntimeEnvConfig(dict):
             timeout logic, except `-1`, `setup_timeout_seconds` cannot be
             less than or equal to 0. The default value of `setup_timeout_seconds`
             is 600 seconds.
-        eager_install(bool): Indicates whether to install the runtime environment
+        eager_install: Indicates whether to install the runtime environment
             on the cluster at `ray.init()` time, before the workers are leased.
             This flag is set to `True` by default.
     """
@@ -118,6 +118,9 @@ class RuntimeEnvConfig(dict):
             setup_timeout_seconds=setup_timeout_seconds,
             eager_install=runtime_env_config.eager_install,
         )
+
+    def to_dict(self) -> Dict:
+        return dict(deepcopy(self))
 
 
 # Due to circular reference, field config can only be assigned a value here
@@ -342,30 +345,6 @@ class RuntimeEnv(dict):
         if all(val is None for val in self.values()):
             self.clear()
 
-    def get_uris(self) -> List[str]:
-        # TODO(architkulkarni): this should programmatically be extended with
-        # URIs from all plugins.
-        plugin_uris = []
-        if "working_dir" in self:
-            plugin_uris.append(self["working_dir"])
-        if "py_modules" in self:
-            for uri in self["py_modules"]:
-                plugin_uris.append(uri)
-        if "conda" in self:
-            uri = get_conda_uri(self)
-            if uri is not None:
-                plugin_uris.append(uri)
-        if "pip" in self:
-            uri = get_pip_uri(self)
-            if uri is not None:
-                plugin_uris.append(uri)
-
-    def get_working_dir_uri(self) -> str:
-        return self.get("working_dir", None)
-
-    def get_py_modules_uris(self) -> List[str]:
-        return self.get("py_modules", [])
-
     def __setitem__(self, key: str, value: Any) -> None:
         if is_dataclass(value):
             jsonable_type = asdict(value)
@@ -404,18 +383,17 @@ class RuntimeEnv(dict):
         )
 
     def to_dict(self) -> Dict:
-        return dict(deepcopy(self))
+        runtime_env_dict = dict(deepcopy(self))
 
-    def has_uris(self) -> bool:
-        if (
-            self.working_dir_uri()
-            or self.py_modules_uris()
-            or self.conda_uri()
-            or self.pip_uri()
-            or self.plugin_uris()
-        ):
-            return True
-        return False
+        # Replace strongly-typed RuntimeEnvConfig with a dict to allow the returned
+        # dict to work properly as a field in a dataclass. Details in issue #26986
+        if runtime_env_dict.get("config"):
+            runtime_env_dict["config"] = runtime_env_dict["config"].to_dict()
+
+        return runtime_env_dict
+
+    def has_working_dir(self) -> bool:
+        return self.get("working_dir") is not None
 
     def working_dir_uri(self) -> Optional[str]:
         return self.get("working_dir")

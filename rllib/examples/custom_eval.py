@@ -70,7 +70,7 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.examples.env.simple_corridor import SimpleCorridor
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -198,7 +198,10 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run("PG", config=config, stop=stop, verbose=1)
+    tuner = tune.Tuner(
+        "PG", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+    )
+    results = tuner.fit()
 
     # Check eval results (from eval workers using the custom function),
     # not results from the regular workers.

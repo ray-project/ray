@@ -45,7 +45,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import ray
 import ray.cloudpickle as pickle
-from ray.tune.execution.trial_runner import find_newest_experiment_checkpoint
+from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.utils.serialization import TuneFunctionDecoder
 
 TUNE_SCRIPT = os.path.join(os.path.dirname(__file__), "_tune_script.py")
@@ -99,11 +99,11 @@ class TrialStub:
 
     @property
     def hostname(self):
-        return self.last_result["hostname"]
+        return self.last_result.get("hostname")
 
     @property
     def node_ip(self):
-        return self.last_result["node_ip"]
+        return self.last_result.get("node_ip")
 
     @property
     def dirname(self):
@@ -544,7 +544,7 @@ def fetch_bucket_contents_to_tmp_dir(bucket: str) -> str:
 def load_experiment_checkpoint_from_state_file(
     experiment_dir: str,
 ) -> ExperimentStateCheckpoint:
-    newest_ckpt_path = find_newest_experiment_checkpoint(experiment_dir)
+    newest_ckpt_path = _find_newest_experiment_checkpoint(experiment_dir)
     with open(newest_ckpt_path, "r") as f:
         runner_state = json.load(f, cls=TuneFunctionDecoder)
 
@@ -640,16 +640,19 @@ def load_trial_checkpoint_data(
             continue
 
         json_path = os.path.join(cp_full_dir, "checkpoint.json")
+        meta_path = os.path.join(cp_full_dir, ".tune_metadata")
+
         if os.path.exists(json_path):
             with open(json_path, "rt") as f:
                 checkpoint_data = json.load(f)
-        else:
-            meta_path = os.path.join(
-                cp_full_dir, f"checkpoint-{checkpoint_num}.tune_metadata"
-            )
+        elif os.path.exists(meta_path):
             with open(meta_path, "rb") as f:
                 checkpoint_meta = pickle.load(f)
                 checkpoint_data = {"internal_iter": checkpoint_meta["iteration"]}
+        else:
+            # If neither file exists, this means the checkpoint got only synced half,
+            # so we should skip it
+            continue
         checkpoints.append((cp_dir, checkpoint_data))
 
     return TrialCheckpointData(

@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 import ray
 from ray import tune
+from ray.air import CheckpointConfig
 from ray.air._internal.remote_storage import _ensure_directory
 from ray.rllib import _register_all
 from ray.tune import (
@@ -30,7 +31,7 @@ from ray.tune.callback import Callback
 from ray.tune.experiment import Experiment
 from ray.tune.trainable import wrap_function
 from ray.tune.logger import Logger, LegacyLoggerCallback
-from ray.tune.execution.ray_trial_executor import noop_logger_creator
+from ray.tune.execution.ray_trial_executor import _noop_logger_creator
 from ray.tune.resources import Resources
 from ray.tune.result import (
     TIMESTEPS_TOTAL,
@@ -960,7 +961,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
         remote_checkpoint_dir = "memory:///unit-test/bucket"
         _ensure_directory(remote_checkpoint_dir)
 
-        log_creator = partial(noop_logger_creator, logdir="~/tmp/ray_results/exp/trial")
+        log_creator = partial(
+            _noop_logger_creator, logdir="~/tmp/ray_results/exp/trial"
+        )
         test_trainable = trainable(
             logger_creator=log_creator, remote_checkpoint_dir=remote_checkpoint_dir
         )
@@ -981,7 +984,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertEqual(test_trainable.state["hi"], 1)
         else:
             # Cannot re-use function trainable, create new
-            tune.trainable.session.shutdown()
+            tune.trainable.session._shutdown()
             test_trainable = trainable(
                 logger_creator=log_creator,
                 remote_checkpoint_dir=remote_checkpoint_dir,
@@ -1105,7 +1108,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
         test_trainable.restore(result)
         self.assertEqual(test_trainable.state["hi"], 1)
 
-        trials = run_experiments({"foo": {"run": TestTrain, "checkpoint_at_end": True}})
+        trials = run_experiments(
+            {
+                "foo": {
+                    "run": TestTrain,
+                    "checkpoint_config": CheckpointConfig(checkpoint_at_end=True),
+                }
+            }
+        )
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
@@ -1135,7 +1145,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
         test_trainable.restore(checkpoint_1)
         self.assertEqual(test_trainable.state["iter"], 0)
 
-        trials = run_experiments({"foo": {"run": TestTrain, "checkpoint_at_end": True}})
+        trials = run_experiments(
+            {
+                "foo": {
+                    "run": TestTrain,
+                    "checkpoint_config": CheckpointConfig(checkpoint_at_end=True),
+                }
+            }
+        )
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(trial.has_checkpoint())
@@ -1482,6 +1499,27 @@ def test_with_resources_class_fn(ray_start_2_cpus_2_gpus, num_gpus):
     [trial] = tune.run(
         tune.with_resources(
             MyTrainable,
+            resources=lambda config: PlacementGroupFactory(
+                [{"GPU": config["use_gpus"]}]
+            ),
+        ),
+        config={"use_gpus": num_gpus},
+    ).trials
+
+    assert trial.last_result["_metric"] == num_gpus
+
+
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_with_resources_class_method(ray_start_2_cpus_2_gpus, num_gpus):
+    class Worker:
+        def train_fn(self, config):
+            return len(ray.get_gpu_ids())
+
+    worker = Worker()
+
+    [trial] = tune.run(
+        tune.with_resources(
+            worker.train_fn,
             resources=lambda config: PlacementGroupFactory(
                 [{"GPU": config["use_gpus"]}]
             ),

@@ -6,7 +6,7 @@ from typing import Any
 from ray import serve
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.dag import InputNode
-from ray.serve.deployment_graph_build import build as pipeline_build
+from ray.serve._private.deployment_graph_build import build as pipeline_build
 
 
 @serve.deployment(name="counter", num_replicas=2, user_config={"count": 123, "b": 2})
@@ -42,7 +42,7 @@ class Driver:
 
     async def __call__(self, inp: Any) -> Any:
         print(f"Driver got {inp}")
-        return await self.dag.remote(inp)
+        return await (await self.dag.remote(inp))
 
 
 @serve.deployment

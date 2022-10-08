@@ -1,4 +1,5 @@
 import os
+import logging
 import warnings
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
@@ -9,9 +10,8 @@ from gym.spaces import Discrete, MultiDiscrete
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.utils.annotations import Deprecated, PublicAPI
+from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     SpaceStruct,
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from ray.rllib.policy.torch_policy import TorchPolicy
     from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
+logger = logging.getLogger(__name__)
 torch, nn = try_import_torch()
 
 # Limit values suitable for use as close to a -inf logit. These are useful
@@ -73,14 +74,9 @@ def apply_grad_clipping(
         return {}
 
 
-@Deprecated(
-    old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=False
-)
+@Deprecated(old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True)
 def atanh(x: TensorType) -> TensorType:
-    """Atanh function for PyTorch."""
-    return 0.5 * torch.log(
-        (1 + x).clamp(min=SMALL_NUMBER) / (1 - x).clamp(min=SMALL_NUMBER)
-    )
+    pass
 
 
 @PublicAPI
@@ -112,32 +108,9 @@ def concat_multi_gpu_td_errors(
     }
 
 
-@Deprecated(new="ray/rllib/utils/numpy.py::convert_to_numpy", error=False)
+@Deprecated(new="ray/rllib/utils/numpy.py::convert_to_numpy", error=True)
 def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
-    """Converts values in `stats` to non-Tensor numpy or python types.
-
-    Args:
-        stats: Any (possibly nested) struct, the values in which will be
-            converted and returned as a new struct with all torch tensors
-            being converted to numpy types.
-
-    Returns:
-        Any: A new struct with the same structure as `stats`, but with all
-            values converted to non-torch Tensor types.
-    """
-
-    # The mapping function used to numpyize torch Tensors.
-    def mapping(item):
-        if isinstance(item, torch.Tensor):
-            return (
-                item.cpu().item()
-                if len(item.size()) == 0
-                else item.detach().cpu().numpy()
-            )
-        else:
-            return item
-
-    return tree.map_structure(mapping, stats)
+    pass
 
 
 @PublicAPI
@@ -149,7 +122,7 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
         to torch tensors.
 
     Returns:
-        Any: A new struct with the same structure as `stats`, but with all
+        Any: A new struct with the same structure as `x`, but with all
             values converted to torch Tensor types.
     """
 
@@ -157,16 +130,19 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
         if item is None:
             # returns None with dtype=np.obj
             return np.asarray(item)
-        # Already torch tensor -> make sure it's on right device.
-        if torch.is_tensor(item):
-            return item if device is None else item.to(device)
+
         # Special handling of "Repeated" values.
-        elif isinstance(item, RepeatedValues):
+        if isinstance(item, RepeatedValues):
             return RepeatedValues(
                 tree.map_structure(mapping, item.values), item.lengths, item.max_len
             )
+
+        tensor = None
+        # Already torch tensor -> make sure it's on right device.
+        if torch.is_tensor(item):
+            tensor = item
         # Numpy arrays.
-        if isinstance(item, np.ndarray):
+        elif isinstance(item, np.ndarray):
             # Object type (e.g. info dicts in train batch): leave as-is.
             if item.dtype == object:
                 return item
@@ -181,9 +157,11 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
         # Everything else: Convert to numpy, then wrap as torch tensor.
         else:
             tensor = torch.from_numpy(np.asarray(item))
+
         # Floatify all float64 tensors.
-        if tensor.dtype == torch.double:
+        if tensor.is_floating_point():
             tensor = tensor.float()
+
         return tensor if device is None else tensor.to(device)
 
     return tree.map_structure(mapping, x)
@@ -204,6 +182,9 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
         The explained variance given a pair of labels and predictions.
     """
     y_var = torch.var(y, dim=[0])
+    if y_var == 0.0:
+        # Model case in which y does not vary with explained variance of -1
+        return torch.tensor(-1.0).to(pred.device)
     diff_var = torch.var(y - pred, dim=[0])
     min_ = torch.tensor([-1.0]).to(pred.device)
     return torch.max(min_, 1 - (diff_var / y_var))[0]
@@ -539,6 +520,22 @@ def sequence_mask(
     mask.type(dtype or torch.bool)
 
     return mask
+
+
+@DeveloperAPI
+def warn_if_infinite_kl_divergence(
+    policy: "TorchPolicy",
+    kl_divergence: TensorType,
+) -> None:
+    if policy.loss_initialized() and kl_divergence.isinf():
+        logger.warning(
+            "KL divergence is non-finite, this will likely destabilize your model and"
+            " the training process. Action(s) in a specific state have near-zero"
+            " probability. This can happen naturally in deterministic environments"
+            " where the optimal policy has zero mass for a specific action. To fix this"
+            " issue, consider setting the coefficient for the KL loss term to zero or"
+            " increasing policy entropy."
+        )
 
 
 @PublicAPI

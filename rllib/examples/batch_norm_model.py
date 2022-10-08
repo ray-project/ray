@@ -4,7 +4,7 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.examples.models.batch_norm_model import (
     BatchNormModel,
     KerasBatchNormModel,
@@ -73,7 +73,15 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, stop=stop, config=config, verbose=2)
+    tuner = tune.Tuner(
+        args.run,
+        param_space=config,
+        run_config=air.RunConfig(
+            verbose=2,
+            stop=stop,
+        ),
+    )
+    results = tuner.fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

@@ -18,8 +18,11 @@ from ray._private.runtime_env.packaging import (
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray.exceptions import RuntimeEnvSetupError
 
 default_logger = logging.getLogger(__name__)
+
+_WIN32 = os.name == "nt"
 
 
 def upload_working_dir_if_needed(
@@ -68,18 +71,28 @@ def upload_working_dir_if_needed(
             )
 
         pkg_uri = get_uri_for_package(package_path)
-        upload_package_to_gcs(pkg_uri, package_path.read_bytes())
+        try:
+            upload_package_to_gcs(pkg_uri, package_path.read_bytes())
+        except Exception as e:
+            raise RuntimeEnvSetupError(
+                f"Failed to upload package {package_path} to the Ray cluster: {e}"
+            ) from e
         runtime_env["working_dir"] = pkg_uri
         return runtime_env
     if upload_fn is None:
-        upload_package_if_needed(
-            working_dir_uri,
-            scratch_dir,
-            working_dir,
-            include_parent_dir=False,
-            excludes=excludes,
-            logger=logger,
-        )
+        try:
+            upload_package_if_needed(
+                working_dir_uri,
+                scratch_dir,
+                working_dir,
+                include_parent_dir=False,
+                excludes=excludes,
+                logger=logger,
+            )
+        except Exception as e:
+            raise RuntimeEnvSetupError(
+                f"Failed to upload working_dir {working_dir} to the Ray cluster: {e}"
+            ) from e
     else:
         upload_fn(working_dir, excludes=excludes)
 
@@ -134,10 +147,10 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
 
     async def create(
         self,
-        uri: str,
+        uri: Optional[str],
         runtime_env: dict,
         context: RuntimeEnvContext,
-        logger: Optional[logging.Logger] = default_logger,
+        logger: logging.Logger = default_logger,
     ) -> int:
         local_dir = await download_and_unpack_package(
             uri, self._resources_dir, self._gcs_aio_client, logger=logger
@@ -145,7 +158,11 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         return get_directory_size_bytes(local_dir)
 
     def modify_context(
-        self, uris: List[str], runtime_env_dict: Dict, context: RuntimeEnvContext
+        self,
+        uris: List[str],
+        runtime_env_dict: Dict,
+        context: RuntimeEnvContext,
+        logger: Optional[logging.Logger] = default_logger,
     ):
         if not uris:
             return
@@ -160,5 +177,9 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
                 "downloading or unpacking the working_dir."
             )
 
-        context.command_prefix += [f"cd {local_dir}"]
+        if not _WIN32:
+            context.command_prefix += ["cd", str(local_dir), "&&"]
+        else:
+            # Include '/d' incase temp folder is on different drive than Ray install.
+            context.command_prefix += ["cd", "/d", f"{local_dir}", "&&"]
         set_pythonpath_in_context(python_path=str(local_dir), context=context)

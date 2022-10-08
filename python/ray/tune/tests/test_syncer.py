@@ -9,6 +9,7 @@ import pytest
 from freezegun import freeze_time
 
 import ray
+import ray.cloudpickle as pickle
 from ray import tune
 from ray.tune import TuneError
 from ray.tune.syncer import Syncer, _DefaultSyncer, _validate_upload_dir
@@ -113,31 +114,39 @@ class CustomCommandSyncer(Syncer):
 
         super().__init__(sync_period=sync_period)
 
-    def sync_up(
-        self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
-    ) -> bool:
+    def sync_up(self, local_dir: str, remote_dir: str, exclude: list = None) -> bool:
         cmd_str = self.sync_up_template.format(
             source=local_dir,
             target=remote_dir,
         )
-        subprocess.check_call(cmd_str, shell=True)
+        try:
+            subprocess.check_call(cmd_str, shell=True)
+        except Exception as e:
+            print(f"Exception when syncing up {local_dir} to {remote_dir}: {e}")
+            return False
         return True
 
-    def sync_down(
-        self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
-    ) -> bool:
+    def sync_down(self, remote_dir: str, local_dir: str, exclude: list = None) -> bool:
         cmd_str = self.sync_down_template.format(
             source=remote_dir,
-            local_dir=local_dir,
+            target=local_dir,
         )
-        subprocess.check_call(cmd_str, shell=True)
+        try:
+            subprocess.check_call(cmd_str, shell=True)
+        except Exception as e:
+            print(f"Exception when syncing down {remote_dir} to {local_dir}: {e}")
+            return False
         return True
 
     def delete(self, remote_dir: str) -> bool:
         cmd_str = self.delete_template.format(
             target=remote_dir,
         )
-        subprocess.check_call(cmd_str, shell=True)
+        try:
+            subprocess.check_call(cmd_str, shell=True)
+        except Exception as e:
+            print(f"Exception when deleting {remote_dir}: {e}")
+            return False
         return True
 
     def retry(self):
@@ -189,6 +198,38 @@ def test_syncer_sync_up_down(temp_data_dirs):
     assert_file(True, tmp_target, "subdir/nested/level2.txt")
     assert_file(True, tmp_target, "subdir_nested_level2_exclude.txt")
     assert_file(True, tmp_target, "subdir_exclude/something/somewhere.txt")
+
+
+def test_syncer_sync_up_down_custom(temp_data_dirs):
+    """Check that syncing up and down works"""
+    tmp_source, tmp_target = temp_data_dirs
+
+    syncer = CustomCommandSyncer(
+        sync_up_template="cp -rf {source} `echo '{target}' | cut -c 8-`",
+        sync_down_template="cp -rf `echo '{source}' | cut -c 8-` {target}",
+        delete_template="rm -rf `echo '{target}' | cut -c 8-`",
+    )
+
+    # remove target dir (otherwise OS will copy into)
+    shutil.rmtree(tmp_target)
+
+    syncer.sync_up(local_dir=tmp_source, remote_dir=f"file://{tmp_target}")
+    syncer.wait()
+
+    # remove target dir to test sync down
+    shutil.rmtree(tmp_source)
+
+    syncer.sync_down(remote_dir=f"file://{tmp_target}", local_dir=tmp_source)
+    syncer.wait()
+
+    # Target dir should have all files
+    assert_file(True, tmp_source, "level0.txt")
+    assert_file(True, tmp_source, "level0_exclude.txt")
+    assert_file(True, tmp_source, "subdir/level1.txt")
+    assert_file(True, tmp_source, "subdir/level1_exclude.txt")
+    assert_file(True, tmp_source, "subdir/nested/level2.txt")
+    assert_file(True, tmp_source, "subdir_nested_level2_exclude.txt")
+    assert_file(True, tmp_source, "subdir_exclude/something/somewhere.txt")
 
 
 def test_syncer_sync_exclude(temp_data_dirs):
@@ -439,6 +480,19 @@ def test_trainable_syncer_custom_command(ray_start_2_cpus, temp_data_dirs):
     ray.get(trainable.delete_checkpoint.remote(checkpoint_dir))
 
     assert_file(False, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
+
+
+def test_syncer_serialize(temp_data_dirs):
+    """Check that syncing up and down works"""
+    tmp_source, tmp_target = temp_data_dirs
+
+    syncer = _DefaultSyncer()
+
+    syncer.sync_up(
+        local_dir=tmp_source, remote_dir="memory:///test/test_syncer_sync_up_down"
+    )
+
+    pickle.dumps(syncer)
 
 
 if __name__ == "__main__":

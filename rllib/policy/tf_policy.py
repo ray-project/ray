@@ -1,7 +1,5 @@
-import errno
 import logging
 import math
-import os
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import gym
@@ -11,13 +9,14 @@ import tree  # pip install dm_tree
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -477,7 +476,7 @@ class TFPolicy(Policy):
     def get_exploration_state(self) -> Dict[str, TensorType]:
         return self.exploration.get_state(sess=self.get_session())
 
-    @Deprecated(new="get_exploration_state", error=False)
+    @Deprecated(new="get_exploration_state", error=True)
     def get_exploration_info(self) -> Dict[str, TensorType]:
         return self.get_exploration_state()
 
@@ -493,9 +492,10 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_state(self) -> PolicyState:
         # For tf Policies, return Policy weights and optimizer var values.
         state = super().get_state()
+
         if len(self._optimizer_variables.variables) > 0:
             state["_optimizer_variables"] = self.get_session().run(
                 self._optimizer_variables.variables
@@ -506,7 +506,7 @@ class TFPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def set_state(self, state: dict) -> None:
+    def set_state(self, state: PolicyState) -> None:
         # Set optimizer vars first.
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars is not None:
@@ -522,23 +522,6 @@ class TFPolicy(Policy):
 
         # Then the Policy's (NN) weights and connectors.
         super().set_state(state)
-
-    @override(Policy)
-    @DeveloperAPI
-    def export_checkpoint(
-        self, export_dir: str, filename_prefix: str = "model"
-    ) -> None:
-        """Export tensorflow checkpoint to export_dir."""
-        try:
-            os.makedirs(export_dir)
-        except OSError as e:
-            # ignore error if export dir already exists
-            if e.errno != errno.EEXIST:
-                raise
-        save_path = os.path.join(export_dir, filename_prefix)
-        with self.get_session().graph.as_default():
-            saver = tf1.train.Saver()
-            saver.save(self.get_session(), save_path)
 
     @override(Policy)
     @DeveloperAPI
@@ -566,7 +549,7 @@ class TFPolicy(Policy):
                 from tf2onnx import tf_loader
 
                 frozen_graph_def = tf_loader.freeze_session(
-                    self._sess, input_names=inputs, output_names=outputs
+                    self.get_session(), input_names=inputs, output_names=outputs
                 )
 
             with tf1.Session(graph=tf.Graph()) as session:
@@ -581,21 +564,22 @@ class TFPolicy(Policy):
 
                 model_proto = g.make_model("onnx_model")
                 tf2onnx.utils.save_onnx_model(
-                    export_dir, "saved_model", feed_dict={}, model_proto=model_proto
+                    export_dir, "model", feed_dict={}, model_proto=model_proto
                 )
-        else:
+        # Save the tf.keras.Model (architecture and weights, so it can be retrieved
+        # w/o access to the original (custom) Model or Policy code).
+        elif (
+            hasattr(self, "model")
+            and hasattr(self.model, "base_model")
+            and isinstance(self.model.base_model, tf.keras.Model)
+        ):
             with self.get_session().graph.as_default():
-                signature_def_map = self._build_signature_def()
-                builder = tf1.saved_model.builder.SavedModelBuilder(export_dir)
-                builder.add_meta_graph_and_variables(
-                    self.get_session(),
-                    [tf1.saved_model.tag_constants.SERVING],
-                    signature_def_map=signature_def_map,
-                    saver=tf1.summary.FileWriter(export_dir).add_graph(
-                        graph=self.get_session().graph
-                    ),
-                )
-                builder.save()
+                try:
+                    self.model.base_model.save(filepath=export_dir, save_format="tf")
+                except Exception:
+                    logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
+        else:
+            logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 
     @override(Policy)
     @DeveloperAPI

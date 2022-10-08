@@ -267,7 +267,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_jobs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         try:
-            result = self._state_api.list_jobs(option=self._options_from_req(req))
+            result = await self._state_api.list_jobs(option=self._options_from_req(req))
             return self._reply(
                 success=True,
                 error_message="",
@@ -308,6 +308,13 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     async def list_runtime_envs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_list_api(self._state_api.list_runtime_envs, req)
 
+    @routes.get("/api/v0/cluster_events")
+    @RateLimitedModule.enforce_max_concurrent_calls
+    async def list_cluster_events(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        return await self._handle_list_api(self._state_api.list_cluster_events, req)
+
     @routes.get("/api/v0/logs")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_logs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -321,7 +328,6 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         node_ip = req.query.get("node_ip", None)
         timeout = int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT))
 
-        # TODO(sang): Do input validation from the middleware instead.
         if not node_id and not node_ip:
             return self._reply(
                 success=False,
@@ -354,8 +360,6 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     @routes.get("/api/v0/logs/{media_type}")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def get_logs(self, req: aiohttp.web.Request):
-        # TODO(sang): We need a better error handling for streaming
-        # when we refactor the server framework.
         options = GetLogOptions(
             timeout=int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT)),
             node_id=req.query.get("node_id", None),
@@ -383,6 +387,11 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 await response.write(bytes(logs_to_stream))
             await response.write_eof()
             return response
+        except asyncio.CancelledError:
+            # This happens when the client side closes the connection.
+            # Fofce close the connection and do no-op.
+            response.force_close()
+            raise
         except Exception as e:
             logger.exception(e)
             error_msg = bytearray(b"0")
@@ -435,7 +444,9 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
-        self._state_api_data_source_client = StateDataSourceClient(gcs_channel)
+        self._state_api_data_source_client = StateDataSourceClient(
+            gcs_channel, self._dashboard_head.gcs_aio_client
+        )
         self._state_api = StateAPIManager(self._state_api_data_source_client)
         self._log_api = LogsManager(self._state_api_data_source_client)
 

@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 import torch
 
+from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
+
 
 def convert_pandas_to_torch_tensor(
     data_batch: pd.DataFrame,
@@ -68,7 +70,14 @@ def convert_pandas_to_torch_tensor(
             # or otherwise cannot be made into a tensor directly.
             # We assume it's a sequence in that case.
             # This is more robust than checking for dtype.
-            return torch.stack([tensorize(x, dtype) for x in vals])
+            tensors = [tensorize(x, dtype) for x in vals]
+            try:
+                return torch.stack(tensors)
+            except RuntimeError:
+                # NOTE: RuntimeError is raised when trying to stack ragged tensors.
+                # Try to coerce the tensor to a nested tensor, if possible.
+                # If this fails, the exception will be propagated up to the caller.
+                return torch.nested_tensor(tensors)
 
     def get_tensor_for_columns(columns, dtype):
         feature_tensors = []
@@ -80,7 +89,13 @@ def convert_pandas_to_torch_tensor(
 
         for col in batch.columns:
             col_vals = batch[col].values
-            t = tensorize(col_vals, dtype=dtype)
+            try:
+                t = tensorize(col_vals, dtype=dtype)
+            except Exception:
+                raise ValueError(
+                    f"Failed to convert column {col} to a Torch Tensor of dtype "
+                    f"{dtype}. See above exception chain for the exact failure."
+                )
             if unsqueeze:
                 t = t.unsqueeze(1)
             feature_tensors.append(t)
@@ -100,6 +115,24 @@ def convert_pandas_to_torch_tensor(
         ]
     else:
         return get_tensor_for_columns(columns=columns, dtype=column_dtypes)
+
+
+def convert_ndarray_to_torch_tensor(
+    ndarray: np.ndarray,
+    dtype: Optional[torch.dtype] = None,
+    device: Optional[str] = None,
+) -> torch.Tensor:
+    """Convert a NumPy ndarray to a Torch Tensor.
+
+    Args:
+        ndarray: A NumPy ndarray that we wish to convert to a Torch Tensor.
+        dtype: A Torch dtype for the created tensor; if None, the dtype will be
+            inferred from the NumPy ndarray data.
+
+    Returns: A Torch Tensor.
+    """
+    ndarray = _unwrap_ndarray_object_type_if_needed(ndarray)
+    return torch.as_tensor(ndarray, dtype=dtype, device=device)
 
 
 def convert_ndarray_batch_to_torch_tensor_batch(
@@ -127,11 +160,11 @@ def convert_ndarray_batch_to_torch_tensor_batch(
                     f"should be given, instead got: {dtypes}"
                 )
             dtypes = next(iter(dtypes.values()))
-        batch = torch.as_tensor(ndarrays, dtype=dtypes, device=device)
+        batch = convert_ndarray_to_torch_tensor(ndarrays, dtype=dtypes, device=device)
     else:
         # Multi-tensor case.
         batch = {
-            col_name: torch.as_tensor(
+            col_name: convert_ndarray_to_torch_tensor(
                 col_ndarray,
                 dtype=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
                 device=device,
@@ -148,9 +181,9 @@ def load_torch_model(
 ) -> torch.nn.Module:
     """Loads a PyTorch model from the provided ``saved_model``.
 
-    If ``saved_model`` is a torch Module, then return it directly. If ``saved_model`` is
-    a torch state dict, then load it in the ``model_definition`` and return the loaded
-    model.
+    ``model_definition`` is only used when ``saved_model`` is
+    a torch state dict, which will be loaded into ``model_definition``.
+    Otherwise, ``model_definition`` is discarded.
     """
     if isinstance(saved_model, torch.nn.Module):
         return saved_model
@@ -170,3 +203,19 @@ def load_torch_model(
             f"to be of type `torch.nn.Module`, or a model "
             f"state dict of type dict."
         )
+
+
+def contains_tensor(obj):
+    if isinstance(obj, torch.Tensor):
+        return True
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            if contains_tensor(k):
+                return True
+            if contains_tensor(v):
+                return True
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            if contains_tensor(v):
+                return True
+    return False

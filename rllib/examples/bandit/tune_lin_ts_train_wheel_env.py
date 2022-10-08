@@ -5,11 +5,10 @@
 import argparse
 from matplotlib import pyplot as plt
 import numpy as np
-import pandas as pd
 import time
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms.bandit.bandit import BanditLinTS
 from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
 
@@ -57,24 +56,29 @@ if __name__ == "__main__":
     print("Running training for %s time steps" % training_iterations)
 
     start_time = time.time()
-    analysis = tune.run(
+    tuner = tune.Tuner(
         "BanditLinTS",
-        config=config,
-        stop={"training_iteration": training_iterations},
-        num_samples=1,
-        checkpoint_at_end=True,
+        param_space=config,
+        run_config=air.RunConfig(
+            stop={"training_iteration": training_iterations},
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_at_end=True,
+            ),
+        ),
+        tune_config=tune.TuneConfig(
+            num_samples=1,
+        ),
     )
+    results = tuner.fit()
 
     print("The trials took", time.time() - start_time, "seconds\n")
 
     # Analyze cumulative regrets of the trials.
-    frame = pd.DataFrame()
-    for key, df in analysis.trial_dataframes.items():
-        frame = frame.append(df, ignore_index=True)
-
-    x = frame.groupby("agent_timesteps_total")["episode_reward_mean"].aggregate(
-        ["mean", "max", "min", "std"]
-    )
+    # There is only one trial
+    result = results.get_best_result()
+    x = result.metrics_dataframe.groupby("agent_timesteps_total")[
+        "episode_reward_mean"
+    ].aggregate(["mean", "max", "min", "std"])
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4))
 
@@ -84,9 +88,10 @@ if __name__ == "__main__":
     ax1.set_xlabel("Training steps")
 
     # Restore trainer from checkpoint
-    trial = analysis.trials[0]
+    checkpoint = results.get_best_result().checkpoint
     trainer = BanditLinTS(config=config)
-    trainer.restore(trial.checkpoint.dir_or_data)
+    with checkpoint.as_directory() as checkpoint_dir:
+        trainer.restore(checkpoint_dir)
 
     # Get model to plot arm weights distribution
     model = trainer.get_policy().model

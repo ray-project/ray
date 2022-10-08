@@ -4,6 +4,7 @@ import logging
 from dataclasses import asdict, fields
 from itertools import islice
 from typing import List, Tuple
+from datetime import datetime
 
 from ray._private.ray_constants import env_integer
 
@@ -30,6 +31,7 @@ from ray.experimental.state.common import (
     StateSummary,
     ActorSummaries,
     ObjectSummaries,
+    ClusterEventState,
     filter_fields,
     PredicateType,
 )
@@ -330,11 +332,11 @@ class StateAPIManager:
             num_filtered=num_filtered,
         )
 
-    def list_jobs(self, *, option: ListApiOptions) -> ListApiResponse:
+    async def list_jobs(self, *, option: ListApiOptions) -> ListApiResponse:
         # TODO(sang): Support limit & timeout & async calls.
         try:
             result = []
-            job_info = self._client.get_job_info()
+            job_info = await self._client.get_job_info()
             for job_id, data in job_info.items():
                 data = asdict(data)
                 data["job_id"] = job_id
@@ -595,6 +597,35 @@ class StateAPIManager:
             num_filtered=num_filtered,
         )
 
+    async def list_cluster_events(self, *, option: ListApiOptions) -> ListApiResponse:
+        """List all cluster events from the cluster.
+
+        Returns:
+            A list of cluster events in the cluster.
+            The schema of returned "dict" is equivalent to the
+            `ClusterEventState` protobuf message.
+        """
+        result = []
+        all_events = await self._client.get_all_cluster_events()
+        for _, events in all_events.items():
+            for _, event in events.items():
+                event["time"] = str(datetime.utcfromtimestamp(int(event["timestamp"])))
+                result.append(event)
+
+        num_after_truncation = len(result)
+        result.sort(key=lambda entry: entry["timestamp"])
+        total = len(result)
+        result = self._filter(result, option.filters, ClusterEventState, option.detail)
+        num_filtered = len(result)
+        # Sort to make the output deterministic.
+        result = list(islice(result, option.limit))
+        return ListApiResponse(
+            result=result,
+            total=total,
+            num_after_truncation=num_after_truncation,
+            num_filtered=num_filtered,
+        )
+
     async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:
         # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_tasks(
@@ -613,6 +644,9 @@ class StateAPIManager:
             partial_failure_warning=result.partial_failure_warning,
             warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
+            # Currently, there's no filtering support for summary,
+            # so we don't calculate this separately.
+            num_filtered=len(result.result),
         )
 
     async def summarize_actors(self, option: SummaryApiOptions) -> SummaryApiResponse:
@@ -633,6 +667,9 @@ class StateAPIManager:
             partial_failure_warning=result.partial_failure_warning,
             warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
+            # Currently, there's no filtering support for summary,
+            # so we don't calculate this separately.
+            num_filtered=len(result.result),
         )
 
     async def summarize_objects(self, option: SummaryApiOptions) -> SummaryApiResponse:
@@ -653,6 +690,9 @@ class StateAPIManager:
             partial_failure_warning=result.partial_failure_warning,
             warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
+            # Currently, there's no filtering support for summary,
+            # so we don't calculate this separately.
+            num_filtered=len(result.result),
         )
 
     def _message_to_dict(

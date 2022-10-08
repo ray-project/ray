@@ -3,8 +3,8 @@ import pytest
 import ray
 from ray import serve
 from ray.dag import InputNode
-from ray.serve.handle import RayServeLazySyncHandle
-from ray.serve.deployment_graph_build import (
+from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve._private.deployment_graph_build import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
     transform_serve_dag_to_serve_executor_dag,
@@ -24,6 +24,8 @@ from ray.serve.tests.resources.test_dags import (
     get_simple_func_dag,
 )
 from ray.dag.utils import _DAGNodeNameGenerator
+
+pytestmark = pytest.mark.asyncio
 
 
 def _validate_consistent_python_output(
@@ -84,7 +86,7 @@ def test_single_class_with_invalid_deployment_options(serve_instance):
             _ = model.forward.bind(dag_input)
 
 
-def test_func_class_with_class_method_dag(serve_instance):
+async def test_func_class_with_class_method_dag(serve_instance):
     ray_dag, _ = get_func_class_with_class_method_dag()
 
     with _DAGNodeNameGenerator() as node_name_generator:
@@ -100,7 +102,7 @@ def test_func_class_with_class_method_dag(serve_instance):
         deployment.deploy()
 
     assert ray.get(ray_dag.execute(1, 2, 3)) == 8
-    assert ray.get(serve_executor_root_dag.execute(1, 2, 3)) == 8
+    assert ray.get(await serve_executor_root_dag.execute(1, 2, 3)) == 8
 
 
 def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
@@ -167,10 +169,10 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     # with correct handle
     combine_deployment = deployments[2]
     init_arg_handle = combine_deployment.init_args[0]
-    assert isinstance(init_arg_handle, RayServeLazySyncHandle)
+    assert isinstance(init_arg_handle, RayServeDeploymentHandle)
     assert init_arg_handle.deployment_name == "Model"
     init_kwarg_handle = combine_deployment.init_kwargs["m2"][NESTED_HANDLE_KEY]
-    assert isinstance(init_kwarg_handle, RayServeLazySyncHandle)
+    assert isinstance(init_kwarg_handle, RayServeDeploymentHandle)
     assert init_kwarg_handle.deployment_name == "Model_1"
 
     for deployment in deployments:

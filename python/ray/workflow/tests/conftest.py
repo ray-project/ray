@@ -39,13 +39,13 @@ def _workflow_start(storage_url, shared, use_ray_client, **kwargs):
     assert use_ray_client in {"no_ray_client", "ray_client"}
     with _init_cluster(storage_url, **kwargs) as cluster:
         if use_ray_client == "ray_client":
-            address_info = ray.init(
-                address=f"ray://{cluster.address.split(':')[0]}:10001"
-            )
+            address = f"ray://{cluster.address.split(':')[0]}:10001"
         else:
-            address_info = ray.init(address=cluster.address)
+            address = cluster.address
 
-        yield address_info
+        ray.init(address=address)
+
+        yield address
 
 
 @pytest.fixture(scope="function")
@@ -61,6 +61,25 @@ def workflow_start_regular(storage_type, use_ray_client: str, request):
 def workflow_start_regular_shared(storage_type, use_ray_client: str, request):
     param = getattr(request, "param", {})
     with simulate_storage(storage_type) as storage_url, _workflow_start(
+        storage_url, True, use_ray_client, **param
+    ) as res:
+        yield res
+
+
+@contextmanager
+def _workflow_start_serve(storage_url, shared, use_ray_client, **kwargs):
+    with _workflow_start(storage_url, True, use_ray_client, **kwargs) as address_info:
+        ray.serve.start(detached=True)
+        yield address_info
+
+        # The code after the yield will run as teardown code.
+        ray.serve.shutdown()
+
+
+@pytest.fixture(scope="module")
+def workflow_start_regular_shared_serve(storage_type, use_ray_client: str, request):
+    param = getattr(request, "param", {})
+    with simulate_storage(storage_type) as storage_url, _workflow_start_serve(
         storage_url, True, use_ray_client, **param
     ) as res:
         yield res

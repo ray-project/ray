@@ -11,6 +11,7 @@ import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.proxy.HttpProxy;
 import io.ray.serve.proxy.ProxyActor;
 import io.ray.serve.replica.DummyReplica;
@@ -54,7 +55,8 @@ public class ProxyActorTest extends BaseTest {
       endpointInfos.put(
           endpointName,
           EndpointInfo.newBuilder().setEndpointName(endpointName).setRoute(route).build());
-      controller.task(DummyServeController::setEndpoints, endpointInfos).remote();
+      EndpointSet endpointSet = EndpointSet.newBuilder().putAllEndpoints(endpointInfos).build();
+      controller.task(DummyServeController::setEndpoints, endpointSet.toByteArray()).remote();
 
       // Replica
       DeploymentWrapper deploymentWrapper =

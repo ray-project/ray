@@ -63,6 +63,7 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
   TaskOptions options{};
   options.name = call_options.name;
   options.resources = call_options.resources;
+  options.serialized_runtime_env_info = call_options.serialized_runtime_env_info;
   std::optional<std::vector<rpc::ObjectReference>> return_refs;
   if (invocation.task_type == TaskType::ACTOR_TASK) {
     return_refs = core_worker.SubmitActorTask(
@@ -120,17 +121,19 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
         bundle_id.second);
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
-  ray::core::ActorCreationOptions actor_options{create_options.max_restarts,
-                                                /*max_task_retries=*/0,
-                                                create_options.max_concurrency,
-                                                create_options.resources,
-                                                resources,
-                                                /*dynamic_worker_options=*/{},
-                                                /*is_detached=*/std::nullopt,
-                                                name,
-                                                ray_namespace,
-                                                /*is_asyncio=*/false,
-                                                scheduling_strategy};
+  ray::core::ActorCreationOptions actor_options{
+      create_options.max_restarts,
+      /*max_task_retries=*/0,
+      create_options.max_concurrency,
+      create_options.resources,
+      resources,
+      /*dynamic_worker_options=*/{},
+      /*is_detached=*/std::nullopt,
+      name,
+      ray_namespace,
+      /*is_asyncio=*/false,
+      scheduling_strategy,
+      create_options.serialized_runtime_env_info};
   ActorID actor_id;
   auto status = core_worker.CreateActor(
       BuildRayFunction(invocation), invocation.args, actor_options, "", &actor_id);
@@ -177,7 +180,7 @@ ray::PlacementGroup NativeTaskSubmitter::CreatePlacementGroup(
   }
 
   ray::PlacementGroup placement_group{placement_group_id.Binary(), create_options};
-  placement_group.SetWaitCallbak([this](const std::string &id, int timeout_seconds) {
+  placement_group.SetWaitCallbak([this](const std::string &id, int64_t timeout_seconds) {
     return WaitPlacementGroupReady(id, timeout_seconds);
   });
 
@@ -194,7 +197,7 @@ void NativeTaskSubmitter::RemovePlacementGroup(const std::string &group_id) {
 }
 
 bool NativeTaskSubmitter::WaitPlacementGroupReady(const std::string &group_id,
-                                                  int timeout_seconds) {
+                                                  int64_t timeout_seconds) {
   auto placement_group_id = ray::PlacementGroupID::FromBinary(group_id);
   auto status = CoreWorkerProcess::GetCoreWorker().WaitPlacementGroupReady(
       placement_group_id, timeout_seconds);

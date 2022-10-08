@@ -10,6 +10,7 @@ from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
     SampleBatch,
+    concat_samples,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import (
@@ -76,7 +77,6 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         num_shards: int = 1,
-        learning_starts: int = 1000,
         replay_mode: str = "independent",
         replay_sequence_override: bool = True,
         replay_sequence_length: int = 1,
@@ -98,9 +98,6 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                 are stored in episodes, replay_sequence_length is ignored.
             num_shards: The number of buffer shards that exist in total
                 (including this one).
-            learning_starts: Number of timesteps after which a call to
-                `replay()` will yield samples (before that, `replay()` will
-                return None).
             replay_mode: One of "independent" or "lockstep". Determines,
                 whether batches are sampled independently or to an equal
                 amount.
@@ -151,7 +148,6 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             capacity=capacity,
             storage_unit=storage_unit,
             num_shards=num_shards,
-            learning_starts=learning_starts,
             replay_mode=replay_mode,
             replay_sequence_override=replay_sequence_override,
             replay_sequence_length=replay_sequence_length,
@@ -265,9 +261,6 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         # Merge kwargs, overwriting standard call arguments
         kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
 
-        if self._num_added < self.replay_starts:
-            return MultiAgentBatch({}, 0)
-
         def mix_batches(_policy_id):
             """Mixes old with new samples.
 
@@ -298,7 +291,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
             # No replay desired
             if self.replay_ratio == 0.0:
-                return SampleBatch.concat_samples(output_batches)
+                return concat_samples(output_batches)
             # Only replay desired
             elif self.replay_ratio == 1.0:
                 return _buffer.sample(num_items, **kwargs)

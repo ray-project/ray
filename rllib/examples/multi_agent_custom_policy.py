@@ -17,7 +17,7 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.tune.registry import register_env
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
@@ -87,7 +87,9 @@ if __name__ == "__main__":
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
     }
 
-    results = tune.run("PG", config=config, stop=stop, verbose=1)
+    results = tune.Tuner(
+        "PG", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+    ).fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

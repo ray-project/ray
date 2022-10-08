@@ -48,12 +48,21 @@ public interface RuntimeEnv {
   public String getJsonStr(String name) throws RuntimeEnvException;
 
   /**
+   * Whether a field is contained.
+   *
+   * @param name The runtime env plugin name.
+   * @return
+   */
+  boolean contains(String name);
+
+  /**
    * Remove a runtime env field by name.
    *
    * @param name The build-in names or a runtime env plugin name.
+   * @return true if remove an existing field, otherwise false.
    * @throws RuntimeEnvException
    */
-  public void remove(String name) throws RuntimeEnvException;
+  public boolean remove(String name) throws RuntimeEnvException;
 
   /**
    * Serialize the runtime env to string.
@@ -62,6 +71,13 @@ public interface RuntimeEnv {
    * @throws RuntimeEnvException
    */
   public String serialize() throws RuntimeEnvException;
+
+  /**
+   * Whether the runtime env is empty.
+   *
+   * @return
+   */
+  boolean isEmpty();
 
   /**
    * Serialize the runtime env to string of RuntimeEnvInfo.
@@ -81,6 +97,20 @@ public interface RuntimeEnv {
   public static RuntimeEnv deserialize(String serializedRuntimeEnv) throws RuntimeEnvException {
     return Ray.internal().deserializeRuntimeEnv(serializedRuntimeEnv);
   }
+
+  /**
+   * Set runtime env config.
+   *
+   * @param runtimeEnvConfig
+   */
+  public void setConfig(RuntimeEnvConfig runtimeEnvConfig);
+
+  /**
+   * Get runtime env config.
+   *
+   * @return The runtime env config.
+   */
+  public RuntimeEnvConfig getConfig();
 
   /** The builder which is used to generate a RuntimeEnv instance. */
   public static class Builder {

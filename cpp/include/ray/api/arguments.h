@@ -20,6 +20,7 @@
 #include <ray/api/xlang_function.h>
 
 #include <msgpack.hpp>
+#include <type_traits>
 
 namespace ray {
 namespace internal {
@@ -44,8 +45,16 @@ class Arguments {
       }
     } else {
       if (lang_type == LangType::CPP) {
-        msgpack::sbuffer buffer = Serializer::Serialize(std::forward<InputArgTypes>(arg));
-        PushValueArg(task_args, std::move(buffer));
+        if constexpr (is_actor_handle_v<InputArgTypes>) {
+          auto serialized_actor_handle =
+              RayRuntimeHolder::Instance().Runtime()->SerializeActorHandle(arg.ID());
+          msgpack::sbuffer buffer = Serializer::Serialize(serialized_actor_handle);
+          PushValueArg(task_args, std::move(buffer));
+        } else {
+          msgpack::sbuffer buffer =
+              Serializer::Serialize(std::forward<InputArgTypes>(arg));
+          PushValueArg(task_args, std::move(buffer));
+        }
       } else {
         // Fill dummy field for handling kwargs.
         if (lang_type == LangType::PYTHON) {

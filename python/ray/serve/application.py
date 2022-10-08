@@ -5,8 +5,10 @@ from typing import (
 )
 
 from ray.serve.deployment import Deployment
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class ImmutableDeploymentDict(dict):
     def __init__(self, deployments: Dict[str, Deployment]):
         super().__init__()
@@ -20,6 +22,7 @@ class ImmutableDeploymentDict(dict):
         )
 
 
+@DeveloperAPI
 class Application:
     """A static, pre-built Serve application.
 

@@ -5,6 +5,7 @@ import random
 import types
 import warnings
 import collections
+from distutils.version import LooseVersion
 
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -23,6 +24,11 @@ import numpy as np
 import torch
 from torch.cuda.amp import autocast, GradScaler
 from torch.nn.parallel import DistributedDataParallel
+
+if LooseVersion(torch.__version__) < LooseVersion("1.11.0"):
+    FullyShardedDataParallel = None
+else:
+    from torch.distributed.fsdp import FullyShardedDataParallel
 from torch.utils.data import (
     DistributedSampler,
     DataLoader,
@@ -45,10 +51,14 @@ def get_device() -> torch.device:
     return get_accelerator(_TorchAccelerator).get_device()
 
 
+# TODO: Deprecation: Hard-deprecate args in Ray 2.2.
 @PublicAPI(stability="beta")
 def prepare_model(
     model: torch.nn.Module,
     move_to_device: bool = True,
+    parallel_strategy: Optional[str] = "ddp",
+    parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
+    # Deprecated args.
     wrap_ddp: bool = True,
     ddp_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.nn.Module:
@@ -62,17 +72,59 @@ def prepare_model(
         move_to_device: Whether to move the model to the correct
             device. If set to False, the model needs to manually be moved
             to the correct device.
-        wrap_ddp: Whether to wrap models in
-            ``DistributedDataParallel``.
-        ddp_kwargs (Dict[str, Any]): Args to pass into
-            ``DistributedDataParallel`` initialization if ``wrap_ddp`` is
-            set to True.
+        parallel_strategy ("ddp", "fsdp", or None): Whether to wrap models
+            in ``DistributedDataParallel``, ``FullyShardedDataParallel``,
+            or neither.
+        parallel_strategy_kwargs (Dict[str, Any]): Args to pass into
+            ``DistributedDataParallel`` or ``FullyShardedDataParallel``
+            initialization if ``parallel_strategy`` is set to "ddp"
+            or "fsdp", respectively.
     """
+    if not wrap_ddp and parallel_strategy != "ddp":
+        raise ValueError(
+            "`parallel_strategy` and `wrap_ddp` cannot both be set. "
+            "`wrap_ddp` argument is deprecated as of Ray 2.1. To "
+            "disable DDP wrapping, set `parallel_strategy=None`."
+        )
+
+    if parallel_strategy_kwargs and ddp_kwargs:
+        raise ValueError(
+            "`parallel_strategy_kwargs` and `ddp_kwargs` cannot both be "
+            "set. The `ddp_kwargs` argument is deprecated as of Ray 2.1. "
+            "To provide DDP kwargs, use the "
+            "`parallel_strategy_kwargs` argument."
+        )
+
+    if not wrap_ddp:
+        warnings.warn(
+            "The `wrap_ddp` argument is deprecated as of Ray 2.1. Use the "
+            "`parallel_strategy` argument instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        # If wrap_ddp is False, then set parallel_strategy to None.
+        parallel_strategy = None
+
+    if ddp_kwargs:
+        warnings.warn(
+            "The `ddp_kwargs` argument is deprecated as of Ray 2.1. Use the "
+            "`parallel_strategy_kwargs` arg instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        parallel_strategy_kwargs = ddp_kwargs
+
+    if parallel_strategy == "fsdp" and FullyShardedDataParallel is None:
+        raise ImportError(
+            "FullyShardedDataParallel requires torch>=1.11.0. "
+            "Run `pip install 'torch>=1.11.0'` to use FullyShardedDataParallel."
+        )
+
     return get_accelerator(_TorchAccelerator).prepare_model(
         model,
         move_to_device=move_to_device,
-        wrap_ddp=wrap_ddp,
-        ddp_kwargs=ddp_kwargs,
+        parallel_strategy=parallel_strategy,
+        parallel_strategy_kwargs=parallel_strategy_kwargs,
     )
 
 
@@ -263,8 +315,8 @@ class _TorchAccelerator(Accelerator):
         self,
         model: torch.nn.Module,
         move_to_device: bool = True,
-        wrap_ddp: bool = True,
-        ddp_kwargs: Optional[Dict[str, Any]] = None,
+        parallel_strategy: Optional[str] = "ddp",
+        parallel_strategy_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.nn.Module:
         """Prepares the model for distributed execution.
 
@@ -276,13 +328,15 @@ class _TorchAccelerator(Accelerator):
             move_to_device: Whether to move the model to the correct
                 device. If set to False, the model needs to manually be moved
                 to the correct device.
-            wrap_ddp: Whether to wrap models in
-                ``DistributedDataParallel``.
-            ddp_kwargs (Dict[str, Any]): Args to pass into
-                ``DistributedDataParallel`` initialization if ``wrap_ddp`` is
-                set to True.
+            parallel_strategy ("ddp", "fsdp", or None): Whether to wrap models
+                in ``DistributedDataParallel``, ``FullyShardedDataParallel`` (
+                Experimental), or neither.
+            parallel_strategy_kwargs (Dict[str, Any]): Args to pass into
+                ``DistributedDataParallel`` or ``FullyShardedDataParallel``
+                initialization if ``parallel_strategy`` is set to "ddp"
+                or "fsdp", respectively.
         """
-        ddp_kwargs = ddp_kwargs or {}
+        parallel_strategy_kwargs = parallel_strategy_kwargs or {}
 
         # Backwards compatibility
         try:
@@ -296,7 +350,10 @@ class _TorchAccelerator(Accelerator):
             torch.cuda.set_device(device)
 
         if move_to_device:
-            logger.info(f"Moving model to device: {device}")
+            if rank == 0:
+                logger.info(f"Moving model to device: {device}")
+            else:
+                logger.debug(f"Moving model to device: {device}")
             model = model.to(device)
 
         def model_get_state(self):
@@ -339,14 +396,29 @@ class _TorchAccelerator(Accelerator):
         except Exception:
             world_size = train.world_size()
 
-        if wrap_ddp and world_size > 1:
-            logger.info("Wrapping provided model in DDP.")
-            if torch.cuda.is_available():
-                model = DistributedDataParallel(
-                    model, device_ids=[rank], output_device=rank, **ddp_kwargs
-                )
+        if parallel_strategy and world_size > 1:
+            if parallel_strategy == "ddp":
+                DataParallel = DistributedDataParallel
+                if torch.cuda.is_available():
+                    parallel_strategy_kwargs = {
+                        "device_ids": [device],
+                        "output_device": device,
+                        **parallel_strategy_kwargs,
+                    }
             else:
-                model = DistributedDataParallel(model, **ddp_kwargs)
+                if not torch.cuda.is_available():
+                    raise RuntimeError(
+                        "FSDP is only available with GPU-enabled "
+                        "training. Set "
+                        "`use_gpu=True` in your Trainer to train with "
+                        "GPUs."
+                    )
+                DataParallel = FullyShardedDataParallel
+            if rank == 0:
+                logger.info(f"Wrapping provided model in {DataParallel.__name__}.")
+            else:
+                logger.debug(f"Wrapping provided model in {DataParallel.__name__}.")
+            model = DataParallel(model, **parallel_strategy_kwargs)
 
         return model
 
@@ -487,7 +559,9 @@ class _TorchAccelerator(Accelerator):
         """
         if torch.cuda.is_available():
             # GPU IDs are assigned by Ray after you specify "use_gpu"
-            gpu_ids = ray.get_gpu_ids()
+            # GPU `ray.get_gpu_ids()` may return ints or may return strings.
+            # We should always convert to strings.
+            gpu_ids = [str(id) for id in ray.get_gpu_ids()]
 
             if len(gpu_ids) > 0:
                 # By default, there should only be one GPU ID if `use_gpu=True`.
@@ -498,13 +572,14 @@ class _TorchAccelerator(Accelerator):
 
                 cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
                 if cuda_visible_str and cuda_visible_str != "NoDevFiles":
-                    cuda_visible_list = [
-                        int(dev) for dev in cuda_visible_str.split(",")
-                    ]
+                    cuda_visible_list = cuda_visible_str.split(",")
                     device_id = cuda_visible_list.index(gpu_id)
                 else:
                     raise RuntimeError(
-                        f"CUDA_VISIBLE_DEVICES set incorrectly: {cuda_visible_str}"
+                        "CUDA_VISIBLE_DEVICES set incorrectly. "
+                        f"Got {cuda_visible_str}, expected to include {gpu_id}. "
+                        "Did you override the `CUDA_VISIBLE_DEVICES` environment"
+                        " variable? If not, please help file an issue on Github."
                     )
             else:
                 # If called on the driver or outside of Ray Train, return the

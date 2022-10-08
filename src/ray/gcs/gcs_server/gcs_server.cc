@@ -292,8 +292,8 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
               if (status.ok()) {
                 gcs_resource_manager_->UpdateResourceLoads(load.resources());
               } else {
-                RAY_LOG(ERROR) << "Failed to get the resource load: "
-                               << status.ToString();
+                RAY_LOG_EVERY_N(WARNING, 10)
+                    << "Failed to get the resource load: " << status.ToString();
               }
             });
           }
@@ -413,7 +413,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_node_manager_);
-  auto scheduler =
+  gcs_placement_group_scheduler_ =
       std::make_shared<GcsPlacementGroupScheduler>(main_service_,
                                                    gcs_table_storage_,
                                                    *gcs_node_manager_,
@@ -423,7 +423,7 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
       main_service_,
-      scheduler,
+      gcs_placement_group_scheduler_,
       gcs_table_storage_,
       *gcs_resource_manager_,
       [this](const JobID &job_id) {
@@ -647,6 +647,7 @@ void GcsServer::InstallEventListeners() {
                                          worker_failure_data->exit_type(),
                                          worker_failure_data->exit_detail(),
                                          creation_task_exception);
+        gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
       });
 
   // Install job event listeners.
@@ -661,10 +662,22 @@ void GcsServer::InstallEventListeners() {
       main_service_.post(
           [this] {
             // Because resources have been changed, we need to try to schedule the
-            // pending actors.
+            // pending placement groups and actors.
+            gcs_placement_group_manager_->SchedulePendingPlacementGroups();
             cluster_task_manager_->ScheduleAndDispatchTasks();
           },
           "GcsServer.SchedulePendingActors");
+    });
+
+    gcs_placement_group_scheduler_->AddResourcesChangedListener([this] {
+      main_service_.post(
+          [this] {
+            // Because some placement group resources have been committed or deleted, we
+            // need to try to schedule the pending placement groups and actors.
+            gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+            cluster_task_manager_->ScheduleAndDispatchTasks();
+          },
+          "GcsServer.SchedulePendingPGActors");
     });
   }
 }

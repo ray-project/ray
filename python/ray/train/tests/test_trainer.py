@@ -3,20 +3,18 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-import horovod.torch as hvd_torch
 import pytest
 import torch
 
 import ray
 import ray.train as train
 from ray._private.test_utils import wait_for_condition
-from ray.train import Trainer, CheckpointConfig
+from ray.air import CheckpointConfig
+from ray.air._internal.util import StartTraceback
+from ray.train import Trainer
 from ray.train.backend import BackendConfig, Backend
 from ray.train.constants import TRAIN_ENABLE_WORKER_SPREAD_ENV
-from ray.train.torch import TorchConfig
-from ray.train.tensorflow import TensorflowConfig
 
-from ray.train.horovod import HorovodConfig
 from ray.train.callbacks.callback import TrainingCallback
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train._internal.backend_executor import BackendExecutor
@@ -89,9 +87,7 @@ def gen_execute_single_async_special(special_f):
         assert len(self.workers) == 2
         if i == 0 and hasattr(self, "should_fail") and self.should_fail:
             kwargs["train_func"] = special_f
-        return self.workers[i].actor._BaseWorkerMixin__execute.remote(
-            f, *args, **kwargs
-        )
+        return self.workers[i].actor._RayTrainWorker__execute.remote(f, *args, **kwargs)
 
     return execute_single_async_special
 
@@ -335,8 +331,9 @@ def test_run_iterator_error(ray_start_2_cpus):
     trainer.start()
     iterator = trainer.run_iterator(fail_train)
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(StartTraceback) as exc:
         next(iterator)
+    assert "NotImplementedError" in str(exc.value)
 
     assert iterator.get_final_results() is None
     assert iterator.is_finished()
@@ -700,6 +697,8 @@ def test_torch_amp_with_custom_get_state(ray_start_2_cpus):
 
 
 def test_horovod_simple(ray_start_2_cpus):
+    import horovod.torch as hvd_torch
+
     def simple_fn():
         hvd_torch.init()
         return hvd_torch.rank()
@@ -758,16 +757,19 @@ def test_user_error(ray_start_2_cpus):
     trainer = Trainer(config, num_workers=2)
     trainer.start()
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(StartTraceback) as exc:
         trainer.run(fail_train_1)
+    assert "NotImplementedError" in str(exc.value)
 
     def fail_train_2():
         for _ in range(2):
             train.report(loss=1)
         raise NotImplementedError
 
-    with pytest.raises(NotImplementedError):
+    trainer.start()
+    with pytest.raises(StartTraceback) as exc:
         trainer.run(fail_train_2)
+    assert "NotImplementedError" in str(exc.value)
 
 
 def test_worker_failure_1(ray_start_2_cpus):
@@ -779,7 +781,7 @@ def test_worker_failure_1(ray_start_2_cpus):
     def train_actor_failure():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
@@ -803,7 +805,7 @@ def test_worker_failure_2(ray_start_2_cpus):
             train.report(loss=1)
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
@@ -823,7 +825,7 @@ def test_worker_failure_local_rank(ray_start_2_cpus):
     def train_actor_failure():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
         return train.local_rank()
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
@@ -864,7 +866,7 @@ def test_max_failures(ray_start_2_cpus):
     def train_func():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     trainer = Trainer(test_config, num_workers=2)
     trainer.start()
@@ -882,7 +884,7 @@ def test_start_max_failures(ray_start_2_cpus):
     def init_hook_fail():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     with pytest.raises(RuntimeError):
         trainer.start(initialization_hook=init_hook_fail)
@@ -893,10 +895,16 @@ def test_worker_kill(ray_start_2_cpus, backend):
     if backend == "test":
         test_config = TestConfig()
     elif backend == "torch":
+        from ray.train.torch import TorchConfig
+
         test_config = TorchConfig()
     elif backend == "tf":
+        from ray.train.tensorflow import TensorflowConfig
+
         test_config = TensorflowConfig()
     elif backend == "horovod":
+        from ray.train.horovod import HorovodConfig
+
         test_config = HorovodConfig()
 
     trainer = Trainer(test_config, num_workers=2)
@@ -1004,24 +1012,6 @@ def test_multiple_run(ray_start_2_cpus):
     assert output_2 == [2, 2]
 
 
-def test_run_after_user_error(ray_start_2_cpus):
-    config = TestConfig()
-
-    def fail_train():
-        raise NotImplementedError
-
-    trainer = Trainer(config, num_workers=2)
-    trainer.start()
-    with pytest.raises(NotImplementedError):
-        trainer.run(fail_train)
-
-    def train_func():
-        return 1
-
-    output = trainer.run(train_func)
-    assert output == [1, 1]
-
-
 def check_dataset_output(num_data, num_epochs, data_all_epochs):
     assert all(len(worker_data) == num_epochs for worker_data in data_all_epochs)
     for i in range(num_epochs):
@@ -1111,7 +1101,7 @@ def test_dataset_pipeline(ray_start_4_cpus):
         for _ in range(num_epochs):
             dataset_this_epoch = next(pipeline_iterator)
             data_this_epoch = []
-            for batch in dataset_this_epoch.iter_batches(batch_format="native"):
+            for batch in dataset_this_epoch.iter_batches(batch_format="default"):
                 data_this_epoch.extend(batch)
             data_all_epochs.append(data_this_epoch)
         return data_all_epochs
@@ -1136,7 +1126,7 @@ def test_dataset_pipeline_shuffle(ray_start_4_cpus):
         for _ in range(2):
             dataset_this_epoch = next(pipeline_iterator)
             data_this_epoch = []
-            for batch in dataset_this_epoch.iter_batches(batch_format="native"):
+            for batch in dataset_this_epoch.iter_batches(batch_format="default"):
                 data_this_epoch.extend(batch)
 
             if len(data_all_epochs) > 0:
@@ -1164,7 +1154,7 @@ def test_dataset_fault_tolerance(ray_start_4_cpus):
     def train_actor_failure():
         import sys
 
-        sys.exit(0)
+        sys.exit(1)
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
@@ -1242,7 +1232,8 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
         )
 
     def get_resources():
-        return os.environ["CUDA_VISIBLE_DEVICES"]
+        cuda_visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+        return cuda_visible_devices
 
     # 0 GPUs will be requested and should not raise an error.
     trainer = Trainer(CudaTestConfig(), num_workers=2, use_gpu=False)
@@ -1255,6 +1246,8 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     trainer = Trainer(CudaTestConfig(), num_workers=2, use_gpu=True)
     trainer.start()
     result = trainer.run(get_resources)
+    # Sort the cuda visible devices to have exact match with expected result.
+    result = [",".join(sorted(r.split(","))) for r in result]
     assert result == ["0,1", "0,1"]
     trainer.shutdown()
 
@@ -1273,6 +1266,8 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     )
     trainer.start()
     result = trainer.run(get_resources)
+    # Sort the cuda visible devices to have exact match with expected result.
+    result = [",".join(sorted(r.split(","))) for r in result]
     assert result == ["0,1,2,3", "0,1,2,3"]
     trainer.shutdown()
 

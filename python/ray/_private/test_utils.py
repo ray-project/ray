@@ -14,12 +14,17 @@ import tempfile
 import time
 import timeit
 import traceback
+from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from typing import Any, Dict, List, Optional
 
 import grpc
 import numpy as np
 import psutil  # We must import psutil after ray because we bundle it with ray.
+from ray._private import (
+    ray_constants,
+)
+from ray._private.worker import RayContext
 import yaml
 from grpc._channel import _InactiveRpcError
 
@@ -35,6 +40,10 @@ from ray._raylet import GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
+from ray.experimental.state.state_manager import StateDataSourceClient
+
+
+logger = logging.getLogger(__name__)
 
 try:
     from prometheus_client.parser import text_string_to_metric_families
@@ -355,8 +364,8 @@ def wait_for_condition(
         try:
             if condition_predictor(**kwargs):
                 return
-        except Exception as ex:
-            last_ex = ex
+        except Exception:
+            last_ex = ray._private.utils.format_error_message(traceback.format_exc())
         time.sleep(retry_interval_ms / 1000.0)
     message = "The condition wasn't met before the timeout expired."
     if last_ex is not None:
@@ -475,7 +484,7 @@ def wait_until_succeeded_without_exception(
 
     Args:
         func: A function to run.
-        exceptions(tuple): Exceptions that are supposed to occur.
+        exceptions: Exceptions that are supposed to occur.
         args: arguments to pass for a given func
         timeout_ms: Maximum timeout in milliseconds.
         retry_interval_ms: Retry interval in milliseconds.
@@ -810,6 +819,36 @@ def fetch_prometheus(prom_addresses):
                     if "Component" in sample.labels:
                         components_dict[address].add(sample.labels["Component"])
     return components_dict, metric_names, metric_samples
+
+
+def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
+    """Return prometheus metrics from the given addresses.
+
+    Args:
+        prom_addresses: List of metrics_agent addresses to collect metrics from.
+
+    Returns:
+        Dict mapping from metric name to list of samples for the metric.
+    """
+    _, _, samples = fetch_prometheus(prom_addresses)
+    samples_by_name = defaultdict(list)
+    for sample in samples:
+        samples_by_name[sample.name].append(sample)
+    return samples_by_name
+
+
+def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
+    """Return prometheus metrics from a RayContext
+
+    Args:
+        info: Ray context returned from ray.init()
+
+    Returns:
+        Dict from metric name to a list of samples for the metrics
+    """
+    metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
+    print("Fetch metrics from", metrics_page)
+    return fetch_prometheus_metrics([metrics_page])
 
 
 def load_test_config(config_file_name):
@@ -1229,7 +1268,7 @@ def test_get_directory_size_bytes():
         assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 152
 
 
-def check_local_files_gced(cluster):
+def check_local_files_gced(cluster, whitelist=None):
     for node in cluster.list_all_nodes():
         for subdir in ["conda", "pip", "working_dir_files", "py_modules_files"]:
             all_files = os.listdir(
@@ -1237,16 +1276,13 @@ def check_local_files_gced(cluster):
             )
             # Check that there are no files remaining except for .lock files
             # and generated requirements.txt files.
+            # Note: On Windows the top folder is not deleted as it is in use.
             # TODO(architkulkarni): these files should get cleaned up too!
-            if (
-                len(
-                    list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
-                )
-                > 0
-            ):
-                print(str(all_files))
+            items = list(filter(lambda f: not f.endswith((".lock", ".txt")), all_files))
+            if whitelist and set(items).issubset(whitelist):
+                continue
+            if len(items) > 0:
                 return False
-
     return True
 
 
@@ -1383,6 +1419,54 @@ def wandb_setup_api_key_hook():
     WandbIntegrationTest.testWandbLoggerConfig
     """
     return "abcd"
+
+
+# Get node stats from node manager.
+def get_node_stats(raylet, num_retry=5, timeout=2):
+    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    channel = ray._private.utils.init_grpc_channel(raylet_address)
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    for _ in range(num_retry):
+        try:
+            reply = stub.GetNodeStats(
+                node_manager_pb2.GetNodeStatsRequest(), timeout=timeout
+            )
+            break
+        except grpc.RpcError:
+            continue
+    assert reply is not None
+    return reply
+
+
+# Send a RPC to the raylet to have it self-destruct its process.
+def kill_raylet(raylet, graceful=False):
+    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    channel = grpc.insecure_channel(raylet_address)
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    try:
+        stub.ShutdownRaylet(node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+    except _InactiveRpcError:
+        assert not graceful
+
+
+# Creates a state api client assuming the head node (gcs) is local.
+def get_local_state_client():
+    hostname = ray.worker._global_node.gcs_address
+
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        hostname, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=True
+    )
+
+    gcs_aio_client = gcs_utils.GcsAioClient(address=hostname, nums_reconnect_retry=0)
+    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        ip = node["NodeManagerAddress"]
+        port = int(node["NodeManagerPort"])
+        client.register_raylet_client(node_id, ip, port)
+        client.register_agent_client(node_id, ip, port)
+
+    return client
 
 
 # Global counter to test different return values

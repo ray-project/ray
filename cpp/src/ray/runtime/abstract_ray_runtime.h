@@ -84,7 +84,7 @@ class AbstractRayRuntime : public RayRuntime {
   ray::PlacementGroup CreatePlacementGroup(
       const ray::PlacementGroupCreationOptions &create_options);
   void RemovePlacementGroup(const std::string &group_id);
-  bool WaitPlacementGroupReady(const std::string &group_id, int timeout_seconds);
+  bool WaitPlacementGroupReady(const std::string &group_id, int64_t timeout_seconds);
 
   const TaskID &GetCurrentTaskId();
 
@@ -108,6 +108,9 @@ class AbstractRayRuntime : public RayRuntime {
   virtual PlacementGroup GetPlacementGroup(const std::string &name);
 
   std::string GetNamespace();
+  std::string SerializeActorHandle(const std::string &actor_id);
+  std::string DeserializeAndRegisterActorHandle(
+      const std::string &serialized_actor_handle);
 
  protected:
   std::unique_ptr<TaskSubmitter> task_submitter_;

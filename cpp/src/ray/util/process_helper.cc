@@ -140,6 +140,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.metrics_agent_port = -1;
   options.task_execution_callback = callback;
   options.startup_token = ConfigInternal::Instance().startup_token;
+  options.runtime_env_hash = ConfigInternal::Instance().runtime_env_hash;
   rpc::JobConfig job_config;
   job_config.set_default_actor_lifetime(
       ConfigInternal::Instance().default_actor_lifetime);
@@ -148,6 +149,16 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     job_config.add_code_search_path(path);
   }
   job_config.set_ray_namespace(ConfigInternal::Instance().ray_namespace);
+  if (ConfigInternal::Instance().runtime_env) {
+    job_config.mutable_runtime_env_info()->set_serialized_runtime_env(
+        ConfigInternal::Instance().runtime_env->Serialize());
+  }
+  if (ConfigInternal::Instance().job_config_metadata.size()) {
+    auto metadata_ptr = job_config.mutable_metadata();
+    for (const auto &it : ConfigInternal::Instance().job_config_metadata) {
+      (*metadata_ptr)[it.first] = it.second;
+    }
+  }
   std::string serialized_job_config;
   RAY_CHECK(job_config.SerializeToString(&serialized_job_config));
   options.serialized_job_config = serialized_job_config;

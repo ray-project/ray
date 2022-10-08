@@ -41,7 +41,7 @@ import os
 
 from gym.spaces import Box, Discrete
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms import ppo
 from ray.rllib.examples.env.action_mask_env import ActionMaskEnv
 from ray.rllib.examples.models.action_mask_model import (
@@ -178,7 +178,10 @@ if __name__ == "__main__":
 
     # run with tune for auto trainer creation, stopping, TensorBoard, etc.
     else:
-        results = tune.run(args.run, config=config, stop=stop, verbose=2)
+        tuner = tune.Tuner(
+            args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
+        )
+        tuner.fit()
 
     print("Finished successfully without selecting invalid actions.")
     ray.shutdown()

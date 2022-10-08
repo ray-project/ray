@@ -4,9 +4,9 @@ import logging
 from typing import Callable, Dict, Optional
 
 import ray
+from ray.air._internal.mlflow import _MLflowLoggerUtil
 from ray.tune.trainable import Trainable
 from ray.util.annotations import Deprecated
-from ray.util.ml_utils.mlflow import _MLflowLoggerUtil
 
 logger = logging.getLogger(__name__)
 

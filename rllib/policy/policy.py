@@ -1,14 +1,18 @@
 from abc import ABCMeta, abstractmethod
 import gym
 from gym.spaces import Box
+import json
 import logging
 import numpy as np
+import os
+from packaging import version
 import platform
 import tree  # pip install dm_tree
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Container,
     Dict,
     List,
     Optional,
@@ -19,6 +23,8 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
+from ray.air.checkpoint import Checkpoint
+import ray.cloudpickle as pickle
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -31,7 +37,12 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     is_overridden,
 )
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
+from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
@@ -102,21 +113,44 @@ class PolicySpec:
         )
 
     def serialize(self) -> Dict:
+        from ray.rllib.algorithms.registry import get_policy_class_name
+
+        # Try to figure out a durable name for this policy.
+        cls = get_policy_class_name(self.policy_class)
+        if cls is None:
+            logger.warning(
+                f"Can not figure out a durable policy name for {self.policy_class}. "
+                f"You are probably trying to checkpoint a custom policy. "
+                f"Raw policy class may cause problems when the checkpoint needs to "
+                "be loaded in the future. To fix this, make sure you add your "
+                "custom policy in rllib.algorithms.registry.POLICIES."
+            )
+            cls = self.policy_class
+
         return {
-            # TODO(jungong) : try making the policy_class config durable.
-            # Maybe we should save the full string class path instead.
-            # That will allow us to load a policy checkpoint even if the class
-            # does not exist anymore (e.g., renamed).
-            "policy_class": self.policy_class,
+            "policy_class": cls,
             "observation_space": space_to_dict(self.observation_space),
             "action_space": space_to_dict(self.action_space),
+            # TODO(jungong) : try making the config dict durable by maybe
+            # getting rid of all the fields that are not JSON serializable.
             "config": self.config,
         }
 
     @classmethod
     def deserialize(cls, spec: Dict) -> "PolicySpec":
+        if isinstance(spec["policy_class"], str):
+            # Try to recover the actual policy class from durable name.
+            from ray.rllib.algorithms.registry import get_policy_class
+
+            policy_class = get_policy_class(spec["policy_class"])
+        elif isinstance(spec["policy_class"], type):
+            # Policy spec is already a class type. Simply use it.
+            policy_class = spec["policy_class"]
+        else:
+            raise AttributeError(f"Unknown policy class spec {spec['policy_class']}")
+
         return cls(
-            policy_class=spec["policy_class"],
+            policy_class=policy_class,
             observation_space=space_from_dict(spec["observation_space"]),
             action_space=space_from_dict(spec["action_space"]),
             config=spec["config"],
@@ -147,6 +181,124 @@ class Policy(metaclass=ABCMeta):
     `rllib.policy.policy_template::build_policy_class` (PyTorch) or
     `rllib.policy.tf_policy_template::build_tf_policy_class` (TF).
     """
+
+    @staticmethod
+    def from_checkpoint(
+        checkpoint: Union[str, Checkpoint],
+        policy_ids: Optional[Container[PolicyID]] = None,
+    ) -> Union["Policy", Dict[PolicyID, "Policy"]]:
+        """Creates new Policy instance(s) from a given Policy or Algorithm checkpoint.
+
+        Note: This method must remain backward compatible from 2.1.0 on, wrt.
+        checkpoints created with Ray 2.0.0 or later.
+
+        Args:
+            checkpoint: The path (str) to a Policy or Algorithm checkpoint directory
+                or an AIR Checkpoint (Policy or Algorithm) instance to restore
+                from.
+                If checkpoint is a Policy checkpoint, `policy_ids` must be None
+                and only the Policy in that checkpoint is restored and returned.
+                If checkpoint is an Algorithm checkpoint and `policy_ids` is None,
+                will return a list of all Policy objects found in
+                the checkpoint, otherwise a list of those policies in `policy_ids`.
+            policy_ids: List of policy IDs to extract from a given Algorithm checkpoint.
+                If None and an Algorithm checkpoint is provided, will restore all
+                policies found in that checkpoint. If a Policy checkpoint is given,
+                this arg must be None.
+
+        Returns:
+            An instantiated Policy, if `checkpoint` is a Policy checkpoint. A dict
+            mapping PolicyID to Policies, if `checkpoint` is an Algorithm checkpoint.
+            In the latter case, returns all policies within the Algorithm if
+            `policy_ids` is None, else a dict of only those Policies that are in
+            `policy_ids`.
+        """
+        checkpoint_info = get_checkpoint_info(checkpoint)
+
+        # Algorithm checkpoint: Extract one or more policies from it and return them
+        # in a dict (mapping PolicyID to Policy instances).
+        if checkpoint_info["type"] == "Algorithm":
+            from ray.rllib.algorithms.algorithm import Algorithm
+
+            policies = {}
+
+            # Old Algorithm checkpoints: State must be completely retrieved from:
+            # algo state file -> worker -> "state".
+            if checkpoint_info["checkpoint_version"] < version.Version("1.0"):
+                with open(checkpoint_info["state_file"], "rb") as f:
+                    state = pickle.load(f)
+                # In older checkpoint versions, the policy states are stored under
+                # "state" within the worker state (which is pickled in itself).
+                worker_state = pickle.loads(state["worker"])
+                policy_states = worker_state["state"]
+                for pid, policy_state in policy_states.items():
+                    # Get spec and config, merge config with
+                    serialized_policy_spec = worker_state["policy_specs"][pid]
+                    policy_config = Algorithm.merge_trainer_configs(
+                        worker_state["policy_config"], serialized_policy_spec["config"]
+                    )
+                    serialized_policy_spec.update({"config": policy_config})
+                    policy_state.update({"policy_spec": serialized_policy_spec})
+                    policies[pid] = Policy.from_state(policy_state)
+            # Newer versions: Get policy states from "policies/" sub-dirs.
+            elif checkpoint_info["policy_ids"] is not None:
+                for policy_id in checkpoint_info["policy_ids"]:
+                    if policy_ids is None or policy_id in policy_ids:
+                        policy_checkpoint_info = get_checkpoint_info(
+                            os.path.join(
+                                checkpoint_info["checkpoint_dir"],
+                                "policies",
+                                policy_id,
+                            )
+                        )
+                        assert policy_checkpoint_info["type"] == "Policy"
+                        with open(policy_checkpoint_info["state_file"], "rb") as f:
+                            policy_state = pickle.load(f)
+                        policies[policy_id] = Policy.from_state(policy_state)
+            return policies
+
+        # Policy checkpoint: Return a single Policy instance.
+        else:
+            with open(checkpoint_info["state_file"], "rb") as f:
+                state = pickle.load(f)
+            return Policy.from_state(state)
+
+    @staticmethod
+    def from_state(state: PolicyState) -> "Policy":
+        """Recovers a Policy from a state object.
+
+        The `state` of an instantiated Policy can be retrieved by calling its
+        `get_state` method. This only works for the V2 Policy classes (EagerTFPolicyV2,
+        SynamicTFPolicyV2, and TorchPolicyV2). It contains all information necessary
+        to create the Policy. No access to the original code (e.g. configs, knowledge of
+        the policy's class, etc..) is needed.
+
+        Args:
+            state: The state to recover a new Policy instance from.
+
+        Returns:
+            A new Policy instance.
+        """
+        serialized_pol_spec: Optional[dict] = state.get("policy_spec")
+        if serialized_pol_spec is None:
+            raise ValueError(
+                "No `policy_spec` key was found in given `state`! "
+                "Cannot create new Policy."
+            )
+        pol_spec = PolicySpec.deserialize(serialized_pol_spec)
+
+        # Create the new policy.
+        new_policy = pol_spec.policy_class(
+            observation_space=pol_spec.observation_space,
+            action_space=pol_spec.action_space,
+            config=pol_spec.config,
+        )
+
+        # Set the new policy's state (weights, optimizer vars, exploration state,
+        # etc..).
+        new_policy.set_state(state)
+        # Return the new policy.
+        return new_policy
 
     @DeveloperAPI
     def __init__(
@@ -723,6 +875,7 @@ class Policy(metaclass=ABCMeta):
         return []
 
     @DeveloperAPI
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def get_state(self) -> PolicyState:
         """Returns the entire current state of this Policy.
 
@@ -740,14 +893,26 @@ class Policy(metaclass=ABCMeta):
             # The current global timestep.
             "global_timestep": self.global_timestep,
         }
+
+        # Add this Policy's spec so it can be retreived w/o access to the original
+        # code.
+        policy_spec = PolicySpec(
+            policy_class=type(self),
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            config=self.config,
+        )
+        state["policy_spec"] = policy_spec.serialize()
+
         if self.config.get("enable_connectors", False):
             # Checkpoint connectors state as well if enabled.
             connector_configs = {}
             if self.agent_connectors:
-                connector_configs["agent"] = self.agent_connectors.to_config()
+                connector_configs["agent"] = self.agent_connectors.to_state()
             if self.action_connectors:
-                connector_configs["action"] = self.action_connectors.to_config()
+                connector_configs["action"] = self.action_connectors.to_state()
             state["connector_configs"] = connector_configs
+
         return state
 
     @PublicAPI(stability="alpha")
@@ -780,6 +945,7 @@ class Policy(metaclass=ABCMeta):
             logger.info(self.action_connectors.__str__(indentation=4))
 
     @DeveloperAPI
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def set_state(self, state: PolicyState) -> None:
         """Restores the entire current state of this Policy from `state`.
 
@@ -832,13 +998,58 @@ class Policy(metaclass=ABCMeta):
             self.global_timestep = global_vars["timestep"]
 
     @DeveloperAPI
-    def export_checkpoint(self, export_dir: str) -> None:
-        """Export Policy checkpoint to local directory.
+    def export_checkpoint(
+        self,
+        export_dir: str,
+        filename_prefix=DEPRECATED_VALUE,
+        *,
+        policy_state: Optional[PolicyState] = None,
+    ) -> None:
+        """Exports Policy checkpoint to a local directory and returns an AIR Checkpoint.
 
         Args:
-            export_dir: Local writable directory.
+            export_dir: Local writable directory to store the AIR Checkpoint
+                information into.
+            policy_state: An optional PolicyState to write to disk. Used by
+                `Algorithm.save_checkpoint()` to save on the additional
+                `self.get_state()` calls of its different Policies.
+
+        Example:
+            >>> from ray.rllib.algorithms.ppo import PPOTorchPolicy
+            >>> policy = PPOTorchPolicy(...) # doctest: +SKIP
+            >>> policy.export_checkpoint("/tmp/export_dir") # doctest: +SKIP
         """
-        raise NotImplementedError
+        # `filename_prefix` should not longer be used as new Policy checkpoints
+        # contain more than one file with a fixed filename structure.
+        if filename_prefix != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Policy.export_checkpoint(filename_prefix=...)",
+                error=True,
+            )
+        if policy_state is None:
+            policy_state = self.get_state()
+        policy_state["checkpoint_version"] = CHECKPOINT_VERSION
+
+        # Write main policy state file.
+        os.makedirs(export_dir, exist_ok=True)
+        with open(os.path.join(export_dir, "policy_state.pkl"), "w+b") as f:
+            pickle.dump(policy_state, f)
+
+        # Write RLlib checkpoint json.
+        with open(os.path.join(export_dir, "rllib_checkpoint.json"), "w") as f:
+            json.dump(
+                {
+                    "type": "Policy",
+                    "checkpoint_version": str(policy_state["checkpoint_version"]),
+                    "ray_version": ray.__version__,
+                    "ray_commit": ray.__commit__,
+                },
+                f,
+            )
+
+        # Add external model files, if required.
+        if self.config["export_native_model_files"]:
+            self.export_model(os.path.join(export_dir, "model"))
 
     @DeveloperAPI
     def export_model(self, export_dir: str, onnx: Optional[int] = None) -> None:
@@ -852,6 +1063,10 @@ class Policy(metaclass=ABCMeta):
             export_dir: Local writable directory.
             onnx: If given, will export model in ONNX format. The
                 value of this parameter set the ONNX OpSet version to use.
+
+        Raises:
+            ValueError: If a native DL-framework based model (e.g. a keras Model)
+            cannot be saved to disk for various reasons.
         """
         raise NotImplementedError
 
@@ -963,7 +1178,10 @@ class Policy(metaclass=ABCMeta):
         return {
             SampleBatch.OBS: ViewRequirement(space=self.observation_space),
             SampleBatch.NEXT_OBS: ViewRequirement(
-                data_col=SampleBatch.OBS, shift=1, space=self.observation_space
+                data_col=SampleBatch.OBS,
+                shift=1,
+                space=self.observation_space,
+                used_for_compute_actions=False,
             ),
             SampleBatch.ACTIONS: ViewRequirement(
                 space=self.action_space, used_for_compute_actions=False
@@ -980,7 +1198,7 @@ class Policy(metaclass=ABCMeta):
                 data_col=SampleBatch.REWARDS, shift=-1
             ),
             SampleBatch.DONES: ViewRequirement(),
-            SampleBatch.INFOS: ViewRequirement(),
+            SampleBatch.INFOS: ViewRequirement(used_for_compute_actions=False),
             SampleBatch.T: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
@@ -1202,27 +1420,15 @@ class Policy(metaclass=ABCMeta):
             # Non-flattened dummy batch.
             else:
                 # Range of indices on time-axis, e.g. "-50:-1".
-                if view_req.shift_from is not None:
-                    ret[view_col] = get_dummy_batch_for_space(
-                        view_req.space,
-                        batch_size=batch_size,
-                        time_size=view_req.shift_to - view_req.shift_from + 1,
+                if isinstance(view_req.space, gym.spaces.Space):
+                    time_size = (
+                        len(view_req.shift_arr) if len(view_req.shift_arr) > 1 else None
                     )
-                # Sequence of (probably non-consecutive) indices.
-                elif isinstance(view_req.shift, (list, tuple)):
                     ret[view_col] = get_dummy_batch_for_space(
-                        view_req.space,
-                        batch_size=batch_size,
-                        time_size=len(view_req.shift),
+                        view_req.space, batch_size=batch_size, time_size=time_size
                     )
-                # Single shift int value.
                 else:
-                    if isinstance(view_req.space, gym.spaces.Space):
-                        ret[view_col] = get_dummy_batch_for_space(
-                            view_req.space, batch_size=batch_size, fill_value=0.0
-                        )
-                    else:
-                        ret[view_col] = [view_req.space for _ in range(batch_size)]
+                    ret[view_col] = [view_req.space for _ in range(batch_size)]
 
         # Due to different view requirements for the different columns,
         # columns in the resulting batch may not all have the same batch size.
@@ -1311,6 +1517,6 @@ class Policy(metaclass=ABCMeta):
     def __repr__(self):
         return type(self).__name__
 
-    @Deprecated(new="get_exploration_state", error=False)
+    @Deprecated(new="get_exploration_state", error=True)
     def get_exploration_info(self) -> Dict[str, TensorType]:
         return self.get_exploration_state()

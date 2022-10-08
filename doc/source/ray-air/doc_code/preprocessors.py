@@ -5,6 +5,7 @@
 import pandas as pd
 import ray
 from ray.data.preprocessors import MinMaxScaler
+from ray.data.preprocessors.scaler import StandardScaler
 
 # Generate two simple datasets.
 dataset = ray.data.range_table(8)
@@ -167,3 +168,33 @@ dataset_transformed = preprocessor.fit_transform(dataset)
 print(dataset_transformed.take())
 # [{'value': 0}, {'value': 3}, {'value': 6}, {'value': 9}]
 # __custom_stateful_end__
+
+
+# __simple_imputer_start__
+from ray.data.preprocessors import SimpleImputer
+
+# Generate a simple dataset.
+dataset = ray.data.from_items([{"value": 1.0}, {"value": None}, {"value": 3.0}])
+print(dataset.take())
+# [{'value': 1.0}, {'value': None}, {'value': 3.0}]
+
+imputer = SimpleImputer(columns=["value"], strategy="mean")
+dataset_transformed = imputer.fit_transform(dataset)
+print(dataset_transformed.take())
+# [{'value': 1.0}, {'value': 2.0}, {'value': 3.0}]
+# __simple_imputer_end__
+
+
+# __concatenate_start__
+from ray.data.preprocessors import Chain, Concatenator, StandardScaler
+
+# Generate a simple dataset.
+dataset = ray.data.from_items([{"X": 1.0, "Y": 2.0}, {"X": 4.0, "Y": 0.0}])
+print(dataset.take())
+# [{'X': 1.0, 'Y': 2.0}, {'X': 4.0, 'Y': 0.0}]
+
+preprocessor = Chain(StandardScaler(columns=["X", "Y"]), Concatenator())
+dataset_transformed = preprocessor.fit_transform(dataset)
+print(dataset_transformed.take())
+# [{'concat_out': array([-1.,  1.])}, {'concat_out': array([ 1., -1.])}]
+# __concatenate_end__

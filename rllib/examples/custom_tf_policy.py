@@ -2,7 +2,7 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.evaluation.postprocessing import discount_cumsum
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -45,10 +45,12 @@ class MyAlgo(Algorithm):
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=args.num_cpus or None)
-    tune.run(
+    tuner = tune.Tuner(
         MyAlgo,
-        stop={"training_iteration": args.stop_iters},
-        config={
+        run_config=air.RunConfig(
+            stop={"training_iteration": args.stop_iters},
+        ),
+        param_space={
             "env": "CartPole-v0",
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),

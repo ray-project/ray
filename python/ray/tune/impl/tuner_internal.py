@@ -1,10 +1,13 @@
 import copy
 import os
+import math
+import warnings
 import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING, Tuple
 
+import ray
 import ray.cloudpickle as pickle
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air.config import RunConfig, ScalingConfig
@@ -23,6 +26,7 @@ _TRAINABLE_PKL = "trainable.pkl"
 _TUNER_PKL = "tuner.pkl"
 _TRAINABLE_KEY = "_trainable"
 _PARAM_SPACE_KEY = "_param_space"
+_EXPERIMENT_ANALYSIS_KEY = "_experiment_analysis"
 
 
 class TunerInternal:
@@ -101,6 +105,8 @@ class TunerInternal:
             self._run_config
         )
 
+        self._experiment_analysis = None
+
         # Not used for restored Tuner.
         self._param_space = param_space or {}
         self._process_scaling_config()
@@ -117,6 +123,58 @@ class TunerInternal:
 
         with open(experiment_checkpoint_path / _TRAINABLE_PKL, "wb") as fp:
             pickle.dump(self._trainable, fp)
+        self._maybe_warn_resource_contention()
+
+    def _expected_utilization(self, cpus_per_trial, cpus_total):
+        num_samples = self._tune_config.num_samples
+        if num_samples < 0:  # TODO: simplify this in Tune
+            num_samples = math.inf
+        concurrent_trials = self._tune_config.max_concurrent_trials or 0
+        if concurrent_trials < 1:  # TODO: simplify this in Tune
+            concurrent_trials = math.inf
+
+        actual_concurrency = min(
+            (cpus_total // cpus_per_trial, num_samples, concurrent_trials)
+        )
+        return (actual_concurrency * cpus_per_trial) / (cpus_total + 0.001)
+
+    def _maybe_warn_resource_contention(self):
+        if not ray.is_initialized():
+            return
+
+        trainable = self._convert_trainable(self._trainable)
+
+        # This may not be precise, but we don't have a great way of
+        # accessing the actual scaling config if it is being tuned.
+        scaling_config = None
+        get_scaling_config = getattr(trainable, "base_scaling_config", None)
+        if callable(get_scaling_config):
+            scaling_config = get_scaling_config()
+
+        if scaling_config is None or scaling_config._max_cpu_fraction_per_node:
+            return
+
+        has_base_dataset = getattr(trainable, "has_base_dataset", False)
+
+        cpus_per_trial = scaling_config.total_resources.get("CPU", 0)
+        cpus_left = ray.available_resources().get("CPU", 0)  # avoid div by 0
+        # TODO(amogkam): Remove this warning after _max_cpu_fraction_per_node is no
+        # longer experimental.
+        if (
+            has_base_dataset
+            and self._expected_utilization(cpus_per_trial, cpus_left) > 0.8
+        ):
+            warnings.warn(
+                "Executing `.fit()` may leave less than 20% of CPUs in "
+                "this cluster for Dataset execution, which can lead to "
+                "resource contention or hangs. To avoid this, "
+                "reserve at least 20% of node CPUs for Dataset execution by "
+                "setting `_max_cpu_fraction_per_node = 0.8` in the Trainer "
+                "scaling_config. See "
+                "https://docs.ray.io/en/master/data/dataset-internals.html"
+                "#datasets-and-tune for more info.",
+                stacklevel=4,
+            )
 
     def _restore_from_path_or_uri(
         self, path_or_uri: str, resume_config: Optional[_ResumeConfig]
@@ -151,7 +209,7 @@ class TunerInternal:
 
         if not synced:
             # If we didn't sync, use the restore_path local dir
-            self._experiment_checkpoint_dir = path_or_uri
+            self._experiment_checkpoint_dir = os.path.expanduser(path_or_uri)
         else:
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
@@ -160,9 +218,18 @@ class TunerInternal:
                 self._setup_create_experiment_checkpoint_dir(self._run_config)
             )
             for file_dir in experiment_checkpoint_path.glob("*"):
-                file_dir.rename(new_exp_path / file_dir.name)
+                file_dir.replace(new_exp_path / file_dir.name)
             shutil.rmtree(experiment_checkpoint_path)
             self._experiment_checkpoint_dir = str(new_exp_path)
+
+        try:
+            self._experiment_analysis = ExperimentAnalysis(
+                self._experiment_checkpoint_dir,
+                default_metric=self._tune_config.metric,
+                default_mode=self._tune_config.mode,
+            )
+        except Exception:
+            self._experiment_analysis = None
 
     def _maybe_sync_down_tuner_state(self, restore_path: str) -> Tuple[bool, str]:
         """Sync down trainable state from remote storage.
@@ -171,7 +238,7 @@ class TunerInternal:
             Tuple of (downloaded from remote, local_dir)
         """
         if not is_non_local_path_uri(restore_path):
-            return False, restore_path
+            return False, os.path.expanduser(restore_path)
 
         tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
 
@@ -203,7 +270,7 @@ class TunerInternal:
             run_config.name,
         )
         if not os.path.exists(path):
-            os.makedirs(path)
+            os.makedirs(path, exist_ok=True)
         return path
 
     # This has to be done through a function signature (@property won't do).
@@ -229,7 +296,17 @@ class TunerInternal:
         else:
             analysis = self._fit_resume(trainable)
 
-        return ResultGrid(analysis)
+        self._experiment_analysis = analysis
+
+        return ResultGrid(self._experiment_analysis)
+
+    def get_results(self) -> ResultGrid:
+        if not self._experiment_analysis:
+            raise RuntimeError(
+                "Can't return results as experiment has not been run, yet. "
+                "Call `Tuner.fit()` to run the experiment first."
+            )
+        return ResultGrid(self._experiment_analysis)
 
     def _get_tune_run_arguments(self, trainable) -> Dict[str, Any]:
         """Get tune.run arguments common for both new and resumed runs."""
@@ -358,6 +435,7 @@ class TunerInternal:
         state = self.__dict__.copy()
         state.pop(_TRAINABLE_KEY, None)
         state.pop(_PARAM_SPACE_KEY, None)
+        state.pop(_EXPERIMENT_ANALYSIS_KEY, None)
         return state
 
     def __setstate__(self, state):

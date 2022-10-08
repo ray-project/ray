@@ -100,7 +100,7 @@ def test_delete(ray_start_stop):
         "runtime_env": {
             "working_dir": (
                 "https://github.com/ray-project/test_dag/archive/"
-                "76a741f6de31df78411b1f302071cde46f098418.zip"
+                "40d61c141b9c37853a7014b8659fc7f23c1d04f6.zip"
             )
         },
         "deployments": [
@@ -152,9 +152,9 @@ def test_delete(ray_start_stop):
         )
         print("GET request returned empty config successfully.")
 
-        with pytest.raises(requests.exceptions.HTTPError):
+        with pytest.raises(requests.exceptions.ConnectionError):
             requests.post("http://localhost:8000/", json=["ADD", 1]).raise_for_status()
-        with pytest.raises(requests.exceptions.HTTPError):
+        with pytest.raises(requests.exceptions.ConnectionError):
             requests.post("http://localhost:8000/", json=["SUB", 1]).raise_for_status()
         print("Deployments have been deleted and are not reachable.\n")
 
@@ -169,7 +169,7 @@ def test_get_status(ray_start_stop):
 
     serve_status = status_response.json()
     assert len(serve_status["deployment_statuses"]) == 0
-    assert serve_status["app_status"]["status"] == "RUNNING"
+    assert serve_status["app_status"]["status"] == "NOT_STARTED"
     assert serve_status["app_status"]["deployment_timestamp"] == 0
     assert serve_status["app_status"]["message"] == ""
     print("Status info on fresh Serve application is correct.\n")

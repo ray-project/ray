@@ -6,7 +6,7 @@ from pathlib import Path
 import yaml
 
 import ray
-from ray.tune.experiment.config_parser import make_parser
+from ray.tune.experiment.config_parser import _make_parser
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json
 from ray.tune.tune import run_experiments
@@ -33,7 +33,7 @@ Note that -f overrides all other trial-specific command-line options.
 
 
 def create_parser(parser_creator=None):
-    parser = make_parser(
+    parser = _make_parser(
         parser_creator=parser_creator,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Train a reinforcement learning agent.",
@@ -166,10 +166,12 @@ def run(args, parser):
         experiments = {
             args.experiment_name: {  # i.e. log to ~/ray_results/default
                 "run": args.run,
-                "checkpoint_freq": args.checkpoint_freq,
-                "checkpoint_at_end": args.checkpoint_at_end,
-                "keep_checkpoints_num": args.keep_checkpoints_num,
-                "checkpoint_score_attr": args.checkpoint_score_attr,
+                "checkpoint_config": {
+                    "checkpoint_frequency": args.checkpoint_freq,
+                    "checkpoint_at_end": args.checkpoint_at_end,
+                    "num_to_keep": args.keep_checkpoints_num,
+                    "checkpoint_score_attribute": args.checkpoint_score_attr,
+                },
                 "local_dir": args.local_dir,
                 "resources_per_trial": (
                     args.resources_per_trial

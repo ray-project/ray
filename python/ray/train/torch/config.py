@@ -7,6 +7,7 @@ from typing import Dict, Optional
 
 import ray
 from ray.train.backend import BackendConfig, Backend, EncodedData
+from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train._internal.utils import get_address_and_port
 from ray.util import PublicAPI
@@ -51,6 +52,20 @@ class TorchConfig(BackendConfig):
         return _TorchBackend
 
 
+def _set_nccl_network_interface() -> str:
+    """Set the appropriate NCCL network interface to use."""
+
+    if "NCCL_SOCKET_IFNAME" not in os.environ:
+        logger.debug(
+            f"Setting NCCL_SOCKET_IFNAME to {DEFAULT_NCCL_SOCKET_IFNAME} "
+            f"to prioritize ethernet connection. To override this behavior, set the "
+            f"`NCCL_SOCKET_IFNAME` environment variable in your Ray runtime "
+            "environment: "
+            "`ray.init(runtime_env={{'env_vars': {'NCCL_SOCKET_IFNAME': 'ens5'}}}`"
+        )
+        os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_NCCL_SOCKET_IFNAME
+
+
 def _setup_torch_process_group(
     backend: str,
     world_rank: int,
@@ -67,10 +82,16 @@ def _setup_torch_process_group(
         init_method: URL specifying how to initialize the process group.
         timeout_s: Seconds for process group operations to timeout.
     """
-    logger.info(
-        f"Setting up process group for: {init_method} [rank={world_rank}, "
-        f"world_size={world_size}]"
-    )
+    if world_rank == 0:
+        logger.info(
+            f"Setting up process group for: {init_method} [rank={world_rank}, "
+            f"world_size={world_size}]"
+        )
+    else:
+        logger.debug(
+            f"Setting up process group for: {init_method} [rank={world_rank}, "
+            f"world_size={world_size}]"
+        )
     logger.debug(f"using {backend}")
 
     if backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
@@ -109,6 +130,9 @@ class _TorchBackend(Backend):
                     backend = "gloo"
             else:
                 backend = backend_config.backend
+
+            if backend == "nccl":
+                worker_group.execute(_set_nccl_network_interface)
 
             master_addr, master_port = worker_group.execute_single(
                 0, get_address_and_port

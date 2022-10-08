@@ -2,29 +2,15 @@ import gym
 import numpy as np
 import unittest
 import ray
+import math
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.test_utils import check
-from ray.rllib.evaluation.collectors.simple_list_collector import _AgentCollector
+from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 
 
-# TODO: @kourosh remove it once we have removed the dependency _agent_collector to
-# policy
-class FakeRNNPolicy:
-    def __init__(self, max_seq_len=1) -> None:
-        self.config = {
-            "_disable_action_flattening": True,
-            "model": {
-                "max_seq_len": max_seq_len,
-            },
-        }
-
-    def is_recurrent(self):
-        return True
-
-
-class TestTrajectoryViewAPI(unittest.TestCase):
+class TestAgentCollector(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -52,6 +38,109 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
         return obses
 
+    def test_inference_vs_training_batch(self):
+        """Test whether build_for_inference and build_for_training return the same
+        batch when they have to."""
+        obs_space = gym.spaces.Box(-np.ones(4), np.ones(4))
+        ctx_len = 5
+        view_reqs = {
+            SampleBatch.T: ViewRequirement(SampleBatch.T),
+            SampleBatch.OBS: ViewRequirement("obs", space=obs_space),
+            # include the current obs in the context
+            "prev_obses": ViewRequirement("obs", shift=f"-{ctx_len - 1}:0"),
+        }
+
+        n_steps = 100
+        obses = np.random.rand(n_steps, 4)
+        # list to store the last ctx_len obses
+        for training_mode in [False, True]:
+            ac = AgentCollector(
+                view_reqs=view_reqs,
+                is_policy_recurrent=True,
+                max_seq_len=20,  # default max_seq_len in lstm
+                is_training=training_mode,
+            )
+            obses_ctx = []
+            for t, obs in enumerate(obses):
+                if t == 0:
+                    # e.g. state = env.reset()
+                    ac.add_init_obs(
+                        episode_id=0,
+                        agent_index=1,
+                        env_id=0,
+                        t=-1,
+                        init_obs=obs,
+                    )
+                    obses_ctx.extend([obs for _ in range(ctx_len)])
+                else:
+                    # e.g. next_state = env.step()
+                    ac.add_action_reward_next_obs(
+                        {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t - 1}
+                    )
+                    # pop from front and add to the end
+                    obses_ctx.pop(0)
+                    obses_ctx.append(obs)
+                eval_batch = ac.build_for_inference()
+                # batch size should always be one
+                self.assertEqual(eval_batch.count, 1)
+                # shape of prev_obses should be (1, ctx_len, 4)
+                self.assertEqual(eval_batch["prev_obses"].shape, (1, ctx_len, 4))
+                # obs should always be the last time step obs added
+                check(eval_batch["obs"], obs[None])
+                # prev_obs should always be the last ctx_len time steps obs added
+                # (excluding the current time step)
+                check(eval_batch["prev_obses"], np.stack(obses_ctx, 0)[None])
+
+            # in inference mode the buffer length at the end should be just ctx_len
+            if not training_mode:
+                check(len(ac.buffers[SampleBatch.OBS][0]), ctx_len)
+            else:
+                # otherwise it should be n_steps + ctx_len - 1
+                check(len(ac.buffers[SampleBatch.OBS][0]), n_steps + ctx_len - 1)
+
+        self.assertTrue(ac.training, "Training mode should be True.")
+        train_batch = ac.build_for_training(view_reqs)
+        self.assertEqual(
+            len(train_batch["seq_lens"]), math.ceil(n_steps / ac.max_seq_len)
+        )
+        self.assertEqual(train_batch["prev_obses"].shape, (n_steps - 1, ctx_len, 4))
+        self.assertEqual(train_batch[SampleBatch.OBS].shape, (n_steps - 1, 4))
+
+    def test_inference_respects_causality(self):
+        obs_space = gym.spaces.Box(-np.ones(4), np.ones(4))
+        view_reqs = {
+            SampleBatch.T: ViewRequirement(SampleBatch.T),
+            SampleBatch.OBS: ViewRequirement("obs", space=obs_space),
+            "future_obs": ViewRequirement("obs", shift=1),
+            "past_obs": ViewRequirement("obs", shift=-1),
+        }
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
+
+        self._simulate_env_steps(ac, n_steps=10)
+
+        # build_for_train should return all keys
+        train_batch = ac.build_for_training(view_reqs)
+        self.assertTrue(all(key in train_batch.keys() for key in view_reqs.keys()))
+
+        # should error out since future_obs has used_for_compute_actions=True but
+        # depends on future
+        with self.assertRaises(ValueError):
+            ac.build_for_inference()
+
+        view_reqs["future_obs"] = ViewRequirement(
+            "obs", shift=1, used_for_compute_actions=False
+        )
+        # since future_obs is shoulld not be used in inference, it should not be in the
+        # batch
+        eval_batch = ac.build_for_inference()
+        self.assertTrue(
+            all(
+                k in eval_batch.keys()
+                for k, vr in view_reqs.items()
+                if vr.used_for_compute_actions
+            )
+        )
+
     def test_slice_with_repeat_value_1(self):
 
         obs_space = gym.spaces.Box(-np.ones(4), np.ones(4))
@@ -61,11 +150,11 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             SampleBatch.OBS: ViewRequirement("obs", space=obs_space),
             "prev_obses": ViewRequirement("obs", shift=f"-{ctx_len}:-1"),
         }
-        ac = _AgentCollector(view_reqs=view_reqs, policy=FakeRNNPolicy(max_seq_len=1))
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
 
         obses = self._simulate_env_steps(ac, n_steps=10)
 
-        sample_batch = ac.build(view_reqs)
+        sample_batch = ac.build_for_training(view_reqs)
         # exclude the last one since these are the next_obses
         expected_obses = np.stack(obses[:-1])
 
@@ -100,11 +189,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 "obs", shift=f"-{ctx_len}:-1", batch_repeat_value=ctx_len
             ),
         }
-        ac = _AgentCollector(view_reqs=view_reqs, policy=FakeRNNPolicy(max_seq_len=1))
-
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
         obses = self._simulate_env_steps(ac, n_steps=10)
 
-        sample_batch = ac.build(view_reqs)
+        sample_batch = ac.build_for_training(view_reqs)
         # exclude the last one since these are the next_obses
         expected_obses = np.stack(obses[:-1])
 
@@ -124,11 +212,11 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             SampleBatch.OBS: ViewRequirement("obs", space=obs_space),
             "prev_obses": ViewRequirement("obs", shift=-1, batch_repeat_value=ctx_len),
         }
-        ac = _AgentCollector(view_reqs=view_reqs, policy=FakeRNNPolicy(max_seq_len=1))
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
 
         obses = self._simulate_env_steps(ac, n_steps=10)
 
-        sample_batch = ac.build(view_reqs)
+        sample_batch = ac.build_for_training(view_reqs)
         # exclude the last one since these are the next_obses
         expected_obses = np.stack(obses[:-1])
 
@@ -147,11 +235,11 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             SampleBatch.OBS: ViewRequirement("obs", space=obs_space),
             "prev_obses": ViewRequirement("obs", shift=-1),
         }
-        ac = _AgentCollector(view_reqs=view_reqs, policy=FakeRNNPolicy(max_seq_len=1))
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
 
         obses = self._simulate_env_steps(ac, n_steps=10)
 
-        sample_batch = ac.build(view_reqs)
+        sample_batch = ac.build_for_training(view_reqs)
         # exclude the last one since these are the next_obses
         expected_obses = np.stack(obses[:-1])
 
@@ -168,10 +256,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             SampleBatch.OBS: ViewRequirement("obs", space=obs_space),
             SampleBatch.NEXT_OBS: ViewRequirement("obs", shift=1),
         }
-        ac = _AgentCollector(view_reqs=view_reqs, policy=FakeRNNPolicy(max_seq_len=1))
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
 
         obses = self._simulate_env_steps(ac, n_steps=10)
-        sample_batch = ac.build(view_reqs)
+        sample_batch = ac.build_for_training(view_reqs)
         check(sample_batch[SampleBatch.NEXT_OBS], np.stack(obses)[1:])
 
     def test_shift_positive_one_with_repeat_larger_1(self):
@@ -184,11 +272,11 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 "obs", shift=1, batch_repeat_value=ctx_len
             ),
         }
-        ac = _AgentCollector(view_reqs=view_reqs, policy=FakeRNNPolicy(max_seq_len=1))
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
 
         obses = self._simulate_env_steps(ac, n_steps=10)
 
-        sample_batch = ac.build(view_reqs)
+        sample_batch = ac.build_for_training(view_reqs)
         expected_obses = np.stack(obses)
 
         self.assertEqual(sample_batch[SampleBatch.NEXT_OBS].shape, (2, 4))
@@ -209,11 +297,11 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "prev_obses": ViewRequirement("obs", shift=[-3, -1]),
         }
 
-        ac = _AgentCollector(view_reqs=view_reqs, policy=FakeRNNPolicy(max_seq_len=1))
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
 
         obses = self._simulate_env_steps(ac, n_steps=10)
 
-        sample_batch = ac.build(view_reqs)
+        sample_batch = ac.build_for_training(view_reqs)
         # exclude the last one since these are the next_obses
         expected_obses = np.stack(obses[:-1])
 
@@ -233,11 +321,12 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "prev_obses": ViewRequirement("obs", shift="-5:-1:2"),  # [-5, -3, -1]
         }
 
-        ac = _AgentCollector(view_reqs=view_reqs, policy=FakeRNNPolicy(max_seq_len=1))
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
 
         obses = self._simulate_env_steps(ac, n_steps=10)
 
-        sample_batch = ac.build(view_reqs)
+        sample_batch = ac.build_for_training(view_reqs)
+
         # exclude the last one since these are the next_obses
         expected_obses = np.stack(obses[:-1])
 

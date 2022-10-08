@@ -5,7 +5,7 @@ the "seed" config key.
 import argparse
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.examples.env.env_using_remote_actor import (
     CartPoleWithRemoteParamServer,
     ParameterStorage,
@@ -52,12 +52,16 @@ if __name__ == "__main__":
         "training_iteration": args.stop_iters,
     }
 
-    results1 = tune.run(args.run, config=config, stop=stop, verbose=1)
-    results2 = tune.run(args.run, config=config, stop=stop, verbose=1)
+    results1 = tune.Tuner(
+        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+    ).fit()
+    results2 = tune.Tuner(
+        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+    ).fit()
 
     if args.as_test:
-        results1 = list(results1.results.values())[0]
-        results2 = list(results2.results.values())[0]
+        results1 = results1.get_best_result().metrics
+        results2 = results2.get_best_result().metrics
         # Test rollout behavior.
         check(results1["hist_stats"], results2["hist_stats"])
         # As well as training behavior (minibatch sequence during SGD

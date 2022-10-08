@@ -11,7 +11,7 @@ import numpy as np
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms.registry import get_algorithm_class
 
 parser = argparse.ArgumentParser()
@@ -104,18 +104,23 @@ if __name__ == "__main__":
     }
 
     print("Training policy until desired reward/timesteps/iterations. ...")
-    results = tune.run(
+    tuner = tune.Tuner(
         args.run,
-        config=config,
-        stop=stop,
-        verbose=2,
-        checkpoint_freq=1,
-        checkpoint_at_end=True,
+        param_space=config,
+        run_config=air.RunConfig(
+            stop=stop,
+            verbose=2,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=1,
+                checkpoint_at_end=True,
+            ),
+        ),
     )
+    results = tuner.fit()
 
     print("Training completed. Restoring new Trainer for action inference.")
     # Get the last checkpoint from the above training run.
-    checkpoint = results.get_last_checkpoint()
+    checkpoint = results.get_best_result().checkpoint
     # Create new Trainer and restore its state from the last checkpoint.
     algo = get_algorithm_class(args.run)(config=config)
     algo.restore(checkpoint)

@@ -30,21 +30,21 @@ DOCKER_HUB_DESCRIPTION = {
 }
 
 PY_MATRIX = {
-    "py36": "3.6.12",
-    "py37": "3.7.7",
-    "py38": "3.8.5",
-    "py39": "3.9.5",
-    "py310": "3.10.4",
+    "py36": "3.6",
+    "py37": "3.7",
+    "py38": "3.8",
+    "py39": "3.9",
+    "py310": "3.10",
 }
 
 BASE_IMAGES = {
-    "cu116": "nvidia/cuda:11.6.1-cudnn8-devel-ubuntu18.04",
-    "cu113": "nvidia/cuda:11.3.1-cudnn8-devel-ubuntu18.04",
-    "cu112": "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04",
-    "cu111": "nvidia/cuda:11.1.1-cudnn8-devel-ubuntu18.04",
-    "cu110": "nvidia/cuda:11.0.3-cudnn8-devel-ubuntu18.04",
-    "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu18.04",
-    "cu101": "nvidia/cuda:10.1-cudnn8-devel-ubuntu18.04",
+    "cu116": "nvidia/cuda:11.6.1-cudnn8-devel-ubuntu20.04",
+    "cu113": "nvidia/cuda:11.3.1-cudnn8-devel-ubuntu20.04",
+    "cu112": "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04",
+    "cu111": "nvidia/cuda:11.1.1-cudnn8-devel-ubuntu20.04",
+    "cu110": "nvidia/cuda:11.0.3-cudnn8-devel-ubuntu20.04",
+    "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu20.04",
+    "cu101": "nvidia/cuda:10.1-cudnn8-devel-ubuntu20.04",
     "cpu": "ubuntu:focal",
 }
 
@@ -192,7 +192,7 @@ def _build_docker_image(
         )
 
     # TODO(https://github.com/ray-project/ray/issues/16599):
-    # remove below after supporting ray-ml images with Python 3.9+
+    # remove below after supporting ray-ml images with Python 3.9/3.10
     if image_name == "ray-ml" and py_version in {"py39", "py310"}:
         print(f"{image_name} image is currently unsupported with " "Python 3.9/3.10")
         return
@@ -453,7 +453,7 @@ def push_and_tag_images(
                     continue
 
                 # TODO(https://github.com/ray-project/ray/issues/16599):
-                # remove below after supporting ray-ml images with Python 3.9
+                # remove below after supporting ray-ml images with Python 3.9/3.10
                 if image_name in ["ray-ml"] and (
                     PY_MATRIX[py_name].startswith("3.9")
                     or PY_MATRIX[py_name].startswith("3.10")
@@ -607,7 +607,8 @@ if __name__ == "__main__":
         choices=list(PY_MATRIX.keys()),
         default="py37",
         nargs="*",
-        help="Which python versions to build. " "Must be in (py36, py37, py38, py39)",
+        help="Which python versions to build. "
+        "Must be in (py36, py37, py38, py39, py310)",
     )
     parser.add_argument(
         "--device-types",

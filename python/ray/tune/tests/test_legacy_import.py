@@ -58,7 +58,10 @@ def test_import_module_raises_warnings(module):
 
 def test_import_experiment_experiment(logging_setup):
     # No warning - original imports still work
-    from ray.tune.experiment import Experiment, convert_to_experiment_list  # noqa: F401
+    from ray.tune.experiment import (  # noqa: F401
+        Experiment,  # noqa: F401
+        _convert_to_experiment_list,  # noqa: F401
+    )  # noqa: F401
 
 
 def test_import_logger_all(logging_setup):

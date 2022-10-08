@@ -7,22 +7,33 @@ from ray.data.preprocessor import Preprocessor
 
 
 class PowerTransformer(Preprocessor):
-    """Apply power function to make data more normally distributed.
+    """Apply a `power transform <https://en.wikipedia.org/wiki/Power_transform>`_ to
+    make your data more normally distributed.
 
-    See https://en.wikipedia.org/wiki/Power_transform.
+    Some models expect data to be normally distributed. By making your data more
+    Gaussian-like, you might be able to improve your model's performance.
 
-    Supports the following methods:
-        * Yeo-Johnson (positive and negative numbers)
-        * Box-Cox (positive numbers only)
+    This preprocessor supports the following transformations:
 
-    Currently, this requires the user to specify the ``power`` parameter.
-    In the future, an optimal value can be determined in ``fit()``.
+    * `Yeo-Johnson <https://en.wikipedia.org/wiki/Power_transform#Yeo%E2%80%93Johnson_transformation>`_
+    * `Box-Cox <https://en.wikipedia.org/wiki/Power_transform#Box%E2%80%93Cox_transformation>`_
+
+    Box-Cox requires all data to be positive.
+
+    .. warning::
+
+        You need to manually specify the transform's power parameter. If you
+        choose a bad value, the transformation might not work well.
 
     Args:
-        columns: The columns that will individually be transformed.
-        power: The power parameter which is used as the exponent.
-        method: Supports "yeo-johnson" and "box-cox". Defaults to "yeo-johnson".
-    """
+        columns: The columns to separately transform.
+        power: A parameter that determines how your data is transformed. Practioners
+            typically set ``power`` between :math:`-2.5` and :math:`2.5`, although you
+            may need to try different values to find one that works well.
+        method: A string representing which transformation to apply. Supports
+            ``"yeo-johnson"`` and ``"box-cox"``. If you choose ``"box-cox"``, your data
+            needs to be positive. Defaults to ``"yeo-johnson"``.
+    """  # noqa: E501
 
     _valid_methods = ["yeo-johnson", "box-cox"]
     _is_fittable = False
@@ -70,8 +81,6 @@ class PowerTransformer(Preprocessor):
 
     def __repr__(self):
         return (
-            f"PowerTransformer("
-            f"columns={self.columns}, "
-            f"method={self.method}, "
-            f"power={self.power})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"power={self.power!r}, method={self.method!r})"
         )

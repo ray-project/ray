@@ -7,8 +7,11 @@ import { makeStyles } from "@material-ui/core/styles";
 import Typography from "@material-ui/core/Typography";
 import { NightsStay, VerticalAlignTop, WbSunny } from "@material-ui/icons";
 import classnames from "classnames";
-import React, { PropsWithChildren } from "react";
+import React, { PropsWithChildren, useContext } from "react";
+
 import { RouteComponentProps } from "react-router-dom";
+import { GlobalContext } from "../../App";
+import { UsageStatsAlert } from "../../common/UsageStatsAlert";
 
 import SpeedTools from "../../components/SpeedTools";
 import Logo from "../../logo.svg";
@@ -62,6 +65,7 @@ const BasicLayout = (
 ) => {
   const classes = useStyles();
   const { location, history, children, setTheme, theme } = props;
+  const { grafanaHost } = useContext(GlobalContext);
 
   return (
     <div className={classes.root}>
@@ -127,12 +131,25 @@ const BasicLayout = (
           >
             <ListItemText>EVENTS</ListItemText>
           </ListItem>
+          {grafanaHost !== "DISABLED" && (
+            <ListItem
+              button
+              className={classnames(
+                classes.menuItem,
+                location.pathname.includes("metrics") && classes.selected,
+              )}
+              onClick={() => history.push("/metrics")}
+            >
+              <ListItemText>METRICS</ListItemText>
+            </ListItem>
+          )}
+
           <ListItem
             button
             className={classnames(classes.menuItem)}
-            onClick={() => history.push("/")}
+            onClick={() => history.push("/legacy")}
           >
-            <ListItemText>BACK TO LEGACY DASHBOARD</ListItemText>
+            <ListItemText>TO LEGACY DASHBOARD</ListItemText>
           </ListItem>
           <ListItem>
             <IconButton
@@ -159,7 +176,10 @@ const BasicLayout = (
           <SpeedTools />
         </List>
       </Drawer>
-      <div className={classes.child}>{children}</div>
+      <div className={classes.child}>
+        {children}
+        <UsageStatsAlert />
+      </div>
     </div>
   );
 };

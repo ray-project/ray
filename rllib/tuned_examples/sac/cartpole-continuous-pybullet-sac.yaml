@@ -14,7 +14,7 @@ cartpole-sac:
         n_step: 3
         replay_buffer_config:
           type: MultiAgentPrioritizedReplayBuffer
-          learning_starts: 256
+        num_steps_sampled_before_learning_starts: 256
         initial_alpha: 0.2
         clip_actions: false
         min_sample_timesteps_per_iteration: 1000

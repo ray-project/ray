@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, List
+from typing import Any
 
 import numpy as np
 import tree  # dm_tree
@@ -71,11 +71,11 @@ class StateBufferConnector(AgentConnector):
 
         return ac_data
 
-    def to_config(self):
+    def to_state(self):
         return StateBufferConnector.__name__, None
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
+    def from_state(ctx: ConnectorContext, params: Any):
         return StateBufferConnector(ctx)
 
 

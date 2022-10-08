@@ -14,7 +14,7 @@ import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import tune
+from ray import air, tune
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -130,7 +130,9 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=1)
+    results = tune.Tuner(
+        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+    ).fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

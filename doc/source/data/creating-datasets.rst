@@ -11,9 +11,9 @@ Ray :class:`Datasets <ray.data.Dataset>` can be created from:
 * local and external storage systems (local disk, cloud storage, HDFS, etc.).
 
 This guide surveys the many ways to create a ``Dataset``. If none of these meet your
-needs, please reach out on `Discourse <https://discuss.ray.io/>`__ or open a feature
+needs, please reach out to us on `Discourse <https://discuss.ray.io/>`__ or open a feature
 request on the `Ray GitHub repo <https://github.com/ray-project/ray>`__, and check out
-our :ref:`guide for implementing a custom Datasets datasource <datasets_custom_datasource>`
+our :ref:`guide for implementing a custom Datasets datasource <custom_datasources>`
 if you're interested in rolling your own integration!
 
 .. _dataset_generate_data:
@@ -162,11 +162,28 @@ Supported File Formats
 
   See the API docs for :func:`read_text() <ray.data.read_text>`.
 
+.. tabbed:: Images (experimental)
+
+  Call :func:`~ray.data.read_images` to read images into a :class:`~ray.data.Dataset`. 
+
+  This function stores image data in single-column
+  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
+  blocks using the 
+  :class:`tensor extension type <ray.data.extensions.tensor_extension.ArrowTensorType>`.
+  For more information on working with tensors in Datasets, read the 
+  :ref:`tensor data guide <datasets_tensor_support>`.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __read_images_begin__
+    :end-before: __read_images_end__
+
 .. tabbed:: Binary
 
   Read binary files into a ``Dataset``. Each binary file will be treated as a single row
   of opaque bytes. These bytes can be decoded into tensor, tabular, text, or any other
-  kind of data using ``ds.map()`` to apply a per-row decoding UDF.
+  kind of data using :meth:`~ray.data.Dataset.map_batches` to apply a per-row decoding
+  :ref:`user-defined function <transform_datasets_writing_udfs>`.
 
   Although this simple example demonstrates reading a single file, note that Datasets
   can also read directories of binary files, with one bytes block created per file.
@@ -177,6 +194,20 @@ Supported File Formats
     :end-before: __read_binary_end__
 
   See the API docs for :func:`read_binary_files() <ray.data.read_binary_files>`.
+
+.. tabbed:: TFRecords
+
+  Call :func:`~ray.data.read_tfrecords` to read TFRecord files into a tabular
+  :class:`~ray.data.Dataset`.
+
+  .. warning::
+      Only `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
+      records are supported.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __read_tfrecords_begin__
+    :end-before: __read_tfrecords_end__
 
 .. _dataset_reading_remote_storage:
 
@@ -388,11 +419,8 @@ futures.
   ``Dataset`` backed by the distributed Pandas DataFrame partitions that underly the
   Dask DataFrame.
 
-  .. note::
-
-    This conversion should have near-zero overhead: it involves zero data copying and
-    zero data movement. Datasets simply reinterprets the existing Dask DataFrame partitions
-    as Ray Datasets partitions without touching the underlying data.
+  This conversion has near-zero overhead, since Datasets simply reinterprets existing
+  Dask-in-Ray partition objects as Dataset blocks.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
@@ -418,11 +446,8 @@ futures.
   Create a ``Dataset`` from a Modin DataFrame. This constructs a ``Dataset``
   backed by the distributed Pandas DataFrame partitions that underly the Modin DataFrame.
 
-  .. note::
-
-    This conversion should have near-zero overhead: it involves zero data copying and
-    zero data movement. Datasets simply reinterprets the existing Modin DataFrame partitions
-    as Ray Datasets partitions without touching the underlying data.
+  This conversion has near-zero overhead, since Datasets simply reinterprets existing
+  Modin partition objects as Dataset blocks.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
@@ -434,11 +459,8 @@ futures.
   Create a ``Dataset`` from a Mars DataFrame. This constructs a ``Dataset``
   backed by the distributed Pandas DataFrame partitions that underly the Mars DataFrame.
 
-  .. note::
-
-    This conversion should have near-zero overhead: it involves zero data copying and
-    zero data movement. Datasets simply reinterprets the existing Mars DataFrame partitions
-    as Ray Datasets partitions without touching the underlying data.
+  This conversion has near-zero overhead, since Datasets simply reinterprets existing
+  Mars partition objects as Dataset blocks.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
@@ -533,7 +555,7 @@ converts it into a Ray Dataset directly.
 Custom Datasources
 ------------------
 
-Datasets can read and write in parallel to `custom datasources <package-ref.html#custom-datasource-api>`__ defined in Python.
+Datasets can read and write in parallel to :ref:`custom datasources <data_source_api>` defined in Python.
 Once you have implemented `YourCustomDataSource`, you can use it like any other source in Ray Data:
 
 .. code-block:: python
@@ -543,6 +565,8 @@ Once you have implemented `YourCustomDataSource`, you can use it like any other 
 
     # Write to a custom datasource.
     ds.write_datasource(YourCustomDatasource(), **write_args)
+
+For more details, check out :ref:`guide for implementing a custom Datasets datasource <custom_datasources>`.
 
 --------------------------
 Performance Considerations

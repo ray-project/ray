@@ -38,6 +38,7 @@ class Counter {
   bool CheckRestartInActorCreationTask();
   bool CheckRestartInActorTask();
   ray::ActorHandle<Counter> CreateChildActor(std::string actor_name);
+  int Plus1ForActor(ray::ActorHandle<Counter> actor);
 
   std::string GetNamespaceInActor();
 
@@ -50,10 +51,17 @@ class Counter {
 
   bool Initialized() { return ray::IsInitialized(); }
 
+  std::string GetEnvVar(std::string key) {
+    auto value = std::getenv(key.c_str());
+    return value == NULL ? "" : std::string(value);
+  }
+
  private:
   int count;
   bool is_restared = false;
 };
+
+std::string GetEnvVar(std::string key);
 
 inline Counter *CreateCounter() { return new Counter(0); }
 RAY_REMOTE(CreateCounter);
