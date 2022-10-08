@@ -45,9 +45,9 @@ public abstract class BaseServeTest {
 
   public static void initRay() {
     previousInited = Ray.isInitialized();
-    LOGGER.info("Base serve test. Previous inited:", previousInited);
+    LOGGER.info("Base serve test. Previous inited:{}", previousInited);
     previousNamespace = System.getProperty("ray.job.namespace");
-    LOGGER.info("Base serve test. Previous namespace:", previousNamespace);
+    LOGGER.info("Base serve test. Previous namespace:{}", previousNamespace);
 
     System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
     Ray.init();
