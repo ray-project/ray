@@ -53,6 +53,7 @@ UPSCALING_INITIAL_NUM_NODES = 5
 NodeResources = ResourceDict
 ResourceDemands = List[ResourceDict]
 
+
 class UtilizationScore(Protocol):
     """This fancy class just defines the `UtilizationScore` protocol to be
     some type that is a "totally ordered set" (i.e. things that can be sorted).
@@ -210,8 +211,8 @@ class ResourceDemandScheduler:
             that still cannot be fulfilled.
         """
         utilization_scorer = partial(
-                self.utilization_scorer, node_availability_summary=None
-            )
+            self.utilization_scorer, node_availability_summary=None
+        )
         self._update_node_resources_from_runtime(nodes, max_resources_by_ip)
 
         node_resources: List[ResourceDict]
@@ -541,7 +542,9 @@ class ResourceDemandScheduler:
         strict_spreads: List[List[ResourceDict]],
         node_resources: List[ResourceDict],
         node_type_counts: Dict[NodeType, int],
-        utilization_scorer: Callable[[NodeResources, ResourceDemands], Optional[UtilizationScore]]
+        utilization_scorer: Callable[
+            [NodeResources, ResourceDemands], Optional[UtilizationScore]
+        ],
     ):
         """For each strict spread, attempt to reserve as much space as possible
         on the node, then allocate new nodes for the unfulfilled portion.
