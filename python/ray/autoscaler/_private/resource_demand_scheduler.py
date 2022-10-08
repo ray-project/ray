@@ -53,7 +53,7 @@ UPSCALING_INITIAL_NUM_NODES = 5
 
 class UtilizationScore(Protocol):
     """This fancy class just defines the `UtilizationScore` protocol to be
-    some type which is well ordered (e.g. things that can be sorted).
+    some type that is a "totally ordered set" (i.e. things that can be sorted).
 
     What we're really trying to express is
 
@@ -64,6 +64,9 @@ class UtilizationScore(Protocol):
     but Comparable isn't a real type and, and a bound with a type argument
     can't be enforced (f-bounded polymorphism with contravariance). See Guido's
     comment for more details: https://github.com/python/typing/issues/59.
+
+    This isn't just a `float`. In the case of the default scorer, it's a
+    `Tuple[float, float]` which is quite difficult to map to a single number.
 
     """
 
