@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import time
+import uuid
 from typing import Dict, Union
 from unittest.mock import patch
 
@@ -10,7 +11,12 @@ import pytest
 import ray
 from ray import tune
 from ray.air import session, Checkpoint
-from ray.air._internal.remote_storage import download_from_uri, upload_to_uri
+from ray.air._internal.remote_storage import (
+    download_from_uri,
+    upload_to_uri,
+    delete_at_uri,
+)
+from ray.tune.logger import NoopLogger
 from ray.tune.trainable import wrap_function
 
 
@@ -26,6 +32,9 @@ class SavingTrainable(tune.Trainable):
     def __init__(self, return_type: str, *args, **kwargs):
         self.return_type = return_type
         super(SavingTrainable, self).__init__(*args, **kwargs)
+
+    def step(self):
+        return {"iter": self.training_iteration}
 
     def save_checkpoint(self, tmp_checkpoint_dir: str):
         checkpoint_data = {"data": 1}
@@ -66,6 +75,11 @@ class SavingTrainable(tune.Trainable):
             with open(checkpoint_file, "rb") as f:
                 checkpoint_data = json.load(f)
 
+        checkpoint_data = {
+            key: value
+            for key, value in checkpoint_data.items()
+            if not key.startswith("_")
+        }
         assert checkpoint_data == {"data": 1}, checkpoint_data
 
 
@@ -224,6 +238,179 @@ def test_sync_timeout(tmpdir, hanging):
         assert not check_dir.exists()
     else:
         assert check_dir.listdir()
+
+
+def test_find_latest_checkpoint_local(tmpdir):
+    """Tests that we identify the latest available checkpoint correctly.
+
+    When new checkpoints are created, they should be the latest available ones.
+    When the latest checkpoint is deleted, we should go back to the previous one.
+    """
+
+    def _logger(config):
+        return NoopLogger(config, str(tmpdir))
+
+    trainable = SavingTrainable(
+        "object",
+        logger_creator=_logger,
+        remote_checkpoint_dir=None,
+        sync_timeout=0.5,
+    )
+    assert trainable._get_latest_local_available_checkpoint() is None
+
+    trainable.save()  # 0
+
+    assert trainable._get_latest_local_available_checkpoint() == str(
+        tmpdir / "checkpoint_000000"
+    )
+
+    trainable.train()
+    trainable.save()  # 1
+
+    assert trainable._get_latest_local_available_checkpoint() == str(
+        tmpdir / "checkpoint_000001"
+    )
+
+    trainable.train()
+    trainable.save()  # 2
+
+    assert trainable._get_latest_local_available_checkpoint() == str(
+        tmpdir / "checkpoint_000002"
+    )
+
+    assert (tmpdir / "checkpoint_000002").exists()
+    (tmpdir / "checkpoint_000002").remove()
+
+    assert trainable._get_latest_local_available_checkpoint() == str(
+        tmpdir / "checkpoint_000001"
+    )
+
+
+def test_find_latest_checkpoint_remote(tmpdir):
+    """Tests that we identify the latest available checkpoint correctly.
+
+    When new checkpoints are created, they should be the latest available ones.
+    When the latest checkpoint is deleted, we should go back to the previous one.
+    """
+    remote_uri = "memory:///test/location_latest_checkpoint"
+
+    def _logger(config):
+        return NoopLogger(config, str(tmpdir))
+
+    trainable = SavingTrainable(
+        "object",
+        logger_creator=_logger,
+        remote_checkpoint_dir=remote_uri,
+        sync_timeout=0.5,
+    )
+    assert trainable._get_latest_remote_available_checkpoint() is None
+
+    trainable.save()  # 0
+
+    assert trainable._get_latest_remote_available_checkpoint() == str(
+        tmpdir / "checkpoint_000000"
+    )
+
+    trainable.train()
+    trainable.save()  # 1
+
+    assert trainable._get_latest_remote_available_checkpoint() == str(
+        tmpdir / "checkpoint_000001"
+    )
+
+    trainable.train()
+    trainable.save()  # 2
+
+    assert trainable._get_latest_remote_available_checkpoint() == str(
+        tmpdir / "checkpoint_000002"
+    )
+
+    delete_at_uri(remote_uri + "/checkpoint_000002")
+
+    assert trainable._get_latest_remote_available_checkpoint() == str(
+        tmpdir / "checkpoint_000001"
+    )
+
+
+@pytest.mark.parametrize("upload_uri", [None, "memory:///test/location_recover_latest"])
+@pytest.mark.parametrize("fetch_from_cloud", [False, True])
+def test_recover_from_latest(tmpdir, upload_uri, fetch_from_cloud):
+    """Test that trainable recovery falls back to recovery from latest checkpoint.
+
+    Creates a trainable, saves a few checkpoints.
+
+    Asserts that restoring from a non-existing path falls back to the latest saved
+    checkpoint.
+
+    Asserts that restoring from a previously-existing path falls back to the latest
+    saved checkpoints.
+
+    If `fetch_from_cloud=True`, asserts that newer checkpoints on cloud are preferred
+    over older checkpoints on local disk.
+    """
+
+    def _logger(config):
+        return NoopLogger(config, str(tmpdir))
+
+    remote_checkpoint_dir = None
+    if upload_uri:
+        remote_checkpoint_dir = upload_uri + str(uuid.uuid4())
+
+    trainable = SavingTrainable(
+        "object",
+        logger_creator=_logger,
+        remote_checkpoint_dir=remote_checkpoint_dir,
+        sync_timeout=0.5,
+    )
+
+    assert trainable._get_latest_available_checkpoint() is None
+    trainable.save()
+
+    assert trainable._get_latest_available_checkpoint() == str(
+        tmpdir / "checkpoint_000000"
+    )
+
+    trainable.train()
+    trainable.save()
+
+    assert trainable._get_latest_available_checkpoint() == str(
+        tmpdir / "checkpoint_000001"
+    )
+    trainable.train()
+    trainable.save()
+
+    assert trainable._get_latest_available_checkpoint() == str(
+        tmpdir / "checkpoint_000002"
+    )
+
+    # Re-create trainable
+    trainable = SavingTrainable(
+        "object",
+        logger_creator=_logger,
+        remote_checkpoint_dir=remote_checkpoint_dir,
+        sync_timeout=0.5,
+    )
+
+    if remote_checkpoint_dir and fetch_from_cloud:
+        # Make us fetch checkpoint 2 from cloud
+        (tmpdir / "checkpoint_000002").remove()
+
+    trainable.restore(str(tmpdir / "not_found"), fallback_to_latest=True)
+    assert trainable.training_iteration == 2
+
+    # Delete existing checkpoint
+    (tmpdir / "checkpoint_000002").remove()
+
+    if remote_checkpoint_dir:
+        delete_at_uri(remote_checkpoint_dir + "/checkpoint_000002")
+
+        if fetch_from_cloud:
+            # Make us fetch checkpoint 1 from cloud
+            (tmpdir / "checkpoint_000001").remove()
+
+    trainable.restore(str(tmpdir / "checkpoint_000002"), fallback_to_latest=True)
+    # Fallback to checkpoint 1
+    assert trainable.training_iteration == 1
 
 
 if __name__ == "__main__":
