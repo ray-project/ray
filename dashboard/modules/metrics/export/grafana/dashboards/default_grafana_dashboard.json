@@ -266,19 +266,21 @@
       "dashes": false,
       "datasource": "Prometheus",
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {}
+        },
         "overrides": []
       },
-      "fill": 5,
+      "fill": 10,
       "fillGradient": 0,
       "gridPos": {
-        "h": 7,
+        "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 39
+        "x": 0,
+        "y": 9
       },
       "hiddenSeries": false,
-      "id": 32,
+      "id": 29,
       "legend": {
         "alignAsTable": true,
         "avg": false,
@@ -299,13 +301,12 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.17",
+      "pluginVersion": "7.1.5",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
       "seriesOverrides": [
         {
-          "$$hashKey": "object:475",
           "alias": "MAX",
           "color": "#1F60C4",
           "dashes": true,
@@ -319,18 +320,18 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(ray_object_store_memory / 1e6) by (Location)",
+          "expr": "sum(ray_object_store_memory / 1e9) by (Location)",
           "interval": "",
-          "legendFormat": "Object Store: {{instance}}",
+          "legendFormat": "",
           "queryType": "randomWalk",
           "refId": "A"
         },
         {
           "exemplar": true,
-          "expr": "",
+          "expr": "sum(ray_resources{Name=\"object_store_memory\"} / 1e9)",
           "hide": false,
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "MAX",
           "refId": "B"
         }
       ],
@@ -338,7 +339,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Object Store Memory Usage",
+      "title": "Object Store Memory",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -354,16 +355,14 @@
       },
       "yaxes": [
         {
-          "$$hashKey": "object:114",
-          "format": "mbytes",
-          "label": null,
+          "format": "gbytes",
+          "label": "",
           "logBase": 1,
           "max": null,
-          "min": null,
+          "min": "0",
           "show": true
         },
         {
-          "$$hashKey": "object:115",
           "format": "short",
           "label": null,
           "logBase": 1,
