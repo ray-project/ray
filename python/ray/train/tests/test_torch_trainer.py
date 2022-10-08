@@ -1,3 +1,4 @@
+import contextlib
 import pytest
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
@@ -24,11 +25,11 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-@pytest.fixture
-def ray_2_node_2_gpu():
+@contextlib.contextmanager
+def ray_start_2_node_cluster(num_cpus_per_node: int, num_gpus_per_node: int):
     cluster = Cluster()
     for _ in range(2):
-        cluster.add_node(num_cpus=4, num_gpus=2)
+        cluster.add_node(num_cpus=num_cpus_per_node, num_gpus=num_gpus_per_node)
 
     ray.init(address=cluster.address)
 
@@ -132,9 +133,7 @@ def test_checkpoint_freq(ray_start_4_cpus):
 @pytest.mark.parametrize(
     "num_gpus_per_worker,expected_devices", [(0.5, [0]), (1, [0]), (2, [0, 1])]
 )
-def test_tune_torch_get_device_gpu(
-    ray_2_node_2_gpu, num_gpus_per_worker, expected_devices
-):
+def test_tune_torch_get_device_gpu(num_gpus_per_worker, expected_devices):
     """Tests if GPU ids are set correctly when running train concurrently in nested actors
     (for example when used with Tune).
     """
@@ -142,40 +141,56 @@ def test_tune_torch_get_device_gpu(
     import time
 
     num_samples = 2
-    num_workers = int(4 // (num_gpus_per_worker * num_samples))
+    num_workers = 2
 
-    @patch("torch.cuda.is_available", lambda: True)
-    def train_fn():
-        # We use SPREAD strategy to force multiple trials on node.
-        # One worker from each trial is on each node.
-        # CUDA_VISIBLE_DEVICES for each worker has length of 1.
-        # So device index will always be 0.
-        assert train.torch.get_device().index in expected_devices
+    # We should have exactly enough resources in the cluster to run both samples
+    # concurrently.
+    total_gpus_required = num_workers * num_gpus_per_worker * num_samples
+    # Divide by two because of a 2 node cluster.
+    gpus_per_node = total_gpus_required // 2
 
-    @ray.remote
-    class TrialActor:
-        def __init__(self, warmup_steps):
-            # adding warmup_steps to the config
-            # to avoid the error of checkpoint name conflict
-            time.sleep(2 * warmup_steps)
-            self.trainer = TorchTrainer(
-                train_fn,
-                torch_config=TorchConfig(backend="gloo"),
-                scaling_config=ScalingConfig(
-                    num_workers=num_workers,
-                    use_gpu=True,
-                    resources_per_worker={"GPU": num_gpus_per_worker},
-                    placement_strategy="SPREAD",
-                    # Each gpu worker will be spread onto separate nodes. This forces
-                    # different Tune trials to run concurrently on the same node.
-                ),
-            )
+    # Use the same number of cpus per node as gpus per node.
+    with ray_start_2_node_cluster(
+        num_cpus_per_node=gpus_per_node, num_gpus_per_node=gpus_per_node
+    ):
 
-        def run(self):
-            return self.trainer.fit()
+        @patch("torch.cuda.is_available", lambda: True)
+        def train_fn():
+            # We use STRICT_SPREAD strategy to force multiple samples on the same node.
+            # For single or fractional GPU case, each worker has only 1 visible device (
+            # the other is taken by the other sample) so device index should be 0.
+            # For the multiple GPU case, each worker has 2 visible devices so device
+            # index should be either 0 or 1. It doesn't matter which.
+            assert train.torch.get_device().index in expected_devices
 
-    actors = [TrialActor.remote(1) for _ in range(num_samples)]
-    ray.get([actor.run.remote() for actor in actors])
+        @ray.remote(num_cpus=0)
+        class TrialActor:
+            def __init__(self, warmup_steps):
+                # adding warmup_steps to the config
+                # to avoid the error of checkpoint name conflict
+                time.sleep(2 * warmup_steps)
+                self.trainer = TorchTrainer(
+                    train_fn,
+                    torch_config=TorchConfig(backend="gloo"),
+                    scaling_config=ScalingConfig(
+                        num_workers=num_workers,
+                        use_gpu=True,
+                        resources_per_worker={"CPU": 1, "GPU": num_gpus_per_worker},
+                        # Need to specify 0 trainer resources so STRICT_SPREAD
+                        # will work.
+                        trainer_resources={"CPU": 0},
+                        placement_strategy="STRICT_SPREAD",
+                        # Each gpu worker will be spread onto separate nodes. This
+                        # forces different samples to run concurrently on the same
+                        # node.
+                    ),
+                )
+
+            def run(self):
+                return self.trainer.fit()
+
+        actors = [TrialActor.remote(1) for _ in range(num_samples)]
+        ray.get([actor.run.remote() for actor in actors])
 
 
 if __name__ == "__main__":
