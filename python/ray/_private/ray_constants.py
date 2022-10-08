@@ -69,8 +69,10 @@ RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR = (
     "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S"
 )
-# Defaults to 30 seconds. This should be enough time for the job to start.
-RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 30
+# Defaults to 10 minutes. This should be longer than the total time it takes for
+# the local working_dir and py_modules to be uploaded, or these files might get
+# garbage collected before the job starts.
+RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 10 * 60
 RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
 # Hook for running a user-specified runtime-env hook. This hook will be called
 # unconditionally given the runtime_env dict passed for ray.init. It must return

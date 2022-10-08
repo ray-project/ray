@@ -6,7 +6,7 @@ from typing import Dict, List
 
 @DeveloperAPI
 class ImportanceSampling(OffPolicyEstimator):
-    """The step-wise IS estimator.
+    r"""The step-wise IS estimator.
 
     Let s_t, a_t, and r_t be the state, action, and reward at timestep t.
 
