@@ -357,9 +357,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
     async def run(self, server):
         if not self._job_manager:
-            self._job_manager = JobManager(
-                self._dashboard_head.gcs_aio_client, self._dashboard_head.log_dir
-            )
+            self._job_manager = JobManager(self._dashboard_head.gcs_aio_client)
 
     @staticmethod
     def is_minimal_module():
