@@ -61,6 +61,9 @@ class CRRConfig(AlgorithmConfig):
         self.offline_sampling = True
         self.min_time_s_per_iteration = 10.0
 
+        self.td_error_loss_fn = "mse"
+        self.categorical_distribution_temperature = 1.0
+
     def training(
         self,
         *,
@@ -76,6 +79,8 @@ class CRRConfig(AlgorithmConfig):
         critic_hiddens: Optional[List[int]] = None,
         critic_hidden_activation: Optional[str] = None,
         tau: Optional[float] = None,
+        td_error_loss_fn: Optional[str] = None,
+        categorical_distribution_temperature: Optional[float] = None,
         **kwargs,
     ) -> "CRRConfig":
 
@@ -117,6 +122,12 @@ class CRRConfig(AlgorithmConfig):
             critic_hidden_activation: The activation used in the critic's fc network.
             tau: Polyak averaging coefficient
                 (making it 1 is reduces it to a hard update).
+            td_error_loss_fn: "huber" or "mse".
+                Loss function for calculating critic error.
+            categorical_distribution_temperature: Set the temperature parameter used
+                by Categorical action distribution. A valid temperature is in the range
+                of [0, 1]. Note that this mostly affects evaluation since critic error
+                uses selected action for return calculation.
             **kwargs: forward compatibility kwargs
 
         Returns:
@@ -148,6 +159,16 @@ class CRRConfig(AlgorithmConfig):
             self.critic_hidden_activation = critic_hidden_activation
         if tau is not None:
             self.tau = tau
+        if td_error_loss_fn is not None:
+            self.td_error_loss_fn = td_error_loss_fn
+            assert self.td_error_loss_fn in [
+                "huber",
+                "mse",
+            ], "td_error_loss_fn must be 'huber' or 'mse'."
+        if categorical_distribution_temperature is not None:
+            self.categorical_distribution_temperature = (
+                categorical_distribution_temperature
+            )
 
         return self
 
