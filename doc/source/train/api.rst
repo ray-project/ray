@@ -155,12 +155,3 @@ Base Classes (Developer APIs)
 
 .. autoclass:: ray.train.backend.BackendConfig
     :members:
-
-
-Deprecated APIs
----------------
-
-These APIs are deprecated and will be removed in a future Ray release:
-
-- ray.train.Trainer
-- ray.train.callbacks.*
