@@ -34,6 +34,7 @@ public abstract class BaseServeTest {
     }
     try {
       Ray.shutdown();
+      LOGGER.info("Base serve test shutdown ray. Is initialized:{}", Ray.isInitialized());
     } catch (Exception e) {
       LOGGER.error("ray shutdown error", e);
     }
@@ -56,6 +57,7 @@ public abstract class BaseServeTest {
   public static void shutdownRay() {
     if (!previousInited) {
       Ray.shutdown();
+      LOGGER.info("Base serve test shutdown ray. Is initialized:{}", Ray.isInitialized());
     }
     if (previousNamespace == null) {
       System.clearProperty("ray.job.namespace");
