@@ -448,7 +448,6 @@ class ClusterEventState(StateSchema):
     source_type: str = state_column(filterable=True)
     message: str = state_column(filterable=False)
     event_id: int = state_column(filterable=True)
-    custom_fields: dict = state_column(filterable=False, detail=True)
 
 
 @dataclass(init=True)
