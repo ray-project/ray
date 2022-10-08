@@ -266,9 +266,7 @@
       "dashes": false,
       "datasource": "Prometheus",
       "fieldConfig": {
-        "defaults": {
-          "custom": {}
-        },
+        "defaults": {},
         "overrides": []
       },
       "fill": 10,
@@ -301,12 +299,13 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.1.5",
+      "pluginVersion": "7.5.17",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
       "seriesOverrides": [
         {
+          "$$hashKey": "object:475",
           "alias": "MAX",
           "color": "#1F60C4",
           "dashes": true,
@@ -339,7 +338,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "Object Store Memory",
+      "title": "Scheduler Object Store Memory",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -355,6 +354,7 @@
       },
       "yaxes": [
         {
+          "$$hashKey": "object:508",
           "format": "gbytes",
           "label": "",
           "logBase": 1,
@@ -363,6 +363,7 @@
           "show": true
         },
         {
+          "$$hashKey": "object:509",
           "format": "short",
           "label": null,
           "logBase": 1,
@@ -1414,3 +1415,4 @@
   "uid": "rayDefaultDashboard",
   "version": 20
 }
+
