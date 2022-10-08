@@ -556,7 +556,7 @@ class ResourceDemandScheduler:
                 the cluster.
             node_type_counts (Dict[NodeType, int]): The amount of each type of
                 node pending or in the cluster.
-            utilization_scorer (Callable): A function that, given a node
+            utilization_scorer: A function that, given a node
                 type, its resources, and resource demands, returns what its
                 utilization would be.
 
@@ -649,7 +649,7 @@ def _add_min_workers_nodes(
         node_types: Node types config.
         max_workers: global max_workers constaint.
         ensure_min_cluster_size: resource demands from request_resources().
-        utilization_scorer (Callable): A function that, given a node
+        utilization_scorer: A function that, given a node
             type, its resources, and resource demands, returns what its
             utilization would be.
 
@@ -742,7 +742,7 @@ def get_nodes_for(
         resources: resource demands to fulfill.
         strict_spread: If true, each element in `resources` must be placed on a
             different node.
-        utilization_scorer (Callable): A function that, given a node
+        utilization_scorer: A function that, given a node
             type, its resources, and resource demands, returns what its
             utilization would be.
 
