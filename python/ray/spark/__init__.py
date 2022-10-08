@@ -49,15 +49,17 @@ class RayClusterOnSpark:
     It can be used to shutdown the cluster.
     """
 
-    def __init__(self, address, head_proc, spark_job_group_id):
+    def __init__(self, address, head_proc, spark_job_group_id, ray_context):
         self.address = address
         self.head_proc = head_proc
         self.spark_job_group_id = spark_job_group_id
+        self.ray_context = ray_context
 
     def shutdown(self):
         """
         Shutdown the ray cluster created by `init_cluster` API.
         """
+        self.ray_context.disconnect()
         get_spark_session().sparkContext.cancelJobGroup(self.spark_job_group_id)
         self.head_proc.kill()
 
@@ -234,9 +236,8 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
     # Waiting all ray workers spin up.
     time.sleep(10)
 
-    # discover the ray cluster.
-    # Q: We connect to an existing ray cluster, shall we set other arguments in `ray.init` ?
-    ray.init(address=f"{ray_head_hostname}:{ray_head_port}")
+    # connect to the ray cluster.
+    ray_context = ray.init(address=f"{ray_head_hostname}:{ray_head_port}")
 
     if is_in_databricks_runtime():
         try:
@@ -250,5 +251,6 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
     return RayClusterOnSpark(
         address=f"{ray_head_hostname}:{ray_head_port}",
         head_proc=ray_node_proc,
-        spark_job_group_id=spark_job_group_id
+        spark_job_group_id=spark_job_group_id,
+        ray_context=ray_context,
     )
