@@ -50,6 +50,8 @@ logger = logging.getLogger(__name__)
 # The minimum number of nodes to launch concurrently.
 UPSCALING_INITIAL_NUM_NODES = 5
 
+NodeResources = ResourceDict
+ResourceDemands = List[ResourceDict]
 
 class UtilizationScore(Protocol):
     """This fancy class just defines the `UtilizationScore` protocol to be
@@ -90,8 +92,8 @@ class UtilizationScore(Protocol):
 
 class UtilizationScorer(Protocol):
     def __call__(
-        node_resources: ResourceDict,
-        resources: List[ResourceDict],
+        node_resources: NodeResources,
+        resource_demands: ResourceDemands,
         *,
         node_availability_summary: NodeAvailabilitySummary,
     ) -> Optional[UtilizationScore]:
@@ -174,7 +176,8 @@ class ResourceDemandScheduler:
         unused_resources_by_ip: Dict[NodeIP, ResourceDict],
         pending_placement_groups: List[PlacementGroupTableData],
         max_resources_by_ip: Dict[NodeIP, ResourceDict],
-        ensure_min_cluster_size: List[ResourceDict] = None,
+        ensure_min_cluster_size: List[ResourceDict],
+        node_availability_summary: NodeAvailabilitySummary,
     ) -> (Dict[NodeType, int], List[ResourceDict]):
         """Given resource demands, return node types to add to the cluster.
 
@@ -199,10 +202,16 @@ class ResourceDemandScheduler:
                 this set of resources. This differs from resources_demands in
                 that we don't take into account existing usage.
 
+            node_availability_summary: A snapshot of the current
+                NodeAvailabilitySummary.
+
         Returns:
             Dict of count to add for each node type, and residual of resources
             that still cannot be fulfilled.
         """
+        utilization_scorer = partial(
+                self.utilization_scorer, node_availability_summary=None
+            )
         self._update_node_resources_from_runtime(nodes, max_resources_by_ip)
 
         node_resources: List[ResourceDict]
@@ -225,9 +234,7 @@ class ResourceDemandScheduler:
             self.max_workers,
             self.head_node_type,
             ensure_min_cluster_size,
-            utilization_scorer=partial(
-                self.utilization_scorer, node_availability_summary=None
-            ),
+            utilization_scorer=utilization_scorer,
         )
 
         # Step 3: get resource demands of placement groups and return the
@@ -265,6 +272,7 @@ class ResourceDemandScheduler:
             strict_spreads,
             node_resources,
             node_type_counts,
+            utilization_scorer,
         )
 
         # Calculate the nodes to add for bypassing max launch limit for
@@ -281,9 +289,7 @@ class ResourceDemandScheduler:
             self.head_node_type,
             max_to_add,
             unfulfilled_placement_groups_demands,
-            utilization_scorer=partial(
-                self.utilization_scorer, node_availability_summary=None
-            ),
+            utilization_scorer=utilization_scorer,
         )
         placement_groups_nodes_max_limit = {
             node_type: spread_pg_nodes_to_add.get(node_type, 0)
@@ -302,9 +308,7 @@ class ResourceDemandScheduler:
             self.head_node_type,
             max_to_add,
             unfulfilled,
-            utilization_scorer=partial(
-                self.utilization_scorer, node_availability_summary=None
-            ),
+            utilization_scorer=utilization_scorer,
         )
         logger.debug("Final unfulfilled: {}".format(final_unfulfilled))
         # Merge nodes to add based on demand and nodes to add based on
@@ -537,6 +541,7 @@ class ResourceDemandScheduler:
         strict_spreads: List[List[ResourceDict]],
         node_resources: List[ResourceDict],
         node_type_counts: Dict[NodeType, int],
+        utilization_scorer: Callable[[NodeResources, ResourceDemands], Optional[UtilizationScore]]
     ):
         """For each strict spread, attempt to reserve as much space as possible
         on the node, then allocate new nodes for the unfulfilled portion.
@@ -570,9 +575,7 @@ class ResourceDemandScheduler:
                 self.head_node_type,
                 max_to_add,
                 unfulfilled,
-                utilization_scorer=partial(
-                    self.utilization_scorer, node_availability_summary=None
-                ),
+                utilization_scorer=utilization_scorer,
                 strict_spread=True,
             )
             _inplace_add(node_type_counts, to_launch)
