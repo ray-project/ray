@@ -102,7 +102,7 @@ class TrainableUtil:
 
     @staticmethod
     def make_checkpoint_dir(
-        checkpoint_dir: str, index: Union[int, str], override=False
+        checkpoint_dir: str, index: Union[int, str], override: bool = False
     ):
         """Creates a checkpoint directory within the provided path.
 
@@ -338,6 +338,11 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
                 for k in keys:
                     setup_kwargs[k] = parameter_registry.get(prefix + k)
                 super(_Inner, self).setup(config, **setup_kwargs)
+
+            # Workaround for actor name not being logged correctly
+            # if __repr__ is not directly defined in a class.
+            def __repr__(self):
+                return super().__repr__()
 
         _Inner.__name__ = trainable_name
         return _Inner

@@ -37,7 +37,7 @@ class _ShufflePartitionOp(ShuffleOp):
         stats = BlockExecStats.builder()
         if block_udf:
             # TODO(ekl) note that this effectively disables block splitting.
-            blocks = list(block_udf(block))
+            blocks = list(block_udf([block]))
             if len(blocks) > 1:
                 builder = BlockAccessor.for_block(blocks[0]).builder()
                 for b in blocks:

@@ -5,6 +5,7 @@ from datetime import datetime
 import functools
 import gym
 import importlib
+import json
 import logging
 import math
 import numpy as np
@@ -25,10 +26,12 @@ from typing import (
     Type,
     Union,
 )
+import tree
 
 import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
+from ray.air.checkpoint import Checkpoint
 import ray.cloudpickle as pickle
 from ray.exceptions import GetTimeoutError, RayActorError, RayError
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -69,6 +72,7 @@ from ray.rllib.utils.annotations import (
     PublicAPI,
     override,
 )
+from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -89,6 +93,7 @@ from ray.rllib.utils.metrics import (
     TRAINING_ITERATION_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.utils.spaces import space_utils
@@ -107,13 +112,13 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
+from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.experiment.trial import ExportFormat
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
-from ray.tune.experiment.trial import ExportFormat
-from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util import log_once
 from ray.util.timer import _Timer
 
@@ -206,6 +211,101 @@ class Algorithm(Trainable):
         "num_env_steps_sampled",
         "num_env_steps_trained",
     ]
+
+    @staticmethod
+    def from_checkpoint(
+        checkpoint: Union[str, Checkpoint],
+        policy_ids: Optional[Container[PolicyID]] = None,
+        policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
+        policies_to_train: Optional[
+            Union[
+                Container[PolicyID],
+                Callable[[PolicyID, Optional[SampleBatchType]], bool],
+            ]
+        ] = None,
+    ) -> "Algorithm":
+        """Creates a new algorithm instance from a given checkpoint.
+
+        Note: This method must remain backward compatible from 2.0.0 on.
+
+        Args:
+            checkpoint: The path (str) to the checkpoint directory to use
+                or an AIR Checkpoint instance to restore from.
+            policy_ids: Optional list of PolicyIDs to recover. This allows users to
+                restore an Algorithm with only a subset of the originally present
+                Policies.
+            policy_mapping_fn: An optional (updated) policy mapping function
+                to use from here on.
+            policies_to_train: An optional list of policy IDs to be trained
+                or a callable taking PolicyID and SampleBatchType and
+                returning a bool (trainable or not?).
+                If None, will keep the existing setup in place. Policies,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
+
+        Returns:
+            The instantiated Algorithm.
+        """
+        checkpoint_info = get_checkpoint_info(checkpoint)
+
+        # Not possible for (v0.1) (algo class and config information missing
+        # or very hard to retrieve).
+        if checkpoint_info["checkpoint_version"] == version.Version("0.1"):
+            raise ValueError(
+                "Cannot restore a v0 checkpoint using `Algorithm.from_checkpoint()`!"
+                "In this case, do the following:\n"
+                "1) Create a new Algorithm object using your original config.\n"
+                "2) Call the `restore()` method of this algo object passing it"
+                " your checkpoint dir or AIR Checkpoint object."
+            )
+
+        if checkpoint_info["checkpoint_version"] < version.Version("1.0"):
+            raise ValueError(
+                "`checkpoint_info['checkpoint_version']` in `Algorithm.from_checkpoint"
+                "()` must be 1.0 or later! You are using a checkpoint with "
+                f"version v{checkpoint_info['checkpoint_version']}."
+            )
+
+        state = Algorithm._checkpoint_info_to_algorithm_state(
+            checkpoint_info=checkpoint_info,
+            policy_ids=policy_ids,
+            policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=policies_to_train,
+        )
+
+        return Algorithm.from_state(state)
+
+    @staticmethod
+    def from_state(state: Dict) -> "Algorithm":
+        """Recovers an Algorithm from a state object.
+
+        The `state` of an instantiated Algorithm can be retrieved by calling its
+        `get_state` method. It contains all information necessary
+        to create the Algorithm from scratch. No access to the original code (e.g.
+        configs, knowledge of the Algorithm's class, etc..) is needed.
+
+        Args:
+            state: The state to recover a new Algorithm instance from.
+
+        Returns:
+            A new Algorithm instance.
+        """
+        algorithm_class: Type[Algorithm] = state.get("algorithm_class")
+        if algorithm_class is None:
+            raise ValueError(
+                "No `algorithm_class` key was found in given `state`! "
+                "Cannot create new Algorithm."
+            )
+        # algo_class = get_algorithm_class(algo_class_name)
+        # Create the new algo.
+        config = state.get("config")
+        if not config:
+            raise ValueError("No `config` found in given Algorithm state!")
+        new_algo = algorithm_class(config=config)
+        # Set the new algo's state.
+        new_algo.__setstate__(state)
+        # Return the new algo.
+        return new_algo
 
     @PublicAPI
     def __init__(
@@ -387,7 +487,7 @@ class Algorithm(Trainable):
                 '["off_policy_estimation_methods"]={}'.format(
                     ope_dict,
                 ),
-                error=False,
+                error=True,
                 help="Running OPE during training is not recommended.",
             )
             self.config["off_policy_estimation_methods"] = ope_dict
@@ -478,12 +578,6 @@ class Algorithm(Trainable):
 
         # Update with evaluation settings:
         user_eval_config = copy.deepcopy(self.config["evaluation_config"])
-
-        # Assert that user has not unset "in_evaluation".
-        assert (
-            "in_evaluation" not in user_eval_config
-            or user_eval_config["in_evaluation"] is True
-        )
 
         # Merge user-provided eval config with the base config. This makes sure
         # the eval config is always complete, no matter whether we have eval
@@ -578,7 +672,7 @@ class Algorithm(Trainable):
                 deprecation_warning(
                     old=method_type,
                     new=str(ope_types[method_type]),
-                    error=False,
+                    error=True,
                 )
                 method_type = ope_types[method_type]
             elif isinstance(method_type, str):
@@ -910,6 +1004,8 @@ class Algorithm(Trainable):
                             _agent_steps if self._by_agent_steps else _env_steps
                         )
                     if self.reward_estimators:
+                        # TODO: (kourosh) This approach will cause an OOM issue when
+                        # the dataset gets huge (should be ok for now).
                         all_batches.extend(batches)
 
                     agent_steps_this_iter += _agent_steps
@@ -933,19 +1029,34 @@ class Algorithm(Trainable):
             # TODO: Remove this key at some point. Here for backward compatibility.
             metrics["timesteps_this_iter"] = env_steps_this_iter
 
-            if self.reward_estimators:
-                # Compute off-policy estimates
+            # Compute off-policy estimates
+            estimates = defaultdict(list)
+            # for each batch run the estimator's fwd pass
+            for name, estimator in self.reward_estimators.items():
+                for batch in all_batches:
+                    estimate_result = estimator.estimate(
+                        batch,
+                        split_batch_by_episode=self.config[
+                            "ope_split_batch_by_episode"
+                        ],
+                    )
+                    estimates[name].append(estimate_result)
+
+            # collate estimates from all batches
+            if estimates:
                 metrics["off_policy_estimator"] = {}
-                total_batch = concat_samples(all_batches)
-                for name, estimator in self.reward_estimators.items():
-                    estimates = estimator.estimate(total_batch)
-                    metrics["off_policy_estimator"][name] = estimates
+                for name, estimate_list in estimates.items():
+                    avg_estimate = tree.map_structure(
+                        lambda *x: np.mean(x, axis=0), *estimate_list
+                    )
+                    metrics["off_policy_estimator"][name] = avg_estimate
 
         # Evaluation does not run for every step.
         # Save evaluation metrics on trainer, so it can be attached to
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
 
+        # Trigger `on_evaluate_end` callback.
         self.callbacks.on_evaluate_end(
             algorithm=self, evaluation_metrics=self.evaluation_metrics
         )
@@ -1147,6 +1258,11 @@ class Algorithm(Trainable):
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
 
+        # Trigger `on_evaluate_end` callback.
+        self.callbacks.on_evaluate_end(
+            algorithm=self, evaluation_metrics=self.evaluation_metrics
+        )
+
         # Return evaluation results.
         return self.evaluation_metrics
 
@@ -1284,14 +1400,14 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="Trainer.compute_single_action(`clip_actions`=...)",
                 new="Trainer.compute_single_action(`clip_action`=...)",
-                error=False,
+                error=True,
             )
             clip_action = clip_actions
         if unsquash_actions != DEPRECATED_VALUE:
             deprecation_warning(
                 old="Trainer.compute_single_action(`unsquash_actions`=...)",
                 new="Trainer.compute_single_action(`unsquash_action`=...)",
-                error=False,
+                error=True,
             )
             unsquash_action = unsquash_actions
 
@@ -1435,7 +1551,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="Trainer.compute_actions(`normalize_actions`=...)",
                 new="Trainer.compute_actions(`unsquash_actions`=...)",
-                error=False,
+                error=True,
             )
             unsquash_actions = normalize_actions
 
@@ -1570,6 +1686,9 @@ class Algorithm(Trainable):
 
         Args:
             policy_id: ID of the policy to add.
+                IMPORTANT: Must not contain characters that
+                are also not allowed in Unix/Win filesystems, such as: `<>:"/\|?*`
+                or a dot `.` or space ` ` at the end of the ID.
             policy_cls: The Policy class to use for constructing the new Policy.
                 Note: Only one of `policy_cls` or `policy` must be provided.
             policy: The Policy instance to add to this algorithm. If not None, the
@@ -1603,11 +1722,9 @@ class Algorithm(Trainable):
         Returns:
             The newly added policy (the copy that got added to the local
             worker). If `workers` was provided, None is returned.
-
-        Raises:
-            ValueError: If both `policy_cls` AND `policy` are provided.
-            KeyError: If the given `policy_id` already exists in this Algorithm.
         """
+        validate_policy_id(policy_id, error=True)
+
         # Worker list is explicitly provided -> Use only those workers (local or remote)
         # specified.
         if workers is not None:
@@ -1729,15 +1846,20 @@ class Algorithm(Trainable):
     def export_policy_checkpoint(
         self,
         export_dir: str,
-        filename_prefix: str = "model",
+        filename_prefix=DEPRECATED_VALUE,  # deprecated arg, do not use anymore
         policy_id: PolicyID = DEFAULT_POLICY_ID,
     ) -> None:
-        """Exports policy model checkpoint to a local directory.
+        """Exports Policy checkpoint to a local directory and returns an AIR Checkpoint.
 
         Args:
-            export_dir: Writable local directory.
-            filename_prefix: file name prefix of checkpoint files.
-            policy_id: Optional policy id to export.
+            export_dir: Writable local directory to store the AIR Checkpoint
+                information into.
+            policy_id: Optional policy ID to export. If not provided, will export
+                "default_policy". If `policy_id` does not exist in this Algorithm,
+                will raise a KeyError.
+
+        Raises:
+            KeyError if `policy_id` cannot be found in this Algorithm.
 
         Example:
             >>> from ray.rllib.algorithms.ppo import PPO
@@ -1747,7 +1869,18 @@ class Algorithm(Trainable):
             >>>     algo.train() # doctest: +SKIP
             >>> algo.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
         """
-        self.get_policy(policy_id).export_checkpoint(export_dir, filename_prefix)
+        # `filename_prefix` should not longer be used as new Policy checkpoints
+        # contain more than one file with a fixed filename structure.
+        if filename_prefix != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Algorithm.export_policy_checkpoint(filename_prefix=...)",
+                error=True,
+            )
+
+        policy = self.get_policy(policy_id)
+        if policy is None:
+            raise KeyError(f"Policy with ID {policy_id} not found in Algorithm!")
+        policy.export_checkpoint(export_dir)
 
     @DeveloperAPI
     def import_policy_model_from_h5(
@@ -1774,17 +1907,80 @@ class Algorithm(Trainable):
 
     @override(Trainable)
     def save_checkpoint(self, checkpoint_dir: str) -> str:
-        checkpoint_path = os.path.join(
-            checkpoint_dir, "checkpoint-{}".format(self.iteration)
-        )
-        pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
+        """Exports AIR Checkpoint to a local directory and returns its directory path.
 
-        return checkpoint_path
+        The structure of an Algorithm checkpoint dir will be as follows::
+
+            policies/
+                pol_1/
+                    policy_state.pkl
+                pol_2/
+                    policy_state.pkl
+            rllib_checkpoint.json
+            algorithm_state.pkl
+
+        Note: `rllib_checkpoint.json` contains a "version" key (e.g. with value 0.1)
+        helping RLlib to remain backward compatible wrt. restoring from checkpoints from
+        Ray 2.0 onwards.
+
+        Args:
+            checkpoint_dir: The directory where the checkpoint files will be stored.
+
+        Returns:
+            The path to the created AIR Checkpoint directory.
+        """
+        state = self.__getstate__()
+
+        # Extract policy states from worker state (Policies get their own
+        # checkpoint sub-dirs).
+        policy_states = {}
+        if "worker" in state and "policy_states" in state["worker"]:
+            policy_states = state["worker"].pop("policy_states", {})
+
+        # Add RLlib checkpoint version.
+        state["checkpoint_version"] = CHECKPOINT_VERSION
+
+        # Write state (w/o policies) to disk.
+        state_file = os.path.join(checkpoint_dir, "algorithm_state.pkl")
+        with open(state_file, "wb") as f:
+            pickle.dump(state, f)
+
+        # Write rllib_checkpoint.json.
+        with open(os.path.join(checkpoint_dir, "rllib_checkpoint.json"), "w") as f:
+            json.dump(
+                {
+                    "type": "Algorithm",
+                    "checkpoint_version": str(state["checkpoint_version"]),
+                    "ray_version": ray.__version__,
+                    "ray_commit": ray.__commit__,
+                },
+                f,
+            )
+
+        # Write individual policies to disk, each in their own sub-directory.
+        for pid, policy_state in policy_states.items():
+            # From here on, disallow policyIDs that would not work as directory names.
+            validate_policy_id(pid, error=True)
+            policy_dir = os.path.join(checkpoint_dir, "policies", pid)
+            os.makedirs(policy_dir, exist_ok=True)
+            policy = self.get_policy(pid)
+            policy.export_checkpoint(policy_dir, policy_state=policy_state)
+
+        return checkpoint_dir
 
     @override(Trainable)
-    def load_checkpoint(self, checkpoint_path: str) -> None:
-        extra_data = pickle.load(open(checkpoint_path, "rb"))
-        self.__setstate__(extra_data)
+    def load_checkpoint(self, checkpoint: Union[Dict, str]) -> None:
+        # Checkpoint is provided as a directory name.
+        # Restore from the checkpoint file or dir.
+        if isinstance(checkpoint, str):
+            checkpoint_info = get_checkpoint_info(checkpoint)
+            checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(
+                checkpoint_info
+            )
+        # Checkpoint is a checkpoint-as-dict -> Restore state from it as-is.
+        else:
+            checkpoint_data = checkpoint
+        self.__setstate__(checkpoint_data)
 
     @override(Trainable)
     def log_result(self, result: ResultDict) -> None:
@@ -2218,7 +2414,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 "model.lstm_use_prev_action_reward",
                 "model.lstm_use_prev_action and model.lstm_use_prev_reward",
-                error=False,
+                error=True,
             )
             model_config["lstm_use_prev_action"] = prev_a_r
             model_config["lstm_use_prev_reward"] = prev_a_r
@@ -2243,7 +2439,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="metrics_smoothing_episodes",
                 new="metrics_num_episodes_for_smoothing",
-                error=False,
+                error=True,
             )
             config["metrics_num_episodes_for_smoothing"] = config[
                 "metrics_smoothing_episodes"
@@ -2252,7 +2448,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="min_iter_time_s",
                 new="min_time_s_per_iteration",
-                error=False,
+                error=True,
             )
             config["min_time_s_per_iteration"] = config["min_iter_time_s"] or 0
 
@@ -2260,7 +2456,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="min_time_s_per_reporting",
                 new="min_time_s_per_iteration",
-                error=False,
+                error=True,
             )
             config["min_time_s_per_iteration"] = config["min_time_s_per_reporting"] or 0
 
@@ -2271,7 +2467,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="min_sample_timesteps_per_reporting",
                 new="min_sample_timesteps_per_iteration",
-                error=False,
+                error=True,
             )
             config["min_sample_timesteps_per_iteration"] = (
                 config["min_sample_timesteps_per_reporting"] or 0
@@ -2284,7 +2480,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="min_train_timesteps_per_reporting",
                 new="min_train_timesteps_per_iteration",
-                error=False,
+                error=True,
             )
             config["min_train_timesteps_per_iteration"] = (
                 config["min_train_timesteps_per_reporting"] or 0
@@ -2306,7 +2502,7 @@ class Algorithm(Trainable):
                 old="timesteps_per_iteration",
                 new="`min_sample_timesteps_per_iteration` OR "
                 "`min_train_timesteps_per_iteration`",
-                error=False,
+                error=True,
             )
             config["min_sample_timesteps_per_iteration"] = (
                 config["timesteps_per_iteration"] or 0
@@ -2320,7 +2516,7 @@ class Algorithm(Trainable):
             deprecation_warning(
                 old="evaluation_num_episodes",
                 new="`evaluation_duration` and `evaluation_duration_unit=episodes`",
-                error=False,
+                error=True,
             )
             config["evaluation_duration"] = config["evaluation_num_episodes"]
             config["evaluation_duration_unit"] = "episodes"
@@ -2510,10 +2706,23 @@ class Algorithm(Trainable):
         else:
             return self.import_policy_model_from_h5(import_file)
 
-    def __getstate__(self) -> dict:
-        state = {}
+    @PublicAPI
+    def __getstate__(self) -> Dict:
+        """Returns current state of Algorithm, sufficient to restore it from scratch.
+
+        Returns:
+            The current state dict of this Algorithm, which can be used to sufficiently
+            restore the algorithm from scratch without any other information.
+        """
+        # Add config to state so complete Algorithm can be reproduced w/o it.
+        state = {
+            "algorithm_class": type(self),
+            "config": self.config,
+        }
+
         if hasattr(self, "workers"):
             state["worker"] = self.workers.local_worker().get_state()
+
         # TODO: Experimental functionality: Store contents of replay buffer
         #  to checkpoint, only if user has configured this.
         if self.local_replay_buffer is not None and self.config.get(
@@ -2526,7 +2735,19 @@ class Algorithm(Trainable):
 
         return state
 
-    def __setstate__(self, state: dict):
+    @PublicAPI
+    def __setstate__(self, state) -> None:
+        """Sets the algorithm to the provided state.
+
+        Args:
+            state: The state dict to restore this Algorithm instance to. `state` may
+                have been returned by a call to an Algorithm's `__getstate__()` method.
+        """
+        # TODO (sven): Validate that our config and the config in state are compatible.
+        #  For example, the model architectures may differ.
+        #  Also, what should the behavior be if e.g. some training parameter
+        #  (e.g. lr) changed?
+
         if hasattr(self, "workers") and "worker" in state:
             self.workers.local_worker().set_state(state["worker"])
             remote_state = ray.put(state["worker"])
@@ -2559,6 +2780,105 @@ class Algorithm(Trainable):
 
         if self.train_exec_impl is not None:
             self.train_exec_impl.shared_metrics.get().restore(state["train_exec_impl"])
+
+    @staticmethod
+    def _checkpoint_info_to_algorithm_state(
+        checkpoint_info: dict,
+        policy_ids: Optional[Container[PolicyID]] = None,
+        policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
+        policies_to_train: Optional[
+            Union[
+                Container[PolicyID],
+                Callable[[PolicyID, Optional[SampleBatchType]], bool],
+            ]
+        ] = None,
+    ) -> Dict:
+        """Converts a checkpoint info or object to a proper Algorithm state dict.
+
+        The returned state dict can be used inside self.__setstate__().
+
+        Args:
+            checkpoint_info: A checkpoint info dict as returned by
+                `ray.rllib.utils.checkpoints.get_checkpoint_info(
+                [checkpoint dir or AIR Checkpoint])`.
+            policy_ids: Optional list/set of PolicyIDs. If not None, only those policies
+                listed here will be included in the returned state. Note that
+                state items such as filters, the `is_policy_to_train` function, as
+                well as the multi-agent `policy_ids` dict will be adjusted as well,
+                based on this arg.
+            policy_mapping_fn: An optional (updated) policy mapping function
+                to include in the returned state.
+            policies_to_train: An optional list of policy IDs to be trained
+                or a callable taking PolicyID and SampleBatchType and
+                returning a bool (trainable or not?) to include in the returned state.
+
+        Returns:
+             The state dict usable within the `self.__setstate__()` method.
+        """
+        if checkpoint_info["type"] != "Algorithm":
+            raise ValueError(
+                "`checkpoint` arg passed to "
+                "`Algorithm._checkpoint_info_to_algorithm_state()` must be an "
+                f"Algorithm checkpoint (but is {checkpoint_info['type']})!"
+            )
+
+        with open(checkpoint_info["state_file"], "rb") as f:
+            state = pickle.load(f)
+
+        # New checkpoint format: Policies are in separate sub-dirs.
+        # Note: Algorithms like ES/ARS don't have a WorkerSet, so we just return
+        # the plain state here.
+        if (
+            checkpoint_info["checkpoint_version"] > version.Version("0.1")
+            and state.get("worker") is not None
+        ):
+            worker_state = state["worker"]
+
+            # Retrieve the set of all required policy IDs.
+            policy_ids = set(
+                policy_ids if policy_ids is not None else worker_state["policy_ids"]
+            )
+
+            # Remove those policies entirely from filters that are not in
+            # `policy_ids`.
+            worker_state["filters"] = {
+                pid: filter
+                for pid, filter in worker_state["filters"].items()
+                if pid in policy_ids
+            }
+            # Remove policies from multiagent dict that are not in `policy_ids`.
+            policies_dict = state["config"]["multiagent"]["policies"]
+            policies_dict = {
+                pid: spec for pid, spec in policies_dict.items() if pid in policy_ids
+            }
+            state["config"]["multiagent"]["policies"] = policies_dict
+
+            # Prepare local `worker` state to add policies' states into it,
+            # read from separate policy checkpoint files.
+            worker_state["policy_states"] = {}
+            for pid in policy_ids:
+                policy_state_file = os.path.join(
+                    checkpoint_info["checkpoint_dir"],
+                    "policies",
+                    pid,
+                    "policy_state.pkl",
+                )
+                if not os.path.isfile(policy_state_file):
+                    raise ValueError(
+                        "Given checkpoint does not seem to be valid! No policy "
+                        f"state file found for PID={pid}. "
+                        f"The file not found is: {policy_state_file}."
+                    )
+
+                with open(policy_state_file, "rb") as f:
+                    worker_state["policy_states"][pid] = pickle.load(f)
+
+            if policy_mapping_fn is not None:
+                worker_state["policy_mapping_fn"] = policy_mapping_fn
+            if policies_to_train is not None:
+                worker_state["is_policy_to_train"] = policies_to_train
+
+        return state
 
     @DeveloperAPI
     def _create_local_replay_buffer_if_necessary(
@@ -2654,7 +2974,6 @@ class Algorithm(Trainable):
                 "episode_reward_mean": np.nan,
             }
         }
-        eval_results["evaluation"]["num_recreated_workers"] = 0
 
         eval_func_to_use = (
             self._evaluate_async
@@ -2694,6 +3013,10 @@ class Algorithm(Trainable):
                     "recreate_failed_workers"
                 ),
             )
+        # `self._evaluate_async` handles its own worker failures and already adds
+        # this metric, but `self.evaluate` doesn't.
+        if "num_recreated_workers" not in eval_results["evaluation"]:
+            eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         # Add number of healthy evaluation workers after this iteration.
         eval_results["evaluation"]["num_healthy_workers"] = (
@@ -2701,7 +3024,6 @@ class Algorithm(Trainable):
             if self.evaluation_workers is not None
             else 0
         )
-        eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         return eval_results
 
@@ -2866,13 +3188,9 @@ class Algorithm(Trainable):
             alg = "USER_DEFINED"
         record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
 
-    @Deprecated(new="Algorithm.compute_single_action()", error=False)
+    @Deprecated(new="Algorithm.compute_single_action()", error=True)
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
-
-    @Deprecated(new="logic moved into `self.step()`", error=True)
-    def step_attempt(self):
-        pass
 
     @Deprecated(new="construct WorkerSet(...) instance directly", error=False)
     def _make_workers(
@@ -2896,7 +3214,7 @@ class Algorithm(Trainable):
         )
 
     @staticmethod
-    @Deprecated(new="Algorithm.validate_config()", error=False)
+    @Deprecated(new="Algorithm.validate_config()", error=True)
     def _validate_config(config, trainer_or_none):
         assert trainer_or_none is not None
         return trainer_or_none.validate_config(config)

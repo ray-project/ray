@@ -135,14 +135,6 @@ py_test(
 )
 
 py_test(
-    name = "test_callbacks",
-    size = "medium",
-    srcs = ["tests/test_callbacks.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
-)
-
-py_test(
     name = "test_checkpoints",
     size = "small",
     srcs = ["tests/test_checkpoints.py"],
@@ -159,6 +151,14 @@ py_test(
 )
 
 py_test(
+    name = "test_deprecations",
+    size = "small",
+    srcs = ["tests/test_deprecations.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_examples",
     size = "large",
     srcs = ["tests/test_examples.py"],
@@ -170,6 +170,22 @@ py_test(
     name = "test_gpu",
     size = "large",
     srcs = ["tests/test_gpu.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_gpu_auto_transfer",
+    size = "large",
+    srcs = ["tests/test_gpu_auto_transfer.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_gpu_examples",
+    size = "large",
+    srcs = ["tests/test_gpu_examples.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":train_lib"]
 )
@@ -255,14 +271,6 @@ py_test(
 )
 
 py_test(
-    name = "test_results_preprocessors",
-    size = "small",
-    srcs = ["tests/test_results_preprocessors.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
-)
-
-py_test(
     name = "test_rl_trainer",
     size = "medium",
     srcs = ["tests/test_rl_trainer.py"],
@@ -303,9 +311,9 @@ py_test(
 )
 
 py_test(
-    name = "test_trainer",
-    size = "large",
-    srcs = ["tests/test_trainer.py"],
+    name = "test_tensorflow_checkpoint",
+    size = "small",
+    srcs = ["tests/test_tensorflow_checkpoint.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )
@@ -322,14 +330,6 @@ py_test(
     name = "test_tensorflow_trainer",
     size = "medium",
     srcs = ["tests/test_tensorflow_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_tensorflow_utils",
-    size = "small",
-    srcs = ["tests/test_tensorflow_utils.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )
@@ -362,6 +362,14 @@ py_test(
     name = "test_torch_utils",
     size = "small",
     srcs = ["tests/test_torch_utils.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_training_iterator",
+    size = "large",
+    srcs = ["tests/test_training_iterator.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )

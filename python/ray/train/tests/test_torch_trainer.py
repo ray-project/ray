@@ -1,6 +1,7 @@
 import pytest
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
+from ray.train.torch.torch_checkpoint import TorchCheckpoint
 import torch
 
 import ray
@@ -59,7 +60,7 @@ def test_torch_linear(ray_start_4_cpus, num_workers):
 
 def test_torch_e2e(ray_start_4_cpus):
     def train_func():
-        model = torch.nn.Linear(1, 1)
+        model = torch.nn.Linear(3, 1)
         session.report({}, checkpoint=Checkpoint.from_dict(dict(model=model)))
 
     scaling_config = ScalingConfig(num_workers=2)
@@ -68,7 +69,7 @@ def test_torch_e2e(ray_start_4_cpus):
     )
     result = trainer.fit()
 
-    predict_dataset = ray.data.range(3)
+    predict_dataset = ray.data.range(9)
 
     class TorchScorer:
         def __init__(self):
@@ -78,14 +79,14 @@ def test_torch_e2e(ray_start_4_cpus):
             return self.pred.predict(x, dtype=torch.float)
 
     predictions = predict_dataset.map_batches(
-        TorchScorer, batch_format="pandas", compute="actors"
+        TorchScorer, batch_size=3, batch_format="pandas", compute="actors"
     )
     assert predictions.count() == 3
 
 
 def test_torch_e2e_state_dict(ray_start_4_cpus):
     def train_func():
-        model = torch.nn.Linear(1, 1).state_dict()
+        model = torch.nn.Linear(3, 1).state_dict()
         session.report({}, checkpoint=Checkpoint.from_dict(dict(model=model)))
 
     scaling_config = ScalingConfig(num_workers=2)
@@ -101,15 +102,15 @@ def test_torch_e2e_state_dict(ray_start_4_cpus):
     class TorchScorer:
         def __init__(self):
             self.pred = TorchPredictor.from_checkpoint(
-                result.checkpoint, model=torch.nn.Linear(1, 1)
+                result.checkpoint, model=torch.nn.Linear(3, 1)
             )
 
         def __call__(self, x):
             return self.pred.predict(x, dtype=torch.float)
 
-    predict_dataset = ray.data.range(3)
+    predict_dataset = ray.data.range(9)
     predictions = predict_dataset.map_batches(
-        TorchScorer, batch_format="pandas", compute="actors"
+        TorchScorer, batch_size=3, batch_format="pandas", compute="actors"
     )
     assert predictions.count() == 3
 
@@ -176,6 +177,79 @@ def test_tune_torch_get_device_gpu(
 
     actors = [TrialActor.remote(_) for _ in range(num_samples)]
     ray.get([actor.run.remote() for actor in actors])
+
+
+def test_torch_auto_unwrap(ray_start_4_cpus):
+    """Tests if underlying model from DDP is extracted when saving ckpt."""
+
+    def train_fn():
+        model = torch.nn.Linear(1, 1)
+
+        # Wrap in DDP.
+        model = train.torch.prepare_model(model)
+
+        # Save DDP wrapped model.
+        session.report({"model": model}, checkpoint=TorchCheckpoint.from_model(model))
+
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    results = trainer.fit()
+
+    last_checkpoint = results.checkpoint
+    model = last_checkpoint.get_model()
+    assert isinstance(model, torch.nn.Module) and not isinstance(
+        model, torch.nn.parallel.DistributedDataParallel
+    )
+
+    model_report = results.metrics["model"]
+    assert isinstance(model_report, torch.nn.Module) and not isinstance(
+        model_report, torch.nn.parallel.DistributedDataParallel
+    )
+
+
+def test_torch_amp(ray_start_4_cpus):
+    def train_fn():
+        train.torch.accelerate(amp=True)
+        model = torch.nn.Linear(1, 1)
+        model = train.torch.prepare_model(model)
+
+        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
+
+    trainer = TorchTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    results = trainer.fit()
+    assert results.checkpoint
+
+
+def test_torch_amp_with_custom_get_state(ray_start_4_cpus):
+    """Tests amp with a model that has a custom __getstate__ method defined.
+
+    See https://discuss.ray.io/t/ray-train-hangs-for-long-time/6333/7
+    """
+
+    def train_fn():
+        train.torch.accelerate(amp=True)
+
+        class CustomLinear(torch.nn.Linear):
+            def __getstate__(self):
+                return self.__dict__.copy()
+
+        model = CustomLinear(1, 1)
+        model = train.torch.prepare_model(model)
+
+        # Make sure model is serializable even with amp enabled.
+        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
+
+    trainer = TorchTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    results = trainer.fit()
+    assert results.checkpoint
 
 
 if __name__ == "__main__":
