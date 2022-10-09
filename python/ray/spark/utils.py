@@ -1,4 +1,5 @@
 import subprocess
+from urllib.parse import urlparse
 import os
 import sys
 
@@ -23,7 +24,6 @@ def get_dbutils():
         raise _NoDbutilsError
     except KeyError:
         raise _NoDbutilsError
-
 
 
 class ShellCommandException(Exception):
@@ -160,7 +160,15 @@ def get_spark_session():
 
 
 def get_spark_driver_hostname(spark):
-    return spark.sparkContext._jsc.sc().env().blockManager().master().driverEndpoint().address().host()
+    spark_master_url = spark.conf.get("spark.master")
+    if spark_master_url.lower().startswith("local"):
+        return "127.0.0.1"
+    else:
+        parsed_spark_master_url = urlparse(spark_master_url)
+        if parsed_spark_master_url.scheme.lower() != "spark" or \
+                not parsed_spark_master_url.hostname:
+            raise ValueError(f"Unsupported spark.master URL: {spark_master_url}")
+        return parsed_spark_master_url.hostname
 
 
 def get_max_num_concurrent_tasks(spark_context):
@@ -174,20 +182,36 @@ def get_max_num_concurrent_tasks(spark_context):
     return spark_context._jsc.sc().maxNumConcurrentTasks()
 
 
+def _get_total_phyisical_memory():
+    import psutil
+    return psutil.virtual_memory().total
+
+
+def _get_total_shared_memory():
+    import shutil
+    return shutil.disk_usage('/dev/shm').total
+
+
+def _get_cpu_cores():
+    import multiprocessing
+    return multiprocessing.cpu_count()
+
+
 def get_avail_mem_per_ray_worker(spark):
+    """
+    Return the available heap memory and object store memory for each ray worker.
+    NB: We have one ray node per spark task.
+    """
+    # TODO: add a option of heap memory / object store memory ratio.
     num_cpus_per_spark_task = int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
 
     def mapper(_):
         try:
-            import multiprocessing
-            import psutil
-            import shutil
-
-            num_cpus = multiprocessing.cpu_count()
+            num_cpus = _get_cpu_cores()
             num_task_slots = num_cpus // num_cpus_per_spark_task
 
-            physical_mem_bytes = psutil.virtual_memory().total
-            shared_mem_bytes = shutil.disk_usage('/dev/shm').total
+            physical_mem_bytes = _get_total_phyisical_memory()
+            shared_mem_bytes = _get_total_shared_memory()
 
             ray_worker_object_store_bytes = int(shared_mem_bytes / num_task_slots * 0.8)
             ray_worker_heap_mem_bytes = int((physical_mem_bytes - shared_mem_bytes) / num_task_slots * 0.8)
@@ -202,30 +226,6 @@ def get_avail_mem_per_ray_worker(spark):
     if err is not None:
         raise RuntimeError(f"Inferring ray worker available memory failed, error: {err}")
     return inferred_ray_worker_heap_mem_bytes, inferred_ray_worker_object_store_bytes
-
-
-def get_ray_worker_heap_memory(spark):
-    """
-    Return the available heap memory size for each ray node.
-    NB: We have one ray node per spark task.
-    """
-    sc = spark.sparkContext
-    spark_mem_fraction = float(sc.getConf().get("spark.memory.fraction", "0.6"))
-    executor_mem_status = sc._jvm.scala.collection.JavaConversions.mapAsJavaMap(
-      sc._jsc.sc().env().blockManager().master().getMemoryStatus()
-    )
-    total_executor_mem = sum(
-        v._1() for k, v in executor_mem_status.items() if k.executorId_() != "driver"
-    )
-    max_num_concurrent_spark_tasks = get_max_num_concurrent_tasks(sc)
-    return int(total_executor_mem / spark_mem_fraction / max_num_concurrent_spark_tasks)
-
-
-def get_ray_worker_object_store_memory():
-    """
-    Return the available object store memory for each ray node.
-    NB: We have one ray node per spark task.
-    """
 
 
 def get_spark_task_assigned_physical_gpus(task_context):

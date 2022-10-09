@@ -17,6 +17,9 @@ from .utils import (
     get_dbutils,
 )
 
+if not sys.platform.startswith("linux"):
+    raise RuntimeError("Ray on spark functionality only supports Linux system.")
+
 _spark_dependency_error = "ray.spark module requires pyspark >= 3.3"
 try:
     import pyspark
@@ -24,12 +27,6 @@ try:
         raise RuntimeError(_spark_dependency_error)
 except ImportError:
     raise RuntimeError(_spark_dependency_error)
-
-
-def _create_ray_tmp_dir(prefix):
-    import tempfile
-
-    return tempfile.mkdtemp(prefix=prefix)
 
 
 def wait_ray_node_available(hostname, port, timeout, error_on_failure):
@@ -63,6 +60,12 @@ class RayClusterOnSpark:
         get_spark_session().sparkContext.cancelJobGroup(self.spark_job_group_id)
         self.head_proc.kill()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.shutdown()
+
 
 def _convert_ray_node_options(options):
     return [f"--{k.replace('_', '-')}={str(v)}" for k, v in options.items()]
@@ -93,23 +96,33 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
 
     logging.info(f"Ray head hostanme {ray_head_hostname}, port {ray_head_port}")
 
+    num_spark_task_cpus = int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
+    num_spark_task_gpus = int(spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0"))
+
+    ray_worker_heap_mem_bytes, ray_worker_object_store_mem_bytes = get_avail_mem_per_ray_worker(spark)
+
     ray_exec_path = os.path.join(os.path.dirname(sys.executable), "ray")
 
-    ray_head_tmp_dir = _create_ray_tmp_dir(f"ray-head-port-{ray_head_port}-tmp-")
+    ray_head_tmp_dir = f"/tmp/ray-temp/ray-head-port-{ray_head_port}"
+
     ray_head_node_cmd = [
         ray_exec_path,
         "start",
         f"--temp-dir={ray_head_tmp_dir}",
-        f"--num-cpus=0",  # disallow ray tasks scheduled to ray head node.
         "--block",
         "--head",
         f"--port={ray_head_port}",
         "--include-dashboard=false",
+        f"--num-cpus=0",  # disallow ray tasks scheduled to ray head node.
+        # limit the memory usage of head node because no task running on it.
+        f"--memory={128 * 1024 * 1024}",
+        # limit the object store memory usage of head node because no task running on it.
+        f"--object-store-memory={128 * 1024 * 1024}",
         *_convert_ray_node_options(head_options)
     ]
 
     logging.info(f"Start Ray head, command: {' '.join(ray_head_node_cmd)}")
-    ray_node_proc = exec_cmd(
+    ray_head_proc = exec_cmd(
         ray_head_node_cmd,
         synchronous=False,
         capture_output=False,
@@ -124,11 +137,6 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
 
     logging.info("Ray head node started.")
 
-    num_spark_task_cpus = int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
-    num_spark_task_gpus = int(spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0"))
-
-    ray_worker_heap_mem_bytes, ray_worker_object_store_mem_bytes = get_avail_mem_per_ray_worker(spark)
-
     def ray_cluster_job_mapper(_):
         from pyspark.taskcontext import BarrierTaskContext
 
@@ -136,9 +144,8 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
         context.barrier()
         task_id = context.partitionId()
 
-        ray_worker_tmp_dir = _create_ray_tmp_dir(
-            f"ray-worker-{task_id}-head-{ray_head_hostname}:{ray_head_port}-tmp-"
-        )
+        # TODO: remove temp dir when ray worker exits.
+        ray_worker_tmp_dir = f"/tmp/ray-temp/ray-worker-{task_id}-head-{ray_head_hostname}-{ray_head_port}"
 
         ray_worker_cmd = [
             ray_exec_path,
@@ -213,8 +220,6 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
         # NB: Not reachable.
         yield 0
 
-    spark_job_group_id = f"ray-cluster-job-head-{ray_head_hostname}-port-{ray_head_port}"
-
     # TODO: redirect background thread output.
     def backgroud_job_thread_fn():
         spark.sparkContext.setJobGroup(
@@ -228,29 +233,35 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
             ray_cluster_job_mapper
         ).collect()[0]
 
+    spark_job_group_id = f"ray-cluster-job-head-{ray_head_hostname}-port-{ray_head_port}"
+
     threading.Thread(
         target=inheritable_thread_target(backgroud_job_thread_fn),
         args=()
     ).start()
 
-    # Waiting all ray workers spin up.
-    time.sleep(10)
+    try:
+        # Waiting all ray workers spin up.
+        time.sleep(10)
 
-    # connect to the ray cluster.
-    ray_context = ray.init(address=f"{ray_head_hostname}:{ray_head_port}")
+        # connect to the ray cluster.
+        ray_context = ray.init(address=f"{ray_head_hostname}:{ray_head_port}")
 
-    if is_in_databricks_runtime():
-        try:
-            get_dbutils().entry_point.registerBackgroundSparkJobGroup(spark_job_group_id)
-        except Exception:
-            logging.warning(
-                "Register ray cluster spark job as background job failed. You need to manually "
-                "call `ray_cluster_on_spark.shutdown()` before detaching your databricks "
-                "python REPL."
-            )
-    return RayClusterOnSpark(
-        address=f"{ray_head_hostname}:{ray_head_port}",
-        head_proc=ray_node_proc,
-        spark_job_group_id=spark_job_group_id,
-        ray_context=ray_context,
-    )
+        if is_in_databricks_runtime():
+            try:
+                get_dbutils().entry_point.registerBackgroundSparkJobGroup(spark_job_group_id)
+            except Exception:
+                logging.warning(
+                    "Register ray cluster spark job as background job failed. You need to manually "
+                    "call `ray_cluster_on_spark.shutdown()` before detaching your databricks "
+                    "python REPL."
+                )
+        return RayClusterOnSpark(
+            address=f"{ray_head_hostname}:{ray_head_port}",
+            head_proc=ray_head_proc,
+            spark_job_group_id=spark_job_group_id,
+            ray_context=ray_context,
+        )
+    finally:
+        # If init cluster raise exception, kill the ray head proc.
+        ray_head_proc.kill()
