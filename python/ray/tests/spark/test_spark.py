@@ -33,9 +33,10 @@ class RayOnSparkTestBase:
         return wr_list
 
     def test_cpu_allocation(self):
-        for num_spark_tasks in [self.max_spark_tasks // 2, self.max_spark_tasks]:
+        for num_spark_tasks in [self.max_spark_tasks]:
             with ray_spark.init_cluster(num_spark_tasks=num_spark_tasks) as cluster:
-                time.sleep(5)
+                print(f"cluster addr: {cluster.address}")
+                time.sleep(60)
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_spark_tasks
                 for worker_res in worker_res_list:
@@ -54,4 +55,5 @@ class TestBasicSparkCluster(RayOnSparkTestBase):
         cls.spark = SparkSession.builder \
             .config("master", "local-cluster[1, 2, 1024]") \
             .config("spark.task.cpus", "1") \
+            .config("spark.task.maxFailures", 1) \
             .getOrCreate()

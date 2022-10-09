@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 import time
 import threading
@@ -18,7 +19,10 @@ from .utils import (
 )
 
 if not sys.platform.startswith("linux"):
-    raise RuntimeError("Ray on spark functionality only supports Linux system.")
+    logging.warning(
+        "Ray on spark running on non-linux systems cannot be shutdown correctly, you need to "
+        "manually kill ray node on spark worker side."
+    )
 
 _spark_dependency_error = "ray.spark module requires pyspark >= 3.3"
 try:
@@ -71,7 +75,12 @@ def _convert_ray_node_options(options):
     return [f"--{k.replace('_', '-')}={str(v)}" for k, v in options.items()]
 
 
-def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
+def init_cluster(
+        num_spark_tasks,
+        head_options=None,
+        worker_options=None,
+        ray_node_log_root_path="/tmp/ray/logs"
+):
     """
     Initialize a ray cluster on the spark cluster, via creating a background spark barrier
     mode job and each spark task running a ray worker node, and in spark driver side
@@ -103,7 +112,10 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
 
     ray_exec_path = os.path.join(os.path.dirname(sys.executable), "ray")
 
-    ray_head_tmp_dir = f"/tmp/ray-temp/ray-head-port-{ray_head_port}"
+    ray_head_tmp_dir = f"/tmp/ray/ray-temp/ray-head-port-{ray_head_port}"
+
+    ray_node_log_path = os.path.join(ray_node_log_root_path, f"cluster-{ray_head_hostname}-{ray_head_port}")
+    os.makedirs(ray_node_log_path, exist_ok=True)
 
     ray_head_node_cmd = [
         ray_exec_path,
@@ -111,6 +123,7 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
         f"--temp-dir={ray_head_tmp_dir}",
         "--block",
         "--head",
+        "--disable-usage-stats",
         f"--port={ray_head_port}",
         "--include-dashboard=false",
         f"--num-cpus=0",  # disallow ray tasks scheduled to ray head node.
@@ -121,7 +134,7 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
         *_convert_ray_node_options(head_options)
     ]
 
-    logging.info(f"Start Ray head, command: {' '.join(ray_head_node_cmd)}")
+    print(f"Start Ray head, command: {' '.join(ray_head_node_cmd)}")
     ray_head_proc = exec_cmd(
         ray_head_node_cmd,
         synchronous=False,
@@ -145,7 +158,8 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
         task_id = context.partitionId()
 
         # TODO: remove temp dir when ray worker exits.
-        ray_worker_tmp_dir = f"/tmp/ray-temp/ray-worker-{task_id}-head-{ray_head_hostname}-{ray_head_port}"
+        ray_worker_tmp_dir = f"/tmp/ray/ray-temp/ray-worker-{task_id}-head-{ray_head_hostname}-{ray_head_port}"
+        os.makedirs(ray_worker_tmp_dir, exist_ok=True)
 
         ray_worker_cmd = [
             ray_exec_path,
@@ -153,11 +167,14 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
             f"--temp-dir={ray_worker_tmp_dir}",
             f"--num-cpus={num_spark_task_cpus}",
             "--block",
+            "--disable-usage-stats",
             f"--address={ray_head_hostname}:{ray_head_port}",
             f"--memory={ray_worker_heap_mem_bytes}",
             f"--object-store-memory={ray_worker_object_store_mem_bytes}",
             *_convert_ray_node_options(worker_options)
         ]
+
+        print(f"Start Ray worker, command: {' '.join(ray_worker_cmd)}")
 
         ray_worker_extra_envs = {}
 
@@ -207,15 +224,21 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
         #  and collect tail logs and raise error if subprocess failed.
         logging.info(f"Start Ray worker, command: {' '.join(ray_worker_cmd)}")
 
-        # Q: When Ray head node killed, will ray worker node exit as well ?
-        exec_cmd(
-            ray_worker_cmd,
-            synchronous=True,
-            capture_output=False,
-            stream_output=False,
-            extra_env=ray_worker_extra_envs,
-            preexec_fn=setup_sigterm_on_parent_death,
+        ray_worker_log_file = os.path.join(
+            ray_node_log_path,
+            f"ray-worker-{task_id}.log"
         )
+        with open(ray_worker_log_file, "w", buffering=1) as log_fp:
+            exec_cmd(
+                ray_worker_cmd,
+                synchronous=True,
+                capture_output=False,
+                stream_output=False,
+                extra_env=ray_worker_extra_envs,
+                preexec_fn=setup_sigterm_on_parent_death,
+                stdout=log_fp,
+                stderr=subprocess.STDOUT,
+            )
 
         # NB: Not reachable.
         yield 0
@@ -231,7 +254,7 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
             list(range(num_spark_tasks)), num_spark_tasks
         ).barrier().mapPartitions(
             ray_cluster_job_mapper
-        ).collect()[0]
+        ).collect()
 
     spark_job_group_id = f"ray-cluster-job-head-{ray_head_hostname}-port-{ray_head_port}"
 
@@ -262,6 +285,7 @@ def init_cluster(num_spark_tasks, head_options=None, worker_options=None):
             spark_job_group_id=spark_job_group_id,
             ray_context=ray_context,
         )
-    finally:
+    except Exception:
         # If init cluster raise exception, kill the ray head proc.
         ray_head_proc.kill()
+        raise
