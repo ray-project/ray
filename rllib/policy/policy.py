@@ -21,7 +21,6 @@ import numpy as np
 import tree  # pip install dm_tree
 from gym.spaces import Box
 from packaging import version
-from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
 
 import ray
 import ray.cloudpickle as pickle
@@ -39,6 +38,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     is_overridden,
 )
+from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
 from ray.rllib.utils.deprecation import (
     Deprecated,
     DEPRECATED_VALUE,
@@ -69,6 +69,7 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
+from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.annotations import PublicAPI
 
 tf1, tf, tfv = try_import_tf()
@@ -410,15 +411,13 @@ class Policy(metaclass=ABCMeta):
                     info: Dictionary of extra feature batches, if any, with shape like
                         {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
                 """
-                assert policy.agent_connectors, (
-                    "This policy has connectors enabled but no agent connectors could "
-                    "be found."
-                )
-
-                assert policy.agent_connectors and policy.action_connectors, (
-                    "This policy has connectors enabled but no agent connectors could "
-                    "be found."
-                )
+                if not self.connectors_created:
+                    logger.warning("Trying to compute actions with connectors, "
+                                   "but no connectors where initialized on this "
+                                   "policy. This creates the connectors from the "
+                                   "policy config but will not synchronize them.")
+                    policy.init_connectors(config)
+                    # maybe_get_filters_for_syncing(self, name)
 
                 acd_list: List[AgentConnectorDataType] = [
                     AgentConnectorDataType(env_id="0", agent_id="0", data=input_dict)
@@ -450,6 +449,49 @@ class Policy(metaclass=ABCMeta):
                 return actions, rnn_states, fetches
 
             self.compute_actions_from_input_dict = compute_actions_from_raw_obs
+
+    @property
+    def action_connectors_created(self):
+        return self.agent_connectors is not None
+
+    @property
+    def agent_connectors_created(self):
+        return self.action_connectors is not None
+
+    @property
+    def connectors_created(self):
+        return self.agent_connectors_created and self.action_connectors_created
+
+    @PublicAPI(stability="alpha")
+    def init_connectors(self, config: TrainerConfigDict):
+        """Util to create agent and action connectors for a Policy.
+
+        Args:
+            policy: Policy instance.
+            config: Trainer config dict.
+        """
+        # Import here to avoid circular dependencies
+        from ray.rllib.connectors.connector import ConnectorContext
+        from ray.rllib.connectors.util import (
+            get_agent_connectors_from_config,
+            get_action_connectors_from_config
+        )
+
+        ctx: ConnectorContext = ConnectorContext.from_policy(self)
+
+        assert self.agent_connectors is None and self.agent_connectors is None, (
+            "Can not create connectors for a policy that already has connectors. This "
+            "can happen if you add a Policy that has connectors attached to a "
+            "RolloutWorker with add_policy()."
+        )
+
+        self.agent_connectors = get_agent_connectors_from_config(ctx, config)
+        self.action_connectors = get_action_connectors_from_config(ctx, config)
+
+        logger.info("Using connectors:")
+        logger.info(self.agent_connectors.__str__(indentation=4))
+        logger.info(self.action_connectors.__str__(indentation=4))
+
 
     @DeveloperAPI
     def init_view_requirements(self):
