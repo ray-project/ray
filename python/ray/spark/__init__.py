@@ -112,6 +112,9 @@ def init_cluster(
     ray_head_tmp_dir = f"/tmp/ray/ray-temp/ray-head-port-{ray_head_port}"
 
     ray_node_log_path = os.path.join(ray_node_log_root_path, f"cluster-{ray_head_hostname}-{ray_head_port}")
+
+    logging.warning(f"You can check ray head / worker nodes logs under local disk path {ray_node_log_path}")
+
     os.makedirs(ray_node_log_path, exist_ok=True)
 
     ray_head_node_cmd = [
@@ -185,7 +188,7 @@ def init_cluster(
                 f"--num-gpus={len(available_physical_gpus)}",
             )
             ray_worker_extra_envs['CUDA_VISIBLE_DEVICES'] = ",".join([
-                str(gpu_id) for gpu_id in num_spark_task_gpus
+                str(gpu_id) for gpu_id in available_physical_gpus
             ])
 
         if sys.platform.startswith("linux"):
