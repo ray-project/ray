@@ -4,6 +4,7 @@ import time
 import os
 import requests
 import pytest
+import psutil
 import sys
 from typing import Dict, Optional, Tuple
 from unittest.mock import Mock, patch
@@ -181,18 +182,56 @@ def test_job_head_choose_job_agent_E2E(mock_candidate_number, ray_start_cluster_
     def submit_job_and_wait_finish():
         submission_id = client.submit_job(entrypoint="echo hello")
 
-        wait_for_condition(_check_job_succeeded, client=client, job_id=submission_id)
+        wait_for_condition(
+            _check_job_succeeded, client=client, job_id=submission_id, timeout=30
+        )
 
-    # make sure list(cluster.worker_nodes)[0] will be the owner of a supervisor actor.
-    cluster.add_node(dashboard_agent_listen_port=52366)
+    worker_1_http_port = 52366
+    cluster.add_node(dashboard_agent_listen_port=worker_1_http_port)
     wait_for_condition(lambda: get_register_agents_number() == 2, timeout=20)
     assert len(cluster.worker_nodes) == 1
     node_try_to_kill = list(cluster.worker_nodes)[0]
-    submit_job_and_wait_finish()
 
-    cluster.add_node(dashboard_agent_listen_port=52367)
+    def make_sure_worker_node_run_job(port):
+        actors = ray.state.actors()
+
+        def _kill_all_driver():
+            for _, actor_info in actors.items():
+                if actor_info["State"] != "ALIVE":
+                    continue
+                if actor_info["Name"].startswith("_ray_internal_job_actor"):
+                    proc = psutil.Process(actor_info["Pid"])
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+
+        try:
+            for _, actor_info in actors.items():
+                if actor_info["State"] != "ALIVE":
+                    continue
+                if actor_info["Name"].startswith("_ray_internal_job_actor"):
+                    proc = psutil.Process(actor_info["Pid"])
+                    parent_proc = proc.parent()
+                    if f"--listen-port={port}" in " ".join(parent_proc.cmdline()):
+                        _kill_all_driver()
+                        return True
+        except Exception as ex:
+            print("Got exception:", ex)
+            raise
+        client.submit_job(entrypoint="sleep 3600")
+        return False
+
+    # Make list(cluster.worker_nodes)[0] called at least once
+    wait_for_condition(
+        lambda: make_sure_worker_node_run_job(worker_1_http_port), timeout=60
+    )
+
+    worker_2_http_port = 52367
+    cluster.add_node(dashboard_agent_listen_port=worker_2_http_port)
     wait_for_condition(lambda: get_register_agents_number() == 3, timeout=20)
 
+    # The third `JobAgent` will not be called here.
     submit_job_and_wait_finish()
     submit_job_and_wait_finish()
     submit_job_and_wait_finish()
@@ -223,9 +262,10 @@ def test_job_head_choose_job_agent_E2E(mock_candidate_number, ray_start_cluster_
     # make sure the head updates the info of the dead node.
     wait_for_condition(lambda: get_register_agents_number() == 2, timeout=20)
 
-    submit_job_and_wait_finish()
-    submit_job_and_wait_finish()
-    submit_job_and_wait_finish()
+    # Make sure the third JobAgent will be called here.
+    wait_for_condition(
+        lambda: make_sure_worker_node_run_job(worker_2_http_port), timeout=60
+    )
 
     new_supervisor_actor = get_all_new_supervisor_actor_info(old_supervisor_actor)
     new_owner_port = set()
