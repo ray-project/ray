@@ -316,7 +316,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
 
     @override(TorchPolicyV2)
     @DeveloperAPI
-    def compute_actions(
+    def _compute_actions_without_connectors(
         self,
         *args,
         **kwargs,
