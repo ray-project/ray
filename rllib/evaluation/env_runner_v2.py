@@ -966,7 +966,7 @@ class EnvRunnerV2:
                 forward pass).
 
         Returns:
-            Dict mapping PolicyIDs to compute_actions_from_input_dict() outputs.
+            Dict mapping PolicyIDs to agent connector inputs.
         """
         policies = self._worker.policy_map
 
@@ -1004,7 +1004,7 @@ class EnvRunnerV2:
             input_dict = _batch_inference_sample_batches(
                 [d.data.sample_batch for d in eval_data]
             )
-            eval_results[policy_id] = policy.compute_actions_from_input_dict(
+            eval_results[policy_id] = policy._compute_action_connectors_input_from_agent_connectors_output(
                 input_dict,
                 timestep=policy.global_timestep,
                 episodes=[self._active_episodes[t.env_id] for t in eval_data],
