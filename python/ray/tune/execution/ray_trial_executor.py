@@ -504,7 +504,8 @@ class RayTrialExecutor:
         trial.set_location(_Location())
 
         try:
-            trial.write_error_log(exc=exc)
+            if exc:
+                trial.handle_error(exc=exc)
             if hasattr(trial, "runner") and trial.runner:
                 if (
                     not error
@@ -618,7 +619,12 @@ class RayTrialExecutor:
             for result_id in out:
                 self._futures.pop(result_id)
         trial.saving_to = None
-        self._stop_trial(trial, error=error or exc, exc=exc)
+        trial.restoring_from = None
+        self._stop_trial(
+            trial,
+            error=error or exc,
+            exc=exc,
+        )
 
     def continue_training(self, trial: Trial) -> None:
         """Continues the training of this trial."""
