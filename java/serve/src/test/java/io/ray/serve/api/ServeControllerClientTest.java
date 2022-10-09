@@ -39,7 +39,10 @@ public class ServeControllerClientTest {
               .putEndpoints(
                   endpointName, EndpointInfo.newBuilder().setEndpointName(endpointName).build())
               .build();
-      controllerHandle.task(DummyServeController::setEndpoints, endpointSet.toByteArray()).remote();
+      controllerHandle
+          .task(DummyServeController::setEndpoints, endpointSet.toByteArray())
+          .remote()
+          .get();
 
       // Client.
       ServeControllerClient client =

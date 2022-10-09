@@ -46,7 +46,10 @@ public class HttpProxyTest {
           endpointName,
           EndpointInfo.newBuilder().setEndpointName(endpointName).setRoute(route).build());
       EndpointSet endpointSet = EndpointSet.newBuilder().putAllEndpoints(endpointInfos).build();
-      controllerHandle.task(DummyServeController::setEndpoints, endpointSet.toByteArray()).remote();
+      controllerHandle
+          .task(DummyServeController::setEndpoints, endpointSet.toByteArray())
+          .remote()
+          .get();
 
       Serve.setInternalReplicaContext(null, null, controllerName, null, config);
 

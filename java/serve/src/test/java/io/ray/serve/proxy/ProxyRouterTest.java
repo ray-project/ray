@@ -13,7 +13,6 @@ import io.ray.serve.handle.RayServeHandle;
 import io.ray.serve.util.CommonUtil;
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -24,9 +23,7 @@ public class ProxyRouterTest {
       BaseServeTest.initRay();
 
       String prefix = "ProxyRouterTest";
-      String controllerName =
-          CommonUtil.formatActorName(
-              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
+      String controllerName = CommonUtil.formatActorName(Constants.SERVE_CONTROLLER_NAME, prefix);
       String endpointName1 = prefix + "_1";
       String endpointName2 = prefix + "_2";
       String route1 = "/route1";
@@ -43,7 +40,10 @@ public class ProxyRouterTest {
       endpointInfos.put(
           endpointName2, EndpointInfo.newBuilder().setEndpointName(endpointName2).build());
       EndpointSet endpointSet = EndpointSet.newBuilder().putAllEndpoints(endpointInfos).build();
-      controllerHandle.task(DummyServeController::setEndpoints, endpointSet.toByteArray()).remote();
+      controllerHandle
+          .task(DummyServeController::setEndpoints, endpointSet.toByteArray())
+          .remote()
+          .get();
 
       Serve.setInternalReplicaContext(null, null, controllerName, null, config);
 

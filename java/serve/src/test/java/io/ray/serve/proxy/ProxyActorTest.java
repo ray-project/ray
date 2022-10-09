@@ -57,7 +57,7 @@ public class ProxyActorTest {
           endpointName,
           EndpointInfo.newBuilder().setEndpointName(endpointName).setRoute(route).build());
       EndpointSet endpointSet = EndpointSet.newBuilder().putAllEndpoints(endpointInfos).build();
-      controller.task(DummyServeController::setEndpoints, endpointSet.toByteArray()).remote();
+      controller.task(DummyServeController::setEndpoints, endpointSet.toByteArray()).remote().get();
 
       // Replica
       DeploymentWrapper deploymentWrapper =
