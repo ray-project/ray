@@ -50,6 +50,21 @@ class AlphaZeroPolicy(TorchPolicy):
         episodes=None,
         **kwargs
     ):
+        if self.connectors_created:
+            assert not (
+                state_batches
+                or prev_action_batch
+                or prev_reward_batch
+                or info_batch
+                or episodes
+            ), (
+                "When computing actions with a policy "
+                "that "
+                "has connectors, this method will construct "
+                "state_batches, prev_action_batch, "
+                "pre_reward_batch, info_batch and episodes "
+                "itself"
+            )
 
         input_dict = {"obs": obs_batch}
         if prev_action_batch is not None:

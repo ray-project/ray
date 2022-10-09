@@ -440,9 +440,7 @@ class Policy(metaclass=ABCMeta):
                 SampleBatch.CUR_OBS: obs_batch,
             },
             _is_training=tf.constant(False),
-        )
-
-        acd_list: List[AgentConnectorDataType] = [
+        )acd_list: List[AgentConnectorDataType] = [
             AgentConnectorDataType(env_id="0", agent_id="0", data=input_dict)
         ]
         processed = self.agent_connectors(acd_list)
@@ -452,6 +450,7 @@ class Policy(metaclass=ABCMeta):
                 processed.data.raw_dict,
                 explore=explore,
                 timestep=timestep,
+
                 kwargs=kwargs,
             )
         )
@@ -536,7 +535,7 @@ class Policy(metaclass=ABCMeta):
         from ray.rllib.connectors.connector import ConnectorContext
         from ray.rllib.connectors.util import (
             get_agent_connectors_from_config,
-            get_action_connectors_from_config
+            get_action_connectors_from_config,
         )
 
         ctx: ConnectorContext = ConnectorContext.from_policy(self)
@@ -553,7 +552,6 @@ class Policy(metaclass=ABCMeta):
         logger.info("Using connectors:")
         logger.info(self.agent_connectors.__str__(indentation=4))
         logger.info(self.action_connectors.__str__(indentation=4))
-
 
     @DeveloperAPI
     def init_view_requirements(self):
