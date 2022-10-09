@@ -19,10 +19,7 @@ from .utils import (
 )
 
 if not sys.platform.startswith("linux"):
-    logging.warning(
-        "Ray on spark running on non-linux systems cannot be shutdown correctly, you need to "
-        "manually kill ray node on spark worker side."
-    )
+    raise RuntimeError("Ray on spark ony supports linux system.")
 
 _spark_dependency_error = "ray.spark module requires pyspark >= 3.3"
 try:
@@ -134,18 +131,22 @@ def init_cluster(
         *_convert_ray_node_options(head_options)
     ]
 
-    print(f"Start Ray head, command: {' '.join(ray_head_node_cmd)}")
-    ray_head_proc = exec_cmd(
-        ray_head_node_cmd,
-        synchronous=False,
-        capture_output=False,
-        stream_output=False,
-    )
+    logging.info(f"Start Ray head, command: {' '.join(ray_head_node_cmd)}")
+
+    with open(os.path.join(ray_node_log_path, "ray-head.log"), "w", buffering=1) as head_log_fp:
+        ray_head_proc = exec_cmd(
+            ray_head_node_cmd,
+            synchronous=False,
+            capture_output=False,
+            stream_output=False,
+            stdout=head_log_fp,
+            stderr=subprocess.STDOUT,
+        )
 
     # wait ray head node spin up.
     wait_ray_node_available(
         ray_head_hostname, ray_head_port, 40,
-        "Start Ray head node failed!"
+        error_on_failure="Start Ray head node failed!"
     )
 
     logging.info("Ray head node started.")
@@ -174,7 +175,7 @@ def init_cluster(
             *_convert_ray_node_options(worker_options)
         ]
 
-        print(f"Start Ray worker, command: {' '.join(ray_worker_cmd)}")
+        logging.info(f"Start Ray worker, command: {' '.join(ray_worker_cmd)}")
 
         ray_worker_extra_envs = {}
 
@@ -220,15 +221,13 @@ def init_cluster(
         else:
             setup_sigterm_on_parent_death = None
 
-        # TODO: Add a thread to redirect subprocess logs
-        #  and collect tail logs and raise error if subprocess failed.
         logging.info(f"Start Ray worker, command: {' '.join(ray_worker_cmd)}")
 
         ray_worker_log_file = os.path.join(
             ray_node_log_path,
             f"ray-worker-{task_id}.log"
         )
-        with open(ray_worker_log_file, "w", buffering=1) as log_fp:
+        with open(ray_worker_log_file, "w", buffering=1) as worker_log_fp:
             exec_cmd(
                 ray_worker_cmd,
                 synchronous=True,
@@ -236,14 +235,13 @@ def init_cluster(
                 stream_output=False,
                 extra_env=ray_worker_extra_envs,
                 preexec_fn=setup_sigterm_on_parent_death,
-                stdout=log_fp,
+                stdout=worker_log_fp,
                 stderr=subprocess.STDOUT,
             )
 
         # NB: Not reachable.
         yield 0
 
-    # TODO: redirect background thread output.
     def backgroud_job_thread_fn():
         spark.sparkContext.setJobGroup(
             spark_job_group_id,

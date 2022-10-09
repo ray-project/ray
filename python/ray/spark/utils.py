@@ -188,12 +188,8 @@ def _get_total_phyisical_memory():
 
 
 def _get_total_shared_memory():
-    try:
-        import shutil
-        return shutil.disk_usage('/dev/shm').total
-    except Exception:
-        # fallback
-        return int(_get_total_phyisical_memory() * 0.3)
+    import shutil
+    return shutil.disk_usage('/dev/shm').total
 
 
 def _get_cpu_cores():
