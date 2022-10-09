@@ -1,3 +1,5 @@
+import os.path
+
 import pytest
 import ray
 
@@ -46,11 +48,12 @@ class RayOnSparkTestBase:
             pytest.skip("Skip GPU test on cluster without GPU configured.")
 
         for num_spark_tasks in [self.max_spark_tasks // 2, self.max_spark_tasks]:
-            with ray_spark.init_cluster(num_spark_tasks=num_spark_tasks):
+            with ray_spark.init_cluster(num_spark_tasks=num_spark_tasks) as cluster:
                 time.sleep(2)
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_spark_tasks
                 for worker_res in worker_res_list:
+                    breakpoint()
                     assert worker_res['GPU'] == self.num_gpus_per_spark_task
 
     def test_basic_ray_app(self):
@@ -89,10 +92,15 @@ class TestBasicSparkGPUCluster(RayOnSparkTestBase):
         cls.num_cpus_per_spark_task = 1
         cls.num_gpus_per_spark_task = 2
         cls.max_spark_tasks = 2
+        gpu_discovery_script_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "discover_2_gpu.sh"
+        )
         cls.spark = SparkSession.builder \
             .config("master", "local-cluster[1, 2, 1024]") \
             .config("spark.task.cpus", "1") \
             .config("spark.worker.resource.gpu.amount", "1") \
             .config("spark.executor.resource.gpu.amount", "2") \
             .config("spark.task.maxFailures", "1") \
+            .config("spark.worker.resource.gpu.discoveryScript", gpu_discovery_script_path) \
             .getOrCreate()
