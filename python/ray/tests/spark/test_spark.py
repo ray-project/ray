@@ -1,14 +1,17 @@
-import os.path
+import os
 
+from abc import ABC
 import pytest
 import ray
 
 from ray import spark as ray_spark
+from ray.spark import check_port_open
 from pyspark.sql import SparkSession
 import time
+import functools
 
 
-class RayOnSparkTestBase:
+class RayOnSparkCPUClusterTestBase(ABC):
 
     spark = None
     num_total_cpus = None
@@ -43,6 +46,34 @@ class RayOnSparkTestBase:
                 for worker_res in worker_res_list:
                     assert worker_res['CPU'] == self.num_cpus_per_spark_task
 
+    def test_basic_ray_app(self):
+        with ray_spark.init_cluster(num_spark_tasks=self.max_spark_tasks) as cluster:
+            @ray.remote
+            def f(x):
+                return x * x
+
+            futures = [f.remote(i) for i in range(32)]
+            results = ray.get(futures)
+            assert results == [i * i for i in range(32)]
+
+    def test_ray_cluster_shutdown(self):
+        with ray_spark.init_cluster(num_spark_tasks=self.max_spark_tasks) as cluster:
+            time.sleep(2)
+            worker_res_list = self.get_ray_worker_resources_list()
+            assert len(worker_res_list) == self.max_spark_tasks
+
+            # cancel background spark job will cause all ray worker nodes exit.
+            cluster._cancel_background_spark_job()
+            time.sleep(5)
+            assert len(worker_res_list) == 0
+
+        time.sleep(2)  # wait ray head node exit.
+        # assert ray head node exit by checking head port being closed.
+        assert not check_port_open(int(cluster.address.split(":")[1]))
+
+
+class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
+
     def test_gpu_allocation(self):
         if self.num_gpus_per_spark_task == 0:
             pytest.skip("Skip GPU test on cluster without GPU configured.")
@@ -55,18 +86,27 @@ class RayOnSparkTestBase:
                 for worker_res in worker_res_list:
                     assert worker_res['GPU'] == self.num_gpus_per_spark_task
 
-    def test_basic_ray_app(self):
+    def test_basic_ray_app_using_gpu(self):
+
         with ray_spark.init_cluster(num_spark_tasks=self.max_spark_tasks) as cluster:
-            @ray.remote
-            def f(x):
-                return x * x
+            @ray.remote(num_gpus=1)
+            def f(_):
+                # Add a sleep to avoid the task finishing too fast,
+                # so that it can make all ray tasks concurrently running in all idle task slots.
+                time.sleep(5)
+                return [
+                    int(gpu_id)
+                    for gpu_id in os.environ['CUDA_VISIBLE_DEVICES'].split(",")
+                ]
 
-            futures = [f.remote(i) for i in range(32)]
+            futures = [f.remote(i) for i in range(self.max_spark_tasks)]
             results = ray.get(futures)
-            assert results == [i * i for i in range(32)]
+            merged_results = functools.reduce(lambda x, y: x + y, results)
+            # Test all ray tasks are assigned with different GPUs.
+            assert sorted(merged_results) == list(range(self.num_total_gpus))
 
 
-class TestBasicSparkCluster(RayOnSparkTestBase):
+class TestBasicSparkCluster(RayOnSparkCPUClusterTestBase):
 
     @classmethod
     def setup_class(cls):
@@ -83,7 +123,7 @@ class TestBasicSparkCluster(RayOnSparkTestBase):
             .getOrCreate()
 
 
-class TestBasicSparkGPUCluster(RayOnSparkTestBase):
+class TestBasicSparkGPUCluster(RayOnSparkGPUClusterTestBase):
 
     @classmethod
     def setup_class(cls):
@@ -109,7 +149,7 @@ class TestBasicSparkGPUCluster(RayOnSparkTestBase):
             .getOrCreate()
 
 
-class TestMultiCoresPerTaskCluster(RayOnSparkTestBase):
+class TestMultiCoresPerTaskCluster(RayOnSparkGPUClusterTestBase):
 
     @classmethod
     def setup_class(cls):

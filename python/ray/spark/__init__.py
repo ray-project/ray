@@ -53,12 +53,15 @@ class RayClusterOnSpark:
         self.spark_job_group_id = spark_job_group_id
         self.ray_context = ray_context
 
+    def _cancel_background_spark_job(self):
+        get_spark_session().sparkContext.cancelJobGroup(self.spark_job_group_id)
+
     def shutdown(self):
         """
         Shutdown the ray cluster created by `init_cluster` API.
         """
         self.ray_context.disconnect()
-        get_spark_session().sparkContext.cancelJobGroup(self.spark_job_group_id)
+        self._cancel_background_spark_job()
         self.head_proc.kill()
 
     def __enter__(self):
