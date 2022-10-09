@@ -1,13 +1,8 @@
-from abc import ABCMeta, abstractmethod
-import gym
-from gym.spaces import Box
 import json
 import logging
-import numpy as np
 import os
-from packaging import version
 import platform
-import tree  # pip install dm_tree
+from abc import ABCMeta, abstractmethod
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -21,10 +16,17 @@ from typing import (
     Union,
 )
 
+import gym
+import numpy as np
+import tree  # pip install dm_tree
+from gym.spaces import Box
+from packaging import version
+from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
+
 import ray
+import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
-import ray.cloudpickle as pickle
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -42,7 +44,6 @@ from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
-from ray.rllib.utils.checkpoints import CHECKPOINT_VERSION, get_checkpoint_info
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
@@ -53,6 +54,10 @@ from ray.rllib.utils.spaces.space_utils import (
     get_dummy_batch_for_space,
     unbatch,
 )
+from ray.rllib.utils.typing import (
+    ActionConnectorDataType,
+)
+from ray.rllib.utils.typing import AgentConnectorDataType
 from ray.rllib.utils.typing import (
     AgentID,
     AlgorithmConfigDict,
@@ -354,6 +359,97 @@ class Policy(metaclass=ABCMeta):
         # Connectors.
         self.agent_connectors = None
         self.action_connectors = None
+
+        # Until we have fully migrated to connectors, we wrap all connector enaled
+        # policy's compute_action_from_input_dict-methods such that they behave
+        # closer to the original methods
+        if self.config.get("enable_connectors"):
+            self._compute_action_connectors_input_from_agent_connectors_output = (
+                self.compute_actions_from_input_dict
+            )
+
+            # TODO (Artur): Replace original with this method after we have migrated to
+            #  connectors
+            def compute_actions_from_raw_obs(
+                policy: Policy,
+                input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
+                explore: bool = None,
+                timestep: Optional[int] = None,
+                episodes: Optional[List["Episode"]] = None,
+                **kwargs,
+            ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+                """Computes actions from collected samples (across multiple-agents).
+
+                Takes an input dict (usually a SampleBatch) as its main data input.
+                This allows for using this method in case a more complex input pattern
+                (view requirements) is needed, for example when the Model requires the
+                last n observations, the last m actions/rewards, or a combination
+                of any of these.
+
+                Args:
+                    policy: The policy to compute actions with
+                    input_dict: A SampleBatch or input dict containing the Tensors
+                        to compute actions. `input_dict` already abides to the
+                        Policy's as well as the Model's view requirements and can
+                        thus be passed to the Model as-is.
+                    explore: Whether to pick an exploitation or exploration
+                        action (default: None -> use self.config["explore"]).
+                    timestep: The current (sampling) time step.
+                    episodes: This provides access to all of the internal episodes'
+                        state, which may be useful for model-based or multi-agent
+                        algorithms.
+
+                Keyword Args:
+                    kwargs: Forward compatibility placeholder.
+
+                Returns:
+                    actions: Batch of output actions, with shape like
+                        [BATCH_SIZE, ACTION_SHAPE].
+                    state_outs: List of RNN state output
+                        batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
+                    info: Dictionary of extra feature batches, if any, with shape like
+                        {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
+                """
+                assert policy.agent_connectors, (
+                    "This policy has connectors enabled but no agent connectors could "
+                    "be found."
+                )
+
+                assert policy.agent_connectors and policy.action_connectors, (
+                    "This policy has connectors enabled but no agent connectors could "
+                    "be found."
+                )
+
+                acd_list: List[AgentConnectorDataType] = [
+                    AgentConnectorDataType(env_id="0", agent_id="0", data=input_dict)
+                ]
+                processed = policy.agent_connectors(acd_list)
+
+                action_connector_input = (
+                    self._compute_action_connectors_input_from_agent_connectors_output(
+                        processed.data.raw_dict,
+                        explore=explore,
+                        timestep=timestep,
+                        episodes=episodes,
+                        kwargs=kwargs,
+                    )
+                )
+
+                #  Post-process policy output by running them through action connectors.
+                ac_data = ActionConnectorDataType(
+                    env_id="0",
+                    agent_id="0",
+                    data=input_dict,
+                    output=action_connector_input,
+                )
+
+                policy.agent_connectors.on_policy_output(ac_data)
+
+                actions, rnn_states, fetches = policy.action_connectors(ac_data).output
+
+                return actions, rnn_states, fetches
+
+            self.compute_actions_from_input_dict = compute_actions_from_raw_obs
 
     @DeveloperAPI
     def init_view_requirements(self):
