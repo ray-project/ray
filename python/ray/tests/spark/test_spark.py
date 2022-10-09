@@ -75,7 +75,7 @@ class TestBasicSparkCluster(RayOnSparkTestBase):
         cls.num_cpus_per_spark_task = 1
         cls.num_gpus_per_spark_task = 0
         cls.max_spark_tasks = 2
-        os.environ["SPARK_WORKER_CORES"] = 2
+        os.environ["SPARK_WORKER_CORES"] = "2"
         cls.spark = SparkSession.builder \
             .master("local-cluster[1, 2, 1024]") \
             .config("spark.task.cpus", "1") \
@@ -96,7 +96,7 @@ class TestBasicSparkGPUCluster(RayOnSparkTestBase):
             os.path.dirname(os.path.abspath(__file__)),
             "discover_2_gpu.sh"
         )
-        os.environ["SPARK_WORKER_CORES"] = 2
+        os.environ["SPARK_WORKER_CORES"] = "4"
         cls.spark = SparkSession.builder \
             .master("local-cluster[1, 2, 1024]") \
             .config("spark.task.cpus", "1") \
@@ -122,7 +122,7 @@ class TestMultiCoresPerTaskCluster(RayOnSparkTestBase):
             os.path.dirname(os.path.abspath(__file__)),
             "discover_4_gpu.sh"
         )
-        os.environ["SPARK_WORKER_CORES"] = 4
+        os.environ["SPARK_WORKER_CORES"] = "4"
         cls.spark = SparkSession.builder \
             .master("local-cluster[1, 4, 1024]") \
             .config("spark.task.cpus", "2") \

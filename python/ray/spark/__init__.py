@@ -114,6 +114,12 @@ def init_cluster(
     ray_node_log_path = os.path.join(ray_node_log_root_path, f"cluster-{ray_head_hostname}-{ray_head_port}")
 
     logging.warning(f"You can check ray head / worker nodes logs under local disk path {ray_node_log_path}")
+    if is_in_databricks_runtime() and not ray_node_log_root_path.startswith("/dbfs"):
+        logging.warning(
+            "We recommend you to set `ray_node_log_root_path` argument to be a path under '/dbfs/', "
+            "because for all spark cluster nodes '/dbfs/' path is mounted with a shared disk, "
+            "so that you can check ray worker logs on spark driver node."
+        )
 
     os.makedirs(ray_node_log_path, exist_ok=True)
 
