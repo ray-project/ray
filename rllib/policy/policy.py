@@ -361,94 +361,89 @@ class Policy(metaclass=ABCMeta):
         self.agent_connectors = None
         self.action_connectors = None
 
-        # Until we have fully migrated to connectors, we wrap all connector enaled
+        # Until we have fully migrated to connectors, we wrap all connector enabled
         # policy's compute_action_from_input_dict-methods such that they behave
         # closer to the original methods
         if self.config.get("enable_connectors"):
-            self._compute_action_connectors_input_from_agent_connectors_output = (
-                self.compute_actions_from_input_dict
+            self.compute_actions_from_input_dict = self._compute_action_with_connectors
+            self.compute_actions = self._compute_action_with_connectors
+        else:
+            self.compute_actions_from_input_dict = (
+                self._compute_actions_without_connectors_from_input_dict
             )
+            self.compute_actions = self._compute_actions_without_connectors
 
-            # TODO (Artur): Replace original with this method after we have migrated to
-            #  connectors
-            def compute_actions_from_raw_obs(
-                policy: Policy,
-                input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
-                explore: bool = None,
-                timestep: Optional[int] = None,
-                episodes: Optional[List["Episode"]] = None,
-                **kwargs,
-            ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-                """Computes actions from collected samples (across multiple-agents).
+    # TODO (Artur): Replace original compute_actions_from_input_dict method with this
+    # method after we have migrated to connectors
+    def _compute_action_with_connectors(
+        self,
+        input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
+        explore: bool = None,
+        timestep: Optional[int] = None,
+        episodes: Optional[List["Episode"]] = None,
+        **kwargs,
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+        """Computes actions from an observation.
 
-                Takes an input dict (usually a SampleBatch) as its main data input.
-                This allows for using this method in case a more complex input pattern
-                (view requirements) is needed, for example when the Model requires the
-                last n observations, the last m actions/rewards, or a combination
-                of any of these.
+        Args:
+            input_dict: A SampleBatch or input dict containing the Tensors
+                to compute actions with connectors.
+            explore: Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
+            timestep: The current (sampling) time step.
+            episodes: This provides access to all of the internal episodes'
+                state, which may be useful for model-based or multi-agent
+                algorithms.
 
-                Args:
-                    policy: The policy to compute actions with
-                    input_dict: A SampleBatch or input dict containing the Tensors
-                        to compute actions. `input_dict` already abides to the
-                        Policy's as well as the Model's view requirements and can
-                        thus be passed to the Model as-is.
-                    explore: Whether to pick an exploitation or exploration
-                        action (default: None -> use self.config["explore"]).
-                    timestep: The current (sampling) time step.
-                    episodes: This provides access to all of the internal episodes'
-                        state, which may be useful for model-based or multi-agent
-                        algorithms.
+        Keyword Args:
+            kwargs: Forward compatibility placeholder.
 
-                Keyword Args:
-                    kwargs: Forward compatibility placeholder.
+        Returns:
+            actions: Batch of output actions, with shape like
+                [BATCH_SIZE, ACTION_SHAPE].
+            state_outs: List of RNN state output
+                batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
+            info: Dictionary of extra feature batches, if any, with shape like
+                {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
+        """
+        if not self.connectors_created:
+            logger.warning(
+                "Trying to compute actions with connectors, "
+                "but no connectors where initialized on this "
+                "policy. This creates the connectors from the "
+                "policy config but will not synchronize them."
+            )
+            self.init_connectors(self.config)
+            # maybe_get_filters_for_syncing(self, name)
 
-                Returns:
-                    actions: Batch of output actions, with shape like
-                        [BATCH_SIZE, ACTION_SHAPE].
-                    state_outs: List of RNN state output
-                        batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
-                    info: Dictionary of extra feature batches, if any, with shape like
-                        {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
-                """
-                if not self.connectors_created:
-                    logger.warning("Trying to compute actions with connectors, "
-                                   "but no connectors where initialized on this "
-                                   "policy. This creates the connectors from the "
-                                   "policy config but will not synchronize them.")
-                    policy.init_connectors(config)
-                    # maybe_get_filters_for_syncing(self, name)
+        acd_list: List[AgentConnectorDataType] = [
+            AgentConnectorDataType(env_id="0", agent_id="0", data=input_dict)
+        ]
+        processed = self.agent_connectors(acd_list)
 
-                acd_list: List[AgentConnectorDataType] = [
-                    AgentConnectorDataType(env_id="0", agent_id="0", data=input_dict)
-                ]
-                processed = policy.agent_connectors(acd_list)
+        action_connector_input = (
+            self._compute_action_connectors_input_from_agent_connectors_output(
+                processed.data.raw_dict,
+                explore=explore,
+                timestep=timestep,
+                episodes=episodes,
+                kwargs=kwargs,
+            )
+        )
 
-                action_connector_input = (
-                    self._compute_action_connectors_input_from_agent_connectors_output(
-                        processed.data.raw_dict,
-                        explore=explore,
-                        timestep=timestep,
-                        episodes=episodes,
-                        kwargs=kwargs,
-                    )
-                )
+        #  Post-process policy output by running them through action connectors.
+        ac_data = ActionConnectorDataType(
+            env_id="0",
+            agent_id="0",
+            data=input_dict,
+            output=action_connector_input,
+        )
 
-                #  Post-process policy output by running them through action connectors.
-                ac_data = ActionConnectorDataType(
-                    env_id="0",
-                    agent_id="0",
-                    data=input_dict,
-                    output=action_connector_input,
-                )
+        self.agent_connectors.on_policy_output(ac_data)
 
-                policy.agent_connectors.on_policy_output(ac_data)
+        actions, rnn_states, fetches = self.action_connectors(ac_data).output
 
-                actions, rnn_states, fetches = policy.action_connectors(ac_data).output
-
-                return actions, rnn_states, fetches
-
-            self.compute_actions_from_input_dict = compute_actions_from_raw_obs
+        return actions, rnn_states, fetches
 
     @property
     def action_connectors_created(self):
@@ -474,7 +469,7 @@ class Policy(metaclass=ABCMeta):
         from ray.rllib.connectors.connector import ConnectorContext
         from ray.rllib.connectors.util import (
             get_agent_connectors_from_config,
-            get_action_connectors_from_config
+            get_action_connectors_from_config,
         )
 
         ctx: ConnectorContext = ConnectorContext.from_policy(self)
@@ -491,7 +486,6 @@ class Policy(metaclass=ABCMeta):
         logger.info("Using connectors:")
         logger.info(self.agent_connectors.__str__(indentation=4))
         logger.info(self.action_connectors.__str__(indentation=4))
-
 
     @DeveloperAPI
     def init_view_requirements(self):
@@ -622,7 +616,7 @@ class Policy(metaclass=ABCMeta):
         )
 
     @DeveloperAPI
-    def compute_actions_from_input_dict(
+    def _compute_actions_without_connectors_from_input_dict(
         self,
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
         explore: bool = None,
@@ -678,7 +672,7 @@ class Policy(metaclass=ABCMeta):
 
     @abstractmethod
     @DeveloperAPI
-    def compute_actions(
+    def _compute_actions_without_connectors(
         self,
         obs_batch: Union[List[TensorStructType], TensorStructType],
         state_batches: Optional[List[TensorType]] = None,
@@ -1064,24 +1058,25 @@ class Policy(metaclass=ABCMeta):
             state: The new state to set this policy to. Can be
                 obtained by calling `self.get_state()`.
         """
-        # To avoid a circular dependency problem cause by SampleBatch.
-        from ray.rllib.connectors.util import restore_connectors_for_policy
-
         # No-op if connector is not enabled.
         if not self.config.get("enable_connectors", False):
             return
 
+        # To avoid a circular dependency problem cause by SampleBatch.
+        from ray.rllib.connectors.connector import ConnectorContext, get_connector
+
+        def _restore(cfg):
+            ctx: ConnectorContext = ConnectorContext.from_policy(self)
+            name, params = cfg
+            return get_connector(ctx, name, params)
+
         connector_configs = state.get("connector_configs", {})
         if "agent" in connector_configs:
-            self.agent_connectors = restore_connectors_for_policy(
-                self, connector_configs["agent"]
-            )
+            self.agent_connectors = _restore(self, connector_configs["agent"])
             logger.info("restoring agent connectors:")
             logger.info(self.agent_connectors.__str__(indentation=4))
         if "action" in connector_configs:
-            self.action_connectors = restore_connectors_for_policy(
-                self, connector_configs["action"]
-            )
+            self.action_connectors = _restore(self, connector_configs["action"])
             logger.info("restoring action connectors:")
             logger.info(self.action_connectors.__str__(indentation=4))
 

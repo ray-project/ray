@@ -155,7 +155,7 @@ def _traced_eager_policy(eager_policy_cls):
 
         @_check_too_many_retraces
         @override(Policy)
-        def compute_actions_from_input_dict(
+        def _compute_actions_without_connectors_from_input_dict(
             self,
             input_dict: Dict[str, TensorType],
             explore: bool = None,
@@ -178,7 +178,9 @@ def _traced_eager_policy(eager_policy_cls):
 
             # Now that the helper method is traced, call super's
             # `compute_actions_from_input_dict()` (which will call the traced helper).
-            return super(TracedEagerPolicy, self).compute_actions_from_input_dict(
+            return super(
+                TracedEagerPolicy, self
+            )._compute_actions_without_connectors_from_input_dict(
                 input_dict=input_dict,
                 explore=explore,
                 timestep=timestep,
@@ -449,7 +451,7 @@ def _build_eager_tf_policy(
             self.global_timestep.assign(0)
 
         @override(Policy)
-        def compute_actions_from_input_dict(
+        def _compute_actions_without_connectors_from_input_dict(
             self,
             input_dict: Dict[str, TensorType],
             explore: bool = None,
@@ -497,7 +499,7 @@ def _build_eager_tf_policy(
             return convert_to_numpy(ret)
 
         @override(Policy)
-        def compute_actions(
+        def _compute_actions_without_connectors(
             self,
             obs_batch,
             state_batches=None,

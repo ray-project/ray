@@ -60,7 +60,7 @@ class SimpleQTorchPolicy(
         return model
 
     @override(TorchPolicyV2)
-    def compute_actions(
+    def _compute_actions_without_connectors(
         self,
         *,
         input_dict,

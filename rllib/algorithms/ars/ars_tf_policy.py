@@ -84,7 +84,9 @@ class ARSTFPolicy(Policy):
             for _, variable in self.variables.variables.items()
         )
 
-    def compute_actions(self, observation, add_noise=False, update=True, **kwargs):
+    def _compute_actions_without_connectors(
+        self, observation, add_noise=False, update=True, **kwargs
+    ):
         # Squeeze batch dimension (we always calculate actions for only a
         # single obs).
         observation = observation[0]

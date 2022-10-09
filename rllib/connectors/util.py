@@ -1,5 +1,4 @@
 import logging
-from typing import Any, Tuple
 
 from ray.rllib.connectors.action.clip import ClipActionsConnector
 from ray.rllib.connectors.action.immutable import ImmutableActionsConnector
@@ -11,7 +10,7 @@ from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
 from ray.rllib.connectors.agent.state_buffer import StateBufferConnector
 from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConnector
-from ray.rllib.connectors.connector import Connector, ConnectorContext, get_connector
+from ray.rllib.connectors.connector import Connector, ConnectorContext
 from ray.rllib.connectors.agent.mean_std_filter import (
     MeanStdObservationFilterAgentConnector,
     ConcurrentMeanStdObservationFilterAgentConnector,
@@ -24,10 +23,12 @@ from ray.rllib.utils.deprecation import Deprecated
 logger = logging.getLogger(__name__)
 
 
-@Deprecated(old="ray.rllib.connectors.util.create_connectors_for_policy",
-            new="policy.init_connectors", error=False, help="Connectors are now "
-                                                            "initialized from the "
-                                                            "policy object itself.")
+@Deprecated(
+    old="ray.rllib.connectors.util.create_connectors_for_policy",
+    new="policy.init_connectors",
+    error=False,
+    help="Connectors are now initialized from the policy object itself.",
+)
 def create_connectors_for_policy(policy, config):
     return policy.init_connectors(config)
 
@@ -86,19 +87,16 @@ def get_action_connectors_from_config(
     connectors.append(ImmutableActionsConnector(ctx))
     return ActionConnectorPipeline(ctx, connectors)
 
-@PublicAPI(stability="alpha")
-def restore_connectors_for_policy(
-    policy: "Policy", connector_config: Tuple[str, Tuple[Any]]
-) -> Connector:
-    """Util to create connector for a Policy based on serialized config.
 
-    Args:
-        policy: Policy instance.
-        connector_config: Serialized connector config.
-    """
-    ctx: ConnectorContext = ConnectorContext.from_policy(policy)
-    name, params = connector_config
-    return get_connector(ctx, name, params)
+@Deprecated(
+    old="ray.rllib.connectors.util.restore_connectors_for_policy",
+    new="policy.restore_connectors",
+    error=False,
+    help="Connectors are now restored from the policy object itself.",
+)
+@PublicAPI(stability="alpha")
+def restore_connectors_for_policy(policy, connector_config) -> Connector:
+    return policy.restore_connectors(connector_config)
 
 
 # We need this filter selection mechanism temporarily to remain compatible to old API
