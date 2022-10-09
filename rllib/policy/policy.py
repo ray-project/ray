@@ -512,6 +512,49 @@ class Policy(metaclass=ABCMeta):
         logger.info(self.agent_connectors.__str__(indentation=4))
         logger.info(self.action_connectors.__str__(indentation=4))
 
+    @property
+    def action_connectors_created(self):
+        return self.agent_connectors is not None
+
+    @property
+    def agent_connectors_created(self):
+        return self.action_connectors is not None
+
+    @property
+    def connectors_created(self):
+        return self.agent_connectors_created and self.action_connectors_created
+
+    @PublicAPI(stability="alpha")
+    def init_connectors(self, config: TrainerConfigDict):
+        """Util to create agent and action connectors for a Policy.
+
+        Args:
+            policy: Policy instance.
+            config: Trainer config dict.
+        """
+        # Import here to avoid circular dependencies
+        from ray.rllib.connectors.connector import ConnectorContext
+        from ray.rllib.connectors.util import (
+            get_agent_connectors_from_config,
+            get_action_connectors_from_config
+        )
+
+        ctx: ConnectorContext = ConnectorContext.from_policy(self)
+
+        assert self.agent_connectors is None and self.agent_connectors is None, (
+            "Can not create connectors for a policy that already has connectors. This "
+            "can happen if you add a Policy that has connectors attached to a "
+            "RolloutWorker with add_policy()."
+        )
+
+        self.agent_connectors = get_agent_connectors_from_config(ctx, config)
+        self.action_connectors = get_action_connectors_from_config(ctx, config)
+
+        logger.info("Using connectors:")
+        logger.info(self.agent_connectors.__str__(indentation=4))
+        logger.info(self.action_connectors.__str__(indentation=4))
+
+
     @DeveloperAPI
     def init_view_requirements(self):
         """Maximal view requirements dict for `learn_on_batch()` and
