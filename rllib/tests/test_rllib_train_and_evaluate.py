@@ -11,6 +11,9 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import framework_iterator
 
 
+rllib_dir = str(Path(__file__).parent.parent.absolute())
+
+
 def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
     extra_config = ""
     if algo == "ARS":
@@ -29,7 +32,6 @@ def evaluate_test(algo, env="CartPole-v0", test_episode_rollout=False):
 
         print("Saving results to {}".format(tmp_dir))
 
-        rllib_dir = str(Path(__file__).parent.parent.absolute())
         print("RLlib dir = {}\nexists={}".format(rllib_dir, os.path.exists(rllib_dir)))
         os.system(
             "python {}/train.py --local-dir={} --run={} "
@@ -260,6 +262,36 @@ class TestTrainAndEvaluate(unittest.TestCase):
 
     def test_ppo_multi_agent_train_then_rollout(self):
         learn_test_multi_agent_plus_evaluate("PPO")
+
+
+class TestCLISmokeTests(unittest.TestCase):
+    def test_help(self):
+        assert os.popen(f"python {rllib_dir}/scripts.py --help").read()
+        assert os.popen(f"python {rllib_dir}/train.py --help").read()
+        assert os.popen(f"python {rllib_dir}/train.py file --help").read()
+        assert os.popen(f"python {rllib_dir}/evaluate.py --help").read()
+        assert os.popen(f"python {rllib_dir}/scripts.py example --help").read()
+        assert os.popen(f"python {rllib_dir}/scripts.py example list --help").read()
+        assert os.popen(f"python {rllib_dir}/scripts.py example run --help").read()
+
+    def test_simple_commands(self):
+        assert os.popen(f"python {rllib_dir}/scripts.py example list").read()
+        assert os.popen(f"python {rllib_dir}/scripts.py example list -f=ppo").read()
+        assert os.popen(f"python {rllib_dir}/scripts.py example get atari-a2c").read()
+
+        assert os.popen(
+            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
+            f"cartpole-simpleq-test.yaml"
+        ).read()
+
+    def test_all_example_files_exist(self):
+        """ "The 'example' command now knows about example files,
+        so we check that they exist."""
+        from ray.rllib.common import EXAMPLES
+
+        for val in EXAMPLES.values():
+            file = val["file"]
+            assert os.path.exists(os.path.join(rllib_dir, file))
 
 
 if __name__ == "__main__":
