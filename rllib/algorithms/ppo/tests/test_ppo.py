@@ -123,7 +123,7 @@ class TestPPO(unittest.TestCase):
         for fw in framework_iterator(config, with_eager_tracing=True):
             for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
-                for lstm in [True, False]:
+                for lstm in [False, True]:
                     print("LSTM={}".format(lstm))
                     config.training(
                         model=dict(
@@ -260,15 +260,6 @@ class TestPPO(unittest.TestCase):
             post_std = get_value()
             assert post_std != 0.0, post_std
             trainer.stop()
-
-    def test_ppo_legacy_config(self):
-        """Tests, whether the old PPO config dict is still functional."""
-        ppo_config = ppo.DEFAULT_CONFIG
-        # Expect warning.
-        print(f"Accessing learning-rate from legacy config dict: {ppo_config['lr']}")
-        # Build Algorithm.
-        ppo_trainer = ppo.PPO(config=ppo_config, env="CartPole-v1")
-        print(ppo_trainer.train())
 
     def test_ppo_loss_function(self):
         """Tests the PPO loss function math."""

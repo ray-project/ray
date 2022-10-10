@@ -432,7 +432,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
                 )
             )
 
-    def as_trainable(self) -> Type[Trainable]:
+    def _generate_trainable_cls(self) -> Type["Trainable"]:
         original_param_dict = self._param_dict.copy()
         resume_from_checkpoint: Optional[Checkpoint] = self._param_dict.get(
             "resume_from_checkpoint", None
@@ -444,7 +444,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
                 resume_from_checkpoint
             )
         try:
-            ret = super().as_trainable()
+            ret = super()._generate_trainable_cls()
         finally:
             self._param_dict = original_param_dict
         return ret
