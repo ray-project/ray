@@ -450,7 +450,6 @@ class Policy(metaclass=ABCMeta):
                 processed.data.raw_dict,
                 explore=explore,
                 timestep=timestep,
-
                 kwargs=kwargs,
             )
         )
