@@ -84,8 +84,8 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
        shapes_it != tasks_to_schedule_.end();) {
     auto &work_queue = shapes_it->second;
     bool is_infeasible = false;
-    for (auto it = work_queue.begin(); it != work_queue.end();) {
-      auto work_it = it++;
+    while (!work_queue.empty()) {
+      auto work_it = work_queue.begin();
       // Check every task in task_to_schedule queue to see
       // whether it can be scheduled. This avoids head-of-line
       // blocking where a task which cannot be scheduled because
