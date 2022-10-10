@@ -84,6 +84,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
     auto shapes_it = it++;
     auto &work_queue = shapes_it->second;
     bool is_infeasible = false;
+    bool work_queue_invalidated = false;
     while (!work_queue.empty()) {
       auto work_it = work_queue.begin();
       // Check every task in task_to_schedule queue to see
@@ -131,6 +132,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
             // `ClusterTaskManager::CancelTask`). But this cancellation may erase
             // (invalidate) the current `shapes_it`. So when this happens, we have to
             // break immediately and move on to the next shape.
+            work_queue_invalidated = true;
             break;
           }
           continue;
@@ -142,10 +144,6 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
       ScheduleOnNode(node_id, work);
       work_queue.erase(work_it);
-      if (work_queue.empty()) {
-        tasks_to_schedule_.erase(shapes_it);
-        break;
-      }
     }
 
     if (is_infeasible) {
@@ -160,6 +158,8 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 
       // TODO(sang): Use a shared pointer deque to reduce copy overhead.
       infeasible_tasks_[shapes_it->first] = shapes_it->second;
+      tasks_to_schedule_.erase(shapes_it);
+    } else if (!work_queue_invalidated && work_queue.empty()) {
       tasks_to_schedule_.erase(shapes_it);
     }
   }
