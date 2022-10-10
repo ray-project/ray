@@ -197,6 +197,12 @@ def _get_cpu_cores():
     return multiprocessing.cpu_count()
 
 
+def _calc_mem_per_ray_worker(num_task_slots, physical_mem_bytes, shared_mem_bytes):
+    ray_worker_object_store_bytes = int(shared_mem_bytes / num_task_slots * 0.8)
+    ray_worker_heap_mem_bytes = int((physical_mem_bytes - shared_mem_bytes) / num_task_slots * 0.8)
+    return ray_worker_heap_mem_bytes, ray_worker_object_store_bytes
+
+
 def get_avail_mem_per_ray_worker(spark):
     """
     Return the available heap memory and object store memory for each ray worker.
@@ -213,9 +219,11 @@ def get_avail_mem_per_ray_worker(spark):
             physical_mem_bytes = _get_total_phyisical_memory()
             shared_mem_bytes = _get_total_shared_memory()
 
-            ray_worker_object_store_bytes = int(shared_mem_bytes / num_task_slots * 0.8)
-            ray_worker_heap_mem_bytes = int((physical_mem_bytes - shared_mem_bytes) / num_task_slots * 0.8)
-
+            ray_worker_heap_mem_bytes, ray_worker_object_store_bytes = _calc_mem_per_ray_worker(
+                num_task_slots,
+                physical_mem_bytes,
+                shared_mem_bytes,
+            )
             return ray_worker_heap_mem_bytes, ray_worker_object_store_bytes, None
         except Exception as e:
             return -1, -1, repr(e)
@@ -228,15 +236,14 @@ def get_avail_mem_per_ray_worker(spark):
     return inferred_ray_worker_heap_mem_bytes, inferred_ray_worker_object_store_bytes
 
 
-def get_spark_task_assigned_physical_gpus(task_context):
-    resources = task_context.resources()
-    if "gpu" not in resources:
+def get_spark_task_assigned_physical_gpus(task_resources):
+    if "gpu" not in task_resources:
         raise RuntimeError(
             "Couldn't get the gpu id, Please check the GPU resource configuration"
         )
-    gpu_addr_list = [int(addr.strip()) for addr in resources["gpu"].addresses]
+    gpu_addr_list = [int(addr.strip()) for addr in task_resources["gpu"].addresses]
 
-    if is_in_databricks_runtime():
+    if 'CUDA_VISIBLE_DEVICES' in os.environ:
         visible_cuda_dev_list = [
             int(dev.strip()) for dev in os.environ['CUDA_VISIBLE_DEVICES'].split(",")
         ]

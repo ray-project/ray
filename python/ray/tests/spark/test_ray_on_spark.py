@@ -66,7 +66,8 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
         time.sleep(3)  # wait ray head node exit.
         # assert ray head node exit by checking head port being closed.
-        assert not check_port_open("127.0.0.1", int(cluster.address.split(":")[1]))
+        hostname, port = cluster.address.split(":")
+        assert not check_port_open(hostname, int(port))
 
 
 class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):

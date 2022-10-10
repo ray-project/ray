@@ -204,7 +204,7 @@ def init_cluster(
         ray_worker_extra_envs = {}
 
         if num_spark_task_gpus > 0:
-            available_physical_gpus = get_spark_task_assigned_physical_gpus(context)
+            available_physical_gpus = get_spark_task_assigned_physical_gpus(context.resources())
             ray_worker_cmd.append(
                 f"--num-gpus={len(available_physical_gpus)}",
             )
