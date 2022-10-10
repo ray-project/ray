@@ -126,7 +126,6 @@ from ray.exceptions import (
     TaskCancelledError,
     AsyncioActorExit,
     PendingCallsLimitExceeded,
-    PlasmaObjectNotAvailable,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -435,8 +434,19 @@ cdef prepare_args_internal(
             op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
                     c_arg, c_owner_address)
             if not op_status.ok():
-                raise PlasmaObjectNotAvailable(
-                    'Object %r could not be found in this Ray session.' % arg)
+                msg = (
+                    f"Object {repr(arg)} could not be found in this Ray "
+                    "session."
+                    "Please make sure that all Ray objects used by the "
+                    "application are part of the current Ray session. "
+                    "Note that object IDs generated randomly "
+                    "(ObjectID.from_random()) or out-of-band "
+                    "(ObjectID.from_binary(...)) cannot be passed as a task "
+                    "arguments because Ray does not know which task created them."
+                    "If this was not how your object ID was generated, please "
+                    "file an issue at "
+                    "https://github.com/ray-project/ray/issues/")
+                raise ValueError(msg)
             args_vector.push_back(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
@@ -1572,8 +1582,22 @@ cdef class CoreWorker:
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().Get(
-                c_object_ids, timeout_ms, &results))
+            op_status = CCoreWorkerProcess.GetCoreWorker().Get(
+                c_object_ids, timeout_ms, &results)
+        if not op_status.ok():
+            msg = (
+                f"One or more objects in {repr(object_refs)} could not be "
+                "found in this Ray session. "
+                "Please make sure that all Ray objects used by the "
+                "application are part of the current Ray session. "
+                "Note that object IDs generated randomly "
+                "(ObjectID.from_random()) or out-of-band "
+                "(ObjectID.from_binary(...)) cannot be passed as a task "
+                "arguments because Ray does not know which task created them."
+                "If this was not how your object ID was generated, please "
+                "file an issue at "
+                "https://github.com/ray-project/ray/issues/")
+            raise ValueError(msg)
 
         return RayObjectsToDataMetadataPairs(results)
 
@@ -1777,8 +1801,22 @@ cdef class CoreWorker:
 
         wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().Wait(
-                wait_ids, num_returns, timeout_ms, &results, fetch_local))
+            op_status = CCoreWorkerProcess.GetCoreWorker().Wait(
+                wait_ids, num_returns, timeout_ms, &results, fetch_local)
+        if not op_status.ok():
+            msg = (
+                f"None of the objects in {repr(object_refs)} were "
+                "found in this Ray session. "
+                "Please make sure that all Ray objects used by the "
+                "application are part of the current Ray session. "
+                "Note that object IDs generated randomly "
+                "(ObjectID.from_random()) or out-of-band "
+                "(ObjectID.from_binary(...)) cannot be passed as a task "
+                "arguments because Ray does not know which task created them."
+                "If this was not how your object ID was generated, please "
+                "file an issue at "
+                "https://github.com/ray-project/ray/issues/")
+            raise ValueError(msg)
 
         assert len(results) == len(object_refs)
 
@@ -2330,8 +2368,22 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_object_id = object_ref.native()
             CAddress c_owner_address
-        CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
+        op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
                 c_object_id, c_owner_address)
+        if not op_status.ok():
+            msg = (
+                f"Object {repr(object_ref)} could not be found in this Ray "
+                "session."
+                "Please make sure that all Ray objects used by the "
+                "application are part of the current Ray session. "
+                "Note that object IDs generated randomly "
+                "(ObjectID.from_random()) or out-of-band "
+                "(ObjectID.from_binary(...)) cannot be passed as a task "
+                "arguments because Ray does not know which task created them."
+                "If this was not how your object ID was generated, please "
+                "file an issue at "
+                "https://github.com/ray-project/ray/issues/")
+            raise ValueError(msg)
         return c_owner_address.SerializeAsString()
 
     def serialize_object_ref(self, ObjectRef object_ref):
@@ -2339,8 +2391,22 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_ref.native()
             CAddress c_owner_address = CAddress()
             c_string serialized_object_status
-        CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
+        op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnershipInfo(
                 c_object_id, &c_owner_address, &serialized_object_status)
+        if not op_status.ok():
+            msg = (
+                f"Object {repr(object_ref)} could not be found in this Ray "
+                "session."
+                "Please make sure that all Ray objects used by the "
+                "application are part of the current Ray session. "
+                "Note that object IDs generated randomly "
+                "(ObjectID.from_random()) or out-of-band "
+                "(ObjectID.from_binary(...)) cannot be passed as a task "
+                "arguments because Ray does not know which task created them."
+                "If this was not how your object ID was generated, please "
+                "file an issue at "
+                "https://github.com/ray-project/ray/issues/")
+            raise ValueError(msg)
         return (object_ref,
                 c_owner_address.SerializeAsString(),
                 serialized_object_status)

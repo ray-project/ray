@@ -924,11 +924,12 @@ std::vector<rpc::ObjectReference> CoreWorker::GetObjectRefs(
   return refs;
 }
 
-void CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
+
+void CoreWorker::GetOwnershipInfoOrDie(const ObjectID &object_id,
                                   rpc::Address *owner_address,
                                   std::string *serialized_object_status) {
-  auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
-  RAY_CHECK(has_owner)
+  auto status = GetOwnershipInfo(object_id, owner_address, serialized_object_status);
+  RAY_CHECK(status.ok())
       << "An application is trying to access a Ray object whose owner is unknown ("
       << object_id
       << "). "
@@ -939,6 +940,16 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
          "does not know which task created them. "
          "If this was not how your object ID was generated, please file an issue "
          "at https://github.com/ray-project/ray/issues/";
+}
+
+Status CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
+                                  rpc::Address *owner_address,
+                                  std::string *serialized_object_status) {
+  auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
+  if (!has_owner) {
+    return Status::ObjectNotFound(
+        "Unable to get ownership information for requested object");
+  }
 
   rpc::GetObjectStatusReply object_status;
   // Optimization: if the object exists, serialize and inline its status. This also
@@ -950,6 +961,7 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
     }
   }
   *serialized_object_status = object_status.SerializeAsString();
+  return Status::OK();
 }
 
 void CoreWorker::RegisterOwnershipInfoAndResolveFuture(

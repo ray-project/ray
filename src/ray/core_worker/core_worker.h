@@ -393,7 +393,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] The RPC address of the worker that owns this object.
   Status GetOwnerAddress(const ObjectID &object_id, rpc::Address &owner_address) const;
 
-  /// Get the RPC address of the worker that owns the given object.
+  /// Get the RPC address of the worker that owns the given object. If the
+  /// object has no owner, then we terminate the process.
   ///
   /// \param[in] object_id The object ID. The object must either be owned by
   /// us, or the caller previously added the ownership information (via
@@ -426,7 +427,28 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] owner_address The address of the object's owner. This should
   /// be appended to the serialized object ID.
   /// \param[out] serialized_object_status The serialized object status protobuf.
-  void GetOwnershipInfo(const ObjectID &object_id,
+  Status GetOwnershipInfo(const ObjectID &object_id,
+                        rpc::Address *owner_address,
+                        std::string *serialized_object_status);
+
+  /// Get the owner information of an object. This should be
+  /// called when serializing an object ID, and the returned information should
+  /// be stored with the serialized object ID. If the ownership of the object
+  /// cannot be established, then we terminate the process.
+  ///
+  /// This can only be called on object IDs that we created via task
+  /// submission, ray.put, or object IDs that we deserialized. It cannot be
+  /// called on object IDs that were created randomly, e.g.,
+  /// ObjectID::FromRandom.
+  ///
+  /// Postcondition: Get(object_id) is valid.
+  ///
+  /// \param[in] object_id The object ID to serialize.
+  /// appended to the serialized object ID.
+  /// \param[out] owner_address The address of the object's owner. This should
+  /// be appended to the serialized object ID.
+  /// \param[out] serialized_object_status The serialized object status protobuf.
+  void GetOwnershipInfoOrDie(const ObjectID &object_id,
                         rpc::Address *owner_address,
                         std::string *serialized_object_status);
 
