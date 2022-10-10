@@ -22,6 +22,8 @@ from .utils import (
 if not sys.platform.startswith("linux"):
     raise RuntimeError("Ray on spark ony supports linux system.")
 
+_logger = logging.getLogger("ray.spark")
+
 _spark_dependency_error = "ray.spark module requires pyspark >= 3.3"
 try:
     import pyspark
@@ -112,7 +114,7 @@ def init_cluster(
     ray_head_hostname = get_spark_driver_hostname(spark)
     ray_head_port = get_safe_port(ray_head_hostname)
 
-    logging.info(f"Ray head hostanme {ray_head_hostname}, port {ray_head_port}")
+    _logger.info(f"Ray head hostanme {ray_head_hostname}, port {ray_head_port}")
 
     num_spark_task_cpus = int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
     num_spark_task_gpus = int(spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0"))
@@ -123,9 +125,9 @@ def init_cluster(
 
     ray_node_log_dir = os.path.join(ray_node_log_dir, f"cluster-{ray_head_hostname}-{ray_head_port}")
 
-    logging.warning(f"You can check ray head / worker nodes logs under local disk path {ray_node_log_dir}")
+    _logger.warning(f"You can check ray head / worker nodes logs under local disk path {ray_node_log_dir}")
     if is_in_databricks_runtime() and not ray_node_log_dir.startswith("/dbfs"):
-        logging.warning(
+        _logger.warning(
             "We recommend you to set `ray_node_log_root_path` argument to be a path under '/dbfs/', "
             "because for all spark cluster nodes '/dbfs/' path is mounted with a shared disk, "
             "so that you can check ray worker logs on spark driver node."
@@ -154,7 +156,7 @@ def init_cluster(
         *_convert_ray_node_options(head_options)
     ]
 
-    logging.info(f"Start Ray head, command: {' '.join(ray_head_node_cmd)}")
+    _logger.info(f"Start Ray head, command: {' '.join(ray_head_node_cmd)}")
 
     with open(os.path.join(ray_node_log_dir, "ray-head.log"), "w", buffering=1) as head_log_fp:
         ray_head_proc = exec_cmd(
@@ -172,10 +174,11 @@ def init_cluster(
         error_on_failure="Start Ray head node failed!"
     )
 
-    logging.info("Ray head node started.")
+    _logger.info("Ray head node started.")
 
     def ray_cluster_job_mapper(_):
         from pyspark.taskcontext import BarrierTaskContext
+        _worker_logger = logging.getLogger("ray.spark.worker")
 
         context = BarrierTaskContext.get()
         context.barrier()
@@ -197,8 +200,6 @@ def init_cluster(
             f"--object-store-memory={ray_worker_object_store_mem_bytes}",
             *_convert_ray_node_options(worker_options)
         ]
-
-        logging.info(f"Start Ray worker, command: {' '.join(ray_worker_cmd)}")
 
         ray_worker_extra_envs = {}
 
@@ -239,12 +240,12 @@ def init_cluster(
                     # Set the parent process death signal of the command process to SIGTERM.
                     libc.prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG, see prctl.h
                 except OSError as e:
-                    logging.warning(f"Setup libc.prctl PR_SET_PDEATHSIG failed, error {repr(e)}.")
+                    _worker_logger.warning(f"Setup libc.prctl PR_SET_PDEATHSIG failed, error {repr(e)}.")
 
         else:
             setup_sigterm_on_parent_death = None
 
-        logging.info(f"Start Ray worker, command: {' '.join(ray_worker_cmd)}")
+        _worker_logger.info(f"Start Ray worker, command: {' '.join(ray_worker_cmd)}")
 
         ray_worker_log_file = os.path.join(
             ray_node_log_dir,
@@ -295,7 +296,7 @@ def init_cluster(
             try:
                 get_dbutils().entry_point.registerBackgroundSparkJobGroup(spark_job_group_id)
             except Exception:
-                logging.warning(
+                _logger.warning(
                     "Register ray cluster spark job as background job failed. You need to manually "
                     "call `ray_cluster_on_spark.shutdown()` before detaching your databricks "
                     "python REPL."
