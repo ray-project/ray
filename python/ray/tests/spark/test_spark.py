@@ -38,7 +38,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
     def test_cpu_allocation(self):
         for num_spark_tasks in [self.max_spark_tasks // 2, self.max_spark_tasks]:
             with ray_spark.init_cluster(num_spark_tasks=num_spark_tasks):
-                time.sleep(2)
+                time.sleep(5)
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_spark_tasks
                 for worker_res in worker_res_list:
@@ -56,7 +56,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
     def test_ray_cluster_shutdown(self):
         with ray_spark.init_cluster(num_spark_tasks=self.max_spark_tasks) as cluster:
-            time.sleep(2)
+            time.sleep(5)
             assert len(self.get_ray_worker_resources_list()) == self.max_spark_tasks
 
             # cancel background spark job will cause all ray worker nodes exit.
@@ -64,7 +64,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
             time.sleep(5)
             assert len(self.get_ray_worker_resources_list()) == 0
 
-        time.sleep(2)  # wait ray head node exit.
+        time.sleep(3)  # wait ray head node exit.
         # assert ray head node exit by checking head port being closed.
         assert not check_port_open("127.0.0.1", int(cluster.address.split(":")[1]))
 
@@ -78,7 +78,7 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
 
         for num_spark_tasks in [self.max_spark_tasks // 2, self.max_spark_tasks]:
             with ray_spark.init_cluster(num_spark_tasks=num_spark_tasks) as cluster:
-                time.sleep(2)
+                time.sleep(5)
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_spark_tasks
                 for worker_res in worker_res_list:
@@ -87,6 +87,8 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
     def test_basic_ray_app_using_gpu(self):
 
         with ray_spark.init_cluster(num_spark_tasks=self.max_spark_tasks) as cluster:
+            time.sleep(5)
+
             @ray.remote(num_cpus=1, num_gpus=1)
             def f(_):
                 # Add a sleep to avoid the task finishing too fast,
