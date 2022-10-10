@@ -123,7 +123,7 @@ def init_cluster(
 
     ray_node_log_dir = os.path.join(ray_node_log_dir, f"cluster-{ray_head_hostname}-{ray_head_port}")
 
-    logging.warning(f"You can check ray head / worker nodes logs under local disk path {ray_node_log_path}")
+    logging.warning(f"You can check ray head / worker nodes logs under local disk path {ray_node_log_dir}")
     if is_in_databricks_runtime() and not ray_node_log_dir.startswith("/dbfs"):
         logging.warning(
             "We recommend you to set `ray_node_log_root_path` argument to be a path under '/dbfs/', "
