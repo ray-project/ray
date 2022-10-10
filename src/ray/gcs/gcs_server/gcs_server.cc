@@ -750,7 +750,8 @@ void GcsServer::TryGlobalGC() {
   }
   // Trigger global gc to solve task pending.
   // To avoid spurious triggers, only those after two consecutive
-  // detections and under throttling are sent out.
+  // detections and under throttling are sent out (similar to
+  // `NodeManager::WarnResourceDeadlock()`).
   if (task_pending_schedule_detected_++ > 0 && global_gc_throttler_->AbleToRun()) {
     rpc::ResourcesData resources_data;
     resources_data.set_should_global_gc(true);
@@ -763,7 +764,7 @@ void GcsServer::TryGlobalGC() {
       std::string serialized_msg;
       RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
       msg.set_sync_message(std::move(serialized_msg));
-      ray_syncer_->OnDemandBroadcasting(msg);
+      ray_syncer_->BroadcastRaySyncMessage(msg);
     } else {
       resources_data.set_node_id(local_node_id_.Binary());
       gcs_ray_syncer_->Update(resources_data);

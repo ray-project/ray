@@ -355,7 +355,7 @@ bool RaySyncer::OnDemandBroadcasting(MessageType message_type) {
   return false;
 }
 
-void RaySyncer::OnDemandBroadcasting(const RaySyncMessage &message) {
+void RaySyncer::BroadcastRaySyncMessage(const RaySyncMessage &message) {
   BroadcastMessage(std::make_shared<const RaySyncMessage>(message));
 }
 

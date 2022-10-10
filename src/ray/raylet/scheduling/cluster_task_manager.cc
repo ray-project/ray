@@ -84,7 +84,8 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
        shapes_it != tasks_to_schedule_.end();) {
     auto &work_queue = shapes_it->second;
     bool is_infeasible = false;
-    for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
+    for (auto it = work_queue.begin(); it != work_queue.end();) {
+      auto work_it = it++;
       // Check every task in task_to_schedule queue to see
       // whether it can be scheduled. This avoids head-of-line
       // blocking where a task which cannot be scheduled because
@@ -119,7 +120,12 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
               "any more or is infeasible, and soft=False was specified.");
           // We don't want to trigger the normal infeasible task logic (i.e. waiting),
           // but rather we want to fail the task immediately.
-          work_it = work_queue.erase(work_it);
+          if (cluster_resource_scheduler_->IsLocalNodeWithRaylet()) {
+            // If scheduling is done by a raylet, we have to erase the work here.
+            // Otherwise (scheduling by gcs), gcs has already canceled the task (in the
+            // above `ReplyCancelled`), so we do nothing here.
+            work_queue.erase(work_it);
+          }
           is_infeasible = false;
           continue;
         }
@@ -129,7 +135,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 
       NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
       ScheduleOnNode(node_id, work);
-      work_it = work_queue.erase(work_it);
+      work_queue.erase(work_it);
     }
 
     if (is_infeasible) {
