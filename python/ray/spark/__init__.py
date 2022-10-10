@@ -200,6 +200,23 @@ def init_cluster(
             if num_spark_tasks_for_object_store_mem_req > num_spark_tasks:
                 num_spark_tasks = num_spark_tasks_for_object_store_mem_req
 
+    if num_spark_task_cpus < 4:
+        _logger.warning(
+            f"Each ray worker node will be assigned with {num_spark_task_cpus} CPU cores, less than "
+            "recommended value 4, because ray worker node cpu cors aligns with the cpu cores assigned to "
+            "a spark task, you can increase 'spark.task.cpus' config value to address it."
+        )
+
+    if ray_worker_heap_mem_bytes < 10 * 1024 * 1024 * 1024:
+        _logger.warning(
+            f"Each ray worker node will be assigned with {ray_worker_heap_mem_bytes} bytes heap memory, "
+            "less than recommended value 10GB, the ray worker node heap memory size is calculated by "
+            "(SPARK_WORKER_NODE_PHYSICAL_MEMORY - SHARED_MEMORY) / num_local_spark_task_slots * 0.8, "
+            "so you can increase spark cluster worker machine memory, or reduce spark task slots "
+            "number on spark cluster worker, or reduce spark worker machine /dev/shm quota to "
+            "address it."
+        )
+
     ray_head_hostname = get_spark_driver_hostname(spark.conf.get("spark.master"))
     ray_head_port = get_safe_port(ray_head_hostname)
 
