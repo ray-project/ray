@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -47,11 +48,12 @@ class RayClusterOnSpark:
     It can be used to shutdown the cluster.
     """
 
-    def __init__(self, address, head_proc, spark_job_group_id, ray_context):
+    def __init__(self, address, head_proc, spark_job_group_id, ray_context, ray_head_temp_dir):
         self.address = address
         self.head_proc = head_proc
         self.spark_job_group_id = spark_job_group_id
         self.ray_context = ray_context
+        self.ray_head_temp_dir = ray_head_temp_dir
 
     def _cancel_background_spark_job(self):
         get_spark_session().sparkContext.cancelJobGroup(self.spark_job_group_id)
@@ -63,6 +65,7 @@ class RayClusterOnSpark:
         self.ray_context.disconnect()
         self._cancel_background_spark_job()
         self.head_proc.kill()
+        shutil.rmtree(self.ray_head_temp_dir, ignore_errors=True)
 
     def __enter__(self):
         return self
@@ -79,7 +82,8 @@ def init_cluster(
         num_spark_tasks,
         head_options=None,
         worker_options=None,
-        ray_node_log_root_path="/tmp/ray/logs"
+        ray_temp_dir="/tmp/ray/temp",
+        ray_node_log_dir="/tmp/ray/logs"
 ):
     """
     Initialize a ray cluster on the spark cluster, via creating a background spark barrier
@@ -92,6 +96,11 @@ def init_cluster(
             can use.
         head_options: A dict representing Ray head node options.
         worker_options: A dict representing Ray worker node options.
+        ray_temp_dir: A local disk path to store the ray temporary data.
+        ray_node_log_dir: A local disk path to store the ray head / worker nodes logs.
+            On databricks runtime, we recommend to use path under `/dbfs/` that is mounted
+            with DBFS shared by all spark cluster nodes, so that we can check all ray worker
+            logs from driver side easily.
     """
     import ray
     from pyspark.util import inheritable_thread_target
@@ -112,24 +121,26 @@ def init_cluster(
 
     ray_exec_path = os.path.join(os.path.dirname(sys.executable), "ray")
 
-    ray_head_tmp_dir = f"/tmp/ray/ray-temp/ray-head-port-{ray_head_port}"
-
-    ray_node_log_path = os.path.join(ray_node_log_root_path, f"cluster-{ray_head_hostname}-{ray_head_port}")
+    ray_node_log_dir = os.path.join(ray_node_log_dir, f"cluster-{ray_head_hostname}-{ray_head_port}")
 
     logging.warning(f"You can check ray head / worker nodes logs under local disk path {ray_node_log_path}")
-    if is_in_databricks_runtime() and not ray_node_log_root_path.startswith("/dbfs"):
+    if is_in_databricks_runtime() and not ray_node_log_dir.startswith("/dbfs"):
         logging.warning(
             "We recommend you to set `ray_node_log_root_path` argument to be a path under '/dbfs/', "
             "because for all spark cluster nodes '/dbfs/' path is mounted with a shared disk, "
             "so that you can check ray worker logs on spark driver node."
         )
 
-    os.makedirs(ray_node_log_path, exist_ok=True)
+    os.makedirs(ray_node_log_dir, exist_ok=True)
+
+    ray_temp_dir = os.path.join(ray_temp_dir, f"cluster-{ray_head_hostname}-{ray_head_port}")
+    ray_head_temp_dir = os.path.join(ray_temp_dir, "head")
+    os.makedirs(ray_head_temp_dir, exist_ok=True)
 
     ray_head_node_cmd = [
         ray_exec_path,
         "start",
-        f"--temp-dir={ray_head_tmp_dir}",
+        f"--temp-dir={ray_head_temp_dir}",
         "--block",
         "--head",
         "--disable-usage-stats",
@@ -145,7 +156,7 @@ def init_cluster(
 
     logging.info(f"Start Ray head, command: {' '.join(ray_head_node_cmd)}")
 
-    with open(os.path.join(ray_node_log_path, "ray-head.log"), "w", buffering=1) as head_log_fp:
+    with open(os.path.join(ray_node_log_dir, "ray-head.log"), "w", buffering=1) as head_log_fp:
         ray_head_proc = exec_cmd(
             ray_head_node_cmd,
             synchronous=False,
@@ -171,13 +182,13 @@ def init_cluster(
         task_id = context.partitionId()
 
         # TODO: remove temp dir when ray worker exits.
-        ray_worker_tmp_dir = f"/tmp/ray/ray-temp/ray-worker-{task_id}-head-{ray_head_hostname}-{ray_head_port}"
-        os.makedirs(ray_worker_tmp_dir, exist_ok=True)
+        ray_worker_temp_dir = os.path.join(ray_temp_dir, f"worker-{task_id}")
+        os.makedirs(ray_worker_temp_dir, exist_ok=True)
 
         ray_worker_cmd = [
             ray_exec_path,
             "start",
-            f"--temp-dir={ray_worker_tmp_dir}",
+            f"--temp-dir={ray_worker_temp_dir}",
             f"--num-cpus={num_spark_task_cpus}",
             "--block",
             "--disable-usage-stats",
@@ -236,7 +247,7 @@ def init_cluster(
         logging.info(f"Start Ray worker, command: {' '.join(ray_worker_cmd)}")
 
         ray_worker_log_file = os.path.join(
-            ray_node_log_path,
+            ray_node_log_dir,
             f"ray-worker-{task_id}.log"
         )
         with open(ray_worker_log_file, "w", buffering=1) as worker_log_fp:
@@ -294,8 +305,9 @@ def init_cluster(
             head_proc=ray_head_proc,
             spark_job_group_id=spark_job_group_id,
             ray_context=ray_context,
+            ray_head_temp_dir=ray_head_temp_dir,
         )
     except Exception:
-        # If init cluster raise exception, kill the ray head proc.
+        # If init ray cluster raise exception, kill the ray head proc.
         ray_head_proc.kill()
         raise
