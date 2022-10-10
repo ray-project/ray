@@ -5,6 +5,7 @@ import sys
 import time
 import threading
 import logging
+import math
 from packaging.version import Version
 
 from .utils import (
@@ -17,6 +18,7 @@ from .utils import (
     get_spark_task_assigned_physical_gpus,
     get_avail_mem_per_ray_worker,
     get_dbutils,
+    get_max_num_concurrent_tasks,
 )
 
 if not sys.platform.startswith("linux"):
@@ -81,11 +83,15 @@ def _convert_ray_node_options(options):
 
 
 def init_cluster(
-        num_spark_tasks,
-        head_options=None,
-        worker_options=None,
-        ray_temp_dir="/tmp/ray/temp",
-        ray_node_log_dir="/tmp/ray/logs"
+    num_spark_tasks=None,
+    total_cpus=None,
+    total_gpus=None,
+    total_heap_memory_bytes=None,
+    total_object_store_memory_bytes=None,
+    head_options=None,
+    worker_options=None,
+    ray_temp_dir="/tmp/ray/temp",
+    ray_node_log_dir="/tmp/ray/logs"
 ):
     """
     Initialize a ray cluster on the spark cluster, via creating a background spark barrier
@@ -94,8 +100,18 @@ def init_cluster(
 
     Args
         num_spark_tasks: Specify the spark task number the spark job will create.
-            This argument controls how many resources (CPU / GPU / memory) the ray cluster
-            can use.
+            This argument represents how many concurrent spark tasks it will use to create the
+            ray cluster, and the ray cluster total available resources (CPU / GPU / memory)
+            equals to the resources allocated to these spark tasks.
+            You can specify num_spark_tasks to -1, representing the ray cluster uses all
+            available spark tasks slots, if you want to create a shared ray cluster
+            and use the whole spark cluster resources, simply set it to -1.
+        total_cpus: Specify the total cpus resources the ray cluster requests.
+        total_gpus: Specify the total gpus resources the ray cluster requests.
+        total_heap_memory_bytes: Specify the total heap memory resources (in bytes)
+            the ray cluster requests.
+        total_object_store_memory_bytes: Specify the total object store memory resources (in bytes)
+            the ray cluster requests.
         head_options: A dict representing Ray head node options.
         worker_options: A dict representing Ray worker node options.
         ray_temp_dir: A local disk path to store the ray temporary data.
@@ -110,16 +126,84 @@ def init_cluster(
     head_options = head_options or {}
     worker_options = worker_options or {}
 
-    spark = get_spark_session()
-    ray_head_hostname = get_spark_driver_hostname(spark)
-    ray_head_port = get_safe_port(ray_head_hostname)
+    num_spark_tasks_specified = num_spark_tasks is not None
+    total_resources_req_specified = (
+        total_cpus is not None or
+        total_gpus is not None or
+        total_heap_memory_bytes is not None or
+        total_object_store_memory_bytes is not None
+    )
 
-    _logger.info(f"Ray head hostanme {ray_head_hostname}, port {ray_head_port}")
+    if (num_spark_tasks_specified and total_resources_req_specified) or \
+            (not num_spark_tasks_specified and not total_resources_req_specified):
+        raise ValueError(
+            "You should specify either 'num_spark_tasks' argument or argument group of "
+            "'total_cpus', 'total_gpus', 'total_heap_memory_bytes' and 'total_object_store_memory_bytes'."
+        )
+
+    spark = get_spark_session()
 
     num_spark_task_cpus = int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
     num_spark_task_gpus = int(spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0"))
-
     ray_worker_heap_mem_bytes, ray_worker_object_store_mem_bytes = get_avail_mem_per_ray_worker(spark)
+
+    if total_gpus is not None and num_spark_task_gpus == 0:
+        raise ValueError(
+            "The spark cluster is without GPU configuration, so you cannot specify 'total_gpus' "
+            "argument"
+        )
+
+    if num_spark_tasks is not None:
+        if num_spark_tasks == -1:
+            # num_spark_tasks=-1 represents using all spark task slots
+            num_spark_tasks = get_max_num_concurrent_tasks(spark.sparkContext)
+        elif num_spark_tasks <= 0:
+            raise ValueError(
+                "You should specify 'num_spark_tasks' argument to a positive integer or -1."
+            )
+    else:
+        num_spark_tasks = 1
+        if total_cpus is not None:
+            if total_cpus <= 0:
+                raise ValueError(
+                    "You should specify 'total_cpus' argument to a positive integer."
+                )
+            num_spark_tasks_for_cpus_req = int(math.ceil(total_cpus / num_spark_task_cpus))
+            if num_spark_tasks_for_cpus_req > num_spark_tasks:
+                num_spark_tasks = num_spark_tasks_for_cpus_req
+
+        if total_gpus is not None:
+            if total_gpus <= 0:
+                raise ValueError(
+                    "You should specify 'total_gpus' argument to a positive integer."
+                )
+            num_spark_tasks_for_gpus_req = int(math.ceil(total_gpus / num_spark_task_gpus))
+            if num_spark_tasks_for_gpus_req > num_spark_tasks:
+                num_spark_tasks = num_spark_tasks_for_gpus_req
+
+        if total_heap_memory_bytes is not None:
+            if total_heap_memory_bytes <= 0:
+                raise ValueError(
+                    "You should specify 'total_heap_memory_bytes' argument to a positive integer."
+                )
+            num_spark_tasks_for_heap_mem_req = int(math.ceil(total_heap_memory_bytes / ray_worker_heap_mem_bytes))
+            if num_spark_tasks_for_heap_mem_req > num_spark_tasks:
+                num_spark_tasks = num_spark_tasks_for_heap_mem_req
+
+        if total_object_store_memory_bytes is not None:
+            if total_object_store_memory_bytes <= 0:
+                raise ValueError(
+                    "You should specify 'total_object_store_memory_bytes' argument to a positive integer."
+                )
+            num_spark_tasks_for_object_store_mem_req = \
+                int(math.ceil(total_object_store_memory_bytes / ray_worker_object_store_mem_bytes))
+            if num_spark_tasks_for_object_store_mem_req > num_spark_tasks:
+                num_spark_tasks = num_spark_tasks_for_object_store_mem_req
+
+    ray_head_hostname = get_spark_driver_hostname(spark.conf.get("spark.master"))
+    ray_head_port = get_safe_port(ray_head_hostname)
+
+    _logger.info(f"Ray head hostanme {ray_head_hostname}, port {ray_head_port}")
 
     ray_exec_path = os.path.join(os.path.dirname(sys.executable), "ray")
 
@@ -204,7 +288,15 @@ def init_cluster(
         ray_worker_extra_envs = {}
 
         if num_spark_task_gpus > 0:
-            available_physical_gpus = get_spark_task_assigned_physical_gpus(context.resources())
+            task_resources = context.resources()
+
+            if "gpu" not in task_resources:
+                raise RuntimeError(
+                    "Couldn't get the gpu id, Please check the GPU resource configuration"
+                )
+            gpu_addr_list = [int(addr.strip()) for addr in task_resources["gpu"].addresses]
+
+            available_physical_gpus = get_spark_task_assigned_physical_gpus(gpu_addr_list)
             ray_worker_cmd.append(
                 f"--num-gpus={len(available_physical_gpus)}",
             )

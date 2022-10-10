@@ -11,11 +11,11 @@ from ray.spark.utils import _calc_mem_per_ray_worker
 
 def test_get_spark_task_assigned_physical_gpus():
     with patch.dict(os.environ, {}, clear=True):
-        assert get_spark_task_assigned_physical_gpus({"gpu": [2, 5]}) == [2, 5]
+        assert get_spark_task_assigned_physical_gpus([2, 5]) == [2, 5]
 
     with patch.dict(os.environ, {"CUDA_VISIBLE_DEVICES": "2,3,6"}, clear=True):
-        assert get_spark_task_assigned_physical_gpus({"gpu": [0, 1]}) == [2, 3]
-        assert get_spark_task_assigned_physical_gpus({"gpu": [0, 2]}) == [2, 6]
+        assert get_spark_task_assigned_physical_gpus([0, 1]) == [2, 3]
+        assert get_spark_task_assigned_physical_gpus([0, 2]) == [2, 6]
 
 
 def test_get_spark_driver_hostname():

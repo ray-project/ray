@@ -159,8 +159,7 @@ def get_spark_session():
     return SparkSession.builder.getOrCreate()
 
 
-def get_spark_driver_hostname(spark):
-    spark_master_url = spark.conf.get("spark.master")
+def get_spark_driver_hostname(spark_master_url):
     if spark_master_url.lower().startswith("local"):
         return "127.0.0.1"
     else:
@@ -228,6 +227,8 @@ def get_avail_mem_per_ray_worker(spark):
         except Exception as e:
             return -1, -1, repr(e)
 
+    # running inferring memory routine on spark executor side.
+    # because spark worker node might have different machine shape with spark driver node.
     inferred_ray_worker_heap_mem_bytes, inferred_ray_worker_object_store_bytes, err = \
         spark.sparkContext.parallelize([1], 1).map(mapper).collect()[0]
 
@@ -236,13 +237,7 @@ def get_avail_mem_per_ray_worker(spark):
     return inferred_ray_worker_heap_mem_bytes, inferred_ray_worker_object_store_bytes
 
 
-def get_spark_task_assigned_physical_gpus(task_resources):
-    if "gpu" not in task_resources:
-        raise RuntimeError(
-            "Couldn't get the gpu id, Please check the GPU resource configuration"
-        )
-    gpu_addr_list = [int(addr.strip()) for addr in task_resources["gpu"].addresses]
-
+def get_spark_task_assigned_physical_gpus(gpu_addr_list):
     if 'CUDA_VISIBLE_DEVICES' in os.environ:
         visible_cuda_dev_list = [
             int(dev.strip()) for dev in os.environ['CUDA_VISIBLE_DEVICES'].split(",")
