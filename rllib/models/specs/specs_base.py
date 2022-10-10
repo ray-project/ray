@@ -13,7 +13,7 @@ _INVALID_TYPE = "Expected tensor type {} but found {}"
 
 
 @DeveloperAPI
-class SpecsAbstract(abc.ABC):
+class SpecsAbstract(abs.ABC):
     @DeveloperAPI
     @abc.abstractstaticmethod
     def validate(self, data: Any) -> None:

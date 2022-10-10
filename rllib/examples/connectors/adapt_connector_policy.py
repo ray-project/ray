@@ -8,12 +8,14 @@ import numpy as np
 from pathlib import Path
 from typing import Dict
 
+from ray.rllib.utils.policy import (
+    load_policies_from_checkpoint,
+    local_policy_inference,
+)
 from ray.rllib.connectors.connector import ConnectorContext
 from ray.rllib.connectors.action.lambdas import register_lambda_action_connector
 from ray.rllib.connectors.agent.lambdas import register_lambda_agent_connector
-from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.policy import local_policy_inference
 from ray.rllib.utils.typing import (
     PolicyOutputType,
     StateBatches,
@@ -91,10 +93,7 @@ V1ToV2ActionConnector = register_lambda_action_connector(
 
 def run(checkpoint_path):
     # Restore policy.
-    policies = Policy.from_checkpoint(
-        checkpoint=checkpoint_path,
-        policy_ids=[args.policy_id],
-    )
+    policies = load_policies_from_checkpoint(checkpoint_path, [args.policy_id])
     policy = policies[args.policy_id]
 
     # Adapt policy trained for standard CartPole to the new env.

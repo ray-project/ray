@@ -11,7 +11,9 @@ import ray
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
-from ray.rllib.policy.policy import Policy, PolicySpec
+from ray.rllib.policy.policy import PolicySpec
+from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.policy import parse_policy_specs_from_checkpoint
 from ray.tune import CLIReporter, register_env
 
 parser = argparse.ArgumentParser()
@@ -53,14 +55,30 @@ class AddPolicyCallback(DefaultCallbacks):
             .parent.parent.parent.absolute()
             .joinpath(args.checkpoint_file)
         )
-        policy = Policy.from_checkpoint(checkpoint_path)
+        policy_config, policy_specs, policy_states = parse_policy_specs_from_checkpoint(
+            checkpoint_path
+        )
+
+        assert args.policy_id in policy_specs, (
+            f"Could not find policy {args.policy_id}. "
+            f"Available policies are {list(policy_specs.keys())}"
+        )
+        policy_spec = policy_specs[args.policy_id]
+        policy_state = (
+            policy_states[args.policy_id] if args.policy_id in policy_states else None
+        )
+        config = merge_dicts(policy_config, policy_spec.config or {})
 
         # Add restored policy to trainer.
         # Note that this policy doesn't have to be trained with the same algorithm
         # of the training stack. You can even mix up TF policies with a Torch stack.
         algorithm.add_policy(
             policy_id="opponent",
-            policy=policy,
+            policy_cls=policy_spec.policy_class,
+            observation_space=policy_spec.observation_space,
+            action_space=policy_spec.action_space,
+            config=config,
+            policy_state=policy_state,
             evaluation_workers=True,
         )
 
