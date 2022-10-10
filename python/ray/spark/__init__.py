@@ -224,7 +224,7 @@ def init_cluster(
 
     ray_exec_path = os.path.join(os.path.dirname(sys.executable), "ray")
 
-    ray_node_log_dir = os.path.join(ray_node_log_dir, f"cluster-{ray_head_hostname}-{ray_head_port}")
+    ray_node_log_dir = os.path.join(ray_node_log_dir, f"ray-{ray_head_port}")
 
     _logger.warning(f"You can check ray head / worker nodes logs under local disk path {ray_node_log_dir}")
     if is_in_databricks_runtime() and not ray_node_log_dir.startswith("/dbfs"):
@@ -236,7 +236,7 @@ def init_cluster(
 
     os.makedirs(ray_node_log_dir, exist_ok=True)
 
-    ray_temp_dir = os.path.join(ray_temp_dir, f"cluster-{ray_head_hostname}-{ray_head_port}")
+    ray_temp_dir = os.path.join(ray_temp_dir, f"ray-{ray_head_port}")
     ray_head_temp_dir = os.path.join(ray_temp_dir, "head")
     os.makedirs(ray_head_temp_dir, exist_ok=True)
 
