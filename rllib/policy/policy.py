@@ -361,22 +361,28 @@ class Policy(metaclass=ABCMeta):
         self.agent_connectors = None
         self.action_connectors = None
 
-        # TODO: (Artur) Resolve this logic once we have fully migrated
-        # Until we have fully migrated to connectors, we wrap all connector enabled
-        # policy's compute_action_from_input_dict-methods such that they behave
-        # closer to the original methods
-        if self.config.get("enable_connectors"):
-            self.compute_actions_from_input_dict = self._compute_action_with_connectors
-            self.compute_actions = self._compute_action_with_connectors
-        else:
-            self.compute_actions_from_input_dict = (
-                self._compute_actions_without_connectors_from_input_dict
-            )
-            self.compute_actions = self._compute_actions_without_connectors
         # In order to compute the inputs of action connectors from the output of
         # agent connectors, what was before compute_actions_from_input_dict is used
         self._compute_action_connectors_input_from_agent_connectors_output = \
             self._compute_actions_without_connectors_from_input_dict
+
+    # TODO: (Artur) Resolve this logic once we have fully migrated
+    def compute_actions_from_input_dict(self, *args, **kwargs):
+        # Until we have fully migrated to connectors, we wrap
+        # compute_action_from_input_dict-methods
+        if self.config.get("enable_connectors"):
+            return self._compute_action_with_connectors(*args, **kwargs)
+        else:
+            return self._compute_actions_without_connectors_from_input_dict(*args,
+                                                                            **kwargs)
+
+    # TODO: (Artur) Resolve this logic once we have fully migrated
+    def compute_actions(self, *args, **kwargs):
+        # Until we have fully migrated to connectors, we wrap compute_action-methods
+        if self.config.get("enable_connectors"):
+            return self._compute_action_with_connectors(*args, **kwargs)
+        else:
+            return self._compute_actions_without_connectors(*args, **kwargs)
 
     # TODO (Artur): Replace original compute_actions_from_input_dict method with this
     # method after we have migrated to connectors
