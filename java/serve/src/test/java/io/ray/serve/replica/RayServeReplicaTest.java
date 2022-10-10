@@ -108,7 +108,7 @@ public class RayServeReplicaTest {
       Assert.assertTrue(shutdownRef.get());
 
     } finally {
-      BaseServeTest.shutdownRay();
+      BaseServeTest.clearAndShutdownRay();
     }
   }
 }

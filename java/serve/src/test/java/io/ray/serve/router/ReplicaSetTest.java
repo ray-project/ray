@@ -90,7 +90,7 @@ public class ReplicaSetTest {
 
       Assert.assertEquals((String) resultRef.get(), deploymentName);
     } finally {
-      BaseServeTest.shutdownRay();
+      BaseServeTest.clearAndShutdownRay();
     }
   }
 }
