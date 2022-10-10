@@ -80,8 +80,8 @@ void ReplyCancelled(const internal::Work &work,
 void ClusterTaskManager::ScheduleAndDispatchTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
   TryScheduleInfeasibleTask();
-  for (auto shapes_it = tasks_to_schedule_.begin();
-       shapes_it != tasks_to_schedule_.end();) {
+  for (auto it = tasks_to_schedule_.begin(); it != tasks_to_schedule_.end();) {
+    auto shapes_it = it++;
     auto &work_queue = shapes_it->second;
     bool is_infeasible = false;
     while (!work_queue.empty()) {
@@ -111,6 +111,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 
         if (task.GetTaskSpecification().IsNodeAffinitySchedulingStrategy() &&
             !task.GetTaskSpecification().GetNodeAffinitySchedulingStrategySoft()) {
+          auto shapes_count = tasks_to_schedule_.size();
           // This can only happen if the target node doesn't exist or is infeasible.
           // The task will never be schedulable in either case so we should fail it.
           ReplyCancelled(
@@ -120,13 +121,18 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
               "any more or is infeasible, and soft=False was specified.");
           // We don't want to trigger the normal infeasible task logic (i.e. waiting),
           // but rather we want to fail the task immediately.
+          is_infeasible = false;
           if (cluster_resource_scheduler_->IsLocalNodeWithRaylet()) {
             // If scheduling is done by a raylet, we have to erase the work here.
-            // Otherwise (scheduling by gcs), gcs has already canceled the task (in the
-            // above `ReplyCancelled`), so we do nothing here.
             work_queue.erase(work_it);
+          } else if (tasks_to_schedule_.size() < shapes_count) {
+            // If scheduling is done by gcs, then the task should already be cancelled
+            // (the above `ReplyCancelled` would synchronously call
+            // `ClusterTaskManager::CancelTask`). But this cancellation may erase
+            // (invalidate) the current `shapes_it`. So when this happens, we have to
+            // break immediately and move on to the next shape.
+            break;
           }
-          is_infeasible = false;
           continue;
         }
 
@@ -136,6 +142,10 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
       ScheduleOnNode(node_id, work);
       work_queue.erase(work_it);
+      if (work_queue.empty()) {
+        tasks_to_schedule_.erase(shapes_it);
+        break;
+      }
     }
 
     if (is_infeasible) {
@@ -150,11 +160,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 
       // TODO(sang): Use a shared pointer deque to reduce copy overhead.
       infeasible_tasks_[shapes_it->first] = shapes_it->second;
-      tasks_to_schedule_.erase(shapes_it++);
-    } else if (work_queue.empty()) {
-      tasks_to_schedule_.erase(shapes_it++);
-    } else {
-      shapes_it++;
+      tasks_to_schedule_.erase(shapes_it);
     }
   }
   local_task_manager_->ScheduleAndDispatchTasks();
@@ -211,6 +217,9 @@ bool ClusterTaskManager::CancelTask(
         RAY_LOG(DEBUG) << "Canceling task " << task_id << " from schedule queue.";
         ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
         work_queue.erase(work_it);
+        if (work_queue.empty()) {
+          tasks_to_schedule_.erase(shapes_it);
+        }
         return true;
       }
     }
