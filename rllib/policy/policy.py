@@ -367,6 +367,8 @@ class Policy(metaclass=ABCMeta):
         if self.config.get("enable_connectors"):
             self.compute_actions_from_input_dict = self._compute_action_with_connectors
             self.compute_actions = self._compute_action_with_connectors
+            self._compute_action_connectors_input_from_agent_connectors_output = \
+                self._compute_actions_without_connectors_from_input_dict
         else:
             self.compute_actions_from_input_dict = (
                 self._compute_actions_without_connectors_from_input_dict
@@ -377,17 +379,15 @@ class Policy(metaclass=ABCMeta):
     # method after we have migrated to connectors
     def _compute_action_with_connectors(
         self,
-        input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
+        obs_batch: Union[SampleBatch, Dict[str, TensorStructType]],
         explore: bool = None,
         timestep: Optional[int] = None,
-        episodes: Optional[List["Episode"]] = None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from an observation.
 
         Args:
-            input_dict: A SampleBatch or input dict containing the Tensors
-                to compute actions with connectors.
+            obs_batch: Batch of observations.
             explore: Whether to pick an exploitation or exploration
                 action (default: None -> use self.config["explore"]).
             timestep: The current (sampling) time step.
@@ -416,6 +416,22 @@ class Policy(metaclass=ABCMeta):
             self.init_connectors(self.config)
             # maybe_get_filters_for_syncing(self, name)
 
+        for old_kwarg in ["state_batches", "prev_action_batch", "prev_reward_batch",
+                          "info_batch", "episodes", "input_dict"]:
+            assert not old_kwarg in kwargs, "Within the context of connectors, " \
+                                            "{} is internally built by " \
+                                            "connectors and can not be " \
+                                            "provided as an argument.".format(old_kwarg)
+
+        # Create input dict to simply pass the entire call to
+        # self.compute_actions_from_input_dict().
+        input_dict = SampleBatch(
+            {
+                SampleBatch.CUR_OBS: obs_batch,
+            },
+            _is_training=tf.constant(False),
+        )
+
         acd_list: List[AgentConnectorDataType] = [
             AgentConnectorDataType(env_id="0", agent_id="0", data=input_dict)
         ]
@@ -426,7 +442,6 @@ class Policy(metaclass=ABCMeta):
                 processed.data.raw_dict,
                 explore=explore,
                 timestep=timestep,
-                episodes=episodes,
                 kwargs=kwargs,
             )
         )
