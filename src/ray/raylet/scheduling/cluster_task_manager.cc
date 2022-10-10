@@ -211,9 +211,6 @@ bool ClusterTaskManager::CancelTask(
         RAY_LOG(DEBUG) << "Canceling task " << task_id << " from schedule queue.";
         ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
         work_queue.erase(work_it);
-        if (work_queue.empty()) {
-          tasks_to_schedule_.erase(shapes_it);
-        }
         return true;
       }
     }
