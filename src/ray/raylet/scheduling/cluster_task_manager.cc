@@ -295,7 +295,10 @@ bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
   return *any_pending;
 }
 
-void ClusterTaskManager::RecordMetrics() const { internal_stats_.RecordMetrics(); }
+void ClusterTaskManager::RecordMetrics() const {
+  internal_stats_.RecordMetrics();
+  cluster_resource_scheduler_->GetLocalResourceManager().RecordMetrics();
+}
 
 std::string ClusterTaskManager::DebugStr() const {
   return internal_stats_.ComputeAndReportDebugStr();

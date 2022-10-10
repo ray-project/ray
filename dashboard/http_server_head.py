@@ -121,7 +121,7 @@ class HttpServerDashboardHead:
             response = await handler(request)
             status_tag = f"{floor(response.status / 100)}xx"
             return response
-        except Exception:
+        except (Exception, asyncio.CancelledError):
             status_tag = "5xx"
             raise
         finally:
