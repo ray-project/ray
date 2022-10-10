@@ -289,6 +289,10 @@ def init_cluster(
         ray_worker_temp_dir = os.path.join(ray_temp_dir, f"worker-{task_id}")
         os.makedirs(ray_worker_temp_dir, exist_ok=True)
 
+        # Ray worker might run on a machine different with the head node, so create the
+        # local log dir again.
+        os.makedirs(ray_node_log_dir, exist_ok=True)
+
         ray_worker_cmd = [
             ray_exec_path,
             "start",
