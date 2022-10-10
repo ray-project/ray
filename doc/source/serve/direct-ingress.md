@@ -1,13 +1,20 @@
-# Direct Ingress
+# Experimental Direct Ingress
 
-In the 2.1, Serve provides an alpha version of gRPC ingress. In this section, you will learn how to
+In the 2.1, Serve provides an alpha version of [gRPC](https://grpc.io/) ingress.
 
-* use Serve's internal gRPC schema to send traffic
+With RPC protocol, You will get:
+
+* Standardized inference request/response schema during client and serve.
+* High performant endpoint than HTTP protocol.
+
+In this section, you will learn how to
+
+* use Serve's built-in gRPC schema to receive client traffic
 * bring your own gRPC schema into your Serve application
 
 ## Use Serve's Schema
 
-Internally, Serve provides a simple gRPC schema.
+Serve provides a simple gRPC schema to machine learning inference workload. It is designed to be kept simple, and you are encouraged to adapt it for your own need.
 ```
 message PredictRequest {
   map<string, bytes> input = 2;
@@ -22,9 +29,9 @@ service PredictAPIsService {
 }
 ```
 
-Code example:
+Take a look at the following code samples for using `DefaultgRPCDriver` in Ray Serve.
 
-Server:
+To implement the Serve, your class needs to inherit `ray.serve.drivers.DefaultgRPCDriver`.
 ```{literalinclude} ../serve/doc_code/direct_ingress.py
 :start-after: __begin_server__
 :end-before: __end_server__
@@ -43,6 +50,8 @@ Client:
 *  The user input data needs to be serialized to `bytes` type and fed into the `input`.
 * The response will be under `bytes` type, which means the user code is responsible for serializing the output into bytes.
 * By default, the gRPC port is 9000. You can change it by passing port number when calling DefaultgRPCDriver bind function.
+* If the serialization/deserialization cost is huge and unnecessary, you can also bring your own schema to use! Checkout [Bring your own schema](bring-your-own-schema) section!
+* There is no difference of scaling config for your business code in gRPC case, you can set the config scaling/autoscaling config inside the `serve.deployment` decorator.
 :::
 
 ### Client Schema code generation
@@ -58,7 +67,9 @@ python -m grpc_tools.protoc --proto_path=src/ray/protobuf/ --python_out=. --grpc
 ```
 After the two steps above, you should have `serve_pb2.py` and `serve_pb2_grpc.py` files generated.(The steps shown above work for generation for any schema file, including "bring your own schema" described below.)
 
-## Bring your own Schema
+(bring-your-own-schema)=
+
+## Bring your own schema
 
 If you have a customized schema to use, Serve also supports it!
 
@@ -81,6 +92,11 @@ service TestService {
 }
 ```
 
+After the code is generated, you can implement the business logic for gRPC server by creating a subclass of the generated `TestServiceServicer`, and then you just need two extra steps to adopt your schema into Ray Serve.
+
+* Inherit `ray.serve.drivers.gRPCIngress` in your implementation class.
+* Add the `@serve.deployment(is_driver_deployment=True)` decorator.
+
 Server:
 ```{literalinclude} ../serve/doc_code/direct_ingress_with_customized_schema.py
 :start-after: __begin_server__
@@ -89,6 +105,7 @@ Server:
 ```
 
 Client:
+You can directly use the client code to play it!
 ```{literalinclude} ../serve/doc_code/direct_ingress_with_customized_schema.py
 :start-after: __begin_client__
 :end-before: __end_client__
@@ -96,7 +113,6 @@ Client:
 ```
 
 :::{note}
-* To use your own schema, you need to write your driver class `MyDriver` to deploy.
-*  `is_driver_deployment` is needed to mark the class as driver, serve will make sure the driver class deployment gets deployed one replica per node.
+*  `is_driver_deployment` (experimental flag) is needed to mark the class as driver, serve will make sure the driver class deployment gets deployed one replica per node.
 * `gRPCIngress` is used for starting a gRPC server. Your driver class needs to inherit from it. 
 :::
