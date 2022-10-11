@@ -162,7 +162,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
     }
   }
 
-  for (const auto work : works_to_cancel) {
+  for (const auto &work : works_to_cancel) {
     // All works in `works_to_cancel` are scheduled by gcs. So `ReplyCancelled`
     // will synchronously call `ClusterTaskManager::CancelTask`, where works are
     // erased from the pending queue.
