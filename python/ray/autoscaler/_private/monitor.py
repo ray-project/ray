@@ -384,6 +384,7 @@ class Monitor:
                                     ray_constants.LOG_PREFIX_EVENT_SUMMARY, line
                                 )
                             )
+
                     self.event_summarizer.clear()
 
                 as_json = json.dumps(status)

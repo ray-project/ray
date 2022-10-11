@@ -429,6 +429,8 @@ def run(
 
     del remote_run_kwargs
 
+    ray._private.usage.usage_lib.record_library_usage("tune")
+
     all_start = time.time()
 
     if mode and mode not in ["min", "max"]:
