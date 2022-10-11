@@ -141,8 +141,8 @@ def test_predict_array(model, use_gpu):
     data_batch = np.asarray([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
-    assert len(predictions) == 3
-    assert predictions.flatten().tolist() == [2, 4, 6]
+    assert len(predictions) == 1
+    np.testing.assert_array_equal(predictions["predictions"], np.asarray([2, 4, 6]))
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
@@ -152,8 +152,8 @@ def test_predict_array_with_preprocessor(model, preprocessor, use_gpu):
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
-    assert len(predictions) == 3
-    assert predictions.flatten().tolist() == [2, 4, 6]
+    assert len(predictions) == 1
+    np.testing.assert_array_equal(predictions["predictions"], np.asarray([2, 4, 6]))
     assert predictor.get_preprocessor().has_preprocessed
 
 
@@ -226,7 +226,7 @@ def test_predict_array_with_different_dtypes(
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch, dtype=input_dtype)
 
-    assert predictions.dtype == expected_output_dtype
+    assert predictions["predictions"].dtype == expected_output_dtype
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
@@ -237,8 +237,8 @@ def test_predict_array_no_training(model, use_gpu):
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
-    assert len(predictions) == 3
-    assert predictions.flatten().tolist() == [2, 4, 6]
+    assert len(predictions) == 1
+    np.testing.assert_array_equal(predictions["predictions"], np.asarray([2, 4, 6]))
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
@@ -248,7 +248,8 @@ def test_array_real_model(use_gpu):
 
     data = np.array([[1, 2], [3, 4]])
     predictions = predictor.predict(data, dtype=torch.float)
-    assert len(predictions) == 2
+    assert len(predictions) == 1
+    assert len(predictions["predictions"]) == 2
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])

@@ -123,8 +123,8 @@ def test_predict_array(use_gpu):
     data_batch = np.asarray([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
-    assert len(predictions) == 3
-    assert predictions.flatten().tolist() == [2, 4, 6]
+    assert len(predictions) == 1
+    np.testing.assert_array_equal(predictions["predictions"], np.asarray([2, 4, 6]))
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
@@ -139,9 +139,9 @@ def test_predict_array_with_preprocessor(use_gpu):
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
 
-    assert len(predictions) == 3
+    assert len(predictions) == 1
+    np.testing.assert_array_equal(predictions["predictions"], np.asarray([2, 4, 6]))
     assert predictor.get_preprocessor().has_preprocessed
-    assert predictions.flatten().tolist() == [2, 4, 6]
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])

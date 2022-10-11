@@ -9,7 +9,6 @@ import ray
 from ray.train.torch import TorchCheckpoint, TorchPredictor
 from ray.train.batch_predictor import BatchPredictor
 from ray.data.preprocessors import BatchMapper
-from ray.data.datasource import ImageFolderDatasource
 
 
 def preprocess(image_batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
@@ -31,9 +30,7 @@ def preprocess(image_batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
 
 data_url = "s3://anonymous@air-example-data-2/1G-image-data-synthetic-raw"
 print(f"Running GPU batch prediction with 1GB data from {data_url}")
-dataset = ray.data.read_datasource(
-    ImageFolderDatasource(), root=data_url, size=(256, 256)
-)
+dataset = ray.data.read_images(data_url, size=(256, 256)).limit(10)
 
 model = resnet18(pretrained=True)
 
@@ -41,4 +38,4 @@ preprocessor = BatchMapper(preprocess, batch_format="numpy")
 ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
 
 predictor = BatchPredictor.from_checkpoint(ckpt, TorchPredictor)
-predictor.predict(dataset, feature_columns=["image"], batch_size=80)
+predictor.predict(dataset, batch_size=80)
