@@ -1,8 +1,5 @@
 import pytest
 
-from pathlib import Path
-import os
-
 # torch libraries
 import torch
 import torch.utils.data
@@ -44,6 +41,7 @@ test_dataset = datasets.CIFAR10(
 )
 
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
+
 
 @pytest.fixture(autouse=True, scope="session")
 def ray_start_4_cpus():
@@ -97,6 +95,7 @@ def trainer_init_per_worker(**config):
 
 trainer_init_per_worker.__test__ = False
 
+
 def test_mosaic_e2e():
     """Tests if the basic MosaicTrainer with minimum configuration runs and reports correct
     Checkpoint dictionary.
@@ -106,7 +105,7 @@ def test_mosaic_e2e():
         "train_dataset": train_dataset,
         "test_dataset": test_dataset,
         "loggers": [InMemoryLogger()],
-        "algorithms": [LabelSmoothing()]
+        "algorithms": [LabelSmoothing()],
     }
 
     trainer = MosaicTrainer(
@@ -116,6 +115,7 @@ def test_mosaic_e2e():
     )
 
     trainer.fit()
+
 
 if __name__ == "__main__":
     import sys
