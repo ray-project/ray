@@ -260,7 +260,7 @@ class TargetNetworkMixin:
             TFPolicy.set_weights(self, weights)
         elif isinstance(self, EagerTFPolicyV2):  # Handle TF2V2 policies.
             EagerTFPolicyV2.set_weights(self, weights)
-        elif isinstance(self, EagerTFPolicy):    # Handle TF2 policies.
+        elif isinstance(self, EagerTFPolicy):  # Handle TF2 policies.
             EagerTFPolicy.set_weights(self, weights)
         self.update_target(self.config.get("tau", 1.0))
 
