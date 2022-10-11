@@ -2,6 +2,7 @@ import click
 import time
 import json
 import os
+import numpy as np
 import pandas as pd
 
 from torchvision import transforms
@@ -13,7 +14,7 @@ from ray.train.batch_predictor import BatchPredictor
 from ray.data.preprocessors import BatchMapper
 
 
-def preprocess(df: pd.DataFrame) -> pd.DataFrame:
+def preprocess(batch: np.ndarray) -> pd.DataFrame:
     """
     User Pytorch code to transform user image.
     """
@@ -25,8 +26,7 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    df.loc[:, "image"] = [preprocess(image).numpy() for image in df["image"]]
-    return df
+    return pd.DataFrame({"image": [preprocess(image) for image in batch]})
 
 
 @click.command(help="Run Batch prediction on Pytorch ResNet models.")
