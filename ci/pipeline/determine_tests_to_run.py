@@ -139,8 +139,6 @@ if __name__ == "__main__":
         ]
 
         for changed_file in files:
-            if changed_file.startswith("ci") or changed_file.startswith("scripts"):
-                RAY_CI_TOOLS_AFFECTED = 1
             if changed_file.startswith("python/ray/air"):
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
@@ -220,10 +218,10 @@ if __name__ == "__main__":
                 pass
             elif changed_file.startswith("ci/lint"):
                 # Linter will always be run
-                pass
+                RAY_CI_TOOLS_AFFECTED = 1
             elif changed_file.startswith("ci/pipeline"):
                 # These scripts are always run as part of the build process
-                pass
+                RAY_CI_TOOLS_AFFECTED = 1
             elif changed_file.endswith("build-docker-images.py"):
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
@@ -241,6 +239,8 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_DOC_AFFECTED = 1
+            elif changed_file.startswith("ci/"):
+                RAY_CI_TOOLS_AFFECTED = 1
             else:
                 print(
                     "Unhandled source code change: {changed_file}".format(
@@ -262,6 +262,7 @@ if __name__ == "__main__":
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
+                RAY_CI_TOOLS_AFFECTED = 1
     else:
         RAY_CI_ML_AFFECTED = 1
         RAY_CI_TUNE_AFFECTED = 1
@@ -277,6 +278,7 @@ if __name__ == "__main__":
         RAY_CI_LINUX_WHEELS_AFFECTED = 1
         RAY_CI_MACOS_WHEELS_AFFECTED = 1
         RAY_CI_DASHBOARD_AFFECTED = 1
+        RAY_CI_TOOLS_AFFECTED = 1
 
     # Log the modified environment variables visible in console.
     output_string = " ".join(

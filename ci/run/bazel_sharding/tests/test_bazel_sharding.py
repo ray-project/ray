@@ -8,7 +8,7 @@ import tempfile
 file_parent = os.path.dirname(__file__)
 sys.path.append(os.path.join(file_parent, "../"))
 
-import bazel_sharding
+import bazel_sharding  # noqa: E402
 
 WORKSPACE_KEY = "workspace"
 
@@ -36,7 +36,10 @@ workspace(name = "fake_workspace")
             """
         )
     os.makedirs(os.path.join(tmpdir, WORKSPACE_KEY), exist_ok=True)
-    shutil.copyfile(os.path.join(file_parent, "mock_BUILD"), os.path.join(tmpdir, WORKSPACE_KEY, "BUILD"))
+    shutil.copyfile(
+        os.path.join(file_parent, "mock_BUILD"),
+        os.path.join(tmpdir, WORKSPACE_KEY, "BUILD"),
+    )
     cwd = os.getcwd()
     os.chdir(os.path.join(tmpdir, WORKSPACE_KEY))
     yield
