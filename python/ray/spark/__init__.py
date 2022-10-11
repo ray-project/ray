@@ -49,29 +49,49 @@ def wait_ray_node_available(hostname, port, timeout, error_on_failure):
 class RayClusterOnSpark:
     """
     The class is the type of instance returned by `init_cluster` API.
-    It can be used to shutdown the cluster.
+    It can be used to connect / disconnect / shut down the cluster.
+    It can be also used as a python context manager,
+    when entering the `RayClusterOnSpark` context, connect to the ray cluster,
+    when exiting the `RayClusterOnSpark` context, disconnect from the ray cluster and
+    shut down the cluster.
     """
 
-    def __init__(self, address, head_proc, spark_job_group_id, ray_context, ray_temp_dir):
+    def __init__(self, address, head_proc, spark_job_group_id, ray_temp_dir):
         self.address = address
         self.head_proc = head_proc
         self.spark_job_group_id = spark_job_group_id
-        self.ray_context = ray_context
         self.ray_temp_dir = ray_temp_dir
+        self.ray_context = None
 
     def _cancel_background_spark_job(self):
         get_spark_session().sparkContext.cancelJobGroup(self.spark_job_group_id)
+
+    def connect(self):
+        import ray
+        if self.ray_context is None:
+            # connect to the ray cluster.
+            self.ray_context = ray.init(address=self.address)
+        else:
+            _logger.warning("Already connected to this ray cluster.")
+
+    def disconnect(self):
+        if self.ray_context is not None:
+            self.ray_context.disconnect()
+            self.ray_context = None
+        else:
+            _logger.warning("Already disconnected from this ray cluster.")
 
     def shutdown(self):
         """
         Shutdown the ray cluster created by `init_cluster` API.
         """
-        self.ray_context.disconnect()
+        self.disconnect()
         self._cancel_background_spark_job()
         self.head_proc.kill()
         shutil.rmtree(self.ray_temp_dir, ignore_errors=True)
 
     def __enter__(self):
+        self.connect()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -94,9 +114,13 @@ def init_cluster(
     ray_log_dir="/tmp/ray/logs"
 ):
     """
-    Initialize a ray cluster on the spark cluster, via creating a background spark barrier
-    mode job and each spark task running a ray worker node, and in spark driver side
-    a ray head node is started. And then connect to the created ray cluster.
+    Initialize a ray cluster on the spark cluster, via starting a ray head node
+    in spark drive side and creating a background spark barrier mode job and each
+    spark task running a ray worker node, returns an instance of `RayClusterOnSpark` type.
+    The returned instance can be used to connect / disconnect / shut down the ray cluster.
+    We can also use `with` statement like `with init_cluster(...):` , when entering
+    the managed scope, the ray cluster is initiated and connected, and when exiting the
+    scope, the ray cluster is disconnected and shut down.
 
     Args
         num_spark_tasks: Specify the spark task number the spark job will create.
@@ -391,9 +415,6 @@ def init_cluster(
         # Waiting all ray workers spin up.
         time.sleep(10)
 
-        # connect to the ray cluster.
-        ray_context = ray.init(address=f"{ray_head_hostname}:{ray_head_port}")
-
         if is_in_databricks_runtime():
             try:
                 get_dbutils().entry_point.registerBackgroundSparkJobGroup(spark_job_group_id)
@@ -407,10 +428,10 @@ def init_cluster(
             address=f"{ray_head_hostname}:{ray_head_port}",
             head_proc=ray_head_proc,
             spark_job_group_id=spark_job_group_id,
-            ray_context=ray_context,
             ray_temp_dir=ray_temp_dir,
         )
     except Exception:
-        # If init ray cluster raise exception, kill the ray head proc.
+        # If init ray cluster raise exception, kill the ray head proc and the background spark job.
         ray_head_proc.kill()
+        spark.sparkContext.cancelJobGroup(spark_job_group_id)
         raise
