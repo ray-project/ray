@@ -91,7 +91,7 @@ def init_cluster(
     head_options=None,
     worker_options=None,
     ray_temp_dir="/tmp/ray/temp",
-    ray_node_log_dir="/tmp/ray/logs"
+    ray_log_dir="/tmp/ray/logs"
 ):
     """
     Initialize a ray cluster on the spark cluster, via creating a background spark barrier
@@ -115,10 +115,7 @@ def init_cluster(
         head_options: A dict representing Ray head node options.
         worker_options: A dict representing Ray worker node options.
         ray_temp_dir: A local disk path to store the ray temporary data.
-        ray_node_log_dir: A local disk path to store the ray head / worker nodes logs.
-            On databricks runtime, we recommend to use path under `/dbfs/` that is mounted
-            with DBFS shared by all spark cluster nodes, so that we can check all ray worker
-            logs from driver side easily.
+        ray_log_dir: A local disk path to store ray processes logs.
     """
     import ray
     from pyspark.util import inheritable_thread_target
@@ -224,26 +221,18 @@ def init_cluster(
 
     ray_exec_path = os.path.join(os.path.dirname(sys.executable), "ray")
 
-    ray_node_log_dir = os.path.join(ray_node_log_dir, f"ray-{ray_head_port}")
+    ray_log_dir = os.path.join(ray_log_dir, f"ray-{ray_head_port}")
+    os.makedirs(ray_log_dir, exist_ok=True)
 
-    _logger.warning(f"You can check ray head / worker nodes logs under local disk path {ray_node_log_dir}")
-    if is_in_databricks_runtime() and not ray_node_log_dir.startswith("/dbfs"):
-        _logger.warning(
-            "We recommend you to set `ray_node_log_root_path` argument to be a path under '/dbfs/', "
-            "because for all spark cluster nodes '/dbfs/' path is mounted with a shared disk, "
-            "so that you can check ray worker logs on spark driver node."
-        )
-
-    os.makedirs(ray_node_log_dir, exist_ok=True)
+    _logger.warning(f"You can check ray head / worker nodes logs under local disk path {ray_log_dir}")
 
     ray_temp_dir = os.path.join(ray_temp_dir, f"ray-{ray_head_port}")
-    ray_head_temp_dir = os.path.join(ray_temp_dir, "head")
-    os.makedirs(ray_head_temp_dir, exist_ok=True)
+    os.makedirs(ray_temp_dir, exist_ok=True)
 
     ray_head_node_cmd = [
         ray_exec_path,
         "start",
-        f"--temp-dir={ray_head_temp_dir}",
+        f"--temp-dir={ray_temp_dir}",
         "--block",
         "--head",
         "--disable-usage-stats",
@@ -259,7 +248,7 @@ def init_cluster(
 
     _logger.info(f"Start Ray head, command: {' '.join(ray_head_node_cmd)}")
 
-    with open(os.path.join(ray_node_log_dir, "ray-head.log"), "w", buffering=1) as head_log_fp:
+    with open(os.path.join(ray_log_dir, "ray-start-head.log"), "w", buffering=1) as head_log_fp:
         ray_head_proc = exec_cmd(
             ray_head_node_cmd,
             synchronous=False,
@@ -285,18 +274,16 @@ def init_cluster(
         context.barrier()
         task_id = context.partitionId()
 
-        # TODO: remove temp dir when ray worker exits.
-        ray_worker_temp_dir = os.path.join(ray_temp_dir, f"worker-{task_id}")
-        os.makedirs(ray_worker_temp_dir, exist_ok=True)
-
+        # TODO: remove worker side ray temp dir when ray worker exits.
         # Ray worker might run on a machine different with the head node, so create the
-        # local log dir again.
-        os.makedirs(ray_node_log_dir, exist_ok=True)
+        # local log dir and temp dir again.
+        os.makedirs(ray_temp_dir, exist_ok=True)
+        os.makedirs(ray_log_dir, exist_ok=True)
 
         ray_worker_cmd = [
             ray_exec_path,
             "start",
-            f"--temp-dir={ray_worker_temp_dir}",
+            f"--temp-dir={ray_temp_dir}",
             f"--num-cpus={num_spark_task_cpus}",
             "--block",
             "--disable-usage-stats",
@@ -361,8 +348,8 @@ def init_cluster(
         _worker_logger.info(f"Start Ray worker, command: {' '.join(ray_worker_cmd)}")
 
         ray_worker_log_file = os.path.join(
-            ray_node_log_dir,
-            f"ray-worker-{task_id}.log"
+            ray_log_dir,
+            f"ray-start-worker-{task_id}.log"
         )
         with open(ray_worker_log_file, "w", buffering=1) as worker_log_fp:
             exec_cmd(
