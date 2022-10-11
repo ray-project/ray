@@ -1,7 +1,8 @@
 import os
 
 from abc import ABC
-import pytest
+from unittest.mock import patch
+
 import ray
 
 from ray import spark as ray_spark
@@ -59,15 +60,31 @@ class RayOnSparkCPUClusterTestBase(ABC):
             time.sleep(5)
             assert len(self.get_ray_worker_resources_list()) == self.max_spark_tasks
 
-            # cancel background spark job will cause all ray worker nodes exit.
-            cluster._cancel_background_spark_job()
-            time.sleep(5)
+            # Test: cancel background spark job will cause all ray worker nodes exit.
+            def fake_shutdown(_):
+                pass
+
+            with patch.object(ray_spark.RayClusterOnSpark, fake_shutdown):
+                cluster._cancel_background_spark_job()
+                time.sleep(5)
+
             assert len(self.get_ray_worker_resources_list()) == 0
 
         time.sleep(3)  # wait ray head node exit.
         # assert ray head node exit by checking head port being closed.
         hostname, port = cluster.address.split(":")
         assert not check_port_open(hostname, int(port))
+
+    def test_background_spark_job_exit_trigger_ray_head_exit(self):
+        with ray_spark.init_cluster(num_spark_tasks=self.max_spark_tasks) as cluster:
+            time.sleep(5)
+
+            cluster._cancel_background_spark_job()
+            time.sleep(5)
+
+            # assert ray head node exit by checking head port being closed.
+            hostname, port = cluster.address.split(":")
+            assert not check_port_open(hostname, int(port))
 
 
 class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
