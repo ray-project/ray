@@ -377,7 +377,6 @@ def init_cluster(
             f"--num-cpus={num_spark_task_cpus}",
             "--block",
             "--disable-usage-stats",
-            "--include-dashboard=false",
             f"--address={ray_head_hostname}:{ray_head_port}",
             f"--memory={ray_worker_heap_mem_bytes}",
             f"--object-store-memory={ray_worker_object_store_mem_bytes}",
