@@ -72,7 +72,6 @@ class _ActorClassCache:
     def get(self, trainable_cls):
         """Gets the wrapped trainable_cls, otherwise calls ray.remote."""
         env_vars = DEFAULT_ENV_VARS.copy()
-        env_vars["TUNE_ORIG_WORKING_DIR"] = os.getcwd()
 
         runtime_env = {"env_vars": env_vars}
         if trainable_cls not in self._cache:
@@ -146,6 +145,12 @@ class _TrialCleanup:
 
 
 def _noop_logger_creator(config, logdir):
+    # Upon remote process setup, record the actor's original working dir before
+    # changing the working dir to the Tune logdir
+    os.environ["TUNE_ORIG_WORKING_DIR"] = os.getcwd()
+    # Also, record the trial logdir
+    os.environ["TUNE_TRIAL_DIR"] = logdir
+
     # Set the working dir in the remote process, for user file writes
     os.makedirs(logdir, exist_ok=True)
     if not ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
