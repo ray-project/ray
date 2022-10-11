@@ -64,7 +64,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
             def fake_shutdown(_):
                 pass
 
-            with patch.object(ray_spark.RayClusterOnSpark, fake_shutdown):
+            with patch.object(ray_spark.RayClusterOnSpark, "shutdown", fake_shutdown):
                 cluster._cancel_background_spark_job()
                 time.sleep(5)
 

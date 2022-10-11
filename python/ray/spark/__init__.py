@@ -161,7 +161,7 @@ def init_cluster(
         head_options: A dict representing Ray head node options.
         worker_options: A dict representing Ray worker node options.
         ray_temp_dir: A local disk path to store the ray temporary data.
-        ray_log_dir: A local disk path to store ray processes logs.
+        ray_log_dir: A local disk path to store "ray start" script logs.
     """
     import ray
     from pyspark.util import inheritable_thread_target
@@ -270,11 +270,15 @@ def init_cluster(
     ray_log_dir = os.path.join(ray_log_dir, f"ray-{ray_head_port}")
     os.makedirs(ray_log_dir, exist_ok=True)
 
-    _logger.warning(f"You can check ray head / worker nodes logs under local disk path {ray_log_dir}")
+    _logger.warning(
+        f"You can check ray head / worker starting script logs under local disk path {ray_log_dir}, "
+        f"and you can check ray processes logs under local disk path {ray_temp_dir}/session_latest/logs."
+    )
 
-    # TODO: Many ray processes logs are outputted under "{ray_temp_dir}/logs",
-    #  We should update "ray start" scirpt to add a new option "ray_log_dir", and output logs
-    #  to a different directory specified by "ray_log_dir", instead of using "{ray_temp_dir}/logs",
+    # TODO: Many ray processes logs are outputted under "{ray_temp_dir}/session_latest/logs",
+    #  Proposal: Update "ray start" scirpt to add a new option "ray_log_dir", and output logs
+    #  to a different directory specified by "ray_log_dir", instead of using
+    #  "{ray_temp_dir}/session_latest/logs".
     #  The reason is, for ray on spark, user is hard to access log files on spark worker machines,
     #  (especially on databricks runtime), so we'd better set the log output dir to be a
     #  path mounted with NFS shared by all spark cluster nodes, so that the user can access
