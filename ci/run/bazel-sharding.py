@@ -214,9 +214,9 @@ def get_targets_for_shard_optimal(
 
     # We use a simple heuristic here (as this problem is NP-complete):
     # 1. Determine how long one shard would take if they were ideally balanced
-    #    (this may be impossible to attain)
+    #    (this may be impossible to attain, but that's fine)
     # 2. Allocate the next biggest item into the first shard that is below the optimum
-    # 3. If there's no shard below optimium, choose the shard closes to optimum
+    # 3. If there's no shard below optimium, choose the shard closest to optimum
 
     shards: List[List[BazelRule]] = [list() for _ in range(count)]
     optimum = (
