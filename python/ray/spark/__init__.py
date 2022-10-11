@@ -11,7 +11,7 @@ from packaging.version import Version
 from .utils import (
     exec_cmd,
     check_port_open,
-    get_random_safe_port,
+    get_safe_port,
     get_spark_session,
     get_spark_driver_hostname,
     is_in_databricks_runtime,
@@ -264,10 +264,10 @@ def init_cluster(
         )
 
     ray_head_hostname = get_spark_driver_hostname(spark.conf.get("spark.master"))
-    ray_head_port = get_random_safe_port(ray_head_hostname)
+    ray_head_port = get_safe_port()
 
-    ray_head_node_manager_port = get_random_safe_port(ray_head_hostname)
-    ray_head_object_manager_port = get_random_safe_port(ray_head_hostname)
+    ray_head_node_manager_port = get_safe_port()
+    ray_head_object_manager_port = get_safe_port()
 
     _logger.info(f"Ray head hostname {ray_head_hostname}, port {ray_head_port}")
 
@@ -370,8 +370,8 @@ def init_cluster(
         os.makedirs(ray_temp_dir, exist_ok=True)
         os.makedirs(ray_log_dir, exist_ok=True)
 
-        ray_worker_node_manager_port = get_random_safe_port(worker_hostname)
-        ray_worker_object_manager_port = get_random_safe_port(worker_hostname)
+        ray_worker_node_manager_port = get_safe_port()
+        ray_worker_object_manager_port = get_safe_port()
 
         ray_worker_cmd = [
             ray_exec_path,

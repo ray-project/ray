@@ -139,17 +139,15 @@ def exec_cmd(
     return comp_process
 
 
-# In my test this method might choose conflicted ports. Use get_random_safe_port instead.
-def get_safe_port(ip):
+def get_safe_port():
     import socket
     """Returns an ephemeral port that is very likely to be free to bind to."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind((ip, 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return port
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("0.0.0.0", 0))
+        return sock.getsockname()[1]
 
 
+"""
 def get_random_safe_port(host, min_port=10000, max_port=60000, max_retries=200):
     rng = random.SystemRandom()
     for _ in range(max_retries):
@@ -157,6 +155,7 @@ def get_random_safe_port(host, min_port=10000, max_port=60000, max_retries=200):
         if not check_port_open(host, port):
             return port
     raise RuntimeError("Get random safe port failed.")
+"""
 
 
 def check_port_open(host, port):
