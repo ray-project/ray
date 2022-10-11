@@ -9,7 +9,8 @@ This section is a collection of common design patterns and anti-patterns for wri
     :maxdepth: 1
 
     generators
-    limit-tasks
+    limit-pending-tasks
+    limit-running-tasks
     ray-get-loop
     unnecessary-ray-get
     ray-get-submission-order
@@ -17,3 +18,5 @@ This section is a collection of common design patterns and anti-patterns for wri
     too-fine-grained-tasks
     redefine-task-actor-loop
     pass-large-arg-by-value
+    closure-capture-large-objects
+    global-variables

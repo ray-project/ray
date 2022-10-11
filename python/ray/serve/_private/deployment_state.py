@@ -51,9 +51,9 @@ from ray.serve._private.utils import (
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
 
-
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.util import metrics
 from ray._private.gcs_utils import GcsClient
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -983,6 +983,15 @@ class DeploymentState:
             self._name, DeploymentStatus.UPDATING
         )
 
+        self.health_check_gauge = metrics.Gauge(
+            "serve_deployment_replica_healthy",
+            description=(
+                "Tracks whether this deployment replica is healthy. 1 means "
+                "healthy, 0 means unhealthy."
+            ),
+            tag_keys=("deployment", "replica"),
+        )
+
     def should_autoscale(self) -> bool:
         """
         Check if the deployment is under autoscaling
@@ -1489,11 +1498,17 @@ class DeploymentState:
         for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
             if replica.check_health():
                 self._replicas.add(ReplicaState.RUNNING, replica)
+                self.health_check_gauge.set(
+                    1, tags={"deployment": self._name, "replica": replica.replica_tag}
+                )
             else:
                 running_replicas_changed = True
                 logger.warning(
                     f"Replica {replica.replica_tag} of deployment "
                     f"{self._name} failed health check, stopping it."
+                )
+                self.health_check_gauge.set(
+                    0, tags={"deployment": self._name, "replica": replica.replica_tag}
                 )
                 replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)

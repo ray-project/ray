@@ -28,31 +28,6 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
-TaskStatusCounter::TaskStatusCounter() {}
-
-void TaskStatusCounter::Swap(rpc::TaskStatus old_status, rpc::TaskStatus new_status) {
-  if (old_status == new_status) {
-    return;
-  }
-  counters_[old_status] -= 1;
-  counters_[new_status] += 1;
-  RAY_CHECK(counters_[old_status] >= 0);
-  // Note that we set a Source=owner label so that metrics reported here don't
-  // conflict with metrics reported from core_worker.h.
-  ray::stats::STATS_tasks.Record(
-      counters_[old_status],
-      {{"State", rpc::TaskStatus_Name(old_status)}, {"Source", "owner"}});
-  ray::stats::STATS_tasks.Record(
-      counters_[new_status],
-      {{"State", rpc::TaskStatus_Name(new_status)}, {"Source", "owner"}});
-}
-
-void TaskStatusCounter::Increment(rpc::TaskStatus status) {
-  counters_[status] += 1;
-  ray::stats::STATS_tasks.Record(
-      counters_[status], {{"State", rpc::TaskStatus_Name(status)}, {"Source", "owner"}});
-}
-
 std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     const rpc::Address &caller_address,
     const TaskSpecification &spec,
@@ -124,9 +99,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
   {
     absl::MutexLock lock(&mu_);
-    auto inserted = submissible_tasks_.emplace(
-        spec.TaskId(),
-        TaskEntry(spec, max_retries, num_returns, task_counter_, max_oom_retries));
+    auto inserted = submissible_tasks_.try_emplace(
+        spec.TaskId(), spec, max_retries, num_returns, task_counter_, max_oom_retries);
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
   }
@@ -323,7 +297,8 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::PushTaskReply &reply,
-                                      const rpc::Address &worker_addr) {
+                                      const rpc::Address &worker_addr,
+                                      bool is_application_error) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
 
   bool first_execution = false;
@@ -400,7 +375,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                    << " plasma returns in scope";
     it->second.num_successful_executions++;
 
-    it->second.SetStatus(rpc::TaskStatus::FINISHED);
+    if (is_application_error) {
+      it->second.SetStatus(rpc::TaskStatus::FAILED);
+    } else {
+      it->second.SetStatus(rpc::TaskStatus::FINISHED);
+    }
     num_pending_tasks_--;
 
     // A finished task can only be re-executed if it has some number of
@@ -510,6 +489,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
+    it->second.SetStatus(rpc::TaskStatus::FAILED);
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 
@@ -832,6 +812,18 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
     entry->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
   }
   reply->set_tasks_total(total);
+}
+
+ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return ObjectID::Nil();
+  }
+  if (!it->second.spec.ReturnsDynamic()) {
+    return ObjectID::Nil();
+  }
+  return it->second.spec.ReturnId(0);
 }
 
 }  // namespace core
