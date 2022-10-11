@@ -274,11 +274,11 @@ def get_targets_for_shard_optimal(
     )
 
     print(
-        f"get_targets_for_shard statistics:\n\tOptimum: {optimum}\n"
+        f"get_targets_for_shard statistics:\n\tOptimum: {optimum} seconds\n"
         + "\n".join(
             (
                 f"\tShard {i}: {len(shard)} targets, "
-                f"{sum(rule.actual_timeout_s for rule in shard)} time"
+                f"{sum(rule.actual_timeout_s for rule in shard)} seconds"
             )
             for i, shard in enumerate(shards)
         ),
