@@ -2,6 +2,8 @@ import subprocess
 from urllib.parse import urlparse
 import os
 import sys
+import random
+import time
 
 
 def is_in_databricks_runtime():
@@ -145,6 +147,15 @@ def get_safe_port(ip):
     port = sock.getsockname()[1]
     sock.close()
     return port
+
+
+def get_random_safe_port(host, min_port, max_port, max_retries=200):
+    random.seed(int(time.time() * 1000))
+    for _ in range(max_retries):
+        port = random.randint(min_port, max_port)
+        if not check_port_open(host, port):
+            return port
+    raise RuntimeError("Get random safe port failed.")
 
 
 def check_port_open(host, port):

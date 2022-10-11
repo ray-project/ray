@@ -11,7 +11,7 @@ from packaging.version import Version
 from .utils import (
     exec_cmd,
     check_port_open,
-    get_safe_port,
+    get_random_safe_port,
     get_spark_session,
     get_spark_driver_hostname,
     is_in_databricks_runtime,
@@ -69,6 +69,10 @@ class RayClusterOnSpark:
 
     def connect(self):
         import ray
+        if self.is_shutdown:
+            raise RuntimeError(
+                "The ray cluster has been shut down or it failed to start."
+            )
         if self.ray_context is None:
             # connect to the ray cluster.
             self.ray_context = ray.init(address=self.address)
@@ -261,10 +265,10 @@ def init_cluster(
         )
 
     ray_head_hostname = get_spark_driver_hostname(spark.conf.get("spark.master"))
-    ray_head_port = get_safe_port(ray_head_hostname)
+    ray_head_port = get_random_safe_port(ray_head_hostname)
 
-    ray_head_node_manager_port = get_safe_port(ray_head_hostname)
-    ray_head_object_manager_port = get_safe_port(ray_head_hostname)
+    ray_head_node_manager_port = get_random_safe_port(ray_head_hostname)
+    ray_head_object_manager_port = get_random_safe_port(ray_head_hostname)
 
     _logger.info(f"Ray head hostanme {ray_head_hostname}, port {ray_head_port}")
 
@@ -272,11 +276,6 @@ def init_cluster(
 
     ray_log_dir = os.path.join(ray_log_dir, f"ray-{ray_head_port}")
     os.makedirs(ray_log_dir, exist_ok=True)
-
-    _logger.warning(
-        f"You can check ray head / worker starting script logs under local disk path {ray_log_dir}, "
-        f"and you can check ray processes logs under local disk path {ray_temp_dir}/session_latest/logs."
-    )
 
     # TODO: Many ray processes logs are outputted under "{ray_temp_dir}/session_latest/logs",
     #  Proposal: Update "ray start" scirpt to add a new option "ray_log_dir", and output logs
@@ -288,6 +287,11 @@ def init_cluster(
     #  these remote log files from spark drive side easily.
     ray_temp_dir = os.path.join(ray_temp_dir, f"ray-{ray_head_port}")
     os.makedirs(ray_temp_dir, exist_ok=True)
+
+    _logger.warning(
+        f"You can check ray head / worker starting script logs under local disk path {ray_log_dir}, "
+        f"and you can check ray processes logs under local disk path {ray_temp_dir}/session_latest/logs."
+    )
 
     ray_head_node_cmd = [
         ray_exec_path,
@@ -367,8 +371,8 @@ def init_cluster(
         os.makedirs(ray_temp_dir, exist_ok=True)
         os.makedirs(ray_log_dir, exist_ok=True)
 
-        ray_worker_node_manager_port = get_safe_port(worker_hostname)
-        ray_worker_object_manager_port = get_safe_port(worker_hostname)
+        ray_worker_node_manager_port = get_random_safe_port(worker_hostname)
+        ray_worker_object_manager_port = get_random_safe_port(worker_hostname)
 
         ray_worker_cmd = [
             ray_exec_path,
