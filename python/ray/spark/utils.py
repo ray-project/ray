@@ -149,7 +149,7 @@ def get_safe_port(ip):
     return port
 
 
-def get_random_safe_port(host, min_port, max_port, max_retries=200):
+def get_random_safe_port(host, min_port=10000, max_port=60000, max_retries=200):
     random.seed(int(time.time() * 1000))
     for _ in range(max_retries):
         port = random.randint(min_port, max_port)
