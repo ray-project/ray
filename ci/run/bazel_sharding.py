@@ -58,7 +58,7 @@ class BazelRule:
             return 60 * 60
 
     def __lt__(self, other: "BazelRule") -> bool:
-        return (self.actual_timeout_s, self.name) < (other.actual_timeout_s, other.name)
+        return (self.name, self.actual_timeout_s) < (other.name, other.actual_timeout_s)
 
     def __hash__(self) -> int:
         return self.name.__hash__()
@@ -284,10 +284,35 @@ def get_targets_for_shard_optimal(
         ),
         file=sys.stderr,
     )
-    return [rule.name for rule in shards[index]]
+    return sorted([rule.name for rule in shards[index]])
 
 
-def main():
+def main(
+    targets: List[str],
+    index: int,
+    count: int,
+    tests_only: bool = False,
+    exclude_manual: bool = False,
+    tag_filters: Optional[str] = None,
+    sharding_strategy: str = "optimal",
+    debug: bool = False,
+) -> List[str]:
+    include_tags, exclude_tags = split_tag_filters(tag_filters)
+
+    query = get_target_expansion_query(
+        targets, tests_only, exclude_manual, include_tags, exclude_tags
+    )
+    xml_output = run_bazel_query(query, debug)
+    rules = extract_rules_from_xml(xml_output)
+    rules_grouped_by_time = group_rules_by_time_needed(rules)
+    if sharding_strategy == "optimal":
+        my_targets = get_targets_for_shard_optimal(rules_grouped_by_time, index, count)
+    else:
+        my_targets = get_targets_for_shard_naive(rules_grouped_by_time, index, count)
+    return my_targets
+
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Expand and shard Bazel targets.")
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--tests_only", action="store_true")
@@ -319,33 +344,24 @@ def main():
     parser.add_argument("targets", nargs="+")
     args, extra_args = parser.parse_known_args()
     args.targets = list(args.targets) + list(extra_args)
-
     if args.index >= args.count:
-        parser.error("--index must be between 0 and {}".format(args.count - 1))
+        parser.error(f"--index must be between 0 and {args.count - 1}")
 
     if args.sharding_strategy not in ("optimal", "naive"):
-        parser.error("--sharding_strategy must be either 'optimal' or 'naive'")
+        parser.error(
+            "--sharding_strategy must be either 'optimal' or 'naive', "
+            f"got {args.sharding_strategy}"
+        )
 
-    include_tags, exclude_tags = split_tag_filters(args.tag_filters)
-
-    query = get_target_expansion_query(
-        args.targets, args.tests_only, args.exclude_manual, include_tags, exclude_tags
+    my_targets = main(
+        targets=args.targets,
+        index=args.index,
+        count=args.count,
+        tests_only=args.tests_only,
+        exclude_manual=args.exclude_manual,
+        tag_filters=args.tag_filters,
+        sharding_strategy=args.sharding_strategy,
+        debug=args.debug,
     )
-    xml_output = run_bazel_query(query, args.debug)
-    rules = extract_rules_from_xml(xml_output)
-    rules_grouped_by_time = group_rules_by_time_needed(rules)
-    if args.sharding_strategy == "optimal":
-        my_targets = get_targets_for_shard_optimal(
-            rules_grouped_by_time, args.index, args.count
-        )
-    else:
-        my_targets = get_targets_for_shard_naive(
-            rules_grouped_by_time, args.index, args.count
-        )
     print(" ".join(my_targets))
-
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(0)

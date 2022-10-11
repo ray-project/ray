@@ -98,6 +98,7 @@ if __name__ == "__main__":
     RAY_CI_DOCKER_AFFECTED = 0
     RAY_CI_DOC_AFFECTED = 0
     RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 0
+    RAY_CI_TOOLS_AFFECTED = 0
 
     if is_pull_request():
         commit_range = get_commit_range()
@@ -138,6 +139,8 @@ if __name__ == "__main__":
         ]
 
         for changed_file in files:
+            if changed_file.startswith("ci") or changed_file.startswith("scripts"):
+                RAY_CI_TOOLS_AFFECTED = 1
             if changed_file.startswith("python/ray/air"):
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
@@ -297,6 +300,7 @@ if __name__ == "__main__":
             "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED={}".format(
                 RAY_CI_PYTHON_DEPENDENCIES_AFFECTED
             ),
+            "RAY_CI_TOOLS_AFFECTED={}".format(RAY_CI_TOOLS_AFFECTED),
         ]
     )
 
