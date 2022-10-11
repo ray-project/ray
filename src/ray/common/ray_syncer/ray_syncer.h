@@ -141,7 +141,7 @@ class RaySyncer {
   /// waiting for ray syncer to poll the message.
   ///
   /// \param message The message to be broadcasted.
-  void BroadcastRaySyncMessage(const RaySyncMessage &message);
+  void BroadcastRaySyncMessage(std::shared_ptr<const RaySyncMessage> message);
 
  private:
   /// Get the io_context used by RaySyncer.

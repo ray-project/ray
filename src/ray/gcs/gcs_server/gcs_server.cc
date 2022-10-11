@@ -757,14 +757,14 @@ void GcsServer::TryGlobalGC() {
     resources_data.set_should_global_gc(true);
 
     if (RayConfig::instance().use_ray_syncer()) {
-      syncer::RaySyncMessage msg;
-      msg.set_version(absl::GetCurrentTimeNanos());
-      msg.set_node_id(local_node_id_.Binary());
-      msg.set_message_type(syncer::MessageType::COMMANDS);
+      auto msg = std::make_shared<syncer::RaySyncMessage>();
+      msg->set_version(absl::GetCurrentTimeNanos());
+      msg->set_node_id(local_node_id_.Binary());
+      msg->set_message_type(syncer::MessageType::COMMANDS);
       std::string serialized_msg;
       RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
-      msg.set_sync_message(std::move(serialized_msg));
-      ray_syncer_->BroadcastRaySyncMessage(msg);
+      msg->set_sync_message(std::move(serialized_msg));
+      ray_syncer_->BroadcastRaySyncMessage(std::move(msg));
     } else {
       resources_data.set_node_id(local_node_id_.Binary());
       gcs_ray_syncer_->Update(resources_data);
