@@ -111,7 +111,6 @@ class RayClusterOnSpark:
                 _logger.warning(
                     f"Error happens during killing ray head node: {repr(e)}"
                 )
-            shutil.rmtree(self.ray_temp_dir, ignore_errors=True)
             self.is_shutdown = True
         else:
             _logger.warning("The cluster has been shut down.")
