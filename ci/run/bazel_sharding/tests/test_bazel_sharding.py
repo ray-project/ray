@@ -1,12 +1,12 @@
-from unittest.mock import patch
 import pytest
-import subprocess
 import os
 import shutil
 import sys
 import tempfile
 
-sys.path.append(os.path.abspath("../run"))
+# Required for bazel
+file_parent = os.path.dirname(__file__)
+sys.path.append(os.path.join(file_parent, "../"))
 
 import bazel_sharding
 
@@ -36,7 +36,7 @@ workspace(name = "fake_workspace")
             """
         )
     os.makedirs(os.path.join(tmpdir, WORKSPACE_KEY), exist_ok=True)
-    shutil.copyfile("mock_BUILD", os.path.join(tmpdir, WORKSPACE_KEY, "BUILD"))
+    shutil.copyfile(os.path.join(file_parent, "mock_BUILD"), os.path.join(tmpdir, WORKSPACE_KEY, "BUILD"))
     cwd = os.getcwd()
     os.chdir(os.path.join(tmpdir, WORKSPACE_KEY))
     yield
