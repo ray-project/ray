@@ -26,6 +26,7 @@ from typing import (
     Type,
     Union,
 )
+from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 import tree
 
 import ray
@@ -680,6 +681,7 @@ class Algorithm(Trainable):
                 mod, obj = method_type.rsplit(".", 1)
                 mod = importlib.import_module(mod)
                 method_type = getattr(mod, obj)
+
             if isinstance(method_type, type) and issubclass(
                 method_type, OffPolicyEstimator
             ):
@@ -688,6 +690,9 @@ class Algorithm(Trainable):
                 self.reward_estimators[name] = method_type(
                     policy, gamma, **method_config
                 )
+            elif isinstance(method_type, type) and issubclass(method_type, OfflineEvaluator):
+                policy = self.get_policy()
+                self.reward_estimators[name] = method_type(policy, **method_config)
             else:
                 raise ValueError(
                     f"Unknown off_policy_estimation type: {method_type}! Must be "
