@@ -287,7 +287,7 @@ def test_torch_auto_unwrap(ray_start_4_cpus):
         model = train.torch.prepare_model(model)
 
         # Save DDP wrapped model.
-        session.report({"model": model}, checkpoint=TorchCheckpoint.from_model(model))
+        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn,
@@ -299,11 +299,6 @@ def test_torch_auto_unwrap(ray_start_4_cpus):
     model = last_checkpoint.get_model()
     assert isinstance(model, torch.nn.Module) and not isinstance(
         model, torch.nn.parallel.DistributedDataParallel
-    )
-
-    model_report = results.metrics["model"]
-    assert isinstance(model_report, torch.nn.Module) and not isinstance(
-        model_report, torch.nn.parallel.DistributedDataParallel
     )
 
 
