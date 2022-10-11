@@ -84,7 +84,7 @@ class ViewRequirementAgentConnector(AgentConnector):
 
         # Note(jungong) : we need to keep the entire input dict here.
         # A column may be used by postprocessing (GAE) even if its
-        # iew_requirement.used_for_training is False.
+        # view_requirement.used_for_training is False.
         training_dict = d
 
         agent_collector = self.agent_collectors[env_id][agent_id]
