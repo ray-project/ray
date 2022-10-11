@@ -52,12 +52,12 @@ class RayClusterOnSpark:
     It can be used to shutdown the cluster.
     """
 
-    def __init__(self, address, head_proc, spark_job_group_id, ray_context, ray_head_temp_dir):
+    def __init__(self, address, head_proc, spark_job_group_id, ray_context, ray_temp_dir):
         self.address = address
         self.head_proc = head_proc
         self.spark_job_group_id = spark_job_group_id
         self.ray_context = ray_context
-        self.ray_head_temp_dir = ray_head_temp_dir
+        self.ray_temp_dir = ray_temp_dir
 
     def _cancel_background_spark_job(self):
         get_spark_session().sparkContext.cancelJobGroup(self.spark_job_group_id)
@@ -69,7 +69,7 @@ class RayClusterOnSpark:
         self.ray_context.disconnect()
         self._cancel_background_spark_job()
         self.head_proc.kill()
-        shutil.rmtree(self.ray_head_temp_dir, ignore_errors=True)
+        shutil.rmtree(self.ray_temp_dir, ignore_errors=True)
 
     def __enter__(self):
         return self
@@ -248,7 +248,10 @@ def init_cluster(
 
     _logger.info(f"Start Ray head, command: {' '.join(ray_head_node_cmd)}")
 
-    with open(os.path.join(ray_log_dir, "ray-start-head.log"), "w", buffering=1) as head_log_fp:
+    with open(
+        os.path.join(ray_log_dir, "ray-start-head.log"),
+        "w", buffering=1
+    ) as head_log_fp:
         ray_head_proc = exec_cmd(
             ray_head_node_cmd,
             synchronous=False,
@@ -347,11 +350,10 @@ def init_cluster(
 
         _worker_logger.info(f"Start Ray worker, command: {' '.join(ray_worker_cmd)}")
 
-        ray_worker_log_file = os.path.join(
-            ray_log_dir,
-            f"ray-start-worker-{task_id}.log"
-        )
-        with open(ray_worker_log_file, "w", buffering=1) as worker_log_fp:
+        with open(
+            os.path.join(ray_log_dir, f"ray-start-worker-{task_id}.log"),
+            "w", buffering=1
+        ) as worker_log_fp:
             exec_cmd(
                 ray_worker_cmd,
                 synchronous=True,
@@ -406,7 +408,7 @@ def init_cluster(
             head_proc=ray_head_proc,
             spark_job_group_id=spark_job_group_id,
             ray_context=ray_context,
-            ray_head_temp_dir=ray_head_temp_dir,
+            ray_temp_dir=ray_temp_dir,
         )
     except Exception:
         # If init ray cluster raise exception, kill the ray head proc.
