@@ -1,8 +1,10 @@
-package io.ray.serve;
+package io.ray.serve.handle;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.serve.BaseServeTest;
+import io.ray.serve.DummyServeController;
 import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
@@ -11,7 +13,6 @@ import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
 import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.generated.DeploymentLanguage;
-import io.ray.serve.handle.RayServeHandle;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CommonUtil;
@@ -21,12 +22,13 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class RayServeHandleTest extends BaseTest {
+public class RayServeHandleTest {
   @Test
   public void test() {
-    init();
 
     try {
+      BaseServeTest.initRay();
+
       String deploymentName = "RayServeHandleTest";
       String controllerName =
           CommonUtil.formatActorName(
@@ -75,10 +77,11 @@ public class RayServeHandleTest extends BaseTest {
       rayServeHandle.getRouter().getReplicaSet().updateWorkerReplicas(builder.build());
 
       // remote
-      ObjectRef<Object> resultRef = rayServeHandle.remote(null);
+      ObjectRef<Object> resultRef = rayServeHandle.remote();
       Assert.assertEquals((String) resultRef.get(), deploymentName);
+      Assert.assertTrue(rayServeHandle.isPolling());
     } finally {
-      shutdown();
+      BaseServeTest.clearAndShutdownRay();
     }
   }
 }

@@ -25,8 +25,9 @@ public class DummyServeController implements ServeController {
     return builder.build().toByteArray();
   }
 
-  public void setEndpoints(byte[] endpoints) {
+  public boolean setEndpoints(byte[] endpoints) {
     this.endpoints = ServeProtoUtil.parseEndpointSet(endpoints);
+    return true;
   }
 
   public boolean setLongPollResult(byte[] longPollResult) {
