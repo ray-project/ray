@@ -80,13 +80,12 @@ void ReplyCancelled(const internal::Work &work,
 void ClusterTaskManager::ScheduleAndDispatchTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
   TryScheduleInfeasibleTask();
-  for (auto it = tasks_to_schedule_.begin(); it != tasks_to_schedule_.end();) {
-    auto shapes_it = it++;
+  std::deque<std::shared_ptr<internal::Work>> works_to_cancel;
+  for (auto shapes_it = tasks_to_schedule_.begin();
+       shapes_it != tasks_to_schedule_.end();) {
     auto &work_queue = shapes_it->second;
     bool is_infeasible = false;
-    bool work_queue_invalidated = false;
-    while (!work_queue.empty()) {
-      auto work_it = work_queue.begin();
+    for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
       // Check every task in task_to_schedule queue to see
       // whether it can be scheduled. This avoids head-of-line
       // blocking where a task which cannot be scheduled because
@@ -112,29 +111,26 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 
         if (task.GetTaskSpecification().IsNodeAffinitySchedulingStrategy() &&
             !task.GetTaskSpecification().GetNodeAffinitySchedulingStrategySoft()) {
-          auto shapes_count = tasks_to_schedule_.size();
           // This can only happen if the target node doesn't exist or is infeasible.
           // The task will never be schedulable in either case so we should fail it.
-          ReplyCancelled(
-              *work,
-              rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
-              "The node specified via NodeAffinitySchedulingStrategy doesn't exist "
-              "any more or is infeasible, and soft=False was specified.");
-          // We don't want to trigger the normal infeasible task logic (i.e. waiting),
-          // but rather we want to fail the task immediately.
-          is_infeasible = false;
           if (cluster_resource_scheduler_->IsLocalNodeWithRaylet()) {
-            // If scheduling is done by a raylet, we have to erase the work here.
-            work_queue.erase(work_it);
-          } else if (tasks_to_schedule_.size() < shapes_count) {
-            // If scheduling is done by gcs, then the task should already be cancelled
-            // (the above `ReplyCancelled` would synchronously call
-            // `ClusterTaskManager::CancelTask`). But this cancellation may erase
-            // (invalidate) the current `shapes_it`. So when this happens, we have to
-            // break immediately and move on to the next shape.
-            work_queue_invalidated = true;
-            break;
+            ReplyCancelled(
+                *work,
+                rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+                "The node specified via NodeAffinitySchedulingStrategy doesn't exist "
+                "any more or is infeasible, and soft=False was specified.");
+            // We don't want to trigger the normal infeasible task logic (i.e. waiting),
+            // but rather we want to fail the task immediately.
+            work_it = work_queue.erase(work_it);
+          } else {
+            // If scheduling is done by gcs, we can not `ReplyCancelled` now because it
+            // would synchronously call `ClusterTaskManager::CancelTask`, where
+            // `task_to_schedule_`'s iterator will be invalidated. So record this work and
+            // it will be handled below (out of the loop).
+            works_to_cancel.push_back(*work_it);
+            work_it++;
           }
+          is_infeasible = false;
           continue;
         }
 
@@ -143,7 +139,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 
       NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
       ScheduleOnNode(node_id, work);
-      work_queue.erase(work_it);
+      work_it = work_queue.erase(work_it);
     }
 
     if (is_infeasible) {
@@ -158,11 +154,25 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 
       // TODO(sang): Use a shared pointer deque to reduce copy overhead.
       infeasible_tasks_[shapes_it->first] = shapes_it->second;
-      tasks_to_schedule_.erase(shapes_it);
-    } else if (!work_queue_invalidated && work_queue.empty()) {
-      tasks_to_schedule_.erase(shapes_it);
+      tasks_to_schedule_.erase(shapes_it++);
+    } else if (work_queue.empty()) {
+      tasks_to_schedule_.erase(shapes_it++);
+    } else {
+      shapes_it++;
     }
   }
+
+  for (const auto work : works_to_cancel) {
+    // All works in `works_to_cancel` are scheduled by gcs. So `ReplyCancelled`
+    // will synchronously call `ClusterTaskManager::CancelTask`, where works are
+    // erased from the pending queue.
+    ReplyCancelled(*work,
+                   rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+                   "The node specified via NodeAffinitySchedulingStrategy doesn't exist "
+                   "any more or is infeasible, and soft=False was specified.");
+  }
+  works_to_cancel.clear();
+
   local_task_manager_->ScheduleAndDispatchTasks();
 }
 
