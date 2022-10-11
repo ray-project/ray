@@ -151,6 +151,7 @@ def run(
     log_to_file: bool = False,
     trial_name_creator: Optional[Callable[[Trial], str]] = None,
     trial_dirname_creator: Optional[Callable[[Trial], str]] = None,
+    chdir_to_trial_dir: bool = True,
     sync_config: Optional[SyncConfig] = None,
     export_formats: Optional[Sequence] = None,
     max_failures: int = 0,
@@ -291,6 +292,15 @@ def run(
             for generating the trial dirname. This function should take
             in a Trial object and return a string representing the
             name of the directory. The return value cannot be a path.
+        chdir_to_trial_dir: Determines whether or not to change the each worker's
+            working dir to their corresponding trial-level directory.
+            If set to False, files are accessible with paths relative to the directory
+            that the Tune experiment is launched from. The trial directory can be
+            accessible through the `TUNE_TRIAL_DIR` env variable.
+            If set to True, the original directory can still be accessed by the
+            `TUNE_ORIG_WORKING_DIR` env variable.
+            Defaults to True to prevent file write contention if workers try writing to
+            relative paths that may be shared if the working directory is not changed.
         sync_config: Configuration object for syncing. See
             tune.SyncConfig.
         export_formats: List of formats that exported at the end of
@@ -526,7 +536,9 @@ def run(
         )
 
     trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors, result_buffer_length=result_buffer_length
+        reuse_actors=reuse_actors,
+        result_buffer_length=result_buffer_length,
+        chdir_to_trial_dir=chdir_to_trial_dir,
     )
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment

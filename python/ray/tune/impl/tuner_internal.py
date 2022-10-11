@@ -382,6 +382,7 @@ class TunerInternal:
             reuse_actors=self._tune_config.reuse_actors,
             max_concurrent_trials=self._tune_config.max_concurrent_trials,
             time_budget_s=self._tune_config.time_budget_s,
+            chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
         )
 
     def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:

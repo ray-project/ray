@@ -59,3 +59,4 @@ class TuneConfig:
     max_concurrent_trials: Optional[int] = None
     time_budget_s: Optional[Union[int, float, datetime.timedelta]] = None
     reuse_actors: Optional[bool] = None
+    chdir_to_trial_dir: bool = True
