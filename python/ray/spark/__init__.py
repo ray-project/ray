@@ -263,6 +263,9 @@ def init_cluster(
     ray_head_hostname = get_spark_driver_hostname(spark.conf.get("spark.master"))
     ray_head_port = get_safe_port(ray_head_hostname)
 
+    ray_head_node_manager_port = get_safe_port(ray_head_hostname)
+    ray_head_object_manager_port = get_safe_port(ray_head_hostname)
+
     _logger.info(f"Ray head hostanme {ray_head_hostname}, port {ray_head_port}")
 
     ray_exec_path = os.path.join(os.path.dirname(sys.executable), "ray")
@@ -300,6 +303,8 @@ def init_cluster(
         f"--memory={128 * 1024 * 1024}",
         # limit the object store memory usage of head node because no task running on it.
         f"--object-store-memory={128 * 1024 * 1024}",
+        f"--node-manager-port={ray_head_node_manager_port}",
+        f"--object-manager-port={ray_head_object_manager_port}",
         *_convert_ray_node_options(head_options)
     ]
 
@@ -352,14 +357,18 @@ def init_cluster(
         _worker_logger = logging.getLogger("ray.spark.worker")
 
         context = BarrierTaskContext.get()
-        context.barrier()
         task_id = context.partitionId()
+
+        worker_hostname = context.getTaskInfos()[task_id].address.split(":")[0].strip()
 
         # TODO: remove worker side ray temp dir when ray worker exits.
         # Ray worker might run on a machine different with the head node, so create the
         # local log dir and temp dir again.
         os.makedirs(ray_temp_dir, exist_ok=True)
         os.makedirs(ray_log_dir, exist_ok=True)
+
+        ray_worker_node_manager_port = get_safe_port(ray_head_hostname)
+        ray_worker_object_manager_port = get_safe_port(ray_head_hostname)
 
         ray_worker_cmd = [
             ray_exec_path,
@@ -368,9 +377,12 @@ def init_cluster(
             f"--num-cpus={num_spark_task_cpus}",
             "--block",
             "--disable-usage-stats",
+            "--include-dashboard=false",
             f"--address={ray_head_hostname}:{ray_head_port}",
             f"--memory={ray_worker_heap_mem_bytes}",
             f"--object-store-memory={ray_worker_object_store_mem_bytes}",
+            f"--node-manager-port={ray_worker_node_manager_port}",
+            f"--object-manager-port={ray_worker_object_manager_port}",
             *_convert_ray_node_options(worker_options)
         ]
 
