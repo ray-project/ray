@@ -2708,7 +2708,6 @@ alias(
     name = "redis-server",
     actual = select({
         "@bazel_tools//src/conditions:windows": "@com_github_tporadowski_redis_bin//:redis-server.exe",
-        "@bazel_tools//src/conditions:darwin": "@com_github_antirez_redis//:redis-server-mac",
         "//conditions:default": "@com_github_antirez_redis//:redis-server",
     }),
     visibility = ["//visibility:public"],
@@ -2718,7 +2717,6 @@ alias(
     name = "redis-cli",
     actual = select({
         "@bazel_tools//src/conditions:windows": "@com_github_tporadowski_redis_bin//:redis-cli.exe",
-        "@bazel_tools//src/conditions:darwin": "@com_github_antirez_redis//:redis-cli-mac",
         "//conditions:default": "@com_github_antirez_redis//:redis-cli",
     }),
     visibility = ["//visibility:public"],
