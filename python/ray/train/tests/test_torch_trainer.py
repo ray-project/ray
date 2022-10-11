@@ -1,3 +1,4 @@
+import contextlib
 import pytest
 import torch
 import os
@@ -27,11 +28,11 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-@pytest.fixture
-def ray_2_node_2_gpu():
+@contextlib.contextmanager
+def ray_start_2_node_cluster(num_cpus_per_node: int, num_gpus_per_node: int):
     cluster = Cluster()
     for _ in range(2):
-        cluster.add_node(num_cpus=4, num_gpus=2)
+        cluster.add_node(num_cpus=num_cpus_per_node, num_gpus=num_gpus_per_node)
 
     ray.init(address=cluster.address)
 
@@ -214,52 +215,139 @@ def test_torch_session_errors(ray_start_4_cpus):
 
 
 @pytest.mark.parametrize(
-    "num_gpus_per_worker, expected_local_rank", [(0.5, 0), (1, 0), (2, 0)]
+    "num_gpus_per_worker,expected_devices", [(0.5, [0]), (1, [0]), (2, [0, 1])]
 )
-def test_tune_torch_get_device_gpu(
-    ray_2_node_2_gpu, num_gpus_per_worker, expected_local_rank
-):
+def test_tune_torch_get_device_gpu(num_gpus_per_worker, expected_devices):
     """Tests if GPU ids are set correctly when running train concurrently in nested actors
     (for example when used with Tune).
     """
     from ray.air.config import ScalingConfig
     import time
 
-    num_samples = int(2 // num_gpus_per_worker)
+    num_samples = 2
     num_workers = 2
 
-    @patch("torch.cuda.is_available", lambda: True)
+    # We should have exactly enough resources in the cluster to run both samples
+    # concurrently.
+    total_gpus_required = num_workers * num_gpus_per_worker * num_samples
+    # Divide by two because of a 2 node cluster.
+    gpus_per_node = total_gpus_required // 2
+
+    # Use the same number of cpus per node as gpus per node.
+    with ray_start_2_node_cluster(
+        num_cpus_per_node=gpus_per_node, num_gpus_per_node=gpus_per_node
+    ):
+
+        @patch("torch.cuda.is_available", lambda: True)
+        def train_fn():
+            # We use STRICT_SPREAD strategy to force multiple samples on the same node.
+            # For single or fractional GPU case, each worker has only 1 visible device (
+            # the other is taken by the other sample) so device index should be 0.
+            # For the multiple GPU case, each worker has 2 visible devices so device
+            # index should be either 0 or 1. It doesn't matter which.
+            assert train.torch.get_device().index in expected_devices
+
+        @ray.remote(num_cpus=0)
+        class TrialActor:
+            def __init__(self, warmup_steps):
+                # adding warmup_steps to the config
+                # to avoid the error of checkpoint name conflict
+                time.sleep(2 * warmup_steps)
+                self.trainer = TorchTrainer(
+                    train_fn,
+                    torch_config=TorchConfig(backend="gloo"),
+                    scaling_config=ScalingConfig(
+                        num_workers=num_workers,
+                        use_gpu=True,
+                        resources_per_worker={"CPU": 1, "GPU": num_gpus_per_worker},
+                        # Need to specify 0 trainer resources so STRICT_SPREAD
+                        # will work.
+                        trainer_resources={"CPU": 0},
+                        placement_strategy="STRICT_SPREAD",
+                        # Each gpu worker will be spread onto separate nodes. This
+                        # forces different samples to run concurrently on the same
+                        # node.
+                    ),
+                )
+
+            def run(self):
+                return self.trainer.fit()
+
+        actors = [TrialActor.remote(1) for _ in range(num_samples)]
+        ray.get([actor.run.remote() for actor in actors])
+
+
+def test_torch_auto_unwrap(ray_start_4_cpus):
+    """Tests if underlying model from DDP is extracted when saving ckpt."""
+
     def train_fn():
-        # two workers are spread across two different nodes
-        # the device ids are always set to 0,
-        # for example, if `num_gpus_per_worker`` is 2,
-        # then each worker will have `ray.get_gpu_ids() == [0, 1]`
-        # and thus, the local rank is 0.
-        assert train.torch.get_device().index == expected_local_rank
+        model = torch.nn.Linear(1, 1)
 
-    @ray.remote
-    class TrialActor:
-        def __init__(self, warmup_steps):
-            # adding warmup_steps to the config
-            # to avoid the error of checkpoint name conflict
-            time.sleep(2 * warmup_steps)
-            self.trainer = TorchTrainer(
-                train_fn,
-                torch_config=TorchConfig(backend="gloo"),
-                scaling_config=ScalingConfig(
-                    num_workers=num_workers,
-                    use_gpu=True,
-                    resources_per_worker={"GPU": num_gpus_per_worker},
-                    placement_strategy="SPREAD"
-                    # Each gpu worker will be spread onto separate nodes.
-                ),
-            )
+        # Wrap in DDP.
+        model = train.torch.prepare_model(model)
 
-        def run(self):
-            return self.trainer.fit()
+        # Save DDP wrapped model.
+        session.report({"model": model}, checkpoint=TorchCheckpoint.from_model(model))
 
-    actors = [TrialActor.remote(_) for _ in range(num_samples)]
-    ray.get([actor.run.remote() for actor in actors])
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    results = trainer.fit()
+
+    last_checkpoint = results.checkpoint
+    model = last_checkpoint.get_model()
+    assert isinstance(model, torch.nn.Module) and not isinstance(
+        model, torch.nn.parallel.DistributedDataParallel
+    )
+
+    model_report = results.metrics["model"]
+    assert isinstance(model_report, torch.nn.Module) and not isinstance(
+        model_report, torch.nn.parallel.DistributedDataParallel
+    )
+
+
+def test_torch_amp(ray_start_4_cpus):
+    def train_fn():
+        train.torch.accelerate(amp=True)
+        model = torch.nn.Linear(1, 1)
+        model = train.torch.prepare_model(model)
+
+        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
+
+    trainer = TorchTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    results = trainer.fit()
+    assert results.checkpoint
+
+
+def test_torch_amp_with_custom_get_state(ray_start_4_cpus):
+    """Tests amp with a model that has a custom __getstate__ method defined.
+
+    See https://discuss.ray.io/t/ray-train-hangs-for-long-time/6333/7
+    """
+
+    def train_fn():
+        train.torch.accelerate(amp=True)
+
+        class CustomLinear(torch.nn.Linear):
+            def __getstate__(self):
+                return self.__dict__.copy()
+
+        model = CustomLinear(1, 1)
+        model = train.torch.prepare_model(model)
+
+        # Make sure model is serializable even with amp enabled.
+        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
+
+    trainer = TorchTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    results = trainer.fit()
+    assert results.checkpoint
 
 
 if __name__ == "__main__":
