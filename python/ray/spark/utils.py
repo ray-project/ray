@@ -147,15 +147,9 @@ def get_safe_port():
         return sock.getsockname()[1]
 
 
-"""
-def get_random_safe_port(host, min_port=10000, max_port=60000, max_retries=200):
+def get_random_safe_port(min_port=20000, max_port=60000):
     rng = random.SystemRandom()
-    for _ in range(max_retries):
-        port = rng.randint(min_port, max_port)
-        if not check_port_open(host, port):
-            return port
-    raise RuntimeError("Get random safe port failed.")
-"""
+    return rng.randint(min_port, max_port)
 
 
 def check_port_open(host, port):
