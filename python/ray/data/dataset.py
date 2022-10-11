@@ -3098,6 +3098,7 @@ class Dataset(Generic[T]):
             A Pandas DataFrame created from this dataset, containing a limited
             number of records.
         """
+        from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
         count = self.count()
         if count > limit:
@@ -3111,7 +3112,11 @@ class Dataset(Generic[T]):
         output = DelegatingBlockBuilder()
         for block in blocks:
             output.add_block(ray.get(block))
-        return BlockAccessor.for_block(output.build()).to_pandas()
+        df = BlockAccessor.for_block(output.build()).to_pandas()
+        ctx = DatasetContext.get_current()
+        if ctx.enable_tensor_extension_casting:
+            df = _cast_tensor_columns_to_ndarrays(df)
+        return df
 
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.

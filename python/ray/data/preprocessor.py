@@ -247,7 +247,7 @@ class Preprocessor(abc.ABC):
 
         transform_type = self._determine_transform_to_use(dataset_format)
 
-        # Our user facing batch format should only be pandas or numpy, other
+        # Our user-facing batch format should only be pandas or NumPy, other
         # formats {arrow, simple} are internal.
         kwargs = self._get_transform_config()
         if transform_type == "pandas":
