@@ -690,7 +690,9 @@ class Algorithm(Trainable):
                 self.reward_estimators[name] = method_type(
                     policy, gamma, **method_config
                 )
-            elif isinstance(method_type, type) and issubclass(method_type, OfflineEvaluator):
+            elif isinstance(method_type, type) and issubclass(
+                method_type, OfflineEvaluator
+            ):
                 policy = self.get_policy()
                 self.reward_estimators[name] = method_type(policy, **method_config)
             else:
