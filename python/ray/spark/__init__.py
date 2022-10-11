@@ -362,6 +362,8 @@ def init_cluster(
         context = BarrierTaskContext.get()
         task_id = context.partitionId()
 
+        time.sleep(task_id * 1)  # debug.
+
         worker_hostname = context.getTaskInfos()[task_id].address.split(":")[0].strip()
 
         # TODO: remove worker side ray temp dir when ray worker exits.
@@ -383,8 +385,8 @@ def init_cluster(
             f"--address={ray_head_hostname}:{ray_head_port}",
             f"--memory={ray_worker_heap_mem_bytes}",
             f"--object-store-memory={ray_worker_object_store_mem_bytes}",
-            f"--node-manager-port={ray_worker_node_manager_port}",
-            f"--object-manager-port={ray_worker_object_manager_port}",
+            # f"--node-manager-port={ray_worker_node_manager_port}",
+            # f"--object-manager-port={ray_worker_object_manager_port}",
             *_convert_ray_node_options(worker_options)
         ]
 
