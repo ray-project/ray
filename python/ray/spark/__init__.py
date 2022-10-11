@@ -11,7 +11,7 @@ from packaging.version import Version
 from .utils import (
     exec_cmd,
     check_port_open,
-    get_random_safe_port,
+    get_safe_port,
     get_spark_session,
     get_spark_driver_hostname,
     is_in_databricks_runtime,
@@ -19,6 +19,7 @@ from .utils import (
     get_avail_mem_per_ray_worker,
     get_dbutils,
     get_max_num_concurrent_tasks,
+    get_spark_task_local_rank,
 )
 
 if not sys.platform.startswith("linux"):
@@ -264,10 +265,10 @@ def init_cluster(
         )
 
     ray_head_hostname = get_spark_driver_hostname(spark.conf.get("spark.master"))
-    ray_head_port = get_random_safe_port()
+    ray_head_port = get_safe_port()
 
-    ray_head_node_manager_port = get_random_safe_port()
-    ray_head_object_manager_port = get_random_safe_port()
+    ray_head_node_manager_port = get_safe_port()
+    ray_head_object_manager_port = get_safe_port()
 
     _logger.info(f"Ray head hostname {ray_head_hostname}, port {ray_head_port}")
 
@@ -362,9 +363,15 @@ def init_cluster(
         context = BarrierTaskContext.get()
         task_id = context.partitionId()
 
-        time.sleep(task_id * 1)  # debug.
+        task_ip_list = [info.address.split(":")[0] for info in context.getTaskInfos()]
+        task_local_rank = get_spark_task_local_rank(task_id, task_ip_list)
 
-        worker_hostname = context.getTaskInfos()[task_id].address.split(":")[0].strip()
+        # NB: If we launch multiple ray worker node at the same time,
+        #  it might cause Raylet uses conflicted port.
+        #  probably race conditions issues in ray implementation.
+        #  as a workaround, I add a sleep here to make different local tasks runs starting from
+        #  different time.
+        time.sleep(task_local_rank * 2.0)
 
         # TODO: remove worker side ray temp dir when ray worker exits.
         # Ray worker might run on a machine different with the head node, so create the
@@ -372,8 +379,8 @@ def init_cluster(
         os.makedirs(ray_temp_dir, exist_ok=True)
         os.makedirs(ray_log_dir, exist_ok=True)
 
-        ray_worker_node_manager_port = get_random_safe_port()
-        ray_worker_object_manager_port = get_random_safe_port()
+        ray_worker_node_manager_port = get_safe_port()
+        ray_worker_object_manager_port = get_safe_port()
 
         ray_worker_cmd = [
             ray_exec_path,
@@ -385,8 +392,8 @@ def init_cluster(
             f"--address={ray_head_hostname}:{ray_head_port}",
             f"--memory={ray_worker_heap_mem_bytes}",
             f"--object-store-memory={ray_worker_object_store_mem_bytes}",
-            # f"--node-manager-port={ray_worker_node_manager_port}",
-            # f"--object-manager-port={ray_worker_object_manager_port}",
+            f"--node-manager-port={ray_worker_node_manager_port}",
+            f"--object-manager-port={ray_worker_object_manager_port}",
             *_convert_ray_node_options(worker_options)
         ]
 

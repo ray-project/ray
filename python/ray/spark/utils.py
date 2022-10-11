@@ -140,14 +140,14 @@ def exec_cmd(
 
 
 def get_safe_port():
-    import socket
     """Returns an ephemeral port that is very likely to be free to bind to."""
+    import socket
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("0.0.0.0", 0))
         return sock.getsockname()[1]
 
 
-def get_random_safe_port(min_port=20000, max_port=60000):
+def get_random_port(min_port=20000, max_port=60000):
     rng = random.SystemRandom()
     return rng.randint(min_port, max_port)
 
@@ -250,3 +250,12 @@ def get_spark_task_assigned_physical_gpus(gpu_addr_list):
         return [visible_cuda_dev_list[addr] for addr in gpu_addr_list]
     else:
         return gpu_addr_list
+
+
+def get_spark_task_local_rank(task_id, task_ip_list):
+    node_ip = task_ip_list[task_id]
+    rank = 0
+    for i in range(task_id):
+        if task_ip_list[i] == node_ip:
+            rank += 1
+    return rank
