@@ -1,8 +1,5 @@
 import pytest
 
-from pathlib import Path
-import os
-
 # torch libraries
 import torch
 import torch.utils.data
@@ -44,6 +41,7 @@ test_dataset = datasets.CIFAR10(
 )
 
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
+
 
 @pytest.fixture(autouse=True, scope="session")
 def ray_start_4_cpus():
@@ -97,6 +95,7 @@ def trainer_init_per_worker(**config):
 
 trainer_init_per_worker.__test__ = False
 
+
 def test_mosaic_e2e():
     """Tests if the basic MosaicTrainer with minimum configuration runs and reports correct
     Checkpoint dictionary.
@@ -106,7 +105,7 @@ def test_mosaic_e2e():
         "train_dataset": train_dataset,
         "test_dataset": test_dataset,
         "loggers": [InMemoryLogger()],
-        "algorithms": [LabelSmoothing()]
+        "algorithms": [LabelSmoothing()],
     }
 
     trainer = MosaicTrainer(
@@ -116,6 +115,30 @@ def test_mosaic_e2e():
     )
 
     trainer.fit()
+
+
+def test_init_errors():
+    """Tests errors that may be raised when constructing MosaicTrainer. The error may
+    be due to bad `trainer_init_per_worker` function or missing requirements in the
+    `trainer_init_config` argument.
+    """
+    # invalid trainer init function
+    def bad_trainer_init_per_worker(a, b, c):
+        pass
+
+    trainer_init_config = {
+        "max_duration": "1ba",
+        "train_dataset": train_dataset,
+        "test_dataset": test_dataset,
+    }
+
+    with pytest.raises(ValueError):
+        _ = MosaicTrainer(
+            trainer_init_per_worker=bad_trainer_init_per_worker,
+            trainer_init_config=trainer_init_config,
+            scaling_config=scaling_config,
+        )
+
 
 if __name__ == "__main__":
     import sys

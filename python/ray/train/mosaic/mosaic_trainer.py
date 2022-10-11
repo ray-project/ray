@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 import composer.trainer
 
+
 @PublicAPI(stability="alpha")
 class MosaicTrainer(TorchTrainer):
     """A Trainer for data parallel Mosaic Composers on PyTorch training.
