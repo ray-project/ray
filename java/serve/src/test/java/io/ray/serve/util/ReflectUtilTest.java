@@ -36,12 +36,9 @@ public class ReflectUtilTest {
     constructor = ReflectUtil.getConstructor(ReflectExample.class, "");
     Assert.assertNotNull(constructor);
 
-    try {
-      constructor = ReflectUtil.getConstructor(ReflectExample.class, new HashMap<>());
-      Assert.assertTrue(false, "expect NoSuchMethodException");
-    } catch (NoSuchMethodException e) {
-
-    }
+    Assert.assertThrows(
+        NoSuchMethodException.class,
+        () -> ReflectUtil.getConstructor(ReflectExample.class, new HashMap<>()));
   }
 
   @Test
@@ -50,12 +47,9 @@ public class ReflectUtilTest {
     Method method = ReflectUtil.getMethod(ReflectExample.class, "test", "");
     Assert.assertNotNull(method);
 
-    try {
-      method = ReflectUtil.getMethod(ReflectExample.class, "test", new HashMap<>());
-      Assert.assertTrue(false, "expect NoSuchMethodException");
-    } catch (NoSuchMethodException e) {
-
-    }
+    Assert.assertThrows(
+        NoSuchMethodException.class,
+        () -> ReflectUtil.getMethod(ReflectExample.class, "test", new HashMap<>()));
   }
 
   @Test

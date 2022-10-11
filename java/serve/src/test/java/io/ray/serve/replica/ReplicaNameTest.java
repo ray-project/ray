@@ -1,6 +1,5 @@
-package io.ray.serve;
+package io.ray.serve.replica;
 
-import io.ray.serve.replica.ReplicaName;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;

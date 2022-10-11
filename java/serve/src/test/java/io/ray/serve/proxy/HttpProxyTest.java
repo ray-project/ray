@@ -1,14 +1,14 @@
-package io.ray.serve;
+package io.ray.serve.proxy;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
+import io.ray.serve.BaseServeTest;
+import io.ray.serve.DummyServeController;
 import io.ray.serve.api.Serve;
 import io.ray.serve.common.Constants;
 import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.EndpointSet;
-import io.ray.serve.proxy.HttpProxy;
-import io.ray.serve.proxy.ProxyRouter;
 import io.ray.serve.util.CommonUtil;
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -22,12 +22,13 @@ import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class HttpProxyTest extends BaseTest {
+public class HttpProxyTest {
   @Test
   public void test() throws IOException {
-    init();
 
     try {
+      BaseServeTest.initRay();
+
       String controllerName =
           CommonUtil.formatActorName(
               Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
@@ -45,7 +46,10 @@ public class HttpProxyTest extends BaseTest {
           endpointName,
           EndpointInfo.newBuilder().setEndpointName(endpointName).setRoute(route).build());
       EndpointSet endpointSet = EndpointSet.newBuilder().putAllEndpoints(endpointInfos).build();
-      controllerHandle.task(DummyServeController::setEndpoints, endpointSet.toByteArray()).remote();
+      controllerHandle
+          .task(DummyServeController::setEndpoints, endpointSet.toByteArray())
+          .remote()
+          .get();
 
       Serve.setInternalReplicaContext(null, null, controllerName, null, config);
 
@@ -68,7 +72,7 @@ public class HttpProxyTest extends BaseTest {
       }
 
     } finally {
-      shutdown();
+      BaseServeTest.clearAndShutdownRay();
     }
   }
 }
